@@ -31,9 +31,9 @@ export function ServiceCard({
       whileHover={{ y: -6 }}
       whileTap={{ scale: 0.97 }}
       className={cn(
-        "group relative flex h-50 w-40 shrink-0 snap-start flex-col items-center",
+        "group relative flex h-56 w-full flex-col items-center",
         "justify-center gap-3 overflow-hidden rounded-3xl border p-5 text-center",
-        "outline-none focus-visible:ring-2 focus-visible:ring-primary/60 lg:w-44",
+        "outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
         featured
           ? "bg-premium border-transparent text-white shadow-glow-violet"
           : "bg-surface border-line text-content shadow-e3 hover:shadow-e4",

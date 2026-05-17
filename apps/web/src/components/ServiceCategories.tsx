@@ -38,7 +38,7 @@ export function ServiceCategories() {
       </motion.h2>
 
       <div
-        className="-mx-5 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-4 sm:-mx-8 sm:px-8 [scrollbar-width:thin]"
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
         role="list"
         aria-label="Service categories"
       >

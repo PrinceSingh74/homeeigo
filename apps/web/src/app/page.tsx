@@ -4,13 +4,12 @@ import { SearchBar } from "@/components/SearchBar";
 import { ServiceCategories } from "@/components/ServiceCategories";
 import { FeatureBanner } from "@/components/FeatureBanner";
 import { OffersSection } from "@/components/OffersSection";
-import { BottomNav } from "@/components/BottomNav";
 
 export default function Home() {
   return (
     <>
       <Navbar />
-      <main className="bg-canvas pb-28 lg:pb-0">
+      <main className="bg-canvas">
         <HeroSection />
         <SearchBar />
         <ServiceCategories />
@@ -24,7 +23,6 @@ export default function Home() {
           </p>
         </footer>
       </main>
-      <BottomNav />
     </>
   );
 }
