@@ -58,7 +58,19 @@ export function OffersSection() {
 
   async function copy(code: string) {
     try {
-      await navigator.clipboard.writeText(code);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(code);
+      } else {
+        // Fallback for non-secure contexts (e.g. http:// over LAN)
+        const ta = document.createElement("textarea");
+        ta.value = code;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
     } catch {
       /* clipboard blocked — still show feedback */
     }
