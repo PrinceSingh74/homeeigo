@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Animated,
+  Image,
   Dimensions,
 } from "react-native";
 import { useTheme } from "@/hooks/useTheme";
@@ -87,19 +88,18 @@ export const HeroSection: React.FC = () => {
           />
         </View>
 
-        {/* Premium Image Placeholder */}
+        {/* Premium 3D smart-home render */}
         <Animated.View
           style={[
-            styles.imagePlaceholder,
-            {
-              backgroundColor: isDark ? "#1F2937" : "#E0F2FE",
-              transform: [{ scale: scaleAnim }],
-            },
+            styles.heroImageWrap,
+            { opacity: fadeAnim, transform: [{ scale: scaleAnim }] },
           ]}
         >
-          <Text style={{ color: themeColors.textSecondary, fontSize: 14 }}>
-            🏠 Premium 3D Home Visualization
-          </Text>
+          <Image
+            source={require("../../assets/hero-villa.png")}
+            style={styles.heroImage}
+            resizeMode="contain"
+          />
         </Animated.View>
       </View>
     </LinearGradient>
@@ -137,10 +137,13 @@ const styles = StyleSheet.create({
   buttonContainer: {
     gap: 12,
   },
-  imagePlaceholder: {
-    height: 200,
-    borderRadius: 20,
-    justifyContent: "center",
+  heroImageWrap: {
+    marginTop: 4,
     alignItems: "center",
+    justifyContent: "center",
+  },
+  heroImage: {
+    width: width - 32,
+    height: (width - 32) * 0.66,
   },
 });

@@ -1,7 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
-import { Sparkles, ArrowRight, Play, House, ShieldCheck, Star } from "lucide-react";
+import { Sparkles, ArrowRight, Play, ShieldCheck, Star } from "lucide-react";
 import { Button } from "@/components/buttons/Button";
 import { Badge } from "@/components/Badge";
 
@@ -116,28 +117,33 @@ export function HeroSection() {
           className="relative hidden h-112 lg:block"
         >
           <div className="absolute inset-0 grid place-items-center">
-            <div className="relative grid size-72 place-items-center rounded-[2.5rem] glass dark:glass-dark border border-line/60 shadow-e5">
-              <motion.div
-                animate={reduce ? undefined : { y: [0, -12, 0] }}
-                transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-                className="grid size-32 place-items-center rounded-3xl bg-aurora text-white shadow-glow-blue"
-              >
-                <House size={56} strokeWidth={1.5} />
-              </motion.div>
+            <motion.div
+              animate={reduce ? undefined : { y: [0, -14, 0] }}
+              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+              className="relative w-full max-w-xl"
+            >
+              <Image
+                src="/hero-villa.png"
+                alt="HOMIGO AI-connected smart home"
+                width={1536}
+                height={1024}
+                priority
+                className="h-auto w-full object-contain drop-shadow-[0_30px_70px_rgb(124_58_237/0.30)]"
+              />
 
-              <div className="absolute -right-6 -top-6 rounded-2xl bg-surface px-4 py-3 shadow-e4 border border-line">
+              <div className="absolute -right-2 top-8 rounded-2xl bg-surface px-4 py-3 shadow-e4 border border-line">
                 <p className="text-[11px] font-medium text-muted">Arriving in</p>
                 <p className="font-display text-lg font-bold text-aurora">
                   12 min
                 </p>
               </div>
-              <div className="absolute -bottom-5 -left-6 rounded-2xl bg-surface px-4 py-3 shadow-e4 border border-line">
+              <div className="absolute -bottom-2 -left-2 rounded-2xl bg-surface px-4 py-3 shadow-e4 border border-line">
                 <p className="text-[11px] font-medium text-muted">Live tracking</p>
                 <p className="font-display text-sm font-bold text-success">
                   ● On the way
                 </p>
               </div>
-            </div>
+            </motion.div>
           </div>
 
           {/* Floating particles */}
