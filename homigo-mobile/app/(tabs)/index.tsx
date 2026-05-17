@@ -4,9 +4,11 @@ import { useTheme } from "@/hooks/useTheme";
 import { HeroSection } from "@/components/HeroSection";
 import { SearchBar } from "@/components/SearchBar";
 import { ServiceCategories } from "@/components/ServiceCategories";
+import { FeatureBanner } from "@/components/FeatureBanner";
+import { OffersSection } from "@/components/OffersSection";
 
 export default function HomeScreen() {
-  const { colors: themeColors, isDark } = useTheme();
+  const { colors: themeColors } = useTheme();
 
   return (
     <SafeAreaView
@@ -22,7 +24,9 @@ export default function HomeScreen() {
         <HeroSection />
         <SearchBar />
         <ServiceCategories />
-        <View style={{ height: 100 }} />
+        <FeatureBanner />
+        <OffersSection />
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
