@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "HOMIGO",
+    "slug": "homigo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "homigo",
+    "userInterfaceStyle": "automatic"
+  }
+}

@@ -1,0 +1,15 @@
+[install]
+# For Bun v1+
+preload = ["dotenv/config"]
+
+[test]
+timeout = 5000
+
+[build]
+root = "src"
+outdir = "dist"
+target = "bun"
+
+[dev]
+hot = true
+watch = true

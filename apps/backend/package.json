@@ -1,0 +1,42 @@
+{
+  "name": "homigo-backend",
+  "version": "1.0.0",
+  "description": "HOMIGO Backend - Bun + Elysia.js",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun build src/index.ts --outdir dist",
+    "start": "bun run dist/index.js",
+    "db:migrate": "prisma migrate dev",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:seed": "bun run scripts/seed.ts",
+    "lint": "eslint src --ext ts",
+    "format": "prettier --write src",
+    "test": "bun test",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "elysia": "latest",
+    "@elysiajs/cors": "latest",
+    "@elysiajs/jwt": "latest",
+    "@elysiajs/swagger": "latest",
+    "@elysiajs/static": "latest",
+    "prisma": "latest",
+    "@prisma/client": "latest",
+    "pg": "latest",
+    "redis": "latest",
+    "axios": "latest",
+    "zod": "latest",
+    "dotenv": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/bun": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "prettier": "latest",
+    "eslint": "latest"
+  }
+}

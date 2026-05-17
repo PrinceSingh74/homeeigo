@@ -1,0 +1,37 @@
+{
+  "name": "homigo",
+  "version": "1.0.0",
+  "description": "AI-Powered Luxury Home Services Marketplace",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:backend\"",
+    "dev:web": "cd apps/web && npm run dev",
+    "dev:backend": "cd apps/backend && npm run dev",
+    "build": "npm run build:web && npm run build:backend",
+    "build:web": "cd apps/web && npm run build",
+    "build:backend": "cd apps/backend && npm run build",
+    "start": "npm run start:web && npm run start:backend",
+    "start:web": "cd apps/web && npm run start",
+    "start:backend": "cd apps/backend && npm run start",
+    "lint": "eslint . --ext ts,tsx",
+    "test": "jest",
+    "format": "prettier --write .",
+    "clean": "rm -rf node_modules apps/*/node_modules .turbo dist"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "eslint": "^8.50.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.2.0"
+  },
+  "keywords": [
+    "homigo",
+    "home-services",
+    "marketplace",
+    "ai-powered",
+    "luxury",
+    "India"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
