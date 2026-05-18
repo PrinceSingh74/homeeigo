@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import { View, Text, StyleSheet, Pressable, Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
   useSharedValue,
@@ -18,6 +18,8 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { shadowStyles } from "@/lib/colors";
+
+const CROWN_IMG = require("../../assets/crown-3d.png");
 
 type Benefit = { icon: LucideIcon; l1: string; l2: string };
 
@@ -56,7 +58,11 @@ function Crown() {
   return (
     <View style={styles.crownWrap} pointerEvents="none">
       <Animated.View style={[styles.crownGlow, spinStyle]} />
-      <Animated.Text style={[styles.crownEmoji, floatStyle]}>👑</Animated.Text>
+      <Animated.Image
+        source={CROWN_IMG}
+        resizeMode="contain"
+        style={[styles.crownImg, floatStyle]}
+      />
     </View>
   );
 }
@@ -152,22 +158,23 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   crownWrap: {
-    width: 64,
-    height: 64,
+    width: 72,
+    height: 72,
     alignItems: "center",
     justifyContent: "center",
   },
   crownGlow: {
     position: "absolute",
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     borderWidth: 2,
     borderColor: "rgba(251,191,36,0.5)",
     borderStyle: "dashed",
   },
-  crownEmoji: {
-    fontSize: 40,
+  crownImg: {
+    width: 60,
+    height: 60,
   },
   benefitsRow: {
     flexDirection: "row",
