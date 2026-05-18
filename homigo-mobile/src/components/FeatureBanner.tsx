@@ -5,11 +5,12 @@ import {
   StyleSheet,
   Pressable,
   Animated,
+  Image,
   Easing,
   Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { ArrowRight, Bike, Bot, Wallet } from "lucide-react-native";
+import { ArrowRight, Bot, Wallet } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
 
@@ -126,9 +127,9 @@ export const FeatureBanner: React.FC = () => {
                 key={i}
                 style={{
                   position: "absolute",
-                  right: 44,
-                  top: 6 + i * 10,
-                  width: 26 + i * 12,
+                  right: 108,
+                  top: 18 + i * 12,
+                  width: 30 + i * 14,
                   height: 3,
                   borderRadius: 2,
                   backgroundColor:
@@ -148,14 +149,14 @@ export const FeatureBanner: React.FC = () => {
                 }}
               />
             ))}
-            <Animated.View
+            <Animated.Image
+              source={require("../../assets/rider.webp")}
+              resizeMode="contain"
               style={[
-                styles.riderChip,
+                styles.riderImg,
                 { transform: [{ translateY: float }] },
               ]}
-            >
-              <Bike size={34} color="#fff" strokeWidth={1.6} />
-            </Animated.View>
+            />
           </View>
         </LinearGradient>
 
@@ -267,14 +268,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   bookText: { fontSize: 12, fontWeight: "800", color: "#1E1B4B" },
-  rider: { position: "absolute", right: 0, bottom: 10 },
-  riderChip: {
-    width: 58,
-    height: 58,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    alignItems: "center",
-    justifyContent: "center",
+  rider: { position: "absolute", right: -10, bottom: -4 },
+  riderImg: {
+    width: 150,
+    height: 104,
   },
   side: {
     width: SIDE_W,
