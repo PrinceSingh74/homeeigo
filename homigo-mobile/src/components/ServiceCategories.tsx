@@ -6,41 +6,43 @@ import {
   StyleSheet,
   Pressable,
   Animated,
+  Image,
   Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
-import {
-  Sparkles,
-  Wind,
-  Droplets,
-  Zap,
-  Bug,
-  Scissors,
-  type LucideIcon,
-} from "lucide-react-native";
+import { Scissors, type LucideIcon } from "lucide-react-native";
 
 const { width } = Dimensions.get("window");
 const CARD_W = width * 0.32;
 const FEAT_W = width * 0.36;
+
+const IMAGES: Record<string, any> = {
+  cleaning: require("../../assets/svc-cleaning.png"),
+  ac: require("../../assets/svc-ac.png"),
+  plumbing: require("../../assets/svc-plumbing.png"),
+  electrician: require("../../assets/svc-electrician.png"),
+  pest: require("../../assets/svc-pest.png"),
+};
 
 type Svc = {
   id: number;
   name: string;
   price?: string;
   sub?: string;
-  icon: LucideIcon;
+  imgKey?: string;
+  icon?: LucideIcon;
   color: string;
   featured?: boolean;
 };
 
 const services: Svc[] = [
-  { id: 1, name: "Cleaning", price: "₹199", icon: Sparkles, color: "#7C3AED", featured: true },
-  { id: 2, name: "AC Service", price: "₹299", icon: Wind, color: "#06B6D4" },
-  { id: 3, name: "Plumbing", price: "₹249", icon: Droplets, color: "#3B82F6" },
-  { id: 4, name: "Electrician", price: "₹249", icon: Zap, color: "#F59E0B" },
-  { id: 5, name: "Pest Control", price: "₹299", icon: Bug, color: "#10B981" },
+  { id: 1, name: "Cleaning", price: "₹199", imgKey: "cleaning", color: "#7C3AED", featured: true },
+  { id: 2, name: "AC Service", price: "₹299", imgKey: "ac", color: "#06B6D4" },
+  { id: 3, name: "Plumbing", price: "₹249", imgKey: "plumbing", color: "#3B82F6" },
+  { id: 4, name: "Electrician", price: "₹249", imgKey: "electrician", color: "#F59E0B" },
+  { id: 5, name: "Pest Control", price: "₹299", imgKey: "pest", color: "#10B981" },
   { id: 6, name: "Salon", price: "₹199", icon: Scissors, color: "#EC4899" },
 ];
 
@@ -55,7 +57,7 @@ function shade(hex: string, amt: number) {
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
 
-function Icon3D({ icon: Icon, color }: { icon: LucideIcon; color: string }) {
+function FauxIcon({ icon: Icon, color }: { icon: LucideIcon; color: string }) {
   return (
     <View style={[styles.iconShadow, { shadowColor: color }]}>
       <LinearGradient
@@ -64,7 +66,6 @@ function Icon3D({ icon: Icon, color }: { icon: LucideIcon; color: string }) {
         end={{ x: 0.9, y: 1 }}
         style={styles.iconChip}
       >
-        {/* glossy top highlight */}
         <LinearGradient
           colors={["rgba(255,255,255,0.55)", "rgba(255,255,255,0)"]}
           start={{ x: 0, y: 0 }}
@@ -75,6 +76,21 @@ function Icon3D({ icon: Icon, color }: { icon: LucideIcon; color: string }) {
       </LinearGradient>
     </View>
   );
+}
+
+function ServiceIcon({ item }: { item: Svc }) {
+  if (item.imgKey && IMAGES[item.imgKey]) {
+    return (
+      <View style={styles.imgShadow}>
+        <Image
+          source={IMAGES[item.imgKey]}
+          style={styles.icon3d}
+          resizeMode="contain"
+        />
+      </View>
+    );
+  }
+  return <FauxIcon icon={item.icon ?? Scissors} color={item.color} />;
 }
 
 function Card({ item }: { item: Svc }) {
@@ -110,7 +126,7 @@ function Card({ item }: { item: Svc }) {
               end={{ x: 0, y: 1 }}
               style={styles.featSheen}
             />
-            <Icon3D icon={item.icon} color="#A78BFA" />
+            <ServiceIcon item={item} />
             <Text style={[styles.name, { color: "#fff" }]}>{item.name}</Text>
             <Text style={[styles.price, { color: "rgba(255,255,255,0.85)" }]}>
               From {item.price}
@@ -128,7 +144,7 @@ function Card({ item }: { item: Svc }) {
               shadowStyles.lg,
             ]}
           >
-            <Icon3D icon={item.icon} color={item.color} />
+            <ServiceIcon item={item} />
             <Text
               numberOfLines={1}
               adjustsFontSizeToFit
@@ -192,6 +208,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
+  },
+  imgShadow: {
+    marginBottom: 10,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  icon3d: {
+    width: 62,
+    height: 62,
   },
   iconShadow: {
     marginBottom: 12,
