@@ -101,17 +101,17 @@ export const RecommendedSection: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { marginTop: 8, marginBottom: 8 },
+  container: { marginVertical: 20 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    marginBottom: 14,
+    paddingHorizontal: 24,
+    marginBottom: 16,
   },
   title: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3, marginBottom: 2 },
   seeAll: { fontSize: 12, fontWeight: "700" },
-  list: { paddingHorizontal: 16 },
+  list: { paddingHorizontal: 24 },
   card: {
     width: CARD_W,
     borderRadius: 22,

@@ -128,8 +128,8 @@ export const FinalCtaSection: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 24,
-    marginVertical: 48,
-    marginBottom: 64,
+    marginTop: 20,
+    marginBottom: 24,
   },
   ctaCard: {
     borderRadius: 32,

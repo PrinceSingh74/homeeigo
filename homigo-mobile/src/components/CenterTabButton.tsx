@@ -13,7 +13,7 @@ import Animated, {
   withTiming,
   Easing,
 } from "react-native-reanimated";
-import { Bot } from "lucide-react-native";
+import { Sparkles } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
 
@@ -52,7 +52,7 @@ export const CenterTabButton: React.FC<CenterTabButtonProps> = ({
           end={{ x: 1, y: 1 }}
           style={[styles.centerBtn, shadowStyles.glowBlue]}
         >
-          <Bot size={24} color="#fff" />
+          <Sparkles size={24} color="#fff" />
         </LinearGradient>
       </Pressable>
       <Text

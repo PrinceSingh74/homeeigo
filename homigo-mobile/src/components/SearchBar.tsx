@@ -110,9 +110,10 @@ export const SearchBar: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: 16,
-    marginVertical: 20,
+    gap: 12,
+    paddingHorizontal: 24,
+    marginTop: 4,
+    marginBottom: 20,
   },
   searchBar: {
     flex: 1,

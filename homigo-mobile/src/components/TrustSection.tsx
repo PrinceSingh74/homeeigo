@@ -77,10 +77,10 @@ export const TrustSection: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 24,
-    marginVertical: 48,
+    marginVertical: 20,
   },
   header: {
-    marginBottom: 28,
+    marginBottom: 20,
   },
   title: {
     fontSize: 22,

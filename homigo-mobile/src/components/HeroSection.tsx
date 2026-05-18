@@ -21,21 +21,33 @@ import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles, gradients } from "@/lib/colors";
 
 const { width } = Dimensions.get("window");
-const H_PAD = 18;
+const H_PAD = 24;
 const STAGE_W = width - H_PAD * 2;
-const LEFT_W = STAGE_W * 0.55;
-const RIGHT_W = STAGE_W * 0.45;
+const LEFT_W = STAGE_W * 0.56;
+const RIGHT_W = STAGE_W * 0.44;
 const IMG = RIGHT_W + 14;
 
 function GradientText({ children }: { children: string }) {
   return (
-    <MaskedView maskElement={<Text style={styles.h1}>{children}</Text>}>
+    <MaskedView
+      maskElement={
+        <Text style={styles.h1} numberOfLines={1} adjustsFontSizeToFit>
+          {children}
+        </Text>
+      }
+    >
       <LinearGradient
         colors={["#2563EB", "#7C3AED", "#06B6D4"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0.6 }}
       >
-        <Text style={[styles.h1, { opacity: 0 }]}>{children}</Text>
+        <Text
+          style={[styles.h1, { opacity: 0 }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {children}
+        </Text>
       </LinearGradient>
     </MaskedView>
   );
@@ -108,7 +120,11 @@ export const HeroSection: React.FC = () => {
           </LinearGradient>
 
           <View style={styles.heading}>
-            <Text style={[styles.h1, { color: themeColors.text }]}>
+            <Text
+              style={[styles.h1, { color: themeColors.text }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
               The Future of
             </Text>
             <GradientText>Home Services.</GradientText>
@@ -116,6 +132,7 @@ export const HeroSection: React.FC = () => {
 
           <Text
             style={[styles.sub, { color: themeColors.textSecondary }]}
+            numberOfLines={3}
           >
             Smart. Fast. Reliable. Everything your home needs, powered by AI.
           </Text>

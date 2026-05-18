@@ -17,7 +17,7 @@ export const Navbar: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <BlurView intensity={70} tint="light" style={styles.blurLayer}>
+      <BlurView intensity={70} tint={isDark ? "dark" : "light"} style={styles.blurLayer}>
         <View
           style={[
             styles.content,
@@ -112,8 +112,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.4)",
     gap: 8,

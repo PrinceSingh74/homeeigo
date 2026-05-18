@@ -28,7 +28,17 @@ const BENEFITS = [
   { icon: RotateCcw, label: "Free Revisits" },
 ];
 
-function FloatingParticle({ delay }: { delay: number }) {
+function FloatingParticle({
+  delay,
+  top,
+  left,
+  size = 8,
+}: {
+  delay: number;
+  top: number;
+  left: string;
+  size?: number;
+}) {
   const float = useSharedValue(0);
 
   useEffect(() => {
@@ -48,11 +58,13 @@ function FloatingParticle({ delay }: { delay: number }) {
       style={[
         {
           position: "absolute",
-          width: 8,
-          height: 8,
-          borderRadius: 4,
+          top,
+          left,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
           backgroundColor: "#D4AF37",
-          opacity: 0.3,
+          opacity: 0.35,
         },
         floatStyle,
       ]}
@@ -72,9 +84,11 @@ export const PremiumSection: React.FC = () => {
         style={[styles.card, shadowStyles.glowViolet]}
       >
         {/* Floating particles */}
-        <FloatingParticle delay={0} />
-        <FloatingParticle delay={600} />
-        <FloatingParticle delay={1200} />
+        <FloatingParticle delay={0} top={24} left="12%" size={7} />
+        <FloatingParticle delay={500} top={48} left="82%" size={9} />
+        <FloatingParticle delay={900} top={120} left="22%" size={6} />
+        <FloatingParticle delay={1300} top={150} left="74%" size={8} />
+        <FloatingParticle delay={1700} top={90} left="48%" size={5} />
 
         {/* Crown Icon */}
         <View style={styles.crownContainer}>
@@ -109,7 +123,7 @@ export const PremiumSection: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 24,
-    marginVertical: 48,
+    marginVertical: 20,
   },
   card: {
     borderRadius: 28,

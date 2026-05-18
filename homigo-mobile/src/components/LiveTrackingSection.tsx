@@ -98,34 +98,34 @@ export const LiveTrackingSection: React.FC = () => {
             <View style={[styles.statusIcon, { backgroundColor: "rgba(6,182,212,0.2)" }]}>
               <Clock size={18} color="#06B6D4" />
             </View>
-            <View>
-              <Text style={styles.statusLabel}>ETA</Text>
-              <Text style={styles.statusValue}>8 mins</Text>
-            </View>
+            <Text style={styles.statusLabel}>ETA</Text>
+            <Text style={styles.statusValue} numberOfLines={1}>
+              8 mins
+            </Text>
           </View>
 
-          <View style={styles.divider} />
+          <View style={styles.rowDivider} />
 
           <View style={styles.statusItem}>
             <View style={[styles.statusIcon, { backgroundColor: "rgba(37,99,235,0.2)" }]}>
               <User size={18} color="#2563EB" />
             </View>
-            <View>
-              <Text style={styles.statusLabel}>Professional</Text>
-              <Text style={styles.statusValue}>Rajesh K.</Text>
-            </View>
+            <Text style={styles.statusLabel}>Professional</Text>
+            <Text style={styles.statusValue} numberOfLines={1}>
+              Rajesh K.
+            </Text>
           </View>
 
-          <View style={styles.divider} />
+          <View style={styles.rowDivider} />
 
           <View style={styles.statusItem}>
             <View style={[styles.statusIcon, { backgroundColor: "rgba(245,158,11,0.2)" }]}>
               <Zap size={18} color="#F59E0B" />
             </View>
-            <View>
-              <Text style={styles.statusLabel}>Status</Text>
-              <Text style={styles.statusValue}>On the way</Text>
-            </View>
+            <Text style={styles.statusLabel}>Status</Text>
+            <Text style={styles.statusValue} numberOfLines={1}>
+              On the way
+            </Text>
           </View>
         </View>
       </LinearGradient>
@@ -136,10 +136,10 @@ export const LiveTrackingSection: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 24,
-    marginVertical: 48,
+    marginVertical: 20,
   },
   header: {
-    marginBottom: 20,
+    marginBottom: 18,
   },
   title: {
     fontSize: 22,
@@ -203,41 +203,39 @@ const styles = StyleSheet.create({
     backgroundColor: "#2563EB",
   },
   statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
     backgroundColor: "rgba(255,255,255,0.05)",
     borderRadius: 14,
-    padding: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
   },
   statusItem: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
+    paddingVertical: 12,
   },
   statusIcon: {
-    width: 42,
-    height: 42,
+    width: 40,
+    height: 40,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
   statusLabel: {
-    fontSize: 10,
+    flex: 1,
+    fontSize: 12,
     fontWeight: "600",
     color: "rgba(255,255,255,0.6)",
   },
   statusValue: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "800",
     color: "#fff",
-    marginTop: 2,
+    maxWidth: "45%",
+    textAlign: "right",
   },
-  divider: {
-    width: 1,
-    height: 40,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    marginHorizontal: 8,
+  rowDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
 });

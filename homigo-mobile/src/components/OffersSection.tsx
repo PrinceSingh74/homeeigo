@@ -158,13 +158,13 @@ export const OffersSection: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { marginVertical: 12 },
+  container: { marginVertical: 20 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    marginBottom: 14,
+    paddingHorizontal: 24,
+    marginBottom: 16,
   },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   pctChip: {
@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3, marginBottom: 2 },
   viewAll: { flexDirection: "row", alignItems: "center", gap: 5 },
   viewAllText: { fontSize: 12, fontWeight: "700" },
-  list: { paddingHorizontal: 16 },
+  list: { paddingHorizontal: 24 },
   card: {
     width: CARD_W,
     borderRadius: 18,

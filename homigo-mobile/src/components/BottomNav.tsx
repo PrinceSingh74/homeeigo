@@ -41,7 +41,7 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
 
   return (
     <View style={styles.container}>
-      <BlurView intensity={80} tint="light" style={styles.blurLayer}>
+      <BlurView intensity={80} tint={isDark ? "dark" : "light"} style={styles.blurLayer}>
         <View
           style={[
             styles.bar,

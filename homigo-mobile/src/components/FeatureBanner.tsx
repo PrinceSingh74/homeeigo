@@ -10,12 +10,12 @@ import {
   Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { ArrowRight, Bot, Wallet } from "lucide-react-native";
+import { ArrowRight, Sparkles, Wallet } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
 
 const { width } = Dimensions.get("window");
-const STAGE = width - 32;
+const STAGE = width - 48;
 const BANNER_W = STAGE * 0.6;
 const SIDE_W = STAGE * 0.4 - 10;
 
@@ -171,7 +171,7 @@ export const FeatureBanner: React.FC = () => {
             <View style={styles.miniTop}>
               <Text style={styles.miniGreet}>Hi Arjun! 👋</Text>
               <View style={styles.botOrb}>
-                <Bot size={14} color="#fff" />
+                <Sparkles size={14} color="#fff" />
               </View>
             </View>
             <Text style={styles.miniSub}>How can I help you today?</Text>
@@ -225,8 +225,8 @@ export const FeatureBanner: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 16,
-    marginVertical: 10,
+    paddingHorizontal: 24,
+    marginVertical: 20,
   },
   row: {
     flexDirection: "row",
