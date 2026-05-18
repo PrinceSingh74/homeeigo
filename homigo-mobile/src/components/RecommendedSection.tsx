@@ -6,10 +6,14 @@ import {
   ScrollView,
   Pressable,
   Image,
+  Dimensions,
 } from "react-native";
 import { Star } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
+
+const { width } = Dimensions.get("window");
+const CARD_W = width * 0.52;
 
 const ITEMS = [
   {
@@ -53,8 +57,10 @@ export const RecommendedSection: React.FC = () => {
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.list}
+        decelerationRate="fast"
+        snapToInterval={CARD_W + 16}
       >
-        {ITEMS.map((it) => (
+        {ITEMS.map((it, idx) => (
           <Pressable
             key={it.id}
             style={[
@@ -62,6 +68,7 @@ export const RecommendedSection: React.FC = () => {
               {
                 backgroundColor: themeColors.cardBg,
                 borderColor: themeColors.border,
+                marginRight: idx < ITEMS.length - 1 ? 16 : 0,
               },
               shadowStyles.md,
             ]}
@@ -104,16 +111,16 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3, marginBottom: 2 },
   seeAll: { fontSize: 12, fontWeight: "700" },
-  list: { paddingHorizontal: 16, gap: 14 },
+  list: { paddingHorizontal: 16 },
   card: {
-    width: 200,
-    borderRadius: 20,
+    width: CARD_W,
+    borderRadius: 22,
     borderWidth: 1,
     overflow: "hidden",
   },
-  img: { width: "100%", height: 120, backgroundColor: "#E5E7EB" },
+  img: { width: "100%", height: 130, backgroundColor: "#E5E7EB" },
   body: { padding: 12 },
-  cardTitle: { fontSize: 15, fontWeight: "700", marginBottom: 8 },
+  cardTitle: { fontSize: 15, fontWeight: "700", marginBottom: 10 },
   metaRow: {
     flexDirection: "row",
     justifyContent: "space-between",

@@ -104,10 +104,10 @@ export const OffersSection: React.FC = () => {
         horizontal
         showsHorizontalScrollIndicator={false}
         decelerationRate="fast"
-        snapToInterval={CARD_W + 12}
+        snapToInterval={CARD_W + 16}
         contentContainerStyle={styles.list}
       >
-        {OFFERS.map((o) => {
+        {OFFERS.map((o, idx) => {
           const Icon = o.icon;
           const isCopied = copied === o.code;
           return (
@@ -116,7 +116,11 @@ export const OffersSection: React.FC = () => {
               colors={[o.from, o.to]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={[styles.card, shadowStyles.md]}
+              style={[
+                styles.card,
+                { marginRight: idx < OFFERS.length - 1 ? 16 : 0 },
+                shadowStyles.md,
+              ]}
             >
               <View style={styles.cardTop}>
                 <View style={styles.iconChip}>
@@ -174,7 +178,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3, marginBottom: 2 },
   viewAll: { flexDirection: "row", alignItems: "center", gap: 5 },
   viewAllText: { fontSize: 12, fontWeight: "700" },
-  list: { paddingHorizontal: 16, gap: 12 },
+  list: { paddingHorizontal: 16 },
   card: {
     width: CARD_W,
     borderRadius: 18,

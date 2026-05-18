@@ -22,8 +22,8 @@ import {
 } from "lucide-react-native";
 
 const { width } = Dimensions.get("window");
-const CARD_W = width * 0.30;
-const FEAT_W = width * 0.34;
+const CARD_W = width * 0.32;
+const FEAT_W = width * 0.36;
 
 type Svc = {
   id: number;
@@ -81,37 +81,36 @@ function Card({ item }: { item: Svc }) {
             </Text>
           </LinearGradient>
         ) : (
-          <LinearGradient
-            colors={[
-              item.color + "09",
-              item.color + "04",
-            ]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+          <View
             style={[
               styles.card,
               {
-                borderColor: item.color + "22",
-                borderWidth: 1.2,
+                backgroundColor: "#FFFFFF",
+                borderColor: item.color + "18",
+                borderWidth: 1,
               },
-              shadowStyles.md,
+              shadowStyles.lg,
             ]}
           >
             <LinearGradient
-              colors={[item.color + "28", item.color + "14"]}
+              colors={[item.color + "18", item.color + "0C"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.iconChip}
             >
               <Icon size={22} color={item.color} />
             </LinearGradient>
-            <Text style={[styles.name, { color: themeColors.text }]}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              style={[styles.name, { color: themeColors.text }]}
+            >
               {item.name}
             </Text>
             <Text style={[styles.price, { color: themeColors.textSecondary }]}>
               {item.price ? `From ${item.price}` : item.sub}
             </Text>
-          </LinearGradient>
+          </View>
         )}
       </Pressable>
     </Animated.View>
@@ -157,21 +156,21 @@ const styles = StyleSheet.create({
   seeAll: { fontSize: 13, fontWeight: "700" },
   list: { paddingHorizontal: 16, gap: 12, paddingVertical: 4 },
   card: {
-    height: 142,
-    borderRadius: 22,
+    height: 150,
+    borderRadius: 24,
     paddingVertical: 16,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
   iconChip: {
-    width: 48,
-    height: 48,
+    width: 50,
+    height: 50,
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 10,
+    marginBottom: 12,
   },
   iconChipFeat: {
     backgroundColor: "rgba(255,255,255,0.22)",

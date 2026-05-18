@@ -55,7 +55,7 @@ function Waveform() {
           style={{
             width: 3,
             borderRadius: 2,
-            backgroundColor: "rgba(255,255,255,0.85)",
+            backgroundColor: "#06B6D4",
             height: val.interpolate({ inputRange: [0, 1], outputRange: [4, 18] }),
           }}
         />
@@ -101,7 +101,7 @@ export const FeatureBanner: React.FC = () => {
       <View style={styles.row}>
         {/* LEFT — Light Speed banner */}
         <LinearGradient
-          colors={["#1E1B4B", "#4C1D95", "#312E81"]}
+          colors={["#0A0F1E", "#1E1B4B", "#2563EB"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.banner, shadowStyles.xl]}
@@ -236,6 +236,7 @@ const styles = StyleSheet.create({
     width: BANNER_W,
     borderRadius: 22,
     padding: 16,
+    paddingRight: 24,
     overflow: "hidden",
     justifyContent: "center",
   },
@@ -272,10 +273,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   bookText: { fontSize: 12, fontWeight: "800", color: "#1E1B4B" },
-  rider: { position: "absolute", right: -10, bottom: -4 },
+  rider: { position: "absolute", right: -8, bottom: 0 },
   riderImg: {
-    width: 150,
-    height: 104,
+    width: 120,
+    height: 84,
   },
   side: {
     width: SIDE_W,

@@ -89,7 +89,7 @@ export const HeroSection: React.FC = () => {
 
   return (
     <LinearGradient
-      colors={gradients.heroBackground}
+      colors={isDark ? gradients.heroBackgroundDark : gradients.heroBackground}
       style={styles.container}
     >
       <Animated.View style={[styles.row, entryAnimStyle]}>

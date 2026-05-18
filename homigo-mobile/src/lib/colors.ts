@@ -115,5 +115,6 @@ export const gradients = {
   aurora: ["#06B6D4", "#7C3AED", "#EC4899"] as const,
   deep: ["#1E1B4B", "#2563EB", "#7C3AED"] as const,
   heroBackground: ["#F8FAFC", "#EFF6FF", "#F3E8FF"] as const,
+  heroBackgroundDark: ["#0A0F1E", "#0F172A", "#1E1B4B"] as const,
   lightSpeed: ["#0F0A1F", "#1E1B4B", "#312E81"] as const,
 };
