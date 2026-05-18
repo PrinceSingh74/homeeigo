@@ -1,27 +1,16 @@
 "use client";
 
 import { motion } from "framer-motion";
-import {
-  Sparkles,
-  AirVent,
-  Wrench,
-  Zap,
-  Bug,
-  Scissors,
-  WashingMachine,
-  LayoutGrid,
-} from "lucide-react";
+import { Scissors } from "lucide-react";
 import { ServiceCard } from "@/components/cards/ServiceCard";
 
 const SERVICES = [
-  { icon: Sparkles, name: "Cleaning", price: "₹299", color: "#7C3AED", featured: true },
-  { icon: AirVent, name: "AC Repair", price: "₹499", color: "#06B6D4" },
-  { icon: Wrench, name: "Plumbing", price: "₹199", color: "#3B82F6" },
-  { icon: Zap, name: "Electrician", price: "₹249", color: "#F59E0B" },
-  { icon: Bug, name: "Pest Control", price: "₹599", color: "#10B981" },
-  { icon: Scissors, name: "Salon", price: "₹399", color: "#EC4899" },
-  { icon: WashingMachine, name: "Appliance", price: "₹349", color: "#2563EB" },
-  { icon: LayoutGrid, name: "More", price: "₹149", color: "#64748B" },
+  { img: "/svc-cleaning.png", name: "Cleaning", price: "₹199", color: "#7C3AED", featured: true },
+  { img: "/svc-ac.png", name: "AC Service", price: "₹299", color: "#06B6D4" },
+  { img: "/svc-plumbing.png", name: "Plumbing", price: "₹249", color: "#3B82F6" },
+  { img: "/svc-electrician.png", name: "Electrician", price: "₹249", color: "#F59E0B" },
+  { img: "/svc-pest.png", name: "Pest Control", price: "₹299", color: "#10B981" },
+  { icon: Scissors, name: "Salon", price: "₹199", color: "#EC4899" },
 ];
 
 export function ServiceCategories() {
@@ -38,7 +27,7 @@ export function ServiceCategories() {
       </motion.h2>
 
       <div
-        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6"
         role="list"
         aria-label="Service categories"
       >

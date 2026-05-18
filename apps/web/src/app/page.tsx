@@ -4,6 +4,11 @@ import { SearchBar } from "@/components/SearchBar";
 import { ServiceCategories } from "@/components/ServiceCategories";
 import { FeatureBanner } from "@/components/FeatureBanner";
 import { OffersSection } from "@/components/OffersSection";
+import { RecommendedSection } from "@/components/RecommendedSection";
+import { TrustSection } from "@/components/TrustSection";
+import { PremiumSection } from "@/components/PremiumSection";
+import { LiveTrackingSection } from "@/components/LiveTrackingSection";
+import { FinalCtaSection } from "@/components/FinalCtaSection";
 
 export default function Home() {
   return (
@@ -15,6 +20,11 @@ export default function Home() {
         <ServiceCategories />
         <FeatureBanner />
         <OffersSection />
+        <RecommendedSection />
+        <TrustSection />
+        <PremiumSection />
+        <LiveTrackingSection />
+        <FinalCtaSection />
 
         <footer className="mx-auto mt-20 max-w-content px-6 pb-12 text-center">
           <p className="font-display text-lg font-bold text-aurora">HOMIGO</p>

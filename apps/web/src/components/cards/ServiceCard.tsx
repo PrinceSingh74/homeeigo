@@ -5,7 +5,8 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface ServiceCardProps {
-  icon: LucideIcon;
+  icon?: LucideIcon;
+  img?: string;
   name: string;
   price: string;
   color: string;
@@ -15,6 +16,7 @@ export interface ServiceCardProps {
 
 export function ServiceCard({
   icon: Icon,
+  img,
   name,
   price,
   color,
@@ -46,15 +48,31 @@ export function ServiceCard({
       )}
       <span
         className={cn(
-          "grid size-14 place-items-center rounded-2xl transition-transform duration-300 group-hover:scale-110",
-          featured ? "bg-white/15" : "bg-primary/5",
+          "grid size-24 place-items-center rounded-3xl transition-transform duration-300 group-hover:scale-110",
+          featured ? "bg-white/15" : "",
         )}
+        style={
+          featured
+            ? undefined
+            : {
+                background: `linear-gradient(135deg, ${color}26 0%, ${color}0F 100%)`,
+              }
+        }
       >
-        <Icon
-          size={30}
-          strokeWidth={1.75}
-          style={{ color: featured ? "#fff" : color }}
-        />
+        {img ? (
+          <img
+            src={img}
+            alt={name}
+            className="size-20 object-contain drop-shadow-lg"
+            loading="lazy"
+          />
+        ) : Icon ? (
+          <Icon
+            size={34}
+            strokeWidth={1.75}
+            style={{ color: featured ? "#fff" : color }}
+          />
+        ) : null}
       </span>
       <span className="font-display text-base font-semibold">{name}</span>
       <span

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowRight, Bike, Bot, Wallet } from "lucide-react";
+import { ArrowRight, Bot } from "lucide-react";
 
 function Waveform() {
   const reduce = useReducedMotion();
@@ -86,13 +86,13 @@ export function FeatureBanner() {
                   }}
                 />
               ))}
-              <motion.div
+              <motion.img
+                src="/rider.webp"
+                alt="Delivery rider"
                 animate={reduce ? undefined : { y: [0, -5, 0] }}
                 transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                className="grid size-24 place-items-center rounded-2xl bg-white/10 text-white backdrop-blur-sm"
-              >
-                <Bike size={56} strokeWidth={1.5} />
-              </motion.div>
+                className="h-28 w-auto object-contain drop-shadow-2xl"
+              />
             </div>
           </div>
         </motion.div>
@@ -140,13 +140,13 @@ export function FeatureBanner() {
               <p className="text-xs text-muted">Wallet Balance</p>
             </div>
             <div className="flex justify-end">
-              <motion.span
+              <motion.img
+                src="/wallet-3d.png"
+                alt="Wallet"
                 animate={reduce ? undefined : { y: [0, -4, 0], rotate: [0, 5, 0] }}
                 transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                className="grid size-12 place-items-center rounded-2xl bg-aurora text-white shadow-glow-blue"
-              >
-                <Wallet size={24} />
-              </motion.span>
+                className="size-14 object-contain drop-shadow-xl"
+              />
             </div>
           </motion.div>
         </div>
