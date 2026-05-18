@@ -78,7 +78,7 @@ export const Navbar: React.FC = () => {
             >
               <Image
                 source={{
-                  uri: "https://api.dicebear.com/7.x/avataaars/svg?seed=homigo",
+                  uri: "https://api.dicebear.com/7.x/avataaars/png?seed=homigo&size=80",
                 }}
                 style={styles.avatar}
               />

@@ -204,7 +204,11 @@ export const FeatureBanner: React.FC = () => {
                 <Wallet size={14} color={themeColors.primary} />
               </View>
             </View>
-            <Text style={[styles.walletAmt, { color: themeColors.text }]}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              style={[styles.walletAmt, { color: themeColors.text }]}
+            >
               ₹2,450.00
             </Text>
             <Text
@@ -310,6 +314,6 @@ const styles = StyleSheet.create({
     height: 18,
   },
   walletLabel: { fontSize: 10.5, fontWeight: "800" },
-  walletAmt: { marginTop: 10, fontSize: 19, fontWeight: "800" },
+  walletAmt: { marginTop: 10, fontSize: 17, fontWeight: "800" },
   walletSub: { marginTop: 1, fontSize: 9.5, fontWeight: "500" },
 });

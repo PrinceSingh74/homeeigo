@@ -76,7 +76,6 @@ export const SearchBar: React.FC = () => {
           onChangeText={setText}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          placeholderTextColor="#CBD5E1"
         />
 
         <Animated.View
