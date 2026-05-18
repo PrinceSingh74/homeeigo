@@ -1,6 +1,8 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import { View, Text, StyleSheet, Pressable, Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+
+const ROBOT_IMG = require("../../assets/robot-3d.png");
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -39,7 +41,11 @@ function MascotOrbit() {
   return (
     <View style={styles.mascotWrap} pointerEvents="none">
       <Animated.View style={[styles.mascotRing, ringStyle]} />
-      <Animated.Text style={[styles.mascotEmoji, floatStyle]}>🤖</Animated.Text>
+      <Animated.Image
+        source={ROBOT_IMG}
+        resizeMode="contain"
+        style={[styles.mascotImg, floatStyle]}
+      />
     </View>
   );
 }
@@ -141,21 +147,22 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   mascotWrap: {
-    width: 68,
-    height: 68,
+    width: 76,
+    height: 76,
     alignItems: "center",
     justifyContent: "center",
   },
   mascotRing: {
     position: "absolute",
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     borderWidth: 2,
     borderColor: "rgba(124,58,237,0.35)",
     borderStyle: "dashed",
   },
-  mascotEmoji: {
-    fontSize: 38,
+  mascotImg: {
+    width: 64,
+    height: 64,
   },
 });

@@ -10,9 +10,11 @@ import {
   Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { ArrowRight, Sparkles, Wallet } from "lucide-react-native";
+import { ArrowRight, Sparkles } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
+
+const WALLET_IMG = require("../../assets/wallet-3d.png");
 
 const { width } = Dimensions.get("window");
 const STAGE = width - 48;
@@ -195,14 +197,11 @@ export const FeatureBanner: React.FC = () => {
               <Text style={[styles.walletLabel, { color: themeColors.primary }]}>
                 HOMIGO Wallet
               </Text>
-              <View
-                style={[
-                  styles.botOrb,
-                  { backgroundColor: "rgba(37,99,235,0.12)" },
-                ]}
-              >
-                <Wallet size={14} color={themeColors.primary} />
-              </View>
+              <Image
+                source={WALLET_IMG}
+                resizeMode="contain"
+                style={styles.walletImg}
+              />
             </View>
             <Text
               numberOfLines={1}
@@ -315,6 +314,7 @@ const styles = StyleSheet.create({
     height: 18,
   },
   walletLabel: { fontSize: 10.5, fontWeight: "800" },
+  walletImg: { width: 38, height: 38 },
   walletAmt: { marginTop: 10, fontSize: 17, fontWeight: "800" },
   walletSub: { marginTop: 1, fontSize: 9.5, fontWeight: "500" },
 });
