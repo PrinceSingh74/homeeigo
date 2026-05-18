@@ -32,20 +32,20 @@ const ITEMS = [
 
 export function RecommendedSection() {
   return (
-    <section className="mx-auto mt-16 max-w-content px-5 sm:px-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h2 className="font-display text-2xl font-bold text-content sm:text-3xl">
+    <section className="mx-auto mt-24 max-w-content px-5 sm:px-8">
+      <div className="mb-10 flex items-center justify-between">
+        <h2 className="font-display text-3xl font-bold text-content sm:text-4xl lg:text-5xl">
           Recommended for You
         </h2>
         <button
           type="button"
-          className="text-sm font-semibold text-primary outline-none focus-visible:ring-2 focus-visible:ring-primary/60 rounded-md"
+          className="text-base font-semibold text-primary outline-none focus-visible:ring-2 focus-visible:ring-primary/60 rounded-md"
         >
           See all
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
         {ITEMS.map((it, i) => (
           <motion.button
             type="button"
@@ -57,7 +57,7 @@ export function RecommendedSection() {
             whileHover={{ y: -6 }}
             className="group overflow-hidden rounded-3xl border border-line bg-surface text-left shadow-e3 outline-none transition-shadow hover:shadow-e4 focus-visible:ring-2 focus-visible:ring-primary/60"
           >
-            <div className="relative h-40 w-full overflow-hidden bg-line/40">
+            <div className="relative h-56 w-full overflow-hidden bg-line/40 sm:h-64">
               <img
                 src={it.img}
                 alt={it.title}
@@ -65,16 +65,16 @@ export function RecommendedSection() {
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
               />
             </div>
-            <div className="p-4">
-              <p className="truncate font-display text-base font-semibold text-content">
+            <div className="p-6">
+              <p className="truncate font-display text-lg font-semibold text-content">
                 {it.title}
               </p>
-              <div className="mt-2 flex items-center justify-between">
-                <span className="font-display text-lg font-bold text-primary">
+              <div className="mt-3 flex items-center justify-between">
+                <span className="font-display text-2xl font-bold text-primary">
                   {it.price}
                 </span>
-                <span className="flex items-center gap-1 text-sm font-medium text-muted">
-                  <Star size={14} className="fill-warning text-warning" />
+                <span className="flex items-center gap-1 text-base font-medium text-muted">
+                  <Star size={16} className="fill-warning text-warning" />
                   {it.rating}
                 </span>
               </div>

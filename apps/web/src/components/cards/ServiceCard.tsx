@@ -33,8 +33,8 @@ export function ServiceCard({
       whileHover={{ y: -6 }}
       whileTap={{ scale: 0.97 }}
       className={cn(
-        "group relative flex h-56 w-full flex-col items-center",
-        "justify-center gap-3 overflow-hidden rounded-3xl border p-5 text-center",
+        "group relative flex h-72 w-full flex-col items-center sm:h-80",
+        "justify-center gap-4 overflow-hidden rounded-[28px] border p-6 text-center",
         "outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
         featured
           ? "bg-premium border-transparent text-white shadow-glow-violet"
@@ -42,13 +42,13 @@ export function ServiceCard({
       )}
     >
       {featured && (
-        <span className="absolute right-3 top-3 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-violet shadow-e1">
+        <span className="absolute right-4 top-4 rounded-full bg-white px-3 py-1 text-[11px] font-bold text-violet shadow-e1">
           Featured
         </span>
       )}
       <span
         className={cn(
-          "grid size-24 place-items-center rounded-3xl transition-transform duration-300 group-hover:scale-110",
+          "grid size-32 place-items-center rounded-[26px] transition-transform duration-300 group-hover:scale-110 sm:size-36",
           featured ? "bg-white/15" : "",
         )}
         style={
@@ -63,21 +63,21 @@ export function ServiceCard({
           <img
             src={img}
             alt={name}
-            className="size-20 object-contain drop-shadow-lg"
+            className="size-28 object-contain drop-shadow-xl sm:size-32"
             loading="lazy"
           />
         ) : Icon ? (
           <Icon
-            size={34}
+            size={56}
             strokeWidth={1.75}
             style={{ color: featured ? "#fff" : color }}
           />
         ) : null}
       </span>
-      <span className="font-display text-base font-semibold">{name}</span>
+      <span className="font-display text-xl font-bold">{name}</span>
       <span
         className={cn(
-          "text-sm font-medium",
+          "text-base font-medium",
           featured ? "text-white/90" : "text-muted",
         )}
       >

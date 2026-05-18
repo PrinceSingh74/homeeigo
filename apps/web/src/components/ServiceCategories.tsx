@@ -15,19 +15,19 @@ const SERVICES = [
 
 export function ServiceCategories() {
   return (
-    <section className="mx-auto mt-14 max-w-content px-5 sm:px-8">
+    <section className="mx-auto mt-24 max-w-content px-5 sm:px-8">
       <motion.h2
         initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.45 }}
-        className="mb-6 font-display text-2xl font-bold text-content sm:text-3xl"
+        className="mb-10 font-display text-3xl font-bold text-content sm:text-4xl lg:text-5xl"
       >
         Popular Services
       </motion.h2>
 
       <div
-        className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6"
+        className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6"
         role="list"
         aria-label="Service categories"
       >

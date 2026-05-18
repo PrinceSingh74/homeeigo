@@ -81,9 +81,9 @@ export function OffersSection() {
   }
 
   return (
-    <section className="mx-auto mt-16 max-w-content px-5 sm:px-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h2 className="font-display text-2xl font-bold text-content sm:text-3xl">
+    <section className="mx-auto mt-24 max-w-content px-5 sm:px-8">
+      <div className="mb-10 flex items-center justify-between">
+        <h2 className="font-display text-3xl font-bold text-content sm:text-4xl lg:text-5xl">
           Offers&nbsp;&amp;&nbsp;Deals
         </h2>
         <button

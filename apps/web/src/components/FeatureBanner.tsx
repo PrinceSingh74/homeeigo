@@ -30,26 +30,26 @@ export function FeatureBanner() {
   const reduce = useReducedMotion();
 
   return (
-    <section className="mx-auto mt-16 max-w-content px-5 sm:px-8">
-      <div className="grid gap-5 lg:grid-cols-[1fr_15rem]">
+    <section className="mx-auto mt-24 max-w-content px-5 sm:px-8">
+      <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         {/* Main banner */}
         <motion.div
           initial={{ opacity: 0, y: 32 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.3 }}
           transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-          className="relative flex min-h-70 flex-col justify-center overflow-hidden rounded-3xl bg-darkviolet p-8 shadow-e5 sm:p-10"
+          className="relative flex min-h-96 flex-col justify-center overflow-hidden rounded-[36px] bg-darkviolet p-12 shadow-e5 sm:p-16"
         >
-          <p className="text-xs font-medium uppercase tracking-[0.15em] text-white/55">
+          <p className="text-sm font-medium uppercase tracking-[0.18em] text-white/55">
             Home services at
           </p>
-          <h2 className="mt-2 font-display text-4xl font-bold text-white sm:text-5xl">
+          <h2 className="mt-3 font-display text-5xl font-bold text-white sm:text-7xl">
             Light{" "}
             <span className="bg-gradient-to-r from-cyan to-white bg-clip-text text-transparent">
               Speed.
             </span>
           </h2>
-          <p className="mt-3 max-w-sm text-sm text-white/75 sm:text-base">
+          <p className="mt-4 max-w-md text-base text-white/75 sm:text-lg">
             Instant booking, real-time tracking, lightning-fast service at your
             doorstep.
           </p>
@@ -58,10 +58,10 @@ export function FeatureBanner() {
             type="button"
             whileHover={{ y: -3 }}
             whileTap={{ scale: 0.98 }}
-            className="mt-6 inline-flex h-12 w-fit items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#1E1B4B] shadow-e3 outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            className="mt-8 inline-flex h-14 w-fit items-center gap-2 rounded-2xl bg-white px-8 text-base font-semibold text-[#1E1B4B] shadow-e3 outline-none focus-visible:ring-2 focus-visible:ring-white/70"
           >
             Book Now
-            <ArrowRight size={16} />
+            <ArrowRight size={18} />
           </motion.button>
 
           {/* Rider + speed trails */}
@@ -89,27 +89,27 @@ export function FeatureBanner() {
               <motion.img
                 src="/rider.webp"
                 alt="Delivery rider"
-                animate={reduce ? undefined : { y: [0, -5, 0] }}
+                animate={reduce ? undefined : { y: [0, -6, 0] }}
                 transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                className="h-28 w-auto object-contain drop-shadow-2xl"
+                className="h-52 w-auto object-contain drop-shadow-2xl lg:h-64"
               />
             </div>
           </div>
         </motion.div>
 
         {/* Mini cards */}
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-6">
           {/* AI Assistant */}
           <motion.div
             initial={{ opacity: 0, x: 24 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="flex min-h-35 flex-col justify-between rounded-3xl bg-aurora p-4 text-white shadow-glow-blue"
+            className="flex min-h-44 flex-col justify-between rounded-3xl bg-aurora p-6 text-white shadow-glow-blue"
           >
             <div>
-              <p className="text-sm font-bold">Hi Arjun! 👋</p>
-              <p className="text-xs text-white/85">How can I help you today?</p>
+              <p className="text-lg font-bold">Hi Arjun! 👋</p>
+              <p className="text-sm text-white/85">How can I help you today?</p>
             </div>
             <div className="flex items-center justify-between">
               <Waveform />
@@ -117,9 +117,9 @@ export function FeatureBanner() {
                 whileHover={{ scale: 1.1 }}
                 animate={reduce ? undefined : { rotate: [0, 360] }}
                 transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
-                className="grid size-11 place-items-center rounded-full border-2 border-white/70 bg-white/15"
+                className="grid size-14 place-items-center rounded-full border-2 border-white/70 bg-white/15"
               >
-                <Bot size={22} />
+                <Bot size={28} />
               </motion.span>
             </div>
           </motion.div>
@@ -130,14 +130,14 @@ export function FeatureBanner() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="flex min-h-35 flex-col justify-between rounded-3xl border border-line bg-surface p-4 shadow-e3"
+            className="flex min-h-44 flex-col justify-between rounded-3xl border border-line bg-surface p-6 shadow-e3"
           >
-            <p className="text-xs font-bold text-muted">HOMIGO Wallet</p>
+            <p className="text-sm font-bold text-muted">HOMIGO Wallet</p>
             <div>
-              <p className="font-display text-2xl font-bold text-content">
+              <p className="font-display text-3xl font-bold text-content">
                 ₹2,450.00
               </p>
-              <p className="text-xs text-muted">Wallet Balance</p>
+              <p className="text-sm text-muted">Wallet Balance</p>
             </div>
             <div className="flex justify-end">
               <motion.img
@@ -145,7 +145,7 @@ export function FeatureBanner() {
                 alt="Wallet"
                 animate={reduce ? undefined : { y: [0, -4, 0], rotate: [0, 5, 0] }}
                 transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                className="size-14 object-contain drop-shadow-xl"
+                className="size-20 object-contain drop-shadow-xl"
               />
             </div>
           </motion.div>

@@ -13,25 +13,25 @@ export function LiveTrackingSection() {
   const reduce = useReducedMotion();
 
   return (
-    <section className="mx-auto mt-16 max-w-content px-5 sm:px-8">
+    <section className="mx-auto mt-24 max-w-content px-5 sm:px-8">
       <motion.h2
         initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.45 }}
-        className="mb-6 font-display text-2xl font-bold text-content sm:text-3xl"
+        className="mb-10 font-display text-3xl font-bold text-content sm:text-4xl lg:text-5xl"
       >
         Live Tracking
       </motion.h2>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         {/* MAP card */}
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
-          className="relative h-56 overflow-hidden rounded-3xl shadow-e4"
+          className="relative h-72 overflow-hidden rounded-[32px] shadow-e4 lg:h-80"
           style={{
             background:
               "linear-gradient(135deg, #0B1020 0%, #1E1B4B 55%, #312E81 100%)",
@@ -101,22 +101,22 @@ export function LiveTrackingSection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="flex h-56 flex-col justify-between rounded-3xl p-6 text-white shadow-e4"
+          className="flex h-72 flex-col justify-between rounded-[32px] p-8 text-white shadow-e4 lg:h-80"
           style={{
             background: "linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)",
           }}
         >
           <div className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-success" />
-            <span className="text-sm font-semibold text-white/70">
+            <span className="size-2.5 rounded-full bg-success" />
+            <span className="text-base font-semibold text-white/70">
               Service in Progress
             </span>
           </div>
 
           <div>
-            <p className="text-base font-semibold text-white">Arriving in</p>
-            <p className="font-display text-4xl font-bold text-cyan">12 mins</p>
-            <p className="mt-1 text-sm text-white/60">
+            <p className="text-xl font-semibold text-white">Arriving in</p>
+            <p className="font-display text-6xl font-bold text-cyan">12 mins</p>
+            <p className="mt-2 text-base text-white/60">
               Your expert is on the way
             </p>
           </div>
