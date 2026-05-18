@@ -44,10 +44,42 @@ const services: Svc[] = [
   { id: 6, name: "Salon", price: "₹199", icon: Scissors, color: "#EC4899" },
 ];
 
+function shade(hex: string, amt: number) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) + amt;
+  let g = ((n >> 8) & 0x00ff) + amt;
+  let b = (n & 0x0000ff) + amt;
+  r = Math.max(0, Math.min(255, r));
+  g = Math.max(0, Math.min(255, g));
+  b = Math.max(0, Math.min(255, b));
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+}
+
+function Icon3D({ icon: Icon, color }: { icon: LucideIcon; color: string }) {
+  return (
+    <View style={[styles.iconShadow, { shadowColor: color }]}>
+      <LinearGradient
+        colors={[shade(color, 55), color, shade(color, -35)]}
+        start={{ x: 0.1, y: 0 }}
+        end={{ x: 0.9, y: 1 }}
+        style={styles.iconChip}
+      >
+        {/* glossy top highlight */}
+        <LinearGradient
+          colors={["rgba(255,255,255,0.55)", "rgba(255,255,255,0)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 0.7 }}
+          style={styles.gloss}
+        />
+        <Icon size={26} color="#fff" strokeWidth={2.4} />
+      </LinearGradient>
+    </View>
+  );
+}
+
 function Card({ item }: { item: Svc }) {
   const { colors: themeColors } = useTheme();
   const scale = useRef(new Animated.Value(1)).current;
-  const Icon = item.icon;
   const feat = !!item.featured;
 
   const to = (v: number, b = 0) =>
@@ -72,11 +104,15 @@ function Card({ item }: { item: Svc }) {
             end={{ x: 1, y: 1 }}
             style={[styles.card, shadowStyles.glowViolet]}
           >
-            <View style={[styles.iconChip, styles.iconChipFeat]}>
-              <Icon size={22} color="#fff" />
-            </View>
+            <LinearGradient
+              colors={["rgba(255,255,255,0.28)", "rgba(255,255,255,0)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={styles.featSheen}
+            />
+            <Icon3D icon={item.icon} color="#A78BFA" />
             <Text style={[styles.name, { color: "#fff" }]}>{item.name}</Text>
-            <Text style={[styles.price, { color: "rgba(255,255,255,0.8)" }]}>
+            <Text style={[styles.price, { color: "rgba(255,255,255,0.85)" }]}>
               From {item.price}
             </Text>
           </LinearGradient>
@@ -86,20 +122,13 @@ function Card({ item }: { item: Svc }) {
               styles.card,
               {
                 backgroundColor: "#FFFFFF",
-                borderColor: item.color + "18",
+                borderColor: item.color + "1F",
                 borderWidth: 1,
               },
               shadowStyles.lg,
             ]}
           >
-            <LinearGradient
-              colors={[item.color + "18", item.color + "0C"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.iconChip}
-            >
-              <Icon size={22} color={item.color} />
-            </LinearGradient>
+            <Icon3D icon={item.icon} color={item.color} />
             <Text
               numberOfLines={1}
               adjustsFontSizeToFit
@@ -164,16 +193,37 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
+  iconShadow: {
+    marginBottom: 12,
+    borderRadius: 17,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 8,
+  },
   iconChip: {
-    width: 50,
-    height: 50,
-    borderRadius: 16,
+    width: 54,
+    height: 54,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
+    overflow: "hidden",
   },
-  iconChipFeat: {
-    backgroundColor: "rgba(255,255,255,0.22)",
+  gloss: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "60%",
+    borderTopLeftRadius: 17,
+    borderTopRightRadius: 17,
+  },
+  featSheen: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "50%",
   },
   name: {
     fontSize: 12.5,

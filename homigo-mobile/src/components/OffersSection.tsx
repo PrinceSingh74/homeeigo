@@ -12,6 +12,17 @@ import {
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
 
+function shade(hex: string, amt: number) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) + amt;
+  let g = ((n >> 8) & 0x00ff) + amt;
+  let b = (n & 0x0000ff) + amt;
+  r = Math.max(0, Math.min(255, r));
+  g = Math.max(0, Math.min(255, g));
+  b = Math.max(0, Math.min(255, b));
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+}
+
 interface Offer {
   icon: LucideIcon;
   discount: string;
@@ -108,8 +119,21 @@ export const OffersSection: React.FC = () => {
                 end={{ x: 1, y: 1 }}
                 style={styles.offerInner}
               >
-                <View style={styles.iconChip}>
-                  <Icon size={16} color={o.fg} />
+                <View style={[styles.iconShadow, { shadowColor: o.fg }]}>
+                  <LinearGradient
+                    colors={[shade(o.fg, 70), o.fg, shade(o.fg, -25)]}
+                    start={{ x: 0.1, y: 0 }}
+                    end={{ x: 0.9, y: 1 }}
+                    style={styles.iconChip}
+                  >
+                    <LinearGradient
+                      colors={["rgba(255,255,255,0.5)", "rgba(255,255,255,0)"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 0, y: 0.7 }}
+                      style={styles.gloss}
+                    />
+                    <Icon size={16} color="#fff" strokeWidth={2.4} />
+                  </LinearGradient>
                 </View>
                 <Text
                   style={[styles.discount, { color: o.fg }]}
@@ -171,14 +195,28 @@ const styles = StyleSheet.create({
     minHeight: 124,
     justifyContent: "space-between",
   },
+  iconShadow: {
+    marginBottom: 10,
+    borderRadius: 11,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 6,
+  },
   iconChip: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.55)",
+    width: 34,
+    height: 34,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 10,
+    overflow: "hidden",
+  },
+  gloss: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "60%",
   },
   discount: {
     fontSize: 13,
