@@ -15,8 +15,8 @@ import { shadowStyles } from "@/lib/colors";
 import { Scissors, type LucideIcon } from "lucide-react-native";
 
 const { width } = Dimensions.get("window");
-const CARD_W = width * 0.32;
-const FEAT_W = width * 0.36;
+const CARD_W = width * 0.36;
+const FEAT_W = width * 0.4;
 
 const IMAGES: Record<string, any> = {
   cleaning: require("../../assets/svc-cleaning.png"),
@@ -226,37 +226,37 @@ const styles = StyleSheet.create({
   seeAll: { fontSize: 13, fontWeight: "700" },
   list: { paddingHorizontal: 24, gap: 12, paddingVertical: 4 },
   card: {
-    height: 150,
-    borderRadius: 24,
-    paddingVertical: 16,
+    height: 172,
+    borderRadius: 26,
+    paddingVertical: 18,
     paddingHorizontal: 12,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
   icon3d: {
-    width: 46,
-    height: 46,
+    width: 76,
+    height: 76,
   },
   fauxInner: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
+    width: 58,
+    height: 58,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
   },
   iconShadow: {
     marginBottom: 12,
-    borderRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 8,
+    borderRadius: 24,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 9,
   },
   iconChip: {
-    width: 60,
-    height: 60,
-    borderRadius: 18,
+    width: 92,
+    height: 92,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -266,9 +266,9 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: "60%",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    height: "55%",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
   },
   featSheen: {
     position: "absolute",
