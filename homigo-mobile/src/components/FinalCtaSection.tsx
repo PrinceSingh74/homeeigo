@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 24,
     marginTop: 20,
-    marginBottom: 24,
+    marginBottom: 14,
   },
   card: {
     flexDirection: "row",

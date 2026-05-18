@@ -1,5 +1,5 @@
 import React from "react";
-import { ScrollView, View, StyleSheet } from "react-native";
+import { ScrollView, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/hooks/useTheme";
 import { Navbar } from "@/components/Navbar";
@@ -38,7 +38,6 @@ export default function HomeScreen() {
         <PremiumSection />
         <LiveTrackingSection />
         <FinalCtaSection />
-        <View style={{ height: 110 }} />
       </ScrollView>
     </SafeAreaView>
   );
