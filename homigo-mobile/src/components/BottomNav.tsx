@@ -1,14 +1,20 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect } from "react";
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
-  Animated,
-  Easing,
 } from "react-native";
+import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  Easing,
+} from "react-native-reanimated";
 import {
   Home,
   CalendarDays,
@@ -39,33 +45,35 @@ const LABELS: Record<string, string> = {
 export function BottomNav({ state, navigation }: BottomTabBarProps) {
   const { colors: themeColors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const pulse = useRef(new Animated.Value(0)).current;
+
+  const pulse = useSharedValue(0);
 
   useEffect(() => {
-    Animated.loop(
-      Animated.timing(pulse, {
-        toValue: 1,
-        duration: 2200,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      }),
-    ).start();
-  }, []);
+    pulse.value = withRepeat(
+      withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true
+    );
+  }, [pulse]);
 
   return (
-    <View
-      style={[
-        styles.bar,
-        {
-          paddingBottom: insets.bottom > 0 ? insets.bottom : 12,
-          backgroundColor: isDark
-            ? "rgba(17,24,39,0.98)"
-            : "rgba(255,255,255,0.98)",
-          borderTopColor: themeColors.border,
-        },
-        shadowStyles.xl,
-      ]}
-    >
+    <View style={styles.container}>
+      <BlurView intensity={80} tint="light" style={styles.blurLayer}>
+        <View
+          style={[
+            styles.bar,
+            {
+              paddingBottom: insets.bottom > 0 ? insets.bottom : 12,
+              backgroundColor: isDark
+                ? "rgba(17,24,39,0.5)"
+                : "rgba(255,255,255,0.6)",
+              borderTopColor: isDark
+                ? "rgba(255,255,255,0.08)"
+                : "rgba(255,255,255,0.5)",
+            },
+            shadowStyles.xl,
+          ]}
+        >
       {state.routes.map((route, index) => {
         const focused = state.index === index;
         const Icon = ICONS[route.name] ?? Home;
@@ -84,6 +92,11 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
         };
 
         if (isCenter) {
+          const pulseAnimStyle = useAnimatedStyle(() => ({
+            opacity: 0.5 + Math.abs(Math.cos((pulse.value * Math.PI * 2))) * 0.3,
+            transform: [{ scale: 1 + pulse.value * 0.45 }],
+          }));
+
           return (
             <Pressable
               key={route.key}
@@ -93,20 +106,7 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
               <Animated.View
                 style={[
                   styles.pulseRing,
-                  {
-                    opacity: pulse.interpolate({
-                      inputRange: [0, 0.5, 1],
-                      outputRange: [0.5, 0, 0.5],
-                    }),
-                    transform: [
-                      {
-                        scale: pulse.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [1, 1.45],
-                        }),
-                      },
-                    ],
-                  },
+                  pulseAnimStyle,
                 ]}
               />
               <LinearGradient
@@ -152,11 +152,19 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
           </Pressable>
         );
       })}
+        </View>
+      </BlurView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    overflow: "hidden",
+  },
+  blurLayer: {
+    overflow: "hidden",
+  },
   bar: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -164,18 +172,19 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingHorizontal: 8,
     borderTopWidth: 1,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
   },
   item: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     gap: 4,
-    paddingVertical: 6,
+    paddingVertical: 8,
   },
   label: {
     fontSize: 10,
+    fontWeight: "500",
   },
   centerWrap: {
     flex: 1,
@@ -184,25 +193,29 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   centerBtn: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: "center",
     justifyContent: "center",
     marginTop: -28,
-    borderWidth: 3,
-    borderColor: "#fff",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.4)",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 18,
+    elevation: 10,
   },
   pulseRing: {
     position: "absolute",
     top: -28,
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: "#7C3AED",
   },
   centerLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "700",
   },
 });
