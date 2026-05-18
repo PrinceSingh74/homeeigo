@@ -1,10 +1,5 @@
-import React, { useEffect, useRef } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Dimensions,
-} from "react-native";
+import React, { useEffect } from "react";
+import { View, Text, StyleSheet, Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
   useSharedValue,
@@ -13,122 +8,138 @@ import Animated, {
   withTiming,
   Easing,
 } from "react-native-reanimated";
-import { MapPin, Clock, User, Zap } from "lucide-react-native";
+import { Check, MapPin, Navigation } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
 
-const { width } = Dimensions.get("window");
-
-function AnimatedDot() {
-  const pulse = useSharedValue(1);
+function PulseRing() {
+  const pulse = useSharedValue(0);
 
   useEffect(() => {
     pulse.value = withRepeat(
-      withTiming(1.5, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+      withTiming(1, { duration: 1800, easing: Easing.out(Easing.ease) }),
       -1,
-      true
+      false
     );
   }, []);
 
   const pulseStyle = useAnimatedStyle(() => ({
-    opacity: 1 - (pulse.value - 1) * 0.5,
-    transform: [{ scale: pulse.value }],
+    opacity: 1 - pulse.value,
+    transform: [{ scale: 0.6 + pulse.value * 1.1 }],
   }));
 
-  return (
-    <Animated.View
-      style={[
-        {
-          position: "absolute",
-          width: 12,
-          height: 12,
-          borderRadius: 6,
-          backgroundColor: "#06B6D4",
-        },
-        pulseStyle,
-      ]}
-    />
-  );
+  return <Animated.View style={[styles.pulseRing, pulseStyle]} />;
 }
+
+const STEPS = [
+  { label: "Confirmed", done: true },
+  { label: "On the Way", done: true },
+  { label: "Arrived", done: false },
+];
 
 export const LiveTrackingSection: React.FC = () => {
   const { colors: themeColors } = useTheme();
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: themeColors.text }]}>
-          Real-Time Tracking
-        </Text>
-        <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>
-          Know exactly when your pro arrives
-        </Text>
+      <Text style={[styles.title, { color: themeColors.text }]}>
+        Live Tracking
+      </Text>
+
+      <View style={styles.row}>
+        {/* LEFT — map card */}
+        <LinearGradient
+          colors={["#0F172A", "#1E1B4B"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.mapCard, shadowStyles.lg]}
+        >
+          {/* route line */}
+          <View style={styles.routeLine} />
+          <View style={styles.routeDotTop} />
+
+          {/* destination pin */}
+          <View style={styles.destPin}>
+            <MapPin size={14} color="#06B6D4" fill="#06B6D4" />
+          </View>
+
+          {/* rider avatar */}
+          <View style={styles.riderWrap}>
+            <PulseRing />
+            <View style={styles.riderRing}>
+              <Image
+                source={{
+                  uri: "https://api.dicebear.com/7.x/avataaars/png?seed=rajesh&size=64",
+                }}
+                style={styles.riderAvatar}
+              />
+            </View>
+          </View>
+
+          <View style={styles.navChip}>
+            <Navigation size={11} color="#fff" fill="#fff" />
+          </View>
+        </LinearGradient>
+
+        {/* RIGHT — status card */}
+        <LinearGradient
+          colors={["#1E1B4B", "#312E81"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.statusCard, shadowStyles.lg]}
+        >
+          <View style={styles.liveBadge}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText}>Service in Progress</Text>
+          </View>
+
+          <View style={styles.etaRow}>
+            <Text style={styles.etaLabel}>Arriving in</Text>
+            <Text style={styles.etaValue}>12 mins</Text>
+          </View>
+          <Text style={styles.etaSub}>Your expert is on the way</Text>
+
+          {/* stepper */}
+          <View style={styles.stepper}>
+            {STEPS.map((s, i) => (
+              <React.Fragment key={s.label}>
+                <View style={styles.step}>
+                  <View
+                    style={[
+                      styles.stepDot,
+                      s.done ? styles.stepDotDone : styles.stepDotPending,
+                    ]}
+                  >
+                    {s.done && <Check size={9} color="#fff" strokeWidth={3} />}
+                  </View>
+                  <Text
+                    style={[
+                      styles.stepLabel,
+                      { opacity: s.done ? 1 : 0.5 },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    {s.label}
+                  </Text>
+                </View>
+                {i < STEPS.length - 1 && (
+                  <View
+                    style={[
+                      styles.stepLine,
+                      {
+                        backgroundColor: STEPS[i + 1].done
+                          ? "#06B6D4"
+                          : "rgba(255,255,255,0.15)",
+                      },
+                    ]}
+                  />
+                )}
+              </React.Fragment>
+            ))}
+          </View>
+        </LinearGradient>
       </View>
-
-      <LinearGradient
-        colors={["#1E1B4B", "#2D1B69", "#1E1B4B"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.trackingCard, shadowStyles.xl]}
-      >
-        {/* Animated map placeholder with glowing route */}
-        <View style={styles.mapContainer}>
-          <LinearGradient
-            colors={["#06B6D4", "#2563EB"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.routeLine}
-          />
-
-          {/* Provider location dot */}
-          <View style={styles.providerDot}>
-            <View style={styles.providerInner} />
-            <AnimatedDot />
-          </View>
-
-          {/* Destination dot */}
-          <View style={styles.destDot}>
-            <View style={styles.destInner} />
-          </View>
-        </View>
-
-        {/* Status Info */}
-        <View style={styles.statusRow}>
-          <View style={styles.statusItem}>
-            <View style={[styles.statusIcon, { backgroundColor: "rgba(6,182,212,0.2)" }]}>
-              <Clock size={18} color="#06B6D4" />
-            </View>
-            <Text style={styles.statusLabel}>ETA</Text>
-            <Text style={styles.statusValue} numberOfLines={1}>
-              8 mins
-            </Text>
-          </View>
-
-          <View style={styles.rowDivider} />
-
-          <View style={styles.statusItem}>
-            <View style={[styles.statusIcon, { backgroundColor: "rgba(37,99,235,0.2)" }]}>
-              <User size={18} color="#2563EB" />
-            </View>
-            <Text style={styles.statusLabel}>Professional</Text>
-            <Text style={styles.statusValue} numberOfLines={1}>
-              Rajesh K.
-            </Text>
-          </View>
-
-          <View style={styles.rowDivider} />
-
-          <View style={styles.statusItem}>
-            <View style={[styles.statusIcon, { backgroundColor: "rgba(245,158,11,0.2)" }]}>
-              <Zap size={18} color="#F59E0B" />
-            </View>
-            <Text style={styles.statusLabel}>Status</Text>
-            <Text style={styles.statusValue} numberOfLines={1}>
-              On the way
-            </Text>
-          </View>
-        </View>
-      </LinearGradient>
     </View>
   );
 };
@@ -138,104 +149,171 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     marginVertical: 20,
   },
-  header: {
-    marginBottom: 18,
-  },
   title: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "800",
     letterSpacing: -0.4,
-    marginBottom: 6,
+    marginBottom: 16,
   },
-  subtitle: {
-    fontSize: 13,
-    fontWeight: "500",
+  row: {
+    flexDirection: "row",
+    gap: 12,
   },
-  trackingCard: {
-    borderRadius: 24,
-    padding: 20,
-    overflow: "hidden",
-  },
-  mapContainer: {
-    height: 180,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    marginBottom: 20,
-    position: "relative",
+  mapCard: {
+    flex: 1,
+    height: 168,
+    borderRadius: 20,
     overflow: "hidden",
   },
   routeLine: {
     position: "absolute",
-    width: 3,
-    height: 140,
-    top: 20,
-    left: width / 2 - 24 - 20 - 20,
-    opacity: 0.6,
+    width: 2,
+    height: 110,
+    top: 30,
+    left: "50%",
+    backgroundColor: "rgba(6,182,212,0.4)",
+    transform: [{ rotate: "28deg" }],
   },
-  providerDot: {
+  routeDotTop: {
     position: "absolute",
-    width: 44,
-    height: 44,
     top: 24,
-    right: 24,
+    right: 28,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#7C3AED",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.4)",
+  },
+  destPin: {
+    position: "absolute",
+    bottom: 22,
+    left: 22,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(6,182,212,0.18)",
     alignItems: "center",
     justifyContent: "center",
   },
-  providerInner: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: "#06B6D4",
-  },
-  destDot: {
+  riderWrap: {
     position: "absolute",
+    top: "38%",
+    left: "38%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pulseRing: {
+    position: "absolute",
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: "rgba(6,182,212,0.4)",
+  },
+  riderRing: {
     width: 44,
     height: 44,
-    bottom: 24,
-    left: 24,
-    alignItems: "center",
-    justifyContent: "center",
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: "#06B6D4",
+    overflow: "hidden",
+    backgroundColor: "#1E1B4B",
   },
-  destInner: {
-    width: 16,
-    height: 16,
-    borderRadius: 4,
-    backgroundColor: "#2563EB",
-  },
-  statusRow: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-  },
-  statusItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 12,
-  },
-  statusIcon: {
+  riderAvatar: {
     width: 40,
     height: 40,
-    borderRadius: 10,
+    borderRadius: 20,
+  },
+  navChip: {
+    position: "absolute",
+    bottom: 14,
+    right: 14,
+    width: 26,
+    height: 26,
+    borderRadius: 9,
+    backgroundColor: "rgba(124,58,237,0.7)",
     alignItems: "center",
     justifyContent: "center",
   },
-  statusLabel: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.6)",
+  statusCard: {
+    flex: 1.08,
+    height: 168,
+    borderRadius: 20,
+    padding: 16,
+    justifyContent: "space-between",
   },
-  statusValue: {
+  liveBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#10B981",
+  },
+  liveText: {
+    fontSize: 10.5,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.7)",
+  },
+  etaRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+  },
+  etaLabel: {
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "700",
     color: "#fff",
-    maxWidth: "45%",
-    textAlign: "right",
   },
-  rowDivider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.08)",
+  etaValue: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#06B6D4",
+    letterSpacing: -0.4,
+  },
+  etaSub: {
+    fontSize: 10.5,
+    fontWeight: "500",
+    color: "rgba(255,255,255,0.6)",
+    marginTop: -8,
+  },
+  stepper: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  step: {
+    alignItems: "center",
+    gap: 5,
+  },
+  stepDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepDotDone: {
+    backgroundColor: "#06B6D4",
+  },
+  stepDotPending: {
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  stepLabel: {
+    fontSize: 8.5,
+    fontWeight: "700",
+    color: "#fff",
+    maxWidth: 52,
+    textAlign: "center",
+  },
+  stepLine: {
+    flex: 1,
+    height: 2,
+    marginHorizontal: 3,
+    marginBottom: 16,
+    borderRadius: 1,
   },
 });

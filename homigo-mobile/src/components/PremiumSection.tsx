@@ -1,11 +1,5 @@
-import React, { useEffect, useRef } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  Dimensions,
-} from "react-native";
+import React, { useEffect } from "react";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
   useSharedValue,
@@ -14,98 +8,79 @@ import Animated, {
   withTiming,
   Easing,
 } from "react-native-reanimated";
-import { Crown, Star, Users, Zap, RotateCcw, ArrowRight } from "lucide-react-native";
+import {
+  Star,
+  Users,
+  Headphones,
+  Cpu,
+  RotateCcw,
+  ArrowRight,
+  type LucideIcon,
+} from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
 
-const { width } = Dimensions.get("window");
+type Benefit = { icon: LucideIcon; l1: string; l2: string };
 
-const BENEFITS = [
-  { icon: Star, label: "Priority Booking" },
-  { icon: Users, label: "Elite Professionals" },
-  { icon: Zap, label: "Premium Support" },
-  { icon: Star, label: "AI Optimization" },
-  { icon: RotateCcw, label: "Free Revisits" },
+const BENEFITS: Benefit[] = [
+  { icon: Star, l1: "Priority", l2: "Booking" },
+  { icon: Users, l1: "Elite", l2: "Professionals" },
+  { icon: Headphones, l1: "Premium", l2: "Support" },
+  { icon: Cpu, l1: "AI", l2: "Optimization" },
+  { icon: RotateCcw, l1: "Free", l2: "Revisits" },
 ];
 
-function FloatingParticle({
-  delay,
-  top,
-  left,
-  size = 8,
-}: {
-  delay: number;
-  top: number;
-  left: string;
-  size?: number;
-}) {
-  const float = useSharedValue(0);
+function CrownGlow() {
+  const spin = useSharedValue(0);
 
   useEffect(() => {
-    float.value = withRepeat(
-      withTiming(-12, { duration: 3000 + delay, easing: Easing.inOut(Easing.ease) }),
+    spin.value = withRepeat(
+      withTiming(1, { duration: 6000, easing: Easing.linear }),
       -1,
-      true
+      false
     );
   }, []);
 
-  const floatStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: float.value }],
+  const spinStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${spin.value * 360}deg` }],
   }));
 
   return (
-    <Animated.View
-      style={[
-        {
-          position: "absolute",
-          top,
-          left,
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: "#D4AF37",
-          opacity: 0.35,
-        },
-        floatStyle,
-      ]}
-    />
+    <View style={styles.crownWrap} pointerEvents="none">
+      <Animated.View style={[styles.crownRing, spinStyle]} />
+      <Text style={styles.crownEmoji}>👑</Text>
+    </View>
   );
 }
 
 export const PremiumSection: React.FC = () => {
-  const { colors: themeColors } = useTheme();
-
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={["#7C3AED", "#EC4899", "#7C3AED"]}
+        colors={["#7C3AED", "#9333EA", "#EC4899"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[styles.card, shadowStyles.glowViolet]}
       >
-        {/* Floating particles */}
-        <FloatingParticle delay={0} top={24} left="12%" size={7} />
-        <FloatingParticle delay={500} top={48} left="82%" size={9} />
-        <FloatingParticle delay={900} top={120} left="22%" size={6} />
-        <FloatingParticle delay={1300} top={150} left="74%" size={8} />
-        <FloatingParticle delay={1700} top={90} left="48%" size={5} />
+        <CrownGlow />
 
-        {/* Crown Icon */}
-        <View style={styles.crownContainer}>
-          <Crown size={32} color="#D4AF37" />
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>HOMIGO PREMIUM</Text>
+          <Text style={styles.titleCrown}>👑</Text>
         </View>
 
-        <Text style={styles.title}>HOMIGO Premium</Text>
-        <Text style={styles.subtitle}>Elite AI-powered home care</Text>
-
-        {/* Benefits Grid */}
-        <View style={styles.benefitsGrid}>
-          {BENEFITS.map((benefit, idx) => {
-            const Icon = benefit.icon;
+        <View style={styles.benefitsRow}>
+          {BENEFITS.map((b, idx) => {
+            const Icon = b.icon;
             return (
-              <View key={idx} style={styles.benefitItem}>
-                <Icon size={16} color="#D4AF37" />
-                <Text style={styles.benefitLabel}>{benefit.label}</Text>
+              <View key={idx} style={styles.benefit}>
+                <Icon size={20} color="#fff" strokeWidth={2} />
+                <Text style={styles.benefitL1} numberOfLines={1} adjustsFontSizeToFit>
+                  {b.l1}
+                </Text>
+                <Text style={styles.benefitL2} numberOfLines={1} adjustsFontSizeToFit>
+                  {b.l2}
+                </Text>
               </View>
             );
           })}
@@ -113,7 +88,7 @@ export const PremiumSection: React.FC = () => {
 
         <Pressable style={styles.upgradeBtn}>
           <Text style={styles.upgradeBtnText}>Upgrade Now</Text>
-          <ArrowRight size={14} color="#1E1B4B" />
+          <ArrowRight size={14} color="#7C3AED" strokeWidth={2.6} />
         </Pressable>
       </LinearGradient>
     </View>
@@ -126,70 +101,84 @@ const styles = StyleSheet.create({
     marginVertical: 20,
   },
   card: {
-    borderRadius: 28,
-    padding: 24,
-    alignItems: "center",
+    borderRadius: 24,
+    padding: 20,
     overflow: "hidden",
   },
-  crownContainer: {
-    marginBottom: 12,
-    width: 56,
-    height: 56,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.15)",
+  crownWrap: {
+    position: "absolute",
+    right: 10,
+    top: 0,
+    bottom: 0,
+    width: 110,
     alignItems: "center",
     justifyContent: "center",
+  },
+  crownRing: {
+    position: "absolute",
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 2,
+    borderColor: "rgba(212,175,55,0.4)",
+    borderStyle: "dashed",
+  },
+  crownEmoji: {
+    fontSize: 56,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 18,
   },
   title: {
-    fontSize: 24,
+    fontSize: 19,
     fontWeight: "800",
     color: "#fff",
-    letterSpacing: -0.5,
-    marginBottom: 4,
+    letterSpacing: 0.3,
   },
-  subtitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.8)",
-    marginBottom: 20,
+  titleCrown: {
+    fontSize: 16,
   },
-  benefitsGrid: {
+  benefitsRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    marginBottom: 20,
-    justifyContent: "center",
+    marginBottom: 18,
   },
-  benefitItem: {
-    flexDirection: "row",
+  benefit: {
+    flex: 1,
     alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingHorizontal: 2,
   },
-  benefitLabel: {
-    fontSize: 11,
+  benefitL1: {
+    fontSize: 10,
     fontWeight: "700",
     color: "#fff",
-    letterSpacing: -0.2,
+    marginTop: 8,
+    textAlign: "center",
+  },
+  benefitL2: {
+    fontSize: 9.5,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.85)",
+    textAlign: "center",
+    marginTop: 1,
   },
   upgradeBtn: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
-    backgroundColor: "#D4AF37",
+    alignSelf: "flex-start",
+    backgroundColor: "#fff",
     paddingHorizontal: 18,
     paddingVertical: 11,
     borderRadius: 14,
-    width: "100%",
-    justifyContent: "center",
   },
   upgradeBtnText: {
     fontSize: 13,
     fontWeight: "800",
-    color: "#1E1B4B",
+    color: "#7C3AED",
     letterSpacing: -0.2,
   },
 });

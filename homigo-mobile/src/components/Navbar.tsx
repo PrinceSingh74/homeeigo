@@ -68,7 +68,9 @@ export const Navbar: React.FC = () => {
           <View style={styles.actions}>
             <Pressable style={styles.bellWrap}>
               <Bell size={20} color={themeColors.text} />
-              <View style={styles.badge} />
+              <View style={styles.badge}>
+                <Text style={styles.badgeCount}>2</Text>
+              </View>
             </Pressable>
             <View
               style={[
@@ -170,12 +172,22 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: "absolute",
-    top: 6,
-    right: 4,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#EC4899",
+    top: 4,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: "#fff",
+  },
+  badgeCount: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#fff",
   },
   avatarRing: {
     width: 36,

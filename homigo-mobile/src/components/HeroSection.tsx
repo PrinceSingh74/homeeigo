@@ -115,7 +115,10 @@ export const HeroSection: React.FC = () => {
           >
             <Sparkles size={11} color={themeColors.primary} />
             <Text style={[styles.badgeText, { color: themeColors.primary }]}>
-              AI-Powered
+              AI-Powered{" "}
+              <Text style={{ color: themeColors.textSecondary }}>
+                Home Assistance
+              </Text>
             </Text>
           </LinearGradient>
 

@@ -17,7 +17,7 @@ import {
   Droplets,
   Zap,
   Bug,
-  Grid3x3,
+  Scissors,
   type LucideIcon,
 } from "lucide-react-native";
 
@@ -41,7 +41,7 @@ const services: Svc[] = [
   { id: 3, name: "Plumbing", price: "₹249", icon: Droplets, color: "#3B82F6" },
   { id: 4, name: "Electrician", price: "₹249", icon: Zap, color: "#F59E0B" },
   { id: 5, name: "Pest Control", price: "₹299", icon: Bug, color: "#10B981" },
-  { id: 6, name: "More", sub: "Services", icon: Grid3x3, color: "#7C3AED" },
+  { id: 6, name: "Salon", price: "₹199", icon: Scissors, color: "#EC4899" },
 ];
 
 function Card({ item }: { item: Svc }) {

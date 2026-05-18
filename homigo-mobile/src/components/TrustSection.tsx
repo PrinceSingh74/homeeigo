@@ -1,16 +1,10 @@
 import React from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Dimensions,
-} from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import { View, Text, StyleSheet } from "react-native";
 import {
   ShieldCheck,
-  Search,
+  UserCheck,
   Lock,
-  Zap,
+  Cpu,
   MapPin,
   Headphones,
   type LucideIcon,
@@ -18,22 +12,20 @@ import {
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
 
-const { width } = Dimensions.get("window");
-
 type Trust = {
   id: number;
   icon: LucideIcon;
-  title: string;
-  color: string;
+  l1: string;
+  l2: string;
 };
 
 const TRUSTS: Trust[] = [
-  { id: 1, icon: ShieldCheck, title: "Verified\nProfessionals", color: "#2563EB" },
-  { id: 2, icon: Search, title: "Background\nChecks", color: "#7C3AED" },
-  { id: 3, icon: Lock, title: "Secure\nPayments", color: "#06B6D4" },
-  { id: 4, icon: Zap, title: "AI Fraud\nDetection", color: "#F59E0B" },
-  { id: 5, icon: MapPin, title: "Live\nTracking", color: "#10B981" },
-  { id: 6, icon: Headphones, title: "24/7\nSupport", color: "#EC4899" },
+  { id: 1, icon: ShieldCheck, l1: "Verified", l2: "Professionals" },
+  { id: 2, icon: UserCheck, l1: "Background", l2: "Checks" },
+  { id: 3, icon: Lock, l1: "Secure", l2: "Payments" },
+  { id: 4, icon: Cpu, l1: "AI Fraud", l2: "Detection" },
+  { id: 5, icon: MapPin, l1: "Live", l2: "Tracking" },
+  { id: 6, icon: Headphones, l1: "Support", l2: "24/7" },
 ];
 
 export const TrustSection: React.FC = () => {
@@ -41,30 +33,40 @@ export const TrustSection: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: themeColors.text }]}>
-          Why Trust HOMIGO
-        </Text>
-      </View>
+      <Text style={[styles.title, { color: themeColors.text }]}>
+        Trust & Safety
+      </Text>
 
-      <View style={styles.grid}>
-        {TRUSTS.map((trust) => {
-          const Icon = trust.icon;
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: themeColors.cardBg,
+            borderColor: themeColors.border,
+          },
+          shadowStyles.md,
+        ]}
+      >
+        {TRUSTS.map((t) => {
+          const Icon = t.icon;
           return (
-            <View key={trust.id} style={styles.trustCard}>
-              <LinearGradient
-                colors={[trust.color + "15", trust.color + "08"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.iconBg}
-              >
-                <Icon size={28} color={trust.color} />
-              </LinearGradient>
+            <View key={t.id} style={styles.item}>
+              <View style={styles.iconWrap}>
+                <Icon size={22} color={themeColors.primary} strokeWidth={2} />
+              </View>
               <Text
-                style={[styles.trustTitle, { color: themeColors.text }]}
-                numberOfLines={2}
+                style={[styles.label, { color: themeColors.textSecondary }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
               >
-                {trust.title}
+                {t.l1}
+              </Text>
+              <Text
+                style={[styles.label, { color: themeColors.textSecondary }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {t.l2}
               </Text>
             </View>
           );
@@ -79,40 +81,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     marginVertical: 20,
   },
-  header: {
-    marginBottom: 20,
-  },
   title: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "800",
     letterSpacing: -0.4,
+    marginBottom: 16,
   },
-  grid: {
+  card: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 16,
     justifyContent: "space-between",
-  },
-  trustCard: {
-    width: (width - 48 - 16) / 2,
-    alignItems: "center",
-    padding: 16,
+    alignItems: "flex-start",
     borderRadius: 20,
-    backgroundColor: "transparent",
+    borderWidth: 1,
+    paddingVertical: 20,
+    paddingHorizontal: 10,
   },
-  iconBg: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
+  item: {
+    flex: 1,
+    alignItems: "center",
+    paddingHorizontal: 2,
+  },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(37,99,235,0.08)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 8,
   },
-  trustTitle: {
-    fontSize: 13,
-    fontWeight: "700",
+  label: {
+    fontSize: 9.5,
+    fontWeight: "600",
     textAlign: "center",
-    lineHeight: 18,
-    letterSpacing: -0.2,
+    lineHeight: 13,
   },
 });
