@@ -123,7 +123,7 @@ export function HeroSection() {
               className="relative w-full max-w-xl"
             >
               <Image
-                src="/hero-villa.png"
+                src="/hero-villa.jpg"
                 alt="HOMIGO AI-connected smart home"
                 width={1536}
                 height={1024}

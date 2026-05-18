@@ -96,7 +96,7 @@ export const HeroSection: React.FC = () => {
           ]}
         >
           <Image
-            source={require("../../assets/hero-villa.png")}
+            source={require("../../assets/hero-villa.jpg")}
             style={styles.heroImage}
             resizeMode="contain"
           />
