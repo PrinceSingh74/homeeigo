@@ -55,4 +55,33 @@ export const shadowStyles = {
     shadowOpacity: 0.12,
     shadowRadius: 12,
   },
+  xl: {
+    elevation: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+  },
+  glowBlue: {
+    elevation: 10,
+    shadowColor: "#2563EB",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+  },
+  glowViolet: {
+    elevation: 10,
+    shadowColor: "#7C3AED",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 24,
+  },
+};
+
+// Premium gradient stops (Luxury Aurora AI)
+export const gradients = {
+  hero: ["#2563EB", "#7C3AED", "#06B6D4"] as const,
+  premium: ["#7C3AED", "#EC4899"] as const,
+  gold: ["#D4AF37", "#FDB022"] as const,
+  aiCard: ["#2563EB", "#7C3AED"] as const,
 };
