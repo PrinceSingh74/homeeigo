@@ -107,24 +107,24 @@ const styles = StyleSheet.create({
   },
   crownWrap: {
     position: "absolute",
-    right: 10,
+    right: 8,
     top: 0,
     bottom: 0,
-    width: 110,
+    width: 84,
     alignItems: "center",
     justifyContent: "center",
   },
   crownRing: {
     position: "absolute",
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     borderWidth: 2,
-    borderColor: "rgba(212,175,55,0.4)",
+    borderColor: "rgba(212,175,55,0.45)",
     borderStyle: "dashed",
   },
   crownEmoji: {
-    fontSize: 56,
+    fontSize: 46,
   },
   titleRow: {
     flexDirection: "row",
@@ -144,6 +144,7 @@ const styles = StyleSheet.create({
   benefitsRow: {
     flexDirection: "row",
     marginBottom: 18,
+    marginRight: 72,
   },
   benefit: {
     flex: 1,

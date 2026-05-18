@@ -13,7 +13,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
 
 const { width } = Dimensions.get("window");
-const CARD_W = width * 0.52;
+const CARD_W = width * 0.44;
 
 const ITEMS = [
   {
@@ -32,10 +32,17 @@ const ITEMS = [
   },
   {
     id: 3,
-    title: "Full Home Painting",
-    price: "₹4,999",
-    rating: "4.9",
-    img: "https://images.unsplash.com/photo-1562259949-e8e7689d7828?w=400&q=70",
+    title: "Kitchen Cleaning",
+    price: "₹499",
+    rating: "4.7",
+    img: "https://images.unsplash.com/photo-1556911220-bff31c812dba?w=400&q=70",
+  },
+  {
+    id: 4,
+    title: "Bathroom Cleaning",
+    price: "₹599",
+    rating: "4.8",
+    img: "https://images.unsplash.com/photo-1620626011761-996317b8d101?w=400&q=70",
   },
 ];
 
@@ -118,15 +125,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: "hidden",
   },
-  img: { width: "100%", height: 130, backgroundColor: "#E5E7EB" },
-  body: { padding: 12 },
-  cardTitle: { fontSize: 15, fontWeight: "700", marginBottom: 10 },
+  img: { width: "100%", height: 108, backgroundColor: "#E5E7EB" },
+  body: { padding: 11 },
+  cardTitle: { fontSize: 13.5, fontWeight: "700", marginBottom: 8 },
   metaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  price: { fontSize: 15, fontWeight: "800" },
+  price: { fontSize: 14, fontWeight: "800" },
   rating: { flexDirection: "row", alignItems: "center", gap: 3 },
-  ratingText: { fontSize: 12, fontWeight: "600" },
+  ratingText: { fontSize: 11, fontWeight: "600" },
 });
