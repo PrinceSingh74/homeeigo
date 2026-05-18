@@ -5,23 +5,22 @@ import {
   StyleSheet,
   Animated,
   Image,
+  Easing,
   Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import MaskedView from "@react-native-masked-view/masked-view";
-import { Sparkles } from "lucide-react-native";
+import { Sparkles, ArrowRight, Play } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { Button } from "./Button";
 
 const { width } = Dimensions.get("window");
+const IMG_W = width - 24;
+const IMG_H = IMG_W * 0.66;
 
 function GradientText({ children }: { children: string }) {
   return (
-    <MaskedView
-      maskElement={
-        <Text style={styles.headingLine}>{children}</Text>
-      }
-    >
+    <MaskedView maskElement={<Text style={styles.headingLine}>{children}</Text>}>
       <LinearGradient
         colors={["#2563EB", "#7C3AED", "#06B6D4"]}
         start={{ x: 0, y: 0 }}
@@ -37,7 +36,8 @@ export const HeroSection: React.FC = () => {
   const { colors: themeColors, isDark } = useTheme();
   const fade = useRef(new Animated.Value(0)).current;
   const slide = useRef(new Animated.Value(24)).current;
-  const imgScale = useRef(new Animated.Value(0.9)).current;
+  const imgFloat = useRef(new Animated.Value(0)).current;
+  const glow = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -51,32 +51,54 @@ export const HeroSection: React.FC = () => {
         duration: 600,
         useNativeDriver: true,
       }),
-      Animated.spring(imgScale, {
-        toValue: 1,
-        delay: 200,
-        useNativeDriver: true,
-        speed: 6,
-        bounciness: 6,
-      }),
     ]).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(imgFloat, {
+          toValue: -10,
+          duration: 2600,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(imgFloat, {
+          toValue: 0,
+          duration: 2600,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    ).start();
+
+    Animated.loop(
+      Animated.timing(glow, {
+        toValue: 1,
+        duration: 4000,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: true,
+      }),
+    ).start();
   }, []);
 
   return (
     <LinearGradient
       colors={
         isDark
-          ? [themeColors.bg, "#1E1B4B"]
+          ? ["#0F172A", "#1E1B4B", "#0F172A"]
           : ["#F8FAFC", "#EFF6FF", "#F3E8FF"]
       }
       style={styles.container}
     >
       <Animated.View
-        style={[styles.content, { opacity: fade, transform: [{ translateY: slide }] }]}
+        style={[
+          styles.content,
+          { opacity: fade, transform: [{ translateY: slide }] },
+        ]}
       >
         {/* AI Badge */}
         <View style={styles.badgeRow}>
           <LinearGradient
-            colors={["rgba(37,99,235,0.12)", "rgba(124,58,237,0.12)"]}
+            colors={["rgba(37,99,235,0.14)", "rgba(124,58,237,0.14)"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.badge}
@@ -88,7 +110,7 @@ export const HeroSection: React.FC = () => {
           </LinearGradient>
         </View>
 
-        {/* Main Heading */}
+        {/* Heading */}
         <View style={styles.heading}>
           <Text style={[styles.headingLine, { color: themeColors.text }]}>
             The Future of
@@ -98,26 +120,64 @@ export const HeroSection: React.FC = () => {
 
         {/* Subheading */}
         <Text style={[styles.subheading, { color: themeColors.textSecondary }]}>
-          Smart. Fast. Reliable. Book verified professionals in under 60
-          seconds with real-time tracking and AI-matched experts.
+          Smart. Fast. Reliable. Everything your home needs, powered by AI.
         </Text>
 
-        {/* CTA Buttons */}
-        <View style={styles.buttonContainer}>
-          <Button title="Book a Service" onPress={() => {}} variant="primary" size="lg" />
-          <Button title="See How It Works" onPress={() => {}} variant="secondary" size="lg" />
+        {/* CTAs */}
+        <View style={styles.buttonRow}>
+          <Button
+            title="Book a Service"
+            onPress={() => {}}
+            variant="primary"
+            size="lg"
+            icon={<ArrowRight size={18} color="#fff" />}
+            style={{ flex: 1 }}
+          />
+          <Button
+            title="How It Works"
+            onPress={() => {}}
+            variant="secondary"
+            size="lg"
+            icon={<Play size={16} color={themeColors.primary} />}
+            style={{ flex: 1 }}
+          />
         </View>
 
-        {/* Premium 3D smart-home render */}
-        <Animated.View
-          style={[styles.heroImageWrap, { transform: [{ scale: imgScale }] }]}
-        >
-          <Image
-            source={require("../../assets/hero-villa.jpg")}
-            style={styles.heroImage}
+        {/* Floating villa with aurora glow */}
+        <View style={styles.stage}>
+          <Animated.View
+            style={[
+              styles.glowBlob,
+              {
+                opacity: glow.interpolate({
+                  inputRange: [0, 0.5, 1],
+                  outputRange: [0.55, 0.85, 0.55],
+                }),
+                transform: [
+                  {
+                    scale: glow.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [0.95, 1.05, 0.95],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <LinearGradient
+              colors={["#7C3AED", "#06B6D4", "#EC4899"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.globFill}
+            />
+          </Animated.View>
+
+          <Animated.Image
+            source={require("../../assets/hero-villa.webp")}
+            style={[styles.heroImage, { transform: [{ translateY: imgFloat }] }]}
             resizeMode="contain"
           />
-        </Animated.View>
+        </View>
       </Animated.View>
     </LinearGradient>
   );
@@ -126,15 +186,13 @@ export const HeroSection: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 18,
-    paddingTop: 20,
-    paddingBottom: 28,
+    paddingTop: 18,
+    paddingBottom: 24,
   },
   content: {
-    gap: 18,
+    gap: 16,
   },
-  badgeRow: {
-    flexDirection: "row",
-  },
+  badgeRow: { flexDirection: "row" },
   badge: {
     flexDirection: "row",
     alignItems: "center",
@@ -145,37 +203,46 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(124,58,237,0.25)",
   },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.2,
-  },
-  heading: {
-    gap: 2,
-  },
+  badgeText: { fontSize: 12, fontWeight: "700", letterSpacing: 0.2 },
+  heading: { gap: 2 },
   headingLine: {
-    fontSize: 42,
+    fontSize: 40,
     fontWeight: "800",
-    lineHeight: 48,
+    lineHeight: 46,
     letterSpacing: -1,
   },
   subheading: {
     fontSize: 15,
     fontWeight: "400",
-    lineHeight: 23,
-    maxWidth: "94%",
+    lineHeight: 22,
+    maxWidth: "92%",
   },
-  buttonContainer: {
+  buttonRow: {
+    flexDirection: "row",
     gap: 12,
-    marginTop: 4,
+    marginTop: 2,
   },
-  heroImageWrap: {
-    marginTop: 8,
+  stage: {
+    height: IMG_H + 24,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 6,
+  },
+  glowBlob: {
+    position: "absolute",
+    width: IMG_W * 0.82,
+    height: IMG_W * 0.82,
     alignItems: "center",
     justifyContent: "center",
   },
+  globFill: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 999,
+    opacity: 0.35,
+  },
   heroImage: {
-    width: width - 28,
-    height: (width - 28) * 0.66,
+    width: IMG_W,
+    height: IMG_H,
   },
 });

@@ -45,3 +45,6 @@ temp/
 *.db
 *.sqlite
 *.sqlite3
+
+# Expo local cache
+.expo/
