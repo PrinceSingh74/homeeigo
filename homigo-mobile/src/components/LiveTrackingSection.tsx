@@ -49,21 +49,35 @@ export const LiveTrackingSection: React.FC = () => {
       <View style={styles.row}>
         {/* LEFT — map card */}
         <LinearGradient
-          colors={["#0F172A", "#1E1B4B"]}
+          colors={["#111827", "#1E1B4B", "#312E81"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.mapCard, shadowStyles.lg]}
         >
-          {/* route line */}
-          <View style={styles.routeLine} />
-          <View style={styles.routeDotTop} />
+          {/* map grid */}
+          {[0, 1, 2].map((i) => (
+            <View
+              key={`h${i}`}
+              style={[styles.gridLine, { top: 42 + i * 42 }]}
+            />
+          ))}
+          {[0, 1, 2].map((i) => (
+            <View
+              key={`v${i}`}
+              style={[styles.gridLineV, { left: 36 + i * 44 }]}
+            />
+          ))}
 
-          {/* destination pin */}
+          {/* route */}
+          <View style={styles.routeSeg1} />
+          <View style={styles.routeSeg2} />
+
+          {/* destination pin (top-right) */}
           <View style={styles.destPin}>
-            <MapPin size={14} color="#06B6D4" fill="#06B6D4" />
+            <MapPin size={13} color="#fff" fill="#06B6D4" />
           </View>
 
-          {/* rider avatar */}
+          {/* rider avatar (center) */}
           <View style={styles.riderWrap}>
             <PulseRing />
             <View style={styles.riderRing}>
@@ -74,6 +88,12 @@ export const LiveTrackingSection: React.FC = () => {
                 style={styles.riderAvatar}
               />
             </View>
+          </View>
+
+          {/* LIVE pill */}
+          <View style={styles.livePill}>
+            <View style={styles.livePillDot} />
+            <Text style={styles.livePillText}>LIVE</Text>
           </View>
 
           <View style={styles.navChip}>
@@ -165,36 +185,76 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: "hidden",
   },
-  routeLine: {
+  gridLine: {
     position: "absolute",
-    width: 2,
-    height: 110,
-    top: 30,
-    left: "50%",
-    backgroundColor: "rgba(6,182,212,0.4)",
-    transform: [{ rotate: "28deg" }],
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
-  routeDotTop: {
+  gridLineV: {
     position: "absolute",
-    top: 24,
-    right: 28,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  routeSeg1: {
+    position: "absolute",
+    width: 70,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: "#06B6D4",
+    top: 64,
+    left: 30,
+    transform: [{ rotate: "-32deg" }],
+  },
+  routeSeg2: {
+    position: "absolute",
+    width: 60,
+    height: 3,
+    borderRadius: 2,
     backgroundColor: "#7C3AED",
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.4)",
+    top: 92,
+    right: 26,
+    transform: [{ rotate: "34deg" }],
   },
   destPin: {
     position: "absolute",
-    bottom: 22,
-    left: 22,
+    top: 20,
+    right: 20,
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: "rgba(6,182,212,0.18)",
+    backgroundColor: "rgba(6,182,212,0.22)",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(6,182,212,0.5)",
+  },
+  livePill: {
+    position: "absolute",
+    top: 16,
+    left: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(239,68,68,0.9)",
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  livePillDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "#fff",
+  },
+  livePillText: {
+    fontSize: 8,
+    fontWeight: "900",
+    color: "#fff",
+    letterSpacing: 0.5,
   },
   riderWrap: {
     position: "absolute",
