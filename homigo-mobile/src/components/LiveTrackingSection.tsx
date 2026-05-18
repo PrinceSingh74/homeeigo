@@ -1,6 +1,13 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, Image } from "react-native";
+import { View, Text, StyleSheet, Image, Dimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import Svg, {
+  Path,
+  Defs,
+  Stop,
+  Circle,
+  LinearGradient as SvgGradient,
+} from "react-native-svg";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -12,22 +19,35 @@ import { Check, MapPin, Navigation } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
 
+const { width } = Dimensions.get("window");
+const MAP_W = Math.round((width - 60) / 2.08);
+const MAP_H = 172;
+
+// route waypoints (px in MAP_W x MAP_H box)
+const P = {
+  start: { x: MAP_W * 0.22, y: MAP_H * 0.72 },
+  mid: { x: MAP_W * 0.54, y: MAP_H * 0.54 },
+  dest: { x: MAP_W * 0.82, y: MAP_H * 0.3 },
+};
+const ROUTE = `M ${P.start.x} ${P.start.y} C ${P.start.x + 26} ${
+  P.start.y - 46
+}, ${P.mid.x - 30} ${P.mid.y + 40}, ${P.mid.x} ${P.mid.y} S ${
+  P.dest.x - 24
+} ${P.dest.y + 34}, ${P.dest.x} ${P.dest.y}`;
+
 function PulseRing() {
   const pulse = useSharedValue(0);
-
   useEffect(() => {
     pulse.value = withRepeat(
-      withTiming(1, { duration: 1800, easing: Easing.out(Easing.ease) }),
+      withTiming(1, { duration: 1900, easing: Easing.out(Easing.ease) }),
       -1,
       false
     );
   }, []);
-
   const pulseStyle = useAnimatedStyle(() => ({
     opacity: 1 - pulse.value,
-    transform: [{ scale: 0.6 + pulse.value * 1.1 }],
+    transform: [{ scale: 0.55 + pulse.value * 1.1 }],
   }));
-
   return <Animated.View style={[styles.pulseRing, pulseStyle]} />;
 }
 
@@ -47,29 +67,63 @@ export const LiveTrackingSection: React.FC = () => {
       </Text>
 
       <View style={styles.row}>
-        {/* LEFT — map card */}
+        {/* LEFT — map card with smooth SVG route */}
         <LinearGradient
-          colors={["#111827", "#1E1B4B", "#312E81"]}
+          colors={["#0B1020", "#1E1B4B", "#312E81"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.mapCard, shadowStyles.lg]}
         >
-          {/* glowing curved route */}
-          <View style={[styles.routeSeg, styles.rseg1]} />
-          <View style={[styles.routeSeg, styles.rseg2]} />
-          <View style={[styles.routeSeg, styles.rseg3]} />
+          <Svg
+            width={MAP_W}
+            height={MAP_H}
+            style={StyleSheet.absoluteFill}
+          >
+            <Defs>
+              <SvgGradient id="route" x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0" stopColor="#06B6D4" />
+                <Stop offset="0.5" stopColor="#3B82F6" />
+                <Stop offset="1" stopColor="#A855F7" />
+              </SvgGradient>
+            </Defs>
+            {/* glow underlay */}
+            <Path
+              d={ROUTE}
+              stroke="#3B82F6"
+              strokeWidth={9}
+              strokeLinecap="round"
+              fill="none"
+              opacity={0.18}
+            />
+            {/* bright route */}
+            <Path
+              d={ROUTE}
+              stroke="url(#route)"
+              strokeWidth={3.5}
+              strokeLinecap="round"
+              fill="none"
+            />
+            {/* waypoint dots */}
+            <Circle cx={P.mid.x} cy={P.mid.y} r={3} fill="#fff" />
+          </Svg>
 
-          {/* mid pin */}
-          <View style={[styles.pin, styles.pinMid]}>
-            <MapPin size={12} color="#fff" fill="#7C3AED" />
-          </View>
           {/* destination pin */}
-          <View style={[styles.pin, styles.pinDest]}>
-            <MapPin size={12} color="#fff" fill="#06B6D4" />
+          <View
+            style={[
+              styles.destPin,
+              { left: P.dest.x - 14, top: P.dest.y - 26 },
+            ]}
+          >
+            <MapPin size={20} color="#06B6D4" fill="#06B6D4" />
           </View>
 
-          {/* rider avatar on the route */}
-          <View style={styles.riderWrap}>
+          {/* rider avatar at start */}
+          <View
+            style={[
+              styles.riderWrap,
+              { left: P.start.x - 26, top: P.start.y - 26 },
+            ]}
+          >
             <PulseRing />
             <LinearGradient
               colors={["#06B6D4", "#7C3AED"]}
@@ -103,11 +157,11 @@ export const LiveTrackingSection: React.FC = () => {
             <Text style={styles.liveText}>Service in Progress</Text>
           </View>
 
-          <View style={styles.etaRow}>
+          <View>
             <Text style={styles.etaLabel}>Arriving in</Text>
             <Text style={styles.etaValue}>12 mins</Text>
+            <Text style={styles.etaSub}>Your expert is on the way</Text>
           </View>
-          <Text style={styles.etaSub}>Your expert is on the way</Text>
 
           {/* stepper */}
           <View style={styles.stepper}>
@@ -120,13 +174,10 @@ export const LiveTrackingSection: React.FC = () => {
                       s.done ? styles.stepDotDone : styles.stepDotPending,
                     ]}
                   >
-                    {s.done && <Check size={9} color="#fff" strokeWidth={3} />}
+                    {s.done && <Check size={10} color="#fff" strokeWidth={3} />}
                   </View>
                   <Text
-                    style={[
-                      styles.stepLabel,
-                      { opacity: s.done ? 1 : 0.5 },
-                    ]}
+                    style={[styles.stepLabel, { opacity: s.done ? 1 : 0.45 }]}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
@@ -171,70 +222,29 @@ const styles = StyleSheet.create({
   },
   mapCard: {
     flex: 1,
-    height: 168,
+    height: MAP_H,
     borderRadius: 20,
     overflow: "hidden",
   },
-  routeSeg: {
+  destPin: {
     position: "absolute",
-    height: 3,
-    borderRadius: 2,
-  },
-  rseg1: {
-    width: 58,
-    backgroundColor: "#06B6D4",
-    top: 108,
-    left: 24,
-    transform: [{ rotate: "-38deg" }],
-  },
-  rseg2: {
-    width: 56,
-    backgroundColor: "#3B82F6",
-    top: 78,
-    left: 62,
-    transform: [{ rotate: "22deg" }],
-  },
-  rseg3: {
-    width: 58,
-    backgroundColor: "#7C3AED",
-    top: 92,
-    right: 18,
-    transform: [{ rotate: "-26deg" }],
-  },
-  pin: {
-    position: "absolute",
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
     alignItems: "center",
     justifyContent: "center",
   },
-  pinMid: {
-    top: 60,
-    left: 96,
-    backgroundColor: "rgba(124,58,237,0.25)",
-    borderWidth: 1,
-    borderColor: "rgba(124,58,237,0.6)",
-  },
-  pinDest: {
-    top: 70,
-    right: 16,
-    backgroundColor: "rgba(6,182,212,0.22)",
-    borderWidth: 1,
-    borderColor: "rgba(6,182,212,0.55)",
-  },
   riderWrap: {
     position: "absolute",
-    top: "38%",
-    left: "38%",
+    width: 52,
+    height: 52,
     alignItems: "center",
     justifyContent: "center",
   },
   pulseRing: {
     position: "absolute",
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: "rgba(6,182,212,0.4)",
   },
   riderRing: {
@@ -254,18 +264,18 @@ const styles = StyleSheet.create({
   },
   navChip: {
     position: "absolute",
-    bottom: 14,
-    right: 14,
-    width: 26,
-    height: 26,
-    borderRadius: 9,
-    backgroundColor: "rgba(124,58,237,0.7)",
+    bottom: 12,
+    right: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: "rgba(124,58,237,0.85)",
     alignItems: "center",
     justifyContent: "center",
   },
   statusCard: {
     flex: 1.08,
-    height: 168,
+    height: MAP_H,
     borderRadius: 20,
     padding: 16,
     justifyContent: "space-between",
@@ -282,31 +292,27 @@ const styles = StyleSheet.create({
     backgroundColor: "#10B981",
   },
   liveText: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.7)",
-  },
-  etaRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
+    color: "rgba(255,255,255,0.72)",
   },
   etaLabel: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.7)",
   },
   etaValue: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: "800",
     color: "#06B6D4",
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
+    marginTop: 2,
   },
   etaSub: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: "500",
     color: "rgba(255,255,255,0.6)",
-    marginTop: -8,
+    marginTop: 4,
   },
   stepper: {
     flexDirection: "row",
@@ -317,9 +323,9 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   stepDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -331,16 +337,16 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.3)",
   },
   stepLabel: {
-    fontSize: 8.5,
+    fontSize: 9,
     fontWeight: "700",
     color: "#fff",
-    maxWidth: 52,
+    maxWidth: 54,
     textAlign: "center",
   },
   stepLine: {
     flex: 1,
     height: 2,
-    marginHorizontal: 3,
+    marginHorizontal: 4,
     marginBottom: 16,
     borderRadius: 1,
   },
