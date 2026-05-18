@@ -57,40 +57,65 @@ function shade(hex: string, amt: number) {
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
 
-function FauxIcon({ icon: Icon, color }: { icon: LucideIcon; color: string }) {
+function IconChip({
+  color,
+  feat,
+  children,
+}: {
+  color: string;
+  feat: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <View style={[styles.iconShadow, { shadowColor: color }]}>
+    <View style={[styles.iconShadow, { shadowColor: feat ? "#4C1D95" : color }]}>
       <LinearGradient
-        colors={[shade(color, 55), color, shade(color, -35)]}
+        colors={
+          feat
+            ? ["rgba(255,255,255,0.30)", "rgba(255,255,255,0.12)"]
+            : [color + "26", color + "10"]
+        }
         start={{ x: 0.1, y: 0 }}
         end={{ x: 0.9, y: 1 }}
         style={styles.iconChip}
       >
         <LinearGradient
-          colors={["rgba(255,255,255,0.55)", "rgba(255,255,255,0)"]}
+          colors={["rgba(255,255,255,0.45)", "rgba(255,255,255,0)"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 0.7 }}
           style={styles.gloss}
         />
-        <Icon size={26} color="#fff" strokeWidth={2.4} />
+        {children}
       </LinearGradient>
     </View>
   );
 }
 
-function ServiceIcon({ item }: { item: Svc }) {
-  if (item.imgKey && IMAGES[item.imgKey]) {
-    return (
-      <View style={styles.imgShadow}>
+function ServiceIcon({ item, feat }: { item: Svc; feat: boolean }) {
+  const hasImg = item.imgKey && IMAGES[item.imgKey];
+  return (
+    <IconChip color={item.color} feat={feat}>
+      {hasImg ? (
         <Image
-          source={IMAGES[item.imgKey]}
+          source={IMAGES[item.imgKey as string]}
           style={styles.icon3d}
           resizeMode="contain"
         />
-      </View>
-    );
-  }
-  return <FauxIcon icon={item.icon ?? Scissors} color={item.color} />;
+      ) : (
+        <LinearGradient
+          colors={[shade(item.color, 50), item.color, shade(item.color, -35)]}
+          start={{ x: 0.1, y: 0 }}
+          end={{ x: 0.9, y: 1 }}
+          style={styles.fauxInner}
+        >
+          {React.createElement(item.icon ?? Scissors, {
+            size: 24,
+            color: "#fff",
+            strokeWidth: 2.4,
+          })}
+        </LinearGradient>
+      )}
+    </IconChip>
+  );
 }
 
 function Card({ item }: { item: Svc }) {
@@ -126,7 +151,7 @@ function Card({ item }: { item: Svc }) {
               end={{ x: 0, y: 1 }}
               style={styles.featSheen}
             />
-            <ServiceIcon item={item} />
+            <ServiceIcon item={item} feat />
             <Text style={[styles.name, { color: "#fff" }]}>{item.name}</Text>
             <Text style={[styles.price, { color: "rgba(255,255,255,0.85)" }]}>
               From {item.price}
@@ -144,7 +169,7 @@ function Card({ item }: { item: Svc }) {
               shadowStyles.lg,
             ]}
           >
-            <ServiceIcon item={item} />
+            <ServiceIcon item={item} feat={false} />
             <Text
               numberOfLines={1}
               adjustsFontSizeToFit
@@ -209,30 +234,29 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
-  imgShadow: {
-    marginBottom: 10,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 6,
-  },
   icon3d: {
-    width: 62,
-    height: 62,
+    width: 46,
+    height: 46,
+  },
+  fauxInner: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
   },
   iconShadow: {
     marginBottom: 12,
-    borderRadius: 17,
+    borderRadius: 18,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45,
+    shadowOpacity: 0.4,
     shadowRadius: 10,
     elevation: 8,
   },
   iconChip: {
-    width: 54,
-    height: 54,
-    borderRadius: 17,
+    width: 60,
+    height: 60,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -243,8 +267,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: "60%",
-    borderTopLeftRadius: 17,
-    borderTopRightRadius: 17,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
   },
   featSheen: {
     position: "absolute",
