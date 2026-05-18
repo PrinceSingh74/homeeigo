@@ -12,6 +12,7 @@ import {
   CalendarDays,
   Wallet,
   User,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
@@ -22,7 +23,7 @@ import { CenterTabButton } from "./CenterTabButton";
 const ICONS: Record<string, LucideIcon> = {
   index: Home,
   bookings: CalendarDays,
-  ai: Bot,
+  ai: Sparkles,
   wallet: Wallet,
   profile: User,
 };
