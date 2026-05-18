@@ -9,6 +9,10 @@ import { ServiceCategories } from "@/components/ServiceCategories";
 import { FeatureBanner } from "@/components/FeatureBanner";
 import { OffersSection } from "@/components/OffersSection";
 import { RecommendedSection } from "@/components/RecommendedSection";
+import { TrustSection } from "@/components/TrustSection";
+import { PremiumSection } from "@/components/PremiumSection";
+import { LiveTrackingSection } from "@/components/LiveTrackingSection";
+import { FinalCtaSection } from "@/components/FinalCtaSection";
 
 export default function HomeScreen() {
   const { colors: themeColors } = useTheme();
@@ -30,6 +34,10 @@ export default function HomeScreen() {
         <FeatureBanner />
         <OffersSection />
         <RecommendedSection />
+        <TrustSection />
+        <PremiumSection />
+        <LiveTrackingSection />
+        <FinalCtaSection />
         <View style={{ height: 110 }} />
       </ScrollView>
     </SafeAreaView>
