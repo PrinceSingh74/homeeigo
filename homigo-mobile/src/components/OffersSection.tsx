@@ -3,9 +3,11 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
-  Animated,
+  Pressable,
+  ScrollView,
+  Dimensions,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import {
@@ -15,12 +17,17 @@ import {
   ArrowRight,
   Copy,
   Check,
+  Percent,
+  type LucideIcon,
 } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
 
+const { width } = Dimensions.get("window");
+const CARD_W = width * 0.62;
+
 interface Offer {
-  icon: typeof Wind;
+  icon: LucideIcon;
   discount: string;
   desc: string;
   code: string;
@@ -66,11 +73,9 @@ export const OffersSection: React.FC = () => {
   async function copyCode(code: string) {
     await Clipboard.setStringAsync(code);
     try {
-      await Haptics.notificationAsync(
-        Haptics.NotificationFeedbackType.Success,
-      );
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
-      /* haptics unsupported on web */
+      /* web */
     }
     setCopied(code);
     setTimeout(() => setCopied(null), 2200);
@@ -79,130 +84,125 @@ export const OffersSection: React.FC = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: themeColors.text }]}>
-          Offers for You
-        </Text>
-        <TouchableOpacity style={styles.viewAll} activeOpacity={0.7}>
+        <View style={styles.titleRow}>
+          <View style={styles.pctChip}>
+            <Percent size={13} color="#7C3AED" />
+          </View>
+          <Text style={[styles.title, { color: themeColors.text }]}>
+            Offers for You
+          </Text>
+        </View>
+        <Pressable style={styles.viewAll}>
           <Text style={[styles.viewAllText, { color: themeColors.primary }]}>
             View All
           </Text>
-          <ArrowRight size={14} color={themeColors.primary} />
-        </TouchableOpacity>
+          <ArrowRight size={13} color={themeColors.primary} />
+        </Pressable>
       </View>
 
-      <View style={styles.list}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        decelerationRate="fast"
+        snapToInterval={CARD_W + 12}
+        contentContainerStyle={styles.list}
+      >
         {OFFERS.map((o) => {
           const Icon = o.icon;
           const isCopied = copied === o.code;
           return (
-            <View
+            <LinearGradient
               key={o.code}
-              style={[
-                styles.offerCard,
-                { backgroundColor: o.from },
-                shadowStyles.md,
-              ]}
+              colors={[o.from, o.to]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.card, shadowStyles.md]}
             >
-              <View
-                style={[
-                  styles.offerIcon,
-                  { backgroundColor: "rgba(255,255,255,0.55)" },
-                ]}
-              >
-                <Icon size={24} color={o.fg} />
+              <View style={styles.cardTop}>
+                <View style={styles.iconChip}>
+                  <Icon size={22} color={o.fg} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.discount, { color: o.fg }]}>
+                    {o.discount}
+                  </Text>
+                  <Text style={[styles.desc, { color: o.fg }]}>
+                    {o.desc}
+                  </Text>
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.offerDiscount, { color: o.fg }]}>
-                  {o.discount}
-                </Text>
-                <Text style={[styles.offerDesc, { color: o.fg, opacity: 0.75 }]}>
-                  {o.desc}
-                </Text>
-              </View>
-              <TouchableOpacity
+
+              <Pressable
                 onPress={() => copyCode(o.code)}
-                activeOpacity={0.8}
-                style={[
-                  styles.codeChip,
-                  { backgroundColor: "rgba(255,255,255,0.6)" },
-                ]}
+                style={styles.codeChip}
               >
                 {isCopied ? (
-                  <Check size={13} color={o.fg} />
+                  <Check size={12} color={o.fg} />
                 ) : (
-                  <Copy size={13} color={o.fg} />
+                  <Copy size={12} color={o.fg} />
                 )}
                 <Text style={[styles.codeText, { color: o.fg }]}>
-                  {isCopied ? "Copied!" : o.code}
+                  {isCopied ? "Copied!" : `Use Code: ${o.code}`}
                 </Text>
-              </TouchableOpacity>
-            </View>
+              </Pressable>
+            </LinearGradient>
           );
         })}
-      </View>
+      </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 16,
-    marginVertical: 12,
-  },
+  container: { marginVertical: 12 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    paddingHorizontal: 16,
+    marginBottom: 14,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: "700",
-  },
-  viewAll: {
-    flexDirection: "row",
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  pctChip: {
+    width: 26,
+    height: 26,
+    borderRadius: 9,
+    backgroundColor: "rgba(124,58,237,0.12)",
     alignItems: "center",
-    gap: 4,
-  },
-  viewAllText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  list: {
-    gap: 12,
-  },
-  offerCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    borderRadius: 20,
-    padding: 16,
-  },
-  offerIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
     justifyContent: "center",
+  },
+  title: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
+  viewAll: { flexDirection: "row", alignItems: "center", gap: 4 },
+  viewAllText: { fontSize: 13, fontWeight: "700" },
+  list: { paddingHorizontal: 16, gap: 12 },
+  card: {
+    width: CARD_W,
+    borderRadius: 18,
+    padding: 14,
+    justifyContent: "space-between",
+    gap: 14,
+    minHeight: 118,
+  },
+  cardTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  iconChip: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.6)",
     alignItems: "center",
+    justifyContent: "center",
   },
-  offerDiscount: {
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  offerDesc: {
-    fontSize: 13,
-    marginTop: 2,
-  },
+  discount: { fontSize: 16, fontWeight: "800", letterSpacing: -0.3 },
+  desc: { fontSize: 11.5, fontWeight: "600", marginTop: 2, opacity: 0.8 },
   codeChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 6,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.55)",
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: 999,
   },
-  codeText: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
+  codeText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.3 },
 });

@@ -3,17 +3,23 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   Animated,
   Easing,
+  Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { ArrowRight, Bike, Bot, Wallet } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
 
+const { width } = Dimensions.get("window");
+const STAGE = width - 32;
+const BANNER_W = STAGE * 0.6;
+const SIDE_W = STAGE * 0.4 - 10;
+
 function Waveform() {
-  const bars = [0.4, 0.8, 0.55, 1, 0.65, 0.45];
+  const bars = [0.35, 0.7, 0.5, 1, 0.6, 0.4, 0.8];
   const anims = useRef(bars.map((h) => new Animated.Value(h))).current;
 
   useEffect(() => {
@@ -22,14 +28,14 @@ function Waveform() {
         Animated.sequence([
           Animated.timing(val, {
             toValue: 1,
-            duration: 450,
-            delay: i * 80,
+            duration: 420,
+            delay: i * 70,
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: false,
           }),
           Animated.timing(val, {
-            toValue: bars[i] * 0.6,
-            duration: 450,
+            toValue: bars[i] * 0.5,
+            duration: 420,
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: false,
           }),
@@ -46,13 +52,10 @@ function Waveform() {
         <Animated.View
           key={i}
           style={{
-            width: 4,
+            width: 3,
             borderRadius: 2,
-            backgroundColor: "rgba(255,255,255,0.8)",
-            height: val.interpolate({
-              inputRange: [0, 1],
-              outputRange: [6, 24],
-            }),
+            backgroundColor: "rgba(255,255,255,0.85)",
+            height: val.interpolate({ inputRange: [0, 1], outputRange: [4, 18] }),
           }}
         />
       ))}
@@ -62,19 +65,19 @@ function Waveform() {
 
 export const FeatureBanner: React.FC = () => {
   const { colors: themeColors } = useTheme();
-  const floatAnim = useRef(new Animated.Value(0)).current;
-  const trailAnim = useRef(new Animated.Value(0)).current;
+  const float = useRef(new Animated.Value(0)).current;
+  const trail = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(floatAnim, {
-          toValue: -6,
+        Animated.timing(float, {
+          toValue: -5,
           duration: 1500,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
-        Animated.timing(floatAnim, {
+        Animated.timing(float, {
           toValue: 0,
           duration: 1500,
           easing: Easing.inOut(Easing.ease),
@@ -82,11 +85,10 @@ export const FeatureBanner: React.FC = () => {
         }),
       ]),
     ).start();
-
     Animated.loop(
-      Animated.timing(trailAnim, {
+      Animated.timing(trail, {
         toValue: 1,
-        duration: 1400,
+        duration: 1300,
         easing: Easing.inOut(Easing.ease),
         useNativeDriver: true,
       }),
@@ -95,124 +97,121 @@ export const FeatureBanner: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* Main Light Speed banner */}
-      <LinearGradient
-        colors={["#1E1B4B", "#4C1D95", "#312E81"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.banner, shadowStyles.lg]}
-      >
-        <Text style={styles.eyebrow}>HOME SERVICES AT</Text>
-        <Text style={styles.bannerTitle}>
-          Light{" "}
-          <Text style={{ color: themeColors.cyan }}>Speed.</Text>
-        </Text>
-        <Text style={styles.bannerSubtitle}>
-          Instant booking, real-time tracking, lightning-fast service at your
-          doorstep.
-        </Text>
-
-        <TouchableOpacity activeOpacity={0.85} style={styles.bookButton}>
-          <Text style={styles.bookButtonText}>Book Now</Text>
-          <ArrowRight size={16} color="#1E1B4B" />
-        </TouchableOpacity>
-
-        {/* Animated rider with speed trails */}
-        <View style={styles.riderWrapper} pointerEvents="none">
-          {[0, 1, 2].map((i) => (
-            <Animated.View
-              key={i}
-              style={{
-                position: "absolute",
-                right: 64,
-                top: 8 + i * 12,
-                width: 36 + i * 14,
-                height: 4,
-                borderRadius: 2,
-                backgroundColor: i % 2 === 0 ? themeColors.cyan : themeColors.pink,
-                opacity: trailAnim.interpolate({
-                  inputRange: [0, 0.5, 1],
-                  outputRange: [0, 0.8, 0],
-                }),
-                transform: [
-                  {
-                    translateX: trailAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [8, -14],
-                    }),
-                  },
-                ],
-              }}
-            />
-          ))}
-          <Animated.View
-            style={{
-              width: 84,
-              height: 84,
-              borderRadius: 18,
-              backgroundColor: "rgba(255,255,255,0.1)",
-              justifyContent: "center",
-              alignItems: "center",
-              transform: [{ translateY: floatAnim }],
-            }}
-          >
-            <Bike size={48} color="white" strokeWidth={1.5} />
-          </Animated.View>
-        </View>
-      </LinearGradient>
-
-      {/* Mini cards row */}
-      <View style={styles.miniRow}>
-        {/* AI assistant card */}
+      <View style={styles.row}>
+        {/* LEFT — Light Speed banner */}
         <LinearGradient
-          colors={["#2563EB", "#7C3AED"]}
+          colors={["#1E1B4B", "#4C1D95", "#312E81"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.miniCard, shadowStyles.md]}
+          style={[styles.banner, shadowStyles.xl]}
         >
-          <View style={styles.miniHeaderRow}>
-            <Text style={styles.miniGreeting}>Hi Arjun! 👋</Text>
-            <View style={styles.botBadge}>
-              <Bot size={18} color="white" />
-            </View>
-          </View>
-          <Text style={styles.miniSub}>How can I help you today?</Text>
-          <View style={{ marginTop: 10 }}>
-            <Waveform />
+          <Text style={styles.eyebrow}>HOME SERVICES AT</Text>
+          <Text style={styles.bannerTitle}>
+            Light{"\n"}
+            <Text style={{ color: themeColors.cyan }}>Speed.</Text>
+          </Text>
+          <Text style={styles.bannerSub}>
+            Instant booking. Real-time tracking. Lightning fast service.
+          </Text>
+
+          <Pressable style={styles.bookBtn}>
+            <Text style={styles.bookText}>Book Now</Text>
+            <ArrowRight size={13} color="#1E1B4B" />
+          </Pressable>
+
+          {/* Rider + speed trails */}
+          <View style={styles.rider} pointerEvents="none">
+            {[0, 1, 2].map((i) => (
+              <Animated.View
+                key={i}
+                style={{
+                  position: "absolute",
+                  right: 44,
+                  top: 6 + i * 10,
+                  width: 26 + i * 12,
+                  height: 3,
+                  borderRadius: 2,
+                  backgroundColor:
+                    i % 2 === 0 ? themeColors.cyan : themeColors.pink,
+                  opacity: trail.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0, 0.85, 0],
+                  }),
+                  transform: [
+                    {
+                      translateX: trail.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [6, -12],
+                      }),
+                    },
+                  ],
+                }}
+              />
+            ))}
+            <Animated.View
+              style={[
+                styles.riderChip,
+                { transform: [{ translateY: float }] },
+              ]}
+            >
+              <Bike size={34} color="#fff" strokeWidth={1.6} />
+            </Animated.View>
           </View>
         </LinearGradient>
 
-        {/* Wallet card */}
-        <View
-          style={[
-            styles.miniCard,
-            {
-              backgroundColor: themeColors.cardBg,
-              borderColor: themeColors.border,
-              borderWidth: 1,
-            },
-            shadowStyles.md,
-          ]}
-        >
-          <View style={styles.miniHeaderRow}>
-            <Text style={[styles.walletLabel, { color: themeColors.primary }]}>
-              HOMIGO Wallet
-            </Text>
-            <View
-              style={[
-                styles.walletBadge,
-                { backgroundColor: "rgba(37,99,235,0.1)" },
-              ]}
-            >
-              <Wallet size={18} color={themeColors.primary} />
+        {/* RIGHT — stacked mini cards */}
+        <View style={styles.side}>
+          <LinearGradient
+            colors={["#2563EB", "#7C3AED"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.miniCard, shadowStyles.glowBlue]}
+          >
+            <View style={styles.miniTop}>
+              <Text style={styles.miniGreet}>Hi Arjun! 👋</Text>
+              <View style={styles.botOrb}>
+                <Bot size={14} color="#fff" />
+              </View>
             </View>
+            <Text style={styles.miniSub}>How can I help you today?</Text>
+            <View style={{ marginTop: 8 }}>
+              <Waveform />
+            </View>
+          </LinearGradient>
+
+          <View
+            style={[
+              styles.miniCard,
+              {
+                backgroundColor: themeColors.cardBg,
+                borderColor: themeColors.border,
+                borderWidth: 1,
+              },
+              shadowStyles.md,
+            ]}
+          >
+            <View style={styles.miniTop}>
+              <Text style={[styles.walletLabel, { color: themeColors.primary }]}>
+                HOMIGO Wallet
+              </Text>
+              <View
+                style={[
+                  styles.botOrb,
+                  { backgroundColor: "rgba(37,99,235,0.12)" },
+                ]}
+              >
+                <Wallet size={14} color={themeColors.primary} />
+              </View>
+            </View>
+            <Text style={[styles.walletAmt, { color: themeColors.text }]}>
+              ₹2,450.00
+            </Text>
+            <Text
+              style={[styles.walletSub, { color: themeColors.textSecondary }]}
+            >
+              Wallet Balance
+            </Text>
           </View>
-          <Text style={[styles.walletAmount, { color: themeColors.text }]}>
-            ₹2,450.00
-          </Text>
-          <Text style={[styles.walletSub, { color: themeColors.textSecondary }]}>
-            Wallet Balance
-          </Text>
         </View>
       </View>
     </View>
@@ -222,113 +221,98 @@ export const FeatureBanner: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
-    marginVertical: 8,
-    gap: 12,
+    marginVertical: 10,
+  },
+  row: {
+    flexDirection: "row",
+    gap: 10,
   },
   banner: {
-    borderRadius: 24,
-    padding: 24,
-    minHeight: 220,
-    justifyContent: "center",
+    width: BANNER_W,
+    borderRadius: 22,
+    padding: 16,
     overflow: "hidden",
+    justifyContent: "center",
   },
   eyebrow: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 1.5,
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 1.2,
     color: "rgba(255,255,255,0.55)",
-    textTransform: "uppercase",
   },
   bannerTitle: {
+    marginTop: 6,
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#fff",
+    lineHeight: 30,
+    letterSpacing: -0.5,
+  },
+  bannerSub: {
     marginTop: 8,
-    fontSize: 40,
-    fontWeight: "700",
-    color: "white",
+    fontSize: 10.5,
+    color: "rgba(255,255,255,0.72)",
+    lineHeight: 15,
+    maxWidth: "78%",
   },
-  bannerSubtitle: {
-    marginTop: 10,
-    fontSize: 14,
-    color: "rgba(255,255,255,0.75)",
-    maxWidth: "70%",
-  },
-  bookButton: {
-    marginTop: 18,
+  bookBtn: {
+    marginTop: 14,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     alignSelf: "flex-start",
-    backgroundColor: "white",
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 14,
+    backgroundColor: "#fff",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 12,
   },
-  bookButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#1E1B4B",
+  bookText: { fontSize: 12, fontWeight: "800", color: "#1E1B4B" },
+  rider: { position: "absolute", right: 0, bottom: 10 },
+  riderChip: {
+    width: 58,
+    height: 58,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  riderWrapper: {
-    position: "absolute",
-    right: 4,
-    bottom: 16,
-  },
-  miniRow: {
-    flexDirection: "row",
-    gap: 12,
+  side: {
+    width: SIDE_W,
+    gap: 10,
+    justifyContent: "space-between",
   },
   miniCard: {
     flex: 1,
-    borderRadius: 20,
-    padding: 16,
-    minHeight: 130,
+    borderRadius: 18,
+    padding: 12,
+    justifyContent: "center",
   },
-  miniHeaderRow: {
+  miniTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  miniGreeting: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "white",
-  },
+  miniGreet: { fontSize: 12, fontWeight: "800", color: "#fff" },
   miniSub: {
-    marginTop: 4,
-    fontSize: 12,
-    color: "rgba(255,255,255,0.8)",
+    marginTop: 3,
+    fontSize: 9.5,
+    color: "rgba(255,255,255,0.85)",
   },
-  botBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    justifyContent: "center",
+  botOrb: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(255,255,255,0.22)",
     alignItems: "center",
+    justifyContent: "center",
   },
   waveform: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: 4,
-    height: 24,
+    gap: 3,
+    height: 18,
   },
-  walletLabel: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  walletBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  walletAmount: {
-    marginTop: 16,
-    fontSize: 26,
-    fontWeight: "700",
-  },
-  walletSub: {
-    marginTop: 2,
-    fontSize: 12,
-  },
+  walletLabel: { fontSize: 10.5, fontWeight: "800" },
+  walletAmt: { marginTop: 10, fontSize: 19, fontWeight: "800" },
+  walletSub: { marginTop: 1, fontSize: 9.5, fontWeight: "500" },
 });

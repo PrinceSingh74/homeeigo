@@ -17,56 +17,63 @@ import {
   Droplets,
   Zap,
   Bug,
-  Scissors,
+  Grid3x3,
+  type LucideIcon,
 } from "lucide-react-native";
 
 const { width } = Dimensions.get("window");
+const CARD_W = width * 0.30;
+const FEAT_W = width * 0.34;
 
-const services = [
-  { id: 1, name: "Cleaning", icon: Sparkles, price: "₹199", color: "#7C3AED", featured: true },
-  { id: 2, name: "AC Service", icon: Wind, price: "₹299", color: "#06B6D4" },
-  { id: 3, name: "Plumbing", icon: Droplets, price: "₹249", color: "#3B82F6" },
-  { id: 4, name: "Electrician", icon: Zap, price: "₹249", color: "#F59E0B" },
-  { id: 5, name: "Pest Control", icon: Bug, price: "₹299", color: "#10B981" },
-  { id: 6, name: "Salon", icon: Scissors, price: "₹199", color: "#EC4899" },
+type Svc = {
+  id: number;
+  name: string;
+  price?: string;
+  sub?: string;
+  icon: LucideIcon;
+  color: string;
+  featured?: boolean;
+};
+
+const services: Svc[] = [
+  { id: 1, name: "Cleaning", price: "₹199", icon: Sparkles, color: "#7C3AED", featured: true },
+  { id: 2, name: "AC Service", price: "₹299", icon: Wind, color: "#06B6D4" },
+  { id: 3, name: "Plumbing", price: "₹249", icon: Droplets, color: "#3B82F6" },
+  { id: 4, name: "Electrician", price: "₹249", icon: Zap, color: "#F59E0B" },
+  { id: 5, name: "Pest Control", price: "₹299", icon: Bug, color: "#10B981" },
+  { id: 6, name: "More", sub: "Services", icon: Grid3x3, color: "#7C3AED" },
 ];
 
-const FEATURED_W = width * 0.46;
-const CARD_W = width * 0.34;
-
-function ServiceCard({ item }: { item: (typeof services)[number] }) {
+function Card({ item }: { item: Svc }) {
   const { colors: themeColors } = useTheme();
   const scale = useRef(new Animated.Value(1)).current;
   const Icon = item.icon;
-  const featured = !!item.featured;
+  const feat = !!item.featured;
 
-  const press = (to: number, bounce = 0) =>
+  const to = (v: number, b = 0) =>
     Animated.spring(scale, {
-      toValue: to,
+      toValue: v,
       useNativeDriver: true,
       speed: 50,
-      bounciness: bounce,
+      bounciness: b,
     }).start();
 
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <Pressable
-        onPressIn={() => press(0.95)}
-        onPressOut={() => press(1, 8)}
-        style={{ width: featured ? FEATURED_W : CARD_W }}
+        onPressIn={() => to(0.94)}
+        onPressOut={() => to(1, 8)}
+        style={{ width: feat ? FEAT_W : CARD_W }}
       >
-        {featured ? (
+        {feat ? (
           <LinearGradient
-            colors={["#7C3AED", "#EC4899"]}
+            colors={["#8B5CF6", "#7C3AED", "#6D28D9"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[styles.card, shadowStyles.glowViolet]}
           >
-            <View style={styles.featuredBadge}>
-              <Text style={styles.featuredBadgeText}>FEATURED</Text>
-            </View>
-            <View style={[styles.iconWrap, { backgroundColor: "rgba(255,255,255,0.22)" }]}>
-              <Icon size={30} color="#fff" />
+            <View style={[styles.iconChip, styles.iconChipFeat]}>
+              <Icon size={24} color="#fff" />
             </View>
             <Text style={[styles.name, { color: "#fff" }]}>{item.name}</Text>
             <Text style={[styles.price, { color: "rgba(255,255,255,0.85)" }]}>
@@ -79,25 +86,25 @@ function ServiceCard({ item }: { item: (typeof services)[number] }) {
               styles.card,
               {
                 backgroundColor: themeColors.cardBg,
-                borderWidth: 1,
                 borderColor: themeColors.border,
+                borderWidth: 1,
               },
               shadowStyles.md,
             ]}
           >
-            <View
-              style={[
-                styles.iconWrap,
-                { backgroundColor: item.color + "1A" },
-              ]}
+            <LinearGradient
+              colors={[item.color + "26", item.color + "0D"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.iconChip}
             >
-              <Icon size={30} color={item.color} />
-            </View>
+              <Icon size={23} color={item.color} />
+            </LinearGradient>
             <Text style={[styles.name, { color: themeColors.text }]}>
               {item.name}
             </Text>
             <Text style={[styles.price, { color: themeColors.textSecondary }]}>
-              From {item.price}
+              {item.price ? `From ${item.price}` : item.sub}
             </Text>
           </View>
         )}
@@ -121,23 +128,19 @@ export const ServiceCategories: React.FC = () => {
       </View>
       <FlatList
         data={services}
-        renderItem={({ item }) => <ServiceCard item={item} />}
-        keyExtractor={(item) => item.id.toString()}
+        renderItem={({ item }) => <Card item={item} />}
+        keyExtractor={(i) => i.id.toString()}
         horizontal
         showsHorizontalScrollIndicator={false}
-        scrollEventThrottle={16}
         decelerationRate="fast"
-        snapToInterval={CARD_W + 14}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={styles.list}
       />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    marginVertical: 16,
-  },
+  container: { marginVertical: 14 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -145,59 +148,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 14,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: "700",
-    letterSpacing: -0.3,
-  },
-  seeAll: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  listContent: {
-    paddingHorizontal: 16,
-    gap: 14,
-    paddingVertical: 6,
-  },
+  title: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
+  seeAll: { fontSize: 13, fontWeight: "700" },
+  list: { paddingHorizontal: 16, gap: 12, paddingVertical: 4 },
   card: {
-    height: 190,
-    borderRadius: 22,
-    padding: 18,
-    justifyContent: "center",
+    height: 138,
+    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 10,
     alignItems: "center",
+    justifyContent: "center",
     overflow: "hidden",
   },
-  iconWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: 20,
-    justifyContent: "center",
+  iconChip: {
+    width: 52,
+    height: 52,
+    borderRadius: 17,
     alignItems: "center",
-    marginBottom: 14,
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  iconChipFeat: {
+    backgroundColor: "rgba(255,255,255,0.22)",
   },
   name: {
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 4,
+    fontSize: 13,
+    fontWeight: "800",
     letterSpacing: -0.2,
+    textAlign: "center",
   },
   price: {
-    fontSize: 12,
+    fontSize: 10.5,
     fontWeight: "600",
-  },
-  featuredBadge: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    backgroundColor: "#fff",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  featuredBadgeText: {
-    fontSize: 9,
-    fontWeight: "800",
-    color: "#7C3AED",
-    letterSpacing: 0.5,
+    marginTop: 3,
+    textAlign: "center",
   },
 });

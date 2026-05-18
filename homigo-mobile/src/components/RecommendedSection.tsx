@@ -102,8 +102,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 14,
   },
-  title: { fontSize: 22, fontWeight: "700", letterSpacing: -0.3 },
-  seeAll: { fontSize: 14, fontWeight: "600" },
+  title: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
+  seeAll: { fontSize: 13, fontWeight: "700" },
   list: { paddingHorizontal: 16, gap: 14 },
   card: {
     width: 200,
