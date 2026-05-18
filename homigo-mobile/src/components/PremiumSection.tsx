@@ -23,24 +23,24 @@ type Benefit = { icon: LucideIcon; l1: string; l2: string };
 
 const BENEFITS: Benefit[] = [
   { icon: Star, l1: "Priority", l2: "Booking" },
-  { icon: Users, l1: "Elite", l2: "Pros" },
+  { icon: Users, l1: "Elite", l2: "Professionals" },
   { icon: Headphones, l1: "Premium", l2: "Support" },
-  { icon: Cpu, l1: "AI", l2: "Optimize" },
+  { icon: Cpu, l1: "AI", l2: "Optimization" },
   { icon: RotateCcw, l1: "Free", l2: "Revisits" },
 ];
 
-function CrownBadge() {
+function BigCrown() {
   const float = useSharedValue(0);
   const spin = useSharedValue(0);
 
   useEffect(() => {
     float.value = withRepeat(
-      withTiming(-5, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
+      withTiming(-6, { duration: 2200, easing: Easing.inOut(Easing.ease) }),
       -1,
       true
     );
     spin.value = withRepeat(
-      withTiming(1, { duration: 8000, easing: Easing.linear }),
+      withTiming(1, { duration: 9000, easing: Easing.linear }),
       -1,
       false
     );
@@ -55,7 +55,7 @@ function CrownBadge() {
 
   return (
     <View style={styles.crownWrap} pointerEvents="none">
-      <Animated.View style={[styles.crownRing, spinStyle]} />
+      <Animated.View style={[styles.crownGlow, spinStyle]} />
       <Animated.Text style={[styles.crownEmoji, floatStyle]}>👑</Animated.Text>
     </View>
   );
@@ -70,35 +70,29 @@ export const PremiumSection: React.FC = () => {
         end={{ x: 1, y: 1 }}
         style={[styles.card, shadowStyles.glowViolet]}
       >
-        {/* soft sheen */}
         <LinearGradient
-          colors={["rgba(255,255,255,0.16)", "rgba(255,255,255,0)"]}
+          colors={["rgba(255,255,255,0.15)", "rgba(255,255,255,0)"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
           style={styles.sheen}
         />
 
-        <CrownBadge />
+        <BigCrown />
 
         {/* Title */}
         <View style={styles.titleRow}>
-          <View style={styles.titlePill}>
-            <Text style={styles.titlePillText}>PREMIUM</Text>
-          </View>
-          <Text style={styles.title}>HOMIGO Premium</Text>
+          <Text style={styles.title}>HOMIGO PREMIUM</Text>
+          <Text style={styles.titleCrown}>👑</Text>
         </View>
-        <Text style={styles.subtitle}>
-          Unlock the elite home-care experience
-        </Text>
 
-        {/* Benefits — full-width even row */}
+        {/* Benefits */}
         <View style={styles.benefitsRow}>
           {BENEFITS.map((b, idx) => {
             const Icon = b.icon;
             return (
               <View key={idx} style={styles.benefit}>
                 <View style={styles.benefitIcon}>
-                  <Icon size={18} color="#fff" strokeWidth={2.2} />
+                  <Icon size={17} color="#fff" strokeWidth={2.2} />
                 </View>
                 <Text
                   style={styles.benefitL1}
@@ -119,11 +113,13 @@ export const PremiumSection: React.FC = () => {
           })}
         </View>
 
-        {/* CTA */}
-        <Pressable style={styles.upgradeBtn}>
-          <Text style={styles.upgradeBtnText}>Upgrade Now</Text>
-          <ArrowRight size={15} color="#9333EA" strokeWidth={2.8} />
-        </Pressable>
+        {/* Upgrade Now — compact, bottom-right */}
+        <View style={styles.btnRow}>
+          <Pressable style={styles.upgradeBtn}>
+            <Text style={styles.upgradeBtnText}>Upgrade Now</Text>
+            <ArrowRight size={14} color="#9333EA" strokeWidth={2.8} />
+          </Pressable>
+        </View>
       </LinearGradient>
     </View>
   );
@@ -136,9 +132,7 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: 26,
-    paddingHorizontal: 22,
-    paddingTop: 22,
-    paddingBottom: 22,
+    padding: 20,
     overflow: "hidden",
   },
   sheen: {
@@ -150,98 +144,87 @@ const styles = StyleSheet.create({
   },
   crownWrap: {
     position: "absolute",
-    top: 14,
-    right: 16,
-    width: 72,
-    height: 72,
+    right: 6,
+    top: 10,
+    width: 104,
+    height: 104,
     alignItems: "center",
     justifyContent: "center",
   },
-  crownRing: {
+  crownGlow: {
     position: "absolute",
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     borderWidth: 2,
-    borderColor: "rgba(251,191,36,0.5)",
+    borderColor: "rgba(251,191,36,0.45)",
     borderStyle: "dashed",
   },
   crownEmoji: {
-    fontSize: 40,
+    fontSize: 60,
   },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingRight: 70,
-  },
-  titlePill: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 7,
-  },
-  titlePillText: {
-    fontSize: 9,
-    fontWeight: "900",
-    color: "#fff",
-    letterSpacing: 1,
+    gap: 8,
+    marginBottom: 20,
+    paddingRight: 96,
   },
   title: {
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "800",
     color: "#fff",
-    letterSpacing: -0.3,
+    letterSpacing: 0.4,
   },
-  subtitle: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "rgba(255,255,255,0.78)",
-    marginTop: 7,
-    marginBottom: 22,
-    paddingRight: 70,
+  titleCrown: {
+    fontSize: 15,
   },
   benefitsRow: {
     flexDirection: "row",
-    marginBottom: 22,
+    marginBottom: 18,
+    paddingRight: 88,
   },
   benefit: {
     flex: 1,
     alignItems: "center",
   },
   benefitIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     backgroundColor: "rgba(255,255,255,0.16)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 9,
+    marginBottom: 8,
   },
   benefitL1: {
-    fontSize: 10.5,
+    fontSize: 10,
     fontWeight: "800",
     color: "#fff",
     textAlign: "center",
   },
   benefitL2: {
-    fontSize: 9.5,
+    fontSize: 9,
     fontWeight: "600",
-    color: "rgba(255,255,255,0.8)",
+    color: "rgba(255,255,255,0.82)",
     textAlign: "center",
     marginTop: 1,
+  },
+  btnRow: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
   },
   upgradeBtn: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+    gap: 7,
     backgroundColor: "#fff",
-    paddingVertical: 14,
-    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 14,
   },
   upgradeBtnText: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: "800",
     color: "#9333EA",
     letterSpacing: -0.2,
