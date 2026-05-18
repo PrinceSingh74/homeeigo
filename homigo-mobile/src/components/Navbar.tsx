@@ -6,6 +6,7 @@ import {
   Pressable,
   Image,
 } from "react-native";
+import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { MapPin, ChevronDown, Bell } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
@@ -15,82 +16,106 @@ export const Navbar: React.FC = () => {
   const { colors: themeColors, isDark } = useTheme();
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: isDark
-            ? "rgba(15,23,42,0.92)"
-            : "rgba(248,250,252,0.92)",
-          borderBottomColor: themeColors.border,
-        },
-      ]}
-    >
-      {/* Logo */}
-      <View style={styles.logoRow}>
-        <LinearGradient
-          colors={["#2563EB", "#7C3AED"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.logoMark}
+    <View style={styles.container}>
+      <BlurView intensity={70} tint="light" style={styles.blurLayer}>
+        <View
+          style={[
+            styles.content,
+            {
+              backgroundColor: isDark
+                ? "rgba(15,23,42,0.5)"
+                : "rgba(248,250,252,0.6)",
+            },
+          ]}
         >
-          <Text style={styles.logoMarkText}>H</Text>
-        </LinearGradient>
-        <Text style={[styles.logoText, { color: themeColors.text }]}>
-          HOMIGO
-        </Text>
-      </View>
-
-      {/* Location pill */}
-      <Pressable
-        style={[
-          styles.locationPill,
-          {
-            backgroundColor: isDark ? "#1F2937" : "#FFFFFF",
-            borderColor: themeColors.border,
-          },
-          shadowStyles.sm,
-        ]}
-      >
-        <MapPin size={14} color={themeColors.primary} />
-        <Text
-          numberOfLines={1}
-          style={[styles.locationText, { color: themeColors.text }]}
-        >
-          Gurugram, Sector 49
-        </Text>
-        <ChevronDown size={14} color={themeColors.textSecondary} />
-      </Pressable>
-
-      {/* Right actions */}
-      <View style={styles.actions}>
-        <Pressable style={styles.bellWrap}>
-          <Bell size={22} color={themeColors.text} />
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>3</Text>
+          {/* Logo */}
+          <View style={styles.logoRow}>
+            <LinearGradient
+              colors={["#2563EB", "#7C3AED"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.logoMark}
+            >
+              <Text style={styles.logoMarkText}>H</Text>
+            </LinearGradient>
+            <Text style={[styles.logoText, { color: themeColors.text }]}>
+              HOMIGO
+            </Text>
           </View>
-        </Pressable>
-        <View style={styles.avatarRing}>
-          <Image
-            source={{
-              uri: "https://i.pravatar.cc/100?img=12",
-            }}
-            style={styles.avatar}
-          />
+
+          {/* Location pill */}
+          <Pressable
+            style={[
+              styles.locationPill,
+              {
+                borderColor: isDark
+                  ? "rgba(255,255,255,0.1)"
+                  : "rgba(0,0,0,0.06)",
+              },
+            ]}
+          >
+            <MapPin size={13} color={themeColors.primary} />
+            <Text
+              numberOfLines={1}
+              style={[styles.locationText, { color: themeColors.text }]}
+            >
+              Gurugram, Sector 49
+            </Text>
+            <ChevronDown size={12} color={themeColors.textSecondary} />
+          </Pressable>
+
+          {/* Right actions */}
+          <View style={styles.actions}>
+            <Pressable style={styles.bellWrap}>
+              <Bell size={20} color={themeColors.text} />
+              <View style={styles.badge} />
+            </Pressable>
+            <View
+              style={[
+                styles.avatarRing,
+                { borderColor: themeColors.primary },
+              ]}
+            >
+              <Image
+                source={{
+                  uri: "https://api.dicebear.com/7.x/avataaars/svg?seed=homigo",
+                }}
+                style={styles.avatar}
+              />
+            </View>
+          </View>
         </View>
-      </View>
+      </BlurView>
+
+      {/* Soft bottom border */}
+      <View
+        style={[
+          styles.borderLine,
+          { borderBottomColor: isDark
+              ? "rgba(255,255,255,0.08)"
+              : "rgba(0,0,0,0.05)",
+          },
+        ]}
+      />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    overflow: "hidden",
+  },
+  blurLayer: {
+    overflow: "hidden",
+  },
+  content: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.4)",
     gap: 8,
   },
   logoRow: {
@@ -99,35 +124,36 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   logoMark: {
-    width: 30,
-    height: 30,
+    width: 26,
+    height: 26,
     borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
   },
   logoMarkText: {
     color: "#fff",
-    fontSize: 17,
-    fontWeight: "900",
+    fontSize: 13,
+    fontWeight: "800",
   },
   logoText: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: "800",
-    letterSpacing: 0.5,
+    letterSpacing: -0.3,
   },
   locationPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 18,
     borderWidth: 1,
+    backgroundColor: "rgba(15,23,42,0.05)",
     flexShrink: 1,
-    maxWidth: 170,
+    maxWidth: 160,
   },
   locationText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
     flexShrink: 1,
   },
@@ -137,40 +163,36 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   bellWrap: {
-    padding: 2,
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   badge: {
     position: "absolute",
-    top: -3,
-    right: -4,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
+    top: 6,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: "#EC4899",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 3,
-    borderWidth: 1.5,
-    borderColor: "#fff",
-  },
-  badgeText: {
-    color: "#fff",
-    fontSize: 9,
-    fontWeight: "800",
   },
   avatarRing: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 2,
-    borderColor: "#2563EB",
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
   avatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: "#E5E7EB",
+  },
+  borderLine: {
+    borderBottomWidth: 1,
   },
 });

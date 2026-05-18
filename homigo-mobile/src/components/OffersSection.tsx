@@ -171,9 +171,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
-  viewAll: { flexDirection: "row", alignItems: "center", gap: 4 },
-  viewAllText: { fontSize: 13, fontWeight: "700" },
+  title: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3, marginBottom: 2 },
+  viewAll: { flexDirection: "row", alignItems: "center", gap: 5 },
+  viewAllText: { fontSize: 12, fontWeight: "700" },
   list: { paddingHorizontal: 16, gap: 12 },
   card: {
     width: CARD_W,

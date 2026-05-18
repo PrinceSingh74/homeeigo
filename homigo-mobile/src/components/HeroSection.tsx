@@ -1,18 +1,24 @@
-import React, { useRef, useEffect } from "react";
+import React, { useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
-  Animated,
-  Easing,
   Dimensions,
 } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  withSpring,
+  Easing,
+} from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { Sparkles, ArrowRight, Play } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
-import { shadowStyles } from "@/lib/colors";
+import { shadowStyles, gradients } from "@/lib/colors";
 
 const { width } = Dimensions.get("window");
 const H_PAD = 18;
@@ -37,63 +43,60 @@ function GradientText({ children }: { children: string }) {
 
 export const HeroSection: React.FC = () => {
   const { colors: themeColors, isDark } = useTheme();
-  const fade = useRef(new Animated.Value(0)).current;
-  const slide = useRef(new Animated.Value(20)).current;
-  const float = useRef(new Animated.Value(0)).current;
-  const glow = useRef(new Animated.Value(0)).current;
+
+  // Entry animations
+  const fadeAnim = useSharedValue(0);
+  const slideAnim = useSharedValue(20);
+
+  // Loop animations
+  const floatAnim = useSharedValue(0);
+  const glowAnim = useSharedValue(0);
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fade, { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.timing(slide, { toValue: 0, duration: 600, useNativeDriver: true }),
-    ]).start();
+    // Entry fade + slide
+    fadeAnim.value = withTiming(1, { duration: 700, easing: Easing.inOut(Easing.ease) });
+    slideAnim.value = withTiming(0, { duration: 700, easing: Easing.inOut(Easing.ease) });
 
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(float, {
-          toValue: -8,
-          duration: 2600,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(float, {
-          toValue: 0,
-          duration: 2600,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-    ).start();
+    // Float loop
+    floatAnim.value = withRepeat(
+      withTiming(-8, { duration: 2800, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true
+    );
 
-    Animated.loop(
-      Animated.timing(glow, {
-        toValue: 1,
-        duration: 4200,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      }),
-    ).start();
-  }, []);
+    // Glow pulse loop
+    glowAnim.value = withRepeat(
+      withTiming(1, { duration: 4000, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true
+    );
+  }, [fadeAnim, slideAnim, floatAnim, glowAnim]);
+
+  // Animated styles
+  const entryAnimStyle = useAnimatedStyle(() => ({
+    opacity: fadeAnim.value,
+    transform: [{ translateY: slideAnim.value }],
+  }));
+
+  const floatAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: floatAnim.value }],
+  }));
+
+  const glowAnimStyle = useAnimatedStyle(() => ({
+    opacity: 0.25 + glowAnim.value * 0.25,
+    transform: [{ scale: 0.92 + glowAnim.value * 0.14 }],
+  }));
 
   return (
     <LinearGradient
-      colors={
-        isDark
-          ? ["#0F172A", "#1E1B4B", "#0F172A"]
-          : ["#F8FAFC", "#EFF6FF", "#F3E8FF"]
-      }
+      colors={gradients.heroBackground}
       style={styles.container}
     >
-      <Animated.View
-        style={[
-          styles.row,
-          { opacity: fade, transform: [{ translateY: slide }] },
-        ]}
-      >
+      <Animated.View style={[styles.row, entryAnimStyle]}>
         {/* LEFT — content */}
         <View style={styles.left}>
           <LinearGradient
-            colors={["rgba(37,99,235,0.14)", "rgba(124,58,237,0.14)"]}
+            colors={["rgba(37,99,235,0.12)", "rgba(124,58,237,0.12)"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.badge}
@@ -148,25 +151,7 @@ export const HeroSection: React.FC = () => {
 
         {/* RIGHT — floating villa with aurora glow */}
         <View style={styles.right}>
-          <Animated.View
-            style={[
-              styles.glowBlob,
-              {
-                opacity: glow.interpolate({
-                  inputRange: [0, 0.5, 1],
-                  outputRange: [0.5, 0.85, 0.5],
-                }),
-                transform: [
-                  {
-                    scale: glow.interpolate({
-                      inputRange: [0, 0.5, 1],
-                      outputRange: [0.92, 1.06, 0.92],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
+          <Animated.View style={[styles.glowBlob, glowAnimStyle]}>
             <LinearGradient
               colors={["#7C3AED", "#06B6D4", "#EC4899"]}
               start={{ x: 0, y: 0 }}
@@ -177,7 +162,7 @@ export const HeroSection: React.FC = () => {
 
           <Animated.Image
             source={require("../../assets/hero-villa.webp")}
-            style={[styles.img, { transform: [{ translateY: float }] }]}
+            style={[styles.img, floatAnimStyle]}
             resizeMode="contain"
           />
         </View>
@@ -213,18 +198,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   badgeText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.2 },
-  heading: { marginBottom: 10 },
+  heading: { marginBottom: 12 },
   h1: {
-    fontSize: 20,
+    fontSize: 26,
     fontWeight: "800",
-    lineHeight: 25,
-    letterSpacing: -0.4,
+    lineHeight: 32,
+    letterSpacing: -0.5,
   },
   sub: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "500",
-    lineHeight: 16,
-    marginBottom: 16,
+    lineHeight: 18,
+    marginBottom: 20,
   },
   ctas: { gap: 10 },
   primaryBtn: {

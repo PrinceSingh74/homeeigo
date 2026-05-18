@@ -73,32 +73,37 @@ function Card({ item }: { item: Svc }) {
             style={[styles.card, shadowStyles.glowViolet]}
           >
             <View style={[styles.iconChip, styles.iconChipFeat]}>
-              <Icon size={24} color="#fff" />
+              <Icon size={22} color="#fff" />
             </View>
             <Text style={[styles.name, { color: "#fff" }]}>{item.name}</Text>
-            <Text style={[styles.price, { color: "rgba(255,255,255,0.85)" }]}>
+            <Text style={[styles.price, { color: "rgba(255,255,255,0.8)" }]}>
               From {item.price}
             </Text>
           </LinearGradient>
         ) : (
-          <View
+          <LinearGradient
+            colors={[
+              item.color + "09",
+              item.color + "04",
+            ]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={[
               styles.card,
               {
-                backgroundColor: themeColors.cardBg,
-                borderColor: themeColors.border,
-                borderWidth: 1,
+                borderColor: item.color + "22",
+                borderWidth: 1.2,
               },
               shadowStyles.md,
             ]}
           >
             <LinearGradient
-              colors={[item.color + "26", item.color + "0D"]}
+              colors={[item.color + "28", item.color + "14"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.iconChip}
             >
-              <Icon size={23} color={item.color} />
+              <Icon size={22} color={item.color} />
             </LinearGradient>
             <Text style={[styles.name, { color: themeColors.text }]}>
               {item.name}
@@ -106,7 +111,7 @@ function Card({ item }: { item: Svc }) {
             <Text style={[styles.price, { color: themeColors.textSecondary }]}>
               {item.price ? `From ${item.price}` : item.sub}
             </Text>
-          </View>
+          </LinearGradient>
         )}
       </Pressable>
     </Animated.View>
@@ -152,8 +157,8 @@ const styles = StyleSheet.create({
   seeAll: { fontSize: 13, fontWeight: "700" },
   list: { paddingHorizontal: 16, gap: 12, paddingVertical: 4 },
   card: {
-    height: 138,
-    borderRadius: 20,
+    height: 142,
+    borderRadius: 22,
     paddingVertical: 16,
     paddingHorizontal: 10,
     alignItems: "center",
@@ -161,26 +166,26 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   iconChip: {
-    width: 52,
-    height: 52,
-    borderRadius: 17,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 10,
   },
   iconChipFeat: {
     backgroundColor: "rgba(255,255,255,0.22)",
   },
   name: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: "800",
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
     textAlign: "center",
   },
   price: {
-    fontSize: 10.5,
+    fontSize: 10,
     fontWeight: "600",
-    marginTop: 3,
+    marginTop: 4,
     textAlign: "center",
   },
 });
