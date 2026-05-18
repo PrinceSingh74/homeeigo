@@ -1,11 +1,6 @@
 import React from "react";
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-} from "react-native";
-import { BlurView } from "expo-blur";
+import { View, Text, Pressable, StyleSheet } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Home,
@@ -17,7 +12,6 @@ import {
 } from "lucide-react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useTheme } from "@/hooks/useTheme";
-import { shadowStyles } from "@/lib/colors";
 import { CenterTabButton } from "./CenterTabButton";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -40,23 +34,18 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.container}>
-      <BlurView intensity={80} tint={isDark ? "dark" : "light"} style={styles.blurLayer}>
-        <View
-          style={[
-            styles.bar,
-            {
-              paddingBottom: insets.bottom > 0 ? insets.bottom : 12,
-              backgroundColor: isDark
-                ? "rgba(17,24,39,0.5)"
-                : "rgba(255,255,255,0.6)",
-              borderTopColor: isDark
-                ? "rgba(255,255,255,0.08)"
-                : "rgba(255,255,255,0.5)",
-            },
-            shadowStyles.xl,
-          ]}
-        >
+    <View
+      style={[
+        styles.bar,
+        {
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 14,
+          backgroundColor: isDark ? "#111827" : "#FFFFFF",
+          borderTopColor: isDark
+            ? "rgba(255,255,255,0.06)"
+            : "rgba(15,23,42,0.05)",
+        },
+      ]}
+    >
       {state.routes.map((route, index) => {
         const focused = state.index === index;
         const Icon = ICONS[route.name] ?? Home;
@@ -86,11 +75,24 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
 
         return (
           <Pressable key={route.key} onPress={onPress} style={styles.item}>
-            <Icon
-              size={22}
-              color={focused ? themeColors.primary : themeColors.textSecondary}
-              strokeWidth={focused ? 2.6 : 2}
-            />
+            {focused ? (
+              <LinearGradient
+                colors={["#2563EB", "#7C3AED"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.activeBadge}
+              >
+                <Icon size={20} color="#fff" strokeWidth={2.6} />
+              </LinearGradient>
+            ) : (
+              <View style={styles.iconSlot}>
+                <Icon
+                  size={22}
+                  color={themeColors.textSecondary}
+                  strokeWidth={2}
+                />
+              </View>
+            )}
             <Text
               style={[
                 styles.label,
@@ -98,8 +100,7 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
                   color: focused
                     ? themeColors.primary
                     : themeColors.textSecondary,
-                  fontWeight: focused ? "700" : "500",
-                  fontSize: 9,
+                  fontWeight: focused ? "800" : "500",
                 },
               ]}
             >
@@ -108,38 +109,51 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
           </Pressable>
         );
       })}
-        </View>
-      </BlurView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    overflow: "hidden",
-  },
-  blurLayer: {
-    overflow: "hidden",
-  },
   bar: {
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-around",
-    paddingTop: 10,
-    paddingHorizontal: 8,
+    paddingTop: 14,
+    paddingHorizontal: 10,
     borderTopWidth: 1,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 20,
   },
   item: {
     flex: 1,
     alignItems: "center",
+    gap: 5,
+  },
+  iconSlot: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
     justifyContent: "center",
-    gap: 3,
-    paddingVertical: 8,
+  },
+  activeBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#2563EB",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
   },
   label: {
-    fontSize: 9,
-    fontWeight: "500",
+    fontSize: 10,
+    letterSpacing: -0.1,
   },
 });
