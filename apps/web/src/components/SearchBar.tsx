@@ -20,17 +20,16 @@ export function SearchBar() {
         {/* Search field */}
         <div
           className={cn(
-            "group flex h-14 flex-1 items-center gap-3 rounded-2xl border border-line",
-            "bg-surface px-4 shadow-e3 transition-all",
-            "focus-within:border-primary/40 focus-within:shadow-[0_0_0_4px_rgb(37_99_235/0.10)]",
+            "group flex h-16 flex-1 items-center gap-3 rounded-2xl glass-card px-5 transition-all",
+            "focus-within:shadow-[0_0_0_4px_rgb(37_99_235/0.14),0_16px_40px_-12px_rgb(15_23_42/0.25)]",
           )}
         >
-          <Search size={20} className="shrink-0 text-muted" />
+          <Search size={22} className="shrink-0 text-muted" />
           <input
             type="text"
             placeholder="Search for a service…"
             aria-label="Search for a service"
-            className="h-full w-full bg-transparent text-[15px] text-content outline-none placeholder:italic placeholder:text-muted"
+            className="h-full w-full bg-transparent text-base text-content outline-none placeholder:italic placeholder:text-muted"
           />
           <motion.button
             type="button"
@@ -56,9 +55,9 @@ export function SearchBar() {
           whileHover={{ y: -2 }}
           whileTap={{ scale: 0.97 }}
           className={cn(
-            "flex h-14 items-center justify-center gap-2 rounded-2xl border border-line",
-            "bg-surface px-5 text-sm font-semibold text-primary shadow-e2",
-            "transition-colors hover:bg-primary/5 sm:w-auto",
+            "flex h-16 items-center justify-center gap-2 rounded-2xl glass-card px-7",
+            "text-base font-semibold text-primary sm:w-auto",
+            "transition-shadow hover:shadow-[0_16px_40px_-12px_rgb(15_23_42/0.25)]",
             "outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
           )}
         >

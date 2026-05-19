@@ -38,18 +38,26 @@ export function FeatureBanner() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.3 }}
           transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-          className="relative flex min-h-96 flex-col justify-center overflow-hidden rounded-[36px] bg-darkviolet p-12 shadow-e5 sm:p-16"
+          className="relative flex min-h-96 flex-col justify-center overflow-hidden rounded-[36px] bg-darkviolet p-12 shadow-e5 ring-1 ring-white/10 sm:p-16"
         >
-          <p className="text-sm font-medium uppercase tracking-[0.18em] text-white/55">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 h-2/5 bg-gradient-to-b from-white/12 to-transparent"
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -left-20 -top-20 size-72 rounded-full bg-cyan/20 blur-3xl"
+          />
+          <p className="relative text-sm font-medium uppercase tracking-[0.18em] text-white/55">
             Home services at
           </p>
-          <h2 className="mt-3 font-display text-5xl font-bold text-white sm:text-7xl">
+          <h2 className="relative mt-3 font-display text-5xl font-bold text-white sm:text-7xl">
             Light{" "}
             <span className="bg-gradient-to-r from-cyan to-white bg-clip-text text-transparent">
               Speed.
             </span>
           </h2>
-          <p className="mt-4 max-w-md text-base text-white/75 sm:text-lg">
+          <p className="relative mt-4 max-w-md text-base text-white/75 sm:text-lg">
             Instant booking, real-time tracking, lightning-fast service at your
             doorstep.
           </p>
@@ -58,7 +66,7 @@ export function FeatureBanner() {
             type="button"
             whileHover={{ y: -3 }}
             whileTap={{ scale: 0.98 }}
-            className="mt-8 inline-flex h-14 w-fit items-center gap-2 rounded-2xl bg-white px-8 text-base font-semibold text-[#1E1B4B] shadow-e3 outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            className="relative mt-8 inline-flex h-14 w-fit items-center gap-2 rounded-2xl bg-white px-8 text-base font-semibold text-[#1E1B4B] shadow-e3 outline-none focus-visible:ring-2 focus-visible:ring-white/70"
           >
             Book Now
             <ArrowRight size={18} />
@@ -130,9 +138,13 @@ export function FeatureBanner() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="flex min-h-44 flex-col justify-between rounded-3xl border border-line bg-surface p-6 shadow-e3"
+            className="relative flex min-h-44 flex-col justify-between overflow-hidden rounded-3xl glass-card p-6"
           >
-            <p className="text-sm font-bold text-muted">HOMIGO Wallet</p>
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 h-1/3 sheen"
+            />
+            <p className="relative text-sm font-bold text-muted">HOMIGO Wallet</p>
             <div>
               <p className="font-display text-3xl font-bold text-content">
                 ₹2,450.00

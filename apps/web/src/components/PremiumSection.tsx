@@ -38,6 +38,10 @@ export function PremiumSection() {
 
         {/* big 3D crown */}
         <div className="pointer-events-none absolute right-10 top-1/2 hidden -translate-y-1/2 lg:block">
+          <span
+            aria-hidden
+            className="absolute left-1/2 top-1/2 size-72 -translate-x-1/2 -translate-y-1/2 rounded-full halo"
+          />
           <motion.div
             animate={reduce ? undefined : { rotate: [0, 360] }}
             transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
@@ -48,9 +52,9 @@ export function PremiumSection() {
           <motion.img
             src="/crown-3d.png"
             alt="Premium crown"
-            animate={reduce ? undefined : { y: [0, -12, 0] }}
-            transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-            className="relative size-60 object-contain drop-shadow-2xl"
+            animate={reduce ? undefined : { y: [0, -14, 0] }}
+            transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
+            className="relative size-60 object-contain drop-shadow-[0_24px_48px_rgb(212_175_55/0.45)]"
           />
         </div>
 
@@ -72,9 +76,9 @@ export function PremiumSection() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.35, delay: i * 0.07 }}
-                  className="flex flex-col items-center text-center"
+                  className="group flex flex-col items-center text-center"
                 >
-                  <span className="grid size-16 place-items-center rounded-2xl bg-white/15 text-white">
+                  <span className="grid size-16 place-items-center rounded-2xl bg-white/15 text-white ring-1 ring-white/25 shadow-[inset_0_1px_0_rgb(255_255_255/0.3)] backdrop-blur-sm transition-transform duration-300 group-hover:scale-110">
                     <Icon size={26} strokeWidth={2.2} />
                   </span>
                   <p className="mt-3 text-sm font-bold leading-tight text-white">

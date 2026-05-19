@@ -98,7 +98,7 @@ export function OffersSection() {
         </button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {OFFERS.map((o, i) => {
           const Icon = o.icon;
           const isCopied = copied === o.code;
@@ -109,24 +109,37 @@ export function OffersSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.45, delay: i * 0.08 }}
-              whileHover={{ y: -4 }}
-              className="flex min-h-40 flex-col justify-between rounded-3xl p-5 shadow-e3"
+              whileHover={{ y: -8 }}
+              className="group relative flex min-h-52 flex-col justify-between overflow-hidden rounded-[28px] p-7 shadow-[0_18px_44px_-14px_rgb(15_23_42/0.28)] ring-1 ring-white/50 transition-shadow duration-300 hover:shadow-[0_28px_60px_-12px_rgb(15_23_42/0.34)]"
               style={{
                 background: `linear-gradient(135deg, ${o.from} 0%, ${o.to} 100%)`,
                 color: o.fg,
               }}
             >
-              <span className="grid size-12 place-items-center rounded-2xl bg-white/60">
-                <Icon size={26} />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 top-0 h-1/2 sheen"
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full bg-white/40 blur-2xl transition-opacity duration-500 group-hover:opacity-80"
+              />
+              <span
+                className="relative grid size-14 place-items-center rounded-2xl bg-white/70 ring-1 ring-white/60"
+                style={{
+                  boxShadow: "inset 0 2px 4px rgb(255 255 255 / 0.8)",
+                }}
+              >
+                <Icon size={28} />
               </span>
-              <div>
-                <p className="font-display text-xl font-bold">{o.discount}</p>
+              <div className="relative">
+                <p className="font-display text-2xl font-bold">{o.discount}</p>
                 <p className="text-sm opacity-75">{o.desc}</p>
               </div>
               <button
                 type="button"
                 onClick={() => copy(o.code)}
-                className="mt-2 inline-flex w-fit items-center gap-2 rounded-full bg-white/55 px-3 py-1.5 font-mono text-xs font-semibold uppercase outline-none transition hover:bg-white/80 focus-visible:ring-2 focus-visible:ring-current"
+                className="relative mt-2 inline-flex w-fit items-center gap-2 rounded-full bg-white/65 px-4 py-2 font-mono text-xs font-semibold uppercase outline-none ring-1 ring-white/60 transition hover:bg-white/90 focus-visible:ring-2 focus-visible:ring-current"
                 aria-label={`Copy code ${o.code}`}
               >
                 {isCopied ? <Check size={14} /> : <Copy size={14} />}

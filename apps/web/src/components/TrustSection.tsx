@@ -40,8 +40,12 @@ export function TrustSection() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.5 }}
-        className="grid grid-cols-2 gap-10 rounded-[32px] border border-line bg-surface p-12 shadow-e3 sm:grid-cols-3 lg:grid-cols-6"
+        className="relative grid grid-cols-2 gap-10 overflow-hidden rounded-[36px] glass-card p-12 sm:grid-cols-3 lg:grid-cols-6"
       >
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-24 sheen rounded-t-[36px]"
+        />
         {TRUSTS.map((t, i) => {
           const Icon = t.icon;
           return (
@@ -51,9 +55,17 @@ export function TrustSection() {
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
               transition={{ duration: 0.35, delay: i * 0.06 }}
-              className="flex flex-col items-center text-center"
+              className="group relative flex flex-col items-center text-center"
             >
-              <span className="grid size-20 place-items-center rounded-3xl bg-primary/8 text-primary">
+              <span
+                className="grid size-20 place-items-center rounded-3xl text-primary ring-1 ring-white/50 transition-transform duration-300 group-hover:scale-110"
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgb(37 99 235 / 0.16) 0%, rgb(124 58 237 / 0.08) 100%)",
+                  boxShadow:
+                    "inset 0 2px 4px rgb(255 255 255 / 0.6), 0 10px 20px -8px rgb(37 99 235 / 0.35)",
+                }}
+              >
                 <Icon size={36} strokeWidth={2} />
               </span>
               <p className="mt-4 text-sm font-semibold leading-tight text-muted">

@@ -209,3 +209,113 @@
   backdrop-filter: blur(12px) saturate(180%);
   -webkit-backdrop-filter: blur(12px) saturate(180%);
 }
+
+/* ============================================================
+   World-class glass + 3D depth system
+   ============================================================ */
+
+/* Premium frosted glass card — translucent + blur + edge light + 3D shadow */
+@utility glass-card {
+  background: linear-gradient(
+    135deg,
+    rgb(255 255 255 / 0.72) 0%,
+    rgb(255 255 255 / 0.42) 100%
+  );
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgb(255 255 255 / 0.6);
+  box-shadow:
+    0 10px 30px -8px rgb(15 23 42 / 0.18),
+    0 2px 8px -2px rgb(15 23 42 / 0.1),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.7);
+}
+.dark .glass-card {
+  background: linear-gradient(
+    135deg,
+    rgb(30 27 75 / 0.55) 0%,
+    rgb(17 24 39 / 0.4) 100%
+  );
+  border: 1px solid rgb(255 255 255 / 0.1);
+  box-shadow:
+    0 10px 30px -8px rgb(0 0 0 / 0.45),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.08);
+}
+
+/* Deep glass — darker, for hero/dark sections */
+@utility glass-deep {
+  background: linear-gradient(
+    135deg,
+    rgb(255 255 255 / 0.14) 0%,
+    rgb(255 255 255 / 0.05) 100%
+  );
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgb(255 255 255 / 0.18);
+  box-shadow:
+    0 16px 48px -12px rgb(0 0 0 / 0.4),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.22);
+}
+
+/* Strong 3D elevation (clay/floating depth) */
+@utility depth-3d {
+  box-shadow:
+    0 1px 1px rgb(15 23 42 / 0.04),
+    0 8px 16px -6px rgb(15 23 42 / 0.16),
+    0 24px 48px -12px rgb(15 23 42 / 0.22),
+    inset 0 2px 1px rgb(255 255 255 / 0.6);
+}
+
+/* Top sheen overlay (apply to an absolutely-positioned span) */
+@utility sheen {
+  background: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 0.55) 0%,
+    rgb(255 255 255 / 0) 60%
+  );
+}
+
+/* Gradient hairline ring */
+@utility ring-aurora {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    linear-gradient(135deg, #2563eb, #7c3aed, #06b6d4) border-box;
+}
+
+/* Animated conic glow halo behind an element */
+@utility halo {
+  background: conic-gradient(
+    from 0deg,
+    #06b6d4,
+    #7c3aed,
+    #ec4899,
+    #2563eb,
+    #06b6d4
+  );
+  filter: blur(28px);
+  opacity: 0.55;
+}
+
+@theme {
+  --animate-spin-slow: spin 14s linear infinite;
+  --animate-float-soft: floatSoft 7s ease-in-out infinite;
+}
+
+@keyframes floatSoft {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-14px) rotate(1.5deg);
+  }
+}
+
+/* Premium animated mesh background (fixed, behind everything) */
+@utility mesh-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+  overflow: hidden;
+}

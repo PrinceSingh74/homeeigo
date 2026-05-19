@@ -31,7 +31,7 @@ export function LiveTrackingSection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
-          className="relative h-72 overflow-hidden rounded-[32px] shadow-e4 lg:h-80"
+          className="relative h-72 overflow-hidden rounded-[32px] shadow-e5 ring-1 ring-white/10 lg:h-80"
           style={{
             background:
               "linear-gradient(135deg, #0B1020 0%, #1E1B4B 55%, #312E81 100%)",
@@ -101,19 +101,27 @@ export function LiveTrackingSection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="flex h-72 flex-col justify-between rounded-[32px] p-8 text-white shadow-e4 lg:h-80"
+          className="relative flex h-72 flex-col justify-between overflow-hidden rounded-[32px] p-8 text-white shadow-e5 ring-1 ring-white/10 lg:h-80"
           style={{
             background: "linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)",
           }}
         >
-          <div className="flex items-center gap-2">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 h-2/5 bg-gradient-to-b from-white/10 to-transparent"
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-16 -bottom-16 size-56 rounded-full bg-cyan/15 blur-3xl"
+          />
+          <div className="relative flex items-center gap-2">
             <span className="size-2.5 rounded-full bg-success" />
             <span className="text-base font-semibold text-white/70">
               Service in Progress
             </span>
           </div>
 
-          <div>
+          <div className="relative">
             <p className="text-xl font-semibold text-white">Arriving in</p>
             <p className="font-display text-6xl font-bold text-cyan">12 mins</p>
             <p className="mt-2 text-base text-white/60">
@@ -121,7 +129,7 @@ export function LiveTrackingSection() {
             </p>
           </div>
 
-          <div className="flex items-center">
+          <div className="relative flex items-center">
             {STEPS.map((s, i) => (
               <div key={s.label} className="flex flex-1 items-center last:flex-none">
                 <div className="flex flex-col items-center gap-1.5">

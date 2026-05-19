@@ -1,3 +1,4 @@
+import { AuroraBackground } from "@/components/AuroraBackground";
 import { Navbar } from "@/components/Navbar";
 import { HeroSection } from "@/components/HeroSection";
 import { SearchBar } from "@/components/SearchBar";
@@ -13,8 +14,9 @@ import { FinalCtaSection } from "@/components/FinalCtaSection";
 export default function Home() {
   return (
     <>
+      <AuroraBackground />
       <Navbar />
-      <main className="bg-canvas">
+      <main className="bg-transparent">
         <HeroSection />
         <SearchBar />
         <ServiceCategories />

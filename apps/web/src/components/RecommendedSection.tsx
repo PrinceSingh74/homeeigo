@@ -54,15 +54,19 @@ export function RecommendedSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.45, delay: i * 0.08 }}
-            whileHover={{ y: -6 }}
-            className="group overflow-hidden rounded-3xl border border-line bg-surface text-left shadow-e3 outline-none transition-shadow hover:shadow-e4 focus-visible:ring-2 focus-visible:ring-primary/60"
+            whileHover={{ y: -10 }}
+            className="group relative overflow-hidden rounded-[28px] glass-card text-left outline-none transition-shadow duration-300 hover:shadow-[0_28px_64px_-12px_rgb(15_23_42/0.3)] focus-visible:ring-2 focus-visible:ring-primary/60"
           >
-            <div className="relative h-56 w-full overflow-hidden bg-line/40 sm:h-64">
+            <div className="relative h-56 w-full overflow-hidden sm:h-64">
               <img
                 src={it.img}
                 alt={it.title}
                 loading="lazy"
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink/30 via-transparent to-transparent"
               />
             </div>
             <div className="p-6">

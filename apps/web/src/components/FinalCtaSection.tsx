@@ -39,6 +39,10 @@ export function FinalCtaSection() {
 
         {/* 3D robot mascot */}
         <div className="relative hidden shrink-0 sm:block">
+          <span
+            aria-hidden
+            className="absolute left-1/2 top-1/2 size-64 -translate-x-1/2 -translate-y-1/2 rounded-full halo opacity-40"
+          />
           <motion.div
             animate={reduce ? undefined : { rotate: [0, 360] }}
             transition={{ duration: 14, repeat: Infinity, ease: "linear" }}
@@ -49,9 +53,9 @@ export function FinalCtaSection() {
           <motion.img
             src="/robot-3d.png"
             alt="HOMIGO AI assistant"
-            animate={reduce ? undefined : { y: [0, -12, 0] }}
-            transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
-            className="relative size-56 object-contain drop-shadow-2xl lg:size-64"
+            animate={reduce ? undefined : { y: [0, -14, 0] }}
+            transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+            className="relative size-56 object-contain drop-shadow-[0_24px_48px_rgb(124_58_237/0.4)] lg:size-64"
           />
         </div>
       </motion.div>
