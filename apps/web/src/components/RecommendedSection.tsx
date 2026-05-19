@@ -45,7 +45,7 @@ export function RecommendedSection() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {ITEMS.map((it, i) => (
           <motion.button
             type="button"
@@ -57,7 +57,7 @@ export function RecommendedSection() {
             whileHover={{ y: -10 }}
             className="group relative overflow-hidden rounded-[28px] glass-card text-left outline-none transition-shadow duration-300 hover:shadow-[0_28px_64px_-12px_rgb(15_23_42/0.3)] focus-visible:ring-2 focus-visible:ring-primary/60"
           >
-            <div className="relative h-56 w-full overflow-hidden sm:h-64">
+            <div className="relative h-64 w-full overflow-hidden sm:h-72 lg:h-80">
               <img
                 src={it.img}
                 alt={it.title}

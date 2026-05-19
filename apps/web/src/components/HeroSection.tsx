@@ -114,13 +114,13 @@ export function HeroSection() {
           initial={{ opacity: 0, scale: 0.92 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.8, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
-          className="relative hidden h-112 lg:block"
+          className="relative hidden h-128 lg:block xl:h-144"
         >
           <div className="absolute inset-0 grid place-items-center">
             <motion.div
-              animate={reduce ? undefined : { y: [0, -14, 0] }}
+              animate={reduce ? undefined : { y: [0, -16, 0] }}
               transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-              className="relative w-full max-w-xl"
+              className="relative w-full max-w-2xl xl:max-w-3xl"
             >
               <Image
                 src="/hero-villa.webp"
@@ -128,7 +128,7 @@ export function HeroSection() {
                 width={1536}
                 height={1024}
                 priority
-                className="h-auto w-full object-contain drop-shadow-[0_30px_70px_rgb(124_58_237/0.30)]"
+                className="h-auto w-full object-contain drop-shadow-[0_40px_90px_rgb(124_58_237/0.38)]"
               />
 
               <div className="absolute -right-2 top-8 rounded-2xl bg-surface px-4 py-3 shadow-e4 border border-line">
