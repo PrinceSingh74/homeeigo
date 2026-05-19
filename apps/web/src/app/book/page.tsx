@@ -19,7 +19,6 @@ import {
   Lock,
   Flame,
   Scissors,
-  LayoutGrid,
   UserCheck,
   CreditCard,
   type LucideIcon,
@@ -34,12 +33,12 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 const STEPS = ["Service", "Package", "Schedule", "Payment"];
 
 const SERVICES = [
-  { img: "/svc-cleaning.png", name: "Cleaning", price: "₹199" },
-  { img: "/svc-ac.png", name: "AC Service", price: "₹299" },
-  { img: "/svc-plumbing.png", name: "Plumbing", price: "₹249" },
-  { img: "/svc-electrician.png", name: "Electrician", price: "₹199" },
-  { img: "/svc-pest.png", name: "Pest Control", price: "₹299" },
-  { icon: Scissors, name: "Salon", price: "₹199" },
+  { img: "/svc-cleaning.png", name: "Cleaning", price: "₹199", color: "#7C3AED" },
+  { img: "/svc-ac.png", name: "AC Service", price: "₹299", color: "#06B6D4" },
+  { img: "/svc-plumbing.png", name: "Plumbing", price: "₹249", color: "#3B82F6" },
+  { img: "/svc-electrician.png", name: "Electrician", price: "₹199", color: "#F59E0B" },
+  { img: "/svc-pest.png", name: "Pest Control", price: "₹299", color: "#10B981" },
+  { icon: Scissors, name: "Salon", price: "₹199", color: "#EC4899" },
 ];
 
 const HERO_FEATURES: { icon: LucideIcon; label: string }[] = [
@@ -263,64 +262,86 @@ export default function BookPage() {
           </button>
         </div>
 
-        {/* ---------- Service strip ---------- */}
-        <div className="mt-8 flex gap-4 overflow-x-auto pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* ---------- Service strip (premium glass 3D cards) ---------- */}
+        <div className="mt-8 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-6">
           {SERVICES.map((s, i) => {
             const active = i === service;
             const Icon = s.icon;
             return (
-              <button
+              <motion.button
                 key={s.name}
                 type="button"
                 onClick={() => setService(i)}
+                whileHover={{ y: -8 }}
+                whileTap={{ scale: 0.97 }}
                 className={cn(
-                  "group relative flex w-32 shrink-0 flex-col items-center gap-1.5 rounded-2xl p-4 transition",
+                  "group relative flex h-64 flex-col items-center justify-center gap-4 overflow-hidden rounded-[28px] p-5 text-center transition-shadow duration-300",
                   active
-                    ? "glass-card ring-2 ring-primary"
-                    : "glass-card hover:-translate-y-0.5",
+                    ? "bg-premium text-white shadow-glow-violet"
+                    : "glass-card text-content hover:shadow-[0_22px_50px_-14px_rgb(15_23_42/0.28)]",
                 )}
               >
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 top-0 h-1/2 sheen opacity-70"
+                />
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute -bottom-14 left-1/2 size-40 -translate-x-1/2 rounded-full opacity-25 blur-3xl transition-opacity duration-500 group-hover:opacity-60"
+                  style={{ background: active ? "#a855f7" : s.color }}
+                />
                 {active && (
-                  <span className="absolute right-2 top-2 grid size-5 place-items-center rounded-full bg-primary text-white">
-                    <Check size={12} strokeWidth={3} />
+                  <span className="absolute right-3 top-3 z-10 rounded-full bg-white/95 px-3 py-1 text-[11px] font-bold text-violet shadow-e2 backdrop-blur">
+                    Featured
                   </span>
                 )}
-                <span className="grid size-20 place-items-center">
+                <span
+                  className={cn(
+                    "relative grid size-28 place-items-center overflow-hidden rounded-[24px] transition-transform duration-300 group-hover:scale-105",
+                    active ? "bg-white/15 ring-1 ring-white/30" : "ring-1 ring-white/50",
+                  )}
+                  style={
+                    active
+                      ? undefined
+                      : {
+                          background: `linear-gradient(135deg, ${s.color}33 0%, ${s.color}14 60%, ${s.color}0A 100%)`,
+                          boxShadow: `inset 0 2px 6px rgb(255 255 255 / 0.6), 0 12px 24px -8px ${s.color}55`,
+                        }
+                  }
+                >
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-x-0 top-0 h-1/2 sheen"
+                  />
                   {s.img ? (
                     <img
                       src={s.img}
                       alt={s.name}
-                      className="size-18 object-contain drop-shadow-[0_8px_16px_rgb(15_23_42/0.28)] transition-transform duration-500 group-hover:scale-[1.18]"
+                      className="relative size-24 object-contain drop-shadow-[0_12px_20px_rgb(15_23_42/0.32)] transition-transform duration-500 ease-out group-hover:scale-[1.18]"
                     />
                   ) : Icon ? (
                     <Icon
-                      size={40}
-                      className="text-pink transition-transform duration-500 group-hover:scale-[1.18]"
+                      size={52}
+                      strokeWidth={1.75}
+                      className="transition-transform duration-500 group-hover:scale-[1.18]"
+                      style={{ color: active ? "#fff" : s.color }}
                     />
                   ) : null}
                 </span>
-                <span
-                  className={cn(
-                    "text-sm font-bold",
-                    active ? "text-primary" : "text-content",
-                  )}
-                >
+                <span className="relative font-display text-lg font-bold">
                   {s.name}
                 </span>
-                <span className="text-xs text-muted">From {s.price}</span>
-              </button>
+                <span
+                  className={cn(
+                    "relative text-sm font-medium",
+                    active ? "text-white/90" : "text-muted",
+                  )}
+                >
+                  From {s.price}
+                </span>
+              </motion.button>
             );
           })}
-          <button
-            type="button"
-            className="group flex w-32 shrink-0 flex-col items-center justify-center gap-2 rounded-2xl glass-card p-4 text-content transition hover:-translate-y-0.5"
-          >
-            <span className="grid size-20 place-items-center rounded-2xl bg-primary/10 text-primary transition-transform duration-500 group-hover:scale-110">
-              <LayoutGrid size={34} />
-            </span>
-            <span className="text-sm font-bold">All Services</span>
-            <span className="text-xs text-muted">Browse all</span>
-          </button>
         </div>
 
         {/* ---------- Two-column layout ---------- */}
