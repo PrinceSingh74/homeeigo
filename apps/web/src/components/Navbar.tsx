@@ -29,6 +29,22 @@ export function Navbar() {
           </span>
         </Link>
 
+        {/* Primary nav */}
+        <nav className="hidden items-center gap-1 md:flex">
+          <Link
+            href="/"
+            className="rounded-full px-4 py-2 text-sm font-semibold text-content transition-colors hover:bg-primary/5 hover:text-primary outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
+            Home
+          </Link>
+          <Link
+            href="/book"
+            className="rounded-full bg-aurora px-4 py-2 text-sm font-semibold text-white shadow-glow-blue transition-transform hover:-translate-y-0.5 outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
+            Book a Service
+          </Link>
+        </nav>
+
         {/* Center — Location selector */}
         <motion.button
           type="button"

@@ -24,8 +24,10 @@ import {
   CreditCard,
   type LucideIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { AuroraBackground } from "@/components/AuroraBackground";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 /* ----------------------------- data ----------------------------- */
 
@@ -174,13 +176,13 @@ export default function BookPage() {
       {/* ---------- Sticky header + stepper ---------- */}
       <header className="sticky top-0 z-50 glass dark:glass-dark border-b border-line">
         <div className="mx-auto flex max-w-content items-center gap-4 px-5 py-4 sm:px-8">
-          <button
-            type="button"
-            aria-label="Back"
+          <Link
+            href="/"
+            aria-label="Back to home"
             className="grid size-11 shrink-0 place-items-center rounded-full glass-card text-content transition-transform hover:-translate-x-0.5"
           >
             <ArrowLeft size={20} />
-          </button>
+          </Link>
 
           <h1 className="shrink-0 font-display text-2xl font-bold text-content sm:text-3xl">
             Book a <span className="text-aurora">Service</span>
@@ -221,7 +223,8 @@ export default function BookPage() {
             })}
           </div>
 
-          <div className="ml-auto flex shrink-0 items-center gap-3 lg:ml-0">
+          <div className="ml-auto flex shrink-0 items-center gap-2 lg:ml-0 sm:gap-3">
+            <ThemeToggle />
             <button
               type="button"
               aria-label="Notifications"
