@@ -33,7 +33,7 @@ export function ServiceCard({
       whileHover={{ y: -10 }}
       whileTap={{ scale: 0.97 }}
       className={cn(
-        "group relative flex h-72 w-full flex-col items-center sm:h-80",
+        "group relative flex h-80 w-full flex-col items-center sm:h-88",
         "justify-center gap-4 overflow-hidden rounded-[32px] p-6 text-center",
         "outline-none transition-shadow duration-300 focus-visible:ring-2 focus-visible:ring-primary/60",
         featured
@@ -63,7 +63,7 @@ export function ServiceCard({
       {/* 3D icon tile */}
       <span
         className={cn(
-          "relative grid size-32 place-items-center overflow-hidden rounded-[26px] transition-transform duration-300 group-hover:scale-110 sm:size-36",
+          "relative grid size-40 place-items-center overflow-hidden rounded-[30px] transition-transform duration-300 group-hover:scale-105 sm:size-44",
           featured
             ? "bg-white/15 ring-1 ring-white/30"
             : "ring-1 ring-white/50",
@@ -73,7 +73,7 @@ export function ServiceCard({
             ? undefined
             : {
                 background: `linear-gradient(135deg, ${color}33 0%, ${color}14 60%, ${color}0A 100%)`,
-                boxShadow: `inset 0 2px 6px rgb(255 255 255 / 0.6), 0 12px 24px -8px ${color}55`,
+                boxShadow: `inset 0 2px 6px rgb(255 255 255 / 0.6), 0 16px 32px -8px ${color}66`,
               }
         }
       >
@@ -85,13 +85,14 @@ export function ServiceCard({
           <img
             src={img}
             alt={name}
-            className="relative size-28 object-contain drop-shadow-[0_10px_18px_rgb(15_23_42/0.28)] sm:size-32"
+            className="relative size-36 object-contain drop-shadow-[0_14px_24px_rgb(15_23_42/0.34)] transition-transform duration-500 ease-out group-hover:scale-[1.18] sm:size-40"
             loading="lazy"
           />
         ) : Icon ? (
           <Icon
-            size={56}
+            size={68}
             strokeWidth={1.75}
+            className="transition-transform duration-500 group-hover:scale-[1.18]"
             style={{ color: featured ? "#fff" : color }}
           />
         ) : null}

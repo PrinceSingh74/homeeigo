@@ -274,7 +274,7 @@ export default function BookPage() {
                 type="button"
                 onClick={() => setService(i)}
                 className={cn(
-                  "relative flex w-28 shrink-0 flex-col items-center gap-1.5 rounded-2xl p-4 transition",
+                  "group relative flex w-32 shrink-0 flex-col items-center gap-1.5 rounded-2xl p-4 transition",
                   active
                     ? "glass-card ring-2 ring-primary"
                     : "glass-card hover:-translate-y-0.5",
@@ -285,15 +285,18 @@ export default function BookPage() {
                     <Check size={12} strokeWidth={3} />
                   </span>
                 )}
-                <span className="grid size-14 place-items-center">
+                <span className="grid size-20 place-items-center">
                   {s.img ? (
                     <img
                       src={s.img}
                       alt={s.name}
-                      className="size-12 object-contain drop-shadow-md"
+                      className="size-18 object-contain drop-shadow-[0_8px_16px_rgb(15_23_42/0.28)] transition-transform duration-500 group-hover:scale-[1.18]"
                     />
                   ) : Icon ? (
-                    <Icon size={28} className="text-pink" />
+                    <Icon
+                      size={40}
+                      className="text-pink transition-transform duration-500 group-hover:scale-[1.18]"
+                    />
                   ) : null}
                 </span>
                 <span
@@ -341,17 +344,17 @@ export default function BookPage() {
               <div className="relative flex flex-col items-center gap-8 sm:flex-row">
                 {/* 3D image + halo */}
                 <div className="relative grid shrink-0 place-items-center">
-                  <span className="absolute size-44 rounded-full halo opacity-50" />
+                  <span className="absolute size-64 rounded-full halo opacity-55" />
                   <motion.img
                     src="/svc-cleaning.png"
                     alt="Home Cleaning"
-                    animate={{ y: [0, -10, 0] }}
+                    animate={{ y: [0, -12, 0] }}
                     transition={{
                       duration: 3,
                       repeat: Infinity,
                       ease: "easeInOut",
                     }}
-                    className="relative size-44 object-contain drop-shadow-[0_24px_44px_rgb(124_58_237/0.5)]"
+                    className="relative size-60 object-contain drop-shadow-[0_28px_52px_rgb(124_58_237/0.55)]"
                   />
                 </div>
 
@@ -699,7 +702,7 @@ export default function BookPage() {
                 <img
                   src="/svc-cleaning.png"
                   alt="Home Cleaning"
-                  className="size-12 object-contain"
+                  className="size-16 object-contain drop-shadow-md"
                 />
                 <span className="flex-1">
                   <span className="block text-sm font-bold text-content">
