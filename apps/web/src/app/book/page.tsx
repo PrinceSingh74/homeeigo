@@ -128,13 +128,13 @@ function SectionCard({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-[28px] glass-card p-6 sm:p-7",
+        "relative overflow-hidden rounded-[28px] glass-card p-7 sm:p-9",
         className,
       )}
     >
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-16 sheen"
+        className="pointer-events-none absolute inset-x-0 top-0 h-20 sheen"
       />
       <div className="relative">{children}</div>
     </div>
@@ -175,16 +175,16 @@ export default function BookPage() {
 
       {/* ---------- Sticky header + stepper ---------- */}
       <header className="sticky top-0 z-50 glass dark:glass-dark border-b border-line">
-        <div className="mx-auto flex max-w-content items-center gap-4 px-5 py-4 sm:px-8">
+        <div className="mx-auto flex max-w-content items-center gap-4 px-5 py-5 sm:px-8">
           <Link
             href="/"
             aria-label="Back to home"
-            className="grid size-11 shrink-0 place-items-center rounded-full glass-card text-content transition-transform hover:-translate-x-0.5"
+            className="grid size-12 shrink-0 place-items-center rounded-2xl glass-card text-content transition-transform hover:-translate-x-0.5"
           >
             <ArrowLeft size={20} />
           </Link>
 
-          <h1 className="shrink-0 font-display text-2xl font-bold text-content sm:text-3xl">
+          <h1 className="shrink-0 font-display text-2xl font-bold tracking-tight text-content sm:text-3xl">
             Book a <span className="text-aurora">Service</span>
           </h1>
 
@@ -242,20 +242,20 @@ export default function BookPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-content px-5 pb-16 pt-7 sm:px-8">
+      <main className="mx-auto max-w-content px-5 pb-20 pt-10 sm:px-8">
         {/* ---------- Search + location ---------- */}
         <div className="flex flex-col gap-4 sm:flex-row">
-          <div className="flex h-14 flex-1 items-center gap-3 rounded-2xl glass-card px-5">
-            <Search size={20} className="text-muted" />
+          <div className="flex h-16 flex-1 items-center gap-3 rounded-2xl glass-card px-6">
+            <Search size={22} className="text-muted" />
             <input
               placeholder="Search for a service…"
               aria-label="Search for a service"
-              className="h-full w-full bg-transparent text-[15px] text-content outline-none placeholder:text-muted"
+              className="h-full w-full bg-transparent text-base text-content outline-none placeholder:text-muted"
             />
           </div>
           <button
             type="button"
-            className="flex h-14 items-center justify-center gap-2 rounded-2xl glass-card px-5 text-sm font-semibold text-content"
+            className="flex h-16 items-center justify-center gap-2 rounded-2xl glass-card px-6 text-sm font-semibold text-content"
           >
             <MapPin size={18} className="text-primary" />
             Gurugram, Sector&nbsp;49
@@ -264,7 +264,7 @@ export default function BookPage() {
         </div>
 
         {/* ---------- Service strip ---------- */}
-        <div className="mt-6 flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mt-8 flex gap-4 overflow-x-auto pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {SERVICES.map((s, i) => {
             const active = i === service;
             const Icon = s.icon;
@@ -313,25 +313,26 @@ export default function BookPage() {
           })}
           <button
             type="button"
-            className="flex w-28 shrink-0 flex-col items-center justify-center gap-2 rounded-2xl glass-card p-4 text-content"
+            className="group flex w-32 shrink-0 flex-col items-center justify-center gap-2 rounded-2xl glass-card p-4 text-content transition hover:-translate-y-0.5"
           >
-            <span className="grid size-12 place-items-center rounded-xl bg-primary/10 text-primary">
-              <LayoutGrid size={24} />
+            <span className="grid size-20 place-items-center rounded-2xl bg-primary/10 text-primary transition-transform duration-500 group-hover:scale-110">
+              <LayoutGrid size={34} />
             </span>
             <span className="text-sm font-bold">All Services</span>
+            <span className="text-xs text-muted">Browse all</span>
           </button>
         </div>
 
         {/* ---------- Two-column layout ---------- */}
-        <div className="mt-7 grid gap-6 lg:grid-cols-[1fr_22rem] xl:grid-cols-[1fr_24rem]">
+        <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_23rem] xl:grid-cols-[1fr_26rem]">
           {/* ================= LEFT ================= */}
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-8">
             {/* Service hero */}
             <motion.div
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-              className="relative overflow-hidden rounded-[32px] p-8 text-white shadow-e5 ring-1 ring-white/10 sm:p-10"
+              className="relative overflow-hidden rounded-[36px] p-9 text-white shadow-[0_32px_80px_-20px_rgb(76_29_149/0.6)] ring-1 ring-white/15 sm:p-12"
               style={{
                 background:
                   "linear-gradient(135deg, #1E1B4B 0%, #312E81 55%, #4C1D95 100%)",
@@ -339,7 +340,15 @@ export default function BookPage() {
             >
               <span
                 aria-hidden
-                className="pointer-events-none absolute inset-x-0 top-0 h-2/5 bg-gradient-to-b from-white/10 to-transparent"
+                className="pointer-events-none absolute inset-x-0 top-0 h-2/5 bg-gradient-to-b from-white/12 to-transparent"
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-cyan/20 blur-3xl"
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -bottom-24 right-1/3 size-72 rounded-full bg-pink/15 blur-3xl"
               />
               <div className="relative flex flex-col items-center gap-8 sm:flex-row">
                 {/* 3D image + halo */}
@@ -359,14 +368,14 @@ export default function BookPage() {
                 </div>
 
                 <div className="flex-1 text-center sm:text-left">
-                  <span className="inline-block rounded-full bg-violet px-3 py-1 text-xs font-bold">
+                  <span className="inline-block rounded-full bg-violet px-4 py-1.5 text-xs font-bold uppercase tracking-wider shadow-lg">
                     Best Seller
                   </span>
-                  <h2 className="mt-3 font-display text-4xl font-bold sm:text-5xl">
+                  <h2 className="mt-4 font-display text-4xl font-bold tracking-tight sm:text-6xl">
                     Home Cleaning
                   </h2>
-                  <p className="mt-2 text-white/75">
-                    Professional home cleaning neat, clean &amp; hygienic.
+                  <p className="mt-3 text-base text-white/75 sm:text-lg">
+                    Professional home cleaning — neat, clean &amp; hygienic.
                   </p>
                   <div className="mt-4 flex flex-wrap items-center justify-center gap-4 sm:justify-start">
                     <span className="flex items-center gap-1.5 font-semibold">
@@ -412,15 +421,15 @@ export default function BookPage() {
 
             {/* Package picker */}
             <div>
-              <div className="mb-5 flex items-center gap-3">
-                <h3 className="font-display text-2xl font-bold text-content">
+              <div className="mb-6 flex items-center gap-3">
+                <h3 className="font-display text-3xl font-bold tracking-tight text-content">
                   Choose Your Package
                 </h3>
                 <span className="rounded-full bg-success/15 px-3 py-1 text-xs font-bold text-success">
                   Save More
                 </span>
               </div>
-              <div className="grid gap-5 sm:grid-cols-3">
+              <div className="grid gap-6 sm:grid-cols-3">
                 {PACKAGES.map((p, i) => {
                   const active = i === pkg;
                   return (
@@ -428,27 +437,31 @@ export default function BookPage() {
                       key={p.name}
                       type="button"
                       onClick={() => setPkg(i)}
-                      whileHover={{ y: -6 }}
+                      whileHover={{ y: -8 }}
                       className={cn(
-                        "relative flex flex-col overflow-hidden rounded-[24px] p-6 text-left transition",
+                        "group relative flex flex-col overflow-hidden rounded-[28px] p-7 text-left transition-shadow duration-300",
                         active
-                          ? "glass-card ring-2 ring-primary shadow-glow-blue"
-                          : "glass-card",
+                          ? "glass-card ring-2 ring-primary shadow-[0_24px_56px_-12px_rgb(37_99_235/0.4)]"
+                          : "glass-card hover:shadow-[0_24px_56px_-16px_rgb(15_23_42/0.28)]",
                       )}
                     >
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute inset-x-0 top-0 h-20 sheen"
+                      />
                       {p.popular && (
-                        <span className="absolute right-4 top-4 rounded-full bg-premium px-3 py-1 text-[10px] font-bold text-white">
+                        <span className="absolute right-4 top-4 rounded-full bg-premium px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg">
                           Most Popular
                         </span>
                       )}
-                      <span className="font-display text-xl font-bold text-content">
+                      <span className="relative font-display text-xl font-bold text-content">
                         {p.name}
                       </span>
-                      <span className="text-sm text-muted">{p.tag}</span>
-                      <span className="mt-3 font-display text-4xl font-bold text-content">
+                      <span className="relative text-sm text-muted">{p.tag}</span>
+                      <span className="relative mt-4 font-display text-5xl font-bold text-content">
                         ₹{p.price}
                       </span>
-                      <ul className="mt-4 flex flex-1 flex-col gap-2">
+                      <ul className="relative mt-5 flex flex-1 flex-col gap-2.5">
                         {p.items.map((it) => (
                           <li
                             key={it}
@@ -465,10 +478,10 @@ export default function BookPage() {
                       </ul>
                       <span
                         className={cn(
-                          "mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold transition",
+                          "relative mt-7 inline-flex h-12 items-center justify-center gap-2 rounded-2xl text-sm font-bold transition",
                           active
                             ? "bg-aurora text-white shadow-glow-blue"
-                            : "border border-primary/40 text-primary",
+                            : "border border-primary/40 text-primary group-hover:bg-primary/5",
                         )}
                       >
                         {active ? (
@@ -487,8 +500,8 @@ export default function BookPage() {
 
             {/* Date & time */}
             <SectionCard>
-              <div className="mb-5 flex items-center gap-3">
-                <h3 className="font-display text-2xl font-bold text-content">
+              <div className="mb-6 flex items-center gap-3">
+                <h3 className="font-display text-3xl font-bold tracking-tight text-content">
                   Select Date &amp; Time
                 </h3>
                 <span className="flex items-center gap-1 rounded-full bg-warning/15 px-3 py-1 text-xs font-bold text-warning">
@@ -506,7 +519,7 @@ export default function BookPage() {
                       type="button"
                       onClick={() => setDateIdx(i)}
                       className={cn(
-                        "flex flex-col items-center rounded-2xl py-3 text-sm transition",
+                        "flex flex-col items-center rounded-2xl py-4 text-sm transition",
                         active
                           ? "bg-aurora text-white shadow-glow-blue"
                           : "glass-card text-content hover:-translate-y-0.5",
@@ -532,7 +545,7 @@ export default function BookPage() {
                       type="button"
                       onClick={() => setTimeIdx(i)}
                       className={cn(
-                        "rounded-2xl py-3 text-sm font-semibold transition",
+                        "rounded-2xl py-4 text-sm font-semibold transition",
                         active
                           ? "bg-aurora text-white shadow-glow-blue"
                           : "glass-card text-content hover:-translate-y-0.5",
@@ -564,7 +577,7 @@ export default function BookPage() {
             </SectionCard>
 
             {/* Add-ons + instructions */}
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid gap-8 lg:grid-cols-2">
               <SectionCard>
                 <h3 className="mb-4 font-display text-lg font-bold text-content">
                   Add-ons{" "}
@@ -643,33 +656,39 @@ export default function BookPage() {
           </div>
 
           {/* ================= RIGHT (sidebar) ================= */}
-          <div className="flex flex-col gap-6 lg:sticky lg:top-24 lg:self-start">
+          <div className="flex flex-col gap-8 lg:sticky lg:top-28 lg:self-start">
             {/* AI recommendation */}
-            <div className="relative overflow-hidden rounded-[28px] p-6 ring-1 ring-violet/20"
+            <div className="relative overflow-hidden rounded-[28px] p-7 ring-1 ring-violet/25 shadow-[0_20px_48px_-16px_rgb(124_58_237/0.35)]"
               style={{
                 background:
-                  "linear-gradient(135deg, rgb(124 58 237 / 0.12) 0%, rgb(236 72 153 / 0.08) 100%)",
+                  "linear-gradient(135deg, rgb(124 58 237 / 0.14) 0%, rgb(236 72 153 / 0.1) 100%)",
               }}
             >
-              <div className="flex items-center gap-2">
-                <span className="grid size-8 place-items-center rounded-lg bg-premium text-white">
-                  <Sparkles size={16} />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -right-12 -top-12 size-40 rounded-full bg-premium opacity-20 blur-3xl"
+              />
+              <div className="relative flex items-center gap-2.5">
+                <span className="grid size-9 place-items-center rounded-xl bg-premium text-white shadow-glow-violet">
+                  <Sparkles size={18} />
                 </span>
-                <span className="font-display text-lg font-bold text-content">
+                <span className="font-display text-xl font-bold text-content">
                   AI Recommendation
                 </span>
               </div>
-              <p className="mt-3 text-sm text-muted">
+              <p className="relative mt-3 text-sm text-muted">
                 Based on your home size (2BHK) and cleaning needs
               </p>
-              <div className="mt-4 rounded-2xl glass-card p-4">
+              <div className="relative mt-4 rounded-2xl glass-card p-4">
                 <p className="text-sm text-muted">We recommend</p>
-                <p className="font-display text-lg font-bold text-aurora">
+                <p className="font-display text-xl font-bold text-aurora">
                   Standard Package
                 </p>
               </div>
-              <p className="mt-4 text-sm font-bold text-content">Why?</p>
-              <ul className="mt-2 flex flex-col gap-2">
+              <p className="relative mt-5 text-sm font-bold text-content">
+                Why?
+              </p>
+              <ul className="relative mt-2 flex flex-col gap-2.5">
                 {[
                   "Perfect for 2BHK homes",
                   "Most booked in your area",
@@ -686,15 +705,15 @@ export default function BookPage() {
               </ul>
               <button
                 type="button"
-                className="mt-5 w-full rounded-full glass-card py-2.5 text-sm font-bold text-content"
+                className="relative mt-6 w-full rounded-2xl glass-card py-3 text-sm font-bold text-content transition hover:-translate-y-0.5"
               >
                 Looks good 👍
               </button>
             </div>
 
             {/* Booking summary */}
-            <SectionCard className="p-6">
-              <h3 className="font-display text-xl font-bold text-content">
+            <SectionCard>
+              <h3 className="font-display text-2xl font-bold tracking-tight text-content">
                 Booking Summary
               </h3>
 
@@ -760,11 +779,11 @@ export default function BookPage() {
                 />
               </div>
 
-              <div className="mt-4 flex items-center justify-between border-t border-line pt-4">
+              <div className="mt-5 flex items-center justify-between border-t border-line pt-5">
                 <span className="font-display text-lg font-bold text-content">
                   Total Payable
                 </span>
-                <span className="font-display text-2xl font-bold text-aurora">
+                <span className="font-display text-3xl font-bold text-aurora">
                   ₹{total}
                 </span>
               </div>
@@ -783,9 +802,9 @@ export default function BookPage() {
 
               <motion.button
                 type="button"
-                whileHover={{ y: -2 }}
+                whileHover={{ y: -3 }}
                 whileTap={{ scale: 0.98 }}
-                className="mt-4 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-premium text-base font-bold text-white shadow-glow-violet"
+                className="mt-5 flex h-16 w-full items-center justify-center gap-2.5 rounded-2xl bg-premium text-base font-bold text-white shadow-[0_18px_40px_-10px_rgb(124_58_237/0.55)]"
               >
                 <Lock size={18} />
                 Confirm Booking Securely
@@ -799,7 +818,7 @@ export default function BookPage() {
         </div>
 
         {/* ---------- Trust bar ---------- */}
-        <div className="mt-10 flex flex-col items-center justify-between gap-6 rounded-[28px] glass-card px-8 py-6 lg:flex-row">
+        <div className="mt-12 flex flex-col items-center justify-between gap-8 rounded-[28px] glass-card px-10 py-8 lg:flex-row">
           <div className="flex flex-wrap items-center justify-center gap-8">
             {TRUST.map((t) => {
               const Icon = t.icon;
