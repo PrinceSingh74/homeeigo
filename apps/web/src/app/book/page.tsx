@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -32,13 +32,124 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 const STEPS = ["Service", "Package", "Schedule", "Payment"];
 
-const SERVICES = [
-  { img: "/svc-cleaning.png", name: "Cleaning", price: "₹199", color: "#7C3AED" },
-  { img: "/svc-ac.png", name: "AC Service", price: "₹299", color: "#06B6D4" },
-  { img: "/svc-plumbing.png", name: "Plumbing", price: "₹249", color: "#3B82F6" },
-  { img: "/svc-electrician.png", name: "Electrician", price: "₹199", color: "#F59E0B" },
-  { img: "/svc-pest.png", name: "Pest Control", price: "₹299", color: "#10B981" },
-  { icon: Scissors, name: "Salon", price: "₹199", color: "#EC4899" },
+type Pkg = {
+  name: string;
+  tag: string;
+  price: number;
+  popular?: boolean;
+  items: string[];
+};
+type Service = {
+  name: string;
+  img?: string;
+  icon?: LucideIcon;
+  price: string;
+  color: string;
+  title: string;
+  tagline: string;
+  rating: string;
+  reviews: string;
+  homes: string;
+  packages: Pkg[];
+};
+
+const SERVICES: Service[] = [
+  {
+    name: "Cleaning",
+    img: "/svc-cleaning.png",
+    price: "₹199",
+    color: "#7C3AED",
+    title: "Home Cleaning",
+    tagline: "Professional home cleaning — neat, clean & hygienic.",
+    rating: "4.8",
+    reviews: "12.5k",
+    homes: "12K+ homes cleaned",
+    packages: [
+      { name: "Basic", tag: "Essential Cleaning", price: 199, items: ["1 Bedroom", "1 Bathroom", "Kitchen Cleaning", "Floor Cleaning"] },
+      { name: "Standard", tag: "Deep Cleaning", price: 299, popular: true, items: ["2 Bedroom", "2 Bathroom", "Kitchen Cleaning", "Dusting & Wiping", "Floor Cleaning"] },
+      { name: "Premium", tag: "Full Home Cleaning", price: 499, items: ["3 Bedroom", "3 Bathroom", "Kitchen Cleaning", "Deep Cleaning", "Balcony Cleaning", "Windows Cleaning"] },
+    ],
+  },
+  {
+    name: "AC Service",
+    img: "/svc-ac.png",
+    price: "₹299",
+    color: "#06B6D4",
+    title: "AC Service & Repair",
+    tagline: "Cooling care by certified AC technicians.",
+    rating: "4.9",
+    reviews: "9.2k",
+    homes: "8K+ ACs serviced",
+    packages: [
+      { name: "Basic", tag: "AC Cleaning", price: 299, items: ["1 AC Unit", "Filter Cleaning", "Cooling Check", "Basic Servicing"] },
+      { name: "Standard", tag: "Deep Service", price: 499, popular: true, items: ["2 AC Units", "Deep Coil Cleaning", "Gas Pressure Check", "Filter + Drain Clean"] },
+      { name: "Premium", tag: "Full AC Care", price: 899, items: ["3 AC Units", "Full Chemical Wash", "Gas Top-up", "1 Year Warranty", "Priority Support"] },
+    ],
+  },
+  {
+    name: "Plumbing",
+    img: "/svc-plumbing.png",
+    price: "₹249",
+    color: "#3B82F6",
+    title: "Plumbing Services",
+    tagline: "Leak-free homes by expert plumbers.",
+    rating: "4.7",
+    reviews: "7.8k",
+    homes: "10K+ jobs done",
+    packages: [
+      { name: "Basic", tag: "Quick Fix", price: 249, items: ["1 Tap / Faucet", "Leak Inspection", "Minor Repair", "30-day Warranty"] },
+      { name: "Standard", tag: "Full Repair", price: 449, popular: true, items: ["Up to 3 Fixtures", "Pipe Leak Repair", "Drain Cleaning", "60-day Warranty"] },
+      { name: "Premium", tag: "Home Plumbing", price: 799, items: ["Whole-home Check", "Pipe Replacement", "Tank Cleaning", "90-day Warranty", "Priority Support"] },
+    ],
+  },
+  {
+    name: "Electrician",
+    img: "/svc-electrician.png",
+    price: "₹199",
+    color: "#F59E0B",
+    title: "Electrician Services",
+    tagline: "Safe wiring & repairs by certified electricians.",
+    rating: "4.8",
+    reviews: "6.4k",
+    homes: "9K+ homes wired",
+    packages: [
+      { name: "Basic", tag: "Quick Fix", price: 199, items: ["1 Switch / Socket", "Fault Inspection", "Minor Repair", "30-day Warranty"] },
+      { name: "Standard", tag: "Full Repair", price: 399, popular: true, items: ["Up to 4 Points", "Wiring Check", "Fan / Light Install", "60-day Warranty"] },
+      { name: "Premium", tag: "Home Electrical", price: 749, items: ["Full Home Audit", "MCB / Panel Work", "New Wiring", "90-day Warranty", "Priority Support"] },
+    ],
+  },
+  {
+    name: "Pest Control",
+    img: "/svc-pest.png",
+    price: "₹299",
+    color: "#10B981",
+    title: "Pest Control",
+    tagline: "Pest-free homes with eco-safe treatment.",
+    rating: "4.9",
+    reviews: "5.6k",
+    homes: "7K+ homes treated",
+    packages: [
+      { name: "Basic", tag: "Single Treatment", price: 299, items: ["1 BHK", "Cockroach + Ant", "Eco-safe Spray", "15-day Warranty"] },
+      { name: "Standard", tag: "Full Home", price: 549, popular: true, items: ["2 BHK", "All Common Pests", "Gel + Spray", "45-day Warranty"] },
+      { name: "Premium", tag: "Annual Shield", price: 1299, items: ["3 BHK", "Termite + Rodent", "4 Visits / Year", "1 Year Warranty", "Priority Support"] },
+    ],
+  },
+  {
+    name: "Salon",
+    icon: Scissors,
+    price: "₹199",
+    color: "#EC4899",
+    title: "Salon at Home",
+    tagline: "Premium salon services at your doorstep.",
+    rating: "4.9",
+    reviews: "11.3k",
+    homes: "15K+ appointments",
+    packages: [
+      { name: "Basic", tag: "Essentials", price: 199, items: ["Haircut", "Threading", "Basic Cleanup", "Hygienic Tools"] },
+      { name: "Standard", tag: "Glow Package", price: 499, popular: true, items: ["Haircut + Style", "Facial", "Manicure", "Premium Products"] },
+      { name: "Premium", tag: "Luxury Spa", price: 999, items: ["Hair Spa", "Gold Facial", "Mani + Pedi", "Body Massage", "Priority Stylist"] },
+    ],
+  },
 ];
 
 const HERO_FEATURES: { icon: LucideIcon; label: string }[] = [
@@ -46,41 +157,6 @@ const HERO_FEATURES: { icon: LucideIcon; label: string }[] = [
   { icon: Leaf, label: "Eco Friendly\nProducts" },
   { icon: BadgeCheck, label: "Satisfaction\nGuarantee" },
   { icon: Clock, label: "On-time\nService" },
-];
-
-const PACKAGES = [
-  {
-    name: "Basic",
-    tag: "Essential Cleaning",
-    price: 199,
-    items: ["1 Bedroom", "1 Bathroom", "Kitchen Cleaning", "Floor Cleaning"],
-  },
-  {
-    name: "Standard",
-    tag: "Deep Cleaning",
-    price: 299,
-    popular: true,
-    items: [
-      "2 Bedroom",
-      "2 Bathroom",
-      "Kitchen Cleaning",
-      "Dusting & Wiping",
-      "Floor Cleaning",
-    ],
-  },
-  {
-    name: "Premium",
-    tag: "Full Home Cleaning",
-    price: 499,
-    items: [
-      "3 Bedroom",
-      "3 Bathroom",
-      "Kitchen Cleaning",
-      "Deep Cleaning",
-      "Balcony Cleaning",
-      "Windows Cleaning",
-    ],
-  },
 ];
 
 const DATES = [
@@ -142,12 +218,36 @@ function SectionCard({
 
 /* ----------------------------- page ----------------------------- */
 
+const POPULAR_IDX = (s: Service) => {
+  const p = s.packages.findIndex((x) => x.popular);
+  return p === -1 ? 0 : p;
+};
+
 export default function BookPage() {
   const [service, setService] = useState(0);
-  const [pkg, setPkg] = useState(1);
+  const [pkg, setPkg] = useState(() => POPULAR_IDX(SERVICES[0]));
   const [dateIdx, setDateIdx] = useState(1);
   const [timeIdx, setTimeIdx] = useState(1);
   const [addons, setAddons] = useState<Set<number>>(new Set());
+  const [instructions, setInstructions] = useState("");
+  const [address, setAddress] = useState({
+    line1: "Gurugram, Sector 49",
+    line2: "Haryana, 122018",
+  });
+  const [editingAddr, setEditingAddr] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+
+  const dateRef = useRef<HTMLDivElement>(null);
+  const instrRef = useRef<HTMLTextAreaElement>(null);
+
+  const svc = SERVICES[service];
+  const SvcIcon = svc.icon;
+
+  const selectService = (i: number) => {
+    setService(i);
+    setPkg(POPULAR_IDX(SERVICES[i]));
+    setAddons(new Set());
+  };
 
   const toggleAddon = (i: number) =>
     setAddons((prev) => {
@@ -157,7 +257,11 @@ export default function BookPage() {
       return next;
     });
 
-  const selected = PACKAGES[pkg];
+  const scrollTo = (el: HTMLElement | null) => {
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const selected = svc.packages[pkg] ?? svc.packages[0];
   const addonTotal = useMemo(
     () => [...addons].reduce((s, i) => s + ADDONS[i].price, 0),
     [addons],
@@ -271,7 +375,7 @@ export default function BookPage() {
               <motion.button
                 key={s.name}
                 type="button"
-                onClick={() => setService(i)}
+                onClick={() => selectService(i)}
                 whileHover={{ y: -8 }}
                 whileTap={{ scale: 0.97 }}
                 className={cn(
@@ -375,17 +479,32 @@ export default function BookPage() {
                 {/* 3D image + halo */}
                 <div className="relative grid shrink-0 place-items-center">
                   <span className="absolute size-64 rounded-full halo opacity-55" />
-                  <motion.img
-                    src="/svc-cleaning.png"
-                    alt="Home Cleaning"
-                    animate={{ y: [0, -12, 0] }}
-                    transition={{
-                      duration: 3,
-                      repeat: Infinity,
-                      ease: "easeInOut",
-                    }}
-                    className="relative size-60 object-contain drop-shadow-[0_28px_52px_rgb(124_58_237/0.55)]"
-                  />
+                  {svc.img ? (
+                    <motion.img
+                      key={svc.img}
+                      src={svc.img}
+                      alt={svc.title}
+                      animate={{ y: [0, -12, 0] }}
+                      transition={{
+                        duration: 3,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                      }}
+                      className="relative size-60 object-contain drop-shadow-[0_28px_52px_rgb(124_58_237/0.55)]"
+                    />
+                  ) : SvcIcon ? (
+                    <motion.div
+                      animate={{ y: [0, -12, 0] }}
+                      transition={{
+                        duration: 3,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                      }}
+                      className="relative grid size-60 place-items-center"
+                    >
+                      <SvcIcon size={120} className="text-white" />
+                    </motion.div>
+                  ) : null}
                 </div>
 
                 <div className="flex-1 text-center sm:text-left">
@@ -393,17 +512,17 @@ export default function BookPage() {
                     Best Seller
                   </span>
                   <h2 className="mt-4 font-display text-4xl font-bold tracking-tight sm:text-6xl">
-                    Home Cleaning
+                    {svc.title}
                   </h2>
                   <p className="mt-3 text-base text-white/75 sm:text-lg">
-                    Professional home cleaning — neat, clean &amp; hygienic.
+                    {svc.tagline}
                   </p>
                   <div className="mt-4 flex flex-wrap items-center justify-center gap-4 sm:justify-start">
                     <span className="flex items-center gap-1.5 font-semibold">
                       <Star size={18} className="fill-gold text-gold" />
-                      4.8
+                      {svc.rating}
                       <span className="font-normal text-white/60">
-                        (12.5k reviews)
+                        ({svc.reviews} reviews)
                       </span>
                     </span>
                     <span className="flex items-center gap-2 text-sm text-white/75">
@@ -415,7 +534,7 @@ export default function BookPage() {
                           />
                         ))}
                       </span>
-                      12K+ homes cleaned
+                      {svc.homes}
                     </span>
                   </div>
                 </div>
@@ -451,7 +570,7 @@ export default function BookPage() {
                 </span>
               </div>
               <div className="grid gap-6 sm:grid-cols-3">
-                {PACKAGES.map((p, i) => {
+                {svc.packages.map((p, i) => {
                   const active = i === pkg;
                   return (
                     <motion.button
@@ -520,6 +639,7 @@ export default function BookPage() {
             </div>
 
             {/* Date & time */}
+            <div ref={dateRef} className="scroll-mt-28">
             <SectionCard>
               <div className="mb-6 flex items-center gap-3">
                 <h3 className="font-display text-3xl font-bold tracking-tight text-content">
@@ -596,6 +716,7 @@ export default function BookPage() {
                 </span>
               </div>
             </SectionCard>
+            </div>
 
             {/* Add-ons + instructions */}
             <div className="grid gap-8 lg:grid-cols-2">
@@ -648,10 +769,16 @@ export default function BookPage() {
                   Special Instructions
                 </h3>
                 <textarea
+                  ref={instrRef}
+                  value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
                   maxLength={250}
                   placeholder="Any specific instructions for your professional…"
-                  className="h-28 w-full resize-none rounded-2xl border border-line bg-surface/60 p-4 text-sm text-content outline-none placeholder:text-muted focus:border-primary/40"
+                  className="h-28 w-full resize-none scroll-mt-28 rounded-2xl border border-line bg-surface/60 p-4 text-sm text-content outline-none placeholder:text-muted focus:border-primary/40"
                 />
+                <p className="mt-1 text-right text-xs text-muted">
+                  {instructions.length}/250
+                </p>
                 <div className="mt-4 flex items-center justify-around text-center text-xs text-muted">
                   <span>
                     <span className="block text-sm font-bold text-content">
@@ -739,14 +866,20 @@ export default function BookPage() {
               </h3>
 
               <div className="mt-4 flex items-center gap-3 rounded-2xl glass-card p-3">
-                <img
-                  src="/svc-cleaning.png"
-                  alt="Home Cleaning"
-                  className="size-16 object-contain drop-shadow-md"
-                />
+                {svc.img ? (
+                  <img
+                    src={svc.img}
+                    alt={svc.title}
+                    className="size-16 object-contain drop-shadow-md"
+                  />
+                ) : SvcIcon ? (
+                  <span className="grid size-16 place-items-center">
+                    <SvcIcon size={36} style={{ color: svc.color }} />
+                  </span>
+                ) : null}
                 <span className="flex-1">
                   <span className="block text-sm font-bold text-content">
-                    Home Cleaning
+                    {svc.title}
                   </span>
                   <span className="block text-xs text-muted">
                     {selected.name} Package
@@ -757,37 +890,84 @@ export default function BookPage() {
                 </span>
               </div>
 
-              {[
-                {
-                  label: "Date & Time",
-                  value: `${DATES[dateIdx].d}, ${DATES[dateIdx].n} 2024\n${TIMES[timeIdx]} – 01:00 PM`,
-                },
-                {
-                  label: "Address",
-                  value: "Gurugram, Sector 49\nHaryana, 122018",
-                },
-                { label: "Instructions", value: "None" },
-              ].map((r) => (
-                <div
-                  key={r.label}
-                  className="mt-4 flex items-start justify-between gap-3 border-t border-line pt-4"
-                >
-                  <span>
-                    <span className="block text-sm font-bold text-content">
-                      {r.label}
-                    </span>
-                    <span className="block whitespace-pre-line text-xs text-muted">
-                      {r.value}
-                    </span>
+              {/* Date & Time */}
+              <div className="mt-4 flex items-start justify-between gap-3 border-t border-line pt-4">
+                <span>
+                  <span className="block text-sm font-bold text-content">
+                    Date &amp; Time
                   </span>
+                  <span className="block whitespace-pre-line text-xs text-muted">
+                    {`${DATES[dateIdx].d}, ${DATES[dateIdx].n} 2024\n${TIMES[timeIdx]} – ${TIMES[(timeIdx + 1) % TIMES.length]}`}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => scrollTo(dateRef.current)}
+                  className="text-xs font-bold text-primary hover:underline"
+                >
+                  Edit
+                </button>
+              </div>
+
+              {/* Address */}
+              <div className="mt-4 border-t border-line pt-4">
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-sm font-bold text-content">Address</span>
                   <button
                     type="button"
-                    className="text-xs font-bold text-primary"
+                    onClick={() => setEditingAddr((v) => !v)}
+                    className="text-xs font-bold text-primary hover:underline"
                   >
-                    Edit
+                    {editingAddr ? "Save" : "Edit"}
                   </button>
                 </div>
-              ))}
+                {editingAddr ? (
+                  <div className="mt-2 flex flex-col gap-2">
+                    <input
+                      value={address.line1}
+                      onChange={(e) =>
+                        setAddress((a) => ({ ...a, line1: e.target.value }))
+                      }
+                      placeholder="Address line 1"
+                      className="w-full rounded-xl border border-line bg-surface/60 px-3 py-2 text-xs text-content outline-none focus:border-primary/40"
+                    />
+                    <input
+                      value={address.line2}
+                      onChange={(e) =>
+                        setAddress((a) => ({ ...a, line2: e.target.value }))
+                      }
+                      placeholder="City, PIN"
+                      className="w-full rounded-xl border border-line bg-surface/60 px-3 py-2 text-xs text-content outline-none focus:border-primary/40"
+                    />
+                  </div>
+                ) : (
+                  <span className="mt-1 block whitespace-pre-line text-xs text-muted">
+                    {`${address.line1}\n${address.line2}`}
+                  </span>
+                )}
+              </div>
+
+              {/* Instructions */}
+              <div className="mt-4 flex items-start justify-between gap-3 border-t border-line pt-4">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-content">
+                    Instructions
+                  </span>
+                  <span className="block break-words text-xs text-muted">
+                    {instructions.trim() || "None"}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    scrollTo(instrRef.current);
+                    setTimeout(() => instrRef.current?.focus(), 400);
+                  }}
+                  className="shrink-0 text-xs font-bold text-primary hover:underline"
+                >
+                  Edit
+                </button>
+              </div>
 
               <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4 text-sm">
                 <Row label="Package Price" value={`₹${subtotal}.00`} />
@@ -823,6 +1003,10 @@ export default function BookPage() {
 
               <motion.button
                 type="button"
+                onClick={() => {
+                  setConfirmed(true);
+                  setTimeout(() => setConfirmed(false), 4000);
+                }}
                 whileHover={{ y: -3 }}
                 whileTap={{ scale: 0.98 }}
                 className="mt-5 flex h-16 w-full items-center justify-center gap-2.5 rounded-2xl bg-premium text-base font-bold text-white shadow-[0_18px_40px_-10px_rgb(124_58_237/0.55)]"
@@ -874,6 +1058,29 @@ export default function BookPage() {
           </div>
         </div>
       </main>
+
+      {/* Confirmation toast */}
+      {confirmed && (
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="fixed bottom-8 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-3 rounded-2xl bg-premium px-6 py-4 text-white shadow-[0_18px_44px_-10px_rgb(124_58_237/0.6)]"
+          role="status"
+        >
+          <span className="grid size-8 place-items-center rounded-full bg-white/20">
+            <Check size={18} strokeWidth={3} />
+          </span>
+          <span>
+            <span className="block text-sm font-bold">
+              {svc.title} booked — {selected.name} Package
+            </span>
+            <span className="block text-xs text-white/80">
+              {DATES[dateIdx].d}, {DATES[dateIdx].n} · {TIMES[timeIdx]} · ₹
+              {total} payable
+            </span>
+          </span>
+        </motion.div>
+      )}
     </>
   );
 }
