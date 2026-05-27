@@ -13,10 +13,12 @@ import Animated, {
 } from "react-native-reanimated";
 import { Search, Mic, SlidersHorizontal } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
+import { useAppNavigation } from "@/hooks/useAppNavigation";
 import { shadowStyles } from "@/lib/colors";
 
 export const SearchBar: React.FC = () => {
   const { colors: themeColors } = useTheme();
+  const { bookFromSearch, goAi, goServices } = useAppNavigation();
   const [text, setText] = useState("");
 
   const focusGlow = useSharedValue(0);
@@ -35,6 +37,11 @@ export const SearchBar: React.FC = () => {
     setTimeout(() => {
       micScale.value = withTiming(1, { duration: 100, easing: Easing.inOut(Easing.ease) });
     }, 80);
+    goAi();
+  };
+
+  const handleSearch = () => {
+    bookFromSearch(text || "cleaning");
   };
 
   const focusGlowStyle = useAnimatedStyle(() => ({
@@ -76,6 +83,8 @@ export const SearchBar: React.FC = () => {
           onChangeText={setText}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          returnKeyType="search"
+          onSubmitEditing={handleSearch}
         />
 
         <Animated.View
@@ -92,6 +101,7 @@ export const SearchBar: React.FC = () => {
 
       {/* Filter Button */}
       <TouchableOpacity
+        onPress={goServices}
         style={[
           styles.filterButton,
           {

@@ -3,17 +3,13 @@
 import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 import { Sparkles, ArrowRight, Play, ShieldCheck, Star } from "lucide-react";
-import { Button } from "@/components/buttons/Button";
+import { ButtonLink } from "@/components/buttons/ButtonLink";
 import { Badge } from "@/components/Badge";
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
-  show: (d: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.55, delay: d, ease: [0.22, 1, 0.36, 1] },
-  }),
-};
+import { bookUrl } from "@/lib/booking-url";
+import { fadeUpShow } from "@/lib/animations";
+import { heroTitle, pageMax, pagePadX, sectionSubtitle } from "@/lib/page-layout";
+import { useAppStore } from "@/stores/app-store";
+import { cn } from "@/lib/utils";
 
 const PARTICLES = [
   { x: "12%", y: "22%", s: 6, d: 0 },
@@ -27,21 +23,35 @@ const PARTICLES = [
 
 export function HeroSection() {
   const reduce = useReducedMotion();
+  const openOverlay = useAppStore((s) => s.openOverlay);
 
   return (
-    <section className="relative flex min-h-[85vh] items-center overflow-hidden px-5 py-16 sm:px-8 lg:min-h-[90vh] lg:py-20">
-      {/* ---- Aurora background (CSS + Framer fallback for 3D) ---- */}
+    <section
+      className={cn(
+        pagePadX,
+        "relative flex min-h-[min(85vh,900px)] items-center overflow-hidden py-12 sm:py-16 lg:min-h-[90vh] lg:py-20",
+      )}
+    >
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute inset-0 bg-[radial-gradient(60%_60%_at_70%_30%,rgb(37_99_235/0.10),transparent_70%)]" />
+        <motion.div className="absolute inset-0 bg-[radial-gradient(60%_60%_at_70%_30%,rgb(37_99_235/0.10),transparent_70%)]" />
         <div className="absolute -right-24 -top-24 size-136 rounded-full bg-aurora opacity-25 blur-3xl animate-aurora dark:opacity-30" />
         <div className="absolute -bottom-32 left-1/4 size-120 rounded-full bg-premium opacity-20 blur-3xl animate-[aurora_22s_ease-in-out_infinite] dark:opacity-25" />
         <div className="absolute right-1/4 top-1/3 size-88 rounded-full bg-[conic-gradient(from_180deg,#06b6d4,#7c3aed,#2563eb,#06b6d4)] opacity-10 blur-3xl animate-[float_10s_ease-in-out_infinite]" />
       </div>
 
-      <div className="mx-auto grid w-full max-w-content items-center gap-12 lg:grid-cols-[45%_55%]">
-        {/* ---- Left content ---- */}
-        <div className="max-w-xl">
-          <motion.div variants={fadeUp} custom={0} initial="hidden" animate="show">
+      <div
+        className={cn(
+          pageMax,
+          "grid w-full grid-cols-1 items-center gap-8 sm:gap-10 lg:grid-cols-2 lg:gap-12",
+        )}
+      >
+        <div className="w-full min-w-0 lg:max-w-xl">
+          <motion.div
+            variants={fadeUpShow}
+            custom={0}
+            initial={false}
+            animate="show"
+          >
             <Badge variant="ai">
               <Sparkles size={14} />
               AI-Powered Home Services
@@ -49,52 +59,55 @@ export function HeroSection() {
           </motion.div>
 
           <motion.h1
-            variants={fadeUp}
+            variants={fadeUpShow}
             custom={0.1}
-            initial="hidden"
+            initial={false}
             animate="show"
-            className="mt-5 font-display font-bold leading-[1.08] tracking-tight text-content"
-            style={{ fontSize: "clamp(2.5rem,6vw,4rem)" }}
+            className={cn(heroTitle, "mt-5")}
           >
             The Future of <br />
             <span className="text-aurora">Home Services.</span>
           </motion.h1>
 
           <motion.p
-            variants={fadeUp}
+            variants={fadeUpShow}
             custom={0.2}
-            initial="hidden"
+            initial={false}
             animate="show"
-            className="mt-5 max-w-md text-lg leading-relaxed text-muted"
+            className={cn(sectionSubtitle, "mt-5 w-full max-w-md")}
           >
             Smart. Fast. Reliable. Book verified professionals in under 60
             seconds with real-time tracking and AI-matched experts.
           </motion.p>
 
           <motion.div
-            variants={fadeUp}
+            variants={fadeUpShow}
             custom={0.3}
-            initial="hidden"
+            initial={false}
             animate="show"
             className="mt-8 flex flex-wrap gap-3"
           >
-            <Button variant="primary" className="group">
+            <ButtonLink href={bookUrl()} variant="primary" className="group">
               Book a Service
               <ArrowRight
                 size={20}
                 className="transition-transform group-hover:translate-x-1"
               />
-            </Button>
-            <Button variant="glass" className="group">
-              <Play size={18} className="transition-transform group-hover:scale-110" />
+            </ButtonLink>
+            <button
+              type="button"
+              onClick={() => openOverlay("how-it-works")}
+              className="relative inline-flex h-14 items-center justify-center gap-2 rounded-xl border border-line/60 bg-surface/80 px-7 text-base font-semibold text-primary shadow-e2 transition hover:-translate-y-1 hover:border-primary/30"
+            >
+              <Play size={18} />
               See How It Works
-            </Button>
+            </button>
           </motion.div>
 
           <motion.div
-            variants={fadeUp}
+            variants={fadeUpShow}
             custom={0.45}
-            initial="hidden"
+            initial={false}
             animate="show"
             className="mt-10 flex flex-wrap items-center gap-x-7 gap-y-3 text-sm text-muted"
           >
@@ -109,12 +122,28 @@ export function HeroSection() {
           </motion.div>
         </div>
 
-        {/* ---- Right visual: aurora glass scene (3D fallback) ---- */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.92 }}
+          initial={reduce ? false : { opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+          className="relative mx-auto w-full max-w-md lg:hidden"
+        >
+          <Image
+            src="/hero-villa.webp"
+            alt="HOMIGO AI-connected smart home"
+            width={768}
+            height={512}
+            sizes="(max-width: 1023px) 90vw, 0px"
+            priority
+            className="h-auto w-full object-contain drop-shadow-[0_24px_48px_rgb(124_58_237/0.28)]"
+          />
+        </motion.div>
+
+        <motion.div
+          initial={reduce ? false : { opacity: 0, scale: 0.92 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.8, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
-          className="relative hidden h-128 lg:block xl:h-144"
+          className="relative hidden min-h-[20rem] w-full lg:block lg:min-h-[var(--homigo-hero-h)] xl:min-h-[var(--homigo-hero-h-xl)]"
         >
           <div className="absolute inset-0 grid place-items-center">
             <motion.div
@@ -127,26 +156,44 @@ export function HeroSection() {
                 alt="HOMIGO AI-connected smart home"
                 width={1536}
                 height={1024}
+                sizes="(min-width: 1280px) 768px, (min-width: 1024px) 640px, 0px"
                 priority
                 className="h-auto w-full object-contain drop-shadow-[0_40px_90px_rgb(124_58_237/0.38)]"
               />
 
-              <div className="absolute -right-2 top-8 rounded-2xl bg-surface px-4 py-3 shadow-e4 border border-line">
+              <button
+                type="button"
+                onClick={() => {
+                  document
+                    .getElementById("tracking")
+                    ?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="absolute -right-2 top-8 rounded-2xl border border-line bg-surface px-4 py-3 text-left shadow-e4 transition hover:-translate-y-0.5"
+              >
                 <p className="text-[11px] font-medium text-muted">Arriving in</p>
                 <p className="font-display text-lg font-bold text-aurora">
                   12 min
                 </p>
-              </div>
-              <div className="absolute -bottom-2 -left-2 rounded-2xl bg-surface px-4 py-3 shadow-e4 border border-line">
-                <p className="text-[11px] font-medium text-muted">Live tracking</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  document
+                    .getElementById("tracking")
+                    ?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="absolute -bottom-2 -left-2 rounded-2xl border border-line bg-surface px-4 py-3 text-left shadow-e4 transition hover:-translate-y-0.5"
+              >
+                <p className="text-[11px] font-medium text-muted">
+                  Live tracking
+                </p>
                 <p className="font-display text-sm font-bold text-success">
                   ● On the way
                 </p>
-              </div>
+              </button>
             </motion.div>
           </div>
 
-          {/* Floating particles */}
           {!reduce &&
             PARTICLES.map((p, i) => (
               <motion.span

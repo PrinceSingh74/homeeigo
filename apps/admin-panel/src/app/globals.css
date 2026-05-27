@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/* HOMIGO Business Command Center — NOT partner, NOT customer */
+
+@theme {
+  --color-biz-bg: #09090b;
+  --color-biz-surface: #18181b;
+  --color-biz-elevated: #27272a;
+  --color-biz-accent: #f59e0b;
+  --color-biz-accent-dim: rgb(245 158 11 / 0.15);
+  --color-biz-success: #10b981;
+  --color-biz-danger: #ef4444;
+  --color-biz-text: #fafafa;
+  --color-biz-muted: #a1a1aa;
+  --color-biz-line: rgb(63 63 70 / 0.8);
+}
+
+body {
+  background: var(--color-biz-bg);
+  color: var(--color-biz-text);
+  min-height: 100dvh;
+}
+
+.biz-card {
+  background: var(--color-biz-surface);
+  border: 1px solid var(--color-biz-line);
+  border-radius: 12px;
+}
+
+.biz-sidebar {
+  background: var(--color-biz-surface);
+  border-right: 1px solid var(--color-biz-line);
+}

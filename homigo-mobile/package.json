@@ -13,6 +13,9 @@
     "build:android": "eas build --platform android"
   },
   "dependencies": {
+    "@expo-google-fonts/poppins": "^0.4.1",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-masked-view/masked-view": "0.3.2",
     "@react-navigation/bottom-tabs": "^7.0.0",
     "@react-navigation/native": "^7.0.0",
@@ -50,8 +53,8 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~19.1.0",
-    "typescript": "~5.9.2",
-    "prettier": "^3.4.0"
+    "prettier": "^3.4.0",
+    "typescript": "~5.9.2"
   },
   "private": true
 }

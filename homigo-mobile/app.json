@@ -19,7 +19,8 @@
       "bundleIdentifier": "com.homigo.mobile"
     },
     "android": {
-      "package": "com.homigo.mobile"
+      "package": "com.homigo.mobile",
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "bundler": "metro",
@@ -32,7 +33,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Allow HOMIGO to access your location."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }

@@ -10,8 +10,10 @@ import {
   Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
 import { ArrowRight, Sparkles } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
+import { openBook } from "@/lib/navigation";
 import { shadowStyles } from "@/lib/colors";
 
 const WALLET_IMG = require("../../assets/wallet-3d.png");
@@ -67,6 +69,7 @@ function Waveform() {
 }
 
 export const FeatureBanner: React.FC = () => {
+  const router = useRouter();
   const { colors: themeColors } = useTheme();
   const float = useRef(new Animated.Value(0)).current;
   const trail = useRef(new Animated.Value(0)).current;
@@ -117,7 +120,7 @@ export const FeatureBanner: React.FC = () => {
             Instant booking. Real-time tracking. Lightning fast service.
           </Text>
 
-          <Pressable style={styles.bookBtn}>
+          <Pressable style={styles.bookBtn} onPress={() => openBook(router)}>
             <Text style={styles.bookText}>Book Now</Text>
             <ArrowRight size={13} color="#1E1B4B" />
           </Pressable>

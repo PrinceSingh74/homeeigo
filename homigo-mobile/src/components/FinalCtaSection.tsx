@@ -10,8 +10,10 @@ import Animated, {
   withTiming,
   Easing,
 } from "react-native-reanimated";
+import { useRouter } from "expo-router";
 import { ArrowRight } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
+import { openBook } from "@/lib/navigation";
 import { shadowStyles } from "@/lib/colors";
 
 function MascotOrbit() {
@@ -51,6 +53,7 @@ function MascotOrbit() {
 }
 
 export const FinalCtaSection: React.FC = () => {
+  const router = useRouter();
   const { colors: themeColors, isDark } = useTheme();
 
   return (
@@ -79,7 +82,7 @@ export const FinalCtaSection: React.FC = () => {
             Book premium AI-powered home services instantly.
           </Text>
 
-          <Pressable>
+          <Pressable onPress={() => openBook(router)}>
             <LinearGradient
               colors={["#2563EB", "#7C3AED"]}
               start={{ x: 0, y: 0 }}

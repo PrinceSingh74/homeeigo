@@ -8,45 +8,18 @@ import {
   Image,
   Dimensions,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { Star } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
+import { RECOMMENDED } from "@/lib/services";
+import { openBook } from "@/lib/navigation";
 
 const { width } = Dimensions.get("window");
 const CARD_W = width * 0.44;
 
-const ITEMS = [
-  {
-    id: 1,
-    title: "Sofa Deep Clean",
-    price: "₹699",
-    rating: "4.9",
-    img: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&q=70",
-  },
-  {
-    id: 2,
-    title: "AC Gas Refill",
-    price: "₹1,299",
-    rating: "4.8",
-    img: "https://images.unsplash.com/photo-1635048424329-a9bfb146d7aa?w=400&q=70",
-  },
-  {
-    id: 3,
-    title: "Kitchen Cleaning",
-    price: "₹499",
-    rating: "4.7",
-    img: "https://images.unsplash.com/photo-1556911220-bff31c812dba?w=400&q=70",
-  },
-  {
-    id: 4,
-    title: "Bathroom Cleaning",
-    price: "₹599",
-    rating: "4.8",
-    img: "https://images.unsplash.com/photo-1620626011761-996317b8d101?w=400&q=70",
-  },
-];
-
 export const RecommendedSection: React.FC = () => {
+  const router = useRouter();
   const { colors: themeColors } = useTheme();
 
   return (
@@ -55,27 +28,32 @@ export const RecommendedSection: React.FC = () => {
         <Text style={[styles.title, { color: themeColors.text }]}>
           Recommended for You
         </Text>
-        <Text style={[styles.seeAll, { color: themeColors.primary }]}>
-          See all
-        </Text>
+        <Pressable onPress={() => openBook(router)}>
+          <Text style={[styles.seeAll, { color: themeColors.primary }]}>
+            See all
+          </Text>
+        </Pressable>
       </View>
-
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.list}
-        decelerationRate="fast"
-        snapToInterval={CARD_W + 16}
       >
-        {ITEMS.map((it, idx) => (
+        {RECOMMENDED.map((it) => (
           <Pressable
-            key={it.id}
+            key={it.title}
+            onPress={() =>
+              openBook(router, {
+                service: it.serviceId,
+                package: String(it.packageIndex),
+              })
+            }
             style={[
               styles.card,
               {
+                width: CARD_W,
                 backgroundColor: themeColors.cardBg,
                 borderColor: themeColors.border,
-                marginRight: idx < ITEMS.length - 1 ? 16 : 0,
               },
               shadowStyles.md,
             ]}
@@ -83,18 +61,18 @@ export const RecommendedSection: React.FC = () => {
             <Image source={{ uri: it.img }} style={styles.img} />
             <View style={styles.body}>
               <Text
-                numberOfLines={1}
                 style={[styles.cardTitle, { color: themeColors.text }]}
+                numberOfLines={1}
               >
                 {it.title}
               </Text>
-              <View style={styles.metaRow}>
+              <View style={styles.row}>
                 <Text style={[styles.price, { color: themeColors.primary }]}>
                   {it.price}
                 </Text>
                 <View style={styles.rating}>
                   <Star size={12} color="#F59E0B" fill="#F59E0B" />
-                  <Text style={[styles.ratingText, { color: themeColors.textSecondary }]}>
+                  <Text style={{ color: themeColors.textSecondary, fontSize: 11 }}>
                     {it.rating}
                   </Text>
                 </View>
@@ -114,26 +92,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 24,
-    marginBottom: 16,
+    marginBottom: 14,
   },
-  title: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3, marginBottom: 2 },
-  seeAll: { fontSize: 12, fontWeight: "700" },
-  list: { paddingHorizontal: 24 },
+  title: { fontSize: 20, fontWeight: "800" },
+  seeAll: { fontSize: 13, fontWeight: "700" },
+  list: { paddingHorizontal: 24, gap: 12 },
   card: {
-    width: CARD_W,
     borderRadius: 22,
-    borderWidth: 1,
     overflow: "hidden",
+    borderWidth: 1,
   },
-  img: { width: "100%", height: 108, backgroundColor: "#E5E7EB" },
-  body: { padding: 11 },
-  cardTitle: { fontSize: 13.5, fontWeight: "700", marginBottom: 8 },
-  metaRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  price: { fontSize: 14, fontWeight: "800" },
-  rating: { flexDirection: "row", alignItems: "center", gap: 3 },
-  ratingText: { fontSize: 11, fontWeight: "600" },
+  img: { width: "100%", height: 120 },
+  body: { padding: 12 },
+  cardTitle: { fontSize: 14, fontWeight: "700", marginBottom: 8 },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  price: { fontSize: 16, fontWeight: "800" },
+  rating: { flexDirection: "row", alignItems: "center", gap: 4 },
 });

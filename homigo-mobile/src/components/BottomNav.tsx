@@ -4,6 +4,7 @@ import Svg, { Path } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Home,
+  LayoutGrid,
   CalendarDays,
   Wallet,
   User,
@@ -40,6 +41,7 @@ function barPath(totalH: number) {
 
 const ICONS: Record<string, LucideIcon> = {
   index: Home,
+  services: LayoutGrid,
   bookings: CalendarDays,
   ai: Sparkles,
   wallet: Wallet,
@@ -47,6 +49,7 @@ const ICONS: Record<string, LucideIcon> = {
 };
 const LABELS: Record<string, string> = {
   index: "Home",
+  services: "Services",
   bookings: "Bookings",
   ai: "AI Assistant",
   wallet: "Wallet",

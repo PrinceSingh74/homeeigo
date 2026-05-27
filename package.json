@@ -4,15 +4,23 @@
   "description": "AI-Powered Luxury Home Services Marketplace",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run dev:web\" \"npm run dev:backend\"",
-    "dev:web": "cd apps/web && npm run dev",
-    "dev:backend": "cd apps/backend && npm run dev",
-    "build": "npm run build:web && npm run build:backend",
-    "build:web": "cd apps/web && npm run build",
-    "build:backend": "cd apps/backend && npm run build",
+    "dev": "concurrently -n customer,partner,backend -c blue,magenta,green \"npm run dev:customer\" \"npm run dev:partner\" \"npm run dev:backend\"",
+    "dev:customer": "npm run dev --prefix apps/web",
+    "dev:partner": "npm run dev --prefix apps/partner-web",
+    "dev:admin": "npm run dev --prefix apps/admin-panel",
+    "dev:web": "npm run dev:customer",
+    "dev:backend": "npm run dev --prefix apps/backend",
+    "dev:all": "concurrently -n customer,partner,admin,backend \"npm run dev:customer\" \"npm run dev:partner\" \"npm run dev:admin\" \"npm run dev:backend\"",
+    "build": "npm run build:customer && npm run build:partner && npm run build:backend",
+    "build:customer": "npm run build --prefix apps/web",
+    "build:partner": "npm run build --prefix apps/partner-web",
+    "build:admin": "npm run build --prefix apps/admin-panel",
+    "build:web": "npm run build:customer",
+    "build:backend": "npm run build --prefix apps/backend",
     "start": "npm run start:web && npm run start:backend",
-    "start:web": "cd apps/web && npm run start",
-    "start:backend": "cd apps/backend && npm run start",
+    "start:web": "npm run start --prefix apps/web",
+    "start:partner": "npm run start --prefix apps/partner-web",
+    "start:backend": "npm run start --prefix apps/backend",
     "lint": "eslint . --ext ts,tsx",
     "test": "jest",
     "format": "prettier --write .",
@@ -36,5 +44,8 @@
   "license": "MIT",
   "workspaces": [
     "homigo-mobile"
-  ]
+  ],
+  "dependencies": {
+    "jose": "^6.2.3"
+  }
 }

@@ -12,7 +12,10 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
+import { useRouter } from "expo-router";
 import { Scissors, type LucideIcon } from "lucide-react-native";
+import { openBook } from "@/lib/navigation";
+import { SERVICES } from "@/lib/services";
 
 const { width } = Dimensions.get("window");
 const CARD_W = width * 0.36;
@@ -27,24 +30,24 @@ const IMAGES: Record<string, any> = {
 };
 
 type Svc = {
-  id: number;
+  serviceId: string;
   name: string;
   price?: string;
-  sub?: string;
   imgKey?: string;
   icon?: LucideIcon;
   color: string;
   featured?: boolean;
 };
 
-const services: Svc[] = [
-  { id: 1, name: "Cleaning", price: "₹199", imgKey: "cleaning", color: "#7C3AED", featured: true },
-  { id: 2, name: "AC Service", price: "₹299", imgKey: "ac", color: "#06B6D4" },
-  { id: 3, name: "Plumbing", price: "₹249", imgKey: "plumbing", color: "#3B82F6" },
-  { id: 4, name: "Electrician", price: "₹249", imgKey: "electrician", color: "#F59E0B" },
-  { id: 5, name: "Pest Control", price: "₹299", imgKey: "pest", color: "#10B981" },
-  { id: 6, name: "Salon", price: "₹199", icon: Scissors, color: "#EC4899" },
-];
+const services: Svc[] = SERVICES.map((s) => ({
+  serviceId: s.id,
+  name: s.name,
+  price: s.price,
+  imgKey: s.imageKey,
+  icon: s.iconKey === "scissors" ? Scissors : undefined,
+  color: s.color,
+  featured: s.featured,
+}));
 
 function shade(hex: string, amt: number) {
   const n = parseInt(hex.slice(1), 16);
@@ -119,6 +122,7 @@ function ServiceIcon({ item, feat }: { item: Svc; feat: boolean }) {
 }
 
 function Card({ item }: { item: Svc }) {
+  const router = useRouter();
   const { colors: themeColors } = useTheme();
   const scale = useRef(new Animated.Value(1)).current;
   const feat = !!item.featured;
@@ -134,6 +138,7 @@ function Card({ item }: { item: Svc }) {
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <Pressable
+        onPress={() => openBook(router, { service: item.serviceId })}
         onPressIn={() => to(0.94)}
         onPressOut={() => to(1, 8)}
         style={{ width: feat ? FEAT_W : CARD_W }}
@@ -178,7 +183,7 @@ function Card({ item }: { item: Svc }) {
               {item.name}
             </Text>
             <Text style={[styles.price, { color: themeColors.textSecondary }]}>
-              {item.price ? `From ${item.price}` : item.sub}
+              {item.price ? `From ${item.price}` : ""}
             </Text>
           </View>
         )}
@@ -188,6 +193,7 @@ function Card({ item }: { item: Svc }) {
 }
 
 export const ServiceCategories: React.FC = () => {
+  const router = useRouter();
   const { colors: themeColors } = useTheme();
 
   return (
@@ -196,14 +202,16 @@ export const ServiceCategories: React.FC = () => {
         <Text style={[styles.title, { color: themeColors.text }]}>
           Popular Services
         </Text>
-        <Text style={[styles.seeAll, { color: themeColors.primary }]}>
-          See all
-        </Text>
+        <Pressable onPress={() => openBook(router)}>
+          <Text style={[styles.seeAll, { color: themeColors.primary }]}>
+            See all
+          </Text>
+        </Pressable>
       </View>
       <FlatList
         data={services}
         renderItem={({ item }) => <Card item={item} />}
-        keyExtractor={(i) => i.id.toString()}
+        keyExtractor={(i) => i.serviceId}
         horizontal
         showsHorizontalScrollIndicator={false}
         decelerationRate="fast"

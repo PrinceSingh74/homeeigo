@@ -45,11 +45,12 @@ HOMIGO is an **AI-powered luxury home services marketplace** that combines premi
 - [ ] Database configuration
 - [ ] Environment setup
 
-### Phase 2: Design System (Weeks 3-5)
-- [ ] Tailwind setup
-- [ ] Component library
-- [ ] Homepage UI
-- [ ] Animation system
+### Phase 2: Design System (Weeks 3-5) ✅
+- [x] Tailwind setup (v4 + Luxury Aurora tokens)
+- [x] Component library (`Input`, `Textarea`, `Select`, `Checkbox`, `Radio`, `Button`, `Card`)
+- [x] Homepage UI (mock data, no backend)
+- [x] Animation system (`src/lib/animations.ts`)
+- [x] Storybook (`npm run storybook` in `apps/web`)
 
 ### Phase 3: Backend APIs (Weeks 4-7)
 - [ ] Database schema

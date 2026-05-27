@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, Image, Dimensions } from "react-native";
+import { View, Text, StyleSheet, Image, Dimensions, Pressable } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, {
   Path,
@@ -18,6 +18,7 @@ import Animated, {
 import { Check, MapPin, Navigation } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
+import { useAppNavigation } from "@/hooks/useAppNavigation";
 
 const { width } = Dimensions.get("window");
 const MAP_W = Math.round((width - 60) / 2.08);
@@ -59,9 +60,10 @@ const STEPS = [
 
 export const LiveTrackingSection: React.FC = () => {
   const { colors: themeColors } = useTheme();
+  const { goBookings } = useAppNavigation();
 
   return (
-    <View style={styles.container}>
+    <Pressable style={styles.container} onPress={goBookings}>
       <Text style={[styles.title, { color: themeColors.text }]}>
         Live Tracking
       </Text>
@@ -201,7 +203,7 @@ export const LiveTrackingSection: React.FC = () => {
           </View>
         </LinearGradient>
       </View>
-    </View>
+    </Pressable>
   );
 };
 

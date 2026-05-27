@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Sora, JetBrains_Mono } from "next/font/google";
+import { AppProviders } from "@/components/providers/AppProviders";
+import { ChunkLoadRecovery } from "@/components/ChunkLoadRecovery";
+import { RoutePrefetch } from "@/components/navigation/RoutePrefetch";
 import "./globals.css";
 
 const inter = Inter({
@@ -67,7 +70,11 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: noFlashScript }} />
       </head>
       <body className="bg-canvas text-content font-sans antialiased">
-        {children}
+        <AppProviders>
+          <ChunkLoadRecovery />
+          <RoutePrefetch />
+          {children}
+        </AppProviders>
       </body>
     </html>
   );

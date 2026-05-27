@@ -6,37 +6,49 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "build": "bun build src/index.ts --outdir dist",
+    "build": "bun build src/index.ts --outdir dist --target bun",
     "start": "bun run dist/index.js",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:seed": "bun run scripts/seed.ts",
+    "db:seed": "bun --env-file=.env run scripts/seed.ts",
+    "db:setup": "bun run scripts/setup-db.ts",
+    "auth:cleanup": "bun run scripts/cleanup-auth.ts",
     "lint": "eslint src --ext ts",
     "format": "prettier --write src",
     "test": "bun test",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "elysia": "latest",
     "@elysiajs/cors": "latest",
     "@elysiajs/jwt": "latest",
-    "@elysiajs/swagger": "latest",
     "@elysiajs/static": "latest",
-    "prisma": "latest",
-    "@prisma/client": "latest",
-    "pg": "latest",
-    "redis": "latest",
+    "@elysiajs/swagger": "latest",
+    "@prisma/client": "^6.19.3",
     "axios": "latest",
-    "zod": "latest",
-    "dotenv": "latest"
+    "bcryptjs": "latest",
+    "dotenv": "latest",
+    "elysia": "latest",
+    "google-auth-library": "latest",
+    "jsonwebtoken": "latest",
+    "pg": "latest",
+    "prisma": "^6.19.3",
+    "redis": "latest",
+    "twilio": "latest",
+    "zod": "latest"
+  },
+  "prisma": {
+    "seed": "bun run scripts/seed.ts"
   },
   "devDependencies": {
-    "@types/node": "latest",
     "@types/bun": "latest",
-    "tsx": "latest",
-    "typescript": "latest",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "latest",
+    "eslint": "latest",
     "prettier": "latest",
-    "eslint": "latest"
+    "tsx": "latest",
+    "typescript": "latest"
   }
 }

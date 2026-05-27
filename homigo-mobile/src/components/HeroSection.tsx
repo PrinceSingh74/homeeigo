@@ -17,8 +17,10 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { Sparkles, ArrowRight, Play } from "lucide-react-native";
+import { useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles, gradients } from "@/lib/colors";
+import { openBook } from "@/lib/navigation";
 
 const { width } = Dimensions.get("window");
 const H_PAD = 24;
@@ -54,6 +56,7 @@ function GradientText({ children }: { children: string }) {
 }
 
 export const HeroSection: React.FC = () => {
+  const router = useRouter();
   const { colors: themeColors, isDark } = useTheme();
 
   // Entry animations
@@ -141,7 +144,7 @@ export const HeroSection: React.FC = () => {
           </Text>
 
           <View style={styles.ctas}>
-            <Pressable>
+            <Pressable onPress={() => openBook(router)}>
               <LinearGradient
                 colors={["#2563EB", "#7C3AED", "#06B6D4"]}
                 start={{ x: 0, y: 0 }}

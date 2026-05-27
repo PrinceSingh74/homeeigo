@@ -1,0 +1,20 @@
+/** Shared layout tokens — 4px base scale from partner design spec */
+export const partnerLayout = {
+  page: "mx-auto w-full max-w-[1600px]",
+  pageStack: "flex flex-col gap-8",
+  sectionStack: "flex flex-col gap-6",
+  rowGap: "gap-6",
+  statsGrid: "grid gap-5 sm:grid-cols-2 xl:grid-cols-5",
+  mainGrid: "grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]",
+  bottomGrid: "grid gap-6 lg:grid-cols-3",
+  cardPad: "p-6",
+  cardPadCompact: "p-4",
+  cardRadius: "rounded-2xl",
+  sectionHeader: "mb-5 flex items-center justify-between gap-4",
+  sectionTitle: "font-display text-lg font-bold tracking-tight text-partner-text",
+  sectionLink: "shrink-0 text-xs font-medium text-partner-primary transition hover:underline",
+  statCard: "flex min-h-[172px] flex-col justify-between",
+  statCardFeatured: "flex min-h-[172px] flex-col justify-between gap-3",
+  listGap: "space-y-3",
+  itemPad: "rounded-xl px-4 py-3.5",
+} as const;

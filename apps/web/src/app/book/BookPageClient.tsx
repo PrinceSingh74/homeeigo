@@ -1,14 +1,10 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  ArrowLeft,
   ArrowRight,
-  Bell,
-  Search,
-  MapPin,
-  ChevronDown,
   Check,
   Star,
   ShieldCheck,
@@ -17,164 +13,64 @@ import {
   Clock,
   Sparkles,
   Lock,
-  Flame,
-  Scissors,
   UserCheck,
   CreditCard,
   type LucideIcon,
 } from "lucide-react";
-import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { AuroraBackground } from "@/components/AuroraBackground";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { ServiceSearchInput } from "@/components/ServiceSearchInput";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+import { LocationButton } from "@/components/LocationButton";
+import { ServiceImage } from "@/components/ui/ServiceImage";
+import { MotionImage } from "@/components/ui/MotionImage";
+import { BookingSuccessModal } from "@/components/overlays/BookingSuccessModal";
+import { BookingScheduleSection } from "@/components/booking/BookingScheduleSection";
+import { BookPageHeader } from "@/components/booking/BookPageHeader";
+import { BookStickyCheckout } from "@/components/booking/BookStickyCheckout";
+import {
+  bookHeroTitle,
+  bookMain,
+  bookPackageGrid,
+  bookPageRoot,
+  bookSectionCard,
+  bookSectionTitle,
+  bookServiceCard,
+  bookServiceRail,
+  bookSplitGrid,
+} from "@/components/booking/book-page-layout";
+import {
+  SERVICES,
+  popularPackageIndex,
+  getServiceIndex,
+  searchServices,
+  getLocation,
+} from "@/lib/services";
+import {
+  bookUrl,
+  parseBookParams,
+  generateBookingId,
+} from "@/lib/booking-url";
+import {
+  createInitialTimeline,
+  SERVICE_IMAGES,
+  type SavedBooking,
+} from "@/lib/bookings";
+import { useAppStore } from "@/stores/app-store";
+import {
+  defaultScheduledSlot,
+  formatDateLabel,
+  formatTimeLabel,
+} from "@/lib/booking-datetime";
 
 /* ----------------------------- data ----------------------------- */
-
-const STEPS = ["Service", "Package", "Schedule", "Payment"];
-
-type Pkg = {
-  name: string;
-  tag: string;
-  price: number;
-  popular?: boolean;
-  items: string[];
-};
-type Service = {
-  name: string;
-  img?: string;
-  icon?: LucideIcon;
-  price: string;
-  color: string;
-  title: string;
-  tagline: string;
-  rating: string;
-  reviews: string;
-  homes: string;
-  packages: Pkg[];
-};
-
-const SERVICES: Service[] = [
-  {
-    name: "Cleaning",
-    img: "/svc-cleaning.png",
-    price: "₹199",
-    color: "#7C3AED",
-    title: "Home Cleaning",
-    tagline: "Professional home cleaning — neat, clean & hygienic.",
-    rating: "4.8",
-    reviews: "12.5k",
-    homes: "12K+ homes cleaned",
-    packages: [
-      { name: "Basic", tag: "Essential Cleaning", price: 199, items: ["1 Bedroom", "1 Bathroom", "Kitchen Cleaning", "Floor Cleaning"] },
-      { name: "Standard", tag: "Deep Cleaning", price: 299, popular: true, items: ["2 Bedroom", "2 Bathroom", "Kitchen Cleaning", "Dusting & Wiping", "Floor Cleaning"] },
-      { name: "Premium", tag: "Full Home Cleaning", price: 499, items: ["3 Bedroom", "3 Bathroom", "Kitchen Cleaning", "Deep Cleaning", "Balcony Cleaning", "Windows Cleaning"] },
-    ],
-  },
-  {
-    name: "AC Service",
-    img: "/svc-ac.png",
-    price: "₹299",
-    color: "#06B6D4",
-    title: "AC Service & Repair",
-    tagline: "Cooling care by certified AC technicians.",
-    rating: "4.9",
-    reviews: "9.2k",
-    homes: "8K+ ACs serviced",
-    packages: [
-      { name: "Basic", tag: "AC Cleaning", price: 299, items: ["1 AC Unit", "Filter Cleaning", "Cooling Check", "Basic Servicing"] },
-      { name: "Standard", tag: "Deep Service", price: 499, popular: true, items: ["2 AC Units", "Deep Coil Cleaning", "Gas Pressure Check", "Filter + Drain Clean"] },
-      { name: "Premium", tag: "Full AC Care", price: 899, items: ["3 AC Units", "Full Chemical Wash", "Gas Top-up", "1 Year Warranty", "Priority Support"] },
-    ],
-  },
-  {
-    name: "Plumbing",
-    img: "/svc-plumbing.png",
-    price: "₹249",
-    color: "#3B82F6",
-    title: "Plumbing Services",
-    tagline: "Leak-free homes by expert plumbers.",
-    rating: "4.7",
-    reviews: "7.8k",
-    homes: "10K+ jobs done",
-    packages: [
-      { name: "Basic", tag: "Quick Fix", price: 249, items: ["1 Tap / Faucet", "Leak Inspection", "Minor Repair", "30-day Warranty"] },
-      { name: "Standard", tag: "Full Repair", price: 449, popular: true, items: ["Up to 3 Fixtures", "Pipe Leak Repair", "Drain Cleaning", "60-day Warranty"] },
-      { name: "Premium", tag: "Home Plumbing", price: 799, items: ["Whole-home Check", "Pipe Replacement", "Tank Cleaning", "90-day Warranty", "Priority Support"] },
-    ],
-  },
-  {
-    name: "Electrician",
-    img: "/svc-electrician.png",
-    price: "₹199",
-    color: "#F59E0B",
-    title: "Electrician Services",
-    tagline: "Safe wiring & repairs by certified electricians.",
-    rating: "4.8",
-    reviews: "6.4k",
-    homes: "9K+ homes wired",
-    packages: [
-      { name: "Basic", tag: "Quick Fix", price: 199, items: ["1 Switch / Socket", "Fault Inspection", "Minor Repair", "30-day Warranty"] },
-      { name: "Standard", tag: "Full Repair", price: 399, popular: true, items: ["Up to 4 Points", "Wiring Check", "Fan / Light Install", "60-day Warranty"] },
-      { name: "Premium", tag: "Home Electrical", price: 749, items: ["Full Home Audit", "MCB / Panel Work", "New Wiring", "90-day Warranty", "Priority Support"] },
-    ],
-  },
-  {
-    name: "Pest Control",
-    img: "/svc-pest.png",
-    price: "₹299",
-    color: "#10B981",
-    title: "Pest Control",
-    tagline: "Pest-free homes with eco-safe treatment.",
-    rating: "4.9",
-    reviews: "5.6k",
-    homes: "7K+ homes treated",
-    packages: [
-      { name: "Basic", tag: "Single Treatment", price: 299, items: ["1 BHK", "Cockroach + Ant", "Eco-safe Spray", "15-day Warranty"] },
-      { name: "Standard", tag: "Full Home", price: 549, popular: true, items: ["2 BHK", "All Common Pests", "Gel + Spray", "45-day Warranty"] },
-      { name: "Premium", tag: "Annual Shield", price: 1299, items: ["3 BHK", "Termite + Rodent", "4 Visits / Year", "1 Year Warranty", "Priority Support"] },
-    ],
-  },
-  {
-    name: "Salon",
-    icon: Scissors,
-    price: "₹199",
-    color: "#EC4899",
-    title: "Salon at Home",
-    tagline: "Premium salon services at your doorstep.",
-    rating: "4.9",
-    reviews: "11.3k",
-    homes: "15K+ appointments",
-    packages: [
-      { name: "Basic", tag: "Essentials", price: 199, items: ["Haircut", "Threading", "Basic Cleanup", "Hygienic Tools"] },
-      { name: "Standard", tag: "Glow Package", price: 499, popular: true, items: ["Haircut + Style", "Facial", "Manicure", "Premium Products"] },
-      { name: "Premium", tag: "Luxury Spa", price: 999, items: ["Hair Spa", "Gold Facial", "Mani + Pedi", "Body Massage", "Priority Stylist"] },
-    ],
-  },
-];
 
 const HERO_FEATURES: { icon: LucideIcon; label: string }[] = [
   { icon: ShieldCheck, label: "Verified\nProfessionals" },
   { icon: Leaf, label: "Eco Friendly\nProducts" },
   { icon: BadgeCheck, label: "Satisfaction\nGuarantee" },
   { icon: Clock, label: "On-time\nService" },
-];
-
-const DATES = [
-  { d: "Today", n: "21 May" },
-  { d: "Wed", n: "22 May" },
-  { d: "Thu", n: "23 May" },
-  { d: "Fri", n: "24 May" },
-  { d: "Sat", n: "25 May" },
-  { d: "Sun", n: "26 May" },
-];
-
-const TIMES = [
-  "09:00 AM",
-  "11:00 AM",
-  "01:00 PM",
-  "03:00 PM",
-  "05:00 PM",
-  "07:00 PM",
 ];
 
 const ADDONS = [
@@ -201,12 +97,7 @@ function SectionCard({
   className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        "relative overflow-hidden rounded-[28px] glass-card p-7 sm:p-9",
-        className,
-      )}
-    >
+    <div className={cn(bookSectionCard, className)}>
       <span
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-20 sheen"
@@ -218,24 +109,59 @@ function SectionCard({
 
 /* ----------------------------- page ----------------------------- */
 
-const POPULAR_IDX = (s: Service) => {
-  const p = s.packages.findIndex((x) => x.popular);
-  return p === -1 ? 0 : p;
-};
+export default function BookPageClient() {
+  return (
+    <Suspense fallback={<BookPageFallback />}>
+      <BookPageContent />
+    </Suspense>
+  );
+}
 
-export default function BookPage() {
-  const [service, setService] = useState(0);
-  const [pkg, setPkg] = useState(() => POPULAR_IDX(SERVICES[0]));
-  const [dateIdx, setDateIdx] = useState(1);
-  const [timeIdx, setTimeIdx] = useState(1);
+function BookPageFallback() {
+  return (
+    <div className={bookPageRoot}>
+      <AuroraBackground />
+      <main className={cn(bookMain, "py-24 text-center text-muted")}>
+        Loading booking…
+      </main>
+    </div>
+  );
+}
+
+function BookPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const locationId = useAppStore((s) => s.locationId);
+  const activePromo = useAppStore((s) => s.activePromo);
+  const openOverlay = useAppStore((s) => s.openOverlay);
+  const showToast = useAppStore((s) => s.showToast);
+  const addBooking = useAppStore((s) => s.addBooking);
+
+  const parsed = parseBookParams(searchParams);
+  const initialService = parsed.serviceId
+    ? getServiceIndex(parsed.serviceId)
+    : 0;
+  const initialPkg =
+    parsed.packageIndex ?? popularPackageIndex(SERVICES[initialService]);
+
+  const [service, setService] = useState(initialService);
+  const [pkg, setPkg] = useState(initialPkg);
+  const [searchQuery, setSearchQuery] = useState(parsed.query);
+  const [scheduledAt, setScheduledAt] = useState(() => defaultScheduledSlot());
   const [addons, setAddons] = useState<Set<number>>(new Set());
   const [instructions, setInstructions] = useState("");
   const [address, setAddress] = useState({
-    line1: "Gurugram, Sector 49",
-    line2: "Haryana, 122018",
+    line1: "",
+    line2: "",
   });
+
+  useEffect(() => {
+    const l = getLocation(locationId);
+    setAddress({ line1: l.label, line2: `${l.city}, ${l.pin}` });
+  }, [locationId]);
   const [editingAddr, setEditingAddr] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
+  const [bookingDone, setBookingDone] = useState<SavedBooking | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   const dateRef = useRef<HTMLDivElement>(null);
   const instrRef = useRef<HTMLTextAreaElement>(null);
@@ -243,10 +169,54 @@ export default function BookPage() {
   const svc = SERVICES[service];
   const SvcIcon = svc.icon;
 
+  useEffect(() => {
+    const sid = parsed.serviceId;
+    if (sid) {
+      const idx = getServiceIndex(sid);
+      setService(idx);
+      setPkg(parsed.packageIndex ?? popularPackageIndex(SERVICES[idx]));
+    }
+    if (parsed.query) setSearchQuery(parsed.query);
+    if (parsed.promo) {
+      useAppStore.getState().setActivePromo(parsed.promo);
+      showToast(`Promo ${parsed.promo} applied`, "success");
+    }
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const filteredServices = useMemo(() => {
+    if (!searchQuery.trim()) return SERVICES.map((s, i) => ({ s, i }));
+    return searchServices(searchQuery)
+      .map((s) => ({
+        s,
+        i: SERVICES.findIndex((x) => x.id === s.id),
+      }))
+      .filter(({ i }) => i >= 0);
+  }, [searchQuery]);
+
+  const handleSearchSelect = (serviceId: string, q: string) => {
+    const idx = getServiceIndex(serviceId);
+    setSearchQuery(q);
+    setService(idx);
+    setPkg(popularPackageIndex(SERVICES[idx]));
+    setAddons(new Set());
+    showToast(`${SERVICES[idx].title} selected`, "info");
+    router.replace(
+      bookUrl({ service: serviceId, q: q || undefined }),
+      { scroll: false },
+    );
+  };
+
+  const currentStep = useMemo(() => {
+    if (bookingDone) return 3;
+    if (pkg >= 0) return 2;
+    return 0;
+  }, [bookingDone, pkg]);
+
   const selectService = (i: number) => {
     setService(i);
-    setPkg(POPULAR_IDX(SERVICES[i]));
+    setPkg(popularPackageIndex(SERVICES[i]));
     setAddons(new Set());
+    showToast(`${SERVICES[i].title} selected`, "info");
   };
 
   const toggleAddon = (i: number) =>
@@ -266,120 +236,106 @@ export default function BookPage() {
     () => [...addons].reduce((s, i) => s + ADDONS[i].price, 0),
     [addons],
   );
+  const promoDiscount =
+    activePromo === "COOL100"
+      ? 100
+      : activePromo === "FIX150"
+        ? 150
+        : activePromo === "FRESH25"
+          ? Math.round(selected.price * 0.25)
+          : 0;
+
   const subtotal = selected.price + addonTotal;
   const platformFee = 20;
-  const gst = +((subtotal + platformFee) * 0.18).toFixed(2);
-  const total = +(subtotal + platformFee + gst).toFixed(2);
-  const saved = 120;
+  const gst = +(
+    (Math.max(0, subtotal - promoDiscount) + platformFee) *
+    0.18
+  ).toFixed(2);
+  const total = +(
+    Math.max(0, subtotal - promoDiscount) +
+    platformFee +
+    gst
+  ).toFixed(2);
+  const saved = promoDiscount + 120;
+
+  async function confirmBooking() {
+    if (confirming) return;
+    setConfirming(true);
+    await new Promise((r) => setTimeout(r, 800));
+    const now = new Date().toISOString();
+    const pros = ["Rajesh Kumar", "Amit Sharma", "Priya Singh", "Vikram Patel"];
+    const booking: SavedBooking = {
+      id: generateBookingId(),
+      serviceId: svc.id,
+      serviceTitle: svc.title,
+      serviceName: svc.name,
+      packageName: selected.name,
+      dateLabel: `${formatDateLabel(scheduledAt)}, ${scheduledAt.getFullYear()}`,
+      timeLabel: formatTimeLabel(scheduledAt),
+      address: `${address.line1}, ${address.line2}`,
+      total,
+      status: "confirmed",
+      createdAt: now,
+      updatedAt: now,
+      imagePath: SERVICE_IMAGES[svc.id] ?? svc.img,
+      serviceColor: svc.color,
+      proName: pros[Math.floor(Math.random() * pros.length)]!,
+      instructions: instructions.trim() || undefined,
+      timeline: createInitialTimeline(now),
+    };
+    addBooking(booking);
+    setBookingDone(booking);
+    setConfirming(false);
+    showToast("Booking confirmed securely", "success");
+  }
+
+  function applyAiRecommendation() {
+    const rec = popularPackageIndex(svc);
+    setPkg(rec);
+    showToast("Standard package applied — best for 2BHK", "success");
+    scrollTo(dateRef.current);
+  }
 
   return (
-    <>
+    <div className={bookPageRoot}>
       <AuroraBackground />
 
-      {/* ---------- Sticky header + stepper ---------- */}
-      <header className="sticky top-0 z-50 glass dark:glass-dark border-b border-line">
-        <div className="mx-auto flex max-w-content items-center gap-4 px-5 py-5 sm:px-8">
-          <Link
-            href="/"
-            aria-label="Back to home"
-            className="grid size-12 shrink-0 place-items-center rounded-2xl glass-card text-content transition-transform hover:-translate-x-0.5"
-          >
-            <ArrowLeft size={20} />
-          </Link>
+      <BookPageHeader currentStep={currentStep} />
 
-          <h1 className="shrink-0 font-display text-2xl font-bold tracking-tight text-content sm:text-3xl">
-            Book a <span className="text-aurora">Service</span>
-          </h1>
-
-          {/* stepper */}
-          <div className="mx-auto hidden items-center lg:flex">
-            {STEPS.map((s, i) => {
-              const active = i === 0;
-              const done = false;
-              return (
-                <div key={s} className="flex items-center">
-                  <div className="flex flex-col items-center gap-1">
-                    <span
-                      className={cn(
-                        "grid size-9 place-items-center rounded-full text-sm font-bold transition",
-                        active
-                          ? "bg-aurora text-white shadow-glow-blue"
-                          : "glass-card text-muted",
-                      )}
-                    >
-                      {done ? <Check size={16} /> : i + 1}
-                    </span>
-                    <span
-                      className={cn(
-                        "text-xs font-semibold",
-                        active ? "text-primary" : "text-muted",
-                      )}
-                    >
-                      {s}
-                    </span>
-                  </div>
-                  {i < STEPS.length - 1 && (
-                    <span className="mx-3 mb-5 h-px w-14 border-t-2 border-dashed border-line" />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="ml-auto flex shrink-0 items-center gap-2 lg:ml-0 sm:gap-3">
-            <ThemeToggle />
-            <button
-              type="button"
-              aria-label="Notifications"
-              className="relative grid size-11 place-items-center rounded-full glass-card text-content"
-            >
-              <Bell size={20} />
-              <span className="absolute right-1.5 top-1.5 grid size-4 place-items-center rounded-full bg-pink text-[10px] font-bold text-white ring-2 ring-surface">
-                3
-              </span>
-            </button>
-            <span className="grid size-11 place-items-center rounded-full bg-premium text-sm font-bold text-white ring-2 ring-primary shadow-[0_0_12px_rgb(37_99_235/0.25)]">
-              A
-            </span>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-content px-5 pb-20 pt-10 sm:px-8">
+      <main className={bookMain}>
         {/* ---------- Search + location ---------- */}
-        <div className="flex flex-col gap-4 sm:flex-row">
-          <div className="flex h-16 flex-1 items-center gap-3 rounded-2xl glass-card px-6">
-            <Search size={22} className="text-muted" />
-            <input
-              placeholder="Search for a service…"
-              aria-label="Search for a service"
-              className="h-full w-full bg-transparent text-base text-content outline-none placeholder:text-muted"
-            />
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-4">
+          <ServiceSearchInput
+            initialQuery={searchQuery}
+            inputClassName="px-4 sm:px-6"
+            onQueryChange={setSearchQuery}
+            onSelectService={handleSearchSelect}
+          />
+          <div className="flex shrink-0 items-center sm:h-auto">
+            <LocationButton />
           </div>
-          <button
-            type="button"
-            className="flex h-16 items-center justify-center gap-2 rounded-2xl glass-card px-6 text-sm font-semibold text-content"
-          >
-            <MapPin size={18} className="text-primary" />
-            Gurugram, Sector&nbsp;49
-            <ChevronDown size={16} className="text-muted" />
-          </button>
         </div>
 
         {/* ---------- Service strip (premium glass 3D cards) ---------- */}
-        <div className="mt-8 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-6">
-          {SERVICES.map((s, i) => {
+        <div className={cn("mt-5 sm:mt-8", bookServiceRail)}>
+          {searchQuery.trim() && filteredServices.length === 0 ? (
+            <p className="col-span-full rounded-2xl border border-dashed border-line bg-surface/60 px-4 py-8 text-center text-sm text-muted">
+              No services match &ldquo;{searchQuery.trim()}&rdquo;. Try
+              cleaning, AC, plumbing, or electrical.
+            </p>
+          ) : null}
+          {filteredServices.map(({ s, i }) => {
             const active = i === service;
             const Icon = s.icon;
             return (
               <motion.button
-                key={s.name}
+                key={s.id}
                 type="button"
                 onClick={() => selectService(i)}
                 whileHover={{ y: -8 }}
                 whileTap={{ scale: 0.97 }}
                 className={cn(
-                  "group relative flex h-64 flex-col items-center justify-center gap-4 overflow-hidden rounded-[28px] p-5 text-center transition-shadow duration-300",
+                  bookServiceCard,
                   active
                     ? "bg-premium text-white shadow-glow-violet"
                     : "glass-card text-content hover:shadow-[0_22px_50px_-14px_rgb(15_23_42/0.28)]",
@@ -395,13 +351,13 @@ export default function BookPage() {
                   style={{ background: active ? "#a855f7" : s.color }}
                 />
                 {active && (
-                  <span className="absolute right-3 top-3 z-10 rounded-full bg-white/95 px-3 py-1 text-[11px] font-bold text-violet shadow-e2 backdrop-blur">
+                  <span className="absolute right-2 top-2 z-10 rounded-full bg-white/95 px-2 py-0.5 text-[9px] font-bold text-violet shadow-e2 backdrop-blur sm:right-3 sm:top-3 sm:px-3 sm:py-1 sm:text-[11px]">
                     Featured
                   </span>
                 )}
                 <span
                   className={cn(
-                    "relative grid size-28 place-items-center overflow-hidden rounded-[24px] transition-transform duration-300 group-hover:scale-105",
+                    "relative grid size-20 place-items-center overflow-hidden rounded-[18px] transition-transform duration-300 group-hover:scale-105 sm:size-28 sm:rounded-[24px]",
                     active ? "bg-white/15 ring-1 ring-white/30" : "ring-1 ring-white/50",
                   )}
                   style={
@@ -418,26 +374,36 @@ export default function BookPage() {
                     className="pointer-events-none absolute inset-x-0 top-0 h-1/2 sheen"
                   />
                   {s.img ? (
-                    <img
+                    <ServiceImage
                       src={s.img}
                       alt={s.name}
-                      className="relative size-24 object-contain drop-shadow-[0_12px_20px_rgb(15_23_42/0.32)] transition-transform duration-500 ease-out group-hover:scale-[1.18]"
+                      size={96}
+                      sizes="(max-width: 640px) 64px, 96px"
+                      className="relative size-16 drop-shadow-[0_12px_20px_rgb(15_23_42/0.32)] transition-transform duration-500 ease-out group-hover:scale-[1.18] sm:size-24"
                     />
                   ) : Icon ? (
-                    <Icon
-                      size={52}
-                      strokeWidth={1.75}
-                      className="transition-transform duration-500 group-hover:scale-[1.18]"
-                      style={{ color: active ? "#fff" : s.color }}
-                    />
+                    <>
+                      <Icon
+                        size={40}
+                        strokeWidth={1.75}
+                        className="transition-transform duration-500 group-hover:scale-[1.18] sm:hidden"
+                        style={{ color: active ? "#fff" : s.color }}
+                      />
+                      <Icon
+                        size={52}
+                        strokeWidth={1.75}
+                        className="hidden transition-transform duration-500 group-hover:scale-[1.18] sm:block"
+                        style={{ color: active ? "#fff" : s.color }}
+                      />
+                    </>
                   ) : null}
                 </span>
-                <span className="relative font-display text-lg font-bold">
+                <span className="relative font-display text-sm font-bold sm:text-lg">
                   {s.name}
                 </span>
                 <span
                   className={cn(
-                    "relative text-sm font-medium",
+                    "relative text-xs font-medium sm:text-sm",
                     active ? "text-white/90" : "text-muted",
                   )}
                 >
@@ -449,15 +415,15 @@ export default function BookPage() {
         </div>
 
         {/* ---------- Two-column layout ---------- */}
-        <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_23rem] xl:grid-cols-[1fr_26rem]">
+        <div className={bookSplitGrid}>
           {/* ================= LEFT ================= */}
-          <div className="flex flex-col gap-8">
+          <div className="flex min-w-0 flex-col gap-6 sm:gap-8">
             {/* Service hero */}
             <motion.div
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-              className="relative overflow-hidden rounded-[36px] p-9 text-white shadow-[0_32px_80px_-20px_rgb(76_29_149/0.6)] ring-1 ring-white/15 sm:p-12"
+              className="relative overflow-hidden rounded-[24px] p-5 text-white shadow-[0_32px_80px_-20px_rgb(76_29_149/0.6)] ring-1 ring-white/15 sm:rounded-[32px] sm:p-8 lg:rounded-[36px] lg:p-12"
               style={{
                 background:
                   "linear-gradient(135deg, #1E1B4B 0%, #312E81 55%, #4C1D95 100%)",
@@ -475,22 +441,24 @@ export default function BookPage() {
                 aria-hidden
                 className="pointer-events-none absolute -bottom-24 right-1/3 size-72 rounded-full bg-pink/15 blur-3xl"
               />
-              <div className="relative flex flex-col items-center gap-8 sm:flex-row">
+              <div className="relative flex flex-col items-center gap-6 sm:flex-row sm:gap-8">
                 {/* 3D image + halo */}
                 <div className="relative grid shrink-0 place-items-center">
-                  <span className="absolute size-64 rounded-full halo opacity-55" />
+                  <span className="absolute size-40 rounded-full halo opacity-55 sm:size-64" />
                   {svc.img ? (
-                    <motion.img
+                    <MotionImage
                       key={svc.img}
                       src={svc.img}
                       alt={svc.title}
+                      sizes="(min-width: 1024px) 240px, (min-width: 640px) 192px, 144px"
+                      wrapperClassName="size-36 sm:size-48 lg:size-60"
                       animate={{ y: [0, -12, 0] }}
                       transition={{
                         duration: 3,
                         repeat: Infinity,
                         ease: "easeInOut",
                       }}
-                      className="relative size-60 object-contain drop-shadow-[0_28px_52px_rgb(124_58_237/0.55)]"
+                      className="drop-shadow-[0_28px_52px_rgb(124_58_237/0.55)]"
                     />
                   ) : SvcIcon ? (
                     <motion.div
@@ -500,21 +468,31 @@ export default function BookPage() {
                         repeat: Infinity,
                         ease: "easeInOut",
                       }}
-                      className="relative grid size-60 place-items-center"
+                      className="relative grid size-36 place-items-center sm:size-48 lg:size-60"
                     >
-                      <SvcIcon size={120} className="text-white" />
+                      <SvcIcon
+                        size={72}
+                        className="text-white sm:hidden"
+                      />
+                      <SvcIcon
+                        size={120}
+                        className="hidden text-white sm:block"
+                      />
                     </motion.div>
                   ) : null}
                 </div>
 
-                <div className="flex-1 text-center sm:text-left">
-                  <span className="inline-block rounded-full bg-violet px-4 py-1.5 text-xs font-bold uppercase tracking-wider shadow-lg">
+                <div className="min-w-0 flex-1 text-center sm:text-left">
+                  <span className="inline-block rounded-full bg-violet px-3 py-1 text-[10px] font-bold uppercase tracking-wider shadow-lg sm:px-4 sm:py-1.5 sm:text-xs">
                     Best Seller
                   </span>
-                  <h2 className="mt-4 font-display text-4xl font-bold tracking-tight sm:text-6xl">
+                  <h2
+                    className={cn(bookHeroTitle, "mt-3 sm:mt-4")}
+                    style={{ fontSize: "clamp(1.75rem, 6vw, 3.75rem)" }}
+                  >
                     {svc.title}
                   </h2>
-                  <p className="mt-3 text-base text-white/75 sm:text-lg">
+                  <p className="mt-2 text-sm text-white/75 sm:mt-3 sm:text-base lg:text-lg">
                     {svc.tagline}
                   </p>
                   <div className="mt-4 flex flex-wrap items-center justify-center gap-4 sm:justify-start">
@@ -541,16 +519,16 @@ export default function BookPage() {
               </div>
 
               {/* feature chips */}
-              <div className="relative mt-7 grid grid-cols-2 gap-3 rounded-2xl bg-white/5 p-4 ring-1 ring-white/10 sm:grid-cols-4">
+              <div className="book-hero-feature relative mt-5 grid grid-cols-2 gap-2 rounded-xl bg-white/5 p-3 ring-1 ring-white/10 sm:mt-7 sm:grid-cols-4 sm:gap-3 sm:rounded-2xl sm:p-4">
                 {HERO_FEATURES.map((f) => {
                   const Icon = f.icon;
                   return (
                     <div
                       key={f.label}
-                      className="flex flex-col items-center gap-1.5 text-center"
+                      className="flex flex-col items-center gap-1 text-center sm:gap-1.5"
                     >
-                      <Icon size={20} className="text-cyan" />
-                      <span className="whitespace-pre-line text-xs font-medium text-white/80">
+                      <Icon size={18} className="text-cyan sm:size-5" />
+                      <span className="whitespace-pre-line text-[10px] font-medium text-white/80 sm:text-xs">
                         {f.label}
                       </span>
                     </div>
@@ -560,16 +538,14 @@ export default function BookPage() {
             </motion.div>
 
             {/* Package picker */}
-            <div>
-              <div className="mb-6 flex items-center gap-3">
-                <h3 className="font-display text-3xl font-bold tracking-tight text-content">
-                  Choose Your Package
-                </h3>
-                <span className="rounded-full bg-success/15 px-3 py-1 text-xs font-bold text-success">
+            <div className="min-w-0">
+              <div className="mb-4 flex flex-wrap items-center gap-2 sm:mb-6 sm:gap-3">
+                <h3 className={bookSectionTitle}>Choose Your Package</h3>
+                <span className="rounded-full bg-success/15 px-2.5 py-0.5 text-[10px] font-bold text-success sm:px-3 sm:py-1 sm:text-xs">
                   Save More
                 </span>
               </div>
-              <div className="grid gap-6 sm:grid-cols-3">
+              <div className={bookPackageGrid}>
                 {svc.packages.map((p, i) => {
                   const active = i === pkg;
                   return (
@@ -579,7 +555,7 @@ export default function BookPage() {
                       onClick={() => setPkg(i)}
                       whileHover={{ y: -8 }}
                       className={cn(
-                        "group relative flex flex-col overflow-hidden rounded-[28px] p-7 text-left transition-shadow duration-300",
+                        "group relative flex min-w-0 flex-col overflow-hidden rounded-[20px] p-5 text-left transition-shadow duration-300 sm:rounded-[28px] sm:p-7",
                         active
                           ? "glass-card ring-2 ring-primary shadow-[0_24px_56px_-12px_rgb(37_99_235/0.4)]"
                           : "glass-card hover:shadow-[0_24px_56px_-16px_rgb(15_23_42/0.28)]",
@@ -590,15 +566,20 @@ export default function BookPage() {
                         className="pointer-events-none absolute inset-x-0 top-0 h-20 sheen"
                       />
                       {p.popular && (
-                        <span className="absolute right-4 top-4 rounded-full bg-premium px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg">
+                        <span className="absolute right-3 top-3 rounded-full bg-premium px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-lg sm:right-4 sm:top-4 sm:px-3 sm:py-1 sm:text-[10px]">
                           Most Popular
                         </span>
                       )}
-                      <span className="relative font-display text-xl font-bold text-content">
+                      <span className="relative font-display text-lg font-bold text-content sm:text-xl">
                         {p.name}
                       </span>
-                      <span className="relative text-sm text-muted">{p.tag}</span>
-                      <span className="relative mt-4 font-display text-5xl font-bold text-content">
+                      <span className="relative text-xs text-muted sm:text-sm">
+                        {p.tag}
+                      </span>
+                      <span
+                        className="relative mt-3 font-display font-bold text-content sm:mt-4"
+                        style={{ fontSize: "clamp(2rem, 6vw, 3rem)" }}
+                      >
                         ₹{p.price}
                       </span>
                       <ul className="relative mt-5 flex flex-1 flex-col gap-2.5">
@@ -641,85 +622,17 @@ export default function BookPage() {
             {/* Date & time */}
             <div ref={dateRef} className="scroll-mt-28">
             <SectionCard>
-              <div className="mb-6 flex items-center gap-3">
-                <h3 className="font-display text-3xl font-bold tracking-tight text-content">
-                  Select Date &amp; Time
-                </h3>
-                <span className="flex items-center gap-1 rounded-full bg-warning/15 px-3 py-1 text-xs font-bold text-warning">
-                  <Flame size={12} />
-                  Filling Fast
-                </span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-                {DATES.map((d, i) => {
-                  const active = i === dateIdx;
-                  return (
-                    <button
-                      key={d.n}
-                      type="button"
-                      onClick={() => setDateIdx(i)}
-                      className={cn(
-                        "flex flex-col items-center rounded-2xl py-4 text-sm transition",
-                        active
-                          ? "bg-aurora text-white shadow-glow-blue"
-                          : "glass-card text-content hover:-translate-y-0.5",
-                      )}
-                    >
-                      <span className="font-bold">{d.d}</span>
-                      <span
-                        className={active ? "text-white/80" : "text-muted"}
-                      >
-                        {d.n}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-6">
-                {TIMES.map((t, i) => {
-                  const active = i === timeIdx;
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setTimeIdx(i)}
-                      className={cn(
-                        "rounded-2xl py-4 text-sm font-semibold transition",
-                        active
-                          ? "bg-aurora text-white shadow-glow-blue"
-                          : "glass-card text-content hover:-translate-y-0.5",
-                      )}
-                    >
-                      {t}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-5 flex items-center justify-between gap-3 rounded-2xl bg-success/10 px-4 py-3 ring-1 ring-success/20">
-                <span className="flex items-center gap-2 text-sm font-medium text-success">
-                  <Check size={16} strokeWidth={3} />
-                  Great! You got the fastest available slot.
-                </span>
-                <span className="hidden items-center gap-2 text-xs font-semibold text-muted sm:flex">
-                  <span className="flex -space-x-2">
-                    {[0, 1, 2].map((a) => (
-                      <span
-                        key={a}
-                        className="size-5 rounded-full bg-aurora ring-2 ring-surface"
-                      />
-                    ))}
-                  </span>
-                  Only 2 slots left
-                </span>
-              </div>
+              <BookingScheduleSection
+                scheduledAt={scheduledAt}
+                onScheduledAtChange={setScheduledAt}
+                onInvalid={(msg) => showToast(msg, "error")}
+                step={3}
+              />
             </SectionCard>
             </div>
 
             {/* Add-ons + instructions */}
-            <div className="grid gap-8 lg:grid-cols-2">
+            <div className="grid gap-6 sm:gap-8 lg:grid-cols-2">
               <SectionCard>
                 <h3 className="mb-4 font-display text-lg font-bold text-content">
                   Add-ons{" "}
@@ -768,18 +681,18 @@ export default function BookPage() {
                 <h3 className="mb-4 font-display text-lg font-bold text-content">
                   Special Instructions
                 </h3>
-                <textarea
+                <Textarea
                   ref={instrRef}
                   value={instructions}
                   onChange={(e) => setInstructions(e.target.value)}
-                  maxLength={250}
+                  maxCharacters={250}
+                  showCharacterCount
                   placeholder="Any specific instructions for your professional…"
-                  className="h-28 w-full resize-none scroll-mt-28 rounded-2xl border border-line bg-surface/60 p-4 text-sm text-content outline-none placeholder:text-muted focus:border-primary/40"
+                  size="sm"
+                  className="scroll-mt-28"
+                  containerClassName="rounded-2xl bg-surface/60"
                 />
-                <p className="mt-1 text-right text-xs text-muted">
-                  {instructions.length}/250
-                </p>
-                <div className="mt-4 flex items-center justify-around text-center text-xs text-muted">
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[10px] text-muted sm:flex sm:items-center sm:justify-around sm:text-xs">
                   <span>
                     <span className="block text-sm font-bold text-content">
                       50,000+
@@ -804,9 +717,9 @@ export default function BookPage() {
           </div>
 
           {/* ================= RIGHT (sidebar) ================= */}
-          <div className="flex flex-col gap-8 lg:sticky lg:top-28 lg:self-start">
+          <div className="flex min-w-0 flex-col gap-6 sm:gap-8 lg:sticky lg:top-28 lg:self-start">
             {/* AI recommendation */}
-            <div className="relative overflow-hidden rounded-[28px] p-7 ring-1 ring-violet/25 shadow-[0_20px_48px_-16px_rgb(124_58_237/0.35)]"
+            <div className="relative overflow-hidden rounded-[20px] p-5 ring-1 ring-violet/25 shadow-[0_20px_48px_-16px_rgb(124_58_237/0.35)] sm:rounded-[28px] sm:p-7"
               style={{
                 background:
                   "linear-gradient(135deg, rgb(124 58 237 / 0.14) 0%, rgb(236 72 153 / 0.1) 100%)",
@@ -820,11 +733,11 @@ export default function BookPage() {
                 <span className="grid size-9 place-items-center rounded-xl bg-premium text-white shadow-glow-violet">
                   <Sparkles size={18} />
                 </span>
-                <span className="font-display text-xl font-bold text-content">
+                <span className="font-display text-lg font-bold text-content sm:text-xl">
                   AI Recommendation
                 </span>
               </div>
-              <p className="relative mt-3 text-sm text-muted">
+              <p className="relative mt-2 text-xs text-muted sm:mt-3 sm:text-sm">
                 Based on your home size (2BHK) and cleaning needs
               </p>
               <div className="relative mt-4 rounded-2xl glass-card p-4">
@@ -853,6 +766,7 @@ export default function BookPage() {
               </ul>
               <button
                 type="button"
+                onClick={applyAiRecommendation}
                 className="relative mt-6 w-full rounded-2xl glass-card py-3 text-sm font-bold text-content transition hover:-translate-y-0.5"
               >
                 Looks good 👍
@@ -861,16 +775,21 @@ export default function BookPage() {
 
             {/* Booking summary */}
             <SectionCard>
-              <h3 className="font-display text-2xl font-bold tracking-tight text-content">
+              <h3
+                className="font-display font-bold tracking-tight text-content"
+                style={{ fontSize: "clamp(1.25rem, 4vw, 1.5rem)" }}
+              >
                 Booking Summary
               </h3>
 
               <div className="mt-4 flex items-center gap-3 rounded-2xl glass-card p-3">
                 {svc.img ? (
-                  <img
+                  <ServiceImage
                     src={svc.img}
                     alt={svc.title}
-                    className="size-16 object-contain drop-shadow-md"
+                    size={64}
+                    sizes="64px"
+                    className="size-16 drop-shadow-md"
                   />
                 ) : SvcIcon ? (
                   <span className="grid size-16 place-items-center">
@@ -897,7 +816,7 @@ export default function BookPage() {
                     Date &amp; Time
                   </span>
                   <span className="block whitespace-pre-line text-xs text-muted">
-                    {`${DATES[dateIdx].d}, ${DATES[dateIdx].n} 2024\n${TIMES[timeIdx]} – ${TIMES[(timeIdx + 1) % TIMES.length]}`}
+                    {`${formatDateLabel(scheduledAt)}, ${scheduledAt.getFullYear()}\n${formatTimeLabel(scheduledAt)}`}
                   </span>
                 </span>
                 <button
@@ -923,21 +842,27 @@ export default function BookPage() {
                 </div>
                 {editingAddr ? (
                   <div className="mt-2 flex flex-col gap-2">
-                    <input
+                    <Input
+                      size="sm"
                       value={address.line1}
                       onChange={(e) =>
                         setAddress((a) => ({ ...a, line1: e.target.value }))
                       }
                       placeholder="Address line 1"
-                      className="w-full rounded-xl border border-line bg-surface/60 px-3 py-2 text-xs text-content outline-none focus:border-primary/40"
+                      showClear={false}
+                      containerClassName="rounded-xl bg-surface/60"
+                      inputClassName="text-xs"
                     />
-                    <input
+                    <Input
+                      size="sm"
                       value={address.line2}
                       onChange={(e) =>
                         setAddress((a) => ({ ...a, line2: e.target.value }))
                       }
                       placeholder="City, PIN"
-                      className="w-full rounded-xl border border-line bg-surface/60 px-3 py-2 text-xs text-content outline-none focus:border-primary/40"
+                      showClear={false}
+                      containerClassName="rounded-xl bg-surface/60"
+                      inputClassName="text-xs"
                     />
                   </div>
                 ) : (
@@ -971,6 +896,13 @@ export default function BookPage() {
 
               <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4 text-sm">
                 <Row label="Package Price" value={`₹${subtotal}.00`} />
+                {promoDiscount > 0 && (
+                  <Row
+                    label={`Promo (${activePromo})`}
+                    value={`- ₹${promoDiscount}`}
+                    className="text-success"
+                  />
+                )}
                 <Row label="Platform Fee" value={`₹${platformFee}.00`} />
                 <Row label="GST (18%)" value={`₹${gst}`} />
                 <Row
@@ -984,12 +916,15 @@ export default function BookPage() {
                 <span className="font-display text-lg font-bold text-content">
                   Total Payable
                 </span>
-                <span className="font-display text-3xl font-bold text-aurora">
+                <span
+                  className="font-display font-bold text-aurora"
+                  style={{ fontSize: "clamp(1.5rem, 5vw, 1.875rem)" }}
+                >
                   ₹{total}
                 </span>
               </div>
 
-              <div className="mt-4 flex items-center gap-2 rounded-2xl bg-success/10 px-4 py-3 text-xs ring-1 ring-success/20">
+              <div className="mt-4 hidden items-center gap-2 rounded-2xl bg-success/10 px-4 py-3 text-xs ring-1 ring-success/20 lg:flex">
                 <Lock size={16} className="text-success" />
                 <span>
                   <span className="block font-bold text-success">
@@ -1003,19 +938,17 @@ export default function BookPage() {
 
               <motion.button
                 type="button"
-                onClick={() => {
-                  setConfirmed(true);
-                  setTimeout(() => setConfirmed(false), 4000);
-                }}
-                whileHover={{ y: -3 }}
-                whileTap={{ scale: 0.98 }}
-                className="mt-5 flex h-16 w-full items-center justify-center gap-2.5 rounded-2xl bg-premium text-base font-bold text-white shadow-[0_18px_40px_-10px_rgb(124_58_237/0.55)]"
+                disabled={confirming}
+                onClick={confirmBooking}
+                whileHover={{ y: confirming ? 0 : -3 }}
+                whileTap={{ scale: confirming ? 1 : 0.98 }}
+                className="mt-5 hidden h-16 w-full items-center justify-center gap-2.5 rounded-2xl bg-premium text-base font-bold text-white shadow-[0_18px_40px_-10px_rgb(124_58_237/0.55)] disabled:opacity-70 lg:flex"
               >
                 <Lock size={18} />
-                Confirm Booking Securely
+                {confirming ? "Securing your slot…" : "Confirm Booking Securely"}
                 <ArrowRight size={18} />
               </motion.button>
-              <p className="mt-2 text-center text-xs text-muted">
+              <p className="mt-2 hidden text-center text-xs text-muted lg:block">
                 You won&apos;t be charged yet
               </p>
             </SectionCard>
@@ -1023,8 +956,8 @@ export default function BookPage() {
         </div>
 
         {/* ---------- Trust bar ---------- */}
-        <div className="mt-12 flex flex-col items-center justify-between gap-8 rounded-[28px] glass-card px-10 py-8 lg:flex-row">
-          <div className="flex flex-wrap items-center justify-center gap-8">
+        <div className="mt-8 flex flex-col items-center justify-between gap-6 rounded-[20px] glass-card px-4 py-6 sm:mt-12 sm:gap-8 sm:rounded-[28px] sm:px-8 sm:py-8 lg:flex-row lg:px-10">
+          <div className="grid w-full grid-cols-2 gap-4 min-[480px]:flex min-[480px]:flex-wrap min-[480px]:justify-center min-[480px]:gap-6 sm:gap-8 lg:w-auto">
             {TRUST.map((t) => {
               const Icon = t.icon;
               return (
@@ -1040,8 +973,8 @@ export default function BookPage() {
               );
             })}
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-content">
+          <div className="flex flex-col items-center gap-3 sm:flex-row">
+            <span className="text-center text-xs font-semibold text-content sm:text-left sm:text-sm">
               Trusted by 50,000+ families
             </span>
             <span className="flex -space-x-2">
@@ -1059,29 +992,22 @@ export default function BookPage() {
         </div>
       </main>
 
-      {/* Confirmation toast */}
-      {confirmed && (
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="fixed bottom-8 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-3 rounded-2xl bg-premium px-6 py-4 text-white shadow-[0_18px_44px_-10px_rgb(124_58_237/0.6)]"
-          role="status"
-        >
-          <span className="grid size-8 place-items-center rounded-full bg-white/20">
-            <Check size={18} strokeWidth={3} />
-          </span>
-          <span>
-            <span className="block text-sm font-bold">
-              {svc.title} booked — {selected.name} Package
-            </span>
-            <span className="block text-xs text-white/80">
-              {DATES[dateIdx].d}, {DATES[dateIdx].n} · {TIMES[timeIdx]} · ₹
-              {total} payable
-            </span>
-          </span>
-        </motion.div>
-      )}
-    </>
+      <BookStickyCheckout
+        total={total}
+        confirming={confirming}
+        onConfirm={confirmBooking}
+      />
+
+      <BookingSuccessModal
+        open={!!bookingDone}
+        onClose={() => setBookingDone(null)}
+        booking={bookingDone}
+        onViewBookings={() => {
+          setBookingDone(null);
+          router.push("/bookings");
+        }}
+      />
+    </div>
   );
 }
 

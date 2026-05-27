@@ -9,8 +9,12 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react-native";
+import { useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
+import { PROMO_OFFERS } from "@/lib/services";
+import { openBook } from "@/lib/navigation";
+import { useAppStore } from "@/lib/store";
 
 function shade(hex: string, amt: number) {
   const n = parseInt(hex.slice(1), 16);
@@ -63,8 +67,18 @@ const OFFERS: Offer[] = [
   },
 ];
 
+const CODE_TO_SERVICE: Record<string, string> = {
+  COOL100: "ac-service",
+  CLEAN20: "cleaning",
+  PLUMB150: "plumbing",
+  FRESH25: "cleaning",
+  FIX150: "plumbing",
+};
+
 export const OffersSection: React.FC = () => {
+  const router = useRouter();
   const { colors: themeColors } = useTheme();
+  const setActivePromo = useAppStore((s) => s.setActivePromo);
   const [copied, setCopied] = useState<string | null>(null);
 
   async function copyCode(code: string) {
@@ -84,7 +98,7 @@ export const OffersSection: React.FC = () => {
         <Text style={[styles.title, { color: themeColors.text }]}>
           Offers for You
         </Text>
-        <Pressable style={styles.seeAll}>
+        <Pressable style={styles.seeAll} onPress={() => openBook(router)}>
           <Text style={[styles.seeAllText, { color: themeColors.primary }]}>
             See all
           </Text>
@@ -107,7 +121,15 @@ export const OffersSection: React.FC = () => {
           return (
             <Pressable
               key={o.code}
-              onPress={() => copyCode(o.code)}
+              onPress={() => {
+                const sid =
+                  CODE_TO_SERVICE[o.code] ??
+                  PROMO_OFFERS.find((p) => p.code === o.code)?.serviceId ??
+                  "cleaning";
+                setActivePromo(o.code);
+                openBook(router, { service: sid, promo: o.code });
+              }}
+              onLongPress={() => copyCode(o.code)}
               style={[
                 styles.offer,
                 { marginRight: idx < OFFERS.length - 1 ? 10 : 0 },

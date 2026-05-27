@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   Star,
@@ -10,6 +11,9 @@ import {
   ArrowRight,
   type LucideIcon,
 } from "lucide-react";
+import { useAppStore } from "@/stores/app-store";
+import { PageSection } from "@/components/layout/PageSection";
+import { cn } from "@/lib/utils";
 
 type Benefit = { icon: LucideIcon; l1: string; l2: string };
 
@@ -23,15 +27,16 @@ const BENEFITS: Benefit[] = [
 
 export function PremiumSection() {
   const reduce = useReducedMotion();
+  const openOverlay = useAppStore((s) => s.openOverlay);
 
   return (
-    <section className="mx-auto mt-24 max-w-content px-5 sm:px-8">
+    <PageSection>
       <motion.div
         initial={{ opacity: 0, y: 32 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.3 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="relative overflow-hidden rounded-[40px] bg-premium p-10 shadow-glow-violet sm:p-16"
+        className="relative overflow-hidden rounded-[24px] bg-premium p-6 shadow-glow-violet sm:rounded-[32px] sm:p-10 lg:rounded-[40px] lg:p-16"
       >
         {/* sheen */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent" />
@@ -49,24 +54,34 @@ export function PremiumSection() {
           >
             <span className="size-72 rounded-full border-2 border-dashed border-gold/50" />
           </motion.div>
-          <motion.img
-            src="/crown-3d.png"
-            alt="Premium crown"
+          <motion.div
             animate={reduce ? undefined : { y: [0, -14, 0] }}
             transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
-            className="relative size-60 object-contain drop-shadow-[0_24px_48px_rgb(212_175_55/0.45)]"
-          />
+            className="relative size-60"
+          >
+            <Image
+              src="/crown-3d.png"
+              alt="Premium crown"
+              width={240}
+              height={240}
+              sizes="240px"
+              className="size-60 object-contain drop-shadow-[0_24px_48px_rgb(212_175_55/0.45)]"
+            />
+          </motion.div>
         </div>
 
         <div className="relative lg:max-w-3xl">
-          <h2 className="font-display text-4xl font-bold tracking-wide text-white sm:text-5xl">
+          <h2
+            className="font-display font-bold tracking-wide text-white"
+            style={{ fontSize: "clamp(1.75rem, 5vw, 3rem)" }}
+          >
             HOMIGO PREMIUM 👑
           </h2>
           <p className="mt-3 text-lg text-white/80">
             Unlock the elite home-care experience
           </p>
 
-          <div className="mt-10 grid grid-cols-5 gap-4">
+          <div className="mt-8 grid grid-cols-2 gap-4 sm:mt-10 sm:grid-cols-3 lg:grid-cols-5">
             {BENEFITS.map((b, i) => {
               const Icon = b.icon;
               return (
@@ -78,8 +93,8 @@ export function PremiumSection() {
                   transition={{ duration: 0.35, delay: i * 0.07 }}
                   className="group flex flex-col items-center text-center"
                 >
-                  <span className="grid size-16 place-items-center rounded-2xl bg-white/15 text-white ring-1 ring-white/25 shadow-[inset_0_1px_0_rgb(255_255_255/0.3)] backdrop-blur-sm transition-transform duration-300 group-hover:scale-110">
-                    <Icon size={26} strokeWidth={2.2} />
+                  <span className="grid size-14 place-items-center rounded-2xl bg-white/15 text-white ring-1 ring-white/25 shadow-[inset_0_1px_0_rgb(255_255_255/0.3)] backdrop-blur-sm transition-transform duration-300 group-hover:scale-110 sm:size-16">
+                    <Icon size={24} strokeWidth={2.2} />
                   </span>
                   <p className="mt-3 text-sm font-bold leading-tight text-white">
                     {b.l1}
@@ -93,6 +108,7 @@ export function PremiumSection() {
 
           <motion.button
             type="button"
+            onClick={() => openOverlay("premium")}
             whileHover={{ y: -3 }}
             whileTap={{ scale: 0.98 }}
             className="mt-10 inline-flex h-14 items-center gap-2 rounded-2xl bg-white px-9 text-base font-bold text-violet shadow-e3 outline-none focus-visible:ring-2 focus-visible:ring-white/70"
@@ -102,6 +118,6 @@ export function PremiumSection() {
           </motion.button>
         </div>
       </motion.div>
-    </section>
+    </PageSection>
   );
 }

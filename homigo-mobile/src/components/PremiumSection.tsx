@@ -18,6 +18,8 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { shadowStyles } from "@/lib/colors";
+import { useAppNavigation } from "@/hooks/useAppNavigation";
+import { useAppStore } from "@/lib/store";
 
 const CROWN_IMG = require("../../assets/crown-3d.png");
 
@@ -68,6 +70,9 @@ function Crown() {
 }
 
 export const PremiumSection: React.FC = () => {
+  const { openPremium } = useAppNavigation();
+  const isPremium = useAppStore((s) => s.isPremium);
+
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -118,8 +123,10 @@ export const PremiumSection: React.FC = () => {
         </View>
 
         {/* Upgrade Now */}
-        <Pressable style={styles.upgradeBtn}>
-          <Text style={styles.upgradeBtnText}>Upgrade Now</Text>
+        <Pressable style={styles.upgradeBtn} onPress={openPremium}>
+          <Text style={styles.upgradeBtnText}>
+            {isPremium ? "Manage Premium" : "Upgrade Now"}
+          </Text>
           <ArrowRight size={15} color="#9333EA" strokeWidth={2.8} />
         </Pressable>
       </LinearGradient>

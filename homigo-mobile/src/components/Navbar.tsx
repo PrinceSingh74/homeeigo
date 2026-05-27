@@ -10,10 +10,18 @@ import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { MapPin, ChevronDown, Bell } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
-import { shadowStyles } from "@/lib/colors";
+import { useAppNavigation } from "@/hooks/useAppNavigation";
+import { PressableScale } from "@/components/ai/PressableScale";
 
 export const Navbar: React.FC = () => {
   const { colors: themeColors, isDark } = useTheme();
+  const {
+    openLocation,
+    openNotifications,
+    goProfile,
+    locationFull,
+    unreadNotifications,
+  } = useAppNavigation();
 
   return (
     <View style={styles.container}>
@@ -28,7 +36,6 @@ export const Navbar: React.FC = () => {
             },
           ]}
         >
-          {/* Logo */}
           <View style={styles.logoRow}>
             <LinearGradient
               colors={["#2563EB", "#7C3AED"]}
@@ -43,7 +50,6 @@ export const Navbar: React.FC = () => {
             </Text>
           </View>
 
-          {/* Location pill */}
           <Pressable
             style={[
               styles.locationPill,
@@ -53,47 +59,53 @@ export const Navbar: React.FC = () => {
                   : "rgba(0,0,0,0.06)",
               },
             ]}
+            onPress={openLocation}
           >
             <MapPin size={13} color={themeColors.primary} />
             <Text
               numberOfLines={1}
               style={[styles.locationText, { color: themeColors.text }]}
             >
-              Gurugram, Sector 49
+              {locationFull}
             </Text>
             <ChevronDown size={12} color={themeColors.textSecondary} />
           </Pressable>
 
-          {/* Right actions */}
           <View style={styles.actions}>
-            <Pressable style={styles.bellWrap}>
+            <Pressable style={styles.bellWrap} onPress={openNotifications}>
               <Bell size={20} color={themeColors.text} />
-              <View style={styles.badge}>
-                <Text style={styles.badgeCount}>2</Text>
-              </View>
+              {unreadNotifications > 0 ? (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeCount}>
+                    {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                  </Text>
+                </View>
+              ) : null}
             </Pressable>
-            <View
-              style={[
-                styles.avatarRing,
-                { borderColor: themeColors.primary },
-              ]}
-            >
-              <Image
-                source={{
-                  uri: "https://api.dicebear.com/7.x/avataaars/png?seed=homigo&size=80",
-                }}
-                style={styles.avatar}
-              />
-            </View>
+            <PressableScale onPress={goProfile} haptic scaleTo={0.94}>
+              <View
+                style={[
+                  styles.avatarRing,
+                  { borderColor: themeColors.primary },
+                ]}
+              >
+                <Image
+                  source={{
+                    uri: "https://api.dicebear.com/7.x/avataaars/png?seed=homigo&size=80",
+                  }}
+                  style={styles.avatar}
+                />
+              </View>
+            </PressableScale>
           </View>
         </View>
       </BlurView>
 
-      {/* Soft bottom border */}
       <View
         style={[
           styles.borderLine,
-          { borderBottomColor: isDark
+          {
+            borderBottomColor: isDark
               ? "rgba(255,255,255,0.08)"
               : "rgba(0,0,0,0.05)",
           },

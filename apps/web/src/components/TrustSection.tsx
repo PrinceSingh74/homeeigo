@@ -10,6 +10,8 @@ import {
   Headphones,
   type LucideIcon,
 } from "lucide-react";
+import { PageSection } from "@/components/layout/PageSection";
+import { SectionHeader } from "@/components/layout/SectionHeader";
 
 type Trust = { icon: LucideIcon; l1: string; l2: string };
 
@@ -24,23 +26,15 @@ const TRUSTS: Trust[] = [
 
 export function TrustSection() {
   return (
-    <section className="mx-auto mt-24 max-w-content px-5 sm:px-8">
-      <motion.h2
-        initial={{ opacity: 0, y: 16 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.45 }}
-        className="mb-10 font-display text-3xl font-bold text-content sm:text-4xl lg:text-5xl"
-      >
-        Trust &amp; Safety
-      </motion.h2>
+    <PageSection>
+      <SectionHeader title="Trust & Safety" />
 
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.5 }}
-        className="relative grid grid-cols-2 gap-10 overflow-hidden rounded-[36px] glass-card p-12 sm:grid-cols-3 lg:grid-cols-6"
+        className="relative grid grid-cols-2 gap-4 overflow-hidden rounded-[24px] glass-card p-5 sm:grid-cols-3 sm:gap-6 sm:rounded-[32px] sm:p-8 lg:grid-cols-6 lg:gap-8 lg:rounded-[36px] lg:p-12"
       >
         <span
           aria-hidden
@@ -58,7 +52,7 @@ export function TrustSection() {
               className="group relative flex flex-col items-center text-center"
             >
               <span
-                className="grid size-20 place-items-center rounded-3xl text-primary ring-1 ring-white/50 transition-transform duration-300 group-hover:scale-110"
+                className="grid size-14 place-items-center rounded-2xl text-primary ring-1 ring-white/50 transition-transform duration-300 group-hover:scale-110 sm:size-20 sm:rounded-3xl"
                 style={{
                   background:
                     "linear-gradient(135deg, rgb(37 99 235 / 0.16) 0%, rgb(124 58 237 / 0.08) 100%)",
@@ -66,7 +60,7 @@ export function TrustSection() {
                     "inset 0 2px 4px rgb(255 255 255 / 0.6), 0 10px 20px -8px rgb(37 99 235 / 0.35)",
                 }}
               >
-                <Icon size={36} strokeWidth={2} />
+                <Icon size={28} strokeWidth={2} className="sm:size-9" />
               </span>
               <p className="mt-4 text-sm font-semibold leading-tight text-muted">
                 {t.l1}
@@ -77,6 +71,6 @@ export function TrustSection() {
           );
         })}
       </motion.div>
-    </section>
+    </PageSection>
   );
 }

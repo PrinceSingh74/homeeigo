@@ -4,8 +4,14 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sun, Moon } from "lucide-react";
 import { IconButton } from "@/components/buttons/IconButton";
+import { cn } from "@/lib/utils";
 
-export function ThemeToggle() {
+type ThemeToggleProps = {
+  size?: number;
+  className?: string;
+};
+
+export function ThemeToggle({ size = 40, className }: ThemeToggleProps) {
   const [dark, setDark] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -25,16 +31,22 @@ export function ThemeToggle() {
     }
   }
 
-  // Avoid hydration mismatch: render a stable placeholder until mounted.
   if (!mounted) {
-    return <span aria-hidden className="inline-block size-10" />;
+    return (
+      <span
+        aria-hidden
+        className={cn("inline-block shrink-0", className)}
+        style={{ width: size, height: size }}
+      />
+    );
   }
 
   return (
     <IconButton
       label={dark ? "Switch to light mode" : "Switch to dark mode"}
+      size={size}
       onClick={toggle}
-      className="text-content/70 hover:text-primary"
+      className={cn("shrink-0 text-content/70 hover:text-primary", className)}
     >
       <AnimatePresence mode="wait" initial={false}>
         <motion.span
@@ -45,7 +57,11 @@ export function ThemeToggle() {
           transition={{ duration: 0.2 }}
           className="grid place-items-center"
         >
-          {dark ? <Moon size={20} /> : <Sun size={20} />}
+          {dark ? (
+            <Moon size={size >= 40 ? 20 : 18} />
+          ) : (
+            <Sun size={size >= 40 ? 20 : 18} />
+          )}
         </motion.span>
       </AnimatePresence>
     </IconButton>

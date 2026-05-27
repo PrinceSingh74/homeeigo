@@ -1,36 +1,132 @@
-import React from "react";
-import { View, Text, StyleSheet, SafeAreaView } from "react-native";
+import React, { useCallback } from "react";
+import { StyleSheet, Platform, StatusBar } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, { useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
 import { useTheme } from "@/hooks/useTheme";
+import { useAppNavigation } from "@/hooks/useAppNavigation";
+import { PROFILE_PAD, PROFILE_TAB_SPACER } from "@/lib/profile-layout";
+import { ProfileScreenHeader } from "@/components/profile/ProfileScreenHeader";
+import { ProfileHeroCard } from "@/components/profile/ProfileHeroCard";
+import { ProfilePremiumBanner } from "@/components/profile/ProfilePremiumBanner";
+import { ProfileQuickStatsGrid } from "@/components/profile/ProfileQuickStatsGrid";
+import { ProfileBookingsSection } from "@/components/profile/ProfileBookingsSection";
+import { ProfileInsightsSection } from "@/components/profile/ProfileInsightsSection";
+import { ProfileAddressesSection } from "@/components/profile/ProfileAddressesSection";
+
+const BOOKING_SERVICE: Record<string, string> = {
+  "p-ac": "ac-service",
+  "p-sofa": "cleaning",
+};
+
+const INSIGHT_SERVICE: Record<string, string> = {
+  ac: "ac-service",
+  kitchen: "cleaning",
+  savings: "cleaning",
+};
 
 export default function ProfileScreen() {
-  const { colors: themeColors } = useTheme();
+  const { colors: c, isDark } = useTheme();
+  const nav = useAppNavigation();
+  const scrollY = useSharedValue(0);
+
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (e) => {
+      scrollY.value = e.contentOffset.y;
+    },
+  });
+
+  const onStatPress = useCallback(
+    (id: string, route?: string) => {
+      if (route === "wallet" || route === "wallet-coins") {
+        nav.goWallet();
+        return;
+      }
+      if (route === "bookings") {
+        nav.goBookings();
+        return;
+      }
+      if (id === "addresses") {
+        nav.openAddresses();
+        return;
+      }
+      if (id === "referral") {
+        nav.openReferral();
+        return;
+      }
+      nav.goWallet();
+    },
+    [nav],
+  );
 
   return (
     <SafeAreaView
-      style={[
-        styles.container,
-        { backgroundColor: themeColors.bg },
-      ]}
+      style={[styles.root, { backgroundColor: c.bg }]}
+      edges={["top", "left", "right"]}
     >
-      <View style={styles.content}>
-        <Text style={{ color: themeColors.text, fontSize: 24, fontWeight: "bold" }}>
-          My Profile
-        </Text>
-        <Text style={{ color: themeColors.textSecondary, marginTop: 8 }}>
-          Coming soon...
-        </Text>
-      </View>
+      <StatusBar
+        barStyle={isDark ? "light-content" : "dark-content"}
+        translucent={Platform.OS === "android"}
+        backgroundColor="transparent"
+      />
+      <LinearGradient
+        colors={
+          isDark
+            ? [`${c.violet}14`, "transparent"]
+            : ["#F8FAFC", "#F8FAFC", "transparent"]
+        }
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scroll, { paddingHorizontal: PROFILE_PAD }]}
+        scrollEventThrottle={16}
+        decelerationRate="normal"
+        bounces={Platform.OS === "ios"}
+        onScroll={scrollHandler}
+      >
+        <ProfileScreenHeader
+          onNotifications={nav.openNotifications}
+          onSettings={nav.openSettings}
+        />
+        <ProfileHeroCard
+          onEdit={() => nav.showToast("Edit profile")}
+          onAvatar={() => nav.showToast("Change profile photo")}
+        />
+        <ProfilePremiumBanner onManage={nav.openPremium} />
+        <ProfileQuickStatsGrid onStatPress={onStatPress} />
+        <ProfileBookingsSection
+          onViewAll={nav.goBookings}
+          onBooking={(id, action) => {
+            if (action === "Track") {
+              nav.goBookings();
+              return;
+            }
+            const serviceId = BOOKING_SERVICE[id] ?? "cleaning";
+            nav.book({ service: serviceId });
+          }}
+        />
+        <ProfileInsightsSection
+          onViewAll={nav.goAi}
+          onInsight={(id) => {
+            const serviceId = INSIGHT_SERVICE[id] ?? "cleaning";
+            nav.book({ service: serviceId });
+          }}
+        />
+        <ProfileAddressesSection
+          onManage={nav.openAddresses}
+          onAddress={() => nav.openAddresses()}
+          onAdd={nav.openAddresses}
+        />
+        <Animated.View style={{ height: PROFILE_TAB_SPACER }} />
+      </Animated.ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-    flex: 1,
-    justifyContent: "center",
-  },
+  root: { flex: 1 },
+  scroll: { paddingTop: 8, paddingBottom: 8 },
 });

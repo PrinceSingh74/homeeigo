@@ -1,83 +1,77 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
+import { useRouter } from "next/navigation";
 import { Star } from "lucide-react";
-
-const ITEMS = [
-  {
-    title: "Sofa Deep Clean",
-    price: "₹699",
-    rating: "4.9",
-    img: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=600&q=75",
-  },
-  {
-    title: "AC Gas Refill",
-    price: "₹1,299",
-    rating: "4.8",
-    img: "https://images.unsplash.com/photo-1635048424329-a9bfb146d7aa?w=600&q=75",
-  },
-  {
-    title: "Kitchen Cleaning",
-    price: "₹499",
-    rating: "4.7",
-    img: "https://images.unsplash.com/photo-1556911220-bff31c812dba?w=600&q=75",
-  },
-  {
-    title: "Bathroom Cleaning",
-    price: "₹599",
-    rating: "4.8",
-    img: "https://images.unsplash.com/photo-1620626011761-996317b8d101?w=600&q=75",
-  },
-];
+import { PageSection } from "@/components/layout/PageSection";
+import { SectionHeader } from "@/components/layout/SectionHeader";
+import { ServiceImage } from "@/components/ui/ServiceImage";
+import { RECOMMENDED } from "@/lib/services";
+import { bookUrl } from "@/lib/booking-url";
+import { sectionAction } from "@/lib/page-layout";
 
 export function RecommendedSection() {
-  return (
-    <section className="mx-auto mt-24 max-w-content px-5 sm:px-8">
-      <div className="mb-10 flex items-center justify-between">
-        <h2 className="font-display text-3xl font-bold text-content sm:text-4xl lg:text-5xl">
-          Recommended for You
-        </h2>
-        <button
-          type="button"
-          className="text-base font-semibold text-primary outline-none focus-visible:ring-2 focus-visible:ring-primary/60 rounded-md"
-        >
-          See all
-        </button>
-      </div>
+  const router = useRouter();
+  const reduce = useReducedMotion();
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        {ITEMS.map((it, i) => (
+  return (
+    <PageSection>
+      <SectionHeader
+        title="Recommended for You"
+        action={
+          <button
+            type="button"
+            onClick={() => router.push(bookUrl())}
+            className={sectionAction}
+          >
+            See all
+          </button>
+        }
+      />
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
+        {RECOMMENDED.map((it, i) => (
           <motion.button
             type="button"
             key={it.title}
+            onClick={() =>
+              router.push(
+                bookUrl({
+                  service: it.serviceId,
+                  package: it.packageIndex,
+                }),
+              )
+            }
             initial={{ opacity: 0, y: 24 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.45, delay: i * 0.08 }}
-            whileHover={{ y: -10 }}
+            whileHover={reduce ? undefined : { y: -10 }}
             className="group relative overflow-hidden rounded-[28px] glass-card text-left outline-none transition-shadow duration-300 hover:shadow-[0_28px_64px_-12px_rgb(15_23_42/0.3)] focus-visible:ring-2 focus-visible:ring-primary/60"
           >
-            <div className="relative h-64 w-full overflow-hidden sm:h-72 lg:h-80">
-              <img
+            <div className="relative h-56 w-full overflow-hidden sm:h-64 lg:h-72">
+              <ServiceImage
                 src={it.img}
                 alt={it.title}
-                loading="lazy"
-                className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+                fill
+                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                objectFit="cover"
+                className="transition-transform duration-700 group-hover:scale-110"
               />
               <span
                 aria-hidden
                 className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink/30 via-transparent to-transparent"
               />
             </div>
-            <div className="p-6">
-              <p className="truncate font-display text-lg font-semibold text-content">
+            <div className="p-4 sm:p-6">
+              <p className="truncate font-display text-base font-semibold text-content sm:text-lg">
                 {it.title}
               </p>
-              <div className="mt-3 flex items-center justify-between">
-                <span className="font-display text-2xl font-bold text-primary">
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <span className="font-display text-xl font-bold text-primary sm:text-2xl">
                   {it.price}
                 </span>
-                <span className="flex items-center gap-1 text-base font-medium text-muted">
+                <span className="flex shrink-0 items-center gap-1 text-sm font-medium text-muted sm:text-base">
                   <Star size={16} className="fill-warning text-warning" />
                   {it.rating}
                 </span>
@@ -86,6 +80,6 @@ export function RecommendedSection() {
           </motion.button>
         ))}
       </div>
-    </section>
+    </PageSection>
   );
 }

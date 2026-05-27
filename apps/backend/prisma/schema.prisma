@@ -1,5 +1,5 @@
-// HOMIGO Prisma schema — Phase 1 placeholder
-// Full models (User, Provider, Booking, Payment) land in Phase 3.
+// HOMIGO — Production PostgreSQL schema (customer + partner + admin)
+// Aligned with apps/web, apps/partner-web, apps/admin-panel
 
 generator client {
   provider = "prisma-client-js"
@@ -8,4 +8,930 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  CUSTOMER
+  VENDOR
+  ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  ASSIGNED
+  EN_ROUTE
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED_BY_USER
+  CANCELLED_BY_PROVIDER
+}
+
+enum PaymentStatus {
+  PENDING
+  INITIATED
+  PROCESSING
+  SUCCESS
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum KycStatus {
+  NOT_STARTED
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum BackgroundCheckStatus {
+  NOT_DONE
+  PENDING
+  CLEARED
+  FAILED
+}
+
+enum TrackingStatus {
+  NOT_STARTED
+  ON_THE_WAY
+  ARRIVED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum WalletTxnType {
+  CREDIT
+  DEBIT
+  BONUS
+  REFUND
+  WITHDRAWAL
+  REVERSAL
+}
+
+enum WalletTxnStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+enum WithdrawalStatus {
+  REQUESTED
+  APPROVED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+// ─── MODEL 1: User (customers, vendors, admins) ──────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  phoneNumber String @unique @map("phone_number")
+
+  firstName  String  @map("first_name")
+  lastName   String  @map("last_name")
+  profileImage String? @db.Text @map("profile_image")
+  bio        String? @db.Text
+  dateOfBirth DateTime? @map("date_of_birth")
+  gender     String?
+
+  role UserRole @default(CUSTOMER)
+
+  password           String
+  passwordChangedAt  DateTime? @map("password_changed_at")
+  passwordResetToken String?   @unique @map("password_reset_token")
+  passwordResetExpires DateTime? @map("password_reset_expires")
+
+  isEmailVerified Boolean   @default(false) @map("is_email_verified")
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  isPhoneVerified Boolean   @default(false) @map("is_phone_verified")
+  phoneVerifiedAt DateTime? @map("phone_verified_at")
+
+  isActive     Boolean @default(true) @map("is_active")
+  isBanned     Boolean @default(false) @map("is_banned")
+  bannedReason String? @map("banned_reason")
+  bannedAt     DateTime? @map("banned_at")
+
+  kycStatus          KycStatus @default(NOT_STARTED) @map("kyc_status")
+  kycDocumentUrl     String?   @db.Text @map("kyc_document_url")
+  kycDocumentType    String?   @map("kyc_document_type")
+  kycDocumentNumber  String?   @unique @map("kyc_document_number")
+  kycVerifiedAt      DateTime? @map("kyc_verified_at")
+  kycRejectionReason String?   @db.Text @map("kyc_rejection_reason")
+
+  defaultAddressId String? @map("default_address_id")
+  preferredCity    String? @map("preferred_city")
+  defaultLanguage  String  @default("en") @map("default_language")
+  timezone         String  @default("Asia/Kolkata")
+
+  darkMode               Boolean @default(false) @map("dark_mode")
+  notificationsEnabled   Boolean @default(true) @map("notifications_enabled")
+  emailNotifications     Boolean @default(true) @map("email_notifications")
+  pushNotifications      Boolean @default(true) @map("push_notifications")
+  smsNotifications       Boolean @default(true) @map("sms_notifications")
+
+  walletBalance  Float  @default(0) @map("wallet_balance")
+  walletCurrency String @default("INR") @map("wallet_currency")
+  totalSpent     Float  @default(0) @map("total_spent")
+  totalSaved     Float  @default(0) @map("total_saved")
+
+  referralCode      String? @unique @map("referral_code")
+  referredBy        String? @map("referred_by")
+  referralCount     Int     @default(0) @map("referral_count")
+  referralBonusUsed Boolean @default(false) @map("referral_bonus_used")
+
+  lastLoginAt    DateTime? @map("last_login_at")
+  lastActivityAt DateTime? @map("last_activity_at")
+  loginCount     Int       @default(0) @map("login_count")
+
+  addresses          Address[]
+  bookings           Booking[]
+  ratingsGiven       Rating[]
+  walletTransactions WalletTransaction[]
+  notifications      Notification[]
+  refreshTokens      RefreshToken[]
+  otps               OTP[]
+  passwordHistories  PasswordHistory[]
+  supportTickets     SupportTicket[]
+  activityLogs       ActivityLog[]
+  payments           Payment[]
+  provider           Provider?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([phoneNumber])
+  @@index([kycStatus])
+  @@index([isActive])
+  @@index([isBanned])
+  @@index([role])
+  @@index([createdAt])
+  @@index([referralCode])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model OTP {
+  id          String   @id @default(cuid())
+  userId      String?  @map("user_id")
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phoneNumber String   @map("phone_number")
+  otpHash     String   @map("otp_hash")
+  expiresAt   DateTime @map("expires_at")
+  isUsed      Boolean  @default(false) @map("is_used")
+  attemptCount Int     @default(0) @map("attempt_count")
+  usedAt      DateTime? @map("used_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([phoneNumber, createdAt])
+  @@index([expiresAt])
+  @@map("otps")
+}
+
+model PasswordHistory {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("password_histories")
+}
+
+// ─── MODEL 2: Provider (service professionals / partners) ────────────────────
+
+model Provider {
+  id     String @id @default(cuid())
+  userId String @unique @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  businessName    String? @map("business_name")
+  businessLicense String? @unique @map("business_license")
+  taxId           String? @unique @map("tax_id")
+
+  serviceCategories String[] @map("service_categories")
+  serviceRegions    String[] @map("service_regions")
+  bio               String?  @db.Text
+
+  isVerified        Boolean   @default(false) @map("is_verified")
+  verificationDate  DateTime? @map("verification_date")
+  verificationNotes String?   @db.Text @map("verification_notes")
+
+  documents      ProviderDocument[]
+  certifications String[]
+
+  backgroundCheckStatus BackgroundCheckStatus @default(NOT_DONE) @map("background_check_status")
+  backgroundCheckDate   DateTime?             @map("background_check_date")
+
+  profileImage    String? @db.Text @map("profile_image")
+  rating          Float   @default(0)
+  totalReviews    Int     @default(0) @map("total_reviews")
+  ratingBreakdown String? @db.Text @map("rating_breakdown")
+
+  reviews Rating[] @relation("ProviderReviews")
+
+  totalBookings     Int @default(0) @map("total_bookings")
+  completedBookings Int @default(0) @map("completed_bookings")
+  cancelledBookings Int @default(0) @map("cancelled_bookings")
+  rejectedBookings  Int @default(0) @map("rejected_bookings")
+
+  completionRate   Float @default(0) @map("completion_rate")
+  responseRate     Float @default(0) @map("response_rate")
+  cancellationRate Float @default(0) @map("cancellation_rate")
+  onTimeRate       Float @default(0) @map("on_time_rate")
+  acceptanceRate   Float @default(0) @map("acceptance_rate")
+
+  avgResponseTime   Float @default(0) @map("avg_response_time")
+  avgCompletionTime Float @default(0) @map("avg_completion_time")
+
+  isOnline      Boolean   @default(false) @map("is_online")
+  onlineSince   DateTime? @map("online_since")
+  lastSeenAt    DateTime? @map("last_seen_at")
+  currentStatus String    @default("offline") @map("current_status")
+
+  workingHoursStart String?  @map("working_hours_start")
+  workingHoursEnd   String?  @map("working_hours_end")
+  workingDays       String[] @map("working_days")
+
+  walletBalance     Float @default(0) @map("wallet_balance")
+  totalEarnings     Float @default(0) @map("total_earnings")
+  thisMonthEarnings Float @default(0) @map("this_month_earnings")
+  thisWeekEarnings  Float @default(0) @map("this_week_earnings")
+  commissionRate    Float @default(20) @map("commission_rate")
+
+  earnings             Earning[]
+  withdrawals          Withdrawal[]
+  walletTransactions   WalletTransaction[]
+
+  bankAccountHolder String? @map("bank_account_holder")
+  bankAccountNumber String? @unique @map("bank_account_number")
+  bankIfscCode      String? @map("bank_ifsc_code")
+  bankName          String? @map("bank_name")
+
+  paymentMethodPreference String @default("bank_transfer") @map("payment_method_preference")
+  upiId                   String? @unique @map("upi_id")
+
+  currentLocation Location?
+  locationHistory LocationHistory[]
+
+  isActive      Boolean @default(true) @map("is_active")
+  isBanned      Boolean @default(false) @map("is_banned")
+  bannedReason  String? @map("banned_reason")
+  bannedAt      DateTime? @map("banned_at")
+  isApproved    Boolean @default(false) @map("is_approved")
+  approvalNotes String? @db.Text @map("approval_notes")
+
+  bookings       Booking[]
+  supportTickets SupportTicket[]
+  activityLogs   ActivityLog[]
+  notifications  Notification[]
+
+  pushTokens String[] @map("push_tokens")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isOnline])
+  @@index([rating])
+  @@index([isVerified])
+  @@index([isApproved])
+  @@index([isActive])
+  @@index([completionRate])
+  @@index([createdAt])
+  @@map("providers")
+}
+
+// ─── MODEL 3: Service ────────────────────────────────────────────────────────
+
+model Service {
+  id   String @id @default(cuid())
+  name String @unique
+  slug String @unique
+
+  description         String  @db.Text
+  detailedDescription String? @db.Text @map("detailed_description")
+
+  category    String
+  subcategory String?
+
+  basePrice         Float  @map("base_price")
+  minPrice          Float? @map("min_price")
+  maxPrice          Float? @map("max_price")
+  currency          String @default("INR")
+  estimatedDuration Int    @map("estimated_duration")
+  durationRange     String? @map("duration_range")
+
+  isActive   Boolean @default(true) @map("is_active")
+  isFeatured Boolean @default(false) @map("is_featured")
+  isPopular  Boolean @default(false) @map("is_popular")
+  isPromoted Boolean @default(false) @map("is_promoted")
+
+  popularity   Int @default(0)
+  bookingCount Int @default(0) @map("booking_count")
+
+  icon      String?  @db.Text
+  images    String[]
+  thumbnail String?  @db.Text
+
+  includedServices  String[] @map("included_services")
+  excludedServices  String[] @map("excluded_services")
+  requirements      String[]
+
+  availableCities   String[] @map("available_cities")
+  unavailableCities String[] @map("unavailable_cities")
+
+  tags           String[]
+  seoTitle       String? @map("seo_title")
+  seoDescription String? @map("seo_description")
+  seoKeywords    String? @map("seo_keywords")
+
+  pricingModel String @default("fixed") @map("pricing_model")
+
+  bookings Booking[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([isActive])
+  @@index([isFeatured])
+  @@index([popularity])
+  @@index([slug])
+  @@map("services")
+}
+
+// ─── MODEL 4: Address ────────────────────────────────────────────────────────
+
+model Address {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  label        String
+  addressLine1 String  @map("address_line1")
+  addressLine2 String? @map("address_line2")
+  city         String
+  state        String
+  zipCode      String  @map("zip_code")
+  country      String  @default("India")
+
+  fullAddress String @default("") @db.Text @map("full_address")
+
+  latitude  Float
+  longitude Float
+  placeId   String? @map("place_id")
+
+  type String @default("residential")
+
+  isDefault        Boolean @default(false) @map("is_default")
+  isBillingAddress Boolean @default(false) @map("is_billing_address")
+
+  landmark            String?
+  buildingName        String? @map("building_name")
+  flatNumber          String? @map("flat_number")
+  specialInstructions String? @db.Text @map("special_instructions")
+
+  isVerified Boolean   @default(false) @map("is_verified")
+  verifiedAt DateTime? @map("verified_at")
+
+  bookings Booking[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([city])
+  @@index([isDefault])
+  @@map("addresses")
+}
+
+// ─── MODEL 5: Booking ────────────────────────────────────────────────────────
+
+model Booking {
+  id            String @id @default(cuid())
+  bookingNumber String @unique @map("booking_number")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  providerId String?  @map("provider_id")
+  provider   Provider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+
+  serviceId String @map("service_id")
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  addressId String  @map("address_id")
+  address   Address @relation(fields: [addressId], references: [id], onDelete: Restrict)
+
+  status BookingStatus @default(PENDING)
+
+  scheduledDate DateTime  @map("scheduled_date")
+  scheduledTime String?   @map("scheduled_time")
+
+  acceptedAt  DateTime? @map("accepted_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  cancelledAt DateTime? @map("cancelled_at")
+
+  estimatedDuration Int? @map("estimated_duration")
+  actualDuration    Int? @map("actual_duration")
+  eta               Int?
+
+  description   String? @db.Text
+  userNotes     String? @db.Text @map("user_notes")
+  providerNotes String? @db.Text @map("provider_notes")
+
+  baseAmount  Float   @map("base_amount")
+  discount    Float   @default(0)
+  couponCode  String? @map("coupon_code")
+  taxes       Float   @default(0)
+  finalAmount Float   @map("final_amount")
+  tipAmount   Float   @default(0) @map("tip_amount")
+  totalAmount Float   @map("total_amount")
+
+  paymentStatus PaymentStatus @default(PENDING) @map("payment_status")
+  paymentMethod String?       @map("payment_method")
+
+  payment Payment?
+
+  cancellationReason String? @map("cancellation_reason")
+  cancelledBy        String? @map("cancelled_by")
+  refundStatus       String? @map("refund_status")
+  refundAmount       Float?  @map("refund_amount")
+
+  rating   Rating?
+  tracking Tracking?
+
+  supportTickets SupportTicket[]
+  activityLogs     ActivityLog[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([providerId])
+  @@index([status])
+  @@index([scheduledDate])
+  @@index([paymentStatus])
+  @@index([createdAt])
+  @@index([bookingNumber])
+  @@index([userId, createdAt])
+  @@index([providerId, status])
+  @@map("bookings")
+}
+
+// ─── MODEL 6: Payment ────────────────────────────────────────────────────────
+
+model Payment {
+  id        String @id @default(cuid())
+  bookingId String @unique @map("booking_id")
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  amount     Float
+  amountPaid Float  @default(0) @map("amount_paid")
+  currency   String @default("INR")
+
+  paymentMethod String @map("payment_method")
+
+  razorpayOrderId   String  @unique @map("razorpay_order_id")
+  razorpayPaymentId String? @unique @map("razorpay_payment_id")
+  razorpaySignature String? @map("razorpay_signature")
+  razorpayErrorCode String? @map("razorpay_error_code")
+  razorpayErrorDescription String? @map("razorpay_error_description")
+
+  status PaymentStatus @default(INITIATED)
+
+  refundedAmount   Float   @default(0) @map("refunded_amount")
+  refundReason     String? @map("refund_reason")
+  razorpayRefundId String? @unique @map("razorpay_refund_id")
+  refundStatus     String? @map("refund_status")
+
+  receiptUrl    String? @db.Text @map("receipt_url")
+  invoiceNumber String? @unique @map("invoice_number")
+
+  metadata String? @db.Text
+  notes    String?
+
+  settledAt    DateTime? @map("settled_at")
+  settlementId String?   @map("settlement_id")
+
+  initiatedAt DateTime  @default(now()) @map("initiated_at")
+  completedAt DateTime? @map("completed_at")
+  failedAt    DateTime? @map("failed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([status])
+  @@index([razorpayOrderId])
+  @@index([createdAt])
+  @@map("payments")
+}
+
+// ─── MODEL 7: Rating ─────────────────────────────────────────────────────────
+
+model Rating {
+  id        String @id @default(cuid())
+  bookingId String @unique @map("booking_id")
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  providerId String   @map("provider_id")
+  provider   Provider @relation("ProviderReviews", fields: [providerId], references: [id], onDelete: Cascade)
+
+  stars Int @map("rating")
+
+  reviewText  String? @db.Text @map("review_text")
+  shortReview String? @map("short_review")
+
+  ratingBreakdown String? @db.Text @map("rating_breakdown")
+
+  liked        String[]
+  couldImprove String[] @map("could_improve")
+
+  photos String[]
+  videos String[]
+
+  tipAmount Float @default(0) @map("tip_amount")
+
+  helpfulCount   Int @default(0) @map("helpful_count")
+  unhelpfulCount Int @default(0) @map("unhelpful_count")
+
+  providerResponse String?   @db.Text @map("provider_response")
+  respondedAt      DateTime? @map("responded_at")
+
+  isPublic    Boolean @default(true) @map("is_public")
+  isAnonymous Boolean @default(false) @map("is_anonymous")
+  isFlagged   Boolean @default(false) @map("is_flagged")
+  flagReason  String? @map("flag_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([providerId])
+  @@index([stars])
+  @@index([createdAt])
+  @@map("ratings")
+}
+
+// ─── MODEL 8: Tracking ───────────────────────────────────────────────────────
+
+model Tracking {
+  id        String @id @default(cuid())
+  bookingId String @unique @map("booking_id")
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  status TrackingStatus @default(NOT_STARTED)
+
+  locationHistory LocationHistory[]
+
+  estimatedArrivalTime DateTime? @map("estimated_arrival_time")
+  actualArrivalTime    DateTime? @map("actual_arrival_time")
+  estimatedStartTime   DateTime? @map("estimated_start_time")
+  actualStartTime      DateTime? @map("actual_start_time")
+  estimatedEndTime     DateTime? @map("estimated_end_time")
+  actualEndTime        DateTime? @map("actual_end_time")
+
+  totalDistance Float? @map("total_distance")
+  totalDuration Int?   @map("total_duration")
+
+  startLatitude  Float? @map("start_latitude")
+  startLongitude Float? @map("start_longitude")
+  endLatitude    Float? @map("end_latitude")
+  endLongitude   Float? @map("end_longitude")
+
+  lastUpdateAt DateTime? @map("last_update_at")
+  notes        String?   @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("tracking")
+}
+
+// ─── MODEL 9: LocationHistory ────────────────────────────────────────────────
+
+model LocationHistory {
+  id String @id @default(cuid())
+
+  trackingId String   @map("tracking_id")
+  tracking   Tracking @relation(fields: [trackingId], references: [id], onDelete: Cascade)
+
+  providerId String   @map("provider_id")
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  latitude  Float
+  longitude Float
+  accuracy  Float?
+
+  altitude Float?
+  speed    Float?
+  heading  Float?
+
+  timestamp DateTime @default(now())
+
+  @@index([trackingId])
+  @@index([providerId])
+  @@index([timestamp])
+  @@map("location_history")
+}
+
+// ─── MODEL 10: Location (provider current position) ──────────────────────────
+
+model Location {
+  id String @id @default(cuid())
+
+  providerId String   @unique @map("provider_id")
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  latitude  Float
+  longitude Float
+  accuracy  Float?
+
+  lastUpdated DateTime @updatedAt @map("last_updated")
+
+  @@map("locations")
+}
+
+// ─── MODEL 11: WalletTransaction ─────────────────────────────────────────────
+
+model WalletTransaction {
+  id                String @id @default(cuid())
+  transactionNumber String @unique @map("transaction_number")
+
+  userId String? @map("user_id")
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  providerId String?  @map("provider_id")
+  provider   Provider? @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  amount              Float
+  walletBalanceBefore Float @map("wallet_balance_before")
+  walletBalanceAfter  Float @map("wallet_balance_after")
+
+  type   WalletTxnType
+  description String
+  reason String?
+
+  referenceId   String? @map("reference_id")
+  referenceType String? @map("reference_type")
+
+  status WalletTxnStatus @default(COMPLETED)
+
+  metadata String? @db.Text
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+
+  @@index([userId])
+  @@index([providerId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+  @@map("wallet_transactions")
+}
+
+// ─── MODEL 12: Earning ───────────────────────────────────────────────────────
+
+model Earning {
+  id String @id @default(cuid())
+
+  providerId String   @map("provider_id")
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  bookingId String? @unique @map("booking_id")
+
+  grossAmount Float @map("gross_amount")
+  commission  Float
+  netEarning  Float @map("net_earning")
+  tax         Float @default(0)
+
+  paymentStatus String @default("credited") @map("payment_status")
+
+  earningDate DateTime @default(now()) @map("earning_date")
+  notes       String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([providerId])
+  @@index([earningDate])
+  @@index([paymentStatus])
+  @@map("earnings")
+}
+
+// ─── MODEL 13: Withdrawal ────────────────────────────────────────────────────
+
+model Withdrawal {
+  id               String @id @default(cuid())
+  withdrawalNumber String @unique @map("withdrawal_number")
+
+  providerId String   @map("provider_id")
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  amount          Float
+  processingFee   Float @default(0) @map("processing_fee")
+  netAmount       Float @map("net_amount")
+
+  accountHolderName String @map("account_holder_name")
+  accountNumber     String @map("account_number")
+  ifscCode          String @map("ifsc_code")
+  bankName          String @map("bank_name")
+
+  paymentMethod String @map("payment_method")
+
+  status        WithdrawalStatus @default(REQUESTED)
+  failureReason String?          @map("failure_reason")
+
+  razorpayPayoutId String? @unique @map("razorpay_payout_id")
+  razorpayStatus   String? @map("razorpay_status")
+
+  requestedAt DateTime  @default(now()) @map("requested_at")
+  approvedAt  DateTime? @map("approved_at")
+  processedAt DateTime? @map("processed_at")
+  completedAt DateTime? @map("completed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([providerId])
+  @@index([status])
+  @@index([requestedAt])
+  @@map("withdrawals")
+}
+
+// ─── MODEL 14: Notification ──────────────────────────────────────────────────
+
+model Notification {
+  id String @id @default(cuid())
+
+  userId String? @map("user_id")
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  providerId String?  @map("provider_id")
+  provider   Provider? @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  title   String
+  message String @db.Text
+
+  type String
+
+  referenceId   String? @map("reference_id")
+  referenceType String? @map("reference_type")
+
+  data      String? @db.Text
+  imageUrl  String? @db.Text @map("image_url")
+  actionUrl String? @db.Text @map("action_url")
+
+  isRead Boolean   @default(false) @map("is_read")
+  readAt DateTime? @map("read_at")
+
+  isPushed Boolean   @default(false) @map("is_pushed")
+  pushedAt DateTime? @map("pushed_at")
+
+  priority  String    @default("normal")
+  expiresAt DateTime? @map("expires_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([providerId])
+  @@index([type])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ─── MODEL 15: RefreshToken ──────────────────────────────────────────────────
+
+model RefreshToken {
+  id    String @id @default(cuid())
+  token String @unique
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId   String? @map("device_id")
+  deviceName String? @map("device_name")
+  userAgent  String? @db.Text @map("user_agent")
+  ipAddress  String? @map("ip_address")
+
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  lastActivityAt DateTime? @map("last_activity_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ─── Bonus models ────────────────────────────────────────────────────────────
+
+model ProviderDocument {
+  id         String   @id @default(cuid())
+  providerId String   @map("provider_id")
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  documentType      String  @map("document_type")
+  documentNumber    String  @map("document_number")
+  documentUrl       String  @db.Text @map("document_url")
+  isVerified        Boolean @default(false) @map("is_verified")
+  verifiedAt        DateTime? @map("verified_at")
+  verificationNotes String? @map("verification_notes")
+  expiryDate        DateTime? @map("expiry_date")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([providerId])
+  @@index([documentType])
+  @@map("provider_documents")
+}
+
+model SupportTicket {
+  id           String @id @default(cuid())
+  ticketNumber String @unique @map("ticket_number")
+
+  userId String? @map("user_id")
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  providerId String?  @map("provider_id")
+  provider   Provider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+
+  bookingId String?  @map("booking_id")
+  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  subject     String
+  description String @db.Text
+
+  category String
+  priority String @default("medium")
+  status   SupportTicketStatus @default(OPEN)
+
+  resolution String?   @db.Text
+  resolvedBy String?   @map("resolved_by")
+  resolvedAt DateTime? @map("resolved_at")
+
+  attachments String[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([ticketNumber])
+  @@index([status])
+  @@index([userId])
+  @@index([providerId])
+  @@map("support_tickets")
+}
+
+model ActivityLog {
+  id String @id @default(cuid())
+
+  userId String? @map("user_id")
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  providerId String?  @map("provider_id")
+  provider   Provider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+
+  bookingId String?  @map("booking_id")
+  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  action      String
+  description String? @db.Text
+
+  ipAddress String? @map("ip_address")
+  userAgent String? @db.Text @map("user_agent")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([providerId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("activity_logs")
 }
