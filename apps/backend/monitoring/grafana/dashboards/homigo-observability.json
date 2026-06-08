@@ -1,0 +1,66 @@
+{
+  "title": "HOMIGO Observability",
+  "uid": "homigo-observability",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP Request Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(rate(http_requests_total[5m]))", "legendFormat": "rps" }]
+    },
+    {
+      "id": 2,
+      "title": "HTTP 5xx Error Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))",
+          "legendFormat": "error_rate"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Redis Up",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "targets": [{ "expr": "redis_up" }]
+    },
+    {
+      "id": 4,
+      "title": "WebSocket Connections",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "targets": [{ "expr": "ws_connections_total" }]
+    },
+    {
+      "id": 5,
+      "title": "Assignment Queue Backlog",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 },
+      "targets": [{ "expr": "assignment_queue_backlog" }]
+    },
+    {
+      "id": 6,
+      "title": "Payment Success / Failed",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "payment_success_total", "legendFormat": "success" },
+        { "expr": "payment_failed_total", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Process Memory (RSS)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [{ "expr": "process_resident_memory_bytes", "legendFormat": "rss" }]
+    }
+  ]
+}

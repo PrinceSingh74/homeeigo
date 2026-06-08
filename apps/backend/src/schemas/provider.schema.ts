@@ -1,0 +1,44 @@
+import { z } from "zod";
+import { idSchema } from "./common.schema";
+
+export const providerSearchSchema = z.object({
+  serviceId: idSchema,
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  radius: z.number().positive().max(100).optional(),
+  minRating: z.number().min(0).max(5).optional(),
+  minCompletionRate: z.number().min(0).max(100).optional(),
+  page: z.number().int().positive().optional(),
+  limit: z.number().int().min(1).max(50).optional(),
+});
+
+export const providerMatchSchema = z.object({
+  serviceId: idSchema,
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  scheduledDate: z.coerce.date(),
+  maxResults: z.number().int().min(1).max(20).optional(),
+  maxDistanceKm: z.number().positive().max(100).optional(),
+});
+
+export const providerOnlineSchema = z.object({
+  online: z.boolean(),
+});
+
+export const bookingRejectSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+});
+
+export const bookingAcceptSchema = z.object({
+  eta: z.number().int().positive().max(480).optional(),
+});
+
+export const trackingLocationSchema = z.object({
+  bookingId: idSchema,
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  accuracy: z.number().nonnegative().optional(),
+  altitude: z.number().optional(),
+});
+
+export type ProviderSearchInput = z.infer<typeof providerSearchSchema>;

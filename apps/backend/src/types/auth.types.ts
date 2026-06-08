@@ -1,8 +1,21 @@
 export type TokenType = "access" | "refresh";
 
+export type UserTypeClaim = "customer" | "vendor" | "admin";
+
 export type JwtPayload = {
   userId: string;
   email?: string;
+  /**
+   * Optional convenience claim — not all access tokens carry it, since the
+   * canonical role lives in the DB. WebSocket handlers that need a strict
+   * role must look it up via Prisma rather than trusting the token.
+   */
+  userType?: UserTypeClaim;
+  /**
+   * Device the token was minted for. Lets the backend identify the caller's
+   * current session authoritatively (instead of trusting a client-sent param).
+   */
+  deviceId?: string;
   type: TokenType;
   iat?: number;
   exp?: number;

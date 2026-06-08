@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/homigo-alerts.yml
+
+scrape_configs:
+  - job_name: homigo-backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["backend:3000"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: homigo-api
+
+  - job_name: homigo-ready
+    metrics_path: /ready
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["backend:3000"]
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]

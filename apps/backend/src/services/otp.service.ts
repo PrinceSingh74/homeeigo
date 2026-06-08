@@ -28,7 +28,13 @@ export class OTPService {
     const count = await this.prisma.oTP.count({
       where: { phoneNumber, createdAt: { gte: oneHourAgo }, isUsed: false },
     });
-    if (count >= 3) return { success: false, message: "Too many OTP requests", error: "RATE_LIMIT_EXCEEDED" };
+    // Production stays strict; local dev needs a higher ceiling for repeated testing.
+    const hourlyLimit = process.env.NODE_ENV === "production"
+      ? 3
+      : Number(process.env.OTP_HOURLY_LIMIT) || 50;
+    if (count >= hourlyLimit) {
+      return { success: false, message: "Too many OTP requests", error: "RATE_LIMIT_EXCEEDED" };
+    }
 
     if (process.env.NODE_ENV === "production" && (!this.twilioClient || !this.twilioPhoneNumber)) {
       return {
@@ -48,17 +54,36 @@ export class OTPService {
       },
     });
 
-    if (this.twilioClient && this.twilioPhoneNumber) {
+    const usingTwilio = Boolean(this.twilioClient && this.twilioPhoneNumber);
+    if (usingTwilio && this.twilioClient) {
       await this.twilioClient.messages.create({
         body: `Your HOMIGO verification code is: ${otp}. Expires in 5 minutes.`,
         from: this.twilioPhoneNumber,
         to: phoneNumber,
       });
     } else {
-      console.log(`[DEV OTP] ${phoneNumber}: ${otp}`);
+      console.log(
+        [
+          "",
+          "  ┌──────────────────────────────────────────────┐",
+          "  │           HOMIGO DEV OTP (no SMS sent)         │",
+          "  ├──────────────────────────────────────────────┤",
+          `  │  Phone : ${phoneNumber.padEnd(36)}│`,
+          `  │  OTP   : ${otp.padEnd(36)}│`,
+          "  │  Valid : 5 minutes                             │",
+          "  └──────────────────────────────────────────────┘",
+          "",
+        ].join("\n"),
+      );
     }
 
-    return { success: true, message: "OTP sent successfully" };
+    // In non-production we surface the OTP so the UI can show it without SMS.
+    const exposeDevOtp = !usingTwilio && process.env.NODE_ENV !== "production";
+    return {
+      success: true,
+      message: "OTP sent successfully",
+      ...(exposeDevOtp ? { devOtp: otp } : {}),
+    };
   }
 
   async verifyOTP(phoneNumber: string, otp: string) {

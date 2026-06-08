@@ -32,8 +32,18 @@ export class SessionService {
     });
   }
 
-  getUserSessions(userId: string) {
-    return this.refreshTokens.getUserSessions(userId);
+  /**
+   * Returns the user's active sessions with a backend-computed `isCurrent`
+   * flag + the `currentSessionId`. "Current" is the most-recent session whose
+   * deviceId matches the caller's device (rows are ordered newest-first), so the
+   * flag is authoritative server-side — the frontend never decides it alone.
+   */
+  async getUserSessions(userId: string, currentDeviceId?: string) {
+    const rows = await this.refreshTokens.getUserSessions(userId);
+    const currentSessionId =
+      currentDeviceId ? rows.find((r) => r.deviceId === currentDeviceId)?.id ?? null : null;
+    const sessions = rows.map((r) => ({ ...r, isCurrent: r.id === currentSessionId }));
+    return { sessions, currentSessionId };
   }
 
   async logoutSession(userId: string, sessionId: string): Promise<boolean> {

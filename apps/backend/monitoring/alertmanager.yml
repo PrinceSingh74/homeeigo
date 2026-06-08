@@ -1,0 +1,51 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: homigo-default
+  group_by: [alertname, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - match:
+        severity: escalation
+      receiver: homigo-escalation
+    - match:
+        severity: critical
+      receiver: homigo-critical
+    - match:
+        severity: warning
+      receiver: homigo-warning
+    - match:
+        severity: info
+      receiver: homigo-info
+
+receivers:
+  - name: homigo-default
+    webhook_configs:
+      - url: http://backend:3000/api/admin/observability/alerts/evaluate
+        send_resolved: true
+
+  - name: homigo-escalation
+    webhook_configs:
+      - url: http://backend:3000/api/admin/observability/alerts/evaluate
+
+  - name: homigo-critical
+    webhook_configs:
+      - url: http://backend:3000/api/admin/observability/alerts/evaluate
+
+  - name: homigo-warning
+    webhook_configs:
+      - url: http://backend:3000/api/admin/observability/alerts/evaluate
+
+  - name: homigo-info
+    webhook_configs:
+      - url: http://backend:3000/api/admin/observability/alerts/evaluate
+
+inhibit_rules:
+  - source_match:
+      severity: escalation
+    target_match:
+      severity: warning
+    equal: [alertname]

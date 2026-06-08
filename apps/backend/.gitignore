@@ -1,0 +1,6 @@
+
+# Local file uploads (rating photos, partner docs)
+uploads/
+
+# Database backups (scripts/backup-db.ts) — never commit dumps
+backups/

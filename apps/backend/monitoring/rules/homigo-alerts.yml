@@ -1,0 +1,74 @@
+groups:
+  - name: homigo_platform
+    rules:
+      - alert: HighErrorRate
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: HTTP 5xx error rate above 5%
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Redis is unreachable
+
+      - alert: HighMemory
+        expr: process_resident_memory_bytes > 1073741824
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Process RSS exceeds 1GB
+
+      - alert: PaymentFailureSpike
+        expr: increase(payment_failed_total[15m]) > 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Payment failure spike detected
+
+      - alert: RefundFailureSpike
+        expr: increase(refund_failure_total[1h]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Refund failure spike detected
+
+      - alert: SettlementMismatch
+        expr: increase(settlement_mismatch_total[24h]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Settlement mismatch detected
+
+      - alert: ChargebackSpike
+        expr: increase(chargeback_total[24h]) > 10
+        for: 5m
+        labels:
+          severity: escalation
+        annotations:
+          summary: Chargeback spike detected
+
+      - alert: WebSocketConnectionsHigh
+        expr: ws_connections_total > 5000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: WebSocket connections exceed threshold
+
+      - alert: AssignmentQueueBacklog
+        expr: assignment_queue_backlog > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Assignment queue backlog high

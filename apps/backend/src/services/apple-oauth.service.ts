@@ -1,6 +1,11 @@
 import type { PrismaClient } from "@prisma/client";
 import https from "https";
 import jsonwebtoken from "jsonwebtoken";
+import { generateReferralCode } from "../lib/oauth-signup-fraud";
+import { assertUserMayAuthenticate } from "../lib/user-auth-guard";
+import { partnerRegistrationService } from "./partner-registration.service";
+import { resolveAppleAccountEmail } from "../lib/apple-identity";
+import { verifyAppleIdToken } from "../lib/apple-id-token";
 import { JWTService } from "./jwt.service";
 import { RefreshTokenService } from "./refresh-token.service";
 
@@ -24,12 +29,18 @@ export class AppleOAuthService {
     );
   }
 
-  getAuthorizationUrl(state?: string): string {
+  /**
+   * @param mode "query" for SPA redirect (web/customer-web flow with GET params),
+   *             "form_post" for server-handled POST callback (mobile/native flow).
+   *             Apple requires form_post when "name email" scope is requested.
+   *             When using query mode we drop the name scope (Apple still returns email in the id_token).
+   */
+  getAuthorizationUrl(state?: string, mode: "query" | "form_post" = "query"): string {
     const clientId = process.env.APPLE_CLIENT_ID || "";
     const redirect = encodeURIComponent(process.env.APPLE_REDIRECT_URI || "");
     const s = encodeURIComponent(state ?? "");
-    const scopes = encodeURIComponent("name email");
-    return `https://appleid.apple.com/auth/authorize?response_type=code&response_mode=form_post&client_id=${encodeURIComponent(
+    const scopes = encodeURIComponent(mode === "form_post" ? "name email" : "email");
+    return `https://appleid.apple.com/auth/authorize?response_type=code&response_mode=${mode}&client_id=${encodeURIComponent(
       clientId
     )}&redirect_uri=${redirect}&scope=${scopes}&state=${s}`;
   }
@@ -83,23 +94,32 @@ export class AppleOAuthService {
     const tokenResult = await this.exchangeCodeForToken(payload.code);
     if (!tokenResult.idToken) throw new Error(tokenResult.error || "Apple token exchange failed");
 
-    const decoded = jsonwebtoken.decode(tokenResult.idToken) as { email?: string; sub: string } | null;
-    const email = (payload.user?.email || decoded?.email || "").toLowerCase();
-    if (!email) throw new Error("Email not provided by Apple");
+    const decoded = await verifyAppleIdToken(tokenResult.idToken);
+    const email = resolveAppleAccountEmail(decoded);
 
     let user = await this.prisma.user.findUnique({ where: { email } });
+    let isNewUser = false;
+    const firstName = payload.user?.name?.firstName || "Apple";
     if (!user) {
+      isNewUser = true;
       user = await this.prisma.user.create({
         data: {
           email,
           phoneNumber: `apple_${decoded?.sub || Date.now()}`,
-          firstName: payload.user?.name?.firstName || "Apple",
+          firstName,
           lastName: payload.user?.name?.lastName || "User",
           isEmailVerified: true,
           emailVerifiedAt: new Date(),
           password: "",
+          referralCode: generateReferralCode(firstName),
         },
       });
+    }
+
+    await assertUserMayAuthenticate(user.id);
+    if (user.role === "VENDOR") {
+      const approvalBlock = await partnerRegistrationService.assertPartnerCanLogin(user.id);
+      if (approvalBlock) throw new Error("PARTNER_NOT_APPROVED");
     }
 
     const accessToken = this.jwtService.generateAccessToken({ userId: user.id, email: user.email });
@@ -111,6 +131,6 @@ export class AppleOAuthService {
       deviceName: "Apple OAuth",
     });
 
-    return { user, accessToken, refreshToken };
+    return { user, accessToken, refreshToken, isNewUser };
   }
 }
