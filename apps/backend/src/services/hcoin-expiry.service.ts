@@ -1,4 +1,4 @@
-import { HCoinTxnType } from "@prisma/client";
+import { HCoinTxnType, JournalEntryType } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { financialLedgerService } from "./financial-ledger.service";
 import { AuditLogService } from "./audit-log.service";
@@ -86,7 +86,7 @@ export class HCoinExpiryService {
           where: { userId: w.userId },
           data: { balance: { decrement: expirable } },
         });
-        return tx.hCoinTransaction.create({
+        const created = await tx.hCoinTransaction.create({
           data: {
             userId: w.userId,
             type: HCoinTxnType.EXPIRE,
@@ -97,18 +97,21 @@ export class HCoinExpiryService {
             balanceAfter: updated.balance,
           },
         });
+        if (rupeeValue > 0) {
+          await financialLedgerService.recordJournalInTransaction(tx, {
+            type: JournalEntryType.HCOIN_EXPIRED,
+            referenceId: created.id,
+            referenceType: "hcoin_expiry",
+            idempotencyKey: `hcoin_expired:${created.id}`,
+            description: `H-Coin expiry breakage ${expirable} coins`,
+            lines: [
+              { accountCode: "HCOIN_LIABILITY", debit: rupeeValue, credit: 0 },
+              { accountCode: "PROMOTIONAL_BREAKAGE_REVENUE", debit: 0, credit: rupeeValue },
+            ],
+          });
+        }
+        return created;
       });
-
-      if (rupeeValue > 0) {
-        await financialLedgerService
-          .recordHcoinExpired({
-            idempotencyKey: `hcoin_expired:${txn.id}`,
-            referenceId: txn.id,
-            rupeeValue,
-            coins: expirable,
-          })
-          .catch(() => undefined);
-      }
       await AuditLogService.success("HCOIN_EXPIRED", {
         userId: w.userId,
         details: { hcoinTxnId: txn.id, coins: expirable, runId: run.id },

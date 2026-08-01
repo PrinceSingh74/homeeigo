@@ -1,7 +1,8 @@
 import { Resend } from "resend";
+import { emailBreaker, CircuitOpenError } from "../lib/circuit-breaker";
 
 const API_KEY = process.env.RESEND_API_KEY || "";
-const FROM_ADDRESS = process.env.EMAIL_FROM || "HOMIGO <noreply@homigo.com>";
+const FROM_ADDRESS = process.env.EMAIL_FROM || "HOMEEIGO <noreply@homigo.com>";
 const REPLY_TO = process.env.EMAIL_REPLY_TO || "";
 const FRONTEND_URL = (process.env.FRONTEND_URL || "http://localhost:3001").replace(/\/$/, "");
 const MOBILE_DEEP_LINK_BASE = (process.env.MOBILE_DEEP_LINK_BASE || "homigo:/").replace(/\/$/, "");
@@ -12,6 +13,7 @@ type SendArgs = {
   subject: string;
   html: string;
   text?: string;
+  attachments?: Array<{ filename: string; content: Buffer }>;
 };
 
 type SendResult = {
@@ -44,19 +46,30 @@ class EmailService {
     }
 
     try {
-      const res = await this.resend.emails.send({
-        from: FROM_ADDRESS,
-        to: args.to,
-        subject: args.subject,
-        html: args.html,
-        text: args.text ?? this.stripHtml(args.html),
-        replyTo: REPLY_TO || undefined,
+      const resend = this.resend;
+      // Circuit breaker: isolate a failing email provider so repeated send failures
+      // fast-fail instead of blocking request paths that fire off emails.
+      const res = await emailBreaker.execute(async () => {
+        const r = await resend.emails.send({
+          from: FROM_ADDRESS,
+          to: args.to,
+          subject: args.subject,
+          html: args.html,
+          text: args.text ?? this.stripHtml(args.html),
+          replyTo: REPLY_TO || undefined,
+          attachments: args.attachments?.map((a) => ({
+            filename: a.filename,
+            content: a.content,
+          })),
+        });
+        if (r.error) throw new Error(r.error.message);
+        return r;
       });
-      if (res.error) {
-        return { delivered: false, provider: "resend", error: res.error.message };
-      }
       return { delivered: true, provider: "resend", id: res.data?.id };
     } catch (error) {
+      if (error instanceof CircuitOpenError) {
+        return { delivered: false, provider: "resend", error: "EMAIL_CIRCUIT_OPEN" };
+      }
       return {
         delivered: false,
         provider: "resend",
@@ -70,7 +83,7 @@ class EmailService {
     const mobileLink = `${MOBILE_DEEP_LINK_BASE}/reset-password?token=${encodeURIComponent(rawToken)}`;
     const greeting = firstName ? `Hi ${this.escapeHtml(firstName)},` : "Hi,";
     const html = baseTemplate({
-      title: "Reset your HOMIGO password",
+      title: "Reset your HOMEEIGO password",
       preview: "Secure reset link inside · expires in 30 minutes",
       body: `
         <p style="margin:0 0 16px 0;font-size:15px;color:#1f2937">${greeting}</p>
@@ -78,14 +91,14 @@ class EmailService {
         <p style="margin:24px 0;text-align:center">
           <a href="${webLink}" style="display:inline-block;background:linear-gradient(135deg,#7C3AED 0%,#2563EB 100%);color:#ffffff;padding:14px 28px;border-radius:12px;font-weight:600;text-decoration:none;font-size:15px">Reset password (web)</a>
         </p>
-        <p style="margin:0 0 8px 0;font-size:13px;color:#6b7280">On the HOMIGO mobile app, open this link:</p>
+        <p style="margin:0 0 8px 0;font-size:13px;color:#6b7280">On the HOMEEIGO mobile app, open this link:</p>
         <p style="margin:0 0 16px 0;font-size:13px;color:#7C3AED;word-break:break-all"><a href="${mobileLink}" style="color:#7C3AED;text-decoration:none">${mobileLink}</a></p>
         <p style="margin:0 0 8px 0;font-size:13px;color:#6b7280">Or paste this URL into your browser:</p>
         <p style="margin:0 0 16px 0;font-size:13px;color:#7C3AED;word-break:break-all">${webLink}</p>
         <p style="margin:0;font-size:13px;color:#6b7280">If you didn't request this, you can safely ignore this email. Need help? Contact <a href="mailto:${SUPPORT_EMAIL}" style="color:#2563EB;text-decoration:none">${SUPPORT_EMAIL}</a>.</p>
       `,
     });
-    return this.send({ to, subject: "Reset your HOMIGO password", html });
+    return this.send({ to, subject: "Reset your HOMEEIGO password", html });
   }
 
   async sendVerificationEmail(to: string, rawToken: string, firstName?: string | null): Promise<SendResult> {
@@ -93,28 +106,28 @@ class EmailService {
     const mobileLink = `${MOBILE_DEEP_LINK_BASE}/verify-email?token=${encodeURIComponent(rawToken)}`;
     const greeting = firstName ? `Hi ${this.escapeHtml(firstName)},` : "Hi,";
     const html = baseTemplate({
-      title: "Verify your HOMIGO email",
+      title: "Verify your HOMEEIGO email",
       preview: "Confirm your email · link expires in 24 hours",
       body: `
         <p style="margin:0 0 16px 0;font-size:15px;color:#1f2937">${greeting}</p>
-        <p style="margin:0 0 16px 0;font-size:15px;color:#1f2937">Welcome to HOMIGO! Please confirm your email address to unlock all features. This link will expire in 24 hours.</p>
+        <p style="margin:0 0 16px 0;font-size:15px;color:#1f2937">Welcome to HOMEEIGO! Please confirm your email address to unlock all features. This link will expire in 24 hours.</p>
         <p style="margin:24px 0;text-align:center">
           <a href="${webLink}" style="display:inline-block;background:linear-gradient(135deg,#7C3AED 0%,#2563EB 100%);color:#ffffff;padding:14px 28px;border-radius:12px;font-weight:600;text-decoration:none;font-size:15px">Verify email</a>
         </p>
-        <p style="margin:0 0 8px 0;font-size:13px;color:#6b7280">On the HOMIGO mobile app, open this link:</p>
+        <p style="margin:0 0 8px 0;font-size:13px;color:#6b7280">On the HOMEEIGO mobile app, open this link:</p>
         <p style="margin:0 0 16px 0;font-size:13px;color:#7C3AED;word-break:break-all"><a href="${mobileLink}" style="color:#7C3AED;text-decoration:none">${mobileLink}</a></p>
         <p style="margin:0 0 8px 0;font-size:13px;color:#6b7280">Or paste this URL into your browser:</p>
         <p style="margin:0 0 16px 0;font-size:13px;color:#7C3AED;word-break:break-all">${webLink}</p>
-        <p style="margin:0;font-size:13px;color:#6b7280">If you didn't sign up for HOMIGO, you can safely ignore this email.</p>
+        <p style="margin:0;font-size:13px;color:#6b7280">If you didn't sign up for HOMEEIGO, you can safely ignore this email.</p>
       `,
     });
-    return this.send({ to, subject: "Verify your HOMIGO account", html });
+    return this.send({ to, subject: "Verify your HOMEEIGO account", html });
   }
 
   async sendOtpEmail(to: string, otp: string, firstName?: string | null): Promise<SendResult> {
     const greeting = firstName ? `Hi ${this.escapeHtml(firstName)},` : "Hi,";
     const html = baseTemplate({
-      title: "Your HOMIGO verification code",
+      title: "Your HOMEEIGO verification code",
       preview: `OTP ${otp} · expires in 5 minutes`,
       body: `
         <p style="margin:0 0 16px 0;font-size:15px;color:#1f2937">${greeting}</p>
@@ -123,7 +136,7 @@ class EmailService {
         <p style="margin:0;font-size:13px;color:#6b7280">If you didn't request this, you can ignore this email.</p>
       `,
     });
-    return this.send({ to, subject: "Your HOMIGO verification code", html });
+    return this.send({ to, subject: "Your HOMEEIGO verification code", html });
   }
 
   async sendBookingConfirmation(
@@ -144,10 +157,10 @@ class EmailService {
           <tr><td style="padding:12px 16px;font-size:13px;color:#6b7280">Total</td><td style="padding:12px 16px;font-size:14px;color:#1f2937;font-weight:600;text-align:right">₹${booking.total}</td></tr>
           <tr><td style="padding:12px 16px;font-size:13px;color:#6b7280">Booking ID</td><td style="padding:12px 16px;font-size:13px;color:#7C3AED;font-family:monospace;text-align:right">${this.escapeHtml(booking.id)}</td></tr>
         </table>
-        <p style="margin:0;font-size:13px;color:#6b7280">Track live updates in your HOMIGO app.</p>
+        <p style="margin:0;font-size:13px;color:#6b7280">Track live updates in your HOMEEIGO app.</p>
       `,
     });
-    return this.send({ to, subject: "Your HOMIGO booking is confirmed", html });
+    return this.send({ to, subject: "Your HOMEEIGO booking is confirmed", html });
   }
 
   private stripHtml(html: string): string {
@@ -187,7 +200,7 @@ function baseTemplate({
         <table role="presentation" style="max-width:560px;width:100%;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 12px 32px rgba(15,23,42,0.06)">
           <tr>
             <td style="background:linear-gradient(135deg,#7C3AED 0%,#2563EB 100%);padding:24px 28px">
-              <span style="font-size:20px;font-weight:700;color:#ffffff;letter-spacing:0.5px">HOMIGO</span>
+              <span style="font-size:20px;font-weight:700;color:#ffffff;letter-spacing:0.5px">HOMEEIGO</span>
             </td>
           </tr>
           <tr>
@@ -198,7 +211,7 @@ function baseTemplate({
           </tr>
           <tr>
             <td style="padding:18px 28px;background:#f9fafb;font-size:12px;color:#94a3b8">
-              HOMIGO · Premium home services · This is an automated message.
+              HOMEEIGO · Premium home services · This is an automated message.
             </td>
           </tr>
         </table>

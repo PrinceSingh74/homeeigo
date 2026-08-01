@@ -12,6 +12,13 @@ import { idParamSchema } from "../schemas/common.schema";
 
 export const ratingsRoutes = new Elysia({ prefix: "/api/ratings" })
   .use(authPlugin)
+  // PUBLIC — platform-wide recent reviews for the customer home "Loved by
+  // customers" rail. No auth (home is public); only public, non-flagged rows.
+  // Registered before "/:bookingId" so the static path wins.
+  .get("/recent", async ({ query }) => {
+    const data = await ratingService.listPublicRecent(query as Record<string, string>);
+    return { success: true, data };
+  })
   .post(
     "/",
     async ({ requireAuth, body: raw, set }) => {

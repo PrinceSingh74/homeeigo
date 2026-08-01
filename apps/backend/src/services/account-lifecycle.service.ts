@@ -23,7 +23,7 @@ export class AccountLifecycleService {
       data: { deletionScheduledAt, isActive: false },
     });
 
-    await refreshTokenService.revokeAllUserTokens(userId);
+    await refreshTokenService.revokeAllUserTokens(userId, "ACCOUNT_DELETION", userId);
     await devicePushService.revokeAll(userId);
 
     void AuditLogService.success("ACCOUNT_DELETION_SCHEDULED", {

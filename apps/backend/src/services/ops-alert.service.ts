@@ -13,7 +13,8 @@ export type OpsAlertType =
   | "queue_backlog"
   | "provider_dispatch_failure"
   | "notification_failure"
-  | "otp_failure";
+  | "otp_failure"
+  | "retention_job_failed";
 
 export class OpsAlertService {
   async raise(

@@ -1,33 +1,30 @@
 import { Elysia, t } from "elysia";
-import { JWTService } from "@/services/jwt.service";
 import { roomManager, MessageType, WSConnection, generateConnectionId } from "@/lib/websocket";
 import { heartbeatManager } from "@/lib/heartbeat";
 import { earningsLiveService } from "@/services/earnings-live.service";
+import { authenticateWsConnection } from "@/lib/ws-connection-auth";
+import { validateWsChannelAccess } from "@/lib/ws-channel-access";
 import { getWsState, setWsState } from "./ws-state";
-
-const jwt = new JWTService();
 
 export const earningsWs = new Elysia({ prefix: "/ws" }).ws("/earnings/:providerId", {
   params: t.Object({ providerId: t.String() }),
-  query: t.Object({ token: t.Optional(t.String()) }),
+  query: t.Object({ token: t.Optional(t.String()), nonce: t.Optional(t.String()) }),
 
   open: async (ws) => {
-    const authHeader =
-      typeof ws.data.headers?.authorization === "string"
-        ? ws.data.headers.authorization
-        : "";
-    const headerToken = authHeader.replace(/^Bearer\s+/i, "");
-    const token = ws.data.query.token ?? headerToken ?? "";
-    const payload = token ? jwt.verifyAccessToken(token) : null;
-
-    if (!payload?.userId) {
+    const auth = await authenticateWsConnection(ws, `/ws/earnings/${ws.data.params.providerId}`);
+    if (!auth) {
       ws.close(4401, "Unauthorized");
       return;
     }
 
     const providerId = ws.data.params.providerId;
-
-    if (payload.userId !== providerId) {
+    const allowed = await validateWsChannelAccess({
+      channel: "earnings",
+      userId: auth.userId,
+      userRole: auth.userRole,
+      channelUserId: providerId,
+    });
+    if (!allowed) {
       ws.close(4003, "Unauthorized: Cannot access other users earnings");
       return;
     }
@@ -35,8 +32,8 @@ export const earningsWs = new Elysia({ prefix: "/ws" }).ws("/earnings/:providerI
     const connectionId = generateConnectionId();
 
     const connection: WSConnection = {
-      userId: payload.userId,
-      userType: payload.userType || "vendor",
+      userId: auth.userId,
+      userType: auth.userType,
       connectionId,
       connectedAt: new Date(),
       lastPing: new Date(),
@@ -54,8 +51,8 @@ export const earningsWs = new Elysia({ prefix: "/ws" }).ws("/earnings/:providerI
     heartbeatManager.startHeartbeat(connectionId, ws);
 
     setWsState(ws, {
-      userId: payload.userId,
-      userType: payload.userType || "vendor",
+      userId: auth.userId,
+      userType: auth.userType,
       connectionId,
       providerId,
       connection,
@@ -89,9 +86,13 @@ export const earningsWs = new Elysia({ prefix: "/ws" }).ws("/earnings/:providerI
 
   message: async (ws, data: any) => {
     try {
-      const message = JSON.parse(
-        typeof data === "string" ? data : data.toString()
-      );
+      // Elysia auto-parses JSON ws frames → `data` is usually already an object.
+      const message =
+        typeof data === "string"
+          ? JSON.parse(data)
+          : Buffer.isBuffer(data)
+            ? JSON.parse(data.toString())
+            : data;
       const providerId = ws.data.params.providerId;
       const state = getWsState(ws) as any;
 
@@ -187,8 +188,6 @@ export const earningsWs = new Elysia({ prefix: "/ws" }).ws("/earnings/:providerI
       heartbeatManager.stopHeartbeat(state.connectionId);
     }
 
-    // Remove the exact connection object (identity) → also prunes room/user
-    // sets and the connectionMap entry inside removeFromRoom.
     if (state?.connection) {
       roomManager.removeAllRooms(state.connection);
     }

@@ -85,6 +85,26 @@ export class ConsentService {
       },
     });
   }
+
+  async withdrawConsent(opts: {
+    userId: string;
+    policyType: ConsentPolicyType;
+    ipAddress?: string;
+    userAgent?: string;
+  }) {
+    await prisma.consentRecord.create({
+      data: {
+        userId: opts.userId,
+        policyType: opts.policyType,
+        policyVersion: CURRENT_POLICY_VERSIONS[opts.policyType],
+        granted: false,
+        source: "API",
+        ipAddress: opts.ipAddress,
+        userAgent: opts.userAgent,
+        metadata: JSON.stringify({ withdrawn: true, withdrawnAt: new Date().toISOString() }),
+      },
+    });
+  }
 }
 
 export const consentService = new ConsentService();

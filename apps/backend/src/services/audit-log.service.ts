@@ -1,5 +1,9 @@
 import { prisma } from "../lib/prisma";
 import { logger } from "../lib/logger";
+import {
+  enterpriseAuditService,
+  securityEventRetention,
+} from "./enterprise-audit.service";
 
 /**
  * Part 5 — Logging & Monitoring (Audit Trail).
@@ -60,7 +64,21 @@ export type SecurityEvent =
   | "FINANCIAL_ADJUSTMENT_APPROVED"
   | "FINANCIAL_ADJUSTMENT_REJECTED"
   | "FINANCIAL_ADJUSTMENT_EXECUTED"
-  | "LEDGER_BACKFILL_RUN";
+  | "LEDGER_BACKFILL_RUN"
+  | "ADMIN_ACCESS_DENIED"
+  | "ADMIN_PERMISSION_GRANTED"
+  | "ADMIN_PERMISSION_REVOKED"
+  | "ADMIN_ACTION"
+  | "ADMIN_ADDRESS_ACCESSED"
+  | "TOKEN_REVOKED"
+  | "ALL_USER_TOKENS_REVOKED"
+  | "REVOKED_TOKEN_USED"
+  | "REFRESH_TOKEN_REUSE_ATTACK"
+  | "WEBSOCKET_CONNECTED"
+  | "WEBSOCKET_UNAUTHORIZED"
+  | "GIFT_CARD_BRUTE_FORCE_ATTEMPT"
+  | "GIFT_CARD_REDEEMED"
+  | "CAMPAIGN_REDEEMED";
 
 export type AuditStatus = "success" | "failure" | "error";
 
@@ -71,6 +89,8 @@ export interface AuditContext {
   email?: string | null;
   ipAddress?: string | null;
   userAgent?: string | null;
+  deviceId?: string | null;
+  traceId?: string | null;
   reason?: string | null;
   details?: Record<string, unknown>;
 }
@@ -102,16 +122,15 @@ export class AuditLogService {
       event,
       status,
       userId: ctx.userId ?? undefined,
-      email: ctx.email ?? undefined,
       ipAddress: ctx.ipAddress ?? undefined,
       reason: ctx.reason ?? undefined,
+      traceId: ctx.traceId ?? undefined,
       ...(ctx.details ?? {}),
     });
 
     try {
       const descriptionPayload = {
         status,
-        ...(ctx.email ? { email: ctx.email } : {}),
         ...(ctx.reason ? { reason: ctx.reason } : {}),
         ...(ctx.details ?? {}),
       };
@@ -126,6 +145,25 @@ export class AuditLogService {
           ipAddress: ctx.ipAddress ?? null,
           userAgent: ctx.userAgent ?? null,
         },
+      });
+
+      const enterpriseStatus =
+        status === "success" ? "SUCCESS" : status === "failure" ? "FAILURE" : "PARTIAL";
+
+      void enterpriseAuditService.log({
+        action: event,
+        resource: "security_event",
+        resourceId: ctx.userId ?? ctx.providerId ?? ctx.bookingId ?? undefined,
+        actor: ctx.userId ?? undefined,
+        actorType: event.startsWith("ADMIN") ? "ADMIN" : ctx.userId ? "USER" : "SYSTEM",
+        changesAfter: descriptionPayload,
+        changesSummary: ctx.reason ?? event,
+        status: enterpriseStatus,
+        ipAddress: ctx.ipAddress ?? undefined,
+        userAgent: ctx.userAgent ?? undefined,
+        deviceId: ctx.deviceId ?? undefined,
+        traceId: ctx.traceId ?? undefined,
+        retentionCategory: securityEventRetention(event),
       });
     } catch (error) {
       logger.error("audit-log persistence failed", {

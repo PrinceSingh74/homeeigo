@@ -1,10 +1,16 @@
 import crypto from "crypto";
 import { prisma } from "../lib/prisma";
-import { GiftCardStatus, WalletTxnType, WalletTxnStatus } from "@prisma/client";
+import { GiftCardStatus, WalletTxnType, WalletTxnStatus, Prisma } from "@prisma/client";
 import { razorpayService } from "./razorpay.service";
 import { nextWalletTxnNumber } from "../lib/booking-number";
-import { emailService } from "./email.service";
+import { emailDeliveryService } from "./email-delivery.service";
 import { financialLedgerService } from "./financial-ledger.service";
+import {
+  giftCardProtectionService,
+  type GiftCardAttemptMeta,
+} from "./gift-card-protection.service";
+import { AuditLogService } from "./audit-log.service";
+import { isPrismaPoolTimeout, isPrismaConcurrencyError } from "../lib/prisma-errors";
 
 /** Marketplace denominations + bounds for custom amounts. */
 export const GIFT_DENOMINATIONS = [100, 250, 500, 1000, 2000];
@@ -86,13 +92,13 @@ export class GiftCardService {
     const activated = await prisma.giftCard.findUnique({ where: { id: card.id } });
     const sentTo = activated?.recipientEmail ?? activated?.recipientPhone ?? null;
     if (card.recipientEmail) {
-      void emailService
-        .send({
-          to: card.recipientEmail,
-          subject: `You've received a ₹${card.amount} HOMIGO gift card 🎁`,
-          html: `<p>Someone sent you a HOMIGO gift card worth <b>₹${card.amount}</b>.</p><p>Redeem code: <b style="font-size:18px">${card.code}</b></p>${card.message ? `<p>Message: ${card.message}</p>` : ""}<p>Open HOMIGO → Wallet → Gift Cards → Redeem.</p>`,
-        })
-        .catch(() => {});
+      emailDeliveryService.enqueue({
+        to: card.recipientEmail,
+        emailType: "gift_card",
+        subject: `You've received a ₹${card.amount} HOMEEIGO gift card 🎁`,
+        html: `<p>Someone sent you a HOMEEIGO gift card worth <b>₹${card.amount}</b>.</p><p>Redeem code: <b style="font-size:18px">${card.code}</b></p>${card.message ? `<p>Message: ${card.message}</p>` : ""}<p>Open HOMEEIGO → Wallet → Gift Cards → Redeem.</p>`,
+        metadata: { cardId: card.id, amount: card.amount },
+      });
     }
     if (card.recipientPhone || card.recipientEmail) {
       const recipientUser = await prisma.user.findFirst({
@@ -111,7 +117,7 @@ export class GiftCardService {
               userId: recipientUser.id,
               type: "GIFT_CARD",
               title: "You've received a gift card 🎁",
-              message: `A ₹${card.amount} HOMIGO gift card is waiting. Redeem code ${card.code}.`,
+              message: `A ₹${card.amount} HOMEEIGO gift card is waiting. Redeem code ${card.code}.`,
             },
           })
           .catch(() => {});
@@ -131,7 +137,6 @@ export class GiftCardService {
       return { handled: true, reason: "GIFT_CARD_ALREADY_ACTIVE" };
     }
     await this.activatePaidCard(card.id, card.purchaserId);
-    void financialLedgerService.recordGiftCardPurchase(card.id, card.amount).catch(() => undefined);
     return { handled: true, reason: "GIFT_CARD_ACTIVATED" };
   }
 
@@ -158,9 +163,9 @@ export class GiftCardService {
       return;
     }
 
-    await prisma.$transaction([
-      prisma.giftCard.update({ where: { id: cardId }, data: { status: GiftCardStatus.ACTIVE } }),
-      prisma.giftCardTransaction.create({
+    await prisma.$transaction(async (tx) => {
+      await tx.giftCard.update({ where: { id: cardId }, data: { status: GiftCardStatus.ACTIVE } });
+      await tx.giftCardTransaction.create({
         data: {
           giftCardId: cardId,
           userId: purchaserId,
@@ -168,8 +173,12 @@ export class GiftCardService {
           amount: card.amount,
           balanceAfter: card.amount,
         },
-      }),
-    ]);
+      });
+      await financialLedgerService.recordJournalInTransaction(
+        tx,
+        financialLedgerService.journalForGiftCardPurchase(cardId, card.amount),
+      );
+    });
   }
 
   /**
@@ -182,30 +191,93 @@ export class GiftCardService {
     userId: string,
     rawCode: string,
     redeemAmount?: number,
-  ): Promise<{ ok: true; amount: number; walletBalance: number; remaining: number } | { error: string }> {
+    meta?: GiftCardAttemptMeta,
+  ): Promise<
+    | { ok: true; amount: number; walletBalance: number; remaining: number }
+    | { error: string; blockedUntil?: Date }
+  > {
     const code = rawCode.trim().toUpperCase();
+
+    if (meta) {
+      const gate = await giftCardProtectionService.trackRedemptionAttempt(code, {
+        ...meta,
+        userId,
+      });
+      if (!gate.allowed) {
+        return {
+          error: "RATE_LIMITED",
+          blockedUntil: gate.blockedUntil,
+        };
+      }
+    }
+
     const card = await prisma.giftCard.findUnique({ where: { code } });
-    if (!card) return { error: "INVALID_CODE" };
-    if (card.status === GiftCardStatus.REDEEMED) return { error: "ALREADY_REDEEMED" };
-    if (card.status === GiftCardStatus.VOID) return { error: "VOIDED" };
-    if (card.status !== GiftCardStatus.ACTIVE) return { error: "NOT_ACTIVE" };
+    if (!card) {
+      if (meta) {
+        await giftCardProtectionService.recordFailedAttempt(code, { ...meta, userId }, "invalid_code");
+      }
+      return { error: "INVALID_CODE" };
+    }
+    if (card.status === GiftCardStatus.REDEEMED) {
+      if (meta) await giftCardProtectionService.recordFailedAttempt(code, { ...meta, userId }, "already_redeemed", card.id);
+      return { error: "ALREADY_REDEEMED" };
+    }
+    if (card.status === GiftCardStatus.VOID) {
+      if (meta) await giftCardProtectionService.recordFailedAttempt(code, { ...meta, userId }, "voided", card.id);
+      return { error: "VOIDED" };
+    }
+    if (card.status !== GiftCardStatus.ACTIVE) {
+      if (meta) await giftCardProtectionService.recordFailedAttempt(code, { ...meta, userId }, "not_active", card.id);
+      return { error: "NOT_ACTIVE" };
+    }
     if (card.expiresAt && card.expiresAt < new Date()) {
       await prisma.giftCard.update({ where: { id: card.id }, data: { status: GiftCardStatus.EXPIRED } });
+      if (meta) await giftCardProtectionService.recordFailedAttempt(code, { ...meta, userId }, "expired", card.id);
       return { error: "EXPIRED" };
     }
     if (redeemAmount !== undefined && (!Number.isInteger(redeemAmount) || redeemAmount <= 0)) {
       return { error: "INVALID_AMOUNT" };
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const locked = await tx.giftCard.findUnique({ where: { id: card.id } });
+    const MAX_REDEEM_RETRIES = 8;
+    let result: {
+      amount: number;
+      walletBalance: number;
+      remaining: number;
+      walletTxnId: string;
+    } | null = null;
+
+    for (let attempt = 0; attempt < MAX_REDEEM_RETRIES; attempt++) {
+      try {
+        result = await prisma.$transaction(
+      async (tx) => {
+      const lockedRows = await tx.$queryRaw<
+        Array<{
+          id: string;
+          status: string;
+          balance: number;
+          code: string;
+          recipient_id: string | null;
+          redeemed_at: Date | null;
+        }>
+      >`
+        SELECT id, status, balance, code, recipient_id, redeemed_at
+        FROM gift_cards
+        WHERE id = ${card.id}
+        FOR UPDATE
+      `;
+      const locked = lockedRows[0];
       if (!locked || locked.status !== GiftCardStatus.ACTIVE || locked.balance <= 0) {
         throw new Error("ALREADY_REDEEMED");
       }
       // Draw down at most the remaining balance.
-      const amount = redeemAmount && redeemAmount > 0 ? Math.min(redeemAmount, locked.balance) : locked.balance;
+      const amount =
+        redeemAmount && redeemAmount > 0 ? Math.min(redeemAmount, locked.balance) : locked.balance;
       const newBalance = locked.balance - amount;
-      const user = await tx.user.findUnique({ where: { id: userId }, select: { walletBalance: true } });
+      const userRows = await tx.$queryRaw<Array<{ wallet_balance: number }>>`
+        SELECT wallet_balance FROM users WHERE id = ${userId} FOR UPDATE
+      `;
+      const user = userRows[0];
       if (!user) throw new Error("NOT_FOUND");
 
       const updated = await tx.user.update({
@@ -214,13 +286,16 @@ export class GiftCardService {
       });
       const walletTxn = await tx.walletTransaction.create({
         data: {
-          transactionNumber: await nextWalletTxnNumber(),
+          transactionNumber: await nextWalletTxnNumber(tx),
           userId,
           amount,
-          walletBalanceBefore: user.walletBalance,
+          walletBalanceBefore: user.wallet_balance,
           walletBalanceAfter: updated.walletBalance,
           type: WalletTxnType.CREDIT,
-          description: newBalance > 0 ? `Gift card ${locked.code} redeemed (₹${amount})` : `Gift card ${locked.code} redeemed`,
+          description:
+            newBalance > 0
+              ? `Gift card ${locked.code} redeemed (₹${amount})`
+              : `Gift card ${locked.code} redeemed`,
           referenceId: locked.id,
           referenceType: "gift_card",
           status: WalletTxnStatus.COMPLETED,
@@ -229,20 +304,52 @@ export class GiftCardService {
       await tx.giftCardTransaction.create({
         data: { giftCardId: locked.id, userId, type: "REDEEM", amount, balanceAfter: newBalance },
       });
-      await tx.giftCard.update({
-        where: { id: locked.id },
+      const applied = await tx.giftCard.updateMany({
+        where: { id: locked.id, status: GiftCardStatus.ACTIVE, balance: locked.balance },
         data: {
           balance: newBalance,
           status: newBalance === 0 ? GiftCardStatus.REDEEMED : GiftCardStatus.ACTIVE,
-          recipientId: locked.recipientId ?? userId, // first redeemer claims the card
-          redeemedAt: newBalance === 0 ? new Date() : locked.redeemedAt,
+          recipientId: locked.recipient_id ?? userId,
+          redeemedAt: newBalance === 0 ? new Date() : locked.redeemed_at,
         },
       });
+      if (applied.count === 0) {
+        throw new Error("ALREADY_REDEEMED");
+      }
+      await financialLedgerService.recordWalletTopUpInTransaction(tx, walletTxn.id, amount);
       return { amount, walletBalance: updated.walletBalance, remaining: newBalance, walletTxnId: walletTxn.id };
+    },
+      { maxWait: 8_000, timeout: 12_000 },
+    );
+        break;
+      } catch (error) {
+        if (isPrismaConcurrencyError(error) || isPrismaPoolTimeout(error)) {
+          if (attempt < MAX_REDEEM_RETRIES - 1) {
+            await new Promise((r) => setTimeout(r, 15 * (attempt + 1) + Math.random() * 40));
+            continue;
+          }
+          if (isPrismaPoolTimeout(error)) {
+            return { error: "POOL_BUSY" };
+          }
+        }
+        if (error instanceof Error && error.message === "ALREADY_REDEEMED") {
+          return { error: "ALREADY_REDEEMED" };
+        }
+        throw error;
+      }
+    }
+
+    if (!result) return { error: "ALREADY_REDEEMED" };
+
+    if (meta) {
+      await giftCardProtectionService.recordSuccessfulRedemption(code, { ...meta, userId }, card.id);
+    }
+
+    void AuditLogService.success("GIFT_CARD_REDEEMED", {
+      userId,
+      details: { giftCardId: card.id, amount: result.amount, remaining: result.remaining, code },
     });
-    void financialLedgerService
-      .recordWalletTopUp(result.walletTxnId, result.amount)
-      .catch(() => undefined);
+
     return { ok: true, amount: result.amount, walletBalance: result.walletBalance, remaining: result.remaining };
   }
 
@@ -298,7 +405,7 @@ export class GiftCardService {
       });
       const walletTxn = await tx.walletTransaction.create({
         data: {
-          transactionNumber: await nextWalletTxnNumber(),
+          transactionNumber: await nextWalletTxnNumber(tx),
           userId,
           amount: refund,
           walletBalanceBefore: purchaser.walletBalance,
@@ -317,12 +424,16 @@ export class GiftCardService {
         where: { id: locked.id },
         data: { status: GiftCardStatus.VOID, balance: 0 },
       });
+      await financialLedgerService.recordJournalInTransaction(
+        tx,
+        financialLedgerService.journalForRefund(
+          gatewayPaymentId ?? cardId,
+          refund,
+          `gift_void:${cardId}`,
+        ),
+      );
       return { refunded: refund, walletBalance: updated.walletBalance, walletTxnId: walletTxn.id };
     });
-
-    void financialLedgerService
-      .recordRefund(gatewayPaymentId ?? cardId, result.refunded, `gift_void:${cardId}`)
-      .catch(() => undefined);
 
     return { ok: true, refunded: result.refunded, walletBalance: result.walletBalance };
   }

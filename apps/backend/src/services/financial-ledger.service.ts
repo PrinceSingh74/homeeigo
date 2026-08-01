@@ -18,6 +18,8 @@ export type LedgerJournalInput = {
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
+let ledgerAccountsReady = false;
+
 const CHART_OF_ACCOUNTS: Array<{ code: string; name: string; type: LedgerAccountType }> = [
   { code: "CUSTOMER_FUNDS", name: "Customer Funds (Clearing)", type: "ASSET" },
   { code: "PLATFORM_ESCROW", name: "Platform Escrow", type: "LIABILITY" },
@@ -41,10 +43,18 @@ const CHART_OF_ACCOUNTS: Array<{ code: string; name: string; type: LedgerAccount
  */
 export class FinancialLedgerService {
   async ensureAccountsSeeded() {
-    return this.ensureAccountsSeededWithClient(prisma);
+    await this.ensureAccountsSeededWithClient(prisma);
+    ledgerAccountsReady = true;
   }
 
   private async ensureAccountsSeededWithClient(db: DbClient) {
+    if (ledgerAccountsReady) {
+      const exists = await db.ledgerAccount.findFirst({
+        where: { code: "CUSTOMER_FUNDS" },
+        select: { id: true },
+      });
+      if (exists) return;
+    }
     for (const acct of CHART_OF_ACCOUNTS) {
       await db.ledgerAccount.upsert({
         where: { code: acct.code },
@@ -52,11 +62,11 @@ export class FinancialLedgerService {
         update: {},
       });
     }
+    ledgerAccountsReady = true;
   }
 
-  /** Wallet debit: Debit Customer Wallet liability, Credit Bank Settlement */
-  async recordWalletDebit(walletTxnId: string, amount: number) {
-    return this.recordJournal({
+  journalForWalletDebit(walletTxnId: string, amount: number): LedgerJournalInput {
+    return {
       type: JournalEntryType.WALLET_DEBIT,
       referenceId: walletTxnId,
       referenceType: "wallet_transaction",
@@ -66,7 +76,12 @@ export class FinancialLedgerService {
         { accountCode: "CUSTOMER_WALLET", debit: amount, credit: 0 },
         { accountCode: "BANK_SETTLEMENT", debit: 0, credit: amount },
       ],
-    });
+    };
+  }
+
+  /** Wallet debit: Debit Customer Wallet liability, Credit Bank Settlement */
+  async recordWalletDebit(walletTxnId: string, amount: number) {
+    return this.recordJournal(this.journalForWalletDebit(walletTxnId, amount));
   }
 
   journalForBookingPayment(paymentId: string, amount: number): LedgerJournalInput {
@@ -168,7 +183,7 @@ export class FinancialLedgerService {
       },
       include: { lines: { include: { account: true } } },
     }).then(async (journal) => {
-      await this.snapshotBalances(journal.id, opts.lines.map((l) => l.accountCode));
+      await this.snapshotBalancesWithClient(db, journal.id, opts.lines.map((l) => l.accountCode));
       return journal;
     });
   }
@@ -183,25 +198,121 @@ export class FinancialLedgerService {
     return this.recordJournal(this.journalForRefund(paymentId, amount, refundId));
   }
 
-  /** Provider earning on complete: Debit Platform Escrow, Credit Provider Payable + Platform Revenue */
-  async recordProviderEarning(bookingId: string, gross: number, commission: number, net: number) {
-    return this.recordJournal({
+  journalForProviderEarning(
+    bookingId: string,
+    gross: number,
+    commission: number,
+    net: number,
+    bonus = 0,
+    deduction = 0,
+  ): LedgerJournalInput {
+    const g = round2(gross);
+    const n = round2(net);
+    let b = round2(bonus);
+    let d = round2(deduction);
+
+    // Backfill rows only store gross/commission/net — infer bonus vs deduction.
+    if (b === 0 && d === 0) {
+      const delta = round2(n + round2(commission) - g);
+      if (delta > 0) b = delta;
+      else if (delta < 0) d = round2(-delta);
+    }
+
+    const lines: LedgerLineInput[] = [
+      { accountCode: "PLATFORM_ESCROW", debit: g, credit: 0 },
+    ];
+    if (b > 0) {
+      lines.push({ accountCode: "PROMO_EXPENSE", debit: b, credit: 0 });
+    }
+    lines.push({ accountCode: "PROVIDER_PAYABLE", debit: 0, credit: n });
+
+    // gross + bonus = net + commission + deduction → always balances.
+    const platformShare = round2(g + b - n);
+    if (platformShare > 0) {
+      lines.push({ accountCode: "PLATFORM_REVENUE", debit: 0, credit: platformShare });
+    }
+
+    return {
       type: JournalEntryType.PROVIDER_EARNING,
       referenceId: bookingId,
       referenceType: "booking",
       idempotencyKey: `provider_earning:${bookingId}`,
       description: `Provider earning for booking ${bookingId}`,
-      lines: [
-        { accountCode: "PLATFORM_ESCROW", debit: gross, credit: 0 },
-        { accountCode: "PROVIDER_PAYABLE", debit: 0, credit: net },
-        { accountCode: "PLATFORM_REVENUE", debit: 0, credit: commission },
-      ],
-    });
+      lines,
+    };
   }
 
-  /** Wallet top-up: Debit Bank Settlement, Credit Customer Wallet */
-  async recordWalletTopUp(walletTxnId: string, amount: number) {
-    return this.recordJournal({
+  /** Provider earning on complete: Debit Platform Escrow, Credit Provider Payable + Platform Revenue */
+  async recordProviderEarning(
+    bookingId: string,
+    gross: number,
+    commission: number,
+    net: number,
+    bonus = 0,
+    deduction = 0,
+  ) {
+    return this.recordJournal(
+      this.journalForProviderEarning(bookingId, gross, commission, net, bonus, deduction),
+    );
+  }
+
+  async recordProviderEarningInTransaction(
+    tx: Prisma.TransactionClient,
+    bookingId: string,
+    gross: number,
+    commission: number,
+    net: number,
+    bonus = 0,
+    deduction = 0,
+  ) {
+    return this.recordJournalInTransaction(
+      tx,
+      this.journalForProviderEarning(bookingId, gross, commission, net, bonus, deduction),
+    );
+  }
+
+  /**
+   * Post idempotent liability reconciliation adjustment.
+   * Positive delta = ledger exceeds ops → debit liability to reduce.
+   * Negative delta = ledger below ops → credit liability to increase.
+   */
+  async recordLiabilityReconciliation(
+    liabilityAccountCode: string,
+    delta: number,
+    idempotencyKey: string,
+  ): Promise<boolean> {
+    const amount = Math.abs(round2(delta));
+    if (amount <= 0.01) return false;
+
+    const existing = await prisma.journalEntry.findUnique({
+      where: { idempotencyKey },
+      select: { id: true },
+    });
+    if (existing) return false;
+
+    const lines =
+      delta > 0
+        ? [
+            { accountCode: liabilityAccountCode, debit: amount, credit: 0 },
+            { accountCode: "ADJUSTMENT_CLEARING", debit: 0, credit: amount },
+          ]
+        : [
+            { accountCode: "ADJUSTMENT_CLEARING", debit: amount, credit: 0 },
+            { accountCode: liabilityAccountCode, debit: 0, credit: amount },
+          ];
+
+    await this.recordJournal({
+      type: JournalEntryType.ADJUSTMENT,
+      referenceType: "liability_reconciliation",
+      idempotencyKey,
+      description: `Reconcile ${liabilityAccountCode} delta ${delta}`,
+      lines,
+    });
+    return true;
+  }
+
+  journalForWalletTopUp(walletTxnId: string, amount: number): LedgerJournalInput {
+    return {
       type: JournalEntryType.WALLET_TOPUP,
       referenceId: walletTxnId,
       referenceType: "wallet_transaction",
@@ -211,7 +322,35 @@ export class FinancialLedgerService {
         { accountCode: "BANK_SETTLEMENT", debit: amount, credit: 0 },
         { accountCode: "CUSTOMER_WALLET", debit: 0, credit: amount },
       ],
-    });
+    };
+  }
+
+  journalForWalletBookingRefund(bookingId: string, amount: number): LedgerJournalInput {
+    return {
+      type: JournalEntryType.REFUND,
+      referenceId: bookingId,
+      referenceType: "booking",
+      idempotencyKey: `wallet_booking_refund:${bookingId}`,
+      description: `Wallet refund for cancelled booking ${bookingId}`,
+      lines: [
+        { accountCode: "PLATFORM_ESCROW", debit: amount, credit: 0 },
+        { accountCode: "CUSTOMER_WALLET", debit: 0, credit: amount },
+      ],
+    };
+  }
+
+  /** Wallet top-up: Debit Bank Settlement, Credit Customer Wallet */
+  async recordWalletTopUp(walletTxnId: string, amount: number) {
+    return this.recordJournal(this.journalForWalletTopUp(walletTxnId, amount));
+  }
+
+  /** Wallet top-up ledger entry inside an open settlement transaction. */
+  async recordWalletTopUpInTransaction(
+    tx: Prisma.TransactionClient,
+    walletTxnId: string,
+    amount: number,
+  ) {
+    return this.recordJournalInTransaction(tx, this.journalForWalletTopUp(walletTxnId, amount));
   }
 
   /** Provider payout: Debit Provider Payable, Credit Bank Settlement */
@@ -219,9 +358,8 @@ export class FinancialLedgerService {
     return this.recordJournal(this.journalForProviderPayout(withdrawalId, amount));
   }
 
-  /** Chargeback loss: Debit Chargeback Loss, Credit Bank Settlement */
-  async recordChargeback(chargebackId: string, amount: number) {
-    return this.recordJournal({
+  journalForChargeback(chargebackId: string, amount: number): LedgerJournalInput {
+    return {
       type: JournalEntryType.CHARGEBACK,
       referenceId: chargebackId,
       referenceType: "chargeback",
@@ -231,12 +369,16 @@ export class FinancialLedgerService {
         { accountCode: "CHARGEBACK_LOSS", debit: amount, credit: 0 },
         { accountCode: "BANK_SETTLEMENT", debit: 0, credit: amount },
       ],
-    });
+    };
   }
 
-  /** Gift card purchase: Debit Customer Funds, Credit Platform Escrow */
-  async recordGiftCardPurchase(giftCardId: string, amount: number) {
-    return this.recordJournal({
+  /** Chargeback loss: Debit Chargeback Loss, Credit Bank Settlement */
+  async recordChargeback(chargebackId: string, amount: number) {
+    return this.recordJournal(this.journalForChargeback(chargebackId, amount));
+  }
+
+  journalForGiftCardPurchase(giftCardId: string, amount: number): LedgerJournalInput {
+    return {
       type: JournalEntryType.GIFT_CARD,
       referenceId: giftCardId,
       referenceType: "gift_card",
@@ -246,12 +388,16 @@ export class FinancialLedgerService {
         { accountCode: "CUSTOMER_FUNDS", debit: amount, credit: 0 },
         { accountCode: "PLATFORM_ESCROW", debit: 0, credit: amount },
       ],
-    });
+    };
   }
 
-  /** Subscription payment: Debit Customer Funds, Credit Platform Revenue */
-  async recordSubscription(invoiceId: string, amount: number) {
-    return this.recordJournal({
+  /** Gift card purchase: Debit Customer Funds, Credit Platform Escrow */
+  async recordGiftCardPurchase(giftCardId: string, amount: number) {
+    return this.recordJournal(this.journalForGiftCardPurchase(giftCardId, amount));
+  }
+
+  journalForSubscription(invoiceId: string, amount: number): LedgerJournalInput {
+    return {
       type: JournalEntryType.SUBSCRIPTION,
       referenceId: invoiceId,
       referenceType: "subscription_invoice",
@@ -261,12 +407,16 @@ export class FinancialLedgerService {
         { accountCode: "CUSTOMER_FUNDS", debit: amount, credit: 0 },
         { accountCode: "PLATFORM_REVENUE", debit: 0, credit: amount },
       ],
-    });
+    };
   }
 
-  /** P2P transfer out: Debit Customer Wallet, Credit Wallet Clearing */
-  async recordWalletTransferOut(transferId: string, senderWalletTxnId: string, amount: number) {
-    return this.recordJournal({
+  /** Subscription payment: Debit Customer Funds, Credit Platform Revenue */
+  async recordSubscription(invoiceId: string, amount: number) {
+    return this.recordJournal(this.journalForSubscription(invoiceId, amount));
+  }
+
+  journalForWalletTransferOut(transferId: string, senderWalletTxnId: string, amount: number): LedgerJournalInput {
+    return {
       type: JournalEntryType.WALLET_TRANSFER_OUT,
       referenceId: transferId,
       referenceType: "wallet_transfer",
@@ -276,12 +426,16 @@ export class FinancialLedgerService {
         { accountCode: "CUSTOMER_WALLET", debit: amount, credit: 0 },
         { accountCode: "WALLET_CLEARING", debit: 0, credit: amount },
       ],
-    });
+    };
   }
 
-  /** P2P transfer in: Debit Wallet Clearing, Credit Customer Wallet */
-  async recordWalletTransferIn(transferId: string, recipientWalletTxnId: string, amount: number) {
-    return this.recordJournal({
+  /** P2P transfer out: Debit Customer Wallet, Credit Wallet Clearing */
+  async recordWalletTransferOut(transferId: string, senderWalletTxnId: string, amount: number) {
+    return this.recordJournal(this.journalForWalletTransferOut(transferId, senderWalletTxnId, amount));
+  }
+
+  journalForWalletTransferIn(transferId: string, recipientWalletTxnId: string, amount: number): LedgerJournalInput {
+    return {
       type: JournalEntryType.WALLET_TRANSFER_IN,
       referenceId: transferId,
       referenceType: "wallet_transfer",
@@ -291,7 +445,12 @@ export class FinancialLedgerService {
         { accountCode: "WALLET_CLEARING", debit: amount, credit: 0 },
         { accountCode: "CUSTOMER_WALLET", debit: 0, credit: amount },
       ],
-    });
+    };
+  }
+
+  /** P2P transfer in: Debit Wallet Clearing, Credit Customer Wallet */
+  async recordWalletTransferIn(transferId: string, recipientWalletTxnId: string, amount: number) {
+    return this.recordJournal(this.journalForWalletTransferIn(transferId, recipientWalletTxnId, amount));
   }
 
   /** Failed payout — reverse a completed payout journal or record reservation release */
@@ -299,8 +458,30 @@ export class FinancialLedgerService {
     const completed = await prisma.journalEntry.findUnique({
       where: { idempotencyKey: `provider_payout:${withdrawalId}` },
     });
-    if (completed) {
-      return this.recordJournal({
+    return this.recordJournal(this.journalForProviderPayoutReversal(withdrawalId, amount, Boolean(completed)));
+  }
+
+  async recordProviderPayoutReversalInTransaction(
+    tx: Prisma.TransactionClient,
+    withdrawalId: string,
+    amount: number,
+  ) {
+    const completed = await tx.journalEntry.findUnique({
+      where: { idempotencyKey: `provider_payout:${withdrawalId}` },
+    });
+    return this.recordJournalInTransaction(
+      tx,
+      this.journalForProviderPayoutReversal(withdrawalId, amount, Boolean(completed)),
+    );
+  }
+
+  private journalForProviderPayoutReversal(
+    withdrawalId: string,
+    amount: number,
+    hadCompletedPayout: boolean,
+  ): LedgerJournalInput {
+    if (hadCompletedPayout) {
+      return {
         type: JournalEntryType.PROVIDER_PAYOUT_REVERSAL,
         referenceId: withdrawalId,
         referenceType: "withdrawal",
@@ -310,9 +491,9 @@ export class FinancialLedgerService {
           { accountCode: "BANK_SETTLEMENT", debit: amount, credit: 0 },
           { accountCode: "PROVIDER_PAYABLE", debit: 0, credit: amount },
         ],
-      });
+      };
     }
-    return this.recordJournal({
+    return {
       type: JournalEntryType.PROVIDER_PAYOUT_REVERSAL,
       referenceId: withdrawalId,
       referenceType: "withdrawal",
@@ -322,12 +503,11 @@ export class FinancialLedgerService {
         { accountCode: "PROVIDER_PAYABLE", debit: amount, credit: 0 },
         { accountCode: "PROVIDER_PAYABLE", debit: 0, credit: amount },
       ],
-    });
+    };
   }
 
-  /** H-Coin earned: Debit Promo Expense, Credit H-Coin Liability (rupee equivalent) */
-  async recordHcoinEarned(hcoinTxnId: string, coins: number, rupeeValue: number) {
-    return this.recordJournal({
+  journalForHcoinEarned(hcoinTxnId: string, coins: number, rupeeValue: number): LedgerJournalInput {
+    return {
       type: JournalEntryType.HCOIN_EARNED,
       referenceId: hcoinTxnId,
       referenceType: "hcoin_transaction",
@@ -337,7 +517,21 @@ export class FinancialLedgerService {
         { accountCode: "PROMO_EXPENSE", debit: rupeeValue, credit: 0 },
         { accountCode: "HCOIN_LIABILITY", debit: 0, credit: rupeeValue },
       ],
-    });
+    };
+  }
+
+  /** H-Coin earned: Debit Promo Expense, Credit H-Coin Liability (rupee equivalent) */
+  async recordHcoinEarned(hcoinTxnId: string, coins: number, rupeeValue: number) {
+    return this.recordJournal(this.journalForHcoinEarned(hcoinTxnId, coins, rupeeValue));
+  }
+
+  async recordHcoinEarnedInTransaction(
+    tx: Prisma.TransactionClient,
+    hcoinTxnId: string,
+    coins: number,
+    rupeeValue: number,
+  ) {
+    return this.recordJournalInTransaction(tx, this.journalForHcoinEarned(hcoinTxnId, coins, rupeeValue));
   }
 
   /** H-Coin redeemed to wallet: Debit H-Coin Liability, Credit Customer Wallet */
@@ -355,9 +549,8 @@ export class FinancialLedgerService {
     });
   }
 
-  /** Admin H-Coin adjustment / promo grant */
-  async recordHcoinAdjusted(hcoinTxnId: string, rupeeValue: number) {
-    return this.recordJournal({
+  journalForHcoinAdjusted(hcoinTxnId: string, rupeeValue: number): LedgerJournalInput {
+    return {
       type: JournalEntryType.HCOIN_ADJUSTED,
       referenceId: hcoinTxnId,
       referenceType: "hcoin_transaction",
@@ -367,12 +560,16 @@ export class FinancialLedgerService {
         { accountCode: "PROMO_EXPENSE", debit: rupeeValue, credit: 0 },
         { accountCode: "HCOIN_LIABILITY", debit: 0, credit: rupeeValue },
       ],
-    });
+    };
   }
 
-  /** Cashback reversal on refund: Debit Customer Wallet, Credit Platform Revenue */
-  async recordCashbackReversal(walletTxnId: string, amount: number, bookingId: string) {
-    return this.recordJournal({
+  /** Admin H-Coin adjustment / promo grant */
+  async recordHcoinAdjusted(hcoinTxnId: string, rupeeValue: number) {
+    return this.recordJournal(this.journalForHcoinAdjusted(hcoinTxnId, rupeeValue));
+  }
+
+  journalForCashbackReversal(walletTxnId: string, amount: number, bookingId: string): LedgerJournalInput {
+    return {
       type: JournalEntryType.CASHBACK_REVERSAL,
       referenceId: walletTxnId,
       referenceType: "wallet_transaction",
@@ -382,7 +579,12 @@ export class FinancialLedgerService {
         { accountCode: "CUSTOMER_WALLET", debit: amount, credit: 0 },
         { accountCode: "PLATFORM_REVENUE", debit: 0, credit: amount },
       ],
-    });
+    };
+  }
+
+  /** Cashback reversal on refund: Debit Customer Wallet, Credit Platform Revenue */
+  async recordCashbackReversal(walletTxnId: string, amount: number, bookingId: string) {
+    return this.recordJournal(this.journalForCashbackReversal(walletTxnId, amount, bookingId));
   }
 
   /**
@@ -390,15 +592,14 @@ export class FinancialLedgerService {
    * CR Customer Wallet Liability. Keyed by the wallet transaction id so the
    * ledger CUSTOMER_WALLET balance stays in lock-step with the ops wallet.
    */
-  async recordReferralCommission(opts: {
+  journalForReferralCommission(opts: {
     walletTxnId: string;
     referrerUserId: string;
     amount: number;
-    referralId?: string;
     referredUserId?: string;
     bookingId?: string;
-  }) {
-    return this.recordJournal({
+  }): LedgerJournalInput {
+    return {
       type: JournalEntryType.REFERRAL_COMMISSION,
       referenceId: opts.walletTxnId,
       referenceType: "referral_commission",
@@ -410,7 +611,18 @@ export class FinancialLedgerService {
         { accountCode: "REFERRAL_MARKETING_EXPENSE", debit: opts.amount, credit: 0 },
         { accountCode: "CUSTOMER_WALLET", debit: 0, credit: opts.amount },
       ],
-    });
+    };
+  }
+
+  async recordReferralCommission(opts: {
+    walletTxnId: string;
+    referrerUserId: string;
+    amount: number;
+    referralId?: string;
+    referredUserId?: string;
+    bookingId?: string;
+  }) {
+    return this.recordJournal(this.journalForReferralCommission(opts));
   }
 
   /** H-Coin expiry (breakage): DR H-Coin Liability, CR Promotional Breakage Revenue */
@@ -459,9 +671,8 @@ export class FinancialLedgerService {
     return opts.tx ? this.recordJournalInTransaction(opts.tx, input) : this.recordJournal(input);
   }
 
-  /** Cashback credit: Debit Platform Revenue, Credit Customer Wallet */
-  async recordCashback(cashbackId: string, amount: number) {
-    return this.recordJournal({
+  journalForCashback(cashbackId: string, amount: number): LedgerJournalInput {
+    return {
       type: JournalEntryType.CASHBACK,
       referenceId: cashbackId,
       referenceType: "membership_cashback",
@@ -471,24 +682,29 @@ export class FinancialLedgerService {
         { accountCode: "PLATFORM_REVENUE", debit: amount, credit: 0 },
         { accountCode: "CUSTOMER_WALLET", debit: 0, credit: amount },
       ],
-    });
+    };
   }
 
-  private async snapshotBalances(journalId: string, accountCodes: string[]) {
+  /** Cashback credit: Debit Platform Revenue, Credit Customer Wallet */
+  async recordCashback(cashbackId: string, amount: number) {
+    return this.recordJournal(this.journalForCashback(cashbackId, amount));
+  }
+
+  private async snapshotBalancesWithClient(db: DbClient, journalId: string, accountCodes: string[]) {
     const uniqueCodes = [...new Set(accountCodes)];
     for (const code of uniqueCodes) {
-      const account = await prisma.ledgerAccount.findUnique({ where: { code } });
+      const account = await db.ledgerAccount.findUnique({ where: { code } });
       if (!account) continue;
 
-      const agg = await prisma.ledgerEntry.aggregate({
+      const agg = await db.ledgerEntry.aggregate({
         where: { accountId: account.id },
         _sum: { debit: true, credit: true },
       });
       const balance = round2((agg._sum.debit ?? 0) - (agg._sum.credit ?? 0));
 
-      await prisma.ledgerBalanceSnapshot.create({
+      await db.ledgerBalanceSnapshot.create({
         data: { journalId, accountId: account.id, balance },
-      }).catch(() => undefined);
+      });
     }
   }
 
@@ -504,8 +720,10 @@ export class FinancialLedgerService {
   }
 
   private async nextEntryNumberWithClient(db: DbClient): Promise<string> {
-    const count = await db.journalEntry.count();
-    const seq = String(count + 1).padStart(8, "0");
+    // Atomic, gap-tolerant, collision-free under concurrency and after deletes.
+    // (count()+1 collided once a journal was deleted and raced under load.)
+    const rows = await db.$queryRaw<Array<{ nextval: bigint }>>`SELECT nextval('journal_entry_number_seq')`;
+    const seq = String(rows[0]!.nextval).padStart(8, "0");
     return `JE-${seq}`;
   }
 }

@@ -242,6 +242,10 @@ export const partnerRegisterRoutes = new Elysia({ prefix: "/api/partner" })
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Upload failed";
         if (msg.startsWith("FORBIDDEN:")) return mapError(err, set);
+        if (msg.startsWith("INVALID_FILE_TYPE:") || msg.includes("maximum size")) {
+          set.status = 400;
+          return { success: false, error: msg.replace(/^INVALID_FILE_TYPE:/, ""), code: "INVALID_FILE_TYPE" };
+        }
         set.status = msg.includes("not found") ? 404 : 500;
         return { success: false, error: msg, code: "UPLOAD_FAILED" };
       }

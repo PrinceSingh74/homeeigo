@@ -80,6 +80,8 @@ export class RatingService {
       tipAmount: r.tipAmount,
       createdAt: r.createdAt,
       helpfulCount: r.helpfulCount,
+      providerResponse: r.providerResponse,
+      respondedAt: r.respondedAt,
     };
   }
 
@@ -103,7 +105,10 @@ export class RatingService {
   }
 
   async providerRespond(providerId: string, id: string, response: string) {
-    const r = await prisma.rating.findFirst({ where: { id, providerId } });
+    const r = await prisma.rating.findFirst({
+      where: { id, providerId },
+      include: { provider: true },
+    });
     if (!r) return null;
     const updated = await prisma.rating.update({
       where: { id },
@@ -112,6 +117,20 @@ export class RatingService {
         respondedAt: new Date(),
       },
     });
+
+    // Tell the customer their review got a reply (non-blocking; in-app + WS push).
+    const { notificationService } = await import("./notification.service");
+    void notificationService
+      .createForUser({
+        userId: r.userId,
+        type: "review_reply",
+        title: "Your review got a reply",
+        message: `${r.provider?.businessName ?? "Your professional"} replied to your review.`,
+        referenceId: r.bookingId,
+        referenceType: "booking",
+      })
+      .catch(() => undefined);
+
     return updated;
   }
 
@@ -144,10 +163,54 @@ export class RatingService {
         reviewText: r.reviewText,
         photos: r.photos,
         tipAmount: r.tipAmount,
+        providerResponse: r.providerResponse,
+        respondedAt: r.respondedAt,
         createdAt: r.createdAt,
       })),
       total,
       page,
+    };
+  }
+
+  /**
+   * PLATFORM-WIDE public reviews for the customer home "Loved by customers" rail.
+   * Any customer's review (after any service, any provider) surfaces here — only
+   * public, non-flagged rows with actual review text. Newest first + aggregate.
+   */
+  async listPublicRecent(query: Record<string, string | undefined>) {
+    const limit = Math.min(Math.max(Number(query.limit) || 12, 1), 30);
+    const where = {
+      isPublic: true,
+      isFlagged: false,
+      reviewText: { not: null },
+    } as const;
+    const [rows, total, agg] = await Promise.all([
+      prisma.rating.findMany({
+        where,
+        take: limit,
+        orderBy: { createdAt: "desc" },
+        include: {
+          user: { select: { firstName: true, lastName: true } },
+          booking: { include: { service: { select: { name: true } } } },
+        },
+      }),
+      prisma.rating.count({ where }),
+      prisma.rating.aggregate({ where, _avg: { stars: true } }),
+    ]);
+    return {
+      reviews: rows.map((r) => ({
+        id: r.id,
+        name: r.isAnonymous
+          ? "HOMEEIGO Customer"
+          : `${r.user.firstName ?? "HOMEEIGO"} ${(r.user.lastName ?? "").charAt(0)}`.trim(),
+        rating: r.stars,
+        reviewText: r.reviewText,
+        service: r.booking?.service?.name ?? "Home service",
+        createdAt: r.createdAt,
+        providerResponse: r.providerResponse,
+      })),
+      total,
+      averageRating: agg._avg.stars != null ? Math.round(agg._avg.stars * 10) / 10 : null,
     };
   }
 

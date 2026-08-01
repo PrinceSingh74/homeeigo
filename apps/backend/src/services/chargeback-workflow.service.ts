@@ -1,14 +1,10 @@
-import fs from "fs";
 import path from "path";
 import { ChargebackStatus, FinancialRiskLevel } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { AuditLogService } from "./audit-log.service";
-import { generateStorageKey } from "../lib/storage-key";
-import { chargebackEvidenceAccessService } from "./chargeback-evidence-access.service";
-
-const EVIDENCE_DIR =
-  process.env.CHARGEBACK_EVIDENCE_DIR ||
-  path.join(process.cwd(), "uploads", "chargeback-evidence");
+import { financeAlertService } from "./finance-alert.service";
+import { objectStorageService } from "./object-storage.service";
+import { isLikelyValidPdf } from "../lib/minimal-pdf";
 
 const ALLOWED_EXT = new Set(["pdf", "png", "jpg", "jpeg", "zip"]);
 const MAX_EVIDENCE_SIZE = 10 * 1024 * 1024;
@@ -94,6 +90,219 @@ export class ChargebackWorkflowService {
     });
   }
 
+  async resolveCase(chargebackId: string, adminId: string, outcome: "WON" | "LOST", notes?: string) {
+    const status = outcome === "WON" ? ChargebackStatus.WON : ChargebackStatus.LOST;
+    return this.transition(chargebackId, status, adminId, `CASE_${outcome}`, {
+      outcome: outcome.toLowerCase(),
+      resolvedAt: new Date(),
+      responseText: notes ?? undefined,
+    });
+  }
+
+  private parseMetadata(raw: string | null): Record<string, unknown> {
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
+  private paymentInclude() {
+    return {
+      booking: { include: { user: true, provider: { include: { user: true } }, service: true } },
+    } as const;
+  }
+
+  /** Resolve platform payment + booking for a chargeback using multiple deterministic keys. */
+  async resolveLinkedPayment(cb: {
+    id: string;
+    paymentId: string | null;
+    razorpayPaymentId: string | null;
+    metadata: string | null;
+    amount: number;
+    amountPaise: bigint;
+  }) {
+    const include = this.paymentInclude();
+
+    if (cb.paymentId) {
+      return prisma.payment.findUnique({ where: { id: cb.paymentId }, include });
+    }
+
+    if (cb.razorpayPaymentId) {
+      const byGateway = await prisma.payment.findFirst({
+        where: { razorpayPaymentId: cb.razorpayPaymentId },
+        include,
+      });
+      if (byGateway) return byGateway;
+    }
+
+    const meta = this.parseMetadata(cb.metadata);
+    if (typeof meta.paymentId === "string") {
+      const byMetaPayment = await prisma.payment.findUnique({ where: { id: meta.paymentId }, include });
+      if (byMetaPayment) return byMetaPayment;
+    }
+    if (typeof meta.bookingId === "string") {
+      const byMetaBooking = await prisma.payment.findUnique({ where: { bookingId: meta.bookingId }, include });
+      if (byMetaBooking) return byMetaBooking;
+    }
+
+    const amountPaise = Number(cb.amountPaise) > 0 ? Number(cb.amountPaise) : Math.round(cb.amount * 100);
+    return prisma.payment.findFirst({
+      where: {
+        status: "SUCCESS",
+        OR: [{ amountPaise: BigInt(amountPaise) }, { amountPaid: cb.amount }],
+      },
+      include,
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  /** Persist paymentId when resolved via gateway/metadata/amount keys. */
+  async ensurePaymentLink(chargebackId: string) {
+    const cb = await prisma.chargeback.findUnique({ where: { id: chargebackId } });
+    if (!cb || cb.paymentId) return cb;
+
+    const payment = await this.resolveLinkedPayment(cb);
+    if (!payment) return cb;
+
+    return prisma.chargeback.update({
+      where: { id: chargebackId },
+      data: {
+        paymentId: payment.id,
+        razorpayPaymentId: payment.razorpayPaymentId ?? cb.razorpayPaymentId,
+      },
+    });
+  }
+
+  async buildEvidencePackage(chargebackId: string) {
+    await this.ensurePaymentLink(chargebackId);
+
+    const cb = await prisma.chargeback.findUnique({
+      where: { id: chargebackId },
+      include: {
+        evidence: true,
+        timeline: { orderBy: { createdAt: "asc" } },
+      },
+    });
+    if (!cb) throw new Error("CHARGEBACK_NOT_FOUND");
+
+    const payment = await this.resolveLinkedPayment(cb);
+
+    const invoice = payment?.invoiceNumber
+      ? { invoiceNumber: payment.invoiceNumber, amount: payment.amountPaid }
+      : null;
+
+    const supportTickets = payment?.bookingId
+      ? await prisma.supportTicket.findMany({
+          where: { bookingId: payment.bookingId },
+          include: { messages: { orderBy: { createdAt: "asc" }, take: 20 } },
+        })
+      : [];
+
+    const tracking = payment?.bookingId
+      ? await prisma.tracking.findFirst({ where: { bookingId: payment.bookingId } })
+      : null;
+
+    const providerLogs = payment?.bookingId
+      ? await prisma.activityLog.findMany({
+          where: { bookingId: payment.bookingId, providerId: { not: null } },
+          orderBy: { createdAt: "asc" },
+          take: 30,
+        })
+      : [];
+
+    return {
+      chargeback: {
+        id: cb.id,
+        status: cb.status,
+        amount: cb.amount,
+        reason: cb.reason,
+        razorpayDisputeId: cb.razorpayDisputeId,
+        responseDeadline: cb.responseDeadline,
+      },
+      booking: payment?.booking
+        ? {
+            id: payment.booking.id,
+            bookingNumber: payment.booking.bookingNumber,
+            status: payment.booking.status,
+            scheduledDate: payment.booking.scheduledDate,
+            finalAmount: payment.booking.finalAmount,
+            customer: `${payment.booking.user.firstName} ${payment.booking.user.lastName}`,
+            provider: payment.booking.provider
+              ? `${payment.booking.provider.user.firstName} ${payment.booking.provider.user.lastName}`
+              : null,
+            service: payment.booking.service.name,
+          }
+        : null,
+      payment: payment
+        ? {
+            id: payment.id,
+            amountPaid: payment.amountPaid,
+            razorpayPaymentId: payment.razorpayPaymentId,
+            status: payment.status,
+          }
+        : null,
+      invoice: invoice,
+      evidence: cb.evidence.map((e) => ({
+        id: e.id,
+        fileName: e.fileName,
+        mimeType: e.mimeType,
+        uploadedAt: e.createdAt,
+      })),
+      communications: supportTickets.flatMap((t) =>
+        t.messages.map((m) => ({
+          ticketNumber: t.ticketNumber,
+          authorRole: m.authorRole,
+          body: m.body,
+          at: m.createdAt,
+        })),
+      ),
+      tracking: tracking ? { status: tracking.status, lastUpdated: tracking.updatedAt } : null,
+      providerLogs: providerLogs.map((l) => ({ action: l.action, at: l.createdAt, description: l.description })),
+      timeline: cb.timeline,
+      linkage: {
+        paymentLinked: Boolean(payment),
+        bookingLinked: Boolean(payment?.booking),
+        linkSource: payment
+          ? cb.paymentId
+            ? "payment_id"
+            : cb.razorpayPaymentId
+              ? "razorpay_payment_id"
+              : "resolved"
+          : "unlinked",
+      },
+    };
+  }
+
+  async checkSlaBreaches() {
+    const breached = await prisma.chargeback.findMany({
+      where: {
+        responseDeadline: { lt: new Date() },
+        status: {
+          in: [
+            ChargebackStatus.RECEIVED,
+            ChargebackStatus.OPEN,
+            ChargebackStatus.UNDER_REVIEW,
+            ChargebackStatus.EVIDENCE_PENDING,
+            ChargebackStatus.RESPONDED,
+          ],
+        },
+      },
+      take: 100,
+    });
+
+    for (const cb of breached) {
+      await financeAlertService.raise("CHARGEBACK_SLA_BREACH", "HIGH", `Chargeback ${cb.id} SLA breached`, {
+        chargebackId: cb.id,
+        deadline: cb.responseDeadline?.toISOString(),
+        amount: cb.amount,
+      });
+    }
+
+    return { breachedCount: breached.length, chargebackIds: breached.map((c) => c.id) };
+  }
+
   async uploadEvidence(
     chargebackId: string,
     adminId: string,
@@ -107,13 +316,7 @@ export class ChargebackWorkflowService {
 
     const ext = (path.extname(fileName).replace(".", "") || "").toLowerCase();
     if (!ALLOWED_EXT.has(ext)) throw new Error("INVALID_FILE_TYPE");
-
-    const storageKey = generateStorageKey();
-    const storagePath = chargebackEvidenceAccessService.resolveFilePath(storageKey);
-    if (!fs.existsSync(path.dirname(storagePath))) {
-      fs.mkdirSync(path.dirname(storagePath), { recursive: true });
-    }
-    fs.writeFileSync(storagePath, file);
+    if (ext === "pdf" && !isLikelyValidPdf(file)) throw new Error("INVALID_PDF");
 
     const mimeType =
       ext === "pdf"
@@ -126,13 +329,18 @@ export class ChargebackWorkflowService {
               ? "application/zip"
               : "application/octet-stream";
 
+    const stored = await objectStorageService.putObject("chargeback-evidence", file, {
+      fileName,
+      mimeType,
+    });
+
     const evidence = await prisma.chargebackEvidence.create({
       data: {
         chargebackId,
-        storageKey,
+        storageKey: stored.storageKey,
         fileName,
         mimeType,
-        fileUrl: null,
+        fileUrl: stored.fileUrl,
         description,
         uploadedBy: adminId,
       },
@@ -161,7 +369,7 @@ export class ChargebackWorkflowService {
     const detail = await this.getDetail(chargebackId);
     if (!detail) throw new Error("CHARGEBACK_NOT_FOUND");
     const lines = [
-      "HOMIGO Chargeback Case Export",
+      "HOMEEIGO Chargeback Case Export",
       `ID: ${detail.id}`,
       `Dispute: ${detail.razorpayDisputeId ?? "—"}`,
       `Status: ${detail.displayStatus}`,

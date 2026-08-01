@@ -31,19 +31,10 @@ export class BookingLiveService {
       const providerId = await resolveProviderIdFromUserId(providerUserId);
       if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
 
-      const booking = await prisma.booking.update({
-        where: { id: bookingId },
-        data: {
-          status: "ACCEPTED",
-          acceptedAt: new Date(),
-          providerId,
-        },
-        include: {
-          user: true,
-          provider: { include: { user: true } },
-          service: true,
-        },
-      });
+      const result = await bookingService.accept(providerId, bookingId);
+      if (!result.ok) throw new Error(result.error);
+
+      const booking = result.booking;
 
       await this.broadcastBookingUpdate(bookingId, booking.status, {
         providerId,
@@ -51,11 +42,13 @@ export class BookingLiveService {
         acceptedAt: booking.acceptedAt,
       });
 
-      await notificationService.sendNotification(booking.userId, "BOOKING_ACCEPTED", {
-        title: "Booking Accepted",
-        body: `${booking.provider?.user.firstName || "Provider"} accepted your ${booking.service.name} booking`,
-        data: { bookingId, type: "booking_accepted" },
-      });
+      if (result.newlyAccepted) {
+        await notificationService.sendNotification(booking.userId, "BOOKING_ACCEPTED", {
+          title: "Booking Accepted",
+          body: `${booking.provider?.user.firstName || "Provider"} accepted your ${booking.service.name} booking`,
+          data: { bookingId, type: "booking_accepted" },
+        });
+      }
 
       void assignmentEngine.onProviderAccepted(bookingId, providerId).catch(() => undefined);
 
@@ -72,23 +65,18 @@ export class BookingLiveService {
       const providerId = await resolveProviderIdFromUserId(providerUserId);
       if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
 
-      const booking = await prisma.booking.update({
+      const result = await bookingService.reject(providerId, bookingId, reason ?? "Declined");
+      if (result && "error" in result) throw new Error(result.error);
+
+      const booking = await prisma.booking.findUnique({
         where: { id: bookingId },
-        data: { status: "REJECTED" },
         include: { user: true, service: true },
       });
+      if (!booking) throw new Error("NOT_FOUND");
 
       await this.broadcastBookingUpdate(bookingId, booking.status, { providerId, reason });
 
-      void assignmentEngine.onProviderRejected(bookingId, providerId, reason).catch(() => undefined);
-
-      await notificationService.sendNotification(booking.userId, "BOOKING_REJECTED", {
-        title: "Booking Rejected",
-        body: `Provider rejected your ${booking.service.name} booking request`,
-        data: { bookingId, reason },
-      });
-
-      console.log(`[Booking] Rejected: ${bookingId} by ${providerId}`);
+      console.log(`[Booking] Declined: ${bookingId} by ${providerId}`);
       return booking;
     } catch (error) {
       console.error("Reject booking error:", error);
@@ -113,7 +101,8 @@ export class BookingLiveService {
       await this.broadcastBookingUpdate(bookingId, booking.status, {
         cancelledBy: userId,
         reason,
-        refundAmount: result.refundAmount,
+        // cancel() returns one of two success shapes; only one carries a refund.
+        refundAmount: "refundAmount" in result ? result.refundAmount : 0,
       });
 
       if (booking.provider?.userId) {

@@ -1,28 +1,34 @@
 import { Elysia, t } from "elysia";
-import { JWTService } from "../services/jwt.service";
 import { roomManager, MessageType, type WSConnection, generateConnectionId } from "../lib/websocket";
 import { heartbeatManager } from "../lib/heartbeat";
+import { authenticateWsConnection } from "../lib/ws-connection-auth";
+import { validateWsChannelAccess } from "../lib/ws-channel-access";
 import { getWsState, setWsState } from "./ws-state";
 
-const jwt = new JWTService();
-
 export const notificationsWs = new Elysia().ws("/ws/notifications", {
-  query: t.Object({ token: t.Optional(t.String()) }),
-  open(ws) {
-    const authHeader =
-      typeof ws.data.headers?.authorization === "string" ? ws.data.headers.authorization : "";
-    const headerToken = authHeader.replace(/^Bearer\s+/i, "");
-    const token = ws.data.query.token ?? headerToken ?? "";
-    const payload = token ? jwt.verifyAccessToken(token) : null;
-    if (!payload?.userId) {
+  query: t.Object({ token: t.Optional(t.String()), nonce: t.Optional(t.String()) }),
+  async open(ws) {
+    const auth = await authenticateWsConnection(ws, "/ws/notifications");
+    if (!auth) {
       ws.close(4401, "Unauthorized");
+      return;
+    }
+
+    const allowed = await validateWsChannelAccess({
+      channel: "notifications",
+      userId: auth.userId,
+      userRole: auth.userRole,
+      channelUserId: auth.userId,
+    });
+    if (!allowed) {
+      ws.close(4403, "Forbidden");
       return;
     }
 
     const connectionId = generateConnectionId();
     const connection: WSConnection = {
-      userId: payload.userId,
-      userType: payload.userType || "customer",
+      userId: auth.userId,
+      userType: auth.userType,
       connectionId,
       connectedAt: new Date(),
       lastPing: new Date(),
@@ -36,11 +42,12 @@ export const notificationsWs = new Elysia().ws("/ws/notifications", {
       },
     };
 
-    roomManager.addToRoom(`user:${payload.userId}`, connection);
+    roomManager.addToRoom(`user:${auth.userId}`, connection);
     heartbeatManager.startHeartbeat(connectionId, ws);
 
     setWsState(ws, {
-      userId: payload.userId,
+      userId: auth.userId,
+      userType: auth.userType,
       connectionId,
       connection,
     });
@@ -53,11 +60,18 @@ export const notificationsWs = new Elysia().ws("/ws/notifications", {
       }),
     );
   },
-  message(ws, data: string | Buffer) {
+  message(ws, data: unknown) {
     try {
-      const raw = typeof data === "string" ? data : data.toString();
-      const message = JSON.parse(raw) as { type?: string };
-      if (message.type === MessageType.PING) {
+      // Elysia auto-parses JSON ws frames → `data` is usually already an object.
+      // Accept string / Buffer / pre-parsed object so client PING is reliably answered.
+      const message = (
+        typeof data === "string"
+          ? JSON.parse(data)
+          : Buffer.isBuffer(data)
+            ? JSON.parse(data.toString())
+            : data
+      ) as { type?: string };
+      if (message?.type === MessageType.PING) {
         ws.send(JSON.stringify({ type: MessageType.PONG, timestamp: new Date() }));
         const connId = getWsState(ws)?.connectionId;
         if (connId) heartbeatManager.handlePong(connId);

@@ -87,6 +87,7 @@ export class NotificationService {
           message: input.message,
           notificationType: input.type,
           referenceId: input.referenceId,
+          referenceType: input.referenceType,
           priority: input.priority ?? "normal",
           isRead: n.isRead,
           createdAt: n.createdAt.toISOString(),
@@ -145,6 +146,17 @@ export class NotificationService {
       where: { id, userId },
       data: { isRead: true, readAt: new Date() },
     });
+  }
+
+  /** Mark EVERY unread notification read in one statement — clients must not
+   *  loop per-id (a page-limited loop leaves older unread rows keeping the
+   *  badge lit forever). */
+  async markAllRead(userId: string) {
+    const res = await prisma.notification.updateMany({
+      where: { userId, isRead: false },
+      data: { isRead: true, readAt: new Date() },
+    });
+    return res.count;
   }
 
   async delete(userId: string, id: string) {

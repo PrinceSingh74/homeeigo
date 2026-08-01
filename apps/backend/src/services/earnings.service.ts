@@ -335,30 +335,31 @@ export class EarningsService {
       return { handled: true, reason: "ALREADY_TERMINAL" };
     }
 
-    await prisma.$transaction([
-      prisma.withdrawal.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.withdrawal.update({
         where: { id: withdrawalId },
         data: { status: WithdrawalStatus.FAILED, failureReason: reason, razorpayStatus: "failed" },
-      }),
-      prisma.walletTransaction.updateMany({
+      });
+      await tx.walletTransaction.updateMany({
         where: { referenceId: withdrawalId, referenceType: "withdrawal" },
         data: { status: WalletTxnStatus.FAILED },
-      }),
-      prisma.payoutAttempt.create({
+      });
+      await tx.payoutAttempt.create({
         data: {
           withdrawalId,
-          attemptNo: (await prisma.payoutAttempt.count({ where: { withdrawalId } })) + 1,
+          attemptNo: (await tx.payoutAttempt.count({ where: { withdrawalId } })) + 1,
           status: "FAILED",
           razorpayPayoutId: existing.razorpayPayoutId,
           failureReason: reason,
         },
-      }),
-    ]);
+      });
+      await financialLedgerService.recordProviderPayoutReversalInTransaction(
+        tx,
+        withdrawalId,
+        existing.netAmount,
+      );
+    });
     await providerWalletReservationService.releaseReservation(withdrawalId, undefined, reason);
-
-    void financialLedgerService
-      .recordProviderPayoutReversal(withdrawalId, existing.netAmount)
-      .catch(() => undefined);
     void AuditLogService.success("PAYOUT_FAILURE", {
       details: { withdrawalId, amount: existing.netAmount, reason },
     });

@@ -1,6 +1,7 @@
 import prisma from "../lib/prisma";
 import { formatAddress } from "../lib/format";
 import { sanitizeUserInput } from "../utils/sanitizer";
+import { addressPiiService } from "./address-pii.service";
 
 function sanitizeAddressInput(data: {
   label: string;
@@ -40,7 +41,8 @@ function buildFullAddress(parts: {
 export class AddressService {
   async list(userId: string) {
     const rows = await prisma.address.findMany({ where: { userId }, orderBy: { createdAt: "desc" } });
-    return rows.map(formatAddress);
+    const decrypted = await Promise.all(rows.map((r) => addressPiiService.withDecrypted(r)));
+    return decrypted.map(formatAddress);
   }
 
   async create(
@@ -61,27 +63,36 @@ export class AddressService {
     const count = await prisma.address.count({ where: { userId } });
     const safe = sanitizeAddressInput(data);
     const fullAddress = buildFullAddress(safe);
+    const encrypted = await addressPiiService.buildEncryptedCreateFields(
+      {
+        addressLine1: safe.addressLine1,
+        addressLine2: safe.addressLine2,
+        fullAddress,
+        landmark: safe.landmark,
+        specialInstructions: safe.specialInstructions,
+      },
+      userId,
+    );
+
     const address = await prisma.address.create({
       data: {
         userId,
         label: safe.label,
-        addressLine1: safe.addressLine1,
-        addressLine2: safe.addressLine2,
         city: safe.city,
         state: safe.state,
         zipCode: safe.zipCode,
         latitude: data.latitude,
         longitude: data.longitude,
-        landmark: safe.landmark,
-        specialInstructions: safe.specialInstructions,
-        fullAddress,
+        landmark: null,
+        specialInstructions: null,
         isDefault: count === 0,
-      },
+        ...encrypted,
+      } as Parameters<typeof prisma.address.create>[0]["data"],
     });
     if (count === 0) {
       await prisma.user.update({ where: { id: userId }, data: { defaultAddressId: address.id } });
     }
-    return formatAddress(address);
+    return formatAddress(await addressPiiService.withDecrypted(address));
   }
 
   async update(userId: string, id: string, patch: Record<string, unknown>) {
@@ -106,13 +117,30 @@ export class AddressService {
       }
     }
 
-    const merged = { ...existing, ...sanitizedPatch } as typeof existing;
+    const decryptedExisting = await addressPiiService.withDecrypted(existing);
+    const merged = { ...decryptedExisting, ...sanitizedPatch } as typeof decryptedExisting;
     const fullAddress = buildFullAddress(merged);
+
+    const encryptedPatch = await addressPiiService.buildEncryptedUpdateFields(
+      {
+        addressLine1: merged.addressLine1,
+        addressLine2: merged.addressLine2,
+        fullAddress,
+        landmark: merged.landmark,
+        specialInstructions: merged.specialInstructions,
+      },
+      existing,
+      userId,
+    );
+
+    const { addressLine1: _a1, addressLine2: _a2, fullAddress: _fa, landmark: _lm, specialInstructions: _si, ...geoPatch } =
+      sanitizedPatch;
+
     const updated = await prisma.address.update({
       where: { id },
-      data: { ...sanitizedPatch, fullAddress } as Parameters<typeof prisma.address.update>[0]["data"],
+      data: { ...geoPatch, ...encryptedPatch } as Parameters<typeof prisma.address.update>[0]["data"],
     });
-    return formatAddress(updated);
+    return formatAddress(await addressPiiService.withDecrypted(updated));
   }
 
   async remove(userId: string, id: string) {

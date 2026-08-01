@@ -54,7 +54,7 @@ export class RefundLedgerSyncService {
     });
 
     if (payment.bookingId) {
-      await cashbackService.reverseOnRefund(payment.bookingId).catch(() => undefined);
+      await cashbackService.reverseOnRefund(payment.bookingId);
     }
 
     void AuditLogService.success("WEBHOOK_REFUND_SYNCED", {

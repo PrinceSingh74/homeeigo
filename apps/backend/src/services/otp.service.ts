@@ -1,6 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
 import crypto from "crypto";
 import twilio from "twilio";
+import { userPiiService } from "./user-pii.service";
+import { consumeRateLimitSmart } from "../middleware/rate-limit.middleware";
 
 export class OTPService {
   private readonly twilioPhoneNumber: string;
@@ -24,14 +26,29 @@ export class OTPService {
   }
 
   async sendOTP(phoneNumber: string, userId?: string) {
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const count = await this.prisma.oTP.count({
-      where: { phoneNumber, createdAt: { gte: oneHourAgo }, isUsed: false },
-    });
+    const phoneHash = userPiiService.hashPhone(phoneNumber);
     // Production stays strict; local dev needs a higher ceiling for repeated testing.
     const hourlyLimit = process.env.NODE_ENV === "production"
       ? 3
       : Number(process.env.OTP_HOURLY_LIMIT) || 50;
+
+    // ATOMIC anti-flood gate. The DB count() below is a TOCTOU race under concurrency
+    // (N parallel requests all read count<limit before any insert → flood). The Redis
+    // INCR limiter (per-process atomic fallback when Redis is down) enforces the cap
+    // atomically; the DB count remains a persistent backstop across restarts/flushes.
+    const gate = await consumeRateLimitSmart(`otp:send:${phoneHash}`, hourlyLimit, 60 * 60 * 1000);
+    if (!gate.allowed) {
+      return { success: false, message: "Too many OTP requests", error: "RATE_LIMIT_EXCEEDED" };
+    }
+
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const count = await this.prisma.oTP.count({
+      where: {
+        OR: [{ phoneHash }, { phoneNumber }],
+        createdAt: { gte: oneHourAgo },
+        isUsed: false,
+      },
+    });
     if (count >= hourlyLimit) {
       return { success: false, message: "Too many OTP requests", error: "RATE_LIMIT_EXCEEDED" };
     }
@@ -48,19 +65,48 @@ export class OTPService {
     await this.prisma.oTP.create({
       data: {
         userId,
-        phoneNumber,
+        phoneNumber: null,
+        phoneHash,
         otpHash: this.hashOTP(otp),
         expiresAt: new Date(Date.now() + 5 * 60 * 1000),
       },
     });
 
-    const usingTwilio = Boolean(this.twilioClient && this.twilioPhoneNumber);
+    const smsEnabled = process.env.SMS_ENABLED !== "false";
+    const usingTwilio = smsEnabled && Boolean(this.twilioClient && this.twilioPhoneNumber);
     if (usingTwilio && this.twilioClient) {
-      await this.twilioClient.messages.create({
-        body: `Your HOMIGO verification code is: ${otp}. Expires in 5 minutes.`,
-        from: this.twilioPhoneNumber,
-        to: phoneNumber,
-      });
+      try {
+        const message = await this.twilioClient.messages.create({
+          body: `Your HOMEEIGO verification code is: ${otp}. Expires in 5 minutes.`,
+          from: this.twilioPhoneNumber,
+          to: phoneNumber,
+        });
+        if (process.env.NODE_ENV !== "production") {
+          console.log(`[OTP] Twilio SMS sent sid=${message.sid} to=${phoneNumber}`);
+        }
+      } catch (err) {
+        const twilioMsg = err instanceof Error ? err.message : "SMS delivery failed";
+        // Non-production: Twilio trial accounts cannot SMS arbitrary numbers — keep OTP for E2E/dev.
+        if (process.env.NODE_ENV !== "production") {
+          console.warn(`[OTP] Twilio send failed (dev fallback) to=${phoneNumber}:`, twilioMsg);
+          return {
+            success: true,
+            message: "OTP sent successfully (dev fallback — Twilio SMS skipped)",
+            devOtp: otp,
+          };
+        }
+        await this.prisma.oTP.deleteMany({ where: { phoneHash, otpHash: this.hashOTP(otp) } });
+        console.error(`[OTP] Twilio send failed to=${phoneNumber}:`, twilioMsg);
+        return {
+          success: false,
+          message: twilioMsg.includes("unverified")
+            ? "This phone number must be verified in Twilio before SMS can be sent (trial account)."
+            : "Could not send SMS. Please try again.",
+          error: "SMS_DELIVERY_FAILED",
+        };
+      }
+    } else if (!smsEnabled) {
+      console.log(`[OTP] SMS_ENABLED=false — logging OTP for ${phoneNumber}`);
     } else {
       console.log(
         [
@@ -87,8 +133,13 @@ export class OTPService {
   }
 
   async verifyOTP(phoneNumber: string, otp: string) {
+    const phoneHash = userPiiService.hashPhone(phoneNumber);
     const storedOTP = await this.prisma.oTP.findFirst({
-      where: { phoneNumber, isUsed: false, expiresAt: { gt: new Date() } },
+      where: {
+        OR: [{ phoneHash }, { phoneNumber }],
+        isUsed: false,
+        expiresAt: { gt: new Date() },
+      },
       orderBy: { createdAt: "desc" },
     });
     if (!storedOTP) return { isValid: false, error: "No valid OTP found" };

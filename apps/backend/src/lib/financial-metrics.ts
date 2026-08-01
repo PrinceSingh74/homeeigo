@@ -3,11 +3,16 @@ const financialCounters = new Map<string, number>();
 const financialGauges = new Map<string, number>();
 
 export function recordFinancialMetric(name: string, delta = 1): void {
-  if (name.includes("delay") || name.includes("amount") || name.includes("pct")) {
+  if (name.includes("delay") || name.includes("amount") || name.includes("pct") || name.includes("_gauge")) {
     financialGauges.set(name, delta);
   } else {
     financialCounters.set(name, (financialCounters.get(name) ?? 0) + delta);
   }
+}
+
+/** Set an absolute gauge value (e.g. live reconciliation max delta, DB pool saturation). */
+export function setFinancialGauge(name: string, value: number): void {
+  financialGauges.set(name, value);
 }
 
 export function renderFinancialMetrics(): string {
@@ -47,6 +52,9 @@ export function renderFinancialMetrics(): string {
     "referral_commission_total",
     "adjustment_total",
     "ledger_backfill_total",
+    "booking_created_total",
+    "provider_payable_mismatch_total",
+    "wallet_liability_mismatch_total",
   ];
 
   for (const name of counterNames) {
@@ -68,6 +76,15 @@ export function renderFinancialMetrics(): string {
 
   lines.push("# TYPE adjustment_amount_total gauge");
   lines.push(`adjustment_amount_total ${financialGauges.get("adjustment_amount_total") ?? 0}`);
+
+  lines.push("# TYPE ledger_reconciliation_max_delta gauge");
+  lines.push(`ledger_reconciliation_max_delta ${financialGauges.get("ledger_reconciliation_max_delta") ?? 0}`);
+
+  lines.push("# TYPE db_pool_active_connections gauge");
+  lines.push(`db_pool_active_connections ${financialGauges.get("db_pool_active_connections") ?? 0}`);
+
+  lines.push("# TYPE db_pool_max_connections gauge");
+  lines.push(`db_pool_max_connections ${financialGauges.get("db_pool_max_connections") ?? 0}`);
 
   return lines.join("\n");
 }

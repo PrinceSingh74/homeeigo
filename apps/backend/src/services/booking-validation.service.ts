@@ -1,6 +1,7 @@
-import { BookingStatus } from "@prisma/client";
+import { BookingStatus, type Prisma } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { distanceKm } from "../lib/geo";
+import { providerOffersService, resolveServiceMatchTokens } from "../lib/service-match";
 
 export interface ValidationRequest {
   userId: string;
@@ -24,8 +25,9 @@ export interface ValidationIssue {
 
 const MAX_AMOUNT = 100_000;
 const MAX_DAYS_AHEAD = 30;
-const PROVIDER_BUFFER_MIN = 30;
-const USER_BUFFER_MIN = 30;
+export const BOOKING_BUFFER_MINUTES = 30;
+const PROVIDER_BUFFER_MIN = BOOKING_BUFFER_MINUTES;
+const USER_BUFFER_MIN = BOOKING_BUFFER_MINUTES;
 const FAR_DISTANCE_THRESHOLD_KM = 15;
 
 const ACTIVE_STATUSES: BookingStatus[] = [
@@ -94,6 +96,80 @@ export class BookingValidationService {
     return result.errors.map((e) => e.message).join("; ");
   }
 
+  /**
+   * Authoritative conflict engine — used by create(), update(), and reschedule paths.
+   * Runs inside an open transaction with row locks before any schedule mutation.
+   */
+  async assertBookingConflictFree(
+    tx: Prisma.TransactionClient,
+    request: Pick<ValidationRequest, "userId" | "providerId" | "scheduledDate"> & {
+      excludeBookingId?: string;
+    },
+  ): Promise<ValidationIssue | null> {
+    const excludeId = request.excludeBookingId ?? null;
+
+    if (request.providerId) {
+      const providerBuffer = bufferWindow(request.scheduledDate, PROVIDER_BUFFER_MIN);
+      const providerRows = excludeId
+        ? await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM bookings
+            WHERE provider_id = ${request.providerId}
+              AND id <> ${excludeId}
+              AND status IN ('PENDING', 'ACCEPTED', 'ASSIGNED', 'EN_ROUTE', 'IN_PROGRESS')
+              AND scheduled_date >= ${providerBuffer.gte}
+              AND scheduled_date <= ${providerBuffer.lte}
+            FOR UPDATE
+          `
+        : await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM bookings
+            WHERE provider_id = ${request.providerId}
+              AND status IN ('PENDING', 'ACCEPTED', 'ASSIGNED', 'EN_ROUTE', 'IN_PROGRESS')
+              AND scheduled_date >= ${providerBuffer.gte}
+              AND scheduled_date <= ${providerBuffer.lte}
+            FOR UPDATE
+          `;
+      if (providerRows.length > 0) {
+        return {
+          code: "PROVIDER_UNAVAILABLE",
+          message: `Provider is not available at this time. Try ${PROVIDER_BUFFER_MIN} minutes earlier or later.`,
+        };
+      }
+    }
+
+    const userBuffer = bufferWindow(request.scheduledDate, USER_BUFFER_MIN);
+    const userRows = excludeId
+      ? await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM bookings
+          WHERE user_id = ${request.userId}
+            AND id <> ${excludeId}
+            AND status IN ('PENDING', 'ACCEPTED', 'ASSIGNED', 'EN_ROUTE', 'IN_PROGRESS')
+            AND scheduled_date >= ${userBuffer.gte}
+            AND scheduled_date <= ${userBuffer.lte}
+          FOR UPDATE
+        `
+      : await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM bookings
+          WHERE user_id = ${request.userId}
+            AND status IN ('PENDING', 'ACCEPTED', 'ASSIGNED', 'EN_ROUTE', 'IN_PROGRESS')
+            AND scheduled_date >= ${userBuffer.gte}
+            AND scheduled_date <= ${userBuffer.lte}
+          FOR UPDATE
+        `;
+    if (userRows.length > 0) {
+      return { code: "OVERLAPPING_BOOKING", message: "You already have a booking at this time" };
+    }
+
+    return null;
+  }
+
+  /** @deprecated Use assertBookingConflictFree */
+  async assertNoConflictsInTransaction(
+    tx: Prisma.TransactionClient,
+    request: Pick<ValidationRequest, "userId" | "providerId" | "scheduledDate">,
+  ): Promise<ValidationIssue | null> {
+    return this.assertBookingConflictFree(tx, request);
+  }
+
   // ── individual checks ──────────────────────────────────────────────────────
 
   private async validateUser(userId: string): Promise<string | null> {
@@ -114,7 +190,8 @@ export class BookingValidationService {
     if (!provider.isApproved) return "Provider is not approved";
     if (provider.isBanned) return "Provider is banned";
     if (provider.user.isBanned) return "Provider account is banned";
-    if (!provider.serviceCategories.includes(serviceId)) {
+    const matchTokens = await resolveServiceMatchTokens(serviceId);
+    if (!matchTokens || !providerOffersService(provider.serviceCategories, matchTokens)) {
       return "Provider does not offer this service";
     }
     return null;

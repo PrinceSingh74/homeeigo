@@ -14,8 +14,42 @@ export function getGoogleRedirectUri(): string {
   );
 }
 
+/**
+ * Redirect URI for the mobile app's sign-in.
+ *
+ * The app cannot use the web redirect: Google would send the browser to the
+ * website, which the phone has no reason to be able to reach, and the app's
+ * `homigo://` deep link would never fire. Google also rejects custom schemes for
+ * a Web OAuth client. So Google returns to THIS API instead, and
+ * `GET /api/auth/google/mobile-callback` bounces the browser into the app.
+ *
+ * Register this exact URL as an authorised redirect URI on the Google client.
+ */
+export function getGoogleMobileRedirectUri(): string {
+  const base = (process.env.BACKEND_URL?.trim() || "http://localhost:3000").replace(/\/$/, "");
+  return `${base}/api/auth/google/mobile-callback`;
+}
+
+/** Deep link the mobile bridge bounces back to. Scheme must match app.json. */
+export function getGoogleAppDeepLink(): string {
+  const scheme = process.env.MOBILE_APP_SCHEME?.trim() || "homigo";
+  return `${scheme}://auth/google/callback`;
+}
+
+/** Google requires the SAME redirect_uri at authorize and at token exchange. */
+export function googleRedirectUriFor(platform?: "web" | "mobile"): string {
+  return platform === "mobile" ? getGoogleMobileRedirectUri() : getGoogleRedirectUri();
+}
+
 export function isGoogleOAuthConfigured(): boolean {
-  return Boolean(process.env.GOOGLE_CLIENT_ID?.trim() && process.env.GOOGLE_CLIENT_SECRET?.trim());
+  const id = process.env.GOOGLE_CLIENT_ID?.trim() ?? "";
+  const secret = process.env.GOOGLE_CLIENT_SECRET?.trim() ?? "";
+  // Treat the .env.example placeholders as "not configured" so the app shows a
+  // clear setup message instead of bouncing the user to Google's invalid_client
+  // error. Real Google client IDs end with .apps.googleusercontent.com and never
+  // start with "your-".
+  const isPlaceholder = (v: string) => v === "" || v.toLowerCase().startsWith("your-");
+  return !isPlaceholder(id) && !isPlaceholder(secret) && id.endsWith(".apps.googleusercontent.com");
 }
 
 export class GoogleOAuthService {
@@ -26,11 +60,11 @@ export class GoogleOAuthService {
   ) {}
 
   /** Read credentials on each call so .env updates apply after API restart. */
-  private getClient(): OAuth2Client {
+  private getClient(redirectUri?: string): OAuth2Client {
     return new OAuth2Client({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      redirectUri: getGoogleRedirectUri(),
+      redirectUri: redirectUri ?? getGoogleRedirectUri(),
     });
   }
 
@@ -42,9 +76,9 @@ export class GoogleOAuthService {
     }
   }
 
-  getAuthorizationUrl(state?: string): string {
+  getAuthorizationUrl(state?: string, redirectUri?: string): string {
     this.assertConfigured();
-    return this.getClient().generateAuthUrl({
+    return this.getClient(redirectUri).generateAuthUrl({
       access_type: "offline",
       scope: ["openid", "email", "profile"],
       state: state ?? crypto.randomUUID(),
@@ -52,9 +86,12 @@ export class GoogleOAuthService {
     });
   }
 
-  async exchangeCodeForToken(code: string): Promise<{ success: boolean; idToken?: string; error?: string }> {
+  async exchangeCodeForToken(
+    code: string,
+    redirectUri?: string,
+  ): Promise<{ success: boolean; idToken?: string; error?: string }> {
     try {
-      const { tokens } = await this.getClient().getToken(code);
+      const { tokens } = await this.getClient(redirectUri).getToken(code);
       if (!tokens.id_token) return { success: false, error: "No ID token received" };
       return { success: true, idToken: tokens.id_token };
     } catch (error) {
@@ -65,8 +102,12 @@ export class GoogleOAuthService {
     }
   }
 
-  async processCallback(code: string, meta?: { deviceId?: string; userAgent?: string; ipAddress?: string }) {
-    const tokenResult = await this.exchangeCodeForToken(code);
+  async processCallback(
+    code: string,
+    meta?: { deviceId?: string; userAgent?: string; ipAddress?: string },
+    redirectUri?: string,
+  ) {
+    const tokenResult = await this.exchangeCodeForToken(code, redirectUri);
     const idToken = tokenResult.idToken;
     if (!tokenResult.success || !idToken) {
       throw new Error(tokenResult.error || "Failed to exchange authorization code");
@@ -89,7 +130,8 @@ export class GoogleOAuthService {
     const profileImage = payload.picture || null;
     const email = payload.email.toLowerCase();
 
-    let user = await this.prisma.user.findUnique({ where: { email } });
+    const { userPiiService } = await import("./user-pii.service");
+    let user = await userPiiService.findByEmail(email);
     let isNewUser = false;
     if (!user) {
       isNewUser = true;
@@ -119,9 +161,10 @@ export class GoogleOAuthService {
       if (approvalBlock) throw new Error("PARTNER_NOT_APPROVED");
     }
 
-    const accessToken = this.jwtService.generateAccessToken({ userId: user.id, email: user.email });
-    const refreshToken = await this.refreshTokenService.createRefreshToken({
+    const oauthEmail = await userPiiService.resolveEmail(user, { actorId: user.id, authorized: true });
+    const { accessToken, refreshToken } = await this.refreshTokenService.createSessionTokens({
       userId: user.id,
+      email: oauthEmail ?? email,
       deviceId: meta?.deviceId,
       userAgent: meta?.userAgent,
       ipAddress: meta?.ipAddress,

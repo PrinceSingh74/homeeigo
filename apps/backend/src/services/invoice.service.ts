@@ -1,5 +1,8 @@
 import { PaymentStatus } from "@prisma/client";
+import PDFDocument from "pdfkit";
 import prisma from "../lib/prisma";
+import { PDF_BRAND, PDF_RHYTHM, COMPANY } from "../lib/pdf-branding";
+import { userPiiService } from "./user-pii.service";
 
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
@@ -34,11 +37,14 @@ export class InvoiceService {
       year: "numeric",
     });
     const customer = `${u.firstName} ${u.lastName}`.trim();
+    const contact = await userPiiService.resolveEmailAndPhone(u, { actorId: userId, authorized: true });
+    const billedEmail = contact.email ?? "—";
+    const billedPhone = contact.phoneNumber ?? "—";
 
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Invoice ${esc(invoiceNo)} — HOMIGO</title>
+<title>Invoice ${esc(invoiceNo)} — HOMEEIGO</title>
 <style>
   :root{color-scheme:light}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -70,7 +76,7 @@ export class InvoiceService {
   <div class="print"><button onclick="window.print()">Download / Print PDF</button></div>
   <div class="sheet">
     <div class="top">
-      <div class="brand">HOMIGO<small>Premium home services</small></div>
+      <div class="brand">HOMEEIGO<small>Premium home services</small></div>
       <div class="meta">
         <div>Invoice <b>${esc(invoiceNo)}</b></div>
         <div>Date: <b>${esc(issued)}</b></div>
@@ -83,8 +89,8 @@ export class InvoiceService {
       <div>
         <div class="label">Billed to</div>
         <div><b>${esc(customer)}</b></div>
-        <div>${esc(u.email)}</div>
-        <div>${esc(u.phoneNumber)}</div>
+        <div>${esc(billedEmail)}</div>
+        <div>${esc(billedPhone)}</div>
       </div>
       <div>
         <div class="label">Payment</div>
@@ -107,9 +113,58 @@ export class InvoiceService {
       <div class="row grand"><span>Total paid</span><span>${inr(b.finalAmount)}</span></div>
     </div>
 
-    <div class="foot">This is a computer-generated invoice from HOMIGO · No signature required.</div>
+    <div class="foot">This is a computer-generated invoice from HOMEEIGO · No signature required.</div>
   </div>
 </body></html>`;
+  }
+
+  /** Generate a binary PDF invoice for email attachment. */
+  async generatePdf(userId: string, paymentId: string): Promise<{ buffer: Buffer; invoiceNo: string } | null> {
+    const p = await prisma.payment.findFirst({
+      where: { id: paymentId, userId, status: PaymentStatus.SUCCESS },
+      include: { booking: { include: { service: true } }, user: true },
+    });
+    if (!p?.booking || !p.user) return null;
+
+    const b = p.booking;
+    const u = p.user;
+    const invoiceNo = p.invoiceNumber ?? invoiceNumberFor(b.bookingNumber);
+    const customer = `${u.firstName} ${u.lastName}`.trim();
+    const contact = await userPiiService.resolveEmailAndPhone(u, { actorId: userId, authorized: true });
+    const issued = (p.completedAt ?? p.createdAt).toLocaleDateString("en-IN");
+
+    const buffer = await new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({ size: "A4", margin: PDF_RHYTHM.margin });
+      const chunks: Buffer[] = [];
+      doc.on("data", (c) => chunks.push(c as Buffer));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+
+      doc.fillColor(PDF_BRAND.dark).fontSize(20).font("Helvetica-Bold").text("HOMEEIGO", PDF_RHYTHM.margin, PDF_RHYTHM.margin);
+      doc.fontSize(10).fillColor(PDF_BRAND.muted).text(COMPANY.tagline, PDF_RHYTHM.margin, doc.y + 2);
+      doc.moveDown(1.5);
+      doc.fontSize(14).fillColor(PDF_BRAND.dark).font("Helvetica-Bold").text(`Invoice ${invoiceNo}`);
+      doc.fontSize(10).fillColor(PDF_BRAND.slate).font("Helvetica")
+        .text(`Date: ${issued}`)
+        .text(`Booking: ${b.bookingNumber}`)
+        .text(`Status: PAID`);
+      doc.moveDown();
+      doc.fontSize(9).fillColor(PDF_BRAND.muted).text("BILLED TO", PDF_RHYTHM.margin);
+      doc.fontSize(11).fillColor(PDF_BRAND.dark).text(customer).text(contact.email ?? "—").text(contact.phoneNumber ?? "—");
+      doc.moveDown();
+      doc.fontSize(10).fillColor(PDF_BRAND.dark)
+        .text(`${b.service.name}`, PDF_RHYTHM.margin)
+        .text(`Subtotal: ${inr(b.baseAmount)}`)
+        .text(`GST/Taxes: ${inr(b.taxes)}`)
+        .font("Helvetica-Bold")
+        .text(`Total paid: ${inr(b.finalAmount)}`);
+      doc.moveDown(2);
+      doc.fontSize(8).fillColor(PDF_BRAND.muted).font("Helvetica")
+        .text("Computer-generated invoice · No signature required", PDF_RHYTHM.margin);
+      doc.end();
+    });
+
+    return { buffer, invoiceNo };
   }
 }
 

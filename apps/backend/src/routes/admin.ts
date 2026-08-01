@@ -1,6 +1,8 @@
 import { Elysia, t } from "elysia";
 import { authPlugin } from "../plugins/auth.plugin";
-import { adminService } from "../services/admin.service";
+import { adminService, adminReviewService } from "../services/admin.service";
+import { heatmapService } from "../services/heatmap.service";
+import { opsMapService } from "../services/ops-map.service";
 import { catalogService } from "../services/catalog.service";
 import { earningsService } from "../services/earnings.service";
 import { subscriptionService } from "../services/subscription.service";
@@ -27,6 +29,7 @@ import { financialRiskService } from "../services/financial-risk.service";
 import { migrationVerificationService } from "../services/migration-verification.service";
 import { chargebackWorkflowService } from "../services/chargeback-workflow.service";
 import { chargebackEvidenceAccessService } from "../services/chargeback-evidence-access.service";
+import { chargebackEvidencePdfService } from "../services/chargeback-evidence-pdf.service";
 import fs from "fs";
 import { settlementSyncService } from "../services/settlement-sync.service";
 import { executiveReportingService } from "../services/executive-reporting.service";
@@ -40,8 +43,17 @@ import type { AdjustmentDirection, AdjustmentStatus, AdjustmentType } from "@pri
 import { financeAlertService } from "../services/finance-alert.service";
 import { gatewayReconciliationService } from "../services/gateway-reconciliation.service";
 import { payoutOperationsService } from "../services/payout-operations.service";
+import { settlementResolutionService } from "../services/settlement-resolution.service";
+import { adminBookingOperationsService } from "../services/admin-booking-operations.service";
 import { refundWorkflowService } from "../services/refund-workflow.service";
 import { financeAnalyticsService } from "../services/finance-analytics.service";
+import { financeIntelligenceService } from "../services/finance-intelligence.service";
+import { financeConfigService } from "../services/finance-config.service";
+import { customerIntelligenceService } from "../services/customer-intelligence.service";
+import { growthIntelligenceService } from "../services/growth-intelligence.service";
+import { riskIntelligenceService } from "../services/risk-intelligence.service";
+import { platformIntelligenceService } from "../services/platform-intelligence.service";
+import { recoveryIntelligenceService } from "../services/recovery-intelligence.service";
 import { financeValidationService } from "../services/finance-validation.service";
 import { observabilityService } from "../services/observability.service";
 import { logAggregationService } from "../services/log-aggregation.service";
@@ -51,6 +63,9 @@ import { parseBody, sanitizeQueryStrings } from "../lib/route-security";
 import { adminBanUserSchema, adminVerifyProviderSchema } from "../schemas/admin.schema";
 import { validate } from "../middleware/validation.middleware";
 import { idParamSchema } from "../schemas/common.schema";
+import { adminRbacPlugin } from "../middleware/admin-rbac";
+import { rbacService } from "../services/rbac.service";
+import { tokenRevocationService } from "../services/token-revocation.service";
 
 const createServiceBody = t.Object({
   name: t.String({ minLength: 2, maxLength: 120 }),
@@ -94,9 +109,7 @@ const benefitSchema = t.Union([
 
 export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
   .use(authPlugin)
-  .onBeforeHandle(({ requireRole }) => {
-    requireRole("ADMIN");
-  })
+  .use(adminRbacPlugin)
   .get("/dashboard", async () => {
     const data = await adminService.dashboard();
     return { success: true, data };
@@ -109,10 +122,159 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     const data = await adminService.listProviders(sanitizeQueryStrings(query as Record<string, string>));
     return { success: true, data };
   })
-  .get("/bookings", async ({ query }) => {
-    const data = await adminService.listBookings(query as Record<string, string>);
+  // Partner command-center — full detail for ONE provider (profile/KYC/metrics/
+  // accept-reject history/recent bookings/earnings/live location).
+  .get("/providers/:id", async ({ params, set }) => {
+    const detail = await adminService.getProviderDetail(params.id);
+    if (!detail) {
+      set.status = 404;
+      return { success: false, error: "Provider not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: detail };
+  })
+  // Geofence CRUD consolidated to the single authoritative surface at /api/geo/geofences
+  // (routes/geo.ts, requireRole ADMIN). Removed the duplicate here to avoid two surfaces.
+  // Phase 16.4 — demand/supply heatmap (Float-grid aggregation; live geospatial analytics).
+  .get("/heatmap", async ({ query }) => {
+    const num = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? Number(v) : undefined);
+    const minLat = num(query.minLat);
+    const maxLat = num(query.maxLat);
+    const minLng = num(query.minLng);
+    const maxLng = num(query.maxLng);
+    const bbox =
+      minLat != null && maxLat != null && minLng != null && maxLng != null
+        ? { minLat, maxLat, minLng, maxLng }
+        : undefined;
+    const data = await heatmapService.generate({ gridSize: num(query.gridSize), days: num(query.days), bbox });
     return { success: true, data };
   })
+  // Phase 17.4 — real-time operations command center (providers + bookings + heatmap +
+  // geofences + alerts + metrics). Reuses presence/heatmap/geofence engines.
+  .get("/ops-map", async ({ query }) => {
+    const gridSize = typeof query.gridSize === "string" ? Number(query.gridSize) : undefined;
+    const data = await opsMapService.snapshot({ gridSize });
+    return { success: true, data };
+  })
+  .get("/bookings", async ({ query }) => {
+    const data = await adminService.listBookings(sanitizeQueryStrings(query as Record<string, string>));
+    return { success: true, data };
+  })
+  .get("/bookings/:id", async ({ params, set, requireAuth, request }) => {
+    const auth = requireAuth();
+    const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+    const detail = await adminBookingOperationsService.getDetail(params.id, { adminId: auth.userId, ipAddress: ip ?? undefined });
+    if (!detail) {
+      set.status = 404;
+      return { success: false, error: "Booking not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: detail };
+  })
+  .post("/bookings/:id/cancel", async ({ params, body, requireAuth, request, set }) => {
+    try {
+      const auth = requireAuth();
+      const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+      const result = await adminBookingOperationsService.cancelBooking(
+        params.id,
+        auth.userId,
+        body.reason,
+        ip ?? undefined,
+      );
+      return { success: true, data: result };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "Cancel failed", code: "BOOKING_CANCEL_FAILED" };
+    }
+  }, { body: t.Object({ reason: t.String({ minLength: 3 }) }) })
+  .post("/bookings/:id/reschedule", async ({ params, body, requireAuth, request, set }) => {
+    try {
+      const auth = requireAuth();
+      const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+      const result = await adminBookingOperationsService.rescheduleBooking(
+        params.id,
+        auth.userId,
+        body.scheduledDate,
+        body.reason,
+        ip ?? undefined,
+      );
+      return { success: true, data: result };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "Reschedule failed", code: "BOOKING_RESCHEDULE_FAILED" };
+    }
+  }, { body: t.Object({ scheduledDate: t.String(), reason: t.String({ minLength: 3 }) }) })
+  .post("/bookings/:id/reassign", async ({ params, body, requireAuth, request, set }) => {
+    try {
+      const auth = requireAuth();
+      const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+      const result = await adminBookingOperationsService.reassignProvider(
+        params.id,
+        auth.userId,
+        body.providerId,
+        body.reason,
+        ip ?? undefined,
+      );
+      return { success: true, data: result };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "Reassign failed", code: "BOOKING_REASSIGN_FAILED" };
+    }
+  }, { body: t.Object({ providerId: t.String(), reason: t.String({ minLength: 3 }) }) })
+  .post("/bookings/:id/dispatch", async ({ params, body, requireAuth, request }) => {
+    const auth = requireAuth();
+    const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+    const result = await adminBookingOperationsService.forceDispatch(params.id, auth.userId, body.reason, ip ?? undefined);
+    return { success: true, data: result };
+  }, { body: t.Object({ reason: t.String({ minLength: 3 }) }) })
+  .post("/bookings/:id/complete", async ({ params, body, requireAuth, request, set }) => {
+    try {
+      const auth = requireAuth();
+      const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+      const result = await adminBookingOperationsService.markComplete(params.id, auth.userId, body.reason, ip ?? undefined);
+      return { success: true, data: result };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "Complete failed", code: "BOOKING_COMPLETE_FAILED" };
+    }
+  }, { body: t.Object({ reason: t.String({ minLength: 3 }) }) })
+  .post("/bookings/:id/repair", async ({ params, body, requireAuth, request, set }) => {
+    try {
+      const auth = requireAuth();
+      const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+      const result = await adminBookingOperationsService.repairBooking(params.id, auth.userId, body.reason, ip ?? undefined);
+      return { success: true, data: result };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "Repair failed", code: "BOOKING_REPAIR_FAILED" };
+    }
+  }, { body: t.Object({ reason: t.String({ minLength: 3 }) }) })
+  .post("/bookings/:id/refund", async ({ params, body, requireAuth, request, set }) => {
+    try {
+      const auth = requireAuth();
+      const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+      const result = await adminBookingOperationsService.refundBooking(
+        params.id,
+        auth.userId,
+        body.amount,
+        body.reason,
+        ip ?? undefined,
+      );
+      return { success: true, data: result };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "Refund failed", code: "BOOKING_REFUND_FAILED" };
+    }
+  }, { body: t.Object({ amount: t.Number({ minimum: 0 }), reason: t.String({ minLength: 3 }) }) })
+  .post("/bookings/:id/refund/retry", async ({ params, body, requireAuth, request, set }) => {
+    try {
+      const auth = requireAuth();
+      const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+      const result = await adminBookingOperationsService.retryFailedRefund(params.id, auth.userId, body.reason, ip ?? undefined);
+      return { success: true, data: result };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "Retry failed", code: "BOOKING_REFUND_RETRY_FAILED" };
+    }
+  }, { body: t.Object({ reason: t.String({ minLength: 3 }) }) })
   .put(
     "/providers/:id/verify",
     async ({ params: rawParams, body: raw, requireAuth }) => {
@@ -181,6 +343,31 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
       endDate: query.endDate,
     });
     return { success: true, data };
+  })
+  // ---- Reviews moderation console ----
+  .get("/reviews", async ({ query }) => {
+    const data = await adminReviewService.list(sanitizeQueryStrings(query as Record<string, string>));
+    return { success: true, data };
+  })
+  .patch(
+    "/reviews/:id",
+    async ({ params, body, set }) => {
+      const result = await adminReviewService.moderate(params.id, body);
+      if (!result) {
+        set.status = 404;
+        return { success: false, error: "Review not found", code: "NOT_FOUND" };
+      }
+      return { success: true, message: "Review updated", data: { review: result } };
+    },
+    { body: t.Object({ isPublic: t.Optional(t.Boolean()), isFlagged: t.Optional(t.Boolean()) }) },
+  )
+  .delete("/reviews/:id", async ({ params, set }) => {
+    const result = await adminReviewService.remove(params.id);
+    if (!result) {
+      set.status = 404;
+      return { success: false, error: "Review not found", code: "NOT_FOUND" };
+    }
+    return { success: true, message: "Review deleted", data: result };
   })
   .post("/withdrawals/:id/approve", async ({ params, requireAuth }) => {
     const auth = requireAuth();
@@ -440,32 +627,89 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     set.headers["Content-Disposition"] = `attachment; filename=settlement-${params.id}.csv`;
     return csv;
   })
-  .get("/finance/payouts", async () => {
-    const [payouts, queue, batches] = await Promise.all([
+  .get("/finance/payouts", async ({ query }) => {
+    const q = query as Record<string, string>;
+    const filters = {
+      providerId: q.providerId,
+      status: q.status as import("@prisma/client").WithdrawalStatus | undefined,
+      startDate: q.startDate ? new Date(q.startDate) : undefined,
+      endDate: q.endDate ? new Date(q.endDate) : undefined,
+      minAmount: q.minAmount ? Number(q.minAmount) : undefined,
+      maxAmount: q.maxAmount ? Number(q.maxAmount) : undefined,
+    };
+    const [payouts, queue, batches, dashboard] = await Promise.all([
       prisma.withdrawal.findMany({
         orderBy: { createdAt: "desc" },
         take: 100,
         include: { provider: { select: { id: true, businessName: true } }, payoutAttempts: true },
       }),
-      payoutOperationsService.listQueue(undefined, 50),
+      payoutOperationsService.listQueue(filters, 50),
       payoutOperationsService.listBatches(20),
+      payoutOperationsService.dashboardMetrics(),
     ]);
-    return { success: true, data: { payouts, queue, batches } };
+    return { success: true, data: { payouts, queue, batches, dashboard } };
   })
-  .post("/finance/payouts/batch", async ({ body, requireAuth, set }) => {
+  .post("/finance/payouts/batch", async ({ body, requireAuth, request, set }) => {
     const auth = requireAuth();
+    const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
     const ids = body?.withdrawalIds;
     if (!Array.isArray(ids) || ids.length === 0) {
       set.status = 400;
       return { success: false, error: "withdrawalIds required", code: "VALIDATION_ERROR" };
     }
-    const batch = await payoutOperationsService.createBatch(ids, auth.userId);
-    return { success: true, data: { batch } };
+    try {
+      const batch = await payoutOperationsService.createBatch(ids, auth.userId, ip ?? undefined);
+      return { success: true, data: { batch } };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "Batch creation failed", code: "BATCH_CREATE_FAILED" };
+    }
   }, { body: t.Object({ withdrawalIds: t.Array(t.String()) }) })
-  .post("/finance/payouts/batch/:id/process", async ({ params, requireAuth }) => {
+  .post("/finance/payouts/batch/:id/submit", async ({ params, requireAuth }) => {
     const auth = requireAuth();
-    const result = await payoutOperationsService.processBatch(params.id, auth.userId);
-    return { success: true, data: result };
+    const batch = await payoutOperationsService.submitBatchForReview(params.id, auth.userId);
+    return { success: true, data: { batch } };
+  })
+  .post("/finance/payouts/batch/:id/approve", async ({ params, requireAuth, request, set }) => {
+    try {
+      const auth = requireAuth();
+      const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+      const batch = await payoutOperationsService.approveBatch(params.id, auth.userId, ip ?? undefined);
+      return { success: true, data: { batch } };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "Approve failed", code: "BATCH_APPROVE_FAILED" };
+    }
+  })
+  .post("/finance/payouts/batch/:id/reject", async ({ params, body, requireAuth, request, set }) => {
+    try {
+      const auth = requireAuth();
+      const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+      const batch = await payoutOperationsService.rejectBatch(params.id, auth.userId, body.reason, ip ?? undefined);
+      return { success: true, data: { batch } };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "Reject failed", code: "BATCH_REJECT_FAILED" };
+    }
+  }, { body: t.Object({ reason: t.String({ minLength: 3 }) }) })
+  .post("/finance/payouts/batch/:id/process", async ({ params, requireAuth, request, set }) => {
+    try {
+      const auth = requireAuth();
+      const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+      const result = await payoutOperationsService.processBatch(params.id, auth.userId, ip ?? undefined);
+      return { success: true, data: result };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "Process failed", code: "BATCH_PROCESS_FAILED" };
+    }
+  })
+  .get("/finance/payouts/batch/:id", async ({ params, set }) => {
+    const batch = await payoutOperationsService.getBatchDetail(params.id);
+    if (!batch) {
+      set.status = 404;
+      return { success: false, error: "Batch not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: { batch } };
   })
   .post("/finance/payouts/:id/retry", async ({ params, requireAuth, set }) => {
     try {
@@ -520,6 +764,51 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     const cb = await chargebackWorkflowService.closeCase(params.id, auth.userId, body.outcome);
     return { success: true, data: { chargeback: cb } };
   }, { body: t.Object({ outcome: t.Optional(t.String()) }) })
+  .post("/finance/chargebacks/:id/request-evidence", async ({ params, requireAuth }) => {
+    const auth = requireAuth();
+    const cb = await chargebackWorkflowService.requestEvidence(params.id, auth.userId);
+    return { success: true, data: { chargeback: cb } };
+  })
+  .post("/finance/chargebacks/:id/resolve", async ({ params, body, requireAuth, set }) => {
+    try {
+      const auth = requireAuth();
+      const cb = await chargebackWorkflowService.resolveCase(params.id, auth.userId, body.outcome, body.notes);
+      return { success: true, data: { chargeback: cb } };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "Resolve failed", code: "CHARGEBACK_RESOLVE_FAILED" };
+    }
+  }, { body: t.Object({ outcome: t.Union([t.Literal("WON"), t.Literal("LOST")]), notes: t.Optional(t.String()) }) })
+  .get("/finance/chargebacks/:id/evidence-certificate", async ({ params, requireAuth, set }) => {
+    requireAuth();
+    try {
+      const pack = await chargebackEvidencePdfService.generateLegalPack(params.id);
+      set.headers["Content-Type"] = "application/pdf";
+      set.headers["Content-Disposition"] = `attachment; filename="${pack.fileName}"`;
+      return new Response(pack.buffer);
+    } catch (err) {
+      set.status = 404;
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Could not generate evidence pack",
+        code: "NOT_FOUND",
+      };
+    }
+  })
+  .get("/finance/chargebacks/:id/evidence-package", async ({ params, set }) => {
+    try {
+      const pkg = await chargebackWorkflowService.buildEvidencePackage(params.id);
+      return { success: true, data: { package: pkg } };
+    } catch (err) {
+      set.status = 404;
+      return { success: false, error: err instanceof Error ? err.message : "Not found", code: "NOT_FOUND" };
+    }
+  })
+  .post("/finance/chargebacks/sla-check", async ({ requireAuth }) => {
+    requireAuth();
+    const result = await chargebackWorkflowService.checkSlaBreaches();
+    return { success: true, data: result };
+  })
   .post("/finance/chargebacks/:id/evidence", async ({ params, body, requireAuth }) => {
     const auth = requireAuth();
     const buffer = Buffer.from(body.fileBase64, "base64");
@@ -549,6 +838,7 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
       const file = await chargebackEvidenceAccessService.consumeDownloadToken(params.token, auth.userId);
       set.headers["Content-Type"] = file.mimeType;
       set.headers["Content-Disposition"] = `attachment; filename="${file.fileName}"`;
+      if (file.buffer) return new Response(file.buffer);
       return new Response(fs.readFileSync(file.filePath));
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Access denied";
@@ -579,10 +869,44 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     const result = await settlementSyncService.runSync();
     return { success: true, data: result };
   })
-  .post("/finance/settlement-sync/discrepancies/:id/resolve", async ({ params, requireAuth }) => {
+  .post("/finance/settlement-sync/discrepancies/:id/resolve", async ({ params, body, requireAuth, set }) => {
+    try {
+      const auth = requireAuth();
+      const row = await settlementResolutionService.approveResolution(params.id, auth.userId, body.notes);
+      return { success: true, data: { discrepancy: row } };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "Resolve failed", code: "SETTLEMENT_RESOLVE_FAILED" };
+    }
+  }, { body: t.Object({ notes: t.Optional(t.String()) }) })
+  .post("/finance/settlement-sync/discrepancies/:id/assign", async ({ params, requireAuth }) => {
     const auth = requireAuth();
-    const row = await settlementSyncService.resolveDiscrepancy(params.id, auth.userId);
+    const row = await settlementResolutionService.assign(params.id, auth.userId);
     return { success: true, data: { discrepancy: row } };
+  })
+  .post("/finance/settlement-sync/discrepancies/:id/investigate", async ({ params, requireAuth }) => {
+    const auth = requireAuth();
+    const row = await settlementResolutionService.investigate(params.id, auth.userId);
+    return { success: true, data: { discrepancy: row } };
+  })
+  .post("/finance/settlement-sync/discrepancies/:id/escalate", async ({ params, body, requireAuth, set }) => {
+    try {
+      const auth = requireAuth();
+      const row = await settlementResolutionService.escalate(params.id, auth.userId, body.reason);
+      return { success: true, data: { discrepancy: row } };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "Escalate failed", code: "SETTLEMENT_ESCALATE_FAILED" };
+    }
+  }, { body: t.Object({ reason: t.String({ minLength: 3 }) }) })
+  .post("/finance/settlement-sync/discrepancies/:id/notes", async ({ params, body, requireAuth }) => {
+    const auth = requireAuth();
+    const note = await settlementResolutionService.addNote(params.id, auth.userId, body.body);
+    return { success: true, data: { note } };
+  }, { body: t.Object({ body: t.String({ minLength: 1 }) }) })
+  .get("/finance/settlement-sync/health", async () => {
+    const health = await settlementResolutionService.healthScore();
+    return { success: true, data: health };
   })
   .get("/finance/reports", async ({ query }) => {
     const period = (query.period as "daily" | "weekly" | "monthly" | "quarterly" | "yearly" | "custom") ?? "monthly";
@@ -605,7 +929,7 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     if (format === "pdf") {
       const buf = await executiveReportingService.exportPdf(period);
       set.headers["Content-Type"] = "application/pdf";
-      set.headers["Content-Disposition"] = `attachment; filename=finance-report-${period}.pdf`;
+      set.headers["Content-Disposition"] = `attachment; filename=HOMIGO-Executive-Report-${period}.pdf`;
       return buf;
     }
     const csv = await executiveReportingService.exportCsv(period);
@@ -691,10 +1015,124 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     const data = await financeAnalyticsService.getUnitEconomics(days);
     return { success: true, data };
   })
+  // Canonical, single-source-of-truth GMV (payment-based) + booking reconciliation.
+  .get("/finance/gmv", async ({ query }) => {
+    const days = Number(query.days ?? 30);
+    const data = await financeIntelligenceService.getCanonicalGmv(days);
+    return { success: true, data };
+  })
+  // CFO intelligence: gross margin, EBITDA, burn rate, cash runway, profit forecast.
+  .get("/finance/intelligence", async ({ query }) => {
+    const days = Number(query.days ?? 30);
+    const data = await financeIntelligenceService.getFinanceIntelligence(days);
+    return { success: true, data };
+  })
+  .get("/finance/config", async ({ query }) => {
+    const data = await financeConfigService.getAll();
+    return { success: true, data };
+  })
+  .get("/finance/config/history", async ({ query }) => {
+    const key = typeof query.key === "string" ? query.key : undefined;
+    const limit = query.limit ? Number(query.limit) : 50;
+    const history = await financeConfigService.getHistory({ key, limit });
+    return { success: true, data: { history } };
+  })
+  .patch("/finance/config", async ({ body, adminContext, request, set }) => {
+    const admin = adminContext;
+    if (!admin) {
+      set.status = 403;
+      return { success: false, error: "Forbidden", code: "FORBIDDEN" };
+    }
+    const payload = body as { key?: string; value?: number; reason?: string };
+    const key = String(payload.key ?? "");
+    const value = Number(payload.value);
+    const reason = typeof payload.reason === "string" ? payload.reason : undefined;
+    try {
+      const config = await financeConfigService.update(
+        key,
+        value,
+        { adminId: admin.adminId, userId: admin.userId },
+        {
+          reason,
+          ipAddress: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined,
+          userAgent: request.headers.get("user-agent") ?? undefined,
+        },
+      );
+      return { success: true, data: { config } };
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "UPDATE_FAILED";
+      set.status = 400;
+      return { success: false, error: code, code };
+    }
+  })
   .post("/finance/validation/run", async ({ requireAuth }) => {
     requireAuth();
     const result = await financeValidationService.runFullValidation();
     return { success: true, data: result };
+  })
+  // ── Enterprise OS V6 intelligence APIs (additive) ──
+  .get("/cx/intelligence", async ({ query }) => {
+    const days = Number(query.days ?? 30);
+    const data = await customerIntelligenceService.getIntelligence(days);
+    return { success: true, data };
+  })
+  .get("/growth/intelligence", async ({ query }) => {
+    const days = Number(query.days ?? 30);
+    const data = await growthIntelligenceService.getIntelligence(days);
+    return { success: true, data };
+  })
+  .get("/risk/intelligence", async ({ query }) => {
+    const days = Number(query.days ?? 30);
+    const data = await riskIntelligenceService.getIntelligence(days);
+    return { success: true, data };
+  })
+  .get("/platform/intelligence", async () => {
+    const data = await platformIntelligenceService.getIntelligence();
+    return { success: true, data };
+  })
+  .patch("/platform/flags", async ({ body, adminContext, set }) => {
+    const admin = adminContext;
+    if (!admin) {
+      set.status = 403;
+      return { success: false, error: "Forbidden", code: "FORBIDDEN" };
+    }
+    const payload = body as {
+      key?: string;
+      description?: string;
+      enabled?: boolean;
+      rolloutPct?: number;
+      environment?: string;
+      isKillSwitch?: boolean;
+      reason?: string;
+    };
+    try {
+      const flag = await platformIntelligenceService.upsertFlag(
+        {
+          key: String(payload.key ?? ""),
+          description: typeof payload.description === "string" ? payload.description : undefined,
+          enabled: Boolean(payload.enabled),
+          rolloutPct: Number(payload.rolloutPct ?? 100),
+          environment: typeof payload.environment === "string" ? payload.environment : "production",
+          isKillSwitch: Boolean(payload.isKillSwitch),
+        },
+        { adminId: admin.adminId, userId: admin.userId },
+        typeof payload.reason === "string" ? payload.reason : undefined,
+      );
+      return { success: true, data: { flag } };
+    } catch (err) {
+      set.status = 400;
+      return { success: false, error: err instanceof Error ? err.message : "UPDATE_FAILED" };
+    }
+  })
+  .get("/recovery/status", async () => {
+    const data = await recoveryIntelligenceService.getStatus();
+    return { success: true, data };
+  })
+  .post("/recovery/simulate", async ({ body }) => {
+    const payload = body as { target?: string };
+    const target = (payload.target ?? "database") as "database" | "redis" | "queue" | "api" | "region";
+    const data = recoveryIntelligenceService.simulate(target);
+    return { success: true, data };
   })
   .get("/account-deletions", async () => {
     const { AuditLogService } = await import("../services/audit-log.service");
@@ -1066,6 +1504,14 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     const data = await supportTicketService.adminList(query as Record<string, string>);
     return { success: true, data };
   })
+  .get("/support/tickets/:id", async ({ params, set }) => {
+    const ticket = await supportTicketService.adminGet(params.id);
+    if (!ticket) {
+      set.status = 404;
+      return { success: false, error: "Ticket not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: { ticket } };
+  })
   .get("/support/analytics", async () => {
     const data = await supportTicketService.adminAnalytics();
     return { success: true, data };
@@ -1074,14 +1520,54 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     "/support/tickets/:id/respond",
     async ({ requireAuth, params, body, set }) => {
       const { userId } = requireAuth();
-      const ticket = await supportTicketService.adminRespond(params.id, userId, body.resolution);
+      const ticket = await supportTicketService.adminRespond(
+        params.id,
+        userId,
+        body.resolution,
+        body.internal === true,
+      );
       if (!ticket) {
         set.status = 404;
         return { success: false, error: "Ticket not found", code: "NOT_FOUND" };
       }
       return { success: true, message: "Response recorded", data: { ticket } };
     },
-    { body: t.Object({ resolution: t.String({ minLength: 1, maxLength: 5000 }) }) },
+    {
+      body: t.Object({
+        resolution: t.String({ minLength: 1, maxLength: 5000 }),
+        internal: t.Optional(t.Boolean()),
+      }),
+    },
+  )
+  .post(
+    "/support/tickets/:id/escalate",
+    async ({ requireAuth, params, body, set }) => {
+      const { userId } = requireAuth();
+      const ticket = await supportTicketService.adminEscalate(params.id, userId, body.note);
+      if (!ticket) {
+        set.status = 404;
+        return { success: false, error: "Ticket not found", code: "NOT_FOUND" };
+      }
+      return { success: true, message: "Ticket escalated", data: { ticket } };
+    },
+    { body: t.Object({ note: t.Optional(t.String({ maxLength: 2000 })) }) },
+  )
+  .post(
+    "/support/tickets/:id/merge",
+    async ({ requireAuth, params, body, set }) => {
+      const { userId } = requireAuth();
+      const result = await supportTicketService.adminMerge(params.id, body.duplicateId, userId);
+      if (result.error === "NOT_FOUND") {
+        set.status = 404;
+        return { success: false, error: "Ticket not found", code: "NOT_FOUND" };
+      }
+      if (result.error === "SAME_TICKET") {
+        set.status = 400;
+        return { success: false, error: "Cannot merge ticket with itself", code: "VALIDATION_ERROR" };
+      }
+      return { success: true, message: "Tickets merged", data: result };
+    },
+    { body: t.Object({ duplicateId: t.String() }) },
   )
   .post(
     "/support/tickets/:id/resolve",
@@ -1241,6 +1727,10 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     const data = await observabilityService.getHealthDashboard();
     return { success: true, data };
   })
+  .get("/observability/email-health", async () => {
+    const data = await observabilityService.getEmailHealth();
+    return { success: true, data };
+  })
   .get("/observability/alerts", async ({ query }) => {
     const q = sanitizeQueryStrings(query as Record<string, string>);
     const data = await observabilityService.listAlerts({
@@ -1282,4 +1772,200 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
   .post("/observability/validation/run", async () => {
     const data = await productionValidationService.runFullValidation();
     return { success: true, data };
+  })
+  // ===== P3 Scoped Admin RBAC =====
+  .get("/rbac/me", async ({ adminContext }) => {
+    const admin = adminContext!;
+    const permissions = await rbacService.getPermissions(admin.adminId);
+    return {
+      success: true,
+      data: {
+        adminId: admin.adminId,
+        userId: admin.userId,
+        role: admin.role,
+        permissions: Array.from(permissions),
+      },
+    };
+  })
+  .get("/rbac/roles", async () => {
+    const roles = await rbacService.listRoles();
+    return { success: true, data: { roles } };
+  })
+  .get("/rbac/admins", async () => {
+    const admins = await rbacService.listAdminUsers();
+    return { success: true, data: { admins } };
+  })
+  .post(
+    "/rbac/grant-role",
+    async ({ body, adminContext, set }) => {
+      const admin = adminContext!;
+      try {
+        await rbacService.grantRole(admin, body.userId, body.roleId);
+        return { success: true, message: "Role granted" };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Grant failed";
+        set.status = message.includes("Permission denied") ? 403 : 400;
+        return { success: false, error: message, code: "RBAC_ERROR" };
+      }
+    },
+    { body: t.Object({ userId: t.String(), roleId: t.String() }) },
+  )
+  .post(
+    "/users/:id/force-logout",
+    async ({ params, body, adminContext, set, request }) => {
+      const admin = adminContext!;
+      try {
+        await rbacService.enforcePermission(admin, "USERS", "FORCE_LOGOUT");
+        await tokenRevocationService.forceLogoutUser(
+          params.id,
+          "ADMIN_FORCE_LOGOUT",
+          admin.adminId,
+          {
+            ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
+            userAgent: request.headers.get("user-agent") || undefined,
+          },
+        );
+        return { success: true, message: "User signed out from all devices" };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Force logout failed";
+        set.status = message.includes("Permission denied") ? 403 : 400;
+        return { success: false, error: message, code: "FORCE_LOGOUT_FAILED" };
+      }
+    },
+    { body: t.Optional(t.Object({ reason: t.Optional(t.String()) })) },
+  )
+  .post(
+    "/rbac/revoke-role",
+    async ({ body, adminContext, set }) => {
+      const admin = adminContext!;
+      try {
+        await rbacService.revokeRole(admin, body.adminUserId);
+        return { success: true, message: "Role revoked" };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Revoke failed";
+        set.status = message.includes("Permission denied") ? 403 : 400;
+        return { success: false, error: message, code: "RBAC_ERROR" };
+      }
+    },
+    { body: t.Object({ adminUserId: t.String() }) },
+  )
+  .get("/workforce/analytics", async ({ adminContext, set }) => {
+    const admin = adminContext!;
+    try {
+      await rbacService.enforcePermission(admin, "ANALYTICS", "READ");
+      const { partnerOsService } = await import("../services/partner-os.service");
+      const data = await partnerOsService.getWorkforceAnalytics();
+      return { success: true, data };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed";
+      set.status = 403;
+      return { success: false, error: message };
+    }
+  })
+  .get("/providers/:id/intelligence", async ({ params, adminContext, set }) => {
+    const admin = adminContext!;
+    try {
+      await rbacService.enforcePermission(admin, "ANALYTICS", "READ");
+      const { partnerOsService } = await import("../services/partner-os.service");
+      const data = await partnerOsService.getProviderIntelligence(params.id);
+      return { success: true, data };
+    } catch (err) {
+      set.status = 403;
+      return { success: false, error: err instanceof Error ? err.message : "Failed" };
+    }
+  })
+  .get("/documents/pending", async ({ adminContext, set }) => {
+    const admin = adminContext!;
+    try {
+      await rbacService.enforcePermission(admin, "USERS", "READ");
+      const { documentUploadService } = await import("../services/document-upload.service");
+      const documents = await documentUploadService.listAllPending();
+      return { success: true, data: { documents } };
+    } catch (err) {
+      set.status = 403;
+      return { success: false, error: err instanceof Error ? err.message : "Failed" };
+    }
+  })
+  .put("/providers/:id/documents/:docId/verify", async ({ params, adminContext, set, body }) => {
+    const admin = adminContext!;
+    try {
+      await rbacService.enforcePermission(admin, "USERS", "APPROVE");
+      const { documentUploadService } = await import("../services/document-upload.service");
+      const doc = await documentUploadService.verifyDocument(params.docId, admin.adminId, body?.notes);
+      return { success: true, data: { document: doc } };
+    } catch (err) {
+      set.status = 403;
+      return { success: false, error: err instanceof Error ? err.message : "Failed" };
+    }
+  }, { body: t.Optional(t.Object({ notes: t.Optional(t.String()) })) })
+  .put("/providers/:id/documents/:docId/reject", async ({ params, adminContext, set, body }) => {
+    const admin = adminContext!;
+    try {
+      await rbacService.enforcePermission(admin, "USERS", "APPROVE");
+      if (!body?.reason?.trim()) {
+        set.status = 400;
+        return { success: false, error: "Rejection reason is required" };
+      }
+      const { documentUploadService } = await import("../services/document-upload.service");
+      const doc = await documentUploadService.rejectDocument(params.docId, body.reason.trim());
+      return { success: true, data: { document: doc } };
+    } catch (err) {
+      set.status = 403;
+      return { success: false, error: err instanceof Error ? err.message : "Failed" };
+    }
+  }, { body: t.Object({ reason: t.String() }) })
+  .get("/academy/modules", async ({ adminContext, set }) => {
+    const admin = adminContext!;
+    try {
+      await rbacService.enforcePermission(admin, "SETTINGS", "READ");
+      const modules = await prisma.partnerAcademyModule.findMany({ orderBy: { sortOrder: "asc" } });
+      return { success: true, data: { modules } };
+    } catch (err) {
+      set.status = 403;
+      return { success: false, error: err instanceof Error ? err.message : "Failed" };
+    }
+  })
+  .post("/academy/modules", async ({ adminContext, set, body: payload }) => {
+    const admin = adminContext!;
+    try {
+      await rbacService.enforcePermission(admin, "SETTINGS", "CREATE");
+      const module = await prisma.partnerAcademyModule.create({
+        data: {
+          slug: payload.slug,
+          title: payload.title,
+          contentType: payload.contentType,
+          contentUrl: payload.contentUrl,
+          body: payload.contentBody,
+          sortOrder: payload.sortOrder ?? 0,
+          isPublished: payload.isPublished ?? false,
+          categoryIds: payload.categoryIds ?? [],
+        },
+      });
+      return { success: true, data: { module } };
+    } catch (err) {
+      set.status = 403;
+      return { success: false, error: err instanceof Error ? err.message : "Failed" };
+    }
+  }, {
+    body: t.Object({
+      slug: t.String(),
+      title: t.String(),
+      contentType: t.String(),
+      contentUrl: t.Optional(t.String()),
+      contentBody: t.Optional(t.String()),
+      sortOrder: t.Optional(t.Number()),
+      isPublished: t.Optional(t.Boolean()),
+      categoryIds: t.Optional(t.Array(t.String())),
+    }),
+  })
+  .get("/incentives/rules", async ({ adminContext, set }) => {
+    const admin = adminContext!;
+    try {
+      await rbacService.enforcePermission(admin, "CAMPAIGNS", "READ");
+      const rules = await prisma.partnerIncentiveRule.findMany({ orderBy: { createdAt: "asc" } });
+      return { success: true, data: { rules } };
+    } catch (err) {
+      set.status = 403;
+      return { success: false, error: err instanceof Error ? err.message : "Failed" };
+    }
   });

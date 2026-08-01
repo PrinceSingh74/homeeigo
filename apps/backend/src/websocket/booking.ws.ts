@@ -1,34 +1,30 @@
 import { Elysia, t } from "elysia";
-import { JWTService } from "@/services/jwt.service";
 import { roomManager, MessageType, WSConnection, generateConnectionId } from "@/lib/websocket";
 import { heartbeatManager } from "@/lib/heartbeat";
 import { bookingLiveService } from "@/services/booking-live.service";
 import prisma from "@/lib/prisma";
-import { canAccessBookingWs } from "@/lib/ws-booking-access";
+import { authenticateWsConnection } from "@/lib/ws-connection-auth";
+import { validateWsChannelAccess } from "@/lib/ws-channel-access";
 import { getWsState, setWsState } from "./ws-state";
-
-const jwt = new JWTService();
 
 export const bookingWs = new Elysia({ prefix: "/ws" }).ws("/booking/:bookingId", {
   params: t.Object({ bookingId: t.String() }),
-  query: t.Object({ token: t.Optional(t.String()) }),
+  query: t.Object({ token: t.Optional(t.String()), nonce: t.Optional(t.String()) }),
 
   open: async (ws) => {
-    const authHeader =
-      typeof ws.data.headers?.authorization === "string"
-        ? ws.data.headers.authorization
-        : "";
-    const headerToken = authHeader.replace(/^Bearer\s+/i, "");
-    const token = ws.data.query.token ?? headerToken ?? "";
-    const payload = token ? jwt.verifyAccessToken(token) : null;
-
-    if (!payload?.userId) {
+    const bookingId = ws.data.params.bookingId;
+    const auth = await authenticateWsConnection(ws, `/ws/booking/${bookingId}`);
+    if (!auth) {
       ws.close(4401, "Unauthorized");
       return;
     }
 
-    const bookingId = ws.data.params.bookingId;
-    const allowed = await canAccessBookingWs(payload.userId, bookingId, payload.userType);
+    const allowed = await validateWsChannelAccess({
+      channel: "booking",
+      userId: auth.userId,
+      userRole: auth.userRole,
+      bookingId,
+    });
     if (!allowed) {
       ws.close(4403, "Forbidden");
       return;
@@ -37,8 +33,8 @@ export const bookingWs = new Elysia({ prefix: "/ws" }).ws("/booking/:bookingId",
     const connectionId = generateConnectionId();
 
     const connection: WSConnection = {
-      userId: payload.userId,
-      userType: payload.userType || "customer",
+      userId: auth.userId,
+      userType: auth.userType,
       connectionId,
       connectedAt: new Date(),
       lastPing: new Date(),
@@ -56,8 +52,8 @@ export const bookingWs = new Elysia({ prefix: "/ws" }).ws("/booking/:bookingId",
     heartbeatManager.startHeartbeat(connectionId, ws);
 
     setWsState(ws, {
-      userId: payload.userId,
-      userType: payload.userType || "customer",
+      userId: auth.userId,
+      userType: auth.userType,
       connectionId,
       bookingId,
       connection,
@@ -103,9 +99,13 @@ export const bookingWs = new Elysia({ prefix: "/ws" }).ws("/booking/:bookingId",
 
   message: async (ws, data: any) => {
     try {
-      const message = JSON.parse(
-        typeof data === "string" ? data : data.toString()
-      );
+      // Elysia auto-parses JSON ws frames → `data` is usually already an object.
+      const message =
+        typeof data === "string"
+          ? JSON.parse(data)
+          : Buffer.isBuffer(data)
+            ? JSON.parse(data.toString())
+            : data;
       const bookingId = ws.data.params.bookingId;
       const userId = (getWsState(ws) as any)?.userId;
       const userType = (getWsState(ws) as any)?.userType;

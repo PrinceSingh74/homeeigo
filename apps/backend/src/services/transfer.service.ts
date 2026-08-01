@@ -5,6 +5,7 @@ import { OTPService } from "./otp.service";
 import { financialLedgerService } from "./financial-ledger.service";
 import { AuditLogService } from "./audit-log.service";
 import { recordFinancialMetric } from "../lib/financial-metrics";
+import { userPiiService } from "./user-pii.service";
 
 const otpService = new OTPService(prisma);
 
@@ -13,9 +14,9 @@ export const TRANSFER_MIN = 1;
 export const TRANSFER_MAX_PER_TXN = 10000;
 export const TRANSFER_MAX_DAILY = 50000;
 
-function maskName(first: string | null, last: string | null, email: string): string {
+function maskName(first: string | null, last: string | null, email: string | null): string {
   const name = [first, last].filter(Boolean).join(" ");
-  return name || email;
+  return name || email || "HOMEEIGO user";
 }
 
 export class TransferService {
@@ -23,8 +24,8 @@ export class TransferService {
   private async resolveRecipient(identifier: string) {
     const id = identifier.trim();
     return (
-      (await prisma.user.findUnique({ where: { phoneNumber: id } })) ??
-      (await prisma.user.findUnique({ where: { email: id.toLowerCase() } })) ??
+      (await userPiiService.findByPhone(id)) ??
+      (await userPiiService.findByEmail(id)) ??
       (await prisma.user.findUnique({ where: { referralCode: id.toUpperCase() } }))
     );
   }
@@ -82,11 +83,14 @@ export class TransferService {
       },
     });
 
-    const otp = await otpService.sendOTP(sender.phoneNumber, sender.id);
+    const senderPhone = await userPiiService.resolvePhone(sender, { actorId: sender.id, authorized: true });
+    if (!senderPhone) return { error: "SENDER_PHONE_MISSING" };
+    const recipientEmail = await userPiiService.resolveEmail(recipient, { actorId: recipient.id, authorized: true });
+    const otp = await otpService.sendOTP(senderPhone, sender.id);
     return {
       ok: true,
       transferId: transfer.id,
-      recipient: maskName(recipient.firstName, recipient.lastName, recipient.email),
+      recipient: maskName(recipient.firstName, recipient.lastName, recipientEmail ?? recipient.id),
       otpSent: otp.success,
       ...("devOtp" in otp && otp.devOtp ? { devOtp: otp.devOtp } : {}),
     };
@@ -106,7 +110,9 @@ export class TransferService {
     const sender = await prisma.user.findUnique({ where: { id: senderId } });
     if (!sender) return { error: "NOT_FOUND" };
 
-    const otpResult = await otpService.verifyOTP(sender.phoneNumber, otp);
+    const senderPhone = await userPiiService.resolvePhone(sender, { actorId: sender.id, authorized: true });
+    if (!senderPhone) return { error: "SENDER_PHONE_MISSING" };
+    const otpResult = await otpService.verifyOTP(senderPhone, otp);
     if (!otpResult.isValid) return { error: "INVALID_OTP" };
 
     const recipient = await prisma.user.findUnique({ where: { id: transfer.recipientId } });
@@ -161,22 +167,20 @@ export class TransferService {
         where: { id: transfer.id },
         data: { status: WalletTransferStatus.COMPLETED, completedAt: new Date() },
       });
+      await financialLedgerService.recordJournalInTransaction(
+        tx,
+        financialLedgerService.journalForWalletTransferOut(transfer.id, senderTxn.id, transfer.amount),
+      );
+      await financialLedgerService.recordJournalInTransaction(
+        tx,
+        financialLedgerService.journalForWalletTransferIn(transfer.id, recipientTxn.id, transfer.amount),
+      );
       return {
         senderBalance: senderAfter.walletBalance,
         senderWalletTxnId: senderTxn.id,
         recipientWalletTxnId: recipientTxn.id,
       };
     });
-
-    void financialLedgerService
-      .recordWalletDebit(result.senderWalletTxnId, transfer.amount)
-      .catch(() => undefined);
-    void financialLedgerService
-      .recordWalletTransferOut(transfer.id, result.senderWalletTxnId, transfer.amount)
-      .catch(() => undefined);
-    void financialLedgerService
-      .recordWalletTransferIn(transfer.id, result.recipientWalletTxnId, transfer.amount)
-      .catch(() => undefined);
     void AuditLogService.success("WALLET_TRANSFER", {
       userId: senderId,
       details: {
@@ -212,7 +216,7 @@ export class TransferService {
       transfers: transfers.map((t) => ({
         id: t.id,
         direction: t.senderId === userId ? ("sent" as const) : ("received" as const),
-        counterparty: nameById.get(t.senderId === userId ? t.recipientId : t.senderId) ?? "HOMIGO user",
+        counterparty: nameById.get(t.senderId === userId ? t.recipientId : t.senderId) ?? "HOMEEIGO user",
         amount: t.amount,
         note: t.note,
         createdAt: t.completedAt ?? t.createdAt,

@@ -30,10 +30,19 @@ export class MigrationVerificationService {
       ORDER BY finished_at ASC NULLS LAST
     `;
 
-    const appliedNames = new Set(appliedRows.map((r) => r.migration_name));
+    const successfulNames = new Set(
+      appliedRows.filter((r) => r.finished_at && !r.rolled_back_at).map((r) => r.migration_name),
+    );
+    const appliedNames = successfulNames;
     const pending = diskMigrations.filter((m) => !appliedNames.has(m));
-    const failed = appliedRows.filter((r) => r.rolled_back_at != null);
-    const appliedCount = appliedRows.filter((r) => r.finished_at && !r.rolled_back_at).length;
+    // Only count rolled-back rows with no successful sibling — superseded retries are historical noise.
+    const failed = appliedRows.filter(
+      (r) => r.rolled_back_at != null && r.finished_at == null && !successfulNames.has(r.migration_name),
+    );
+    const staleRolledBack = appliedRows.filter(
+      (r) => r.rolled_back_at != null && r.finished_at == null && successfulNames.has(r.migration_name),
+    );
+    const appliedCount = successfulNames.size;
 
     const schemaPath = path.join(process.cwd(), "prisma", "schema.prisma");
     const schemaChecksum = crypto
@@ -75,11 +84,13 @@ export class MigrationVerificationService {
       appliedCount,
       pendingCount: pending.length,
       failedCount: failed.length,
+      staleRolledBackCount: staleRolledBack.length,
       driftDetected,
       rollbackRisk,
       schemaChecksum,
       pending,
       failed: failed.map((f) => f.migration_name),
+      staleRolledBack: staleRolledBack.map((f) => f.migration_name),
       dependencyGraph,
       diskMigrationCount: diskMigrations.length,
       issues,

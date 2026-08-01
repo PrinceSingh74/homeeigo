@@ -16,6 +16,12 @@ export const notificationsRoutes = new Elysia({ prefix: "/api/notifications" })
     });
     return { success: true, data: { ...data, page } };
   })
+  // NOTE: must be registered before "/:id/read" so "read-all" isn't captured as an id.
+  .put("/read-all", async ({ requireAuth }) => {
+    const { userId } = requireAuth();
+    const count = await notificationService.markAllRead(userId);
+    return { success: true, message: "All notifications marked as read", data: { count } };
+  })
   .put("/:id/read", async ({ requireAuth, params }) => {
     const { userId } = requireAuth();
     await notificationService.markRead(userId, params.id);

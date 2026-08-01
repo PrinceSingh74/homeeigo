@@ -1,30 +1,29 @@
 import { Elysia, t } from "elysia";
-import { JWTService } from "../services/jwt.service";
 import { roomManager, MessageType, type WSConnection, generateConnectionId } from "../lib/websocket";
 import { heartbeatManager } from "../lib/heartbeat";
 import { trackingService } from "../services/tracking.service";
 import prisma from "../lib/prisma";
-import { canAccessBookingWs } from "../lib/ws-booking-access";
+import { authenticateWsConnection } from "../lib/ws-connection-auth";
+import { validateWsChannelAccess } from "../lib/ws-channel-access";
 import { getWsState, setWsState } from "./ws-state";
-
-const jwt = new JWTService();
 
 export const trackingWs = new Elysia().ws("/ws/tracking/:bookingId", {
   params: t.Object({ bookingId: t.String() }),
-  query: t.Object({ token: t.Optional(t.String()) }),
+  query: t.Object({ token: t.Optional(t.String()), nonce: t.Optional(t.String()) }),
   open: async (ws) => {
-    const authHeader =
-      typeof ws.data.headers?.authorization === "string" ? ws.data.headers.authorization : "";
-    const headerToken = authHeader.replace(/^Bearer\s+/i, "");
-    const token = ws.data.query.token ?? headerToken ?? "";
-    const payload = token ? jwt.verifyAccessToken(token) : null;
-    if (!payload?.userId) {
+    const bookingId = ws.data.params.bookingId;
+    const auth = await authenticateWsConnection(ws, `/ws/tracking/${bookingId}`);
+    if (!auth) {
       ws.close(4401, "Unauthorized");
       return;
     }
 
-    const bookingId = ws.data.params.bookingId;
-    const allowed = await canAccessBookingWs(payload.userId, bookingId, payload.userType);
+    const allowed = await validateWsChannelAccess({
+      channel: "tracking",
+      userId: auth.userId,
+      userRole: auth.userRole,
+      bookingId,
+    });
     if (!allowed) {
       ws.close(4403, "Forbidden");
       return;
@@ -32,8 +31,8 @@ export const trackingWs = new Elysia().ws("/ws/tracking/:bookingId", {
 
     const connectionId = generateConnectionId();
     const connection: WSConnection = {
-      userId: payload.userId,
-      userType: payload.userType || "customer",
+      userId: auth.userId,
+      userType: auth.userType,
       connectionId,
       connectedAt: new Date(),
       lastPing: new Date(),
@@ -51,7 +50,8 @@ export const trackingWs = new Elysia().ws("/ws/tracking/:bookingId", {
     heartbeatManager.startHeartbeat(connectionId, ws);
 
     setWsState(ws, {
-      userId: payload.userId,
+      userId: auth.userId,
+      userType: auth.userType,
       connectionId,
       connection,
       bookingId,

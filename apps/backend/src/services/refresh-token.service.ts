@@ -1,12 +1,14 @@
 import type { PrismaClient } from "@prisma/client";
-import { JWTService } from "./jwt.service";
+import { JWTService, JWT_CONFIG } from "./jwt.service";
 import { AuditLogService } from "./audit-log.service";
 import { partnerRegistrationService } from "./partner-registration.service";
+import { refreshTokenFamilyService } from "./refresh-token-family.service";
+import { tokenRevocationService } from "./token-revocation.service";
 
 export class RefreshTokenService {
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly jwtService: JWTService
+    private readonly jwtService: JWTService,
   ) {}
 
   async createRefreshToken(payload: {
@@ -15,14 +17,27 @@ export class RefreshTokenService {
     deviceName?: string;
     userAgent?: string;
     ipAddress?: string;
+    familyId?: string;
+    parentTokenId?: string;
+    createdBy?: string;
   }): Promise<string> {
-    const token = this.jwtService.generateRefreshToken({ userId: payload.userId });
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const familyId = payload.familyId ?? refreshTokenFamilyService.createFamily();
+    const authEpoch = await tokenRevocationService.getAuthEpoch(payload.userId);
+    const token = this.jwtService.generateRefreshToken({
+      userId: payload.userId,
+      familyId,
+      authEpoch,
+    });
+    const expiresAt = new Date(Date.now() + JWT_CONFIG.REFRESH_TOKEN_SECONDS * 1000);
+
     await this.prisma.refreshToken.create({
       data: {
         token,
         userId: payload.userId,
         expiresAt,
+        familyId,
+        parentTokenId: payload.parentTokenId,
+        createdBy: payload.createdBy ?? (payload.parentTokenId ? "REFRESH" : "LOGIN"),
         deviceId: payload.deviceId,
         deviceName: payload.deviceName,
         userAgent: payload.userAgent,
@@ -30,23 +45,84 @@ export class RefreshTokenService {
         lastActivityAt: new Date(),
       },
     });
+
     return token;
+  }
+
+  async createSessionTokens(payload: {
+    userId: string;
+    email: string;
+    deviceId?: string;
+    deviceName?: string;
+    userAgent?: string;
+    ipAddress?: string;
+  }): Promise<{ accessToken: string; refreshToken: string }> {
+    const familyId = refreshTokenFamilyService.createFamily();
+    const authEpoch = await tokenRevocationService.getAuthEpoch(payload.userId);
+    const accessToken = this.jwtService.generateAccessToken({
+      userId: payload.userId,
+      email: payload.email,
+      deviceId: payload.deviceId,
+      authEpoch,
+    });
+    const refreshToken = await this.createRefreshToken({
+      ...payload,
+      familyId,
+      createdBy: "LOGIN",
+    });
+    return { accessToken, refreshToken };
   }
 
   async verifyRefreshToken(
     token: string,
-  ): Promise<{ isValid: boolean; error?: string; userId?: string; deviceId?: string | null }> {
+    meta?: { ipAddress?: string; userAgent?: string },
+  ): Promise<{
+    isValid: boolean;
+    error?: string;
+    userId?: string;
+    deviceId?: string | null;
+    dbTokenId?: string;
+    familyId?: string | null;
+  }> {
     const payload = this.jwtService.verifyRefreshToken(token);
     if (!payload?.userId) return { isValid: false, error: "Invalid or expired token" };
 
     const dbToken = await this.prisma.refreshToken.findUnique({ where: { token } });
     if (!dbToken) return { isValid: false, error: "Token not found in database" };
-    if (dbToken.revokedAt) return { isValid: false, error: "Token has been revoked" };
-    if (dbToken.expiresAt < new Date()) return { isValid: false, error: "Token has expired" };
+
+    if (dbToken.revokedAt) {
+      await refreshTokenFamilyService.handleReuseAttack(
+        dbToken.userId,
+        dbToken.familyId,
+        dbToken.id,
+        meta,
+      );
+      return { isValid: false, error: "Token has been revoked" };
+    }
+
+    if (dbToken.expiresAt < new Date()) {
+      return { isValid: false, error: "Token has expired" };
+    }
+
+    if (payload.authEpoch !== undefined) {
+      const currentEpoch = await tokenRevocationService.getAuthEpoch(payload.userId);
+      if (payload.authEpoch < currentEpoch) {
+        return { isValid: false, error: "Token has been revoked" };
+      }
+    }
 
     const user = await this.prisma.user.findUnique({ where: { id: dbToken.userId } });
-    if (!user?.isActive || user.isBanned) return { isValid: false, error: "User not found or inactive" };
-    return { isValid: true, userId: dbToken.userId, deviceId: dbToken.deviceId };
+    if (!user?.isActive || user.isBanned) {
+      return { isValid: false, error: "User not found or inactive" };
+    }
+
+    return {
+      isValid: true,
+      userId: dbToken.userId,
+      deviceId: dbToken.deviceId,
+      dbTokenId: dbToken.id,
+      familyId: dbToken.familyId,
+    };
   }
 
   async refreshAccessToken(payload: {
@@ -56,8 +132,13 @@ export class RefreshTokenService {
     userAgent?: string;
     ipAddress?: string;
   }): Promise<{ success: boolean; error?: string; accessToken?: string; refreshToken?: string }> {
-    const verification = await this.verifyRefreshToken(payload.refreshToken);
-    if (!verification.isValid || !verification.userId) return { success: false, error: verification.error };
+    const verification = await this.verifyRefreshToken(payload.refreshToken, {
+      ipAddress: payload.ipAddress,
+      userAgent: payload.userAgent,
+    });
+    if (!verification.isValid || !verification.userId || !verification.dbTokenId) {
+      return { success: false, error: verification.error };
+    }
 
     const user = await this.prisma.user.findUnique({ where: { id: verification.userId } });
     if (!user) return { success: false, error: "User not found" };
@@ -70,7 +151,7 @@ export class RefreshTokenService {
     const storedDeviceId = verification.deviceId ?? null;
     const clientDeviceId = payload.deviceId ?? null;
     if (storedDeviceId && clientDeviceId && storedDeviceId !== clientDeviceId) {
-      await this.revokeRefreshToken(payload.refreshToken);
+      await this.revokeRefreshToken(payload.refreshToken, "DEVICE_REVOCATION");
       void AuditLogService.failure("DEVICE_MISMATCH", {
         userId: user.id,
         ipAddress: payload.ipAddress,
@@ -80,70 +161,114 @@ export class RefreshTokenService {
       return { success: false, error: "Device mismatch — session revoked" };
     }
 
+    const familyId =
+      verification.familyId ?? refreshTokenFamilyService.createFamily();
+
     await this.prisma.refreshToken.update({
-      where: { token: payload.refreshToken },
-      data: { revokedAt: new Date(), lastActivityAt: new Date() },
+      where: { id: verification.dbTokenId },
+      data: {
+        revokedAt: new Date(),
+        revokedReason: "ROTATION",
+        lastActivityAt: new Date(),
+      },
     });
 
-    // Database deviceId is authoritative; client may only supply it for legacy rows.
     const deviceId = storedDeviceId ?? clientDeviceId ?? undefined;
-    const accessToken = this.jwtService.generateAccessToken({ userId: user.id, email: user.email, deviceId });
+    const authEpoch = await tokenRevocationService.getAuthEpoch(user.id);
+    const { userPiiService } = await import("./user-pii.service");
+    const sessionEmail = (await userPiiService.resolveEmail(user, { actorId: user.id, authorized: true })) ?? "";
+    const accessToken = this.jwtService.generateAccessToken({
+      userId: user.id,
+      email: sessionEmail,
+      deviceId,
+      authEpoch,
+    });
     const refreshToken = await this.createRefreshToken({
       userId: user.id,
       deviceId,
       deviceName: payload.deviceName,
       userAgent: payload.userAgent,
       ipAddress: payload.ipAddress,
+      familyId,
+      parentTokenId: verification.dbTokenId,
+      createdBy: "REFRESH",
+    });
+
+    void AuditLogService.success("TOKEN_REFRESH", {
+      userId: user.id,
+      ipAddress: payload.ipAddress,
+      userAgent: payload.userAgent,
+      details: { familyId },
     });
 
     return { success: true, accessToken, refreshToken };
   }
 
-  async revokeRefreshToken(token: string): Promise<boolean> {
+  async revokeRefreshToken(
+    token: string,
+    reason = "LOGOUT",
+  ): Promise<boolean> {
     try {
-      await this.prisma.refreshToken.update({ where: { token }, data: { revokedAt: new Date() } });
+      await this.prisma.refreshToken.update({
+        where: { token },
+        data: {
+          revokedAt: new Date(),
+          revokedReason: reason,
+        },
+      });
       return true;
     } catch {
       return false;
     }
   }
 
-  async revokeAllUserTokens(userId: string): Promise<number> {
-    const result = await this.prisma.refreshToken.updateMany({
-      where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
-    return result.count;
+  async revokeAllUserTokens(
+    userId: string,
+    reason: Parameters<typeof tokenRevocationService.revokeAllUserTokens>[1] = "MANUAL_REVOCATION",
+    revokedBy = userId,
+    meta?: { ipAddress?: string; userAgent?: string },
+  ): Promise<number> {
+    return tokenRevocationService.revokeAllUserTokens(userId, reason, revokedBy, meta);
   }
 
   async revokeOtherDeviceTokens(userId: string, deviceId?: string): Promise<number> {
-    if (!deviceId) return this.revokeAllUserTokens(userId);
-    // Revoke every active session except the current device — including legacy
-    // rows with a NULL deviceId (SQL `!=` skips NULLs, so match them explicitly).
+    if (!deviceId) return this.revokeAllUserTokens(userId, "DEVICE_REVOCATION", userId);
     const result = await this.prisma.refreshToken.updateMany({
       where: {
         userId,
         revokedAt: null,
         OR: [{ deviceId: { not: deviceId } }, { deviceId: null }],
       },
-      data: { revokedAt: new Date() },
+      data: {
+        revokedAt: new Date(),
+        revokedReason: "DEVICE_REVOCATION",
+      },
     });
+    if (result.count > 0) {
+      await tokenRevocationService.bumpAuthEpoch(userId);
+    }
     return result.count;
   }
 
   async revokeDeviceToken(userId: string, deviceId: string): Promise<number> {
     const result = await this.prisma.refreshToken.updateMany({
       where: { userId, deviceId, revokedAt: null },
-      data: { revokedAt: new Date() },
+      data: {
+        revokedAt: new Date(),
+        revokedReason: "DEVICE_REVOCATION",
+      },
     });
     return result.count;
   }
 
   async deleteExpiredTokens(): Promise<number> {
-    const result = await this.prisma.refreshToken.deleteMany({
-      where: { expiresAt: { lt: new Date() } },
-    });
-    return result.count;
+    const [expired, families] = await Promise.all([
+      this.prisma.refreshToken.deleteMany({
+        where: { expiresAt: { lt: new Date() } },
+      }),
+      refreshTokenFamilyService.cleanupOldFamilies(),
+    ]);
+    return expired.count + families;
   }
 
   async getUserSessions(userId: string) {
@@ -158,6 +283,8 @@ export class RefreshTokenService {
         createdAt: true,
         expiresAt: true,
         lastActivityAt: true,
+        familyId: true,
+        createdBy: true,
       },
       orderBy: { createdAt: "desc" },
     });

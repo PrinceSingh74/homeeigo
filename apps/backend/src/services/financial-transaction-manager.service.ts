@@ -11,19 +11,22 @@ export class FinancialTransactionManager {
     journal: LedgerJournalInput;
     mutate: (tx: Prisma.TransactionClient) => Promise<T>;
   }): Promise<T> {
-    return prisma.$transaction(async (tx) => {
-      const existing = await tx.journalEntry.findUnique({
-        where: { idempotencyKey: opts.journal.idempotencyKey },
-      });
+    return prisma.$transaction(
+      async (tx) => {
+        const existing = await tx.journalEntry.findUnique({
+          where: { idempotencyKey: opts.journal.idempotencyKey },
+        });
 
-      const result = await opts.mutate(tx);
+        const result = await opts.mutate(tx);
 
-      if (!existing) {
-        await financialLedgerService.recordJournalInTransaction(tx, opts.journal);
-      }
+        if (!existing) {
+          await financialLedgerService.recordJournalInTransaction(tx, opts.journal);
+        }
 
-      return result;
-    });
+        return result;
+      },
+      { maxWait: 10_000, timeout: 20_000 },
+    );
   }
 
   /** Verify every successful payment has a matching ledger journal. */

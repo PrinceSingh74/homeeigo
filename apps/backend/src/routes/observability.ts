@@ -70,6 +70,11 @@ function checkIntegrations() {
     razorpayWebhook: { configured: !!process.env.RAZORPAY_WEBHOOK_SECRET },
     email: { configured: !!process.env.RESEND_API_KEY },
     sms: { configured: !!process.env.TWILIO_ACCOUNT_SID && !!process.env.TWILIO_AUTH_TOKEN },
+    jwt: {
+      configured: Boolean(process.env.JWT_SECRET && process.env.JWT_REFRESH_SECRET),
+      accessExpiry: process.env.JWT_EXPIRY || "1h",
+      refreshExpiry: process.env.JWT_REFRESH_EXPIRY || "30d",
+    },
   };
 }
 

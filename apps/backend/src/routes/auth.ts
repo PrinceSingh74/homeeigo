@@ -2,10 +2,15 @@ import "../load-env";
 import { Elysia, t } from "elysia";
 import crypto from "crypto";
 import { appendAuthCookies, clearAuthCookies } from "../lib/auth-cookies";
+import { incCounter } from "../lib/metrics";
 import prisma from "../lib/prisma";
-import { consumeRateLimitSmart } from "../middleware/rate-limit.middleware";
+import {
+  consumeRateLimitSmart,
+  peekRateLimitSmart,
+  resetRateLimitSmart,
+} from "../middleware/rate-limit.middleware";
 import { AppleOAuthService } from "../services/apple-oauth.service";
-import { emailService } from "../services/email.service";
+import { emailDeliveryService } from "../services/email-delivery.service";
 import { referralService } from "../services/referral.service";
 import { fraudContextFromRequest } from "../lib/fraud-context";
 import {
@@ -17,8 +22,12 @@ import { fraudSignalService } from "../services/fraud-signal.service";
 import { consentService } from "../services/consent.service";
 import { assertUserMayAuthenticate, assertUserMayAuthenticateByEmail } from "../lib/user-auth-guard";
 import { FraudEventType } from "@prisma/client";
-import { GoogleOAuthService } from "../services/google-oauth.service";
-import { JWTService } from "../services/jwt.service";
+import {
+  GoogleOAuthService,
+  getGoogleAppDeepLink,
+  googleRedirectUriFor,
+} from "../services/google-oauth.service";
+import { JWT_CONFIG, JWTService } from "../services/jwt.service";
 import { oauthStateService } from "../services/oauth-state.service";
 import { OTPService } from "../services/otp.service";
 import { PasswordService } from "../services/password.service";
@@ -27,6 +36,9 @@ import { devicePushService } from "../services/device-push.service";
 import { SessionService } from "../services/session.service";
 import { partnerRegistrationService } from "../services/partner-registration.service";
 import { AuditLogService } from "../services/audit-log.service";
+import { tokenRevocationService } from "../services/token-revocation.service";
+import { userPiiService } from "../services/user-pii.service";
+import { getClientIp } from "../lib/client-ip";
 import { parseBody } from "../lib/route-security";
 import {
   changePasswordSchema,
@@ -46,15 +58,71 @@ const googleOAuthService = new GoogleOAuthService(prisma, jwtService, refreshTok
 const appleOAuthService = new AppleOAuthService(prisma, jwtService, refreshTokenService);
 const sessionService = new SessionService(prisma, refreshTokenService);
 
-/** Spec lock mode: registration is OTP-first. */
-const registerOtpRequired = true;
+/** OTP-first registration when REGISTER_REQUIRE_OTP=true or Twilio is configured. */
+const registerOtpRequired =
+  process.env.REGISTER_REQUIRE_OTP === "true" ||
+  (process.env.REGISTER_REQUIRE_OTP !== "false" &&
+    Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN));
 
-const getIp = (request: Request) =>
-  request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-  request.headers.get("x-real-ip") ||
-  "unknown";
+const isProd = process.env.NODE_ENV === "production";
+/** In dev, skip IP bucket — all local panels share one IP and false attempts pile up fast. */
+const LOGIN_FAIL_IP_LIMIT = isProd ? Number(process.env.LOGIN_FAIL_IP_LIMIT || 5) : 0;
+const LOGIN_FAIL_IP_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_FAIL_EMAIL_LIMIT = Number(process.env.LOGIN_FAIL_EMAIL_LIMIT || (isProd ? 10 : 100));
+const LOGIN_FAIL_EMAIL_WINDOW_MS = 60 * 60 * 1000;
 
-const requireAuthUser = (request: Request, set: { status?: number | string }) => {
+const loginRateLimitResponse = (set: { status?: number | string }, resetAt: number) => {
+  set.status = 429;
+  const retryAfter = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000));
+  return {
+    success: false,
+    error: "Too many login attempts. Please try again in 15 minutes.",
+    code: "RATE_LIMIT_EXCEEDED" as const,
+    retryAfter,
+  };
+};
+
+/** Per-IP burst gate on auth endpoints — always on (dev + prod) to block credential stuffing. */
+const AUTH_BURST_LIMIT = Number(process.env.AUTH_BURST_LIMIT || 15);
+const AUTH_BURST_WINDOW_MS = 60_000;
+
+/** Demo / E2E accounts bypass auth burst in non-production so Playwright + smoke:stack stay reliable. */
+const isE2eAuthBypass = (credentialKey?: string) =>
+  process.env.NODE_ENV !== "production" &&
+  typeof credentialKey === "string" &&
+  (credentialKey.endsWith("@homigo.demo") || credentialKey.endsWith("@homigo.test"));
+
+const enforceAuthEndpointBurst = async (
+  ip: string,
+  set: { status?: number | string },
+  opts?: { credentialKey?: string; scope?: "login" | "register" | "send-otp" | "forgot-password" },
+): Promise<ReturnType<typeof loginRateLimitResponse> | null> => {
+  if (isE2eAuthBypass(opts?.credentialKey)) return null;
+  const scope = opts?.scope ?? "auth";
+  const burst = await consumeRateLimitSmart(
+    `auth-burst:${scope}:${ip}`,
+    AUTH_BURST_LIMIT,
+    AUTH_BURST_WINDOW_MS,
+  );
+  if (!burst.allowed) {
+    incCounter("rate_limit_triggered_total", { scope: `auth_burst_${scope}` });
+    return loginRateLimitResponse(set, burst.resetAt);
+  }
+  if (opts?.credentialKey) {
+    const cred = await consumeRateLimitSmart(
+      `auth-burst:${scope}:cred:${opts.credentialKey}`,
+      AUTH_BURST_LIMIT,
+      AUTH_BURST_WINDOW_MS,
+    );
+    if (!cred.allowed) {
+      incCounter("rate_limit_triggered_total", { scope: `auth_burst_${scope}_credential` });
+      return loginRateLimitResponse(set, burst.resetAt);
+    }
+  }
+  return null;
+};
+
+const requireAuthUser = async (request: Request, set: { status?: number | string }) => {
   const header = request.headers.get("authorization");
   const token = header?.replace(/^Bearer\s+/i, "");
   const payload = token ? jwtService.verifyAccessToken(token) : null;
@@ -62,22 +130,49 @@ const requireAuthUser = (request: Request, set: { status?: number | string }) =>
     set.status = 401;
     return null;
   }
+  try {
+    await tokenRevocationService.assertAccessTokenValid(payload);
+  } catch {
+    set.status = 401;
+    return null;
+  }
   return { userId: payload.userId, email: payload.email, deviceId: payload.deviceId };
 };
 
 const recordLoginFailure = async (ip: string, emailNorm: string, set: { status?: number | string }) => {
-  const ipR = await consumeRateLimitSmart(`login-fail-ip:${ip}`, 5, 15 * 60 * 1000);
-  const emailR = await consumeRateLimitSmart(`login-fail-email:${emailNorm}`, 10, 60 * 60 * 1000);
-  if (!ipR.allowed || !emailR.allowed) {
-    set.status = 429;
-    return {
-      success: false,
-      error: "Too many login attempts. Please try again in 15 minutes.",
-      code: "RATE_LIMIT_EXCEEDED" as const,
-      retryAfter: 900,
-    };
+  incCounter("failed_login_total");
+  const ipKey = `login-fail-ip:${ip}`;
+  const emailKey = `login-fail-email:${emailNorm}`;
+
+  const ipPeek =
+    LOGIN_FAIL_IP_LIMIT > 0
+      ? await peekRateLimitSmart(ipKey, LOGIN_FAIL_IP_LIMIT, LOGIN_FAIL_IP_WINDOW_MS)
+      : { allowed: true, resetAt: Date.now() };
+  const emailPeek = await peekRateLimitSmart(
+    emailKey,
+    LOGIN_FAIL_EMAIL_LIMIT,
+    LOGIN_FAIL_EMAIL_WINDOW_MS,
+  );
+
+  if (!ipPeek.allowed) {
+    incCounter("suspicious_activity_total", { kind: "login_brute_force_ip" });
+    return loginRateLimitResponse(set, ipPeek.resetAt);
   }
+  if (!emailPeek.allowed) {
+    incCounter("suspicious_activity_total", { kind: "login_brute_force_email" });
+    return loginRateLimitResponse(set, emailPeek.resetAt);
+  }
+
+  if (LOGIN_FAIL_IP_LIMIT > 0) {
+    await consumeRateLimitSmart(ipKey, LOGIN_FAIL_IP_LIMIT, LOGIN_FAIL_IP_WINDOW_MS);
+  }
+  await consumeRateLimitSmart(emailKey, LOGIN_FAIL_EMAIL_LIMIT, LOGIN_FAIL_EMAIL_WINDOW_MS);
   return null;
+};
+
+const clearLoginFailureCounters = async (ip: string, emailNorm: string) => {
+  if (LOGIN_FAIL_IP_LIMIT > 0) await resetRateLimitSmart(`login-fail-ip:${ip}`);
+  await resetRateLimitSmart(`login-fail-email:${emailNorm}`);
 };
 
 const oauthPreCheck = async (ip: string, set: { status?: number | string }) => {
@@ -106,22 +201,31 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
   .post(
     "/register",
     async ({ body: raw, request, set }) => {
-      const ip = getIp(request);
-      const limiter = await consumeRateLimitSmart(`register:${ip}`, 10, 60 * 60 * 1000);
-      if (!limiter.allowed) {
-        set.status = 429;
-        return {
-          success: false,
-          error: "Rate limit exceeded",
-          code: "RATE_LIMIT_EXCEEDED",
-          retryAfter: 3600,
-        };
-      }
+      const ip = getClientIp(request);
+      const burstBlock = await enforceAuthEndpointBurst(ip, set, { scope: "register" });
+      if (burstBlock) return burstBlock;
 
       const body = parseBody(registerSchema, raw, {
         firstName: { maxLen: 50 },
         lastName: { maxLen: 50 },
       });
+      const e2eRegister =
+        process.env.NODE_ENV !== "production" &&
+        typeof body.email === "string" &&
+        (body.email.toLowerCase().endsWith("@homigo.test") ||
+          body.email.toLowerCase().endsWith("@homigo.demo"));
+      if (!e2eRegister) {
+        const limiter = await consumeRateLimitSmart(`register:${ip}`, 10, 60 * 60 * 1000);
+        if (!limiter.allowed) {
+          set.status = 429;
+          return {
+            success: false,
+            error: "Rate limit exceeded",
+            code: "RATE_LIMIT_EXCEEDED",
+            retryAfter: 3600,
+          };
+        }
+      }
 
       const passwordCheck = PasswordService.validatePasswordStrength(body.password);
       if (!passwordCheck.isValid || PasswordService.isSimilarToUsername(body.password, body.email)) {
@@ -148,13 +252,11 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         }
       }
 
-      const existing = await prisma.user.findUnique({ where: { email: body.email.toLowerCase() } });
-      if (existing) {
+      if (await userPiiService.emailExists(body.email)) {
         set.status = 409;
         return { success: false, error: "Email already registered", code: "EMAIL_EXISTS" };
       }
-      const phoneTaken = await prisma.user.findUnique({ where: { phoneNumber: body.phoneNumber } });
-      if (phoneTaken) {
+      if (await userPiiService.phoneExists(body.phoneNumber)) {
         set.status = 409;
         return { success: false, error: "Phone number already registered", code: "EMAIL_EXISTS" };
       }
@@ -174,6 +276,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         },
       });
       await prisma.passwordHistory.create({ data: { userId: user.id, passwordHash: hashedPassword } });
+      const contact = await userPiiService.resolveEmailAndPhone(user, { actorId: user.id });
 
       const fraudCtx = fraudContextFromRequest(request, user.id, {
         deviceId: body.deviceId,
@@ -210,19 +313,32 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
 
       void AuditLogService.success("REGISTER", {
         userId: user.id,
-        email: user.email,
         ipAddress: ip,
         userAgent: request.headers.get("user-agent"),
       });
 
+      if (contact.email) {
+        emailDeliveryService.sendWelcome(contact.email, user.firstName);
+      }
+
       if (specFlow) {
         const otpResult = await otpService.sendOTP(body.phoneNumber, user.id);
         if (!otpResult.success) {
-          set.status = otpResult.error === "TWILIO_NOT_CONFIGURED" ? 503 : 429;
+          set.status =
+            otpResult.error === "TWILIO_NOT_CONFIGURED"
+              ? 503
+              : otpResult.error === "SMS_DELIVERY_FAILED"
+                ? 502
+                : 429;
           return {
             success: false,
             error: otpResult.message,
-            code: otpResult.error === "TWILIO_NOT_CONFIGURED" ? "INTERNAL_ERROR" : "RATE_LIMIT_EXCEEDED",
+            code:
+              otpResult.error === "TWILIO_NOT_CONFIGURED"
+                ? "INTERNAL_ERROR"
+                : otpResult.error === "SMS_DELIVERY_FAILED"
+                  ? "SMS_DELIVERY_FAILED"
+                  : "RATE_LIMIT_EXCEEDED",
           };
         }
 
@@ -232,8 +348,8 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
           message: "Registration successful. OTP sent to phone.",
           data: {
             userId: user.id,
-            email: user.email,
-            phoneNumber: user.phoneNumber,
+            email: contact.email,
+            phoneNumber: contact.phoneNumber,
             firstName: user.firstName,
             lastName: user.lastName,
             otpRequired: true,
@@ -243,9 +359,9 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         };
       }
 
-      const accessToken = jwtService.generateAccessToken({ userId: user.id, email: user.email, deviceId: body.deviceId });
-      const refreshToken = await refreshTokenService.createRefreshToken({
+      const { accessToken, refreshToken } = await refreshTokenService.createSessionTokens({
         userId: user.id,
+        email: contact.email ?? body.email,
         deviceId: body.deviceId,
         deviceName: body.deviceName,
         userAgent: request.headers.get("user-agent") || undefined,
@@ -258,10 +374,10 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         success: true,
         message: "Registration successful",
         data: {
-          user,
+          user: { ...user, email: contact.email, phoneNumber: contact.phoneNumber },
           accessToken,
           refreshToken,
-          expiresIn: 3600,
+          expiresIn: JWT_CONFIG.ACCESS_TOKEN_SECONDS,
         },
       };
     },
@@ -286,14 +402,19 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     "/login",
     async ({ body: raw, request, set }) => {
       const body = parseBody(loginSchema, raw);
-      const ip = getIp(request);
+      const ip = getClientIp(request);
+      const burstBlock = await enforceAuthEndpointBurst(ip, set, {
+        scope: "login",
+        credentialKey: body.email.toLowerCase(),
+      });
+      if (burstBlock) return burstBlock;
+
       const emailNorm = body.email;
 
-      const user = await prisma.user.findUnique({ where: { email: emailNorm } });
+      const user = await userPiiService.findByEmail(emailNorm);
       if (!user || !user.password) {
         const block = await recordLoginFailure(ip, emailNorm, set);
         void AuditLogService.failure("FAILED_LOGIN", {
-          email: emailNorm,
           ipAddress: ip,
           userAgent: request.headers.get("user-agent"),
           reason: block ? "rate_limited" : "unknown_email",
@@ -316,7 +437,6 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         const block = await recordLoginFailure(ip, emailNorm, set);
         void AuditLogService.failure("FAILED_LOGIN", {
           userId: user.id,
-          email: emailNorm,
           ipAddress: ip,
           userAgent: request.headers.get("user-agent"),
           reason: block ? "rate_limited" : "bad_password",
@@ -338,14 +458,17 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         }
       }
 
-      const accessToken = jwtService.generateAccessToken({ userId: user.id, email: user.email, deviceId: body.deviceId });
-      const refreshToken = await refreshTokenService.createRefreshToken({
+      const loginContact = await userPiiService.resolveEmailAndPhone(user, { actorId: user.id });
+      const { accessToken, refreshToken } = await refreshTokenService.createSessionTokens({
         userId: user.id,
+        email: loginContact.email ?? emailNorm,
         deviceId: body.deviceId,
         deviceName: body.deviceName,
         userAgent: request.headers.get("user-agent") || undefined,
         ipAddress: ip,
       });
+
+      await clearLoginFailureCounters(ip, emailNorm);
 
       await prisma.user.update({
         where: { id: user.id },
@@ -354,7 +477,6 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
 
       void AuditLogService.success("LOGIN", {
         userId: user.id,
-        email: user.email,
         ipAddress: ip,
         userAgent: request.headers.get("user-agent"),
       });
@@ -368,10 +490,10 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
           userId: user.id,
           accessToken,
           refreshToken,
-          expiresIn: 3600,
+          expiresIn: JWT_CONFIG.ACCESS_TOKEN_SECONDS,
           user: {
             id: user.id,
-            email: user.email,
+            email: loginContact.email,
             firstName: user.firstName,
             lastName: user.lastName,
             profileImage: user.profileImage,
@@ -402,11 +524,34 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         return { success: false, error: "Invalid or expired token", code: "UNAUTHORIZED" };
       }
 
+      const rawAccess = authHeader?.replace(/^Bearer\s+/i, "");
+      if (rawAccess) {
+        await tokenRevocationService.revokeAccessTokenFromRaw(
+          rawAccess,
+          payload.userId,
+          "LOGOUT",
+          payload.userId,
+          {
+            ipAddress: getClientIp(request),
+            userAgent: request.headers.get("user-agent") || undefined,
+          },
+          (t) => jwtService.decodeToken(t),
+        );
+      }
+
       if (body.allDevices) {
-        await refreshTokenService.revokeAllUserTokens(payload.userId);
+        await refreshTokenService.revokeAllUserTokens(
+          payload.userId,
+          "LOGOUT",
+          payload.userId,
+          {
+            ipAddress: getClientIp(request),
+            userAgent: request.headers.get("user-agent") || undefined,
+          },
+        );
         await devicePushService.revokeAll(payload.userId);
       } else if (body.refreshToken) {
-        await refreshTokenService.revokeRefreshToken(body.refreshToken);
+        await refreshTokenService.revokeRefreshToken(body.refreshToken, "LOGOUT");
       } else if (body.deviceId) {
         await refreshTokenService.revokeDeviceToken(payload.userId, body.deviceId);
         await devicePushService.revokeDevice(payload.userId, body.deviceId);
@@ -414,7 +559,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
 
       void AuditLogService.success("LOGOUT", {
         userId: payload.userId,
-        ipAddress: getIp(request),
+        ipAddress: getClientIp(request),
         userAgent: request.headers.get("user-agent"),
         details: { allDevices: Boolean(body.allDevices) },
       });
@@ -438,12 +583,17 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       deviceId: body.deviceId,
       deviceName: body.deviceName,
       userAgent: request.headers.get("user-agent") || undefined,
-      ipAddress: getIp(request),
+      ipAddress: getClientIp(request),
     });
     if (!result.success) {
+      incCounter("jwt_refresh_total", { outcome: "failure" });
+      incCounter("auth_refresh_total", { outcome: "failure" });
+      incCounter("auth_refresh_failures");
       set.status = 401;
       return { success: false, error: "Invalid or expired refresh token", code: "INVALID_TOKEN" };
     }
+    incCounter("jwt_refresh_total", { outcome: "success" });
+    incCounter("auth_refresh_total", { outcome: "success" });
     if (body.setAuthCookies !== false && result.accessToken && result.refreshToken) {
       appendAuthCookies(set, result.accessToken, result.refreshToken);
     }
@@ -452,7 +602,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       data: {
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
-        expiresIn: 3600,
+        expiresIn: JWT_CONFIG.ACCESS_TOKEN_SECONDS,
       },
     };
   }, {
@@ -463,16 +613,35 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       setAuthCookies: t.Optional(t.Boolean()),
     }),
   })
-  .post("/send-otp", async ({ body: raw, set }) => {
+  .post("/send-otp", async ({ body: raw, request, set }) => {
+    const ip = getClientIp(request);
     const body = parseBody(otpRequestSchema, raw);
+    const burstBlock = await enforceAuthEndpointBurst(ip, set, {
+      scope: "send-otp",
+      credentialKey: body.phoneNumber,
+    });
+    if (burstBlock) return burstBlock;
     const result = await otpService.sendOTP(body.phoneNumber, body.userId);
     if (!result.success) {
-      set.status = result.error === "TWILIO_NOT_CONFIGURED" ? 503 : 429;
+      set.status =
+        result.error === "TWILIO_NOT_CONFIGURED"
+          ? 503
+          : result.error === "SMS_DELIVERY_FAILED"
+            ? 502
+            : 429;
       return {
         success: false,
         error: result.message,
-        code: result.error === "TWILIO_NOT_CONFIGURED" ? ("INTERNAL_ERROR" as const) : ("RATE_LIMIT_EXCEEDED" as const),
-        retryAfter: result.error === "TWILIO_NOT_CONFIGURED" ? undefined : 3600,
+        code:
+          result.error === "TWILIO_NOT_CONFIGURED"
+            ? ("INTERNAL_ERROR" as const)
+            : result.error === "SMS_DELIVERY_FAILED"
+              ? ("SMS_DELIVERY_FAILED" as const)
+              : ("RATE_LIMIT_EXCEEDED" as const),
+        retryAfter:
+          result.error === "TWILIO_NOT_CONFIGURED" || result.error === "SMS_DELIVERY_FAILED"
+            ? undefined
+            : 3600,
       };
     }
     return {
@@ -487,9 +656,13 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
   }, { body: t.Object({ phoneNumber: t.String(), userId: t.Optional(t.String()) }) })
   .post("/verify-otp", async ({ body: raw, request, set }) => {
     const body = parseBody(otpVerifyAuthSchema, raw);
-    const phone = body.phoneNumber ?? (body.email
-      ? (await prisma.user.findUnique({ where: { email: body.email } }))?.phoneNumber
-      : undefined);
+    let phone = body.phoneNumber;
+    if (!phone && body.email) {
+      const emailUser = await userPiiService.findByEmail(body.email);
+      phone = emailUser
+        ? (await userPiiService.resolvePhone(emailUser, { actorId: emailUser.id, authorized: true })) ?? undefined
+        : undefined;
+    }
     if (!phone) {
       set.status = 404;
       return { success: false, error: "User not found", code: "USER_NOT_FOUND" };
@@ -506,13 +679,13 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       };
     }
 
-    const user = await prisma.user.findFirst({
-      where: body.email
-        ? { email: body.email.toLowerCase() }
-        : body.userId
-          ? { id: body.userId }
-          : { phoneNumber: phone },
-    });
+    const user = body.email
+      ? await userPiiService.findByEmail(body.email)
+      : body.userId
+        ? await prisma.user.findUnique({ where: { id: body.userId } })
+        : phone
+          ? await userPiiService.findByPhone(phone)
+          : null;
     if (!user) {
       set.status = 404;
       return { success: false, error: "User not found", code: "USER_NOT_FOUND" };
@@ -541,9 +714,10 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
         request.headers.get("x-real-ip") ||
         "unknown";
-      const accessToken = jwtService.generateAccessToken({ userId: user.id, email: user.email, deviceId: body.deviceId });
-      const refreshToken = await refreshTokenService.createRefreshToken({
+      const otpContact = await userPiiService.resolveEmailAndPhone(user, { actorId: user.id });
+      const { accessToken, refreshToken } = await refreshTokenService.createSessionTokens({
         userId: user.id,
+        email: otpContact.email ?? body.email ?? "",
         deviceId: body.deviceId,
         deviceName: body.deviceName,
         userAgent: request.headers.get("user-agent") || undefined,
@@ -558,10 +732,10 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
           isPhoneVerified: true,
           accessToken,
           refreshToken,
-          expiresIn: 3600,
+          expiresIn: JWT_CONFIG.ACCESS_TOKEN_SECONDS,
           user: {
             id: user.id,
-            email: user.email,
+            email: otpContact.email,
             firstName: user.firstName,
             lastName: user.lastName,
             role: user.role,
@@ -588,9 +762,12 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
   .post("/google/authorize", ({ body, set }) => {
     try {
       const state = oauthStateService.issue("google", body.state);
+      // The mobile app needs Google to come back to THIS API (which then deep-links
+      // into the app); the web app keeps its own callback page.
+      const redirectUri = googleRedirectUriFor(body.platform);
       return {
         success: true,
-        data: { url: googleOAuthService.getAuthorizationUrl(state), state },
+        data: { url: googleOAuthService.getAuthorizationUrl(state, redirectUri), state, redirectUri },
       };
     } catch (error) {
       set.status = 503;
@@ -600,9 +777,40 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         code: "SERVICE_UNAVAILABLE" as const,
       };
     }
-  }, { body: t.Object({ state: t.Optional(t.String()) }) })
+  }, {
+    body: t.Object({
+      state: t.Optional(t.String()),
+      platform: t.Optional(t.Union([t.Literal("web"), t.Literal("mobile")])),
+    }),
+  })
+  /**
+   * Bridge for the mobile app: Google redirects the phone's browser here, and we
+   * bounce it into the app over its custom scheme. Google will not accept a
+   * custom scheme as a Web-client redirect URI, so this hop is what makes native
+   * sign-in possible without a separate Android/iOS OAuth client.
+   *
+   * Carries no secrets — just the opaque code and the state the app already
+   * issued and will validate. The code is still exchanged server-side.
+   */
+  .get("/google/mobile-callback", ({ query, set }) => {
+    const target = new URL(getGoogleAppDeepLink());
+    for (const key of ["code", "state", "error"] as const) {
+      const value = query[key];
+      if (value) target.searchParams.set(key, value);
+    }
+    set.status = 302;
+    set.headers["location"] = target.toString();
+    set.headers["cache-control"] = "no-store";
+    return "";
+  }, {
+    query: t.Object({
+      code: t.Optional(t.String()),
+      state: t.Optional(t.String()),
+      error: t.Optional(t.String()),
+    }),
+  })
   .post("/google/callback", async ({ body, request, set }) => {
-    const ip = getIp(request);
+    const ip = getClientIp(request);
     const pre = await oauthPreCheck(ip, set);
     if (pre) return pre;
     const stateOk = oauthStateService.consume("google", body.state);
@@ -611,11 +819,16 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       return { success: false, error: "Invalid authorization code", code: "INVALID_CODE" };
     }
     try {
-      const result = await googleOAuthService.processCallback(body.code, {
-        deviceId: body.deviceId,
-        userAgent: request.headers.get("user-agent") || undefined,
-        ipAddress: ip,
-      });
+      // Must match the redirect_uri used at authorize or Google rejects the exchange.
+      const result = await googleOAuthService.processCallback(
+        body.code,
+        {
+          deviceId: body.deviceId,
+          userAgent: request.headers.get("user-agent") || undefined,
+          ipAddress: ip,
+        },
+        googleRedirectUriFor(body.platform),
+      );
       if (result.isNewUser) {
         const fraudCtx = fraudContextForOAuth(request, result.user.id, body);
         await handleNewOAuthUser(result.user.id, fraudCtx, body.referralCode);
@@ -642,6 +855,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       timezone: t.Optional(t.String()),
       referralCode: t.Optional(t.String()),
       setAuthCookies: t.Optional(t.Boolean()),
+      platform: t.Optional(t.Union([t.Literal("web"), t.Literal("mobile")])),
     }),
   })
   .post("/apple/authorize", ({ body }) => ({
@@ -652,7 +866,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     })(),
   }), { body: t.Object({ state: t.Optional(t.String()) }) })
   .post("/apple/callback", async ({ body, request, set }) => {
-    const ip = getIp(request);
+    const ip = getClientIp(request);
     const pre = await oauthPreCheck(ip, set);
     if (pre) return pre;
     const stateOk = oauthStateService.consume("apple", body.state);
@@ -700,7 +914,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
   })
   .post("/forgot-password", async ({ body: raw, request, set }) => {
     const body = parseBody(forgotPasswordSchema, raw);
-    const ip = getIp(request);
+    const ip = getClientIp(request);
     const limiter = await consumeRateLimitSmart(`forgot:${ip}`, 5, 60 * 60 * 1000);
     if (!limiter.allowed) {
       set.status = 429;
@@ -712,7 +926,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       };
     }
 
-    const user = await prisma.user.findUnique({ where: { email: body.email } });
+    const user = await userPiiService.findByEmail(body.email);
     set.status = 200;
     const genericResponse = {
       success: true,
@@ -720,6 +934,9 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       data: { expiresIn: 1800 },
     };
     if (!user) return genericResponse;
+
+    const userEmail = await userPiiService.resolveEmail(user, { actorId: user.id, authorized: true });
+    if (!userEmail) return genericResponse;
 
     const rawToken = crypto.randomBytes(32).toString("hex");
     const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
@@ -733,17 +950,13 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
 
     void AuditLogService.success("PASSWORD_RESET_REQUEST", {
       userId: user.id,
-      email: user.email,
       ipAddress: ip,
       userAgent: request.headers.get("user-agent"),
     });
 
-    const result = await emailService.sendPasswordReset(user.email, rawToken, user.firstName);
+    emailDeliveryService.sendPasswordReset(userEmail, rawToken, user.firstName);
     if (process.env.NODE_ENV !== "production") {
-      console.log(`[RESET TOKEN] ${user.email}: ${rawToken} (delivery=${result.provider} ok=${result.delivered})`);
-    }
-    if (!result.delivered && process.env.NODE_ENV === "production") {
-      console.error(`[EMAIL_FAILED] reset email to ${user.email}: ${result.error}`);
+      console.log(`[RESET TOKEN] user=${user.id}: ${rawToken}`);
     }
     return genericResponse;
   }, { body: t.Object({ email: t.String({ format: "email" }) }) })
@@ -760,8 +973,9 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       set.status = 400;
       return { success: false, error: "Invalid/expired reset token", code: "INVALID_INPUT" };
     }
+    const resetEmail = await userPiiService.resolveEmail(user, { actorId: user.id, authorized: true });
     const strength = PasswordService.validatePasswordStrength(body.newPassword);
-    if (!strength.isValid || PasswordService.isSimilarToUsername(body.newPassword, user.email)) {
+    if (!strength.isValid || (resetEmail && PasswordService.isSimilarToUsername(body.newPassword, resetEmail))) {
       set.status = 400;
       return { success: false, error: "Weak password", code: "INVALID_INPUT", details: strength.errors };
     }
@@ -785,8 +999,8 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       },
     });
     await prisma.passwordHistory.create({ data: { userId: user.id, passwordHash } });
-    await refreshTokenService.revokeAllUserTokens(user.id);
-    void AuditLogService.success("PASSWORD_RESET", { userId: user.id, email: user.email });
+    await refreshTokenService.revokeAllUserTokens(user.id, "PASSWORD_RESET", user.id);
+    void AuditLogService.success("PASSWORD_RESET", { userId: user.id });
     return { success: true };
   }, { body: t.Object({ token: t.String(), newPassword: t.String({ minLength: 8 }) }) })
   // Verify email via a single-use, 24h, hashed token (sent by email). Public:
@@ -816,13 +1030,14 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         emailVerificationExpires: null,
       },
     });
-    void AuditLogService.success("EMAIL_VERIFIED", { userId: user.id, email: user.email });
-    return { success: true, data: { emailVerified: true, emailVerifiedAt: verifiedAt, email: user.email } };
+    const verifiedEmail = await userPiiService.resolveEmail(user, { actorId: user.id, authorized: true });
+    void AuditLogService.success("EMAIL_VERIFIED", { userId: user.id });
+    return { success: true, data: { emailVerified: true, emailVerifiedAt: verifiedAt, email: verifiedEmail } };
   }, { body: t.Object({ token: t.String({ minLength: 10 }) }) })
   // Send (or resend) the verification email. Authed: only the logged-in user can
   // request verification for their own email. Rate-limited to curb spam.
   .post("/send-verification-email", async ({ request, set }) => {
-    const authUser = requireAuthUser(request, set);
+    const authUser = await requireAuthUser(request, set);
     if (!authUser) {
       return { success: false, error: "Unauthorized", code: "UNAUTHORIZED" };
     }
@@ -852,14 +1067,17 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       where: { id: user.id },
       data: { emailVerificationToken: tokenHash, emailVerificationExpires: expiresAt },
     });
-    void emailService.sendVerificationEmail(user.email, rawToken, user.firstName).catch(() => {});
+    const verifyEmail = await userPiiService.resolveEmail(user, { actorId: user.id, authorized: true });
+    if (verifyEmail) {
+      emailDeliveryService.sendVerification(verifyEmail, rawToken, user.firstName);
+    }
     return {
       success: true,
-      data: { message: "Verification email sent", email: user.email, sentAt: new Date(), expiresAt },
+      data: { message: "Verification email sent", email: verifyEmail, sentAt: new Date(), expiresAt },
     };
   })
   .get("/sessions", async ({ request, set, query }) => {
-    const authUser = requireAuthUser(request, set);
+    const authUser = await requireAuthUser(request, set);
     if (!authUser) {
       return { success: false, error: "Unauthorized", code: "UNAUTHORIZED" };
     }
@@ -872,7 +1090,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     };
   }, { query: t.Object({ deviceId: t.Optional(t.String()) }) })
   .delete("/sessions", async ({ request, set }) => {
-    const authUser = requireAuthUser(request, set);
+    const authUser = await requireAuthUser(request, set);
     if (!authUser) {
       return { success: false, error: "Unauthorized", code: "UNAUTHORIZED" };
     }
@@ -880,7 +1098,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     return { success: true, data: { revoked: count } };
   })
   .delete("/sessions/others", async ({ request, set, query }) => {
-    const authUser = requireAuthUser(request, set);
+    const authUser = await requireAuthUser(request, set);
     if (!authUser) {
       return { success: false, error: "Unauthorized", code: "UNAUTHORIZED" };
     }
@@ -890,7 +1108,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
   .patch(
     "/sessions/:id/activity",
     async ({ request, params, set }) => {
-      const authUser = requireAuthUser(request, set);
+      const authUser = await requireAuthUser(request, set);
       if (!authUser) {
         return { success: false, error: "Unauthorized", code: "UNAUTHORIZED" };
       }
@@ -900,7 +1118,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     { params: t.Object({ id: t.String() }) }
   )
   .delete("/sessions/:id", async ({ request, params, set, query }) => {
-    const authUser = requireAuthUser(request, set);
+    const authUser = await requireAuthUser(request, set);
     if (!authUser) {
       return { success: false, error: "Unauthorized", code: "UNAUTHORIZED" };
     }
@@ -918,7 +1136,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     return { success: true };
   }, { params: t.Object({ id: t.String() }), query: t.Object({ deviceId: t.Optional(t.String()) }) })
   .post("/change-password", async ({ request, body: raw, set }) => {
-    const authUser = requireAuthUser(request, set);
+    const authUser = await requireAuthUser(request, set);
     if (!authUser) {
       return { success: false, error: "Unauthorized", code: "UNAUTHORIZED" };
     }
@@ -937,8 +1155,9 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       return { success: false, error: "Current password is invalid", code: "INVALID_CREDENTIALS" };
     }
 
+    const changeEmail = await userPiiService.resolveEmail(user, { actorId: user.id, authorized: true });
     const strength = PasswordService.validatePasswordStrength(body.newPassword);
-    if (!strength.isValid || PasswordService.isSimilarToUsername(body.newPassword, user.email)) {
+    if (!strength.isValid || (changeEmail && PasswordService.isSimilarToUsername(body.newPassword, changeEmail))) {
       set.status = 400;
       return { success: false, error: "Weak password", code: "INVALID_INPUT", details: strength.errors };
     }
@@ -963,11 +1182,10 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       data: { password: nextHash, passwordChangedAt: new Date() },
     });
     await prisma.passwordHistory.create({ data: { userId: user.id, passwordHash: nextHash } });
-    await refreshTokenService.revokeAllUserTokens(user.id);
+    await refreshTokenService.revokeAllUserTokens(user.id, "PASSWORD_RESET", user.id);
     void AuditLogService.success("PASSWORD_CHANGE", {
       userId: user.id,
-      email: user.email,
-      ipAddress: getIp(request),
+      ipAddress: getClientIp(request),
       userAgent: request.headers.get("user-agent"),
     });
     return { success: true };

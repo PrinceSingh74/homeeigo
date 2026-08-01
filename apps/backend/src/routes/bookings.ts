@@ -1,13 +1,17 @@
 import { Elysia, t } from "elysia";
 import { authPlugin } from "../plugins/auth.plugin";
 import { bookingService } from "../services/booking.service";
+import { bookingRefundService } from "../services/booking-refund.service";
+import { cancellationPolicyService } from "../services/cancellation-policy.service";
 import { parseBody } from "../lib/route-security";
 import {
   bookingCancelRouteSchema,
+  bookingPriceQuoteSchema,
   createBookingSchema,
   geoPingSchema,
   updateBookingCustomerSchema,
 } from "../schemas/booking.schema";
+import { bookingPricingService } from "../services/booking-pricing.service";
 import { bookingAcceptSchema, bookingRejectSchema } from "../schemas/provider.schema";
 import { validate } from "../middleware/validation.middleware";
 import { idParamSchema } from "../schemas/common.schema";
@@ -19,6 +23,78 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
     const data = await bookingService.upcoming(userId);
     return { success: true, data };
   })
+  .post(
+    "/price-quote",
+    async ({ requireAuth, body: raw, set }) => {
+      const { userId } = requireAuth();
+      const body = parseBody(bookingPriceQuoteSchema, raw);
+      const result = await bookingPricingService.quote({
+        userId,
+        serviceId: body.serviceId,
+        couponCode: body.couponCode,
+        packagePrice: body.packagePrice,
+        addonIds: body.addonIds,
+        lat: body.lat,
+        lng: body.lng,
+      });
+      if (!result.ok) {
+        if (result.error === "UPGRADE_REQUIRED") {
+          set.status = 403;
+          return {
+            success: false,
+            error: "Premium membership required for this service",
+            code: "UPGRADE_REQUIRED",
+          };
+        }
+        if (result.error === "INVALID_PACKAGE_PRICE") {
+          set.status = 400;
+          return { success: false, error: "Invalid package selection", code: "INVALID_PACKAGE_PRICE" };
+        }
+        set.status = 400;
+        return { success: false, error: "Invalid service", code: "VALIDATION_ERROR" };
+      }
+      return { success: true, data: { quote: result.breakdown } };
+    },
+    { body: bookingPriceQuoteSchema },
+  )
+  .get("/cancellation-policy", async () => {
+    return {
+      success: true,
+      data: {
+        tiers: cancellationPolicyService.listPublicTiers(),
+        providerCancel: "Full refund when the professional cancels.",
+        walletNote: "Wallet payments are refunded instantly to your HOMEEIGO wallet.",
+        gatewayNote: "Card/UPI refunds typically arrive in 5–7 business days.",
+      },
+    };
+  })
+  .get(
+    "/:id/cancellation-quote",
+    async ({ requireAuth, params: rawParams, set }) => {
+      const auth = requireAuth();
+      const params = validate(idParamSchema, rawParams);
+      const booking = await bookingService.getBookingAccess(params.id);
+      if (!booking) {
+        set.status = 404;
+        return { success: false, error: "Booking not found", code: "NOT_FOUND" };
+      }
+      const isOwner = booking.userId === auth.userId;
+      const isProvider = auth.providerId && booking.providerId === auth.providerId;
+      if (!isOwner && !isProvider) {
+        set.status = 404;
+        return { success: false, error: "Booking not found", code: "NOT_FOUND" };
+      }
+      const quote = await bookingRefundService.quoteForBooking(
+        params.id,
+        isProvider ? "provider" : "user",
+      );
+      if (!quote) {
+        set.status = 404;
+        return { success: false, error: "Booking not found", code: "NOT_FOUND" };
+      }
+      return { success: true, data: { quote } };
+    },
+  )
   .post(
     "/",
     async ({ requireVerifiedEmail, body: raw, set }) => {
@@ -43,6 +119,10 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
           error: "This is a premium-only service. Upgrade your membership to book it.",
           code: "UPGRADE_REQUIRED",
         };
+      }
+      if (result.error === "INVALID_PACKAGE_PRICE") {
+        set.status = 400;
+        return { success: false, error: "Invalid package selection", code: "INVALID_PACKAGE_PRICE" };
       }
       if (
         result.error &&
@@ -80,6 +160,11 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         description: t.Optional(t.String()),
         paymentMethod: t.Optional(t.String()),
         couponCode: t.Optional(t.String()),
+        // Package tier + add-ons — validated against the server catalog in
+        // bookingPricingService (Elysia strips fields missing from this schema,
+        // which used to silently drop the client's selection).
+        packagePrice: t.Optional(t.Number()),
+        addonIds: t.Optional(t.Array(t.String())),
       }),
     },
   )
@@ -114,6 +199,25 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         set.status = 404;
         return { success: false, error: "Booking not found", code: "NOT_FOUND" };
       }
+      if (result.error === "PROVIDER_UNAVAILABLE") {
+        set.status = 400;
+        return { success: false, error: "Provider is not available", code: "PROVIDER_UNAVAILABLE" };
+      }
+      if (result.error === "OVERLAPPING_BOOKING") {
+        set.status = 409;
+        return { success: false, error: "You have an overlapping booking", code: "OVERLAPPING_BOOKING" };
+      }
+      if (result.error === "POOL_BUSY") {
+        const retryAfter = 3;
+        set.status = 429;
+        set.headers["Retry-After"] = String(retryAfter);
+        return {
+          success: false,
+          error: "System busy. Please retry in a few seconds.",
+          code: "POOL_BUSY",
+          retryAfter,
+        };
+      }
       return { success: true, message: "Booking updated successfully" };
     },
     {
@@ -129,19 +233,34 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
       const { providerId } = requireProvider();
       const params = validate(idParamSchema, rawParams);
       const body = parseBody(bookingAcceptSchema, raw);
-      const booking = await bookingService.accept(providerId!, params.id, body.eta);
-      if (!booking) {
-        set.status = 400;
-        return { success: false, error: "Cannot accept booking", code: "INVALID_STATUS" };
+      const result = await bookingService.accept(providerId!, params.id, body.eta);
+      if (!result.ok) {
+        set.status = result.error === "NOT_FOUND" ? 404 : 400;
+        const error =
+          result.error === "PROVIDER_UNAVAILABLE"
+            ? "Provider is not available"
+            : result.error === "NOT_FOUND"
+              ? "This request is not assigned to you or has expired"
+              : result.error === "ALREADY_CLAIMED"
+                ? "Another professional already accepted this job"
+                : result.error === "INVALID_STATUS"
+                  ? "This booking can no longer be accepted"
+                  : "Cannot accept booking";
+        return {
+          success: false,
+          error,
+          code: result.error,
+        };
       }
       return {
         success: true,
-        message: "Booking accepted",
+        message: result.newlyAccepted ? "Booking accepted" : "Booking already accepted",
         data: {
+          newlyAccepted: result.newlyAccepted,
           booking: {
-            id: booking.id,
+            id: result.booking.id,
             status: "accepted",
-            provider: { name: booking.provider?.user.firstName },
+            provider: { name: result.booking.provider?.user.firstName },
           },
         },
       };
@@ -150,12 +269,16 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
   )
   .post(
     "/:id/reject",
-    async ({ requireProvider, params: rawParams, body: raw }) => {
+    async ({ requireProvider, params: rawParams, body: raw, set }) => {
       const { providerId } = requireProvider();
       const params = validate(idParamSchema, rawParams);
       const body = parseBody(bookingRejectSchema, raw, { reason: { maxLen: 500 } });
-      await bookingService.reject(providerId!, params.id, body.reason);
-      return { success: true, message: "Booking rejected" };
+      const result = await bookingService.reject(providerId!, params.id, body.reason);
+      if (result && "error" in result) {
+        set.status = 404;
+        return { success: false, error: "Request not found or expired", code: "NOT_FOUND" };
+      }
+      return { success: true, message: "Declined — we're finding another professional" };
     },
     { body: t.Object({ reason: t.String() }) },
   )
@@ -231,22 +354,27 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         params.id,
         body.reason,
       );
-      if (result.error === "INVALID_STATUS") {
+      if ("error" in result && result.error === "INVALID_STATUS") {
         set.status = 400;
         return { success: false, error: "Cannot cancel a completed booking", code: "INVALID_STATUS" };
       }
-      if (result.error === "NOT_FOUND") {
+      if ("error" in result && result.error === "NOT_FOUND") {
         set.status = 404;
         return { success: false, error: "Booking not found", code: "NOT_FOUND" };
-      }
-      if (result.error === "REFUND_FAILED") {
-        set.status = 502;
-        return { success: false, error: "Refund could not be processed", code: "REFUND_FAILED" };
       }
       return {
         success: true,
         message: "Booking cancelled successfully",
-        data: { booking: { id: params.id, status: result.status, refundAmount: result.refundAmount } },
+        data: {
+          booking: {
+            id: params.id,
+            status: "status" in result ? result.status : undefined,
+            refundAmount: "refundAmount" in result ? result.refundAmount : 0,
+            refundStatus: "refundStatus" in result ? result.refundStatus : "none",
+            cancellationFee: "cancellationFee" in result ? result.cancellationFee : 0,
+            refundMessage: "refundMessage" in result ? result.refundMessage : undefined,
+          },
+        },
       };
     },
     {

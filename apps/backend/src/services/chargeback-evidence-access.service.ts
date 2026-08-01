@@ -1,27 +1,15 @@
 import crypto from "crypto";
 import fs from "fs";
-import path from "path";
 import prisma from "../lib/prisma";
 import { AuditLogService } from "./audit-log.service";
 import { recordFinancialMetric } from "../lib/financial-metrics";
-
-const EVIDENCE_DIR =
-  process.env.CHARGEBACK_EVIDENCE_DIR ||
-  path.join(process.cwd(), "uploads", "chargeback-evidence");
+import { objectStorageService } from "./object-storage.service";
 
 const TOKEN_TTL_MS = 5 * 60 * 1000;
 
 export class ChargebackEvidenceAccessService {
-  evidenceDir(): string {
-    if (!fs.existsSync(EVIDENCE_DIR)) fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
-    return EVIDENCE_DIR;
-  }
-
   resolveFilePath(storageKey: string): string {
-    const safe = path.basename(storageKey);
-    const filePath = path.join(this.evidenceDir(), safe);
-    if (!filePath.startsWith(this.evidenceDir())) throw new Error("INVALID_PATH");
-    return filePath;
+    return objectStorageService.resolveLocalPath("chargeback-evidence", storageKey);
   }
 
   async createDownloadToken(evidenceId: string, adminId: string): Promise<{
@@ -57,6 +45,7 @@ export class ChargebackEvidenceAccessService {
     fileName: string;
     mimeType: string;
     evidenceId: string;
+    buffer?: Buffer;
   }> {
     const row = await prisma.chargebackEvidenceDownloadToken.findUnique({
       where: { token },
@@ -80,8 +69,8 @@ export class ChargebackEvidenceAccessService {
       throw new Error("FORBIDDEN:Download token expired");
     }
 
-    const filePath = this.resolveFilePath(row.evidence.storageKey);
-    if (!fs.existsSync(filePath)) {
+    const exists = await objectStorageService.headObject("chargeback-evidence", row.evidence.storageKey);
+    if (!exists) {
       recordFinancialMetric("evidence_denied_total", 1);
       throw new Error("NOT_FOUND:Evidence file missing");
     }
@@ -96,6 +85,23 @@ export class ChargebackEvidenceAccessService {
       details: { evidenceId: row.evidenceId, chargebackId: row.evidence.chargebackId },
     });
     recordFinancialMetric("evidence_download_total", 1);
+
+    if (objectStorageService.isS3Enabled()) {
+      const buffer = await objectStorageService.getObjectBuffer("chargeback-evidence", row.evidence.storageKey);
+      return {
+        filePath: "",
+        fileName: row.evidence.fileName,
+        mimeType: row.evidence.mimeType,
+        evidenceId: row.evidenceId,
+        buffer,
+      };
+    }
+
+    const filePath = this.resolveFilePath(row.evidence.storageKey);
+    if (!fs.existsSync(filePath)) {
+      recordFinancialMetric("evidence_denied_total", 1);
+      throw new Error("NOT_FOUND:Evidence file missing");
+    }
 
     return {
       filePath,

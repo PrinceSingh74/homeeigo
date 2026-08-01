@@ -1,33 +1,19 @@
-import { JWTService } from "@/services/jwt.service";
+import { authenticateWsConnection, type WsConnectionAuth } from "../lib/ws-connection-auth";
+import { JWTService } from "../services/jwt.service";
 
 const jwt = new JWTService();
 
-export interface WSAuthData {
-  userId: string;
-  userType: "customer" | "vendor" | "admin";
-  email?: string;
-}
+export type WSAuthData = WsConnectionAuth;
 
-export function verifyWSToken(token: string): WSAuthData | null {
-  try {
-    if (!token) {
-      throw new Error("No token provided");
-    }
-
-    const decoded = jwt.verifyAccessToken(token);
-    if (!decoded || !decoded.userId) {
-      throw new Error("Invalid token payload");
-    }
-
-    return {
-      userId: decoded.userId,
-      userType: decoded.userType ?? "customer",
-      email: decoded.email,
-    };
-  } catch (error) {
-    console.error("[WSAuth] Token verification failed:", error);
-    return null;
-  }
+/** Legacy sync helper — signature/exp only; prefer authenticateWsConnection. */
+export function verifyWSToken(token: string): { userId: string; userType: WSAuthData["userType"]; email?: string } | null {
+  const decoded = jwt.verifyAccessToken(token);
+  if (!decoded?.userId) return null;
+  return {
+    userId: decoded.userId,
+    userType: decoded.userType ?? "customer",
+    email: decoded.email,
+  };
 }
 
 export function extractWSToken(ws: any): string | null {
@@ -49,15 +35,9 @@ export function extractWSToken(ws: any): string | null {
   }
 }
 
-export function attachAuthToWS(ws: any): WSAuthData | null {
+export async function attachAuthToWS(ws: any, endpoint = "unknown"): Promise<WSAuthData | null> {
   try {
-    const token = extractWSToken(ws);
-    if (!token) {
-      console.warn("[WSAuth] No token provided in WebSocket connection");
-      return null;
-    }
-
-    const authData = verifyWSToken(token);
+    const authData = await authenticateWsConnection(ws, endpoint);
     if (!authData) {
       console.warn("[WSAuth] Invalid WebSocket token");
       return null;

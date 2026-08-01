@@ -5,6 +5,14 @@ export type UserTypeClaim = "customer" | "vendor" | "admin";
 export type JwtPayload = {
   userId: string;
   email?: string;
+  /** Unique token id — used for access-token blacklist on logout. */
+  jti?: string;
+  /** Bumped on password reset / force logout to invalidate all outstanding access tokens. */
+  authEpoch?: number;
+  /** Refresh-token rotation family (refresh tokens only). */
+  familyId?: string;
+  /** Optional WebSocket connect nonce (must match X-WS-Nonce when present). */
+  wsNonce?: string;
   /**
    * Optional convenience claim — not all access tokens carry it, since the
    * canonical role lives in the DB. WebSocket handlers that need a strict

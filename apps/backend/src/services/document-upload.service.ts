@@ -8,6 +8,28 @@ const UPLOAD_DIR =
 
 const MAX_FILE_SIZE = Number(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024;
 
+/**
+ * Allowed KYC document types, validated by file SIGNATURE (magic bytes) — never by the
+ * user-supplied filename. A provider could otherwise upload `kyc.pdf` whose bytes are
+ * actually HTML/SVG and trigger stored XSS when an admin opens it during review.
+ * The stored extension/format is derived from the sniffed type, not the claimed name.
+ */
+const FILE_SIGNATURES: { format: "pdf" | "jpg" | "png" | "webp"; test: (b: Buffer) => boolean }[] = [
+  { format: "pdf", test: (b) => b.length > 4 && b.subarray(0, 5).toString("latin1") === "%PDF-" },
+  { format: "jpg", test: (b) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  { format: "png", test: (b) => b.length > 8 && b.subarray(0, 8).toString("hex") === "89504e470d0a1a0a" },
+  {
+    format: "webp",
+    test: (b) =>
+      b.length > 12 && b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP",
+  },
+];
+
+/** Returns the detected document format, or null if the bytes are not an allowed type. */
+export function detectDocumentFormat(buffer: Buffer): "pdf" | "jpg" | "png" | "webp" | null {
+  return FILE_SIGNATURES.find((s) => s.test(buffer))?.format ?? null;
+}
+
 export class DocumentUploadService {
   private ensureDir() {
     if (!fs.existsSync(UPLOAD_DIR)) {
@@ -33,12 +55,18 @@ export class DocumentUploadService {
       throw new Error("File exceeds maximum size (5MB)");
     }
 
+    // Content-based type check — reject anything that isn't a real PDF/JPG/PNG/WEBP,
+    // regardless of the filename the client claims (defends against stored XSS / RCE).
+    const fileFormat = detectDocumentFormat(file);
+    if (!fileFormat) {
+      throw new Error("INVALID_FILE_TYPE:Only PDF, JPG, PNG, or WEBP documents are allowed");
+    }
+
     await this.assertProviderOwnership(providerId, userId);
 
     this.ensureDir();
 
-    const ext = path.extname(fileName) || ".bin";
-    const fileFormat = ext.replace(".", "").toLowerCase() || "bin";
+    const ext = `.${fileFormat}`;
     const uniqueName = `${providerId}-${documentType}-${Date.now()}${ext}`;
     const filePath = path.join(UPLOAD_DIR, uniqueName);
 
@@ -99,6 +127,37 @@ export class DocumentUploadService {
     const basename = path.basename(documentUrl);
     const filePath = path.join(UPLOAD_DIR, basename);
     return fs.existsSync(filePath) ? filePath : null;
+  }
+
+  async verifyDocument(documentId: string, adminId: string, notes?: string) {
+    return prisma.providerDocument.update({
+      where: { id: documentId },
+      data: { isVerified: true, verifiedAt: new Date(), verificationNotes: notes ?? null },
+    });
+  }
+
+  async rejectDocument(documentId: string, reason: string) {
+    return prisma.providerDocument.update({
+      where: { id: documentId },
+      data: { isVerified: false, verificationNotes: reason },
+    });
+  }
+
+  async listAllPending(limit = 50) {
+    return prisma.providerDocument.findMany({
+      where: { isVerified: false },
+      orderBy: { uploadedAt: "desc" },
+      take: limit,
+      include: {
+        provider: {
+          select: {
+            id: true,
+            businessName: true,
+            user: { select: { firstName: true, lastName: true, email: true } },
+          },
+        },
+      },
+    });
   }
 }
 

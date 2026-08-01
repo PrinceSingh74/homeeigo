@@ -1,8 +1,12 @@
 import { Elysia } from "elysia";
-import { authMiddlewareInstance } from "../middleware/auth.middleware";
+import { JWTService } from "../services/jwt.service";
+import { tokenRevocationService } from "../services/token-revocation.service";
 import prisma from "../lib/prisma";
+import { incCounter } from "../lib/metrics";
 import type { UserRole } from "@prisma/client";
 import { partnerRegistrationService } from "../services/partner-registration.service";
+
+const jwtService = new JWTService();
 
 export type AuthUser = {
   userId: string;
@@ -16,10 +20,23 @@ export type AuthUser = {
 
 export type ProviderAuthUser = AuthUser & { providerId: string };
 
-export const authPlugin = new Elysia({ name: "auth-plugin" }).derive(
+export function createAuthPlugin(pluginName = "auth-plugin") {
+  return new Elysia({ name: pluginName }).derive(
   { as: "scoped" },
   async ({ request, set }) => {
-    const optional = authMiddlewareInstance.optionalAuth(request);
+    let optional: { userId: string; email?: string } | null = null;
+    const authHeader = request.headers.get("authorization");
+    const bearer = authHeader?.replace(/^Bearer\s+/i, "");
+    const payload = bearer ? jwtService.verifyAccessToken(bearer) : null;
+    // Security observability (P2): a presented-but-unverifiable bearer = invalid/expired/tampered JWT.
+    if (bearer && !payload) incCounter("jwt_failures_total");
+    if (payload?.userId) {
+      const tokenValid = await tokenRevocationService.isAccessTokenValid(payload);
+      if (tokenValid) {
+        optional = { userId: payload.userId, email: payload.email };
+      }
+    }
+
     let authUser: AuthUser | null = null;
     if (optional?.userId) {
       const user = await prisma.user.findUnique({
@@ -42,7 +59,7 @@ export const authPlugin = new Elysia({ name: "auth-plugin" }).derive(
       if (user && !user.deletedAt && user.isActive && !user.isBanned && !partnerBlock) {
         authUser = {
           userId: user.id,
-          email: user.email,
+          email: user.email ?? undefined,
           role: user.role,
           providerId: user.provider?.id,
           isEmailVerified: user.isEmailVerified,
@@ -77,6 +94,7 @@ export const authPlugin = new Elysia({ name: "auth-plugin" }).derive(
       const u = requireAuth();
       if (!roles.includes(u.role)) {
         set.status = 403;
+        incCounter("rbac_denied_total", { reason: "role_mismatch" });
         throw new Error("FORBIDDEN");
       }
       return u;
@@ -93,4 +111,7 @@ export const authPlugin = new Elysia({ name: "auth-plugin" }).derive(
 
     return { authUser, requireAuth, requireVerifiedEmail, requireRole, requireProvider };
   },
-);
+  );
+}
+
+export const authPlugin = createAuthPlugin();

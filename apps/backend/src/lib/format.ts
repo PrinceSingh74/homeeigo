@@ -109,15 +109,18 @@ export function formatServiceList(s: {
   slug: string;
   description: string;
   category: string;
+  subcategory: string | null;
   basePrice: number;
   minPrice: number | null;
   maxPrice: number | null;
   estimatedDuration: number;
+  durationRange: string | null;
   icon: string | null;
   thumbnail: string | null;
   isFeatured: boolean;
   isPopular: boolean;
   isPromoted: boolean;
+  premiumOnly: boolean;
   bookingCount: number;
 }) {
   return {
@@ -126,10 +129,12 @@ export function formatServiceList(s: {
     slug: s.slug,
     description: s.description,
     category: s.category,
+    subcategory: s.subcategory,
     basePrice: s.basePrice,
     minPrice: s.minPrice ?? s.basePrice,
     maxPrice: s.maxPrice ?? s.basePrice,
     estimatedDuration: s.estimatedDuration,
+    durationRange: s.durationRange,
     icon: s.icon,
     thumbnail: s.thumbnail,
     rating: 4.8,
@@ -138,5 +143,6 @@ export function formatServiceList(s: {
     isFeatured: s.isFeatured,
     isPopular: s.isPopular,
     isPromoted: s.isPromoted,
+    premiumOnly: s.premiumOnly,
   };
 }

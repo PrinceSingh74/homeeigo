@@ -2,7 +2,14 @@ import { CommissionStatus, FraudAlertStatus, FraudEventType, FraudRiskLevel } fr
 import prisma from "../lib/prisma";
 import { fraudSignalService } from "./fraud-signal.service";
 import { fraudRiskService } from "./fraud-risk.service";
+import { emailDeliveryService } from "./email-delivery.service";
 import type { FraudContext } from "../lib/fraud-context";
+
+function notifyFraudAlert(title: string, description: string, severity: FraudRiskLevel) {
+  const adminEmail = process.env.ADMIN_EMAIL || process.env.FRAUD_ALERT_EMAIL;
+  if (!adminEmail) return;
+  emailDeliveryService.sendFraudAlert(adminEmail, title, `${description} (severity: ${severity})`);
+}
 
 export class ReferralFraudService {
   async logDecision(opts: {
@@ -48,6 +55,11 @@ export class ReferralFraudService {
         description: opts.description,
         metadata: opts.metadata ? JSON.stringify(opts.metadata) : undefined,
       },
+    }).then((alert) => {
+      if (opts.severity === FraudRiskLevel.HIGH || opts.severity === FraudRiskLevel.CRITICAL) {
+        notifyFraudAlert(opts.title, opts.description, opts.severity);
+      }
+      return alert;
     });
   }
 

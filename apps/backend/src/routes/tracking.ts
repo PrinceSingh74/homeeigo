@@ -25,15 +25,19 @@ export const trackingRoutes = new Elysia({ prefix: "/api/tracking" })
         longitude: t.Number(),
         accuracy: t.Optional(t.Number()),
         altitude: t.Optional(t.Number()),
+        speed: t.Optional(t.Number()),
       }),
     },
   )
   .get("/:bookingId", async ({ requireAuth, params, set }) => {
     const auth = requireAuth();
+    // Admins may inspect any booking's live tracking (ops oversight);
+    // customers/providers stay scoped to their own bookings.
+    const isAdmin = auth.role === "ADMIN";
     const tracking = await trackingService.get(
       params.bookingId,
-      auth.providerId ? undefined : auth.userId,
-      auth.providerId,
+      isAdmin || auth.providerId ? undefined : auth.userId,
+      isAdmin ? undefined : auth.providerId,
     );
     if (!tracking) {
       set.status = 404;

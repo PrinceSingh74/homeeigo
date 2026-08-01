@@ -15,6 +15,18 @@ export const createBookingSchema = z.object({
   description: z.string().trim().max(1000, "Description too long").optional(),
   paymentMethod: z.string().trim().max(50).optional(),
   couponCode: z.string().trim().max(40).optional(),
+  packagePrice: z.number().positive().optional(),
+  addonIds: z.array(z.string().trim().max(40)).max(10).optional(),
+});
+
+export const bookingPriceQuoteSchema = z.object({
+  serviceId: idSchema,
+  couponCode: z.string().trim().max(40).optional(),
+  packagePrice: z.number().positive().optional(),
+  addonIds: z.array(z.string().trim().max(40)).max(10).optional(),
+  // Service location — enables weather-based dynamic surge in the quote.
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
 });
 
 export const updateBookingCustomerSchema = z.object({

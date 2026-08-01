@@ -48,11 +48,19 @@ export class ProductionValidationService {
       });
     }
 
+    if (redisClient.isEnabled && !redisClient.isAvailable) {
+      await redisClient.connect();
+    }
+    const redisOk = !redisClient.isEnabled || (await redisClient.healthCheck());
     checks.push({
       domain: "infrastructure",
       name: "redis_reachability",
-      status: !redisClient.isEnabled || (await redisClient.healthCheck()) ? "PASS" : "FAIL",
-      details: redisClient.isEnabled ? "configured" : "optional-disabled",
+      status: redisOk ? "PASS" : "FAIL",
+      details: redisClient.isEnabled
+        ? redisOk
+          ? "reachable"
+          : "configured-but-unreachable"
+        : "optional-disabled",
     });
 
     const wsStats = roomManager.getStats();

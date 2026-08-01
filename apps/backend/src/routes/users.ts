@@ -19,6 +19,7 @@ import { ratingService } from "../services/rating.service";
 import { accountLifecycleService } from "../services/account-lifecycle.service";
 import { dataExportService } from "../services/data-export.service";
 import { ACCOUNT_DELETION_RESTORE_DAYS } from "../lib/legal-policy";
+import { userPiiService } from "../services/user-pii.service";
 
 const userProfileSelect = {
   id: true,
@@ -42,6 +43,13 @@ const userProfileSelect = {
   createdAt: true,
   referralCode: true,
   referralCount: true,
+  emailEncrypted: true,
+  phoneEncrypted: true,
+  emailHash: true,
+  phoneHash: true,
+  emailEncryptionKeyVersion: true,
+  phoneEncryptionKeyVersion: true,
+  dataEncryptionStatus: true,
 } as const;
 
 const usersApp = new Elysia({ prefix: "/api/users" })
@@ -50,7 +58,8 @@ const usersApp = new Elysia({ prefix: "/api/users" })
     const { userId } = requireAuth();
     const user = await prisma.user.findUnique({ where: { id: userId }, select: userProfileSelect });
     if (!user) return { success: false, error: "User not found", code: "NOT_FOUND" };
-    return { success: true, data: { user: publicUser(user) } };
+    const withPii = await userPiiService.withDecryptedPii(user, { actorId: userId, authorized: true });
+    return { success: true, data: { user: publicUser(withPii) } };
   })
   .get("/me/export", async ({ requireAuth, query, set }) => {
     const { userId } = requireAuth();

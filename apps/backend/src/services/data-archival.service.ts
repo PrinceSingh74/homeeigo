@@ -18,8 +18,10 @@ export class DataArchivalService {
     let notificationsPruned = 0;
 
     appLogsPruned = await this.pruneInBatches("appLogEntry", cutoff);
-    activityLogsPruned = await this.pruneInBatches("activityLog", cutoff);
-    notificationsPruned = await this.pruneInBatches("notification", cutoff);
+    // Activity logs retained via enterprise audit retention (P4); do not hard-delete here.
+    notificationsPruned = await this.pruneInBatches("notification", cutoff, {
+      isArchived: true,
+    });
 
     logger.info("data_archival_completed", {
       category: "APPLICATION",
@@ -61,11 +63,12 @@ export class DataArchivalService {
   private async pruneInBatches(
     model: "appLogEntry" | "activityLog" | "notification",
     cutoff: Date,
+    extraWhere: Record<string, unknown> = {},
   ): Promise<number> {
     let total = 0;
     for (;;) {
       const rows = await (prisma[model] as { findMany: (args: unknown) => Promise<{ id: string }[]> }).findMany({
-        where: { createdAt: { lt: cutoff } },
+        where: { createdAt: { lt: cutoff }, ...extraWhere },
         select: { id: true },
         take: BATCH_SIZE,
       });

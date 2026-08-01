@@ -29,15 +29,21 @@ export function setOpsGauge(name: string, value: number, labels?: Record<string,
 
 export function renderOpsMetrics(): string {
   const lines: string[] = [];
-  for (const [key, value] of opsCounters) {
-    const name = key.split("{")[0]!;
-    lines.push(`# TYPE ${name} counter`);
-    lines.push(`${key} ${value}`);
-  }
-  for (const [key, value] of opsGauges) {
-    const name = key.split("{")[0]!;
-    lines.push(`# TYPE ${name} gauge`);
-    lines.push(`${key} ${value}`);
-  }
+  // Emit exactly ONE `# TYPE` line per metric NAME (multiple label-combos share it),
+  // otherwise strict Prometheus parsers reject duplicate TYPE declarations.
+  const emit = (entries: Iterable<[string, number]>, kind: "counter" | "gauge") => {
+    const byName = new Map<string, string[]>();
+    for (const [key, value] of entries) {
+      const name = key.split("{")[0]!;
+      if (!byName.has(name)) byName.set(name, []);
+      byName.get(name)!.push(`${key} ${value}`);
+    }
+    for (const [name, rows] of byName) {
+      lines.push(`# TYPE ${name} ${kind}`);
+      lines.push(...rows);
+    }
+  };
+  emit(opsCounters, "counter");
+  emit(opsGauges, "gauge");
   return lines.join("\n");
 }

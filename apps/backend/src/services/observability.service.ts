@@ -8,6 +8,9 @@ import { logAggregationService } from "./log-aggregation.service";
 import { opsAlertService } from "./ops-alert.service";
 import { financeAlertService } from "./finance-alert.service";
 import { alertEvaluatorService } from "./alert-evaluator.service";
+import { emailDeliveryService } from "./email-delivery.service";
+import { emailBreaker } from "../lib/circuit-breaker";
+import { emailService } from "./email.service";
 
 async function checkDatabase() {
   const start = Date.now();
@@ -24,6 +27,54 @@ async function checkDatabase() {
 }
 
 export class ObservabilityService {
+  async getEmailHealth() {
+    const summary = await emailDeliveryService.getHealthSummary();
+    const breakerState = emailBreaker.getState();
+    const recent = await prisma.emailLog.findMany({ orderBy: { createdAt: "desc" }, take: 20 });
+    return {
+      timestamp: new Date().toISOString(),
+      configured: emailService.isConfigured,
+      provider: summary.provider,
+      circuitBreaker: { state: breakerState, open: breakerState === "OPEN" },
+      delivery: {
+        queue: summary.queue,
+        retryPolicy: summary.retryPolicy,
+        bounceHandling: true,
+        ...summary.totals,
+      },
+      templates: {
+        wired: [
+          "password_reset",
+          "email_verification",
+          "welcome",
+          "booking_confirmation",
+          "booking_assigned",
+          "booking_completed",
+          "payment_receipt",
+          "partner_approval",
+          "partner_rejection",
+          "admin_alert",
+          "fraud_alert",
+        ],
+        partial: ["otp"],
+        smsOnly: ["otp"],
+      },
+      byType: summary.byType,
+      recent: recent.map((r) => ({
+        id: r.id,
+        to: r.to.replace(/(.{2}).+(@.+)/, "$1***$2"),
+        emailType: r.emailType,
+        status: r.status,
+        createdAt: r.createdAt.toISOString(),
+      })),
+      rateLimits: {
+        forgotPassword: "5/hour per IP",
+        emailVerify: "3/15min per user",
+        register: "10/hour per IP",
+      },
+    };
+  }
+
   async getHealthDashboard() {
     const [database, redis, wsStats, logStats, openOpsAlerts, openFinanceAlerts] =
       await Promise.all([
@@ -39,6 +90,21 @@ export class ObservabilityService {
 
     const pendingPayments = await prisma.payment.count({
       where: { status: "PENDING" },
+    });
+    const pendingWalletTopups = await prisma.walletTransaction.count({
+      where: {
+        status: "PENDING",
+        referenceType: "razorpay_order",
+        type: "CREDIT",
+      },
+    });
+    const staleWalletTopups = await prisma.walletTransaction.count({
+      where: {
+        status: "PENDING",
+        referenceType: "razorpay_order",
+        type: "CREDIT",
+        expiresAt: { lt: new Date() },
+      },
     });
     const pendingAssignments = await prisma.assignmentJob.count({
       where: { status: "PENDING" },
@@ -73,6 +139,11 @@ export class ObservabilityService {
         payments: {
           status: pendingPayments > 50 ? "degraded" : "healthy",
           pending: pendingPayments,
+        },
+        wallet: {
+          status: pendingWalletTopups > 200 || staleWalletTopups > 0 ? "degraded" : "healthy",
+          pendingTopups: pendingWalletTopups,
+          stalePendingTopups: staleWalletTopups,
         },
         finance: {
           status: integrityRun?.status === "FAIL" ? "degraded" : "healthy",

@@ -2,6 +2,8 @@ import { prisma } from "../lib/prisma";
 import { razorpayService } from "./razorpay.service";
 import { SubscriptionStatus, type SubscriptionInterval } from "@prisma/client";
 import { financialLedgerService } from "./financial-ledger.service";
+import { emailDeliveryService } from "./email-delivery.service";
+import { userPiiService } from "./user-pii.service";
 
 const MONTHS: Record<SubscriptionInterval, number> = {
   MONTHLY: 1,
@@ -47,7 +49,23 @@ function normalizeBenefits(benefits: BenefitInput[] | undefined): {
   );
 }
 
+export class EmailNotVerifiedError extends Error {
+  constructor() {
+    super("EMAIL_NOT_VERIFIED");
+    this.name = "EmailNotVerifiedError";
+  }
+}
+
 export class SubscriptionService {
+  private async assertEmailVerified(userId: string): Promise<void> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isEmailVerified: true },
+    });
+    if (!user?.isEmailVerified) {
+      throw new EmailNotVerifiedError();
+    }
+  }
   /** Active plans with benefits, cheapest-interval first. */
   async plans() {
     return prisma.membershipPlan.findMany({
@@ -89,6 +107,7 @@ export class SubscriptionService {
    * row. The price is taken from the DB plan (never the client) — tamper-proof.
    */
   async createOrder(userId: string, planId: string) {
+    await this.assertEmailVerified(userId);
     const plan = await prisma.membershipPlan.findFirst({ where: { id: planId, isActive: true } });
     if (!plan) return null;
     const order = await razorpayService.createOrder(plan.price, `sub_${userId}`, { userId, planId });
@@ -106,6 +125,7 @@ export class SubscriptionService {
       currency: order.currency,
       key: razorpayService.keyId,
       planName: plan.name,
+      checkoutMode: razorpayService.checkoutModeForOrder(order.orderId),
     };
   }
 
@@ -117,6 +137,7 @@ export class SubscriptionService {
     userId: string,
     body: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string },
   ): Promise<{ ok: true; subscriptionId: string; expiresAt: Date } | { error: string }> {
+    await this.assertEmailVerified(userId);
     const pending = await prisma.userSubscription.findFirst({
       where: { userId, razorpayOrderId: body.razorpayOrderId },
       include: { plan: true },
@@ -154,13 +175,6 @@ export class SubscriptionService {
       return { handled: true, reason: "SUBSCRIPTION_ALREADY_ACTIVE" };
     }
     await this.activatePaidSubscription(pending.id, pending.userId, razorpayOrderId, razorpayPaymentId);
-    const invoice = await prisma.subscriptionInvoice.findFirst({
-      where: { razorpayOrderId },
-      orderBy: { createdAt: "desc" },
-    });
-    if (invoice) {
-      void financialLedgerService.recordSubscription(invoice.id, invoice.amount).catch(() => undefined);
-    }
     return { handled: true, reason: "SUBSCRIPTION_ACTIVATED" };
   }
 
@@ -206,7 +220,7 @@ export class SubscriptionService {
         where: { id: pending.id },
         data: { status: SubscriptionStatus.ACTIVE, startsAt, expiresAt },
       });
-      await tx.subscriptionInvoice.create({
+      const invoice = await tx.subscriptionInvoice.create({
         data: {
           subscriptionId: sub.id,
           userId,
@@ -223,13 +237,34 @@ export class SubscriptionService {
         where: { userId, status: SubscriptionStatus.ACTIVE, id: { not: sub.id } },
         data: { status: SubscriptionStatus.EXPIRED },
       });
+      await financialLedgerService.recordJournalInTransaction(
+        tx,
+        financialLedgerService.journalForSubscription(invoice.id, invoice.amount),
+      );
       return sub;
     });
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, firstName: true, email: true, phoneNumber: true },
+    });
+    const email = user ? await userPiiService.resolveEmail(user, { actorId: userId, authorized: true }) : null;
+    if (email) {
+      emailDeliveryService.sendMembershipPurchase(
+        email,
+        pending.plan.name,
+        pending.plan.price,
+        expiresAt,
+        user?.firstName,
+      );
+    }
+
     return { id: result.id, expiresAt };
   }
 
   /** Cancel auto-renew. Access is retained until the paid term ends. */
   async cancel(userId: string): Promise<boolean> {
+    await this.assertEmailVerified(userId);
     const { active } = await this.mine(userId);
     if (!active) return false;
     await prisma.userSubscription.update({

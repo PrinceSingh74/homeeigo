@@ -9,6 +9,8 @@ import {
 } from "./sensitive-data.service";
 import { sanitizeUserInput } from "../utils/sanitizer";
 import { partnerRegistrationSessionService } from "./partner-registration-session.service";
+import { userPiiService } from "./user-pii.service";
+import { emailDeliveryService } from "./email-delivery.service";
 
 const otpService = new OTPService(prisma);
 
@@ -54,11 +56,8 @@ export class PartnerRegistrationService {
     }
 
     const email = input.email.toLowerCase();
-    const existingEmail = await prisma.user.findUnique({ where: { email } });
-    if (existingEmail) throw new Error("CONFLICT:Email already registered");
-
-    const existingPhone = await prisma.user.findUnique({ where: { phoneNumber: phone } });
-    if (existingPhone) throw new Error("CONFLICT:Phone number already registered");
+    if (await userPiiService.emailExists(email)) throw new Error("CONFLICT:Email already registered");
+    if (await userPiiService.phoneExists(phone)) throw new Error("CONFLICT:Phone number already registered");
 
     const hashedPassword = await PasswordService.hashPassword(input.password);
     const user = await prisma.user.create({
@@ -83,14 +82,15 @@ export class PartnerRegistrationService {
     await this.logEmail({
       to: email,
       emailType: "registration_otp",
-      subject: "Your OTP for HOMIGO Partner Registration",
+      subject: "Your OTP for HOMEEIGO Partner Registration",
       content: JSON.stringify({ phone, userId: user.id }),
     });
 
+    const contact = await userPiiService.resolveEmailAndPhone(user, { actorId: user.id });
     return {
       userId: user.id,
-      email: user.email,
-      phoneNumber: user.phoneNumber,
+      email: contact.email,
+      phoneNumber: contact.phoneNumber,
       step: 1,
       nextStep: "verify-otp",
       devOtp: "devOtp" in otpResult ? otpResult.devOtp : undefined,
@@ -99,11 +99,15 @@ export class PartnerRegistrationService {
 
   async verifyOtp(input: { email: string; otp: string; userId: string }) {
     const user = await prisma.user.findUnique({ where: { id: input.userId } });
-    if (!user || user.email !== input.email.toLowerCase()) {
+    if (!user) throw new Error("NOT_FOUND:User not found");
+    const userEmail = await userPiiService.resolveEmail(user, { actorId: user.id, authorized: true });
+    if (!userEmail || userEmail !== input.email.toLowerCase()) {
       throw new Error("NOT_FOUND:User not found");
     }
 
-    const otpOk = await otpService.verifyOTP(user.phoneNumber, input.otp);
+    const userPhone = await userPiiService.resolvePhone(user, { actorId: user.id, authorized: true });
+    if (!userPhone) throw new Error("NOT_FOUND:User not found");
+    const otpOk = await otpService.verifyOTP(userPhone, input.otp);
     if (!otpOk.isValid) {
       throw new Error(`OTP:${otpOk.error ?? "Invalid or expired OTP"}`);
     }
@@ -245,18 +249,12 @@ export class PartnerRegistrationService {
       update: { status: "PENDING" },
     });
 
-    await this.logEmail({
-      to: process.env.ADMIN_EMAIL || "admin@homigo.com",
-      emailType: "new_partner_registration",
-      subject: `New Partner Registration: ${provider.user.firstName} ${provider.user.lastName}`,
-      content: JSON.stringify({
-        providerId,
-        name: `${provider.user.firstName} ${provider.user.lastName}`,
-        email: provider.user.email,
-        services: provider.serviceCategories,
-        city: provider.city,
-      }),
-    });
+    const adminEmail = process.env.ADMIN_EMAIL || "admin@homigo.com";
+    emailDeliveryService.sendAdminAlert(
+      adminEmail,
+      `New Partner Registration: ${provider.user.firstName} ${provider.user.lastName}`,
+      `Provider ${providerId} submitted registration from ${provider.city ?? "unknown city"}.`,
+    );
 
     const session = await prisma.partnerRegistrationSession.findUnique({
       where: { userId: sessionUserId },

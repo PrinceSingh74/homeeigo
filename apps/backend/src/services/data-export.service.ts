@@ -1,6 +1,7 @@
 import prisma from "../lib/prisma";
 import { buildStoredZip } from "../lib/simple-zip";
 import { AuditLogService } from "./audit-log.service";
+import { userPiiService } from "./user-pii.service";
 
 export class DataExportService {
   async buildExport(userId: string) {
@@ -12,6 +13,13 @@ export class DataExportService {
             id: true,
             email: true,
             phoneNumber: true,
+            emailEncrypted: true,
+            phoneEncrypted: true,
+            emailHash: true,
+            phoneHash: true,
+            emailEncryptionKeyVersion: true,
+            phoneEncryptionKeyVersion: true,
+            dataEncryptionStatus: true,
             firstName: true,
             lastName: true,
             role: true,
@@ -33,9 +41,14 @@ export class DataExportService {
 
     if (!user) return null;
 
+    const contact = await userPiiService.resolveEmailAndPhone(user, {
+      actorId: userId,
+      authorized: true,
+    });
+
     return {
       exportedAt: new Date().toISOString(),
-      profile: user,
+      profile: { ...user, email: contact.email, phoneNumber: contact.phoneNumber },
       addresses,
       bookings,
       walletTransactions: walletTxns,

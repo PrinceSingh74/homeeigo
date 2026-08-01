@@ -1,4 +1,4 @@
-import { SettlementDiscrepancyType, SettlementSyncStatus } from "@prisma/client";
+import { SettlementDiscrepancyType, SettlementResolutionStatus, SettlementSyncStatus } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { razorpayService } from "./razorpay.service";
 import { settlementService } from "./settlement.service";
@@ -27,7 +27,7 @@ export class SettlementSyncService {
         });
 
         if (!local) {
-          await settlementService.recordFromWebhook({
+          const recorded = await settlementService.recordFromWebhook({
             settlementId: gs.id,
             amount: amountInr,
             fee: feeInr,
@@ -39,16 +39,47 @@ export class SettlementSyncService {
           });
           synced += 1;
 
+          // Link payments from gateway detail when list payload lacks payment refs.
+          const batch = await prisma.settlementBatch.findUnique({ where: { settlementId: gs.id } });
+          if (batch) {
+            const paymentIds = await extractPaymentIdsFromSettlement(gs.id);
+            for (const pid of paymentIds) {
+              const localPayment = await prisma.payment.findFirst({ where: { razorpayPaymentId: pid } });
+              if (!localPayment) {
+                await prisma.settlementDiscrepancy.create({
+                  data: {
+                    syncRunId: run.id,
+                    type: SettlementDiscrepancyType.MISSING_PAYMENT,
+                    referenceId: pid,
+                    details: `Payment ${pid} in gateway settlement but missing locally`,
+                  },
+                });
+                discrepancies += 1;
+              } else if (!localPayment.settlementId) {
+                await settlementService.linkPaymentsToBatch(batch.id, gs.id, {
+                  targetAmount: amountInr,
+                  settledAt: batch.settledAt ?? new Date(),
+                  gatewayReference: gs.id,
+                  raw: { payments: [{ id: pid, amount: localPayment.amountPaid }] },
+                });
+              }
+            }
+          }
+
+          // Informational flag — batch was missing locally but is now imported and linked.
           await prisma.settlementDiscrepancy.create({
             data: {
               syncRunId: run.id,
               type: SettlementDiscrepancyType.UNKNOWN_SETTLEMENT,
               referenceId: gs.id,
               actualAmount: amountInr,
+              resolved: true,
+              resolvedAt: new Date(),
+              status: SettlementResolutionStatus.RESOLVED,
+              resolutionNotes: `Imported missing gateway settlement (linked ${recorded.linked} payments)`,
               details: "Gateway settlement imported — was missing locally",
             },
           });
-          discrepancies += 1;
           continue;
         }
 

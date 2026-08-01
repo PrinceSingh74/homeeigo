@@ -1,4 +1,5 @@
 import { createClient } from "redis";
+import { incCounter } from "./metrics";
 
 /**
  * Optional Redis client.
@@ -25,6 +26,8 @@ export type RedisMetrics = {
   topology: "disabled" | "standalone" | "cluster";
   connectedClients: number;
   usedMemoryHuman: string;
+  usedMemoryBytes?: number;
+  evictedKeys?: number;
   keyspaceHits: number;
   keyspaceMisses: number;
   hitRate: number; // 0..1; 0 when no reads yet
@@ -45,6 +48,7 @@ const IS_CLUSTER = (process.env.REDIS_TOPOLOGY || "").toLowerCase() === "cluster
 class RedisClient {
   private client: RedisClientType | null = null;
   private connected = false;
+  private hadConnectedOnce = false;
   private readonly enabled = REDIS_URL.length > 0;
   private warned = false;
   private lastError: string | null = null;
@@ -92,9 +96,12 @@ class RedisClient {
       }
     });
     client.on("ready", () => {
+      const wasReconnect = this.hadConnectedOnce && !this.connected;
       this.connected = true;
+      this.hadConnectedOnce = true;
       this.warned = false;
       this.lastError = null;
+      if (wasReconnect) incCounter("redis_reconnect_total");
       console.log(`[redis] connected (${this.topology})`);
     });
     client.on("end", () => {
@@ -256,6 +263,30 @@ class RedisClient {
     }
   }
 
+  /** Read current counter without incrementing (for pre-check before recording a failure). */
+  async peek(key: string, limit: number, windowSec: number): Promise<LimitResult | null> {
+    if (!this.isAvailable || !this.client) return null;
+    try {
+      const k = `ratelimit:${key}`;
+      const raw = await this.client.get(k);
+      if (!raw) {
+        return { allowed: true, remaining: limit, resetAt: Date.now() + windowSec * 1000 };
+      }
+      const count = Number.parseInt(raw, 10) || 0;
+      const ttl = await this.client.ttl(k);
+      const resetAt = Date.now() + (ttl > 0 ? ttl : windowSec) * 1000;
+      if (count > limit) return { allowed: false, remaining: 0, resetAt };
+      return { allowed: true, remaining: Math.max(0, limit - count), resetAt };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Clear a rate-limit counter (e.g. after successful login). */
+  async resetRateLimit(key: string): Promise<void> {
+    await this.del(`ratelimit:${key}`);
+  }
+
   /**
    * Publish a message to a channel for cross-instance fan-out (e.g. WebSocket
    * broadcasts). Returns the number of subscribers that received it, or 0 when
@@ -315,6 +346,8 @@ class RedisClient {
       topology: this.topology,
       connectedClients: 0,
       usedMemoryHuman: "n/a",
+      usedMemoryBytes: 0,
+      evictedKeys: 0,
       keyspaceHits: 0,
       keyspaceMisses: 0,
       hitRate: 0,
@@ -337,6 +370,8 @@ class RedisClient {
         ...base,
         connectedClients: Number(field("connected_clients") ?? 0),
         usedMemoryHuman: field("used_memory_human") ?? "n/a",
+        usedMemoryBytes: Number(field("used_memory") ?? 0),
+        evictedKeys: Number(field("evicted_keys") ?? 0),
         keyspaceHits: hits,
         keyspaceMisses: misses,
         hitRate: total > 0 ? Number((hits / total).toFixed(4)) : 0,

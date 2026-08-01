@@ -39,6 +39,9 @@ export const trackingLocationSchema = z.object({
   longitude: z.number().min(-180).max(180),
   accuracy: z.number().nonnegative().optional(),
   altitude: z.number().optional(),
+  // Optional device-reported ground speed (m/s). When absent the server derives it
+  // from consecutive fixes. Capped at 90 m/s (~324 km/h) to reject GPS glitches.
+  speed: z.number().nonnegative().max(90).optional(),
 });
 
 export type ProviderSearchInput = z.infer<typeof providerSearchSchema>;

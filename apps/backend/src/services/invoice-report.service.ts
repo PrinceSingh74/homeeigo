@@ -143,14 +143,18 @@ export class InvoiceReportService {
       _sum: { netAmount: true },
     });
     const gross = agg._sum.grossAmount ?? 0;
+    const commission = agg._sum.commission ?? 0;
     const net = agg._sum.netEarning ?? 0;
+    const estimatedTax = Math.round(net * TAX_RATE);
     return {
       financialYear: new Date().getFullYear(),
       grossEarnings: gross,
-      platformCommission: agg._sum.commission ?? 0,
+      platformCommission: commission,
       netEarnings: net,
       settledOut: settled._sum.netAmount ?? 0,
-      estimatedTax: Math.round(net * TAX_RATE),
+      estimatedTax,
+      gstOnCommission: Math.round(commission * 0.18),
+      tdsEstimate: estimatedTax,
     };
   }
 
@@ -170,7 +174,7 @@ export class InvoiceReportService {
 .h{display:flex;justify-content:space-between;border-bottom:2px solid #7C3AED;padding-bottom:12px}
 .brand{font-size:24px;font-weight:800;color:#7C3AED}.row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee}
 .total{font-weight:800;font-size:18px;border-top:2px solid #1f2937;margin-top:8px}@media print{.noprint{display:none}}</style></head>
-<body><div class="h"><div class="brand">HOMIGO</div><div><b>Earning invoice</b><br>ERN-${e.id.slice(-8).toUpperCase()}<br>${new Date(e.createdAt).toLocaleDateString("en-IN")}</div></div>
+<body><div class="h"><div class="brand">HOMEEIGO</div><div><b>Earning invoice</b><br>ERN-${e.id.slice(-8).toUpperCase()}<br>${new Date(e.createdAt).toLocaleDateString("en-IN")}</div></div>
 <p>Partner: <b>${name}</b></p><p>Service: <b>${serviceName}</b></p>
 <div class="row"><span>Gross amount</span><span>${inr(e.grossAmount)}</span></div>
 <div class="row"><span>Platform commission</span><span>− ${inr(e.commission)}</span></div>

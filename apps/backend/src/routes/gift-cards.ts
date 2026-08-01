@@ -2,6 +2,11 @@ import { Elysia, t } from "elysia";
 import { authPlugin } from "../plugins/auth.plugin";
 import { giftCardService } from "../services/gift-card.service";
 
+const clientIp = (request: Request) =>
+  request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+  request.headers.get("x-real-ip") ||
+  "unknown";
+
 export const giftCardsRoutes = new Elysia({ prefix: "/api/giftcards" })
   .use(authPlugin)
   .get("/denominations", async () => {
@@ -38,8 +43,8 @@ export const giftCardsRoutes = new Elysia({ prefix: "/api/giftcards" })
   )
   .post(
     "/verify",
-    async ({ requireAuth, body, set }) => {
-      const { userId } = requireAuth();
+    async ({ requireVerifiedEmail, body, set }) => {
+      const { userId } = requireVerifiedEmail();
       const result = await giftCardService.verify(userId, body);
       if ("error" in result) {
         set.status = result.error === "INVALID_SIGNATURE" ? 400 : 404;
@@ -57,10 +62,27 @@ export const giftCardsRoutes = new Elysia({ prefix: "/api/giftcards" })
   )
   .post(
     "/redeem",
-    async ({ requireVerifiedEmail, body, set }) => {
+    async ({ requireVerifiedEmail, body, request, set }) => {
       const { userId } = requireVerifiedEmail();
-      const result = await giftCardService.redeem(userId, body.code, body.amount);
+      const result = await giftCardService.redeem(userId, body.code, body.amount, {
+        ipAddress: clientIp(request),
+        userAgent: request.headers.get("user-agent") || "unknown",
+        deviceId: request.headers.get("x-device-id") || undefined,
+        userId,
+      });
       if ("error" in result) {
+        if (result.error === "RATE_LIMITED" || result.error === "POOL_BUSY") {
+          set.status = 429;
+          return {
+            success: false,
+            error:
+              result.error === "POOL_BUSY"
+                ? "System busy — please retry shortly"
+                : "Too many redemption attempts. Please try later.",
+            code: result.error === "POOL_BUSY" ? "RATE_LIMIT_EXCEEDED" : "RATE_LIMITED",
+            blockedUntil: result.blockedUntil?.toISOString(),
+          };
+        }
         set.status = result.error === "INVALID_CODE" ? 404 : 400;
         return { success: false, error: result.error, code: result.error };
       }
@@ -74,8 +96,8 @@ export const giftCardsRoutes = new Elysia({ prefix: "/api/giftcards" })
   )
   .post(
     "/:id/void",
-    async ({ requireAuth, params, set }) => {
-      const { userId } = requireAuth();
+    async ({ requireVerifiedEmail, params, set }) => {
+      const { userId } = requireVerifiedEmail();
       const result = await giftCardService.void(userId, params.id);
       if ("error" in result) {
         set.status = result.error === "NOT_FOUND" ? 404 : 400;

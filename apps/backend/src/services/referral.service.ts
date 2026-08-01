@@ -15,6 +15,8 @@ import { hcoinService } from "./hcoin.service";
 import { referralFraudService } from "./referral-fraud.service";
 import { fraudSignalService } from "./fraud-signal.service";
 import { fraudAdminService } from "./fraud-admin.service";
+import { emailDeliveryService } from "./email-delivery.service";
+import { userPiiService } from "./user-pii.service";
 import type { FraudContext } from "../lib/fraud-context";
 
 /** Business rule: flat reward credited to the referrer per qualified referral. */
@@ -150,6 +152,18 @@ export class ReferralService {
           },
         })
         .catch(() => {});
+      void (async () => {
+        const referrer = await prisma.user.findUnique({
+          where: { id: txn.referrerId },
+          select: { id: true, firstName: true, email: true, phoneNumber: true },
+        });
+        const email = referrer
+          ? await userPiiService.resolveEmail(referrer, { actorId: txn.referrerId, authorized: true })
+          : null;
+        if (email) {
+          emailDeliveryService.sendReferralReward(email, REFERRAL_COMMISSION, referrer?.firstName);
+        }
+      })().catch(() => {});
     }
   }
 
@@ -213,7 +227,7 @@ export class ReferralService {
       prisma.referralCommission.findMany({ where: { referrerId: userId } }),
     ]);
     const nameById = new Map(
-      referees.map((u) => [u.id, [u.firstName, u.lastName].filter(Boolean).join(" ") || "HOMIGO user"]),
+      referees.map((u) => [u.id, [u.firstName, u.lastName].filter(Boolean).join(" ") || "HOMEEIGO user"]),
     );
     const commByTxn = new Map(commissions.map((c) => [c.transactionId, c]));
     return {
@@ -221,7 +235,7 @@ export class ReferralService {
         const comm = commByTxn.get(t.id);
         return {
           id: t.id,
-          refereeName: nameById.get(t.refereeId) ?? "HOMIGO user",
+          refereeName: nameById.get(t.refereeId) ?? "HOMEEIGO user",
           status: t.status,
           fraudFlagged: t.fraudFlagged,
           amount: comm?.amount ?? 0,
@@ -274,15 +288,14 @@ export class ReferralService {
           status: WalletTxnStatus.COMPLETED,
         },
       });
-      // Double-entry: DR Referral Marketing Expense, CR Customer Wallet — keyed by
-      // the wallet txn so the ledger CUSTOMER_WALLET balance tracks the real wallet.
-      await financialLedgerService
-        .recordReferralCommission({
+      await financialLedgerService.recordJournalInTransaction(
+        tx,
+        financialLedgerService.journalForReferralCommission({
           walletTxnId: walletTxn.id,
           referrerUserId: userId,
           amount,
-        })
-        .catch(() => undefined);
+        }),
+      );
       return { walletBalance: updated.walletBalance, walletTxnId: walletTxn.id };
     });
 
@@ -311,11 +324,11 @@ export class ReferralService {
       select: { id: true, firstName: true, lastName: true },
     });
     const nameById = new Map(
-      users.map((u) => [u.id, [u.firstName, u.lastName].filter(Boolean).join(" ") || "HOMIGO user"]),
+      users.map((u) => [u.id, [u.firstName, u.lastName].filter(Boolean).join(" ") || "HOMEEIGO user"]),
     );
     return grouped.map((g, i) => ({
       rank: i + 1,
-      name: nameById.get(g.referrerId) ?? "HOMIGO user",
+      name: nameById.get(g.referrerId) ?? "HOMEEIGO user",
       referrals: g._count._all,
       earned: g._sum.amount ?? 0,
     }));

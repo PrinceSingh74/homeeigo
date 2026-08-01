@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import { JWTService } from "@/services/jwt.service";
 import { redisClient } from "@/lib/redis";
+import { incCounter } from "@/lib/metrics";
 
 export enum MessageType {
   LOCATION_UPDATE = "LOCATION_UPDATE",
@@ -63,7 +64,12 @@ export class RoomManager {
     if (!this.rooms.has(roomId)) {
       this.rooms.set(roomId, new Set());
     }
-    this.rooms.get(roomId)!.add(connection);
+    const room = this.rooms.get(roomId)!;
+    if (room.has(connection)) {
+      incCounter("websocket_duplicate_join_total", { room: roomId });
+      return;
+    }
+    room.add(connection);
 
     if (!this.userConnections.has(connection.userId)) {
       this.userConnections.set(connection.userId, new Set());
@@ -74,7 +80,7 @@ export class RoomManager {
     this.connectionMap.set(connection.connectionId, connection);
 
     console.log(
-      `[Room] ${connection.userId} joined ${roomId} (total: ${this.rooms.get(roomId)!.size})`
+      `[Room] ${connection.userId} joined ${roomId} (total: ${room.size})`
     );
   }
 
@@ -136,17 +142,20 @@ export class RoomManager {
     return successCount;
   }
 
-  broadcast(roomId: string, message: WSMessage): void {
+  broadcast(roomId: string, message: WSMessage): number {
+    const roomSize = this.getRoom(roomId).size;
+    if (roomSize === 0) return 0;
     const successCount = this.localBroadcast(roomId, message);
-    console.log(
-      `[Broadcast] ${message.type} sent to ${successCount}/${this.getRoom(roomId).size} in ${roomId}`
-    );
-    // Fan out to other instances so a connection on any node also receives it.
-    // No-op (returns 0) when Redis is disabled → single-instance behaviour intact.
+    if (successCount > 0) {
+      console.log(
+        `[Broadcast] ${message.type} sent to ${successCount}/${roomSize} in ${roomId}`
+      );
+    }
     void redisClient.publish(
       WS_FANOUT_CHANNEL,
       JSON.stringify({ kind: "room", origin: this.instanceId, roomId, message } as FanoutEnvelope),
     );
+    return successCount;
   }
 
   /** Deliver to this instance's local connections for a user only (no fan-out). */

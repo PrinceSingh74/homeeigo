@@ -18,7 +18,7 @@ export class StatsService {
    * slowly and the homepage is read-heavy. averageRating is null until any review exists.
    */
   async overview(): Promise<StatsOverview> {
-    return cacheService.getOrFetch("stats:overview", 60, async () => {
+    return cacheService.getOrFetch("stats:overview", 120, async () => {
       const [completedBookings, activeProviders, availableServices, customers, ratingAgg] =
         await Promise.all([
           prisma.booking.count({ where: { status: BookingStatus.COMPLETED } }),
@@ -37,7 +37,7 @@ export class StatsService {
         averageRating: avg != null ? Math.round(avg * 10) / 10 : null,
         reviewCount: ratingAgg._count,
       };
-    });
+    }, 15);
   }
 }
 

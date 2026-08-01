@@ -8,6 +8,8 @@ import { cacheService } from "./cache.service";
 // nearly every home/category view, so a short TTL is safe and high-value.
 const FEATURED_TTL = 10 * 60; // 10 minutes
 const CATEGORY_TTL = 5 * 60; //  5 minutes
+const LIST_TTL = 60; // 1 minute — homepage list, hottest read in the app
+const L1_TTL = 10; // in-process micro-cache: avoids a Redis RTT per request under load
 
 type ServiceRating = { rating: number | null; reviewCount: number };
 
@@ -19,20 +21,25 @@ type ServiceRating = { rating: number | null; reviewCount: number };
 async function ratingsForServices(serviceIds: string[]): Promise<Map<string, ServiceRating>> {
   const map = new Map<string, ServiceRating>();
   if (serviceIds.length === 0) return map;
-  const rows = await prisma.rating.findMany({
-    where: { booking: { serviceId: { in: serviceIds } } },
-    select: { stars: true, booking: { select: { serviceId: true } } },
-  });
-  const acc = new Map<string, { sum: number; count: number }>();
-  for (const r of rows) {
-    const sid = r.booking.serviceId;
-    const cur = acc.get(sid) ?? { sum: 0, count: 0 };
-    cur.sum += r.stars;
-    cur.count += 1;
-    acc.set(sid, cur);
-  }
-  for (const [sid, { sum, count }] of acc) {
-    map.set(sid, { rating: Math.round((sum / count) * 10) / 10, reviewCount: count });
+
+  const rows = await prisma.$queryRaw<
+    Array<{ service_id: string; avg_stars: number | null; review_count: bigint }>
+  >`
+    SELECT b.service_id,
+           ROUND(AVG(r.rating)::numeric, 1)::float AS avg_stars,
+           COUNT(*)::bigint AS review_count
+    FROM ratings r
+    INNER JOIN bookings b ON b.id = r.booking_id
+    WHERE b.service_id = ANY(${serviceIds}::text[])
+    GROUP BY b.service_id
+  `;
+
+  for (const row of rows) {
+    const count = Number(row.review_count);
+    map.set(row.service_id, {
+      rating: row.avg_stars != null ? Number(row.avg_stars) : null,
+      reviewCount: count,
+    });
   }
   return map;
 }
@@ -40,24 +47,34 @@ async function ratingsForServices(serviceIds: string[]): Promise<Map<string, Ser
 export class CatalogService {
   async list(query: Record<string, string | undefined>) {
     const { page, limit, skip } = parsePagination(query);
-    const where: Prisma.ServiceWhereInput = { isActive: true };
-    if (query.category) where.category = query.category;
-    if (query.minPrice != null || query.maxPrice != null) {
-      where.basePrice = {};
-      if (query.minPrice != null) (where.basePrice as Prisma.FloatFilter).gte = Number(query.minPrice);
-      if (query.maxPrice != null) (where.basePrice as Prisma.FloatFilter).lte = Number(query.maxPrice);
-    }
-    if (query.city) where.availableCities = { has: query.city };
+    const cacheKey = `catalog:list:${page}:${limit}:${query.category ?? ""}:${query.city ?? ""}:${
+      query.minPrice ?? ""
+    }:${query.maxPrice ?? ""}:${query.sortBy ?? ""}`;
+    return cacheService.getOrFetch(
+      cacheKey,
+      LIST_TTL,
+      async () => {
+        const where: Prisma.ServiceWhereInput = { isActive: true };
+        if (query.category) where.category = query.category;
+        if (query.minPrice != null || query.maxPrice != null) {
+          where.basePrice = {};
+          if (query.minPrice != null) (where.basePrice as Prisma.FloatFilter).gte = Number(query.minPrice);
+          if (query.maxPrice != null) (where.basePrice as Prisma.FloatFilter).lte = Number(query.maxPrice);
+        }
+        if (query.city) where.availableCities = { has: query.city };
 
-    let orderBy: Prisma.ServiceOrderByWithRelationInput = { popularity: "desc" };
-    if (query.sortBy === "price") orderBy = { basePrice: "asc" };
-    if (query.sortBy === "newest") orderBy = { createdAt: "desc" };
+        let orderBy: Prisma.ServiceOrderByWithRelationInput = { popularity: "desc" };
+        if (query.sortBy === "price") orderBy = { basePrice: "asc" };
+        if (query.sortBy === "newest") orderBy = { createdAt: "desc" };
 
-    const [rows, total] = await Promise.all([
-      prisma.service.findMany({ where, orderBy, skip, take: limit }),
-      prisma.service.count({ where }),
-    ]);
-    return { services: rows.map(formatServiceList), total, page, limit };
+        const [rows, total] = await Promise.all([
+          prisma.service.findMany({ where, orderBy, skip, take: limit }),
+          prisma.service.count({ where }),
+        ]);
+        return { services: rows.map(formatServiceList), total, page, limit };
+      },
+      L1_TTL,
+    );
   }
 
   async byId(id: string) {
@@ -153,26 +170,35 @@ export class CatalogService {
   }
 
   async featured() {
-    return cacheService.getOrFetch("catalog:featured", FEATURED_TTL, async () => {
-      const rows = await prisma.service.findMany({
-        where: { isActive: true, isFeatured: true },
-        take: 20,
-        orderBy: { popularity: "desc" },
-      });
-      const ratings = await ratingsForServices(rows.map((s) => s.id));
-      return {
-        services: rows.map((s) => ({
-          id: s.id,
-          name: s.name,
-          basePrice: s.basePrice,
-          rating: ratings.get(s.id)?.rating ?? null,
-          reviewCount: ratings.get(s.id)?.reviewCount ?? 0,
-          isFeatured: s.isFeatured,
-          isPromoted: s.isPromoted,
-        })),
-        total: rows.length,
-      };
-    });
+    return this.featuredCached();
+  }
+
+  private async featuredCached() {
+    return cacheService.getOrFetch(
+      "catalog:featured",
+      FEATURED_TTL,
+      async () => {
+        const rows = await prisma.service.findMany({
+          where: { isActive: true, isFeatured: true },
+          take: 20,
+          orderBy: { popularity: "desc" },
+        });
+        const ratings = await ratingsForServices(rows.map((s) => s.id));
+        return {
+          services: rows.map((s) => ({
+            id: s.id,
+            name: s.name,
+            basePrice: s.basePrice,
+            rating: ratings.get(s.id)?.rating ?? null,
+            reviewCount: ratings.get(s.id)?.reviewCount ?? 0,
+            isFeatured: s.isFeatured,
+            isPromoted: s.isPromoted,
+          })),
+          total: rows.length,
+        };
+      },
+      L1_TTL,
+    );
   }
 
   // ------------------------------------------------------------------ admin --

@@ -1,6 +1,7 @@
 import { BookingStatus } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { distanceKm, etaMinutes } from "../lib/geo";
+import { resolveServiceMatchTokens, serviceCategoryMatchWhere } from "../lib/service-match";
 import { entitlementService } from "./entitlement.service";
 
 export interface MatchingRequest {
@@ -170,9 +171,12 @@ export class MatchingService {
     options: { onlyOnline?: boolean; exclude?: string[] } = {},
   ) {
     const maxCandidates = Number(process.env.MATCHING_MAX_CANDIDATES || 500);
+    const matchTokens = await resolveServiceMatchTokens(serviceId);
+    if (!matchTokens) return [];
+
     return prisma.provider.findMany({
       where: {
-        serviceCategories: { has: serviceId },
+        ...serviceCategoryMatchWhere(matchTokens),
         isActive: true,
         isApproved: true,
         user: { isBanned: false },
@@ -198,7 +202,15 @@ export class MatchingService {
     const rows = await prisma.booking.findMany({
       where: {
         providerId: { in: providerIds },
-        status: { in: [BookingStatus.ACCEPTED, BookingStatus.ASSIGNED, BookingStatus.EN_ROUTE, BookingStatus.IN_PROGRESS] },
+        status: {
+          in: [
+            BookingStatus.PENDING,
+            BookingStatus.ACCEPTED,
+            BookingStatus.ASSIGNED,
+            BookingStatus.EN_ROUTE,
+            BookingStatus.IN_PROGRESS,
+          ],
+        },
         scheduledDate: {
           gte: new Date(scheduledDate.getTime() - CONFLICT_WINDOW_MS),
           lte: new Date(scheduledDate.getTime() + CONFLICT_WINDOW_MS),
@@ -222,9 +234,10 @@ export class MatchingService {
     isPremiumCustomer = false,
   ): ProviderMatch {
     const loc = provider.currentLocation;
+    // Providers without GPS still participate — neutral distance inside the radius.
     const distance = loc
       ? distanceKm(customerLat, customerLng, loc.latitude, loc.longitude)
-      : MAX_DISTANCE_DEFAULT_KM + 1;
+      : 15;
 
     const ratingScore = this.calculateRatingScore(provider.rating, provider.totalReviews);
     const distanceScore = this.calculateDistanceScore(distance);

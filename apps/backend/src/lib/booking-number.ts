@@ -1,4 +1,7 @@
+import type { Prisma } from "@prisma/client";
 import prisma from "./prisma";
+
+type WalletTxnNumberClient = Pick<Prisma.TransactionClient, "walletTransaction">;
 
 export async function nextBookingNumber(): Promise<string> {
   const d = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -12,12 +15,14 @@ export async function nextBookingNumber(): Promise<string> {
   return `${prefix}${String(seq).padStart(5, "0")}`;
 }
 
-export async function nextWalletTxnNumber(): Promise<string> {
+export async function nextWalletTxnNumber(
+  client: WalletTxnNumberClient = prisma,
+): Promise<string> {
   const d = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const prefix = `WXN-${d}-`;
   // Parse the 5-digit base sequence robustly — some numbers carry suffixes
   // (e.g. a "-R" recipient row for a P2P transfer), so a naive slice(-5) breaks.
-  const rows = await prisma.walletTransaction.findMany({
+  const rows = await client.walletTransaction.findMany({
     where: { transactionNumber: { startsWith: prefix } },
     select: { transactionNumber: true },
   });

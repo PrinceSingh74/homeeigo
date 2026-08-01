@@ -58,10 +58,8 @@ export class RefundOrchestratorService {
       | { proceed: true; payment: Payment; refundRequestId: string };
 
     const lockResult = await prisma.$transaction(async (tx): Promise<LockResult> => {
-      const rows = await tx.$queryRaw<Payment[]>`
-        SELECT * FROM payments WHERE id = ${opts.paymentId} FOR UPDATE
-      `;
-      const payment = rows[0];
+      await tx.$executeRaw`SELECT id FROM payments WHERE id = ${opts.paymentId} FOR UPDATE`;
+      const payment = await tx.payment.findUnique({ where: { id: opts.paymentId } });
       if (!payment) return { proceed: false, result: { error: "NOT_FOUND" } };
 
       const validation = validateAdminRefundAmount(opts.amount, payment);

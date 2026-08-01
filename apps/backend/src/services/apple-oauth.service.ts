@@ -97,7 +97,8 @@ export class AppleOAuthService {
     const decoded = await verifyAppleIdToken(tokenResult.idToken);
     const email = resolveAppleAccountEmail(decoded);
 
-    let user = await this.prisma.user.findUnique({ where: { email } });
+    const { userPiiService } = await import("./user-pii.service");
+    let user = await userPiiService.findByEmail(email);
     let isNewUser = false;
     const firstName = payload.user?.name?.firstName || "Apple";
     if (!user) {
@@ -122,9 +123,10 @@ export class AppleOAuthService {
       if (approvalBlock) throw new Error("PARTNER_NOT_APPROVED");
     }
 
-    const accessToken = this.jwtService.generateAccessToken({ userId: user.id, email: user.email });
-    const refreshToken = await this.refreshTokenService.createRefreshToken({
+    const oauthEmail = await userPiiService.resolveEmail(user, { actorId: user.id, authorized: true });
+    const { accessToken, refreshToken } = await this.refreshTokenService.createSessionTokens({
       userId: user.id,
+      email: oauthEmail ?? email,
       deviceId: payload.meta?.deviceId,
       userAgent: payload.meta?.userAgent,
       ipAddress: payload.meta?.ipAddress,

@@ -5,7 +5,8 @@ import { ValidationFailedError, type FieldError } from "./validation.middleware"
 import { AuditLogService, requestMeta } from "../services/audit-log.service";
 import { logger } from "../lib/logger";
 import { observability } from "../lib/observability";
-import { AppError } from "../lib/app-error";
+import { AppError, RateLimitError } from "../lib/app-error";
+import { isPrismaPoolTimeout, isPrismaConcurrencyError, mapPrismaKnownError, mapDomainError } from "../lib/prisma-errors";
 import { resolveRequestId } from "./request-context.middleware";
 
 /** Best-effort extraction of field-level details from an Elysia validation error. */
@@ -117,6 +118,86 @@ export const errorMiddleware = new Elysia({ name: "error-middleware" }).onError(
     return errorResponse("Endpoint not found", "NOT_FOUND", {
       requestId,
       meta: { path, method: request.method },
+    });
+  }
+
+  // Malformed JSON / body parse failures (Elysia code PARSE) — client fault, not 500.
+  if (
+    code === "PARSE" ||
+    (error instanceof Error && error.message === "Bad Request" && String(code) !== "VALIDATION")
+  ) {
+    set.status = 400;
+    return errorResponse("Malformed request body", "INVALID_JSON", {
+      requestId,
+      suggestion: "Send valid JSON with Content-Type: application/json",
+    });
+  }
+
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    const mapped = mapPrismaKnownError(error);
+    if (mapped) {
+      if (mapped.sentry) {
+        observability.captureException(error, {
+          requestId,
+          path,
+          method: request.method,
+          code: mapped.code,
+          category: mapped.category ?? "database",
+          level: mapped.level ?? "error",
+        });
+      }
+      set.status = mapped.status;
+      return errorResponse(mapped.message, mapped.code, {
+        requestId,
+        ...(mapped.suggestion ? { suggestion: mapped.suggestion } : {}),
+      });
+    }
+  }
+
+  if (error instanceof Prisma.PrismaClientUnknownRequestError && isPrismaConcurrencyError(error)) {
+    set.status = 409;
+    return errorResponse("Transaction conflict — please retry", "CONFLICT", {
+      requestId,
+      suggestion: "Retry the request; another operation updated the same record.",
+    });
+  }
+
+  if (error instanceof Error) {
+    const domain = mapDomainError(error.message);
+    if (domain) {
+      if (domain.sentry) {
+        observability.captureException(error, {
+          requestId,
+          path,
+          method: request.method,
+          code: domain.code,
+          category: domain.category,
+          level: domain.level ?? "error",
+        });
+      }
+      set.status = domain.status;
+      return errorResponse(domain.message, domain.code, {
+        requestId,
+        ...(domain.suggestion ? { suggestion: domain.suggestion } : {}),
+      });
+    }
+  }
+
+  if (isPrismaPoolTimeout(error)) {
+    set.status = 429;
+    return errorResponse(
+      "Database pool busy — please retry shortly",
+      "RATE_LIMIT_EXCEEDED",
+      { requestId, suggestion: "Wait a moment and try again." },
+    );
+  }
+
+  if (error instanceof RateLimitError) {
+    set.status = 429;
+    return errorResponse(error.message, error.code, {
+      requestId,
+      ...(error.suggestion ? { suggestion: error.suggestion } : {}),
+      ...(error.meta ?? {}),
     });
   }
 

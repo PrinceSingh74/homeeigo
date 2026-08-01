@@ -1,7 +1,8 @@
 import { CampaignStatus, CampaignType } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { parsePagination } from "../lib/pagination";
-import { entitlementService } from "./entitlement.service";
+import { campaignLimitsService } from "./campaign-limits.service";
+import { AuditLogService } from "./audit-log.service";
 
 export type CampaignDiscountResult =
   | { ok: true; campaignId: string; code: string; discount: number; type: CampaignType }
@@ -32,9 +33,17 @@ export class CampaignService {
       return { ok: false, error: "MIN_ORDER_NOT_MET" };
     }
 
-    if (campaign.premiumOnly) {
-      const entitlements = await entitlementService.resolve(userId);
-      if (!entitlements.hasMembership) return { ok: false, error: "PREMIUM_REQUIRED" };
+    const eligibility = await campaignLimitsService.checkEligibility(userId, campaign.id);
+    if (!eligibility.eligible) {
+      const code =
+        eligibility.reason === "You have already redeemed this campaign"
+          ? "ALREADY_REDEEMED"
+          : eligibility.reason === "Campaign redemption limit reached"
+            ? "MAX_REDEMPTIONS"
+            : eligibility.reason === "Membership required for this campaign"
+              ? "PREMIUM_REQUIRED"
+              : "CAMPAIGN_INELIGIBLE";
+      return { ok: false, error: code };
     }
 
     const discount = this.computeDiscount(campaign.discountPct, campaign.discountAmount, baseAmount);
@@ -64,6 +73,8 @@ export class CampaignService {
     revenueBefore: number,
     revenueAfter: number,
   ) {
+    await campaignLimitsService.assertCanRedeem(userId, campaignId);
+
     await prisma.$transaction([
       prisma.couponUsage.create({
         data: {
@@ -80,6 +91,12 @@ export class CampaignService {
         data: { redemptionCount: { increment: 1 } },
       }),
     ]);
+
+    void AuditLogService.record("CAMPAIGN_REDEEMED", "success", {
+      userId,
+      bookingId,
+      details: { campaignId, discountApplied, revenueBefore, revenueAfter },
+    });
   }
 
   async adminList(query: Record<string, string | undefined> = {}) {
@@ -110,6 +127,7 @@ export class CampaignService {
     discountAmount?: number;
     minOrderAmount?: number;
     maxRedemptions?: number;
+    maxRedemptionsPerUser?: number;
     startsAt?: string;
     expiresAt?: string;
     metadata?: string;
@@ -127,6 +145,7 @@ export class CampaignService {
         discountAmount: data.discountAmount,
         minOrderAmount: data.minOrderAmount,
         maxRedemptions: data.maxRedemptions,
+        maxRedemptionsPerUser: data.maxRedemptionsPerUser ?? 1,
         startsAt: data.startsAt ? new Date(data.startsAt) : undefined,
         expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
         metadata: data.metadata,

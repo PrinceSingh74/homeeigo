@@ -55,7 +55,7 @@ function buildReply(userText: string, firstName?: string): AiChatResponse {
   if (lower.includes("wallet") || lower.includes("pay") || lower.includes("bill")) {
     return {
       message:
-        "You can pay securely via HOMIGO wallet or Razorpay at checkout. Want me to open your wallet?",
+        "You can pay securely via HOMEEIGO wallet or Razorpay at checkout. Want me to open your wallet?",
       quickActions: ["Open Wallet", "Add Money", "View Transactions"],
     };
   }

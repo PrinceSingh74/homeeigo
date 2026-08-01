@@ -43,30 +43,34 @@ export class SettlementChargebackService {
     };
     const status = statusMap[payload.status?.toLowerCase() ?? ""] ?? ChargebackStatus.RECEIVED;
 
-    const chargeback = await prisma.chargeback.upsert({
-      where: { razorpayDisputeId: payload.disputeId },
-      create: {
-        razorpayDisputeId: payload.disputeId,
-        paymentId: payment?.id,
-        razorpayPaymentId: payload.paymentId,
-        amount: payload.amount ?? payment?.amountPaid ?? 0,
-        status,
-        reason: payload.reason,
-        metadata: payload.raw ? JSON.stringify(payload.raw) : undefined,
-      },
-      update: {
-        status,
-        reason: payload.reason,
-        resolvedAt: status === ChargebackStatus.WON || status === ChargebackStatus.LOST ? new Date() : undefined,
-        metadata: payload.raw ? JSON.stringify(payload.raw) : undefined,
-      },
-    });
+    const chargeback = await prisma.$transaction(async (tx) => {
+      const row = await tx.chargeback.upsert({
+        where: { razorpayDisputeId: payload.disputeId },
+        create: {
+          razorpayDisputeId: payload.disputeId,
+          paymentId: payment?.id,
+          razorpayPaymentId: payload.paymentId,
+          amount: payload.amount ?? payment?.amountPaid ?? 0,
+          status,
+          reason: payload.reason,
+          metadata: payload.raw ? JSON.stringify(payload.raw) : undefined,
+        },
+        update: {
+          status,
+          reason: payload.reason,
+          resolvedAt: status === ChargebackStatus.WON || status === ChargebackStatus.LOST ? new Date() : undefined,
+          metadata: payload.raw ? JSON.stringify(payload.raw) : undefined,
+        },
+      });
 
-    if (status === ChargebackStatus.LOST || status === ChargebackStatus.RECEIVED) {
-      void financialLedgerService
-        .recordChargeback(chargeback.id, chargeback.amount)
-        .catch(() => undefined);
-    }
+      if (status === ChargebackStatus.LOST || status === ChargebackStatus.RECEIVED) {
+        await financialLedgerService.recordJournalInTransaction(
+          tx,
+          financialLedgerService.journalForChargeback(row.id, row.amount),
+        );
+      }
+      return row;
+    });
 
     recordFinancialMetric("chargeback_total", 1);
     recordFinancialMetric("chargeback_amount_total", chargeback.amount);

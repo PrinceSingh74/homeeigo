@@ -3,6 +3,8 @@ import { maskProviderSensitive } from "./sensitive-data.service";
 import { sanitizeUserInput } from "../utils/sanitizer";
 import { formatKycStatus } from "../lib/format";
 import { parsePagination } from "../lib/pagination";
+import { userPiiService } from "./user-pii.service";
+import { emailDeliveryService } from "./email-delivery.service";
 import { RefreshTokenService } from "./refresh-token.service";
 import { JWTService } from "./jwt.service";
 
@@ -141,12 +143,14 @@ export class AdminService {
       prisma.provider.count({ where }),
     ]);
 
-    return {
-      providers: rows.map((p) => ({
+    const providers = await Promise.all(
+      rows.map(async (p) => {
+        const masked = await userPiiService.withMaskedPii(p.user);
+        return {
         id: p.id,
         name: `${p.user.firstName} ${p.user.lastName}`,
-        email: p.user.email,
-        phone: p.user.phoneNumber,
+        email: masked.email,
+        phone: masked.phoneNumber,
         rating: p.rating,
         totalBookings: p.totalBookings,
         completedBookings: p.completedBookings,
@@ -165,7 +169,12 @@ export class AdminService {
           aadharNumber: p.aadharNumber,
           bankAccountNumber: p.bankAccountNumber,
         }),
-      })),
+        };
+      }),
+    );
+
+    return {
+      providers,
       total,
       page,
     };
@@ -181,6 +190,15 @@ export class AdminService {
       where.createdAt = {};
       if (query.startDate) (where.createdAt as { gte?: Date }).gte = new Date(query.startDate);
       if (query.endDate) (where.createdAt as { lte?: Date }).lte = new Date(query.endDate);
+    }
+    if (query.search) {
+      const term = sanitizeUserInput(query.search, 100);
+      where.OR = [
+        { bookingNumber: { contains: term, mode: "insensitive" } },
+        { id: { contains: term, mode: "insensitive" } },
+        { user: { firstName: { contains: term, mode: "insensitive" } } },
+        { user: { lastName: { contains: term, mode: "insensitive" } } },
+      ];
     }
 
     const [rows, total] = await Promise.all([
@@ -273,30 +291,201 @@ export class AdminService {
         create: { providerId: id, status: "REJECTED", approvalNotes: notes },
         update: { status: "REJECTED", approvalNotes: notes },
       });
-      await refreshTokenService.revokeAllUserTokens(existing.userId);
+      await refreshTokenService.revokeAllUserTokens(existing.userId, "SUSPICIOUS_ACTIVITY", "SYSTEM");
     }
 
-    await prisma.emailLog.create({
-      data: {
-        to: existing.user.email,
-        emailType: action === "approve" ? "approval" : "rejection",
-        subject:
-          action === "approve"
-            ? "Welcome! Your HOMIGO Partner Application is Approved"
-            : "HOMIGO Partner Application Status",
-        content: JSON.stringify({
-          name: existing.user.firstName,
-          reason: notes,
-          message:
-            action === "approve"
-              ? "You can now log in to your partner dashboard."
-              : "Unfortunately we cannot approve your application at this time.",
-        }),
-        status: "logged",
+    const partnerEmail = await userPiiService.resolveEmail(existing.user, {
+      actorId: adminUserId,
+      authorized: true,
+    });
+    if (partnerEmail) {
+      if (action === "approve") {
+        emailDeliveryService.sendPartnerApproval(partnerEmail, existing.user.firstName, safeNotes);
+      } else {
+        emailDeliveryService.sendPartnerRejection(partnerEmail, existing.user.firstName, safeNotes);
+      }
+    }
+
+    return p;
+  }
+
+  /**
+   * Full partner command-center detail — everything about ONE provider composed
+   * into a single payload: profile, KYC + documents, performance metrics,
+   * accept/reject history, recent bookings, earnings/payouts, live location.
+   * PII (email/phone) and KYC numbers are masked via the same services the list uses.
+   */
+  async getProviderDetail(id: string) {
+    const p = await prisma.provider.findUnique({
+      where: { id },
+      include: {
+        user: true,
+        currentLocation: true,
+        documents: { orderBy: { createdAt: "desc" } },
+      },
+    });
+    if (!p) return null;
+
+    const masked = await userPiiService.withMaskedPii(p.user);
+    const kyc = maskProviderSensitive({
+      panNumber: p.panNumber,
+      aadharNumber: p.aadharNumber,
+      bankAccountNumber: p.bankAccountNumber,
+    });
+
+    // Recent bookings (accepted / completed / cancelled / in-progress).
+    const bookings = await prisma.booking.findMany({
+      where: { providerId: id },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        bookingNumber: true,
+        status: true,
+        finalAmount: true,
+        scheduledDate: true,
+        completedAt: true,
+        createdAt: true,
+        service: { select: { name: true } },
       },
     });
 
-    return p;
+    // Accept / reject / timeout history from the dispatch engine.
+    const attempts = await prisma.assignmentAttempt.findMany({
+      where: { providerId: id },
+      orderBy: { dispatchedAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        status: true,
+        dispatchedAt: true,
+        respondedAt: true,
+        responseMs: true,
+        job: { select: { booking: { select: { bookingNumber: true, service: { select: { name: true } } } } } },
+      },
+    });
+
+    // Pending payouts (money owed but not yet paid out).
+    const pending = await prisma.withdrawal
+      .aggregate({
+        where: { providerId: id, status: { in: ["REQUESTED", "PROCESSING", "APPROVED"] } },
+        _sum: { amount: true },
+        _count: true,
+      })
+      .catch(() => ({ _sum: { amount: null }, _count: 0 }));
+
+    return {
+      id: p.id,
+      userId: p.userId,
+      profile: {
+        name: `${p.user.firstName} ${p.user.lastName}`.trim(),
+        email: masked.email,
+        phone: masked.phoneNumber,
+        businessName: p.businessName,
+        bio: p.bio,
+        profileImage: p.profileImage,
+        serviceCategories: p.serviceCategories,
+        serviceRegions: p.serviceRegions,
+        city: p.city,
+        experienceYears: p.experienceYears,
+        certifications: p.certifications,
+        badges: p.badges,
+        registeredAt: p.registeredAt?.toISOString() ?? p.createdAt.toISOString(),
+        memberSince: p.createdAt.toISOString(),
+      },
+      status: {
+        isOnline: p.isOnline,
+        onlineSince: p.onlineSince?.toISOString() ?? null,
+        lastSeenAt: p.lastSeenAt?.toISOString() ?? null,
+        currentStatus: p.currentStatus,
+        isActive: p.isActive,
+        isBanned: p.isBanned,
+        bannedReason: p.bannedReason,
+        workingHours: p.workingHoursStart != null && p.workingHoursEnd != null
+          ? { start: p.workingHoursStart, end: p.workingHoursEnd, days: p.workingDays }
+          : null,
+      },
+      verification: {
+        isApproved: p.isApproved,
+        isVerified: p.isVerified,
+        registrationStatus: p.registrationStatus,
+        verificationDate: p.verificationDate?.toISOString() ?? null,
+        verificationNotes: p.verificationNotes,
+        approvalNotes: p.approvalNotes,
+        rejectionReason: p.rejectionReason,
+        backgroundCheckStatus: p.backgroundCheckStatus,
+        backgroundCheckDate: p.backgroundCheckDate?.toISOString() ?? null,
+        kyc,
+        documents: p.documents.map((d) => ({
+          id: d.id,
+          type: d.documentType,
+          name: d.documentName,
+          isVerified: d.isVerified,
+          uploadStatus: d.uploadStatus,
+          expiryDate: d.expiryDate?.toISOString() ?? null,
+          verifiedAt: d.verifiedAt?.toISOString() ?? null,
+        })),
+      },
+      metrics: {
+        rating: p.rating,
+        totalReviews: p.totalReviews,
+        ratingBreakdown: p.ratingBreakdown,
+        totalBookings: p.totalBookings,
+        completedBookings: p.completedBookings,
+        cancelledBookings: p.cancelledBookings,
+        rejectedBookings: p.rejectedBookings,
+        completionRate: p.completionRate,
+        acceptanceRate: p.acceptanceRate,
+        responseRate: p.responseRate,
+        cancellationRate: p.cancellationRate,
+        onTimeRate: p.onTimeRate,
+        avgResponseTime: p.avgResponseTime,
+        avgCompletionTime: p.avgCompletionTime,
+      },
+      earnings: {
+        totalEarnings: p.totalEarnings,
+        thisMonthEarnings: p.thisMonthEarnings,
+        thisWeekEarnings: p.thisWeekEarnings,
+        walletBalance: p.walletBalance,
+        commissionRate: p.commissionRate,
+        pendingPayoutAmount: pending._sum.amount ?? 0,
+        pendingPayoutCount: pending._count ?? 0,
+        bank: {
+          holder: p.bankAccountHolder,
+          bankName: p.bankName,
+          accountNumberMasked: kyc.bankAccountNumber,
+          ifsc: p.bankIfscCode,
+          upiId: p.upiId,
+          preference: p.paymentMethodPreference,
+        },
+      },
+      location: p.currentLocation
+        ? {
+            latitude: p.currentLocation.latitude,
+            longitude: p.currentLocation.longitude,
+            updatedAt: p.currentLocation.lastUpdated?.toISOString() ?? null,
+          }
+        : null,
+      recentBookings: bookings.map((b) => ({
+        id: b.id,
+        bookingNumber: b.bookingNumber,
+        status: b.status,
+        serviceName: b.service?.name ?? null,
+        amount: b.finalAmount,
+        scheduledDate: b.scheduledDate?.toISOString() ?? null,
+        completedAt: b.completedAt?.toISOString() ?? null,
+        createdAt: b.createdAt.toISOString(),
+      })),
+      dispatchHistory: attempts.map((a) => ({
+        id: a.id,
+        status: a.status,
+        dispatchedAt: a.dispatchedAt?.toISOString() ?? null,
+        respondedAt: a.respondedAt?.toISOString() ?? null,
+        responseMs: a.responseMs,
+        bookingNumber: a.job?.booking?.bookingNumber ?? null,
+        serviceName: a.job?.booking?.service?.name ?? null,
+      })),
+    };
   }
 
   async banUser(id: string, action: "ban" | "unban", reason?: string) {
@@ -308,7 +497,7 @@ export class AdminService {
           : { isBanned: false, bannedReason: null, bannedAt: null },
     });
     if (action === "ban") {
-      await refreshTokenService.revokeAllUserTokens(id);
+      await refreshTokenService.revokeAllUserTokens(id, "SUSPICIOUS_ACTIVITY", "SYSTEM");
       await prisma.booking.updateMany({
         where: {
           userId: id,
@@ -424,3 +613,81 @@ function round2(n: number): number {
 }
 
 export const adminService = new AdminService();
+
+class AdminReviewService {
+  /** All platform reviews for the admin moderation console. Filters: status
+   *  (all|public|hidden|flagged), rating, free-text search on the review body. */
+  async list(query: Record<string, string | undefined>) {
+    const { page, limit, skip } = parsePagination(query);
+    const where: Record<string, unknown> = {};
+    if (query.status === "public") where.isPublic = true;
+    else if (query.status === "hidden") where.isPublic = false;
+    else if (query.status === "flagged") where.isFlagged = true;
+    if (query.rating && query.rating !== "all") where.stars = Number(query.rating);
+    if (query.search?.trim()) {
+      where.reviewText = { contains: query.search.trim(), mode: "insensitive" };
+    }
+
+    const [rows, total, agg] = await Promise.all([
+      prisma.rating.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: "desc" },
+        include: {
+          user: { select: { firstName: true, lastName: true, email: true } },
+          provider: { select: { businessName: true, user: { select: { firstName: true, lastName: true } } } },
+          booking: { select: { bookingNumber: true, service: { select: { name: true } } } },
+        },
+      }),
+      prisma.rating.count({ where }),
+      prisma.rating.aggregate({ _avg: { stars: true }, _count: true }),
+    ]);
+
+    return {
+      reviews: rows.map((r) => ({
+        id: r.id,
+        customer: `${r.user.firstName ?? ""} ${r.user.lastName ?? ""}`.trim() || "Customer",
+        customerEmail: r.user.email,
+        provider: r.provider?.businessName
+          || `${r.provider?.user?.firstName ?? ""} ${r.provider?.user?.lastName ?? ""}`.trim()
+          || "—",
+        service: r.booking?.service?.name ?? "—",
+        bookingNumber: r.booking?.bookingNumber ?? "—",
+        rating: r.stars,
+        reviewText: r.reviewText,
+        providerResponse: r.providerResponse,
+        isPublic: r.isPublic,
+        isFlagged: r.isFlagged,
+        createdAt: r.createdAt,
+      })),
+      total,
+      page,
+      limit,
+      stats: { averageRating: agg._avg.stars != null ? round2(agg._avg.stars) : null, totalReviews: agg._count },
+    };
+  }
+
+  /** Moderate a review: show/hide (isPublic) and/or flag/unflag (isFlagged). */
+  async moderate(id: string, patch: { isPublic?: boolean; isFlagged?: boolean }) {
+    const existing = await prisma.rating.findUnique({ where: { id } });
+    if (!existing) return null;
+    return prisma.rating.update({
+      where: { id },
+      data: {
+        ...(patch.isPublic !== undefined ? { isPublic: patch.isPublic } : {}),
+        ...(patch.isFlagged !== undefined ? { isFlagged: patch.isFlagged } : {}),
+      },
+      select: { id: true, isPublic: true, isFlagged: true },
+    });
+  }
+
+  async remove(id: string) {
+    const existing = await prisma.rating.findUnique({ where: { id }, select: { providerId: true } });
+    if (!existing) return null;
+    await prisma.rating.delete({ where: { id } });
+    return { id, providerId: existing.providerId };
+  }
+}
+
+export const adminReviewService = new AdminReviewService();

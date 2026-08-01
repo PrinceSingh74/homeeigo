@@ -2,13 +2,11 @@ import { Elysia } from "elysia";
 import { errorResponse } from "../lib/api-response";
 import { JWTService } from "../services/jwt.service";
 import { consumeRateLimitSmart } from "./rate-limit.middleware";
+import { incCounter } from "../lib/metrics";
 
 const jwtService = new JWTService();
 
-const getIp = (request: Request) =>
-  request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-  request.headers.get("x-real-ip") ||
-  "unknown";
+import { getClientIp } from "../lib/client-ip";
 
 type LimitResult = { allowed: boolean; remaining: number; resetAt: number };
 
@@ -41,6 +39,8 @@ export const apiRateLimitPlugin = new Elysia({ name: "api-rate-limit" }).onBefor
   { as: "global" },
   async ({ request, path, set }) => {
   if (!path.startsWith("/api")) return;
+  // Dev/staging load harness: set LOAD_TEST_MODE=1 on the server to bypass global limits.
+  if (process.env.NODE_ENV !== "production" && process.env.LOAD_TEST_MODE === "1") return;
   if (counted.has(request)) return;
   counted.add(request);
 
@@ -55,7 +55,7 @@ export const apiRateLimitPlugin = new Elysia({ name: "api-rate-limit" }).onBefor
   const burst = 1.2;
   const baseLimit = path.startsWith("/api/admin") ? 200 : hasValidBearer ? 100 : 30;
   const limit = Math.max(1, Math.floor(baseLimit * burst));
-  const ip = getIp(request);
+  const ip = getClientIp(request);
   const bucket = hasValidBearer ? "auth" : "anon";
   // Key authenticated traffic PER-USER (not per shared IP) so users behind a
   // common NAT/CGNAT/proxy — or a dev box with no x-forwarded-for — aren't
@@ -66,6 +66,7 @@ export const apiRateLimitPlugin = new Elysia({ name: "api-rate-limit" }).onBefor
 
   if (!result.allowed) {
     set.status = 429;
+    incCounter("rate_limit_triggered_total", { scope: "global", bucket });
     const retryAfter = retryAfterSeconds(result.resetAt);
     set.headers["Retry-After"] = String(retryAfter);
     return errorResponse("Rate limit exceeded", "RATE_LIMIT_EXCEEDED", { retryAfter });
@@ -73,12 +74,41 @@ export const apiRateLimitPlugin = new Elysia({ name: "api-rate-limit" }).onBefor
 
   const userKey = payload?.userId ? `user:${payload.userId}` : `ip:${ip}`;
 
+  // Auth abuse — always enforced (dev included) so brute-force probes get 429, not endless 401s.
+  const authPaths = new Set([
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/send-otp",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
+  ]);
+  if (authPaths.has(path)) {
+    const scope = path.endsWith("/login")
+      ? "login"
+      : path.endsWith("/register")
+        ? "register"
+        : path.endsWith("/send-otp")
+          ? "send-otp"
+          : "forgot-password";
+    const authBurstLimit = Number(process.env.AUTH_BURST_LIMIT || 15);
+    const authBurst = await consumeRateLimitSmart(`auth-burst:${scope}:${ip}`, authBurstLimit, 60_000);
+    setRateLimitHeaders(set, authBurstLimit, authBurst);
+    if (!authBurst.allowed) {
+      set.status = 429;
+      incCounter("rate_limit_triggered_total", { scope: "auth_burst", bucket: "anon" });
+      const retryAfter = retryAfterSeconds(authBurst.resetAt);
+      set.headers["Retry-After"] = String(retryAfter);
+      return errorResponse("Too many authentication attempts", "RATE_LIMIT_EXCEEDED", { retryAfter });
+    }
+  }
+
   // Endpoint-specific limits from Part 3 spec
   if (path === "/api/payments/create-order") {
     const paymentLimit = await consumeRateLimitSmart(`payments:create-order:${userKey}`, 10, 60 * 60 * 1000);
     setRateLimitHeaders(set, 10, paymentLimit);
     if (!paymentLimit.allowed) {
       set.status = 429;
+      incCounter("rate_limit_triggered_total", { scope: "payments_create_order" });
       const retryAfter = retryAfterSeconds(paymentLimit.resetAt);
       set.headers["Retry-After"] = String(retryAfter);
       return errorResponse("Rate limit exceeded", "RATE_LIMIT_EXCEEDED", { retryAfter });
@@ -90,6 +120,7 @@ export const apiRateLimitPlugin = new Elysia({ name: "api-rate-limit" }).onBefor
     setRateLimitHeaders(set, 100, searchLimit);
     if (!searchLimit.allowed) {
       set.status = 429;
+      incCounter("rate_limit_triggered_total", { scope: "search" });
       const retryAfter = retryAfterSeconds(searchLimit.resetAt);
       set.headers["Retry-After"] = String(retryAfter);
       return errorResponse("Rate limit exceeded", "RATE_LIMIT_EXCEEDED", { retryAfter });

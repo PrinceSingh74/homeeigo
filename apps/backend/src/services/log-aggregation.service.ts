@@ -2,6 +2,7 @@ import type { AppLogCategory } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { getRingBufferLogs, registerLogPersister, type RingEntry } from "../lib/logger";
 import { buildCursorResult, decodeCursor, parseCursorLimit } from "../lib/cursor-pagination";
+import { evaluateLogPersistence } from "../lib/log-governance";
 
 export type LogSearchQuery = {
   requestId?: string;
@@ -24,6 +25,10 @@ function ensurePersister(): void {
   if (persisterRegistered) return;
   persisterRegistered = true;
   registerLogPersister((entry: RingEntry) => {
+    // Enterprise log governance is the single gate: ERROR/CRITICAL only + per-signature storm protection.
+    // INFO/WARN/DEBUG can NEVER reach the DB (they were 99.2% of a 699 MB explosion). See lib/log-governance.
+    const decision = evaluateLogPersistence(entry.level, String(entry.category), entry.message);
+    if (!decision.persist) return; // level_not_allowed or rate_limited (aggregated, not stored)
     void prisma.appLogEntry
       .create({
         data: {

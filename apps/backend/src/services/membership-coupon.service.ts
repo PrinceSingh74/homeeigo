@@ -20,6 +20,12 @@ export class MembershipCouponService {
     baseAmount: number,
     ctx: { serviceCategory?: string; geography?: string } = {},
   ): Promise<MembershipCouponResult> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isEmailVerified: true },
+    });
+    if (!user?.isEmailVerified) return { ok: false, error: "EMAIL_NOT_VERIFIED" };
+
     const normalized = code.trim().toUpperCase();
     const coupon = await prisma.membershipCoupon.findUnique({
       where: { code: normalized },

@@ -75,27 +75,43 @@ export const subscriptionsRoutes = new Elysia({ prefix: "/api/subscriptions" })
   })
   .post(
     "/order",
-    async ({ requireAuth, body, set }) => {
-      const { userId } = requireAuth();
-      const data = await subscriptionService.createOrder(userId, body.planId);
-      if (!data) {
-        set.status = 404;
-        return { success: false, error: "Plan not found", code: "NOT_FOUND" };
+    async ({ requireVerifiedEmail, body, set }) => {
+      const { userId } = requireVerifiedEmail();
+      try {
+        const data = await subscriptionService.createOrder(userId, body.planId);
+        if (!data) {
+          set.status = 404;
+          return { success: false, error: "Plan not found", code: "NOT_FOUND" };
+        }
+        return { success: true, data };
+      } catch (error) {
+        if (error instanceof Error && error.message === "EMAIL_NOT_VERIFIED") {
+          set.status = 403;
+          return { success: false, error: "Email verification required", code: "EMAIL_NOT_VERIFIED" };
+        }
+        throw error;
       }
-      return { success: true, data };
     },
     { body: t.Object({ planId: t.String() }) },
   )
   .post(
     "/verify",
-    async ({ requireAuth, body, set }) => {
-      const { userId } = requireAuth();
-      const result = await subscriptionService.verify(userId, body);
-      if ("error" in result) {
-        set.status = result.error === "INVALID_SIGNATURE" ? 400 : 404;
-        return { success: false, error: result.error, code: result.error };
+    async ({ requireVerifiedEmail, body, set }) => {
+      const { userId } = requireVerifiedEmail();
+      try {
+        const result = await subscriptionService.verify(userId, body);
+        if ("error" in result) {
+          set.status = result.error === "INVALID_SIGNATURE" ? 400 : 404;
+          return { success: false, error: result.error, code: result.error };
+        }
+        return { success: true, message: "Membership activated", data: result };
+      } catch (error) {
+        if (error instanceof Error && error.message === "EMAIL_NOT_VERIFIED") {
+          set.status = 403;
+          return { success: false, error: "Email verification required", code: "EMAIL_NOT_VERIFIED" };
+        }
+        throw error;
       }
-      return { success: true, message: "Membership activated", data: result };
     },
     {
       body: t.Object({
@@ -110,8 +126,8 @@ export const subscriptionsRoutes = new Elysia({ prefix: "/api/subscriptions" })
     const coupons = await membershipCouponService.myCoupons(userId);
     return { success: true, data: { coupons } };
   })
-  .post("/cancel", async ({ requireAuth, set }) => {
-    const { userId } = requireAuth();
+  .post("/cancel", async ({ requireVerifiedEmail, set }) => {
+    const { userId } = requireVerifiedEmail();
     const ok = await subscriptionService.cancel(userId);
     if (!ok) {
       set.status = 400;

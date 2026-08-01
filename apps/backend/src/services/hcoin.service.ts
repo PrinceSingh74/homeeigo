@@ -1,5 +1,5 @@
 import { prisma } from "../lib/prisma";
-import { HCoinTxnType, WalletTxnType, WalletTxnStatus } from "@prisma/client";
+import { HCoinTxnType, WalletTxnType, WalletTxnStatus, JournalEntryType } from "@prisma/client";
 import { nextWalletTxnNumber } from "../lib/booking-number";
 import { financialLedgerService } from "./financial-ledger.service";
 import { AuditLogService } from "./audit-log.service";
@@ -56,13 +56,14 @@ export class HCoinService {
       });
       if (dup) return; // already rewarded
     }
+    const rupeeValue = Math.round(rule.coins * COIN_TO_RUPEE);
     const txn = await prisma.$transaction(async (tx) => {
       const wallet = await tx.hCoinWallet.upsert({
         where: { userId },
         create: { userId, balance: rule.coins, lifetimeEarned: rule.coins },
         update: { balance: { increment: rule.coins }, lifetimeEarned: { increment: rule.coins } },
       });
-      return tx.hCoinTransaction.create({
+      const created = await tx.hCoinTransaction.create({
         data: {
           userId,
           type: HCoinTxnType.EARN,
@@ -73,9 +74,11 @@ export class HCoinService {
           balanceAfter: wallet.balance,
         },
       });
+      if (rupeeValue > 0) {
+        await financialLedgerService.recordHcoinEarnedInTransaction(tx, created.id, rule.coins, rupeeValue);
+      }
+      return created;
     });
-    const rupeeValue = Math.round(rule.coins * COIN_TO_RUPEE);
-    void financialLedgerService.recordHcoinEarned(txn.id, rule.coins, rupeeValue).catch(() => undefined);
     void AuditLogService.success("HCOIN_EARNED", {
       userId,
       details: { hcoinTxnId: txn.id, coins: rule.coins, event, referenceId },
@@ -112,6 +115,9 @@ export class HCoinService {
     const rupees = Math.floor(coins * COIN_TO_RUPEE);
     if (rupees <= 0) return { error: "BELOW_MIN" };
 
+    const { rupeesToPaise } = await import("../lib/money-paise");
+    const creditPaise = rupeesToPaise(rupees);
+
     const result = await prisma.$transaction(async (tx) => {
       const hw = await tx.hCoinWallet.update({
         where: { userId },
@@ -130,7 +136,10 @@ export class HCoinService {
       const user = await tx.user.findUnique({ where: { id: userId }, select: { walletBalance: true } });
       const updated = await tx.user.update({
         where: { id: userId },
-        data: { walletBalance: { increment: rupees } },
+        data: {
+          walletBalance: { increment: rupees },
+          walletBalancePaise: { increment: creditPaise },
+        },
       });
       const walletTxn = await tx.walletTransaction.create({
         data: {
@@ -146,6 +155,18 @@ export class HCoinService {
           status: WalletTxnStatus.COMPLETED,
         },
       });
+      await financialLedgerService.recordJournalInTransaction(tx, {
+        type: JournalEntryType.HCOIN_REDEEMED,
+        referenceId: hcoinTxn.id,
+        referenceType: "hcoin_transaction",
+        idempotencyKey: `hcoin_redeemed:${hcoinTxn.id}`,
+        description: `H-Coin redeemed → wallet ${walletTxn.id}`,
+        lines: [
+          { accountCode: "HCOIN_LIABILITY", debit: rupees, credit: 0 },
+          { accountCode: "CUSTOMER_WALLET", debit: 0, credit: rupees },
+        ],
+      });
+      await financialLedgerService.recordWalletTopUpInTransaction(tx, walletTxn.id, rupees);
       return {
         coinBalance: hw.balance,
         walletBalance: updated.walletBalance,
@@ -153,8 +174,6 @@ export class HCoinService {
         walletTxnId: walletTxn.id,
       };
     });
-    void financialLedgerService.recordHcoinRedeemed(result.hcoinTxnId, result.walletTxnId, rupees).catch(() => undefined);
-    void financialLedgerService.recordWalletTopUp(result.walletTxnId, rupees).catch(() => undefined);
     void AuditLogService.success("HCOIN_REDEEMED", {
       userId,
       details: { hcoinTxnId: result.hcoinTxnId, coins, rupees },
@@ -186,7 +205,7 @@ export class HCoinService {
         create: { userId, balance: coins, lifetimeEarned: coins },
         update: { balance: { increment: coins }, lifetimeEarned: { increment: coins } },
       });
-      return tx.hCoinTransaction.create({
+      const created = await tx.hCoinTransaction.create({
         data: {
           userId,
           type: HCoinTxnType.EARN,
@@ -196,9 +215,13 @@ export class HCoinService {
           balanceAfter: wallet.balance,
         },
       });
+      const rupeeValue = Math.round(coins * COIN_TO_RUPEE);
+      await financialLedgerService.recordJournalInTransaction(
+        tx,
+        financialLedgerService.journalForHcoinAdjusted(created.id, rupeeValue),
+      );
+      return created;
     });
-    const rupeeValue = Math.round(coins * COIN_TO_RUPEE);
-    void financialLedgerService.recordHcoinAdjusted(txn.id, rupeeValue).catch(() => undefined);
     void AuditLogService.success("HCOIN_ADJUSTED", {
       userId,
       details: { hcoinTxnId: txn.id, coins, note },

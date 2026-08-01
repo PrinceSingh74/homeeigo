@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import jsonwebtoken from "jsonwebtoken";
 import type { JwtPayload } from "../types/auth.types";
 
@@ -50,42 +51,68 @@ export const JWT_SECRETS = {
   REFRESH: resolveSecret(process.env.JWT_REFRESH_SECRET, "change-me-refresh-secret"),
 };
 
+export function isJwtConfigured(): boolean {
+  const access = process.env.JWT_SECRET?.trim();
+  const refresh = process.env.JWT_REFRESH_SECRET?.trim();
+  return Boolean(access && refresh && !isInsecureSecret(access) && !isInsecureSecret(refresh));
+}
+
 export class JWTService {
   private readonly accessSecret = JWT_SECRETS.ACCESS;
   private readonly refreshSecret = JWT_SECRETS.REFRESH;
 
-  generateAccessToken(payload: { userId: string; email: string; deviceId?: string }): string {
+  generateAccessToken(payload: {
+    userId: string;
+    email: string;
+    deviceId?: string;
+    authEpoch?: number;
+    wsNonce?: string;
+  }): string {
     const now = Math.floor(Date.now() / 1000);
     return jsonwebtoken.sign(
       {
         ...payload,
+        jti: crypto.randomUUID(),
         type: "access",
         iat: now,
         exp: now + JWT_CONFIG.ACCESS_TOKEN_SECONDS,
       },
       this.accessSecret,
-      { algorithm: JWT_CONFIG.ALGORITHM }
+      { algorithm: JWT_CONFIG.ALGORITHM },
     );
   }
 
-  generateRefreshToken(payload: { userId: string }): string {
+  generateRefreshToken(payload: { userId: string; familyId: string; authEpoch?: number }): string {
     const now = Math.floor(Date.now() / 1000);
     return jsonwebtoken.sign(
       {
-        ...payload,
+        userId: payload.userId,
+        familyId: payload.familyId,
+        authEpoch: payload.authEpoch,
+        jti: crypto.randomUUID(),
         type: "refresh",
         iat: now,
         exp: now + JWT_CONFIG.REFRESH_TOKEN_SECONDS,
       },
       this.refreshSecret,
-      { algorithm: JWT_CONFIG.ALGORITHM }
+      { algorithm: JWT_CONFIG.ALGORITHM },
     );
   }
 
-  generateTokenPair(payload: { userId: string; email: string; deviceId?: string }) {
+  generateTokenPair(payload: {
+    userId: string;
+    email: string;
+    deviceId?: string;
+    authEpoch?: number;
+    familyId: string;
+  }) {
     return {
       accessToken: this.generateAccessToken(payload),
-      refreshToken: this.generateRefreshToken({ userId: payload.userId }),
+      refreshToken: this.generateRefreshToken({
+        userId: payload.userId,
+        familyId: payload.familyId,
+        authEpoch: payload.authEpoch,
+      }),
     };
   }
 

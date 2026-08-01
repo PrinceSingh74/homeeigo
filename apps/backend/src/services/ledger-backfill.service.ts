@@ -11,7 +11,8 @@ export type BackfillType =
   | "REFERRAL_COMMISSION"
   | "GIFT_CARD"
   | "CASHBACK"
-  | "HCOIN";
+  | "HCOIN"
+  | "PROVIDER_EARNING";
 
 export const BACKFILL_TYPES: BackfillType[] = [
   "WALLET_TOPUP",
@@ -20,6 +21,7 @@ export const BACKFILL_TYPES: BackfillType[] = [
   "GIFT_CARD",
   "CASHBACK",
   "HCOIN",
+  "PROVIDER_EARNING",
 ];
 
 type Counters = { scanned: number; backfilled: number; skipped: number; failed: number };
@@ -123,6 +125,43 @@ export class LedgerBackfillService {
         return this.backfillCashback(limit, c, issues);
       case "HCOIN":
         return this.backfillHcoin(limit, c, issues);
+      case "PROVIDER_EARNING":
+        return this.backfillProviderEarnings(limit, c, issues);
+    }
+  }
+
+  private async backfillProviderEarnings(limit: number, c: Counters, issues: IssueRow[]) {
+    const rows = await prisma.earning.findMany({
+      select: { bookingId: true, grossAmount: true, commission: true, netEarning: true },
+      take: limit,
+      orderBy: { createdAt: "asc" },
+    });
+    for (const row of rows) {
+      if (!row.bookingId) continue;
+      c.scanned++;
+      const key = `provider_earning:${row.bookingId}`;
+      try {
+        if (await this.hasJournal(key)) {
+          c.skipped++;
+          continue;
+        }
+        await financialLedgerService.recordProviderEarning(
+          row.bookingId,
+          row.grossAmount,
+          row.commission,
+          row.netEarning,
+        );
+        c.backfilled++;
+        issues.push({ backfillType: "PROVIDER_EARNING", recordId: row.bookingId, outcome: "BACKFILLED" });
+      } catch (e) {
+        c.failed++;
+        issues.push({
+          backfillType: "PROVIDER_EARNING",
+          recordId: row.bookingId,
+          outcome: "FAILED",
+          detail: msg(e),
+        });
+      }
     }
   }
 

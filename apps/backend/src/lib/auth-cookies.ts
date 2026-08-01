@@ -1,5 +1,7 @@
-const ACCESS_MAX_AGE = 60 * 60;
-const REFRESH_MAX_AGE = 30 * 24 * 60 * 60;
+import { JWT_CONFIG } from "../services/jwt.service";
+
+const ACCESS_MAX_AGE = JWT_CONFIG.ACCESS_TOKEN_SECONDS;
+const REFRESH_MAX_AGE = JWT_CONFIG.REFRESH_TOKEN_SECONDS;
 
 type HeaderSet = {
   headers?: Record<string, string | number | string[] | undefined>;

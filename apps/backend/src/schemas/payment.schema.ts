@@ -19,6 +19,7 @@ export const verifyPaymentSchema = z.object({
 
 export const walletTopUpSchema = z.object({
   amount: z.number().positive("Amount must be positive").max(1_000_000, "Amount too large"),
+  idempotencyKey: z.string().trim().min(8).max(128).optional(),
 });
 
 const ifscSchema = z

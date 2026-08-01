@@ -109,7 +109,7 @@ export class CashbackService {
         data: { walletBalance: balanceAfter, totalSaved: { increment: amount } },
       });
 
-      await tx.membershipCashback.update({
+      const cb = await tx.membershipCashback.update({
         where: { bookingId },
         data: {
           amount,
@@ -120,12 +120,15 @@ export class CashbackService {
         },
       });
 
+      await financialLedgerService.recordJournalInTransaction(
+        tx,
+        financialLedgerService.journalForCashback(cb.id, amount),
+      );
+
       return { credited: true, amount, walletTxnId: walletTxn.id };
     });
 
     if (result.credited) {
-      const cb = await prisma.membershipCashback.findUnique({ where: { bookingId } });
-      if (cb) void financialLedgerService.recordCashback(cb.id, cb.amount).catch(() => undefined);
       await entitlementService.recordUsage(userId, BENEFIT.CASHBACK_PCT, { amount });
       await notificationService.createForUser({
         userId,
@@ -186,15 +189,18 @@ export class CashbackService {
         where: { bookingId },
         data: { status: CashbackStatus.REVERSED },
       });
+
+      await financialLedgerService.recordJournalInTransaction(
+        tx,
+        financialLedgerService.journalForWalletDebit(walletTxn.id, debit),
+      );
+      await financialLedgerService.recordJournalInTransaction(
+        tx,
+        financialLedgerService.journalForCashbackReversal(walletTxn.id, debit, bookingId),
+      );
+
       return { walletTxnId: walletTxn.id, debit };
     });
-
-    if (reversed) {
-      void financialLedgerService.recordWalletDebit(reversed.walletTxnId, reversed.debit).catch(() => undefined);
-      void financialLedgerService
-        .recordCashbackReversal(reversed.walletTxnId, reversed.debit, bookingId)
-        .catch(() => undefined);
-    }
 
     return { reversed: Boolean(reversed), amount: reversed?.debit ?? 0 };
   }

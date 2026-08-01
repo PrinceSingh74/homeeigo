@@ -1,6 +1,7 @@
 import { BookingStatus, QueuePriority } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { resolveTierPriorityScore } from "../lib/membership-tiers";
+import { fromWaitTimeMsBigInt, toWaitTimeMsBigInt } from "../lib/wait-time-ms";
 import { entitlementService, type Entitlements } from "./entitlement.service";
 
 const PENDING_STATUSES: BookingStatus[] = ["PENDING"];
@@ -37,7 +38,8 @@ export class BookingPriorityService {
       }),
     ]);
     const baseAvg = Math.round(
-      avgRow._avg.waitTimeMs ?? (priority === QueuePriority.HIGH ? 5 * 60_000 : 18 * 60_000),
+      fromWaitTimeMsBigInt(avgRow._avg.waitTimeMs) ??
+        (priority === QueuePriority.HIGH ? 5 * 60_000 : 18 * 60_000),
     );
     return baseAvg * Math.max(1, pendingAhead + 1);
   }
@@ -78,7 +80,7 @@ export class BookingPriorityService {
         queuePriority: priority,
         queuePosition,
         priorityScore,
-        estimatedWaitTimeMs,
+        estimatedWaitTimeMs: toWaitTimeMsBigInt(estimatedWaitTimeMs),
         queuedAt: now,
         priorityServed: priority === QueuePriority.HIGH,
       },
@@ -109,7 +111,7 @@ export class BookingPriorityService {
       queuePriority: b.queuePriority.toLowerCase(),
       queuePosition: b.queuePosition,
       priorityScore: b.priorityScore,
-      estimatedWaitTimeMs: b.estimatedWaitTimeMs,
+      estimatedWaitTimeMs: fromWaitTimeMsBigInt(b.estimatedWaitTimeMs),
       queuedAt: b.queuedAt,
       waitTimeMs: b.queuedAt ? Date.now() - b.queuedAt.getTime() : null,
       user: `${b.user.firstName} ${b.user.lastName}`,
@@ -124,7 +126,9 @@ export class BookingPriorityService {
     if (!booking) return null;
 
     const assignedAt = new Date();
-    const waitTimeMs = booking.queuedAt ? assignedAt.getTime() - booking.queuedAt.getTime() : null;
+    const waitTimeMs = booking.queuedAt
+      ? toWaitTimeMsBigInt(assignedAt.getTime() - booking.queuedAt.getTime())
+      : null;
 
     return prisma.booking.update({
       where: { id: bookingId },
@@ -154,7 +158,7 @@ export class BookingPriorityService {
 
     const avgWait = (rows: typeof pending) => {
       const times = rows
-        .map((b) => (b.queuedAt ? Date.now() - b.queuedAt.getTime() : b.waitTimeMs))
+        .map((b) => (b.queuedAt ? Date.now() - b.queuedAt.getTime() : fromWaitTimeMsBigInt(b.waitTimeMs)))
         .filter((t): t is number => t != null);
       return times.length ? Math.round(times.reduce((a, c) => a + c, 0) / times.length) : 0;
     };
@@ -184,8 +188,8 @@ export class BookingPriorityService {
       pendingNormal: normal.length,
       avgWaitHighMs: avgWait(high),
       avgWaitNormalMs: avgWait(normal),
-      historicalAvgWaitHighMs: Math.round(assignedHigh._avg.waitTimeMs ?? 0),
-      historicalAvgWaitNormalMs: Math.round(assignedNormal._avg.waitTimeMs ?? 0),
+      historicalAvgWaitHighMs: Math.round(fromWaitTimeMsBigInt(assignedHigh._avg.waitTimeMs) ?? 0),
+      historicalAvgWaitNormalMs: Math.round(fromWaitTimeMsBigInt(assignedNormal._avg.waitTimeMs) ?? 0),
       totalAssignedHigh: assignedHigh._count,
       totalAssignedNormal: assignedNormal._count,
       queueByMembership: byMembership,

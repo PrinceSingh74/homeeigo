@@ -33,6 +33,34 @@ export const consumeRateLimitSmart = async (
   return viaRedis ?? consumeRateLimit(key, limit, windowMs);
 };
 
+const peekRateLimit = (key: string, limit: number, windowMs: number): RateLimitResult => {
+  const now = Date.now();
+  const entry = store.get(key);
+  if (!entry || entry.resetAt <= now) {
+    return { allowed: true, remaining: limit, resetAt: now + windowMs };
+  }
+  if (entry.count >= limit) {
+    return { allowed: false, remaining: 0, resetAt: entry.resetAt };
+  }
+  return { allowed: true, remaining: limit - entry.count, resetAt: entry.resetAt };
+};
+
+/** Check limit without incrementing (used before recording a login failure). */
+export const peekRateLimitSmart = async (
+  key: string,
+  limit: number,
+  windowMs: number,
+): Promise<RateLimitResult> => {
+  const viaRedis = await redisClient.peek(key, limit, Math.ceil(windowMs / 1000));
+  return viaRedis ?? peekRateLimit(key, limit, windowMs);
+};
+
+/** Clear a rate-limit bucket (e.g. after successful login). */
+export const resetRateLimitSmart = async (key: string): Promise<void> => {
+  await redisClient.resetRateLimit(key);
+  store.delete(key);
+};
+
 /** True if this key already hit its limit within the active window (no increment). */
 export const isRateLimitExceeded = (key: string, limit: number) => {
   const entry = store.get(key);
