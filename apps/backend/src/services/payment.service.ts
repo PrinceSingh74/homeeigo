@@ -1,12 +1,14 @@
-import { PaymentStatus } from "@prisma/client";
+import crypto from "crypto";
+import { PaymentStatus, Prisma, type Payment } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { paymentStatusApi } from "../lib/format";
 import { parsePagination } from "../lib/pagination";
 import { razorpayService } from "./razorpay.service";
 import { notificationService } from "./notification.service";
 import { walletService } from "./wallet.service";
-import { invoiceNumberFor } from "./invoice.service";
-import { emailService } from "./email.service";
+import { invoiceNumberFor, invoiceService } from "./invoice.service";
+import { emailDeliveryService } from "./email-delivery.service";
+import { userPiiService } from "./user-pii.service";
 import { validateAdminRefundAmount } from "../lib/payment-refund-rules";
 import { AuditLogService } from "./audit-log.service";
 import { giftCardService } from "./gift-card.service";
@@ -19,44 +21,267 @@ import { earningsService } from "./earnings.service";
 import { recordFinancialMetric } from "../lib/financial-metrics";
 import { financialRiskService } from "./financial-risk.service";
 import { refundOrchestratorService } from "./refund-orchestrator.service";
+import { eventPlatformConfig } from "../events/core/config";
+import { emitPaymentFailedInTransaction, emitPaymentSuccessInTransaction } from "../events/core/payment-outbox";
+
+type PaymentOrderMetadata = {
+  previousRazorpayOrderIds?: string[];
+};
+
+const GATEWAY_ORDER_POLL_MS = 50;
+const GATEWAY_ORDER_TIMEOUT_MS = 10_000;
 
 export class PaymentService {
+  buildOrderIdempotencyKey(bookingId: string): string {
+    return `booking_order:${bookingId}`;
+  }
+
+  private isPendingGatewayOrder(orderId: string): boolean {
+    return orderId.startsWith("pending:");
+  }
+
+  private parsePaymentMetadata(raw: string | null): PaymentOrderMetadata {
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw) as PaymentOrderMetadata;
+    } catch {
+      return {};
+    }
+  }
+
+  private async awaitCommittedGatewayOrder(bookingId: string): Promise<Payment> {
+    const deadline = Date.now() + GATEWAY_ORDER_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const payment = await prisma.payment.findUnique({ where: { bookingId } });
+      if (!payment) {
+        throw new Error("PAYMENT_RESERVATION_MISSING");
+      }
+      if (!this.isPendingGatewayOrder(payment.razorpayOrderId)) {
+        return payment;
+      }
+      await Bun.sleep(GATEWAY_ORDER_POLL_MS);
+    }
+    throw new Error("GATEWAY_ORDER_TIMEOUT");
+  }
+
+  /**
+   * Takes over a `pending:` reservation whose gateway call never completed.
+   *
+   * The placeholder is written BEFORE Razorpay is contacted, so a failed gateway
+   * call (outage, network drop, bad credentials) leaves a row that no request will
+   * ever commit. Without this, every later attempt polled for the full timeout and
+   * died with GATEWAY_ORDER_TIMEOUT — permanently blocking payment for that booking.
+   *
+   * The swap is guarded on the exact stale placeholder, so a genuinely in-flight
+   * request can never have its reservation stolen: only one caller wins the update,
+   * and only the winner drives a new gateway order.
+   */
+  private async reclaimAbandonedReservation(
+    bookingId: string,
+    stalePlaceholder: string,
+  ): Promise<{ payment: Payment; createdReservation: boolean }> {
+    const claimed = await prisma.payment.updateMany({
+      where: {
+        bookingId,
+        razorpayOrderId: stalePlaceholder,
+        status: PaymentStatus.INITIATED,
+      },
+      data: { razorpayOrderId: `pending:${bookingId}:${crypto.randomUUID()}` },
+    });
+    const payment = await prisma.payment.findUnique({ where: { bookingId } });
+    if (!payment) throw new Error("PAYMENT_RESERVATION_MISSING");
+    return { payment, createdReservation: claimed.count > 0 };
+  }
+
+  /**
+   * Waits for a concurrent request to commit the gateway order, and reclaims the
+   * reservation if nobody ever does. A reservation older than the timeout cannot
+   * have a live request behind it, so it is reclaimed immediately — that turns a
+   * retry after a gateway outage from a 10s hang into an instant new order.
+   */
+  private async settleReservation(
+    bookingId: string,
+    placeholder: string,
+    reservedAt: Date,
+  ): Promise<{ payment: Payment; createdReservation: boolean }> {
+    if (Date.now() - reservedAt.getTime() > GATEWAY_ORDER_TIMEOUT_MS) {
+      return this.reclaimAbandonedReservation(bookingId, placeholder);
+    }
+    try {
+      const committed = await this.awaitCommittedGatewayOrder(bookingId);
+      return { payment: committed, createdReservation: false };
+    } catch (error) {
+      if (error instanceof Error && error.message === "GATEWAY_ORDER_TIMEOUT") {
+        return this.reclaimAbandonedReservation(bookingId, placeholder);
+      }
+      throw error;
+    }
+  }
+
+  private async reservePaymentIntent(
+    userId: string,
+    bookingId: string,
+    idempotencyKey: string,
+    finalAmount: number,
+    paymentMethod: string | null,
+  ): Promise<{ payment: Payment; createdReservation: boolean }> {
+    const existing = await prisma.payment.findUnique({ where: { bookingId } });
+    if (existing) {
+      if (existing.status === PaymentStatus.SUCCESS) {
+        return { payment: existing, createdReservation: false };
+      }
+      if (!this.isPendingGatewayOrder(existing.razorpayOrderId)) {
+        return { payment: existing, createdReservation: false };
+      }
+      return this.settleReservation(bookingId, existing.razorpayOrderId, existing.updatedAt);
+    }
+
+    const placeholder = `pending:${bookingId}:${crypto.randomUUID()}`;
+    try {
+      const payment = await prisma.payment.create({
+        data: {
+          bookingId,
+          idempotencyKey,
+          userId,
+          amount: finalAmount,
+          paymentMethod: paymentMethod ?? "razorpay",
+          razorpayOrderId: placeholder,
+          status: PaymentStatus.INITIATED,
+        },
+      });
+      return { payment, createdReservation: true };
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const raced = await prisma.payment.findUnique({ where: { bookingId } });
+        if (!raced) throw error;
+        if (!this.isPendingGatewayOrder(raced.razorpayOrderId)) {
+          return { payment: raced, createdReservation: false };
+        }
+        return this.settleReservation(bookingId, raced.razorpayOrderId, raced.updatedAt);
+      }
+      throw error;
+    }
+  }
+
+  private async retryFailedPaymentOrder(
+    payment: Payment,
+    booking: { id: string; bookingNumber: string; finalAmount: number },
+    idempotencyKey: string,
+  ) {
+    const metadata = this.parsePaymentMetadata(payment.metadata);
+    const history = metadata.previousRazorpayOrderIds ?? [];
+    if (!history.includes(payment.razorpayOrderId)) {
+      history.push(payment.razorpayOrderId);
+    }
+
+    const order = await razorpayService.createOrder(booking.finalAmount, booking.bookingNumber, {
+      bookingId: booking.id,
+    });
+
+    const updated = await prisma.payment.updateMany({
+      where: {
+        id: payment.id,
+        status: PaymentStatus.FAILED,
+        razorpayOrderId: payment.razorpayOrderId,
+      },
+      data: {
+        amount: booking.finalAmount,
+        razorpayOrderId: order.orderId,
+        status: PaymentStatus.INITIATED,
+        failedAt: null,
+        metadata: JSON.stringify({
+          ...metadata,
+          previousRazorpayOrderIds: history,
+        } satisfies PaymentOrderMetadata),
+      },
+    });
+
+    if (updated.count === 0) {
+      const raced = await prisma.payment.findUnique({ where: { bookingId: booking.id } });
+      if (raced) return this.orderResponse(raced, booking.id);
+      return { error: "RETRY_CONFLICT" as const };
+    }
+
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: { paymentStatus: PaymentStatus.INITIATED },
+    });
+
+    return {
+      razorpayOrderId: order.orderId,
+      amount: order.amount,
+      currency: order.currency,
+      key: razorpayService.keyId,
+      notes: { bookingId: booking.id },
+      idempotencyKey,
+      previousRazorpayOrderIds: history,
+    };
+  }
+
   async createOrder(userId: string, bookingId: string) {
     const booking = await prisma.booking.findFirst({ where: { id: bookingId, userId } });
     if (!booking) return null;
-    const existing = await prisma.payment.findUnique({ where: { bookingId } });
-    if (existing?.status === PaymentStatus.SUCCESS) {
-      return {
-        razorpayOrderId: existing.razorpayOrderId ?? "",
-        amount: existing.amount,
-        currency: "INR",
-        key: razorpayService.keyId,
-        notes: { bookingId },
-      };
-    }
-    // Backend is the single source of truth for the charge: always use the
-    // booking's authoritative finalAmount, never a client-supplied amount.
+
+    const idempotencyKey = this.buildOrderIdempotencyKey(bookingId);
     const finalAmount = booking.finalAmount;
+
+    let { payment, createdReservation } = await this.reservePaymentIntent(
+      userId,
+      bookingId,
+      idempotencyKey,
+      finalAmount,
+      booking.paymentMethod,
+    );
+
+    if (payment.status === PaymentStatus.SUCCESS) {
+      return this.orderResponse(payment, bookingId);
+    }
+
+    if (!this.isPendingGatewayOrder(payment.razorpayOrderId)) {
+      if (payment.status === PaymentStatus.FAILED) {
+        return this.retryFailedPaymentOrder(payment, booking, idempotencyKey);
+      }
+      return this.orderResponse(payment, bookingId);
+    }
+
+    if (!createdReservation) {
+      const settled = await this.settleReservation(
+        bookingId,
+        payment.razorpayOrderId,
+        payment.updatedAt,
+      );
+      if (!settled.createdReservation) {
+        return this.orderResponse(settled.payment, bookingId);
+      }
+      // We took over an abandoned reservation — fall through and drive the order.
+      payment = settled.payment;
+    }
+
+    const placeholder = payment.razorpayOrderId;
     const order = await razorpayService.createOrder(finalAmount, booking.bookingNumber, {
       bookingId,
     });
 
-    await prisma.payment.upsert({
-      where: { bookingId },
-      create: {
+    const updated = await prisma.payment.updateMany({
+      where: {
         bookingId,
-        userId,
-        amount: finalAmount,
-        paymentMethod: booking.paymentMethod ?? "razorpay",
-        razorpayOrderId: order.orderId,
+        razorpayOrderId: placeholder,
         status: PaymentStatus.INITIATED,
       },
-      update: {
+      data: {
         amount: finalAmount,
         razorpayOrderId: order.orderId,
-        status: PaymentStatus.INITIATED,
       },
     });
+
+    if (updated.count === 0) {
+      const raced = await prisma.payment.findUnique({ where: { bookingId } });
+      if (raced) return this.orderResponse(raced, bookingId);
+      throw new Error("PAYMENT_COMMIT_FAILED");
+    }
 
     await prisma.booking.update({
       where: { id: bookingId },
@@ -69,6 +294,27 @@ export class PaymentService {
       currency: order.currency,
       key: razorpayService.keyId,
       notes: { bookingId },
+      idempotencyKey,
+      checkoutMode: razorpayService.checkoutModeForOrder(order.orderId),
+    };
+  }
+
+  private orderAmountPaise(amountInr: number): number {
+    return Math.round(amountInr * 100);
+  }
+
+  private orderResponse(
+    payment: { razorpayOrderId: string; amount: number },
+    bookingId: string,
+  ) {
+    return {
+      razorpayOrderId: payment.razorpayOrderId,
+      amount: this.orderAmountPaise(payment.amount),
+      currency: "INR" as const,
+      key: razorpayService.keyId,
+      notes: { bookingId },
+      idempotencyKey: this.buildOrderIdempotencyKey(bookingId),
+      checkoutMode: razorpayService.checkoutModeForOrder(payment.razorpayOrderId),
     };
   }
 
@@ -84,6 +330,11 @@ export class PaymentService {
       const walletResult = await walletService.verifyTopUp(userId, body);
       if (walletResult.error === "NOT_FOUND") return { error: "NOT_FOUND" as const };
       if (walletResult.error === "INVALID_SIGNATURE") return { error: "INVALID_SIGNATURE" as const };
+      // EXPIRED / FAILED top-ups must surface as errors — never fall through to a
+      // success-shaped response (which would report a phantom credit). This guard
+      // also narrows the union so the success fields below are type-safe.
+      if (walletResult.error === "EXPIRED") return { error: "EXPIRED" as const };
+      if (walletResult.error === "FAILED") return { error: "FAILED" as const };
       return {
         walletTransactionId: walletResult.walletTransactionId,
         status: walletResult.status,
@@ -139,6 +390,9 @@ export class PaymentService {
               where: { id: payment.bookingId },
               data: { paymentStatus: PaymentStatus.SUCCESS, status: payment.booking.providerId ? "ACCEPTED" : "PENDING" },
             });
+            if (eventPlatformConfig.outboxEnabled && eventPlatformConfig.paymentEventsEnabled && payment.userId) {
+              await emitPaymentSuccessInTransaction(tx, payment, updated.completedAt ?? new Date());
+            }
             return updated;
           });
         },
@@ -162,19 +416,21 @@ export class PaymentService {
         priority: "high",
       });
 
-      // Payment receipt email (dev: console; prod: Resend) — never blocks the response.
+      // Payment receipt + invoice PDF email — never blocks the response.
       const u = await prisma.user.findUnique({
         where: { id: payment.userId },
-        select: { email: true, firstName: true },
+        select: { id: true, email: true, firstName: true, phoneNumber: true },
       });
-      if (u?.email) {
-        void emailService
-          .send({
-            to: u.email,
-            subject: `Payment received — ₹${payment.amount} · HOMIGO`,
-            html: `<p>Hi ${u.firstName ?? "there"},</p><p>We've received your payment of <b>₹${payment.amount}</b> for booking <b>${payment.booking.bookingNumber}</b>. Your invoice is available in Wallet → Invoices.</p><p>— HOMIGO</p>`,
-          })
-          .catch(() => {});
+      if (u) {
+        const email = await userPiiService.resolveEmail(u, { actorId: payment.userId, authorized: true });
+        if (email) {
+          emailDeliveryService.sendPaymentReceipt(email, payment.amount, payment.booking.bookingNumber, u.firstName);
+          void invoiceService.generatePdf(payment.userId, payment.id).then((pdf) => {
+            if (pdf) {
+              emailDeliveryService.sendInvoiceWithPdf(email, pdf.invoiceNo, payment.amount, pdf.buffer, u.firstName);
+            }
+          });
+        }
       }
     }
 
@@ -213,46 +469,37 @@ export class PaymentService {
     return { refundId: result.refundId, status: result.status, amount: result.amount };
   }
 
-  /**
-   * Booking cancellation refund — Razorpay only, idempotent, no direct wallet credit.
-   */
+  /** @deprecated Use bookingRefundService.processCancellationRefund via bookingService.cancel */
   async refundForBookingCancellation(
     bookingId: string,
     reason: string,
     actorUserId: string,
+    refundAmount?: number,
   ): Promise<{ amount: number; status: string } | { error: string }> {
-    const payment = await prisma.payment.findUnique({ where: { bookingId } });
-    if (!payment || payment.status !== PaymentStatus.SUCCESS) {
-      return { amount: 0, status: "none" };
-    }
-
-    const refundAmount = payment.amountPaid || payment.amount;
-    const idempotencyKey = refundOrchestratorService.cancellationIdempotencyKey(bookingId);
-
-    const existing = await prisma.refundRequest.findUnique({ where: { idempotencyKey } });
-    if (existing?.status === "COMPLETED" && existing.gatewayRefundId) {
-      return { amount: existing.amount, status: "processed" };
-    }
-
-    const result = await refundOrchestratorService.executeRefund({
-      paymentId: payment.id,
-      amount: refundAmount,
-      reason,
-      actorUserId,
-      isAdmin: true,
-      source: "cancellation",
-      idempotencyKey,
-      bookingId,
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { userId: true, cancelledBy: true },
     });
+    if (!booking?.userId) return { amount: 0, status: "none" };
 
-    if ("error" in result) {
-      if (result.error === "REFUND_IN_PROGRESS") {
-        return { amount: refundAmount, status: "processing" };
-      }
-      return { error: result.error };
-    }
+    const { bookingRefundService } = await import("./booking-refund.service");
+    const amount =
+      refundAmount ??
+      (await bookingRefundService.quoteForBooking(
+        bookingId,
+        booking.cancelledBy === "provider" ? "provider" : "user",
+      ))?.refundAmount ??
+      0;
 
-    return { amount: result.amount, status: result.status };
+    const result = await bookingRefundService.processCancellationRefund({
+      bookingId,
+      userId: booking.userId,
+      actorUserId,
+      reason,
+      cancelledBy: booking.cancelledBy === "provider" ? "provider" : "user",
+      refundAmount: amount,
+    });
+    return result;
   }
 
   /** Retry-safe activation for gift cards / subscriptions missed by client verify. */
@@ -261,6 +508,17 @@ export class PaymentService {
       giftCardService.reconcilePendingFromOrders(),
       subscriptionService.reconcilePendingFromOrders(),
     ]);
+    const recovered = giftCards + subscriptions;
+    if (recovered > 0) {
+      const adminEmail = process.env.ADMIN_EMAIL;
+      if (adminEmail) {
+        emailDeliveryService.sendRecoveryAlert(
+          adminEmail,
+          "Payment reconciliation recovered orders",
+          `Recovered ${giftCards} gift card(s) and ${subscriptions} subscription(s) from pending Razorpay orders.`,
+        );
+      }
+    }
     return { giftCards, subscriptions };
   }
 
@@ -335,6 +593,7 @@ export class PaymentService {
                 status: locked.booking.providerId ? "ACCEPTED" : "PENDING",
               },
             });
+            await emitPaymentSuccessInTransaction(tx, locked, updated.completedAt ?? new Date());
             return updated;
           },
         });
@@ -358,13 +617,19 @@ export class PaymentService {
       const payment = await prisma.payment.findFirst({ where: { razorpayOrderId: p.order_id } });
       if (!payment) return { handled: false, reason: "PAYMENT_NOT_FOUND" };
       if (payment.status === PaymentStatus.SUCCESS) return { handled: true, reason: "IGNORED_ALREADY_SUCCESS" };
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: PaymentStatus.FAILED },
-      });
-      await prisma.booking.update({
-        where: { id: payment.bookingId },
-        data: { paymentStatus: PaymentStatus.FAILED },
+      const failedAt = new Date();
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: { status: PaymentStatus.FAILED },
+        });
+        await tx.booking.update({
+          where: { id: payment.bookingId },
+          data: { paymentStatus: PaymentStatus.FAILED },
+        });
+        if (eventPlatformConfig.outboxEnabled && eventPlatformConfig.paymentEventsEnabled && payment.userId) {
+          await emitPaymentFailedInTransaction(tx, payment, "gateway_failed", failedAt);
+        }
       });
       recordFinancialMetric("payment_failed_total", 1);
       return { handled: true, reason: "MARKED_FAILED" };

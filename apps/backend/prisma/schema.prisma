@@ -9,8 +9,16 @@ datasource db {
 
 model User {
   id                            String                         @id @default(cuid())
-  email                         String                         @unique
-  phoneNumber                   String                         @unique @map("phone_number")
+  email                         String?
+  phoneNumber                   String?                        @map("phone_number")
+  emailEncrypted                String?                        @map("email_encrypted")
+  emailHash                     String?                        @unique @map("email_hash")
+  emailEncryptionKeyVersion     Int?                           @map("email_encryption_key_version")
+  phoneEncrypted                String?                        @map("phone_encrypted")
+  phoneHash                     String?                        @unique @map("phone_hash")
+  phoneEncryptionKeyVersion     Int?                           @map("phone_encryption_key_version")
+  dataEncryptionStatus          DataEncryptionStatus           @default(PARTIAL) @map("data_encryption_status")
+  dataEncryptedAt               DateTime?                      @map("data_encrypted_at")
   firstName                     String                         @map("first_name")
   lastName                      String                         @map("last_name")
   profileImage                  String?                        @map("profile_image")
@@ -46,9 +54,12 @@ model User {
   pushNotifications             Boolean                        @default(true) @map("push_notifications")
   smsNotifications              Boolean                        @default(true) @map("sms_notifications")
   walletBalance                 Float                          @default(0) @map("wallet_balance")
+  walletBalancePaise            BigInt                         @default(0) @map("wallet_balance_paise")
   walletCurrency                String                         @default("INR") @map("wallet_currency")
   totalSpent                    Float                          @default(0) @map("total_spent")
+  totalSpentPaise               BigInt                         @default(0) @map("total_spent_paise")
   totalSaved                    Float                          @default(0) @map("total_saved")
+  totalSavedPaise               BigInt                         @default(0) @map("total_saved_paise")
   referralCode                  String?                        @unique @map("referral_code")
   referredBy                    String?                        @map("referred_by")
   referralCount                 Int                            @default(0) @map("referral_count")
@@ -102,8 +113,14 @@ model User {
   walletTransactions            WalletTransaction[]
   transfersReceived             WalletTransfer[]               @relation("TransferRecipient")
   transfersSent                 WalletTransfer[]               @relation("TransferSender")
+  complianceRequests            ComplianceRequest[]
+  complianceRequestAudits       ComplianceRequestAudit[]
+  dataExportRequests            DataExportRequest[]
+  deletionRequests              DeletionRequest[]
+  savedPaymentMethods           SavedPaymentMethod[]
 
-  @@index([phoneNumber])
+  @@index([emailHash])
+  @@index([phoneHash])
   @@index([kycStatus])
   @@index([isActive])
   @@index([isBanned])
@@ -139,7 +156,8 @@ model UserDevice {
 model OTP {
   id           String    @id @default(cuid())
   userId       String?   @map("user_id")
-  phoneNumber  String    @map("phone_number")
+  phoneNumber  String?   @map("phone_number")
+  phoneHash    String?   @map("phone_hash")
   otpHash      String    @map("otp_hash")
   expiresAt    DateTime  @map("expires_at")
   isUsed       Boolean   @default(false) @map("is_used")
@@ -149,7 +167,9 @@ model OTP {
   user         User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([phoneNumber, createdAt])
+  @@index([phoneHash, createdAt])
   @@index([expiresAt])
+  @@index([userId])
   @@map("otps")
 }
 
@@ -202,7 +222,9 @@ model Provider {
   workingHoursEnd              String?                        @map("working_hours_end")
   workingDays                  String[]                       @map("working_days")
   walletBalance                Float                          @default(0) @map("wallet_balance")
+  walletBalancePaise           BigInt                         @default(0) @map("wallet_balance_paise")
   totalEarnings                Float                          @default(0) @map("total_earnings")
+  totalEarningsPaise           BigInt                         @default(0) @map("total_earnings_paise")
   thisMonthEarnings            Float                          @default(0) @map("this_month_earnings")
   thisWeekEarnings             Float                          @default(0) @map("this_week_earnings")
   commissionRate               Float                          @default(20) @map("commission_rate")
@@ -238,6 +260,7 @@ model Provider {
   panNumberHash                String?                        @unique @map("pan_number_hash")
   aadharNumberHash             String?                        @unique @map("aadhar_number_hash")
   reservedBalance              Float                          @default(0) @map("reserved_balance")
+  reservedBalancePaise         BigInt                         @default(0) @map("reserved_balance_paise")
   activityLogs                 ActivityLog[]
   assignmentAttempts           AssignmentAttempt[]
   bookings                     Booking[]
@@ -249,6 +272,9 @@ model Provider {
   documents                    ProviderDocument[]
   providerMatchScores          ProviderMatchScore[]
   walletReservations           ProviderWalletReservation[]
+  attendanceSessions           PartnerAttendanceSession[]
+  incentivePayouts             PartnerIncentivePayout[]
+  academyProgress              PartnerAcademyProgress[]
   user                         User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
   reviews                      Rating[]                       @relation("ProviderReviews")
   supportTickets               SupportTicket[]
@@ -313,36 +339,45 @@ model Service {
 }
 
 model Address {
-  id                  String    @id @default(cuid())
-  userId              String    @map("user_id")
-  label               String
-  addressLine1        String    @map("address_line1")
-  addressLine2        String?   @map("address_line2")
-  city                String
-  state               String
-  zipCode             String    @map("zip_code")
-  country             String    @default("India")
-  fullAddress         String    @default("") @map("full_address")
-  latitude            Float
-  longitude           Float
-  placeId             String?   @map("place_id")
-  type                String    @default("residential")
-  isDefault           Boolean   @default(false) @map("is_default")
-  isBillingAddress    Boolean   @default(false) @map("is_billing_address")
-  landmark            String?
-  buildingName        String?   @map("building_name")
-  flatNumber          String?   @map("flat_number")
-  specialInstructions String?   @map("special_instructions")
-  isVerified          Boolean   @default(false) @map("is_verified")
-  verifiedAt          DateTime? @map("verified_at")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
-  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bookings            Booking[]
+  id                           String               @id @default(cuid())
+  userId                       String               @map("user_id")
+  label                        String
+  addressLine1                 String?              @map("address_line1")
+  addressLine2                 String?              @map("address_line2")
+  addressLine1Encrypted        String?              @map("address_line1_encrypted")
+  addressLine2Encrypted        String?              @map("address_line2_encrypted")
+  fullAddress                  String?              @map("full_address")
+  fullAddressEncrypted         String?              @map("full_address_encrypted")
+  landmark                     String?
+  landmarkEncrypted            String?              @map("landmark_encrypted")
+  specialInstructions          String?              @map("special_instructions")
+  specialInstructionsEncrypted String?              @map("special_instructions_encrypted")
+  addressPayloadHash           String?              @map("address_payload_hash")
+  encryptionKeyVersion         Int?                 @map("encryption_key_version")
+  dataEncryptionStatus         DataEncryptionStatus @default(PARTIAL) @map("data_encryption_status")
+  city                         String
+  state                        String
+  zipCode                      String               @map("zip_code")
+  country                      String               @default("India")
+  latitude                     Float
+  longitude                    Float
+  placeId                      String?              @map("place_id")
+  type                         String               @default("residential")
+  isDefault                    Boolean              @default(false) @map("is_default")
+  isBillingAddress             Boolean              @default(false) @map("is_billing_address")
+  buildingName                 String?              @map("building_name")
+  flatNumber                   String?              @map("flat_number")
+  isVerified                   Boolean              @default(false) @map("is_verified")
+  verifiedAt                   DateTime?            @map("verified_at")
+  createdAt                    DateTime             @default(now()) @map("created_at")
+  updatedAt                    DateTime             @updatedAt @map("updated_at")
+  user                         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings                     Booking[]
 
   @@index([userId])
   @@index([city])
   @@index([isDefault])
+  @@index([addressPayloadHash])
   @@map("addresses")
 }
 
@@ -367,30 +402,43 @@ model Booking {
   userNotes                   String?                      @map("user_notes")
   providerNotes               String?                      @map("provider_notes")
   baseAmount                  Float                        @map("base_amount")
+  baseAmountPaise             BigInt                       @default(0) @map("base_amount_paise")
   discount                    Float                        @default(0)
+  discountPaise               BigInt                       @default(0) @map("discount_paise")
   couponCode                  String?                      @map("coupon_code")
+  /// Catalog snapshot of chosen add-ons at booking time: [{id,name,price}]
+  addons                      Json?
   taxes                       Float                        @default(0)
+  taxesPaise                  BigInt                       @default(0) @map("taxes_paise")
   finalAmount                 Float                        @map("final_amount")
+  finalAmountPaise            BigInt                       @default(0) @map("final_amount_paise")
   tipAmount                   Float                        @default(0) @map("tip_amount")
+  tipAmountPaise              BigInt                       @default(0) @map("tip_amount_paise")
   totalAmount                 Float                        @map("total_amount")
+  totalAmountPaise            BigInt                       @default(0) @map("total_amount_paise")
   paymentStatus               PaymentStatus                @default(PENDING) @map("payment_status")
   paymentMethod               String?                      @map("payment_method")
   cancellationReason          String?                      @map("cancellation_reason")
   cancelledBy                 String?                      @map("cancelled_by")
   refundStatus                String?                      @map("refund_status")
   refundAmount                Float?                       @map("refund_amount")
+  refundAmountPaise           BigInt?                      @map("refund_amount_paise")
   createdAt                   DateTime                     @default(now()) @map("created_at")
   updatedAt                   DateTime                     @updatedAt @map("updated_at")
   assignedAt                  DateTime?                    @map("assigned_at")
+  enRouteAt                   DateTime?                    @map("en_route_at")
+  arrivedAt                   DateTime?                    @map("arrived_at")
+  travelDurationMin           Int?                         @map("travel_duration_min")
   campaignDiscount            Float                        @default(0) @map("campaign_discount")
+  campaignDiscountPaise       BigInt                       @default(0) @map("campaign_discount_paise")
   campaignId                  String?                      @map("campaign_id")
   premiumMatched              Boolean                      @default(false) @map("premium_matched")
   priorityServed              Boolean                      @default(false) @map("priority_served")
   queuePosition               Int?                         @map("queue_position")
   queuePriority               QueuePriority                @default(NORMAL) @map("queue_priority")
   queuedAt                    DateTime?                    @map("queued_at")
-  waitTimeMs                  Int?                         @map("wait_time_ms")
-  estimatedWaitTimeMs         Int?                         @map("estimated_wait_time_ms")
+  waitTimeMs                  BigInt?                      @map("wait_time_ms")
+  estimatedWaitTimeMs         BigInt?                      @map("estimated_wait_time_ms")
   priorityScore               Int                          @default(10) @map("priority_score")
   activityLogs                ActivityLog[]
   assignmentJob               AssignmentJob?
@@ -419,15 +467,20 @@ model Booking {
   @@index([queuePriority, status])
   @@index([campaignId])
   @@index([status, providerId, priorityScore, queuedAt])
+  @@index([addressId])
+  @@index([serviceId])
   @@map("bookings")
 }
 
 model Payment {
   id                       String              @id @default(cuid())
   bookingId                String              @unique @map("booking_id")
+  idempotencyKey           String              @unique @map("idempotency_key")
   userId                   String              @map("user_id")
   amount                   Float
+  amountPaise              BigInt              @default(0) @map("amount_paise")
   amountPaid               Float               @default(0) @map("amount_paid")
+  amountPaidPaise          BigInt              @default(0) @map("amount_paid_paise")
   currency                 String              @default("INR")
   paymentMethod            String              @map("payment_method")
   razorpayOrderId          String              @unique @map("razorpay_order_id")
@@ -437,6 +490,7 @@ model Payment {
   razorpayErrorDescription String?             @map("razorpay_error_description")
   status                   PaymentStatus       @default(INITIATED)
   refundedAmount           Float               @default(0) @map("refunded_amount")
+  refundedAmountPaise      BigInt              @default(0) @map("refunded_amount_paise")
   refundReason             String?             @map("refund_reason")
   razorpayRefundId         String?             @unique @map("razorpay_refund_id")
   refundStatus             String?             @map("refund_status")
@@ -452,6 +506,7 @@ model Payment {
   createdAt                DateTime            @default(now()) @map("created_at")
   updatedAt                DateTime            @updatedAt @map("updated_at")
   settledAmount            Float?              @map("settled_amount")
+  settledAmountPaise       BigInt?             @map("settled_amount_paise")
   settlements              PaymentSettlement[]
   booking                  Booking             @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   user                     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -568,14 +623,19 @@ model WalletTransaction {
   userId              String?         @map("user_id")
   providerId          String?         @map("provider_id")
   amount              Float
+  amountPaise         BigInt          @default(0) @map("amount_paise")
   walletBalanceBefore Float           @map("wallet_balance_before")
+  walletBalanceBeforePaise BigInt     @default(0) @map("wallet_balance_before_paise")
   walletBalanceAfter  Float           @map("wallet_balance_after")
+  walletBalanceAfterPaise BigInt      @default(0) @map("wallet_balance_after_paise")
   type                WalletTxnType
   description         String
   reason              String?
   referenceId         String?         @map("reference_id")
   referenceType       String?         @map("reference_type")
   status              WalletTxnStatus @default(COMPLETED)
+  expiresAt           DateTime?       @map("expires_at")
+  idempotencyKey      String?         @unique @map("idempotency_key")
   metadata            String?
   createdAt           DateTime        @default(now()) @map("created_at")
   completedAt         DateTime?       @map("completed_at")
@@ -587,6 +647,9 @@ model WalletTransaction {
   @@index([type])
   @@index([status])
   @@index([createdAt])
+  @@index([referenceId])
+  @@index([userId, status])
+  @@index([expiresAt])
   @@map("wallet_transactions")
 }
 
@@ -595,9 +658,13 @@ model Earning {
   providerId    String   @map("provider_id")
   bookingId     String?  @unique @map("booking_id")
   grossAmount   Float    @map("gross_amount")
+  grossAmountPaise BigInt @default(0) @map("gross_amount_paise")
   commission    Float
+  commissionPaise BigInt @default(0) @map("commission_paise")
   netEarning    Float    @map("net_earning")
+  netEarningPaise BigInt @default(0) @map("net_earning_paise")
   tax           Float    @default(0)
+  taxPaise      BigInt   @default(0) @map("tax_paise")
   paymentStatus String   @default("credited") @map("payment_status")
   earningDate   DateTime @default(now()) @map("earning_date")
   notes         String?
@@ -607,6 +674,8 @@ model Earning {
   @@index([providerId])
   @@index([earningDate])
   @@index([paymentStatus])
+  // Hot path: partner earnings-summary scans provider + a createdAt range.
+  @@index([providerId, createdAt])
   @@map("earnings")
 }
 
@@ -615,8 +684,11 @@ model Withdrawal {
   withdrawalNumber  String           @unique @map("withdrawal_number")
   providerId        String           @map("provider_id")
   amount            Float
+  amountPaise       BigInt           @default(0) @map("amount_paise")
   processingFee     Float            @default(0) @map("processing_fee")
+  processingFeePaise BigInt          @default(0) @map("processing_fee_paise")
   netAmount         Float            @map("net_amount")
+  netAmountPaise    BigInt           @default(0) @map("net_amount_paise")
   accountHolderName String           @map("account_holder_name")
   accountNumber     String           @map("account_number")
   ifscCode          String           @map("ifsc_code")
@@ -659,6 +731,8 @@ model Notification {
   pushedAt      DateTime? @map("pushed_at")
   priority      String    @default("normal")
   expiresAt     DateTime? @map("expires_at")
+  isArchived    Boolean   @default(false) @map("is_archived")
+  archivedAt    DateTime? @map("archived_at")
   createdAt     DateTime  @default(now()) @map("created_at")
   badge         String?
   body          String?
@@ -674,7 +748,10 @@ model Notification {
   @@index([bookingId])
   @@index([type])
   @@index([isRead])
+  @@index([isArchived])
   @@index([createdAt])
+  // Hot path: unread-count/badge runs on every page load (user + is_read filter).
+  @@index([userId, isRead])
   @@map("notifications")
 }
 
@@ -702,6 +779,7 @@ model RefreshToken {
   @@index([userId, familyId])
   @@index([familyId])
   @@index([expiresAt])
+  @@index([parentTokenId])
   @@map("refresh_tokens")
 }
 
@@ -779,17 +857,33 @@ model SupportTicket {
   firstResponseAt DateTime?            @map("first_response_at")
   priorityLevel   SupportPriorityLevel @default(NORMAL) @map("priority_level")
   responseTimeMs  Int?                 @map("response_time_ms")
-  slaDueAt        DateTime?            @map("sla_due_at")
-  booking         Booking?             @relation(fields: [bookingId], references: [id])
-  provider        Provider?            @relation(fields: [providerId], references: [id])
-  user            User?                @relation(fields: [userId], references: [id])
+  slaDueAt        DateTime?                @map("sla_due_at")
+  booking         Booking?                 @relation(fields: [bookingId], references: [id])
+  provider        Provider?                @relation(fields: [providerId], references: [id])
+  user            User?                    @relation(fields: [userId], references: [id])
+  messages        SupportTicketMessage[]
 
   @@index([ticketNumber])
   @@index([status])
   @@index([userId])
   @@index([providerId])
   @@index([priorityLevel])
+  @@index([bookingId])
   @@map("support_tickets")
+}
+
+model SupportTicketMessage {
+  id         String        @id @default(cuid())
+  ticketId   String        @map("ticket_id")
+  authorId   String?       @map("author_id")
+  authorRole String        @map("author_role")
+  body       String
+  isInternal Boolean       @default(false) @map("is_internal")
+  createdAt  DateTime      @default(now()) @map("created_at")
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@map("support_ticket_messages")
 }
 
 model ActivityLog {
@@ -810,6 +904,7 @@ model ActivityLog {
   @@index([providerId])
   @@index([action])
   @@index([createdAt])
+  @@index([bookingId])
   @@map("activity_logs")
 }
 
@@ -910,6 +1005,7 @@ model UserSubscription {
 
   @@index([userId])
   @@index([status])
+  @@index([planId])
   @@map("user_subscriptions")
 }
 
@@ -1015,6 +1111,7 @@ model HCoinTransaction {
   user         User         @relation(fields: [userId], references: [id])
 
   @@index([userId])
+  @@index([referenceId])
   @@map("hcoin_transactions")
 }
 
@@ -1034,6 +1131,7 @@ model WalletTransfer {
   senderId    String               @map("sender_id")
   recipientId String               @map("recipient_id")
   amount      Float
+  amountPaise BigInt               @default(0) @map("amount_paise")
   note        String?
   status      WalletTransferStatus @default(PENDING)
   completedAt DateTime?            @map("completed_at")
@@ -1095,6 +1193,7 @@ model GiftCardRedemptionAttempt {
   @@index([deviceId, createdAt])
   @@index([blockedUntil])
   @@index([giftCardCode])
+  @@index([giftCardId])
   @@map("gift_card_redemption_attempts")
 }
 
@@ -1120,8 +1219,10 @@ model MembershipCashback {
   userId              String         @map("user_id")
   bookingId           String         @unique @map("booking_id")
   amount              Float
+  amountPaise         BigInt         @default(0) @map("amount_paise")
   cashbackPct         Float          @map("cashback_pct")
   settledAmount       Float          @map("settled_amount")
+  settledAmountPaise  BigInt         @default(0) @map("settled_amount_paise")
   walletTransactionId String?        @map("wallet_transaction_id")
   status              CashbackStatus @default(PENDING)
   createdAt           DateTime       @default(now()) @map("created_at")
@@ -1181,6 +1282,7 @@ model Campaign {
   createdAt             DateTime       @default(now()) @map("created_at")
   updatedAt             DateTime       @updatedAt @map("updated_at")
   maxRedemptionsPerUser Int            @default(1) @map("max_redemptions_per_user")
+  cost                  Float?         @map("cost")
   bookings              Booking[]
   usages                CouponUsage[]
 
@@ -1206,6 +1308,7 @@ model CouponUsage {
   @@index([campaignId])
   @@index([userId])
   @@index([createdAt])
+  @@index([bookingId])
   @@map("coupon_usages")
 }
 
@@ -1433,6 +1536,8 @@ model FraudAlert {
   @@index([userId])
   @@index([category])
   @@index([createdAt])
+  @@index([commissionId])
+  @@index([referralTransactionId])
   @@map("fraud_alerts")
 }
 
@@ -1494,6 +1599,7 @@ model Chargeback {
   razorpayDisputeId String?              @unique @map("razorpay_dispute_id")
   razorpayPaymentId String?              @map("razorpay_payment_id")
   amount            Float
+  amountPaise       BigInt               @default(0) @map("amount_paise")
   currency          String               @default("INR")
   status            ChargebackStatus     @default(RECEIVED)
   reason            String?
@@ -1573,7 +1679,9 @@ model LedgerEntry {
   journalId String        @map("journal_id")
   accountId String        @map("account_id")
   debit     Float         @default(0)
+  debitPaise BigInt       @default(0) @map("debit_paise")
   credit    Float         @default(0)
+  creditPaise BigInt      @default(0) @map("credit_paise")
   currency  String        @default("INR")
   createdAt DateTime      @default(now()) @map("created_at")
   account   LedgerAccount @relation(fields: [accountId], references: [id])
@@ -1601,6 +1709,7 @@ model PaymentSettlement {
   @@unique([paymentId, settlementId])
   @@index([settlementId])
   @@index([settledAt])
+  @@index([settlementBatchId])
   @@map("payment_settlements")
 }
 
@@ -1783,23 +1892,45 @@ model SettlementSyncRun {
 }
 
 model SettlementDiscrepancy {
-  id             String                    @id @default(cuid())
-  syncRunId      String                    @map("sync_run_id")
-  type           SettlementDiscrepancyType
-  referenceId    String?                   @map("reference_id")
-  expectedAmount Float?                    @map("expected_amount")
-  actualAmount   Float?                    @map("actual_amount")
-  resolved       Boolean                   @default(false)
-  resolvedAt     DateTime?                 @map("resolved_at")
-  resolvedBy     String?                   @map("resolved_by")
-  details        String?
-  createdAt      DateTime                  @default(now()) @map("created_at")
-  syncRun        SettlementSyncRun         @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+  id                String                      @id @default(cuid())
+  syncRunId         String                      @map("sync_run_id")
+  type              SettlementDiscrepancyType
+  referenceId       String?                     @map("reference_id")
+  expectedAmount    Float?                      @map("expected_amount")
+  actualAmount      Float?                      @map("actual_amount")
+  resolved          Boolean                     @default(false)
+  resolvedAt        DateTime?                   @map("resolved_at")
+  resolvedBy        String?                     @map("resolved_by")
+  status            SettlementResolutionStatus  @default(OPEN)
+  assignedTo        String?                     @map("assigned_to")
+  assignedAt        DateTime?                   @map("assigned_at")
+  firstApprovedBy   String?                     @map("first_approved_by")
+  secondApprovedBy  String?                     @map("second_approved_by")
+  resolutionNotes   String?                     @map("resolution_notes")
+  escalatedAt       DateTime?                   @map("escalated_at")
+  details           String?
+  createdAt         DateTime                    @default(now()) @map("created_at")
+  syncRun           SettlementSyncRun           @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+  notes             SettlementResolutionNote[]
 
   @@index([syncRunId])
   @@index([type])
   @@index([resolved])
+  @@index([status])
   @@map("settlement_discrepancies")
+}
+
+model SettlementResolutionNote {
+  id             String                @id @default(cuid())
+  discrepancyId  String                @map("discrepancy_id")
+  authorId       String                @map("author_id")
+  body           String
+  attachmentKey  String?               @map("attachment_key")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  discrepancy    SettlementDiscrepancy @relation(fields: [discrepancyId], references: [id], onDelete: Cascade)
+
+  @@index([discrepancyId, createdAt])
+  @@map("settlement_resolution_notes")
 }
 
 model FinancialIntegrityRun {
@@ -1874,6 +2005,11 @@ model PayoutBatch {
   totalAmount     Float                  @default(0) @map("total_amount")
   itemCount       Int                    @default(0) @map("item_count")
   processedBy     String?                @map("processed_by")
+  submittedBy     String?                @map("submitted_by")
+  approvedBy      String?                @map("approved_by")
+  rejectedBy      String?                @map("rejected_by")
+  rejectionReason String?                @map("rejection_reason")
+  reviewedAt      DateTime?              @map("reviewed_at")
   createdAt       DateTime               @default(now()) @map("created_at")
   completedAt     DateTime?              @map("completed_at")
   items           PayoutBatchItem[]
@@ -1918,6 +2054,7 @@ model RefundRequest {
   paymentId         String              @map("payment_id")
   userId            String              @map("user_id")
   amount            Float
+  amountPaise       BigInt              @default(0) @map("amount_paise")
   reason            String
   reasonCode        String?             @map("reason_code")
   status            RefundRequestStatus @default(REQUESTED)
@@ -2141,6 +2278,7 @@ model FinancialAdjustment {
   type              AdjustmentType
   direction         AdjustmentDirection
   amount            Float
+  amountPaise       BigInt                        @default(0) @map("amount_paise")
   targetUserId      String?                       @map("target_user_id")
   debitAccountCode  String?                       @map("debit_account_code")
   creditAccountCode String?                       @map("credit_account_code")
@@ -2338,6 +2476,7 @@ enum WalletTxnStatus {
   PENDING
   COMPLETED
   FAILED
+  EXPIRED
   REVERSED
 }
 
@@ -2563,6 +2702,7 @@ enum ReconciliationStatus {
   MISSING_LOCAL
   MISSING_GATEWAY
   REFUND_MISMATCH
+  SETTLEMENT_PENDING
   SETTLEMENT_MISMATCH
 }
 
@@ -2616,9 +2756,20 @@ enum RefundRequestStatus {
 
 enum PayoutBatchStatus {
   DRAFT
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
   PROCESSING
   COMPLETED
   FAILED
+}
+
+enum SettlementResolutionStatus {
+  OPEN
+  ASSIGNED
+  INVESTIGATING
+  RESOLVED
+  ESCALATED
 }
 
 enum AdminRoleType {
@@ -2739,4 +2890,712 @@ enum WebhookEventStatus {
   PROCESSING
   PROCESSED
   FAILED
+}
+
+enum EncryptionKeyStatus {
+  ACTIVE
+  ROTATED
+  RETIRED
+
+  @@map("encryption_key_status")
+}
+
+enum KeyPurpose {
+  EMAIL
+  PHONE
+  PAYMENT
+  PII
+  SENSITIVE_DOCUMENTS
+
+  @@map("key_purpose")
+}
+
+enum DataEncryptionStatus {
+  ENCRYPTED
+  PARTIAL
+  DECRYPTED
+
+  @@map("data_encryption_status")
+}
+
+enum EnterpriseActorType {
+  USER
+  ADMIN
+  SYSTEM
+  API_KEY
+
+  @@map("enterprise_actor_type")
+}
+
+enum EnterpriseAuditStatus {
+  SUCCESS
+  FAILURE
+  DENIED
+  PARTIAL
+
+  @@map("enterprise_audit_status")
+}
+
+enum RetentionCategory {
+  SECURITY_EVENTS
+  PAYMENT_EVENTS
+  FINANCIAL_LEDGER
+  LOGIN_EVENTS
+  SYSTEM_LOGS
+
+  @@map("retention_category")
+}
+
+model EncryptionKey {
+  id           String              @id @default(cuid())
+  keyId        String              @unique @map("key_id")
+  keyVersion   Int                 @map("key_version")
+  algorithm    String              @default("AES-256-GCM")
+  encryptedKey String              @map("encrypted_key")
+  iv           String
+  keyWrapAuthTag String            @map("key_wrap_auth_tag")
+  status       EncryptionKeyStatus @default(ACTIVE)
+  createdAt    DateTime            @default(now()) @map("created_at")
+  rotatedAt    DateTime?           @map("rotated_at")
+  retiredAt    DateTime?           @map("retired_at")
+  expiresAt    DateTime?           @map("expires_at")
+  purpose      KeyPurpose
+  createdBy    String              @map("created_by")
+  lastUsedAt   DateTime?           @map("last_used_at")
+  usageCount   Int                 @default(0) @map("usage_count")
+
+  @@unique([purpose, keyVersion])
+  @@index([keyVersion])
+  @@index([status])
+  @@index([purpose])
+  @@map("encryption_keys")
+}
+
+model EnterpriseAuditLog {
+  id                 String                @id @default(cuid())
+  action             String
+  resource           String
+  resourceId         String?               @map("resource_id")
+  actor              String?
+  actorType          EnterpriseActorType   @map("actor_type")
+  changesBefore      Json?                 @map("changes_before")
+  changesAfter       Json?                 @map("changes_after")
+  changesSummary     String?               @map("changes_summary")
+  ipAddress          String?               @map("ip_address")
+  userAgent          String?               @map("user_agent")
+  deviceId           String?               @map("device_id")
+  traceId            String                @unique @map("trace_id")
+  status             EnterpriseAuditStatus @default(SUCCESS)
+  errorMessage       String?               @map("error_message")
+  retentionCategory  RetentionCategory     @map("retention_category")
+  retentionExpiresAt DateTime?             @map("retention_expires_at")
+  isArchived         Boolean               @default(false) @map("is_archived")
+  archivedAt         DateTime?             @map("archived_at")
+  hash               String?
+  createdAt          DateTime              @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@index([actor])
+  @@index([action])
+  @@index([resource])
+  @@index([resourceId])
+  @@index([createdAt])
+  @@index([retentionExpiresAt])
+  @@index([isArchived])
+  @@map("enterprise_audit_logs")
+}
+
+model EnterpriseAuditLogArchive {
+  id                String   @id @default(cuid())
+  originalLogId     String   @unique @map("original_log_id")
+  compressedData    String   @map("compressed_data")
+  storageLocation   String?  @map("storage_location")
+  archivedAt        DateTime @default(now()) @map("archived_at")
+  archivedBy        String   @map("archived_by")
+  archiveHash       String   @map("archive_hash")
+  deleteScheduledAt DateTime? @map("delete_scheduled_at")
+
+  @@index([originalLogId])
+  @@index([archivedAt])
+  @@map("enterprise_audit_log_archives")
+}
+
+enum RetentionJobStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+
+  @@map("retention_job_status")
+}
+
+enum ComplianceRequestType {
+  EXPORT
+  DELETE
+  CORRECTION
+  ACCESS
+  RESTRICT
+  OBJECT
+
+  @@map("compliance_request_type")
+}
+
+enum ComplianceRequestStatus {
+  PENDING
+  APPROVED
+  PROCESSING
+  COMPLETED
+  REJECTED
+  EXPIRED
+
+  @@map("compliance_request_status")
+}
+
+enum ExportStatus {
+  PENDING
+  GENERATING
+  READY
+  DOWNLOADED
+  EXPIRED
+
+  @@map("export_status")
+}
+
+enum ComplianceDeletionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  CANCELLED
+
+  @@map("compliance_deletion_status")
+}
+
+model AuditRetentionPolicy {
+  id              String            @id @default(cuid())
+  category        RetentionCategory @unique
+  retentionDays   Int               @map("retention_days")
+  archiveAfterDays Int?             @map("archive_after_days")
+  isActive        Boolean           @default(true) @map("is_active")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  @@map("audit_retention_policies")
+}
+
+model RetentionJobRun {
+  id               String             @id @default(cuid())
+  jobName          String             @map("job_name")
+  status           RetentionJobStatus @default(RUNNING)
+  startedAt        DateTime           @default(now()) @map("started_at")
+  completedAt      DateTime?          @map("completed_at")
+  recordsProcessed Int                @default(0) @map("records_processed")
+  errorMessage     String?            @map("error_message")
+  retryCount       Int                @default(0) @map("retry_count")
+  metadata         Json?
+
+  @@index([jobName, startedAt])
+  @@index([status])
+  @@map("retention_job_runs")
+}
+
+model ComplianceRequest {
+  id                String                  @id @default(cuid())
+  requestType       ComplianceRequestType   @map("request_type")
+  userId            String                  @map("user_id")
+  status            ComplianceRequestStatus @default(PENDING)
+  submittedAt       DateTime                @default(now()) @map("submitted_at")
+  dueDateAt         DateTime                @map("due_date_at")
+  completedAt       DateTime?               @map("completed_at")
+  approvedBy        String?                 @map("approved_by")
+  approvalAt        DateTime?               @map("approval_at")
+  rejectionReason   String?                 @map("rejection_reason")
+  dataScope         String?                 @map("data_scope")
+  targetCategories  String[]                @map("target_categories")
+  metadata          Json?
+  ipAddress         String?                 @map("ip_address")
+  userAgent         String?                 @map("user_agent")
+  user              User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  audits            ComplianceRequestAudit[]
+  dataExport        DataExportRequest?
+  deletion          DeletionRequest?
+
+  @@index([userId])
+  @@index([status])
+  @@index([requestType])
+  @@index([dueDateAt])
+  @@map("compliance_requests")
+}
+
+model ComplianceRequestAudit {
+  id                  String            @id @default(cuid())
+  complianceRequestId String            @map("compliance_request_id")
+  actorId             String?           @map("actor_id")
+  actorType           EnterpriseActorType @map("actor_type")
+  action              String
+  changesBefore       Json?             @map("changes_before")
+  changesAfter        Json?             @map("changes_after")
+  ipAddress           String?           @map("ip_address")
+  userAgent           String?           @map("user_agent")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  complianceRequest   ComplianceRequest @relation(fields: [complianceRequestId], references: [id], onDelete: Cascade)
+  actor               User?             @relation(fields: [actorId], references: [id])
+
+  @@index([complianceRequestId])
+  @@index([createdAt])
+  @@index([actorId])
+  @@map("compliance_request_audits")
+}
+
+model DataExportRequest {
+  id                  String            @id @default(cuid())
+  complianceRequestId String            @unique @map("compliance_request_id")
+  userId              String            @map("user_id")
+  exportStatus        ExportStatus      @default(PENDING) @map("export_status")
+  fileUrl             String?           @map("file_url")
+  fileStorageKey      String?           @map("file_storage_key")
+  fileSize            Int?              @map("file_size")
+  fileHash            String?           @map("file_hash")
+  includesProfile     Boolean           @default(true) @map("includes_profile")
+  includesBookings    Boolean           @default(true) @map("includes_bookings")
+  includesPayments    Boolean           @default(true) @map("includes_payments")
+  includesWallet      Boolean           @default(true) @map("includes_wallet")
+  includesAudit       Boolean           @default(true) @map("includes_audit")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  exportedAt          DateTime?         @map("exported_at")
+  expiresAt           DateTime?         @map("expires_at")
+  downloadedAt        DateTime?         @map("downloaded_at")
+  complianceRequest   ComplianceRequest @relation(fields: [complianceRequestId], references: [id], onDelete: Cascade)
+  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([exportStatus])
+  @@map("data_export_requests")
+}
+
+enum SavedPaymentMethodType {
+  CARD
+  UPI
+  BANK
+
+  @@map("saved_payment_method_type")
+}
+
+/// Non-sensitive payment method metadata only — no PAN, CVV, or expiry is
+/// ever stored. Actual charges always go through Razorpay checkout.
+model SavedPaymentMethod {
+  id        String                 @id @default(cuid())
+  userId    String                 @map("user_id")
+  type      SavedPaymentMethodType
+  label     String
+  last4     String?
+  network   String?
+  upiHandle String?                @map("upi_handle")
+  isDefault Boolean                @default(false) @map("is_default")
+  createdAt DateTime               @default(now()) @map("created_at")
+  updatedAt DateTime               @updatedAt @map("updated_at")
+  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isDefault])
+  @@map("saved_payment_methods")
+}
+
+model DeletionRequest {
+  id                  String                   @id @default(cuid())
+  complianceRequestId String                   @unique @map("compliance_request_id")
+  userId              String                   @map("user_id")
+  deletionStatus      ComplianceDeletionStatus @default(PENDING) @map("deletion_status")
+  deleteAll           Boolean                  @default(true) @map("delete_all")
+  selectiveCategories String[]                 @map("selective_categories")
+  gracePeriodEndsAt   DateTime                 @map("grace_period_ends_at")
+  deletionStartedAt   DateTime?                @map("deletion_started_at")
+  deletionCompletedAt DateTime?                @map("deletion_completed_at")
+  permanentlyDeletedAt DateTime?               @map("permanently_deleted_at")
+  deletedBy           String?                  @map("deleted_by")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  complianceRequest   ComplianceRequest        @relation(fields: [complianceRequestId], references: [id], onDelete: Cascade)
+  user                User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([deletionStatus])
+  @@index([gracePeriodEndsAt])
+  @@map("deletion_requests")
+}
+
+// Phase 16.3 — Geofencing (Float/haversine circular zones; NO PostGIS).
+// A geofence is a circle (centre + radius). Containment = haversine ≤ radius. Used for
+// service-area gating, society/premium zones, and enter/exit analytics.
+model Geofence {
+  id                String          @id @default(cuid())
+  name              String
+  zoneType          String          @default("SERVICE_ZONE") @map("zone_type") // SERVICE_ZONE | SOCIETY | PREMIUM_AREA | CITY
+  shape             String          @default("CIRCLE") // CIRCLE | POLYGON
+  city              String?
+  state             String?
+  centerLat         Float           @map("center_lat")
+  centerLng         Float           @map("center_lng")
+  radiusMeters      Float           @map("radius_meters")
+  // POLYGON shapes: ordered ring of vertices [{lat,lng}, ...]; null for circles.
+  polygon           Json?
+  serviceCategories String[]        @default([]) @map("service_categories")
+  surgeMultiplier   Float           @default(1) @map("surge_multiplier")
+  metadata          String?
+  isActive          Boolean         @default(true) @map("is_active")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  events            GeofenceEvent[]
+
+  @@index([isActive])
+  @@index([city, state])
+  @@index([zoneType])
+  @@map("geofences")
+}
+
+model GeofenceEvent {
+  id         String   @id @default(cuid())
+  geofenceId String   @map("geofence_id")
+  userId     String?  @map("user_id")
+  providerId String?  @map("provider_id")
+  eventType  String   @map("event_type") // ENTER | EXIT
+  latitude   Float
+  longitude  Float
+  createdAt  DateTime @default(now()) @map("created_at")
+  geofence   Geofence @relation(fields: [geofenceId], references: [id], onDelete: Cascade)
+
+  @@index([geofenceId, createdAt])
+  @@index([userId, createdAt])
+  @@index([providerId, createdAt])
+  @@index([eventType])
+  @@map("geofence_events")
+}
+
+// ── Finance Intelligence config (V5) — additive CFO inputs with audit history ──
+
+model FinanceConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Float
+  updatedBy String?  @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("finance_config")
+}
+
+model FinanceConfigHistory {
+  id          String   @id @default(cuid())
+  configKey   String   @map("config_key")
+  valueBefore Float?   @map("value_before")
+  valueAfter  Float    @map("value_after")
+  changedBy   String   @map("changed_by")
+  reason      String?
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([configKey])
+  @@index([createdAt])
+  @@index([changedBy])
+  @@map("finance_config_history")
+}
+
+// ── Enterprise OS V6 — additive intelligence tables ──
+
+model CxSurveyResponse {
+  id         String   @id @default(cuid())
+  userId     String?  @map("user_id")
+  bookingId  String?  @map("booking_id")
+  surveyType String   @map("survey_type")
+  score      Int
+  comment    String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([surveyType, createdAt])
+  @@index([userId])
+  @@map("cx_survey_responses")
+}
+
+model MarketingAttributionTouch {
+  id          String   @id @default(cuid())
+  userId      String?  @map("user_id")
+  channel     String
+  utmSource   String?  @map("utm_source")
+  utmMedium   String?  @map("utm_medium")
+  utmCampaign String?  @map("utm_campaign")
+  revenue     Float    @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([channel])
+  @@index([createdAt])
+  @@map("marketing_attribution_touches")
+}
+
+model PlatformFeatureFlag {
+  id           String   @id @default(cuid())
+  key          String   @unique
+  description  String?
+  enabled      Boolean  @default(false)
+  rolloutPct   Int      @default(100) @map("rollout_pct")
+  environment  String   @default("production")
+  isKillSwitch Boolean  @default(false) @map("is_kill_switch")
+  updatedBy    String?  @map("updated_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([environment])
+  @@map("platform_feature_flags")
+}
+
+model PlatformFeatureFlagHistory {
+  id           String   @id @default(cuid())
+  flagKey      String   @map("flag_key")
+  enabled      Boolean
+  rolloutPct   Int      @map("rollout_pct")
+  changedBy    String   @map("changed_by")
+  reason       String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([flagKey])
+  @@index([createdAt])
+  @@map("platform_feature_flag_history")
+}
+
+model PlatformExperiment {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  description String?
+  status      String   @default("draft")
+  variants    Json     @default("[]")
+  updatedBy   String?  @map("updated_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_experiments")
+}
+
+// ── Hyperlocal Coverage Engine V1 — additive demand-capture table ──
+// Uncovered-area demand signals from the customer web coverage explorer.
+// Standalone (no relations) so existing tables are untouched.
+
+model CoverageRequest {
+  id        String                @id @default(cuid())
+  name      String
+  mobile    String
+  city      String?
+  area      String
+  society   String?
+  pincode   String?
+  source    String                @default("web_coverage_explorer")
+  status    CoverageRequestStatus @default(NEW)
+  notes     String?
+  updatedBy String?               @map("updated_by")
+  createdAt DateTime              @default(now()) @map("created_at")
+  updatedAt DateTime              @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@index([city])
+  @@index([pincode])
+  @@map("coverage_requests")
+}
+
+enum CoverageRequestStatus {
+  NEW
+  REVIEWING
+  PLANNED
+  LAUNCHED
+  DECLINED
+}
+
+// Admin-managed operational status override for a coverage city. When a row
+// exists, its `status` supersedes the derived (seed-based) status everywhere
+// the coverage engine is read — customer services page, mobile app, partner
+// panel — so admins control city availability from one source of truth.
+model CityCoverageOverride {
+  slug      String   @id
+  status    String? // AVAILABLE | LIMITED | COMING_SOON (null = clear override)
+  note      String?
+  updatedBy String?  @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("city_coverage_overrides")
+}
+
+// ── Partner OS V2 — workforce, academy, incentives, wellbeing ──
+
+model PartnerAttendanceSession {
+  id         String    @id @default(cuid())
+  providerId String    @map("provider_id")
+  checkInAt  DateTime  @map("check_in_at")
+  checkOutAt DateTime? @map("check_out_at")
+  source     String    @default("manual")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  provider   Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, checkInAt])
+  @@map("partner_attendance_sessions")
+}
+
+model PartnerIncentiveRule {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  period      String
+  metric      String
+  threshold   Float
+  bonusAmount Float    @map("bonus_amount")
+  isActive    Boolean  @default(true) @map("is_active")
+  startsAt    DateTime? @map("starts_at")
+  expiresAt   DateTime? @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  payouts     PartnerIncentivePayout[]
+
+  @@map("partner_incentive_rules")
+}
+
+model PartnerIncentivePayout {
+  id         String   @id @default(cuid())
+  providerId String   @map("provider_id")
+  ruleId     String   @map("rule_id")
+  amount     Float
+  periodKey  String   @map("period_key")
+  status     String   @default("CREDITED")
+  createdAt  DateTime @default(now()) @map("created_at")
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  rule       PartnerIncentiveRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, ruleId, periodKey])
+  @@index([providerId])
+  @@map("partner_incentive_payouts")
+}
+
+model PartnerAcademyModule {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  contentType String   @map("content_type")
+  contentUrl  String?  @map("content_url")
+  body        String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  isPublished Boolean  @default(false) @map("is_published")
+  categoryIds String[] @map("category_ids")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  progress    PartnerAcademyProgress[]
+
+  @@map("partner_academy_modules")
+}
+
+model PartnerAcademyProgress {
+  id          String    @id @default(cuid())
+  providerId  String    @map("provider_id")
+  moduleId    String    @map("module_id")
+  completedAt DateTime? @map("completed_at")
+  score       Int?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  provider    Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  module      PartnerAcademyModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, moduleId])
+  @@index([providerId])
+  @@map("partner_academy_progress")
+}
+
+model PlatformWellbeingConfig {
+  id           String   @id @default("default")
+  sosPhone     String?  @map("sos_phone")
+  insuranceUrl String?  @map("insurance_url")
+  communityUrl String?  @map("community_url")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_wellbeing_config")
+}
+
+// ─── Domain Events (Transactional Outbox) — Intelligence Platform Phase 0 ───
+
+enum EventOutboxStatus {
+  PENDING
+  PROCESSING
+  PUBLISHED
+  FAILED
+}
+
+model EventOutbox {
+  id            String            @id @default(cuid())
+  eventId       String            @unique @map("event_id")
+  eventType     String            @map("event_type")
+  eventVersion  String            @default("1.0") @map("event_version")
+  aggregateType String            @map("aggregate_type")
+  aggregateId   String            @map("aggregate_id")
+  actorType     String?           @map("actor_type")
+  actorId       String?           @map("actor_id")
+  payload       Json
+  metadata      Json?
+  status        EventOutboxStatus @default(PENDING)
+  attempts      Int               @default(0)
+  lastError     String?           @map("last_error")
+  availableAt   DateTime          @default(now()) @map("available_at")
+  lockedAt      DateTime?         @map("locked_at")
+  lockedBy      String?           @map("locked_by")
+  publishedAt   DateTime?         @map("published_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  @@index([status, availableAt, createdAt])
+  @@index([aggregateType, aggregateId])
+  @@index([eventType, createdAt])
+  @@index([status, lockedAt])
+  @@map("event_outbox")
+}
+
+model EventConsumerReceipt {
+  id           String   @id @default(cuid())
+  consumerName String   @map("consumer_name")
+  eventId      String   @map("event_id")
+  result       String   @default("ok")
+  errorMessage String?  @map("error_message")
+  processedAt  DateTime @default(now()) @map("processed_at")
+
+  @@unique([consumerName, eventId])
+  @@index([processedAt])
+  @@map("event_consumer_receipts")
+}
+
+model EventDeadLetter {
+  id            String    @id @default(cuid())
+  eventId       String    @map("event_id")
+  eventType     String    @map("event_type")
+  consumerName  String    @map("consumer_name")
+  payload       Json
+  error         String
+  attempts      Int       @default(1)
+  lastAttemptAt DateTime  @default(now()) @map("last_attempt_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  resolvedAt    DateTime? @map("resolved_at")
+  resolution    String?
+
+  @@index([consumerName, createdAt])
+  @@index([eventType])
+  @@index([resolvedAt])
+  @@map("event_dead_letters")
+}
+
+model ScheduledJob {
+  id             String    @id @default(cuid())
+  jobType        String    @map("job_type")
+  triggerEventId String?   @map("trigger_event_id")
+  payload        Json
+  runAt          DateTime  @map("run_at")
+  status         String    @default("pending")
+  attempts       Int       @default(0)
+  lastError      String?   @map("last_error")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  startedAt      DateTime? @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  cancelledAt    DateTime? @map("cancelled_at")
+
+  @@index([status, runAt])
+  @@index([triggerEventId])
+  @@index([jobType, status])
+  @@map("scheduled_jobs")
 }

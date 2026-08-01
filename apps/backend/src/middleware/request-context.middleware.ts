@@ -1,6 +1,7 @@
 import { Elysia } from "elysia";
 import crypto from "crypto";
 import { formatTraceparent, resolveTraceContext } from "../lib/tracing";
+import { bindEventContextFromRequest } from "../events/core/event-context";
 
 /**
  * Request correlation support (Part 7, additive).
@@ -32,6 +33,7 @@ export const requestContextPlugin = new Elysia({ name: "request-context" })
   .derive({ as: "global" }, ({ request }) => {
     const requestId = resolveRequestId(request);
     const trace = resolveTraceContext(request);
+    bindEventContextFromRequest({ traceId: trace.traceId, requestId });
     return {
       requestId,
       traceId: trace.traceId,

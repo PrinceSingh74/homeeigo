@@ -61,6 +61,115 @@
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "targets": [{ "expr": "process_resident_memory_bytes", "legendFormat": "rss" }]
+    },
+    {
+      "id": 8,
+      "title": "API Latency (p50/p95/p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Wallet & HCoin Activity",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        { "expr": "rate(wallet_transfer_total[5m])", "legendFormat": "transfers" },
+        { "expr": "rate(wallet_debit_total[5m])", "legendFormat": "debits" },
+        { "expr": "rate(hcoin_earned_total[5m])", "legendFormat": "hcoin_earned" },
+        { "expr": "rate(hcoin_redeemed_total[5m])", "legendFormat": "hcoin_redeemed" }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Finance: Settlements / Payouts / Refunds / Chargebacks",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "targets": [
+        { "expr": "settlement_total", "legendFormat": "settlements" },
+        { "expr": "payout_total", "legendFormat": "payouts" },
+        { "expr": "provider_payout_total", "legendFormat": "provider_payouts" },
+        { "expr": "refund_total", "legendFormat": "refunds" },
+        { "expr": "chargeback_total", "legendFormat": "chargebacks" }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Financial Integrity (must stay 0)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "targets": [
+        { "expr": "finance_integrity_failures_total", "legendFormat": "integrity_failures" },
+        { "expr": "settlement_mismatch_total", "legendFormat": "settlement_mismatch" },
+        { "expr": "reconciliation_mismatch_total", "legendFormat": "reconciliation_mismatch" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Domain Event Throughput",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "targets": [
+        { "expr": "sum(rate(homigo_domain_event_total[5m])) by (event_type)", "legendFormat": "{{event_type}}" }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Outbox Pending / Oldest Age",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "targets": [
+        { "expr": "homigo_outbox_pending", "legendFormat": "pending" },
+        { "expr": "homigo_outbox_oldest_pending_age_seconds", "legendFormat": "oldest_age_sec" }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "Outbox Publish Results",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 44 },
+      "targets": [
+        { "expr": "sum(rate(homigo_outbox_publish_total[5m])) by (result)", "legendFormat": "{{result}}" }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Consumer Success vs Failures",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 44 },
+      "targets": [
+        { "expr": "sum(rate(homigo_consumer_processed_total[5m]))", "legendFormat": "processed" },
+        { "expr": "sum(rate(homigo_consumer_failed_total[5m]))", "legendFormat": "failed" },
+        { "expr": "sum(rate(homigo_consumer_retry_total[5m]))", "legendFormat": "retries" }
+      ]
+    },
+    {
+      "id": 16,
+      "title": "DLQ / Scheduled Jobs",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 52 },
+      "targets": [
+        { "expr": "homigo_dlq_unresolved", "legendFormat": "dlq_unresolved" },
+        { "expr": "homigo_scheduled_jobs_pending", "legendFormat": "jobs_pending" },
+        { "expr": "homigo_scheduled_job_lag_seconds", "legendFormat": "job_lag_sec" }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "Event Processing Latency (p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 52 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(homigo_outbox_processing_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "outbox_p95"
+        }
+      ]
     }
   ]
 }

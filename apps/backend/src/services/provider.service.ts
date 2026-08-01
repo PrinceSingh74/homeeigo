@@ -1,9 +1,14 @@
-import { BookingStatus } from "@prisma/client";
+import { AssignmentAttemptStatus, BookingStatus, Prisma } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { distanceKm, etaMinutes } from "../lib/geo";
 import { parsePagination } from "../lib/pagination";
 import { bookingStatusApi, paymentStatusApi } from "../lib/format";
 import { commissionRateForVolume } from "./earnings.service";
+import { addressPiiService } from "./address-pii.service";
+import { encryptionService } from "./encryption.service";
+import { eventPlatformConfig } from "../events/core/config";
+import { emitInTransaction } from "../events/core/event-publisher";
+import { buildPartnerOfflineEvent, buildPartnerOnlineEvent } from "../events/catalog/partner.events";
 
 function startOfDayUtc(d = new Date()): Date {
   const c = new Date(d);
@@ -25,13 +30,16 @@ function daysAgo(days: number, from = new Date()): Date {
   return c;
 }
 
-const ACTIVE_STATUSES: BookingStatus[] = [
-  BookingStatus.PENDING,
+/** Accepted jobs the partner is working on (excludes unaccepted dispatches). */
+const ACCEPTED_TAB_STATUSES: BookingStatus[] = [
   BookingStatus.ACCEPTED,
   BookingStatus.ASSIGNED,
   BookingStatus.EN_ROUTE,
   BookingStatus.IN_PROGRESS,
 ];
+
+/** Provider is busy — includes dispatched-but-not-yet-accepted requests. */
+const BUSY_STATUSES: BookingStatus[] = [BookingStatus.PENDING, ...ACCEPTED_TAB_STATUSES];
 
 const STATUS_MAP: Record<string, BookingStatus[]> = {
   pending: [BookingStatus.PENDING],
@@ -43,7 +51,7 @@ const STATUS_MAP: Record<string, BookingStatus[]> = {
     BookingStatus.CANCELLED_BY_PROVIDER,
     BookingStatus.REJECTED,
   ],
-  active: ACTIVE_STATUSES,
+  active: ACCEPTED_TAB_STATUSES,
 };
 
 export class ProviderService {
@@ -174,6 +182,8 @@ export class ProviderService {
         photos: r.photos,
         tipAmount: r.tipAmount,
         helpfulCount: r.helpfulCount,
+        providerResponse: r.providerResponse,
+        respondedAt: r.respondedAt,
         createdAt: r.createdAt,
       })),
       total,
@@ -190,7 +200,7 @@ export class ProviderService {
         providerId,
         serviceId,
         scheduledDate: { gte: dayStart, lte: dayEnd },
-        status: { in: ["PENDING", "ACCEPTED", "ASSIGNED", "EN_ROUTE", "IN_PROGRESS"] },
+        status: { in: BUSY_STATUSES },
       },
     });
     const isAvailable = busy < 4;
@@ -293,22 +303,75 @@ export class ProviderService {
       services,
       serviceCategories: p.serviceCategories,
       certifications: p.certifications,
+      serviceRegions: p.serviceRegions,
+      paymentMethodPreference: p.paymentMethodPreference,
+      upiId: p.upiId,
+      bankName: p.bankName,
       isApproved: p.isApproved,
       isVerified: p.isVerified,
       kycStatus: p.user.kycStatus,
+      badges: p.badges,
+      backgroundCheckStatus: p.backgroundCheckStatus,
     };
   }
 
-  async setOnline(providerId: string, online: boolean) {
-    const updated = await prisma.provider.update({
+  async updateSettings(
+    providerId: string,
+    patch: {
+      workingHoursStart?: string;
+      workingHoursEnd?: string;
+      workingDays?: string[];
+      paymentMethodPreference?: string;
+      upiId?: string;
+      bio?: string;
+    },
+  ) {
+    const data: Prisma.ProviderUpdateInput = {};
+    if (patch.workingHoursStart !== undefined) data.workingHoursStart = patch.workingHoursStart;
+    if (patch.workingHoursEnd !== undefined) data.workingHoursEnd = patch.workingHoursEnd;
+    if (patch.workingDays !== undefined) data.workingDays = patch.workingDays;
+    if (patch.paymentMethodPreference !== undefined) {
+      data.paymentMethodPreference = patch.paymentMethodPreference;
+    }
+    if (patch.upiId !== undefined) data.upiId = patch.upiId;
+    if (patch.bio !== undefined) data.bio = patch.bio;
+
+    return prisma.provider.update({
       where: { id: providerId },
-      data: {
-        isOnline: online,
-        onlineSince: online ? new Date() : null,
+      data,
+      select: {
+        id: true,
+        workingHoursStart: true,
+        workingHoursEnd: true,
+        workingDays: true,
+        paymentMethodPreference: true,
+        upiId: true,
+        bio: true,
       },
-      select: { id: true, isOnline: true, onlineSince: true },
     });
-    return updated;
+  }
+
+  async setOnline(providerId: string, online: boolean) {
+    const now = new Date();
+    return prisma.$transaction(async (tx) => {
+      const row = await tx.provider.update({
+        where: { id: providerId },
+        data: {
+          isOnline: online,
+          onlineSince: online ? now : null,
+        },
+        select: { id: true, isOnline: true, onlineSince: true },
+      });
+      if (eventPlatformConfig.outboxEnabled && eventPlatformConfig.partnerEventsEnabled) {
+        await emitInTransaction(
+          tx,
+          online
+            ? buildPartnerOnlineEvent({ providerId, onlineSince: now })
+            : buildPartnerOfflineEvent({ providerId, offlineAt: now }),
+        );
+      }
+      return row;
+    });
   }
 
   async myBookings(
@@ -316,12 +379,26 @@ export class ProviderService {
     query: { status?: string; page?: number; limit?: number; sortBy?: string },
   ) {
     const { page, limit, skip } = parsePagination(query);
-    const where: { providerId: string; status?: { in: BookingStatus[] } } = {
-      providerId,
-    };
-    if (query.status && query.status !== "all") {
-      where.status = {
-        in: STATUS_MAP[query.status] ?? [query.status.toUpperCase() as BookingStatus],
+    let where: Prisma.BookingWhereInput = { providerId };
+
+    if (query.status === "pending") {
+      // Only live dispatches waiting for accept/reject — not already-accepted jobs.
+      const openAttempts = await prisma.assignmentAttempt.findMany({
+        where: {
+          providerId,
+          status: AssignmentAttemptStatus.SENT,
+          job: { booking: { status: BookingStatus.PENDING } },
+        },
+        select: { job: { select: { bookingId: true } } },
+      });
+      const openBookingIds = [...new Set(openAttempts.map((a) => a.job.bookingId))];
+      where = { id: { in: openBookingIds }, status: BookingStatus.PENDING };
+    } else if (query.status && query.status !== "all") {
+      where = {
+        providerId,
+        status: {
+          in: STATUS_MAP[query.status] ?? [query.status.toUpperCase() as BookingStatus],
+        },
       };
     }
     const orderBy =
@@ -336,9 +413,30 @@ export class ProviderService {
         take: limit,
         orderBy,
         include: {
-          user: { select: { firstName: true, lastName: true, profileImage: true } },
+          user: { select: { firstName: true, lastName: true, profileImage: true, phoneNumber: true, phoneEncrypted: true } },
           service: { select: { id: true, name: true, icon: true, basePrice: true } },
-          address: { select: { fullAddress: true, latitude: true, longitude: true } },
+          address: {
+            select: {
+              label: true,
+              addressLine1: true,
+              addressLine1Encrypted: true,
+              addressLine2: true,
+              addressLine2Encrypted: true,
+              fullAddress: true,
+              fullAddressEncrypted: true,
+              buildingName: true,
+              flatNumber: true,
+              landmark: true,
+              landmarkEncrypted: true,
+              specialInstructions: true,
+              specialInstructionsEncrypted: true,
+              city: true,
+              state: true,
+              zipCode: true,
+              latitude: true,
+              longitude: true,
+            },
+          },
           rating: { select: { stars: true } },
         },
       }),
@@ -346,28 +444,44 @@ export class ProviderService {
     ]);
 
     return {
-      bookings: rows.map((b) => ({
-        id: b.id,
-        bookingNumber: b.bookingNumber,
-        status: bookingStatusApi(b.status),
-        scheduledDate: b.scheduledDate,
-        completedAt: b.completedAt,
-        startedAt: b.startedAt,
-        amount: b.baseAmount,
-        finalAmount: b.finalAmount,
-        paymentStatus: paymentStatusApi(b.paymentStatus),
-        description: b.description,
-        eta: b.eta,
-        customer: {
-          firstName: b.user.firstName,
-          lastName: b.user.lastName,
-          profileImage: b.user.profileImage,
-        },
-        service: b.service,
-        address: b.address,
-        ratingGiven: !!b.rating,
-        rating: b.rating?.stars ?? null,
-      })),
+      bookings: await Promise.all(
+        rows.map(async (b) => {
+          // The provider is assigned to this booking, so they are authorized to see the
+          // customer's full address + contact to deliver the service. Address PII is stored
+          // encrypted (plaintext columns are blank) — decrypt it here.
+          const address = b.address ? await addressPiiService.viewForFulfilment(b.address) : null;
+          const rawPhone =
+            b.user.phoneNumber ||
+            (b.user.phoneEncrypted ? await encryptionService.decrypt(b.user.phoneEncrypted, "PHONE") : null);
+          // Google-login users can carry a non-phone identifier (e.g. "oauth_…") — only
+          // surface something that actually looks like a callable number.
+          const phoneNumber = rawPhone && /^\+?\d[\d\s-]{6,}$/.test(rawPhone) ? rawPhone : null;
+          return {
+            id: b.id,
+            bookingNumber: b.bookingNumber,
+            status: bookingStatusApi(b.status),
+            scheduledDate: b.scheduledDate,
+            completedAt: b.completedAt,
+            startedAt: b.startedAt,
+            amount: b.baseAmount,
+            finalAmount: b.finalAmount,
+            addons: b.addons ?? undefined,
+            paymentStatus: paymentStatusApi(b.paymentStatus),
+            description: b.description,
+            eta: b.eta,
+            customer: {
+              firstName: b.user.firstName,
+              lastName: b.user.lastName,
+              profileImage: b.user.profileImage,
+              phoneNumber,
+            },
+            service: b.service,
+            address,
+            ratingGiven: !!b.rating,
+            rating: b.rating?.stars ?? null,
+          };
+        }),
+      ),
       total,
       page,
       limit,
@@ -428,11 +542,15 @@ export class ProviderService {
           completedAt: { gte: yesterdayStart, lt: todayStart },
         },
       }),
-      prisma.booking.count({
-        where: { providerId, status: BookingStatus.PENDING },
+      prisma.assignmentAttempt.count({
+        where: {
+          providerId,
+          status: AssignmentAttemptStatus.SENT,
+          job: { booking: { status: BookingStatus.PENDING } },
+        },
       }),
       prisma.booking.count({
-        where: { providerId, status: { in: ACTIVE_STATUSES } },
+        where: { providerId, status: { in: ACCEPTED_TAB_STATUSES } },
       }),
       prisma.earning.findMany({
         where: { providerId, createdAt: { gte: weekStart } },
