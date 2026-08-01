@@ -4,3 +4,9 @@ uploads/
 
 # Database backups (scripts/backup-db.ts) — never commit dumps
 backups/
+
+# Env files (secrets) — keep only the committed template .env.example
+.env
+.env.*
+!.env.example
+!.env.staging.example

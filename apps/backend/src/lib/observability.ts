@@ -29,13 +29,13 @@ export type CaptureContext = {
 
 type SentryLike = {
   init: (opts: Record<string, unknown>) => void;
-  captureException: (e: unknown, ctx?: Record<string, unknown>) => void;
-  captureMessage: (m: string, ctx?: Record<string, unknown>) => void;
+  captureException: (e: unknown, ctx?: Record<string, unknown>) => string;
+  captureMessage: (m: string, ctx?: Record<string, unknown>) => string;
   flush: (timeout?: number) => Promise<boolean>;
 };
 
 const DSN = process.env.SENTRY_DSN?.trim() ?? "";
-const ENV = process.env.NODE_ENV || "development";
+const ENV = process.env.SENTRY_ENVIRONMENT || process.env.APP_ENV || process.env.NODE_ENV || "development";
 const RELEASE = process.env.APP_VERSION || "homigo-backend@1.0.0";
 // Sample 10% of traces in prod, 100% elsewhere (only matters once DSN is set).
 const TRACES_SAMPLE_RATE = ENV === "production" ? 0.1 : 1.0;
@@ -88,11 +88,12 @@ class Observability {
     }
   }
 
-  /** Report a server-side exception. No-op (best-effort) when Sentry is off. */
-  captureException(error: unknown, ctx: CaptureContext = {}): void {
-    if (!enabled || !sentry) return;
+  /** Report a server-side exception. Returns the Sentry event id (or undefined
+   *  when Sentry is off / on error). No-op + best-effort. */
+  captureException(error: unknown, ctx: CaptureContext = {}): string | undefined {
+    if (!enabled || !sentry) return undefined;
     try {
-      sentry.captureException(error, {
+      return sentry.captureException(error, {
         level: ctx.level ?? "error",
         tags: {
           ...(ctx.category ? { category: ctx.category } : {}),
@@ -108,30 +109,32 @@ class Observability {
       });
     } catch {
       /* telemetry must never throw */
+      return undefined;
     }
   }
 
-  /** Report a structured message (e.g. a security event). Best-effort. */
-  captureMessage(message: string, ctx: CaptureContext = {}): void {
-    if (!enabled || !sentry) return;
+  /** Report a structured message (e.g. a security event). Returns the event id. */
+  captureMessage(message: string, ctx: CaptureContext = {}): string | undefined {
+    if (!enabled || !sentry) return undefined;
     try {
-      sentry.captureMessage(message, {
+      return sentry.captureMessage(message, {
         level: ctx.level ?? "warning",
         tags: { ...(ctx.category ? { category: ctx.category } : {}) },
         extra: ctx.extra ?? {},
       });
     } catch {
       /* telemetry must never throw */
+      return undefined;
     }
   }
 
-  /** Flush buffered events on shutdown so nothing is lost on a clean exit. */
-  async flush(timeoutMs = 2000): Promise<void> {
-    if (!enabled || !sentry) return;
+  /** Flush buffered events. Returns true if everything was sent within timeout. */
+  async flush(timeoutMs = 2000): Promise<boolean> {
+    if (!enabled || !sentry) return false;
     try {
-      await sentry.flush(timeoutMs);
+      return await sentry.flush(timeoutMs);
     } catch {
-      /* ignore */
+      return false;
     }
   }
 }

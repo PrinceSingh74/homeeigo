@@ -1,0 +1,72 @@
+# Isolated STAGING data plane — separate from local dev (docker-compose.yml).
+name: homigo-staging
+# Start:  docker compose -f docker-compose.staging.yml up -d
+# Stop:   docker compose -f docker-compose.staging.yml down
+# Data:   homigo_staging_pg_data / homigo_staging_redis_data (never shares dev volumes)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: homigo-staging-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: homigo_staging
+      POSTGRES_DB: homigo_staging_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - homigo_staging_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d homigo_staging_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: homigo-staging-redis
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - homigo_staging_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: homigo-staging-pgbouncer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: homigo_staging
+      DB_NAME: homigo_staging_db
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "500"
+      DEFAULT_POOL_SIZE: "15"
+      MIN_POOL_SIZE: "3"
+      RESERVE_POOL_SIZE: "3"
+      AUTH_TYPE: scram-sha-256
+      ADMIN_USERS: postgres
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    ports:
+      - "6433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  homigo_staging_pg_data:
+  homigo_staging_redis_data:

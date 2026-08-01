@@ -1,0 +1,130 @@
+# STAGING backend — isolated namespace, min 2 replicas for Phase 0 concurrency tests.
+# Secrets: create homigo-staging-secrets in homigo-staging namespace (never copy prod values).
+#   kubectl apply -f deploy/k8s/staging/namespace.yaml
+#   kubectl apply -f deploy/k8s/staging/backend-deployment.yaml -n homigo-staging
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homigo-backend
+  namespace: homigo-staging
+  labels:
+    app: homigo-backend
+    environment: staging
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: homigo-backend
+      environment: staging
+  template:
+    metadata:
+      labels:
+        app: homigo-backend
+        environment: staging
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "3000"
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/homigo/backend:COMMIT_SHA
+          ports:
+            - containerPort: 3000
+          env:
+            - { name: NODE_ENV, value: "production" }
+            - { name: APP_ENV, value: "staging" }
+            - { name: SENTRY_ENVIRONMENT, value: "staging" }
+            - { name: EVENTS_OUTBOX_ENABLED, value: "false" }
+            - { name: EVENTS_CONSUMERS_ENABLED, value: "false" }
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: homigo-staging-secrets
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: homigo-staging-secrets
+                  key: redis-url
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: homigo-staging-secrets
+                  key: jwt-secret
+            - name: JWT_REFRESH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: homigo-staging-secrets
+                  key: jwt-refresh-secret
+            - name: RAZORPAY_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: homigo-staging-secrets
+                  key: razorpay-key-id
+            - name: RAZORPAY_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: homigo-staging-secrets
+                  key: razorpay-key-secret
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "1", memory: "1Gi" }
+          readinessProbe:
+            httpGet: { path: /ready, port: 3000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 3000 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "10"]
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homigo-backend
+  namespace: homigo-staging
+  labels:
+    environment: staging
+spec:
+  selector:
+    app: homigo-backend
+    environment: staging
+  ports:
+    - port: 80
+      targetPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: homigo-staging-ingress
+  namespace: homigo-staging
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+    - hosts: [staging-api.homigo.app]
+      secretName: homigo-staging-api-tls
+  rules:
+    - host: staging-api.homigo.app
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: homigo-backend
+                port:
+                  number: 80

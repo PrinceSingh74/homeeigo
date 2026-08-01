@@ -1,0 +1,90 @@
+name: Staging Deploy
+
+# Manual staging deployment — pins exact commit SHA. Does NOT deploy production.
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Git commit SHA to deploy (default: workflow branch HEAD)"
+        required: false
+        type: string
+      target:
+        description: "Deployment target"
+        required: true
+        default: cloud-run
+        type: choice
+        options:
+          - cloud-run
+          - kubernetes
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-staging:
+    name: Deploy backend to staging
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Resolve commit SHA
+        id: sha
+        run: |
+          SHA="${{ inputs.commit_sha }}"
+          if [ -z "$SHA" ]; then SHA="${{ github.sha }}"; fi
+          echo "value=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Deploying commit: $SHA"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.sha.outputs.value }}
+
+      - name: Verify Phase 0 release candidate (informational)
+        run: |
+          echo "Checked out: $(git rev-parse HEAD)"
+          echo "Expected RC for Phase 0 gate: 5a75770d9b1c229359d125e08b37ab5d510b245e"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Build backend artifact
+        working-directory: apps/backend
+        run: |
+          bun install
+          bunx prisma generate
+          bun build src/index.ts --outdir dist --target bun
+
+      - name: Build and push container image
+        if: inputs.target == 'cloud-run' || inputs.target == 'kubernetes'
+        working-directory: apps/backend
+        env:
+          REGISTRY: ${{ vars.STAGING_CONTAINER_REGISTRY }}
+          IMAGE_NAME: homigo/backend
+          COMMIT_SHA: ${{ steps.sha.outputs.value }}
+        run: |
+          if [ -z "$REGISTRY" ]; then
+            echo "BLOCKED: set repository variable STAGING_CONTAINER_REGISTRY (e.g. asia-south1-docker.pkg.dev/PROJECT/homigo)"
+            exit 1
+          fi
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          IMAGE="${REGISTRY}/${IMAGE_NAME}:${COMMIT_SHA}"
+          IMAGE_SHORT="${REGISTRY}/${IMAGE_NAME}:${SHORT_SHA}"
+          echo "Would build and push: $IMAGE"
+          echo "Configure GCP/AWS credentials via GitHub Environment 'staging' secrets before enabling docker push."
+          # docker build -t "$IMAGE" -t "$IMAGE_SHORT" .
+          # docker push "$IMAGE"
+          # docker push "$IMAGE_SHORT"
+
+      - name: Deploy to Cloud Run (placeholder)
+        if: inputs.target == 'cloud-run'
+        run: |
+          echo "Apply deploy/cloud-run/staging-service.yaml with image tag ${{ steps.sha.outputs.value }}"
+          echo "Requires: GCP credentials, Secret Manager API, staging secrets, DNS staging-api.*"
+
+      - name: Deploy to Kubernetes (placeholder)
+        if: inputs.target == 'kubernetes'
+        run: |
+          echo "kubectl apply -f deploy/k8s/staging/ -n homigo-staging"
+          echo "Replace COMMIT_SHA in backend-deployment.yaml with ${{ steps.sha.outputs.value }}"
