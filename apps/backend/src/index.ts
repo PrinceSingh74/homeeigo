@@ -358,6 +358,7 @@ if (import.meta.main) {
   // Runs in every environment so the 699 MB log explosion can never be re-enabled by a config slip.
   assertLogGovernance();
   if (!isDev) {
+    await redisClient.connect();
     assertProductionConfig();
   }
   app.listen(port, () => {
