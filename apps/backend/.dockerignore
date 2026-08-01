@@ -1,0 +1,14 @@
+node_modules
+dist
+.env
+.env.*
+*.log
+.git
+coverage
+test-results
+backups
+scripts/load-test
+src/__tests__
+**/*.test.ts
+**/.gitkeep
+.DS_Store
