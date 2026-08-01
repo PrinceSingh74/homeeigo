@@ -3,6 +3,28 @@
 # Requires: gcloud auth, billing enabled, owner/editor on project.
 
 $ErrorActionPreference = "Stop"
+
+function Invoke-Gcloud {
+  param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  & gcloud @Args 2>&1 | Out-Null
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = $prev
+  return $code
+}
+
+function Ensure-GcloudResource {
+  param(
+    [scriptblock]$Describe,
+    [scriptblock]$Create
+  )
+  if ((& $Describe) -ne 0) {
+    & $Create
+    if ($LASTEXITCODE -ne 0) { throw "gcloud create failed (exit $LASTEXITCODE)" }
+  }
+}
+
 $PROJECT = "homigo-497619"
 $REGION = "asia-south1"
 $SQL_INSTANCE = "homigo-staging-db"
@@ -22,8 +44,9 @@ gcloud services enable `
   --project=$PROJECT
 
 Write-Host "Creating Artifact Registry (if missing)..."
-gcloud artifacts repositories describe $REPO --location=$REGION --project=$PROJECT 2>$null
-if ($LASTEXITCODE -ne 0) {
+Ensure-GcloudResource {
+  Invoke-Gcloud artifacts repositories describe $REPO --location=$REGION --project=$PROJECT
+} {
   gcloud artifacts repositories create $REPO `
     --repository-format=docker `
     --location=$REGION `
@@ -32,8 +55,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Private service connection for Cloud SQL / Memorystore..."
-gcloud compute addresses describe google-managed-services-default --global --project=$PROJECT 2>$null
-if ($LASTEXITCODE -ne 0) {
+if ((Invoke-Gcloud compute addresses describe google-managed-services-default --global --project=$PROJECT) -ne 0) {
   gcloud compute addresses create google-managed-services-default `
     --global `
     --purpose=VPC_PEERING `
@@ -48,12 +70,14 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Creating Cloud SQL instance (10-15 min)..."
-gcloud sql instances describe $SQL_INSTANCE --project=$PROJECT 2>$null
-if ($LASTEXITCODE -ne 0) {
+Ensure-GcloudResource {
+  Invoke-Gcloud sql instances describe $SQL_INSTANCE --project=$PROJECT
+} {
   gcloud sql instances create $SQL_INSTANCE `
     --project=$PROJECT `
     --database-version=POSTGRES_16 `
-    --tier=db-f1-micro `
+    --edition=enterprise `
+    --tier=db-g1-small `
     --region=$REGION `
     --storage-size=10GB `
     --storage-auto-increase `
@@ -64,13 +88,14 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Creating staging database + user..."
-gcloud sql databases create homigo_staging_db --instance=$SQL_INSTANCE --project=$PROJECT 2>$null
+Invoke-Gcloud sql databases create homigo_staging_db --instance=$SQL_INSTANCE --project=$PROJECT | Out-Null
 $DB_PASS = [Convert]::ToBase64String((1..24 | ForEach-Object { Get-Random -Maximum 256 } | ForEach-Object { [byte]$_ }))
-gcloud sql users create homigo_staging_app --instance=$SQL_INSTANCE --password=$DB_PASS --project=$PROJECT 2>$null
+Invoke-Gcloud sql users create homigo_staging_app --instance=$SQL_INSTANCE --password=$DB_PASS --project=$PROJECT | Out-Null
 
 Write-Host "VPC connector..."
-gcloud compute networks vpc-access connectors describe $CONNECTOR --region=$REGION --project=$PROJECT 2>$null
-if ($LASTEXITCODE -ne 0) {
+Ensure-GcloudResource {
+  Invoke-Gcloud compute networks vpc-access connectors describe $CONNECTOR --region=$REGION --project=$PROJECT
+} {
   gcloud compute networks vpc-access connectors create $CONNECTOR `
     --region=$REGION `
     --network=default `
@@ -79,8 +104,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Memorystore Redis (5-10 min)..."
-gcloud redis instances describe $REDIS_INSTANCE --region=$REGION --project=$PROJECT 2>$null
-if ($LASTEXITCODE -ne 0) {
+Ensure-GcloudResource {
+  Invoke-Gcloud redis instances describe $REDIS_INSTANCE --region=$REGION --project=$PROJECT
+} {
   gcloud redis instances create $REDIS_INSTANCE `
     --size=1 `
     --region=$REGION `
@@ -95,12 +121,12 @@ $DB_URL = "postgresql://homigo_staging_app:${DB_PASS}@localhost/homigo_staging_d
 $REDIS_URL = "redis://${REDIS_HOST}:6379"
 
 function Ensure-Secret($Name, $Value) {
-  gcloud secrets describe $Name --project=$PROJECT 2>$null
-  if ($LASTEXITCODE -ne 0) {
+  if ((Invoke-Gcloud secrets describe $Name --project=$PROJECT) -ne 0) {
     $Value | gcloud secrets create $Name --data-file=- --project=$PROJECT
   } else {
     $Value | gcloud secrets versions add $Name --data-file=- --project=$PROJECT
   }
+  if ($LASTEXITCODE -ne 0) { throw "Failed to write secret $Name" }
 }
 
 Write-Host "Writing Secret Manager secrets (values not printed)..."
@@ -116,8 +142,9 @@ Ensure-Secret "STAGING_RAZORPAY_KEY_SECRET" "PLACEHOLDER_CONFIGURE_IN_DASHBOARD"
 Ensure-Secret "STAGING_RAZORPAY_WEBHOOK_SECRET" "PLACEHOLDER_CONFIGURE_IN_DASHBOARD"
 
 Write-Host "Service account + IAM..."
-gcloud iam service-accounts describe "${SA}@${PROJECT}.iam.gserviceaccount.com" --project=$PROJECT 2>$null
-if ($LASTEXITCODE -ne 0) {
+Ensure-GcloudResource {
+  Invoke-Gcloud iam service-accounts describe "${SA}@${PROJECT}.iam.gserviceaccount.com" --project=$PROJECT
+} {
   gcloud iam service-accounts create $SA --display-name="Homigo Backend Staging" --project=$PROJECT
 }
 $SA_EMAIL = "${SA}@${PROJECT}.iam.gserviceaccount.com"

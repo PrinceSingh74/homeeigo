@@ -8,13 +8,8 @@ export function validateProductionConfig(): ProductionConfigError[] {
   if (process.env.NODE_ENV !== "production") return [];
 
   const errors: ProductionConfigError[] = [];
+  const isStaging = process.env.APP_ENV === "staging";
 
-  if (!razorpayService.isConfigured) {
-    errors.push({ key: "RAZORPAY", message: "RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required in production" });
-  }
-  if (!razorpayService.isWebhookConfigured) {
-    errors.push({ key: "RAZORPAY_WEBHOOK", message: "RAZORPAY_WEBHOOK_SECRET is required in production" });
-  }
   if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
     errors.push({ key: "JWT", message: "JWT_SECRET and JWT_REFRESH_SECRET are required in production" });
   }
@@ -36,6 +31,28 @@ export function validateProductionConfig(): ProductionConfigError[] {
     errors.push({ key: "REDIS", message: "REDIS_URL is required in production for rate limits and WS fan-out" });
   } else if (!redisClient.isAvailable) {
     errors.push({ key: "REDIS", message: "REDIS_URL is set but Redis is not reachable at startup" });
+  }
+
+  // Staging runs NODE_ENV=production but must not require live payouts or prod-only integrations.
+  if (isStaging) {
+    const razorpayKeyId = process.env.RAZORPAY_KEY_ID?.trim() ?? "";
+    if (razorpayKeyId.startsWith("rzp_live_")) {
+      errors.push({ key: "RAZORPAY_KEY_ID", message: "staging must not use live Razorpay credentials" });
+    }
+    return errors;
+  }
+
+  if (!razorpayService.isConfigured) {
+    errors.push({ key: "RAZORPAY", message: "RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required in production" });
+  }
+  if (!razorpayService.isWebhookConfigured) {
+    errors.push({ key: "RAZORPAY_WEBHOOK", message: "RAZORPAY_WEBHOOK_SECRET is required in production" });
+  }
+  if (!process.env.RAZORPAY_ACCOUNT_NUMBER?.trim()) {
+    errors.push({
+      key: "RAZORPAY_ACCOUNT_NUMBER",
+      message: "RAZORPAY_ACCOUNT_NUMBER is required in production for RazorpayX payouts",
+    });
   }
   if (!emailService.isConfigured) {
     errors.push({ key: "EMAIL", message: "RESEND_API_KEY is required in production" });
