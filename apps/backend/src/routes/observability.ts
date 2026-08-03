@@ -95,7 +95,7 @@ export const observabilityRoutes = new Elysia({ name: "observability-routes" })
     return {
       status: ready ? "ready" : "not_ready",
       timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || "development",
+      environment: process.env.APP_ENV || process.env.NODE_ENV || "development",
       checks: { database, redis, memory, integrations },
     };
   })

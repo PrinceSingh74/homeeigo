@@ -25,6 +25,17 @@ function Ensure-GcloudResource {
   }
 }
 
+function Encode-UriComponent([string]$Value) {
+  [System.Uri]::EscapeDataString($Value)
+}
+
+function New-StagingDatabaseUrl([string]$User, [string]$Password, [string]$Database, [string]$CloudSqlConnection) {
+  $userEnc = Encode-UriComponent $User
+  $passEnc = Encode-UriComponent $Password
+  $dbEnc = Encode-UriComponent $Database
+  "postgresql://${userEnc}:${passEnc}@localhost/${dbEnc}?host=/cloudsql/${CloudSqlConnection}"
+}
+
 $PROJECT = "homigo-497619"
 $REGION = "asia-south1"
 $SQL_INSTANCE = "homigo-staging-db"
@@ -89,9 +100,12 @@ Ensure-GcloudResource {
 
 Write-Host "Creating staging database + user..."
 Invoke-Gcloud sql databases create homigo_staging_db --instance=$SQL_INSTANCE --project=$PROJECT | Out-Null
-# URL-safe password — avoids Prisma/pg connection-string parse failures from + / = etc.
-$DB_PASS = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ })
-Invoke-Gcloud sql users create homigo_staging_app --instance=$SQL_INSTANCE --password=$DB_PASS --project=$PROJECT | Out-Null
+$DB_PASS = [Convert]::ToBase64String((1..24 | ForEach-Object { Get-Random -Maximum 256 } | ForEach-Object { [byte]$_ }))
+if ((Invoke-Gcloud sql users list --instance=$SQL_INSTANCE --project=$PROJECT --format="value(name)" | Select-String -Pattern "^homigo_staging_app$" -Quiet)) {
+  gcloud sql users set-password homigo_staging_app --instance=$SQL_INSTANCE --password=$DB_PASS --project=$PROJECT | Out-Null
+} else {
+  gcloud sql users create homigo_staging_app --instance=$SQL_INSTANCE --password=$DB_PASS --project=$PROJECT | Out-Null
+}
 
 Write-Host "VPC connector..."
 Ensure-GcloudResource {
@@ -118,7 +132,7 @@ Ensure-GcloudResource {
 
 $REDIS_HOST = gcloud redis instances describe $REDIS_INSTANCE --region=$REGION --project=$PROJECT --format="value(host)"
 $CONN = "${PROJECT}:${REGION}:${SQL_INSTANCE}"
-$DB_URL = "postgresql://homigo_staging_app:${DB_PASS}@localhost/homigo_staging_db?host=/cloudsql/${CONN}"
+$DB_URL = New-StagingDatabaseUrl "homigo_staging_app" $DB_PASS "homigo_staging_db" $CONN
 $REDIS_URL = "redis://${REDIS_HOST}:6379"
 
 function Ensure-Secret($Name, $Value) {

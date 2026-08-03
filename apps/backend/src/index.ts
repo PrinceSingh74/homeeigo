@@ -68,6 +68,7 @@ type RootResponse = {
 
 const port = Number(process.env.PORT || 3000);
 const environment = process.env.NODE_ENV || "development";
+const appEnvironment = process.env.APP_ENV || environment;
 const isDev = environment !== "production";
 
 // Production CORS allowlist. Built-in defaults are merged with env-configured
@@ -218,7 +219,7 @@ const app = new Elysia()
   .get("/", (): RootResponse => ({
     status: "ok",
     message: "HOMIGO Backend Running 🚀",
-    environment,
+    environment: appEnvironment,
   }))
   .get("/health", async () => {
     const database = await prisma
@@ -236,7 +237,7 @@ const app = new Elysia()
       status: database === "ok" ? "ok" : "degraded",
       message: "HOMIGO Backend is running!",
       timestamp: new Date().toISOString(),
-      environment,
+      environment: appEnvironment,
       services: { database, redis },
     };
   })
