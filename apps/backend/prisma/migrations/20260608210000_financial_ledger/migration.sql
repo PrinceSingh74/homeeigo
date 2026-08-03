@@ -65,3 +65,48 @@ VALUES
   ('acct_chargeback_loss', 'CHARGEBACK_LOSS', 'Chargeback Loss', 'EXPENSE', 'INR', CURRENT_TIMESTAMP),
   ('acct_customer_wallet', 'CUSTOMER_WALLET', 'Customer Wallet Liability', 'LIABILITY', 'INR', CURRENT_TIMESTAMP)
 ON CONFLICT ("code") DO NOTHING;
+
+-- H-Coin foundation (enum/tables required before finance_integrity_10_phase2)
+CREATE TYPE "HCoinTxnType" AS ENUM ('EARN', 'REDEEM');
+
+CREATE TABLE "hcoin_wallets" (
+    "id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "balance" INTEGER NOT NULL DEFAULT 0,
+    "lifetime_earned" INTEGER NOT NULL DEFAULT 0,
+    "lifetime_redeemed" INTEGER NOT NULL DEFAULT 0,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "hcoin_wallets_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE "hcoin_transactions" (
+    "id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "type" "HCoinTxnType" NOT NULL,
+    "amount" INTEGER NOT NULL,
+    "reason" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "reference_id" TEXT,
+    "balance_after" INTEGER NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "hcoin_transactions_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE "hcoin_rewards" (
+    "id" TEXT NOT NULL,
+    "event" TEXT NOT NULL,
+    "label" TEXT NOT NULL,
+    "coins" INTEGER NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "hcoin_rewards_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX "hcoin_wallets_user_id_key" ON "hcoin_wallets"("user_id");
+CREATE INDEX "hcoin_transactions_user_id_idx" ON "hcoin_transactions"("user_id");
+CREATE INDEX "hcoin_transactions_reference_id_idx" ON "hcoin_transactions"("reference_id");
+CREATE UNIQUE INDEX "hcoin_rewards_event_key" ON "hcoin_rewards"("event");
+
+ALTER TABLE "hcoin_wallets" ADD CONSTRAINT "hcoin_wallets_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "hcoin_transactions" ADD CONSTRAINT "hcoin_transactions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
