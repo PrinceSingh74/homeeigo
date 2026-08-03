@@ -89,7 +89,8 @@ Ensure-GcloudResource {
 
 Write-Host "Creating staging database + user..."
 Invoke-Gcloud sql databases create homigo_staging_db --instance=$SQL_INSTANCE --project=$PROJECT | Out-Null
-$DB_PASS = [Convert]::ToBase64String((1..24 | ForEach-Object { Get-Random -Maximum 256 } | ForEach-Object { [byte]$_ }))
+# URL-safe password — avoids Prisma/pg connection-string parse failures from + / = etc.
+$DB_PASS = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ })
 Invoke-Gcloud sql users create homigo_staging_app --instance=$SQL_INSTANCE --password=$DB_PASS --project=$PROJECT | Out-Null
 
 Write-Host "VPC connector..."
@@ -135,6 +136,8 @@ Ensure-Secret "STAGING_REDIS_URL" $REDIS_URL
 Ensure-Secret "STAGING_JWT_SECRET" (-join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Max 256) }))
 Ensure-Secret "STAGING_JWT_REFRESH_SECRET" (-join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Max 256) }))
 Ensure-Secret "STAGING_ENCRYPTION_KEY" (-join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Max 256) }))
+Ensure-Secret "STAGING_OTP_SECRET" (-join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Max 256) }))
+Ensure-Secret "STAGING_OPS_AUTH_TOKEN" (-join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ }))
 Ensure-Secret "STAGING_RESEND_API_KEY" ""
 # Razorpay TEST keys — human must update via dashboard:
 Ensure-Secret "STAGING_RAZORPAY_KEY_ID" "PLACEHOLDER_CONFIGURE_IN_DASHBOARD"
@@ -148,7 +151,7 @@ Ensure-GcloudResource {
   gcloud iam service-accounts create $SA --display-name="Homigo Backend Staging" --project=$PROJECT
 }
 $SA_EMAIL = "${SA}@${PROJECT}.iam.gserviceaccount.com"
-foreach ($secret in @("STAGING_DATABASE_URL","STAGING_REDIS_URL","STAGING_JWT_SECRET","STAGING_JWT_REFRESH_SECRET","STAGING_ENCRYPTION_KEY","STAGING_RAZORPAY_KEY_ID","STAGING_RAZORPAY_KEY_SECRET","STAGING_RAZORPAY_WEBHOOK_SECRET","STAGING_RESEND_API_KEY")) {
+foreach ($secret in @("STAGING_DATABASE_URL","STAGING_REDIS_URL","STAGING_JWT_SECRET","STAGING_JWT_REFRESH_SECRET","STAGING_ENCRYPTION_KEY","STAGING_OTP_SECRET","STAGING_OPS_AUTH_TOKEN","STAGING_RAZORPAY_KEY_ID","STAGING_RAZORPAY_KEY_SECRET","STAGING_RAZORPAY_WEBHOOK_SECRET","STAGING_RESEND_API_KEY")) {
   gcloud secrets add-iam-policy-binding $secret `
     --member="serviceAccount:$SA_EMAIL" `
     --role="roles/secretmanager.secretAccessor" `
