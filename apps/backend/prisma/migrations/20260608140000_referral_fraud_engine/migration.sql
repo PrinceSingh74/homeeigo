@@ -10,7 +10,7 @@ ALTER TYPE "ReferralStatus" ADD VALUE IF NOT EXISTS 'FRAUD_BLOCKED';
 ALTER TABLE "referral_transactions" ADD COLUMN IF NOT EXISTS "fraud_flagged" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "referral_transactions" ADD COLUMN IF NOT EXISTS "risk_score" INTEGER;
 
-ALTER TABLE "referral_commissions" ADD COLUMN IF NOT EXISTS "status" "CommissionStatus" NOT NULL DEFAULT 'APPROVED';
+ALTER TABLE "referral_commissions" ADD COLUMN IF NOT EXISTS "status" "CommissionStatus" NOT NULL DEFAULT 'PENDING';
 ALTER TABLE "referral_commissions" ADD COLUMN IF NOT EXISTS "risk_score" INTEGER;
 ALTER TABLE "referral_commissions" ADD COLUMN IF NOT EXISTS "frozen_at" TIMESTAMP(3);
 ALTER TABLE "referral_commissions" ADD COLUMN IF NOT EXISTS "reviewed_by" TEXT;

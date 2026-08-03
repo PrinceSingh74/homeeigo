@@ -91,3 +91,50 @@ ALTER TABLE "membership_cashbacks" ADD CONSTRAINT "membership_cashbacks_booking_
 ALTER TABLE "coupon_usages" ADD CONSTRAINT "coupon_usages_campaign_id_fkey" FOREIGN KEY ("campaign_id") REFERENCES "campaigns"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "coupon_usages" ADD CONSTRAINT "coupon_usages_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "coupon_usages" ADD CONSTRAINT "coupon_usages_booking_id_fkey" FOREIGN KEY ("booking_id") REFERENCES "bookings"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- Referral foundation (tables/enum required before referral_fraud_engine)
+CREATE TYPE "ReferralStatus" AS ENUM ('PENDING', 'QUALIFIED');
+
+CREATE TABLE "referral_transactions" (
+    "id" TEXT NOT NULL,
+    "referrer_id" TEXT NOT NULL,
+    "referee_id" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "status" "ReferralStatus" NOT NULL DEFAULT 'PENDING',
+    "qualified_at" TIMESTAMP(3),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "referral_transactions_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE "referral_commissions" (
+    "id" TEXT NOT NULL,
+    "referrer_id" TEXT NOT NULL,
+    "referee_id" TEXT NOT NULL,
+    "transaction_id" TEXT NOT NULL,
+    "booking_id" TEXT NOT NULL,
+    "amount" INTEGER NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "referral_commissions_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE "referral_withdrawals" (
+    "id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "amount" INTEGER NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'completed',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "referral_withdrawals_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX "referral_transactions_referee_id_key" ON "referral_transactions"("referee_id");
+CREATE INDEX "referral_transactions_referrer_id_idx" ON "referral_transactions"("referrer_id");
+CREATE INDEX "referral_transactions_status_idx" ON "referral_transactions"("status");
+CREATE UNIQUE INDEX "referral_commissions_transaction_id_key" ON "referral_commissions"("transaction_id");
+CREATE INDEX "referral_commissions_referrer_id_idx" ON "referral_commissions"("referrer_id");
+CREATE INDEX "referral_withdrawals_user_id_idx" ON "referral_withdrawals"("user_id");
+
+ALTER TABLE "referral_transactions" ADD CONSTRAINT "referral_transactions_referrer_id_fkey" FOREIGN KEY ("referrer_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "referral_transactions" ADD CONSTRAINT "referral_transactions_referee_id_fkey" FOREIGN KEY ("referee_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "referral_commissions" ADD CONSTRAINT "referral_commissions_referrer_id_fkey" FOREIGN KEY ("referrer_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "referral_commissions" ADD CONSTRAINT "referral_commissions_transaction_id_fkey" FOREIGN KEY ("transaction_id") REFERENCES "referral_transactions"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "referral_withdrawals" ADD CONSTRAINT "referral_withdrawals_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
