@@ -50,5 +50,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "providers_pan_number_key" ON "providers"("pan
 CREATE UNIQUE INDEX IF NOT EXISTS "providers_aadhar_number_key" ON "providers"("aadhar_number");
 CREATE INDEX IF NOT EXISTS "providers_registration_status_idx" ON "providers"("registration_status");
 CREATE INDEX IF NOT EXISTS "email_logs_email_type_idx" ON "email_logs"("email_type");
+CREATE INDEX IF NOT EXISTS "email_logs_created_at_idx" ON "email_logs"("created_at");
+CREATE INDEX IF NOT EXISTS "partner_background_checks_provider_id_idx" ON "partner_background_checks"("provider_id");
+CREATE INDEX IF NOT EXISTS "partner_background_checks_status_idx" ON "partner_background_checks"("status");
 
 ALTER TABLE "partner_background_checks" ADD CONSTRAINT "partner_background_checks_provider_id_fkey" FOREIGN KEY ("provider_id") REFERENCES "providers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
