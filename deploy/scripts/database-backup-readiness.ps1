@@ -2,7 +2,7 @@
 # Does NOT restore, delete, or modify databases. Does NOT print secrets.
 param(
   [string]$Project = "homigo-497619",
-  [string]$Instance = "homigo-staging-db",
+  [string]$Instance = "homigo-staging-step6a-pitr-20260803",
   [int]$MaxBackupAgeHours = 36
 )
 

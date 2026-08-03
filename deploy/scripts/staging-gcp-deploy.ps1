@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 $PROJECT = "homigo-497619"
 $REGION = "asia-south1"
-$SQL_INSTANCE = "homigo-staging-db"
+$SQL_INSTANCE = "homigo-staging-step6a-pitr-20260803"
 $CONNECTOR = "homigo-staging-vpc"
 $SA = "homigo-backend-staging"
 $REPO = "homigo"

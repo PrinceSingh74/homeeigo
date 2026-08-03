@@ -1,7 +1,7 @@
 {
   "displayName": "Homigo Staging Cloud SQL - Instance Down",
   "documentation": {
-    "content": "Cloud SQL instance homigo-staging-db is not reporting UP. Check Cloud SQL console and docs/runbooks/database-restore.md",
+    "content": "Cloud SQL instance homigo-staging-step6a-pitr-20260803 (authoritative staging) is not reporting UP. Check Cloud SQL console and docs/runbooks/database-restore.md",
     "mimeType": "text/markdown"
   },
   "combiner": "OR",
@@ -9,7 +9,7 @@
     {
       "displayName": "Database up metric is zero",
       "conditionThreshold": {
-        "filter": "resource.type=\"cloudsql_database\" AND resource.labels.database_id=\"homigo-497619:homigo-staging-db\" AND metric.type=\"cloudsql.googleapis.com/database/up\"",
+        "filter": "resource.type=\"cloudsql_database\" AND resource.labels.database_id=\"homigo-497619:homigo-staging-step6a-pitr-20260803\" AND metric.type=\"cloudsql.googleapis.com/database/up\"",
         "comparison": "COMPARISON_LT",
         "thresholdValue": 1,
         "duration": "300s",

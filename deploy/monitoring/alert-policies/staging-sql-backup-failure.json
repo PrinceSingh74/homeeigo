@@ -1,7 +1,7 @@
 {
   "displayName": "Homigo Staging Cloud SQL - Backup Failure",
   "documentation": {
-    "content": "Automated backup for homigo-staging-db reported FAILED, ATTEMPT_FAILED, or SKIPPED. See docs/runbooks/database-restore.md",
+    "content": "Automated backup for homigo-staging-step6a-pitr-20260803 (authoritative staging) reported FAILED, ATTEMPT_FAILED, or SKIPPED. See docs/runbooks/database-restore.md",
     "mimeType": "text/markdown"
   },
   "combiner": "OR",
