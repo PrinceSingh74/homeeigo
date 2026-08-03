@@ -93,6 +93,7 @@ Ensure-GcloudResource {
     --storage-size=10GB `
     --storage-auto-increase `
     --backup-start-time=03:00 `
+    --enable-point-in-time-recovery `
     --availability-type=zonal `
     --no-assign-ip `
     --network=default

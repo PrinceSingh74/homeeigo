@@ -1,0 +1,32 @@
+{
+  "displayName": "Homigo Staging Cloud SQL - Backup Failure",
+  "documentation": {
+    "content": "Automated backup for homigo-staging-db reported FAILED, ATTEMPT_FAILED, or SKIPPED. See docs/runbooks/database-restore.md",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Backup failure audit log detected",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloudsql_database\" AND metric.type=\"logging.googleapis.com/user/homigo_staging_sql_backup_failure\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0,
+        "duration": "300s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_DELTA"
+          }
+        ],
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "enabled": true,
+  "alertStrategy": {
+    "autoClose": "604800s"
+  }
+}

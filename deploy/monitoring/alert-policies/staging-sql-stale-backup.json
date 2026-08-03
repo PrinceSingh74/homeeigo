@@ -1,0 +1,33 @@
+{
+  "displayName": "Homigo Staging Cloud SQL - Stale Backup (>25h)",
+  "documentation": {
+    "content": "No successful automated backup for homigo-staging-db in the last 25 hours (Cloud Monitoring max alignment window). Target operational threshold is 36h — also run deploy/scripts/database-backup-readiness.ps1",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "No successful backup in 36 hours",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloudsql_database\" AND metric.type=\"logging.googleapis.com/user/homigo_staging_sql_backup_success\" AND resource.labels.database_id=\"homigo-497619:homigo-staging-db\"",
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 1,
+        "duration": "0s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "90000s",
+            "perSeriesAligner": "ALIGN_DELTA",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ],
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "enabled": true,
+  "alertStrategy": {
+    "autoClose": "604800s"
+  }
+}
