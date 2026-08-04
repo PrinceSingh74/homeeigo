@@ -1,0 +1,17 @@
+{
+  "STEP11_RUN_ID": "stage11-cert-1785863187103",
+  "bookingId": "cmsewtz100007s60bc5t6l4nf",
+  "providerId": "prov_stage11-cert-1785863187103",
+  "syntheticGps": "PASS",
+  "trackingSequence": "PASS",
+  "arrivalDetection": "PASS",
+  "realLocationUsed": false,
+  "method": "Synthetic coordinates near Delhi test fixture (28.6139, 77.2090)",
+  "sequence": [
+    "Initial ping ~140m away to avoid throttle and establish travel vector",
+    "Move-to-customer ping triggers EN_ROUTE transition",
+    "3 near-customer pings with 5.5s delays (respects 5s throttle + MIN_ARRIVAL_NEAR_PINGS=2)"
+  ],
+  "updateCount": 3,
+  "nonThrottledNearPings": 3
+}

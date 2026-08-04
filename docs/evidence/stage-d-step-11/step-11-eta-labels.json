@@ -1,0 +1,49 @@
+{
+  "STEP11_RUN_ID": "stage11-cert-1785863187103",
+  "providerId": "prov_stage11-cert-1785863187103",
+  "bookingId": "cmsewtz100007s60bc5t6l4nf",
+  "assignmentAttemptId": "cmsewtz79000ns60bcgjdi2ir",
+  "timestampOwnership": {
+    "dispatchedAt": {
+      "table": "assignment_attempts",
+      "column": "dispatched_at",
+      "type": "DateTime",
+      "nullable": false,
+      "setBy": "assignment-engine.service.ts dispatchBookingNow"
+    },
+    "enRouteAt": {
+      "table": "bookings",
+      "column": "en_route_at",
+      "type": "DateTime",
+      "nullable": true,
+      "setBy": "tracking.service.ts maybeTransitionEnRoute"
+    },
+    "arrivedAt": {
+      "table": "bookings",
+      "column": "arrived_at",
+      "type": "DateTime",
+      "nullable": true,
+      "setBy": "tracking.service.ts maybeRecordArrival"
+    },
+    "travelDurationMin": {
+      "table": "bookings",
+      "column": "travel_duration_min",
+      "type": "Int",
+      "nullable": true,
+      "formula": "Math.max(1, Math.round((arrivedAt - enRouteAt) / 60000))",
+      "derivedFrom": "enRouteAt and arrivedAt at arrival transition"
+    }
+  },
+  "observed": {
+    "dispatchedAt": "2026-08-04T17:06:28.320Z",
+    "enRouteAt": "2026-08-04T17:06:29.048Z",
+    "arrivedAt": "2026-08-04T17:06:34.752Z",
+    "storedTravelDurationMin": 1,
+    "calculatedTravelDurationMin": 1
+  },
+  "timestampOrder": "PASS",
+  "durationMatch": "PASS",
+  "etaLabelIntegrity": "PASS",
+  "etaMlLabelReady": "YES",
+  "notes": "Single coherent lifecycle; no cross-booking contamination; provider/booking linkage verified"
+}

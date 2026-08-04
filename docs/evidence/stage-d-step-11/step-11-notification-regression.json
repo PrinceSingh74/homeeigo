@@ -1,0 +1,14 @@
+{
+  "STEP11_RUN_ID": "stage11-cert-1785863187103",
+  "realRecipientContacted": false,
+  "partnerLifecycleNotifications": {
+    "PARTNER_ONLINE": { "IN_APP": "N/A", "EMAIL": "N/A", "SMS": "N/A", "PUSH": "N/A", "note": "RC emits event only; no notification side effect" },
+    "PARTNER_DISPATCHED": { "IN_APP": "N/A", "EMAIL": "N/A", "SMS": "N/A", "PUSH": "PASS", "note": "BOOKING_REQUEST push to provider (synthetic); no external delivery in staging" },
+    "PARTNER_EN_ROUTE": { "IN_APP": "N/A", "EMAIL": "N/A", "SMS": "N/A", "PUSH": "N/A" },
+    "PARTNER_ARRIVED": { "IN_APP": "N/A", "EMAIL": "N/A", "SMS": "N/A", "PUSH": "N/A" },
+    "PARTNER_OFFLINE": { "IN_APP": "N/A", "EMAIL": "N/A", "SMS": "N/A", "PUSH": "N/A" }
+  },
+  "step10BookingRegression": "PASS",
+  "duplicateNotification": "NO",
+  "regressionGate": "PASS"
+}

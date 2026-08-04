@@ -1,0 +1,32 @@
+{
+  "STEP11_RUN_ID": "stage11-cert-1785863187103",
+  "duplicateEffectiveProcessing": "NO",
+  "events": {
+    "homigo.partner.online": {
+      "eventId": "0008a3b0-97cf-4d28-8c42-5ca924e8786c",
+      "consumers": ["metrics.v1", "ai-context-indexer.v1"],
+      "duplicateReceipts": 0
+    },
+    "homigo.partner.dispatched": {
+      "eventId": "5ae36d1a-4e26-44f1-b0be-954d79ce5870",
+      "consumers": ["metrics.v1", "audit.v1", "ai-context-indexer.v1"],
+      "duplicateReceipts": 0,
+      "idempotencyTest": { "receiptsBefore": 3, "receiptsAfter": 3, "pass": true }
+    },
+    "homigo.partner.en_route": {
+      "eventId": "986de143-f9a9-409d-a6d2-19ee4dfe4a05",
+      "consumers": ["metrics.v1", "ai-context-indexer.v1"],
+      "duplicateReceipts": 0
+    },
+    "homigo.partner.arrived": {
+      "eventId": "565c8210-b49a-4bb3-8ded-ba57de943251",
+      "consumers": ["metrics.v1", "audit.v1", "ml-feature-sink.v1", "ai-context-indexer.v1"],
+      "duplicateReceipts": 0
+    },
+    "homigo.partner.offline": {
+      "eventId": "6f3832e8-a242-493e-ab69-9651daf4ed6e",
+      "consumers": ["metrics.v1", "ai-context-indexer.v1"],
+      "duplicateReceipts": 0
+    }
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "STEP11_RUN_ID": "stage11-cert-1785863187103",
+  "providerId": "prov_stage11-cert-1785863187103",
+  "bookingId": "cmsewtz100007s60bc5t6l4nf",
+  "ordering": "PASS",
+  "sameProviderLifecycle": true,
+  "events": [
+    {
+      "type": "homigo.partner.online",
+      "eventId": "0008a3b0-97cf-4d28-8c42-5ca924e8786c",
+      "aggregateId": "prov_stage11-cert-1785863187103",
+      "outboxStatus": "PUBLISHED",
+      "createdAt": "2026-08-04T17:06:27.979Z",
+      "publishedAt": "2026-08-04T17:06:27.995Z",
+      "attempts": 1
+    },
+    {
+      "type": "homigo.partner.dispatched",
+      "eventId": "5ae36d1a-4e26-44f1-b0be-954d79ce5870",
+      "aggregateId": "prov_stage11-cert-1785863187103",
+      "outboxStatus": "PUBLISHED",
+      "createdAt": "2026-08-04T17:06:28.358Z",
+      "publishedAt": "2026-08-04T17:06:28.368Z",
+      "attempts": 1
+    },
+    {
+      "type": "homigo.partner.en_route",
+      "eventId": "986de143-f9a9-409d-a6d2-19ee4dfe4a05",
+      "aggregateId": "prov_stage11-cert-1785863187103",
+      "outboxStatus": "PUBLISHED",
+      "createdAt": "2026-08-04T17:06:29.057Z",
+      "publishedAt": "2026-08-04T17:06:29.066Z",
+      "attempts": 1
+    },
+    {
+      "type": "homigo.partner.arrived",
+      "eventId": "565c8210-b49a-4bb3-8ded-ba57de943251",
+      "aggregateId": "prov_stage11-cert-1785863187103",
+      "outboxStatus": "PUBLISHED",
+      "createdAt": "2026-08-04T17:06:34.774Z",
+      "publishedAt": "2026-08-04T17:06:36.035Z",
+      "attempts": 1
+    },
+    {
+      "type": "homigo.partner.offline",
+      "eventId": "6f3832e8-a242-493e-ab69-9651daf4ed6e",
+      "aggregateId": "prov_stage11-cert-1785863187103",
+      "outboxStatus": "PUBLISHED",
+      "createdAt": "2026-08-04T17:06:40.345Z",
+      "publishedAt": "2026-08-04T17:06:40.364Z",
+      "attempts": 1
+    }
+  ]
+}

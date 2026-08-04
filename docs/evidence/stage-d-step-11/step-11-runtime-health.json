@@ -1,0 +1,39 @@
+{
+  "STEP11_PRE_TEST_TIMESTAMP_UTC": "2026-08-04T16:59:49.862Z",
+  "releaseIdentity": {
+    "APPLICATION_RC_SHA": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+    "IMAGE_DIGEST": "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+    "CLOUD_RUN_REVISION": "homigo-backend-staging-00029-pbn",
+    "IMAGE": "asia-south1-docker.pkg.dev/homigo-497619/homigo/backend:c31f154",
+    "IMAGE_REBUILT": false,
+    "REDEPLOYED": false
+  },
+  "environment": {
+    "PROJECT": "homigo-497619",
+    "REGION": "asia-south1",
+    "SERVICE": "homigo-backend-staging",
+    "DATABASE_INSTANCE": "homigo-staging-step6a-pitr-20260803",
+    "DATABASE": "homigo_staging_db",
+    "APP_ENV": "staging",
+    "RAZORPAY_MODE": "TEST"
+  },
+  "preflight": {
+    "HEALTH": "PASS",
+    "READY": "EXPECTED_AUTH",
+    "METRICS": "EXPECTED_AUTH",
+    "MIGRATIONS": "31/31",
+    "EVENTS_OUTBOX_ENABLED": true,
+    "EVENTS_CONSUMERS_ENABLED": true,
+    "STAGING_EVENTS_CERTIFICATION": "1",
+    "BACKUPS": "ON",
+    "PITR": "ON",
+    "DELETION_PROTECTION": "ON",
+    "latestBackup": { "id": "1785812400000", "status": "SUCCESSFUL", "startTime": "2026-08-04T04:25:01.511Z", "type": "AUTOMATED" }
+  },
+  "multiInstance": {
+    "MIN_INSTANCES": 2,
+    "MAX_INSTANCES": 4,
+    "MULTI_INSTANCE_GATE": "PASS"
+  },
+  "jobExecution": "homigo-step11-partner-cert-62v9f"
+}

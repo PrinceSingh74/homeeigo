@@ -1,0 +1,14 @@
+{
+  "STEP11_RUN_ID": "stage11-cert-1785863187103",
+  "STEP11_PRE_TEST_TIMESTAMP_UTC": "2026-08-04T17:06:27.000Z",
+  "t0": {
+    "homigo_outbox_pending": 0,
+    "homigo_dlq_unresolved": 0
+  },
+  "final": {
+    "homigo_outbox_pending": 0,
+    "homigo_dlq_unresolved": 0
+  },
+  "step11DlqEntries": 0,
+  "outboxDrain": "PASS"
+}

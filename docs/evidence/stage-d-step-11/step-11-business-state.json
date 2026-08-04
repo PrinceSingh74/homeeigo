@@ -1,0 +1,20 @@
+{
+  "step": 11,
+  "STEP11_RUN_ID": "stage11-cert-1785863187103",
+  "jobExecution": "homigo-step11-partner-cert-62v9f",
+  "providerId": "prov_stage11-cert-1785863187103",
+  "bookingId": "cmsewtz100007s60bc5t6l4nf",
+  "assignmentAttemptId": "cmsewtz79000ns60bcgjdi2ir",
+  "customerId": "usr_stage11-cert-1785863187103",
+  "serviceId": "svc_stage11-cert-1785863187103",
+  "finalProviderState": { "isOnline": false },
+  "bookingState": {
+    "status": "EN_ROUTE",
+    "dispatchedAt": "2026-08-04T17:06:28.320Z",
+    "enRouteAt": "2026-08-04T17:06:29.048Z",
+    "arrivedAt": "2026-08-04T17:06:34.752Z",
+    "travelDurationMin": 1
+  },
+  "trackingState": { "status": "ON_THE_WAY", "arrivalDetected": true },
+  "realPiiUsed": false
+}
