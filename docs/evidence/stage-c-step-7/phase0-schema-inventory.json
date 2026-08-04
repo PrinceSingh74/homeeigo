@@ -1,0 +1,727 @@
+{
+  "auditedAt": "2026-08-04T05:31:53.943Z",
+  "bookingFields": {
+    "arrived_at": {
+      "dataType": "timestamp without time zone",
+      "default": null,
+      "exists": true,
+      "nullable": true,
+      "udtName": "timestamp"
+    },
+    "en_route_at": {
+      "dataType": "timestamp without time zone",
+      "default": null,
+      "exists": true,
+      "nullable": true,
+      "udtName": "timestamp"
+    },
+    "travel_duration_min": {
+      "dataType": "integer",
+      "default": null,
+      "exists": true,
+      "nullable": true,
+      "udtName": "int4"
+    }
+  },
+  "constraints": {
+    "foreign": [],
+    "primary": [
+      {
+        "column_name": "id",
+        "constraint_name": "event_consumer_receipts_pkey",
+        "table_name": "event_consumer_receipts"
+      },
+      {
+        "column_name": "id",
+        "constraint_name": "event_dead_letters_pkey",
+        "table_name": "event_dead_letters"
+      },
+      {
+        "column_name": "id",
+        "constraint_name": "event_outbox_pkey",
+        "table_name": "event_outbox"
+      },
+      {
+        "column_name": "id",
+        "constraint_name": "scheduled_jobs_pkey",
+        "table_name": "scheduled_jobs"
+      }
+    ],
+    "unique": []
+  },
+  "enums": {
+    "EventOutboxStatus": [
+      "PENDING",
+      "PROCESSING",
+      "PUBLISHED",
+      "FAILED"
+    ]
+  },
+  "fingerprint": "19be0a0b28220bb8c05d696634cb8564",
+  "indexes": [
+    {
+      "indexdef": "CREATE UNIQUE INDEX event_consumer_receipts_consumer_name_event_id_key ON public.event_consumer_receipts USING btree (consumer_name, event_id)",
+      "indexname": "event_consumer_receipts_consumer_name_event_id_key",
+      "is_ready": true,
+      "is_unique": true,
+      "is_valid": true,
+      "tablename": "event_consumer_receipts"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX event_consumer_receipts_pkey ON public.event_consumer_receipts USING btree (id)",
+      "indexname": "event_consumer_receipts_pkey",
+      "is_ready": true,
+      "is_unique": true,
+      "is_valid": true,
+      "tablename": "event_consumer_receipts"
+    },
+    {
+      "indexdef": "CREATE INDEX event_consumer_receipts_processed_at_idx ON public.event_consumer_receipts USING btree (processed_at)",
+      "indexname": "event_consumer_receipts_processed_at_idx",
+      "is_ready": true,
+      "is_unique": false,
+      "is_valid": true,
+      "tablename": "event_consumer_receipts"
+    },
+    {
+      "indexdef": "CREATE INDEX event_dead_letters_consumer_name_created_at_idx ON public.event_dead_letters USING btree (consumer_name, created_at)",
+      "indexname": "event_dead_letters_consumer_name_created_at_idx",
+      "is_ready": true,
+      "is_unique": false,
+      "is_valid": true,
+      "tablename": "event_dead_letters"
+    },
+    {
+      "indexdef": "CREATE INDEX event_dead_letters_event_type_idx ON public.event_dead_letters USING btree (event_type)",
+      "indexname": "event_dead_letters_event_type_idx",
+      "is_ready": true,
+      "is_unique": false,
+      "is_valid": true,
+      "tablename": "event_dead_letters"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX event_dead_letters_pkey ON public.event_dead_letters USING btree (id)",
+      "indexname": "event_dead_letters_pkey",
+      "is_ready": true,
+      "is_unique": true,
+      "is_valid": true,
+      "tablename": "event_dead_letters"
+    },
+    {
+      "indexdef": "CREATE INDEX event_dead_letters_resolved_at_idx ON public.event_dead_letters USING btree (resolved_at)",
+      "indexname": "event_dead_letters_resolved_at_idx",
+      "is_ready": true,
+      "is_unique": false,
+      "is_valid": true,
+      "tablename": "event_dead_letters"
+    },
+    {
+      "indexdef": "CREATE INDEX event_outbox_aggregate_type_aggregate_id_idx ON public.event_outbox USING btree (aggregate_type, aggregate_id)",
+      "indexname": "event_outbox_aggregate_type_aggregate_id_idx",
+      "is_ready": true,
+      "is_unique": false,
+      "is_valid": true,
+      "tablename": "event_outbox"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX event_outbox_event_id_key ON public.event_outbox USING btree (event_id)",
+      "indexname": "event_outbox_event_id_key",
+      "is_ready": true,
+      "is_unique": true,
+      "is_valid": true,
+      "tablename": "event_outbox"
+    },
+    {
+      "indexdef": "CREATE INDEX event_outbox_event_type_created_at_idx ON public.event_outbox USING btree (event_type, created_at)",
+      "indexname": "event_outbox_event_type_created_at_idx",
+      "is_ready": true,
+      "is_unique": false,
+      "is_valid": true,
+      "tablename": "event_outbox"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX event_outbox_pkey ON public.event_outbox USING btree (id)",
+      "indexname": "event_outbox_pkey",
+      "is_ready": true,
+      "is_unique": true,
+      "is_valid": true,
+      "tablename": "event_outbox"
+    },
+    {
+      "indexdef": "CREATE INDEX event_outbox_status_available_at_created_at_idx ON public.event_outbox USING btree (status, available_at, created_at)",
+      "indexname": "event_outbox_status_available_at_created_at_idx",
+      "is_ready": true,
+      "is_unique": false,
+      "is_valid": true,
+      "tablename": "event_outbox"
+    },
+    {
+      "indexdef": "CREATE INDEX event_outbox_status_locked_at_idx ON public.event_outbox USING btree (status, locked_at)",
+      "indexname": "event_outbox_status_locked_at_idx",
+      "is_ready": true,
+      "is_unique": false,
+      "is_valid": true,
+      "tablename": "event_outbox"
+    },
+    {
+      "indexdef": "CREATE INDEX scheduled_jobs_job_type_status_idx ON public.scheduled_jobs USING btree (job_type, status)",
+      "indexname": "scheduled_jobs_job_type_status_idx",
+      "is_ready": true,
+      "is_unique": false,
+      "is_valid": true,
+      "tablename": "scheduled_jobs"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX scheduled_jobs_pkey ON public.scheduled_jobs USING btree (id)",
+      "indexname": "scheduled_jobs_pkey",
+      "is_ready": true,
+      "is_unique": true,
+      "is_valid": true,
+      "tablename": "scheduled_jobs"
+    },
+    {
+      "indexdef": "CREATE INDEX scheduled_jobs_status_run_at_idx ON public.scheduled_jobs USING btree (status, run_at)",
+      "indexname": "scheduled_jobs_status_run_at_idx",
+      "is_ready": true,
+      "is_unique": false,
+      "is_valid": true,
+      "tablename": "scheduled_jobs"
+    },
+    {
+      "indexdef": "CREATE INDEX scheduled_jobs_trigger_event_id_idx ON public.scheduled_jobs USING btree (trigger_event_id)",
+      "indexname": "scheduled_jobs_trigger_event_id_idx",
+      "is_ready": true,
+      "is_unique": false,
+      "is_valid": true,
+      "tablename": "scheduled_jobs"
+    }
+  ],
+  "migrationSummary": {
+    "applied": 23,
+    "eventFoundation": false,
+    "failed": 0,
+    "rolledBack": 0,
+    "total": 23
+  },
+  "migrations": [
+    {
+      "finishedAt": "2026-08-03T12:21:15.928Z",
+      "name": "20260527105812_init",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:15.454Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:15.948Z",
+      "name": "20260527160000_refresh_token_last_activity",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:15.934Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:15.992Z",
+      "name": "20260527184532_auth_system_updatesauth_system_updates",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:15.953Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:16.013Z",
+      "name": "20260528180000_add_provider_badges",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:15.997Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:16.043Z",
+      "name": "20260529114745_part_6a_realtime_tracking",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:16.018Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:16.103Z",
+      "name": "20260529120000_add_partner_registration",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:16.049Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:16.142Z",
+      "name": "20260529140000_sensitive_field_lookup_hashes",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:16.109Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:16.175Z",
+      "name": "20260530120000_user_devices_push_tokens",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:16.147Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:16.306Z",
+      "name": "20260608120000_membership_premium_engine",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:16.181Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:16.419Z",
+      "name": "20260608140000_referral_fraud_engine",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:16.313Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:16.512Z",
+      "name": "20260608160000_prelaunch_compliance",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:16.424Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:16.567Z",
+      "name": "20260608180000_membership_enterprise_10",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:16.518Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:16.712Z",
+      "name": "20260608200000_membership_finalization",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:16.572Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:16.808Z",
+      "name": "20260608210000_financial_ledger",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:16.718Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:16.988Z",
+      "name": "20260608220000_financial_core",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:16.816Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:17.077Z",
+      "name": "20260608230000_finance_ops_finalization",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:16.994Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:17.212Z",
+      "name": "20260608240000_finance_ops_10_finalization",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:17.083Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:17.284Z",
+      "name": "20260608250000_enterprise_observability",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:17.217Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:17.377Z",
+      "name": "20260608250000_p0_security_financial_atomicity",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:17.289Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:17.407Z",
+      "name": "20260608260000_p1_webhook_dedup_state_machine",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:17.384Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:17.450Z",
+      "name": "20260608270000_finance_integrity_10_finalization",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:17.413Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:17.562Z",
+      "name": "20260608280000_finance_integrity_10_phase2",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:17.455Z",
+      "steps": 1
+    },
+    {
+      "finishedAt": "2026-08-03T12:21:17.653Z",
+      "name": "20260731120000_event_foundation",
+      "rolledBackAt": null,
+      "startedAt": "2026-08-03T12:21:17.569Z",
+      "steps": 1
+    }
+  ],
+  "tables": {
+    "event_consumer_receipts": {
+      "columns": [
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "id",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "consumer_name",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "event_id",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": "'ok'::text",
+          "name": "result",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "error_message",
+          "nullable": true,
+          "udtName": "text"
+        },
+        {
+          "dataType": "timestamp without time zone",
+          "default": "CURRENT_TIMESTAMP",
+          "name": "processed_at",
+          "nullable": false,
+          "udtName": "timestamp"
+        }
+      ],
+      "exists": true
+    },
+    "event_dead_letters": {
+      "columns": [
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "id",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "event_id",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "event_type",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "consumer_name",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "jsonb",
+          "default": null,
+          "name": "payload",
+          "nullable": false,
+          "udtName": "jsonb"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "error",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "integer",
+          "default": "1",
+          "name": "attempts",
+          "nullable": false,
+          "udtName": "int4"
+        },
+        {
+          "dataType": "timestamp without time zone",
+          "default": "CURRENT_TIMESTAMP",
+          "name": "last_attempt_at",
+          "nullable": false,
+          "udtName": "timestamp"
+        },
+        {
+          "dataType": "timestamp without time zone",
+          "default": "CURRENT_TIMESTAMP",
+          "name": "created_at",
+          "nullable": false,
+          "udtName": "timestamp"
+        },
+        {
+          "dataType": "timestamp without time zone",
+          "default": null,
+          "name": "resolved_at",
+          "nullable": true,
+          "udtName": "timestamp"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "resolution",
+          "nullable": true,
+          "udtName": "text"
+        }
+      ],
+      "exists": true
+    },
+    "event_outbox": {
+      "columns": [
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "id",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "event_id",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "event_type",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": "'1.0'::text",
+          "name": "event_version",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "aggregate_type",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "aggregate_id",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "actor_type",
+          "nullable": true,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "actor_id",
+          "nullable": true,
+          "udtName": "text"
+        },
+        {
+          "dataType": "jsonb",
+          "default": null,
+          "name": "payload",
+          "nullable": false,
+          "udtName": "jsonb"
+        },
+        {
+          "dataType": "jsonb",
+          "default": null,
+          "name": "metadata",
+          "nullable": true,
+          "udtName": "jsonb"
+        },
+        {
+          "dataType": "USER-DEFINED",
+          "default": "'PENDING'::\"EventOutboxStatus\"",
+          "name": "status",
+          "nullable": false,
+          "udtName": "EventOutboxStatus"
+        },
+        {
+          "dataType": "integer",
+          "default": "0",
+          "name": "attempts",
+          "nullable": false,
+          "udtName": "int4"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "last_error",
+          "nullable": true,
+          "udtName": "text"
+        },
+        {
+          "dataType": "timestamp without time zone",
+          "default": "CURRENT_TIMESTAMP",
+          "name": "available_at",
+          "nullable": false,
+          "udtName": "timestamp"
+        },
+        {
+          "dataType": "timestamp without time zone",
+          "default": null,
+          "name": "locked_at",
+          "nullable": true,
+          "udtName": "timestamp"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "locked_by",
+          "nullable": true,
+          "udtName": "text"
+        },
+        {
+          "dataType": "timestamp without time zone",
+          "default": null,
+          "name": "published_at",
+          "nullable": true,
+          "udtName": "timestamp"
+        },
+        {
+          "dataType": "timestamp without time zone",
+          "default": "CURRENT_TIMESTAMP",
+          "name": "created_at",
+          "nullable": false,
+          "udtName": "timestamp"
+        },
+        {
+          "dataType": "timestamp without time zone",
+          "default": null,
+          "name": "updated_at",
+          "nullable": false,
+          "udtName": "timestamp"
+        }
+      ],
+      "exists": true
+    },
+    "scheduled_jobs": {
+      "columns": [
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "id",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "job_type",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "trigger_event_id",
+          "nullable": true,
+          "udtName": "text"
+        },
+        {
+          "dataType": "jsonb",
+          "default": null,
+          "name": "payload",
+          "nullable": false,
+          "udtName": "jsonb"
+        },
+        {
+          "dataType": "timestamp without time zone",
+          "default": null,
+          "name": "run_at",
+          "nullable": false,
+          "udtName": "timestamp"
+        },
+        {
+          "dataType": "text",
+          "default": "'pending'::text",
+          "name": "status",
+          "nullable": false,
+          "udtName": "text"
+        },
+        {
+          "dataType": "integer",
+          "default": "0",
+          "name": "attempts",
+          "nullable": false,
+          "udtName": "int4"
+        },
+        {
+          "dataType": "text",
+          "default": null,
+          "name": "last_error",
+          "nullable": true,
+          "udtName": "text"
+        },
+        {
+          "dataType": "timestamp without time zone",
+          "default": "CURRENT_TIMESTAMP",
+          "name": "created_at",
+          "nullable": false,
+          "udtName": "timestamp"
+        },
+        {
+          "dataType": "timestamp without time zone",
+          "default": null,
+          "name": "started_at",
+          "nullable": true,
+          "udtName": "timestamp"
+        },
+        {
+          "dataType": "timestamp without time zone",
+          "default": null,
+          "name": "completed_at",
+          "nullable": true,
+          "udtName": "timestamp"
+        },
+        {
+          "dataType": "timestamp without time zone",
+          "default": null,
+          "name": "cancelled_at",
+          "nullable": true,
+          "udtName": "timestamp"
+        }
+      ],
+      "exists": true
+    }
+  }
+}
