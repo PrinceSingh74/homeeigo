@@ -1,7 +1,7 @@
 # Stage D — Step D-REMEDIATION
 
 **Date:** 2026-08-04  
-**Status:** **WAVE-1 MANIFEST READY** — apply + replay proof pending  
+**Status:** **WAVE-1 COMMITTED** — clean replay **FAIL** (09280000 / wallet_transfers orphan)  
 **Scope:** STAGING ONLY — project `homigo-497619`  
 **Production impact:** NONE
 

@@ -3,7 +3,7 @@
 **Date:** 2026-08-04  
 **Step 7 gate:** PASS (Phase-0 schema certified)  
 **Stage D status:** **PARTIAL PASS** — event pipeline proven; API lifecycle blocked on deferred schema  
-**D-REMEDIATION:** Wave-1 manifest ready (8 migrations) — see `step-d-remediation.md`
+**D-REMEDIATION:** Wave-1 committed (`d7ac1cf`) — clean replay **FAIL** at `09280000` — see `step-d-wave1-clean-replay-certification.md`
 
 ---
 
