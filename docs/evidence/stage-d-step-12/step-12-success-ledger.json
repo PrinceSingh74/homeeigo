@@ -1,0 +1,15 @@
+{
+  "STEP12_RUN_ID": "stage12-cert-1785864999262",
+  "paymentId": "cmsexwt6i0008s609kemz3528",
+  "journalId": "cmsexwtr4001fs609tms0vmxm",
+  "idempotencyKey": "booking_payment:cmsexwt6i0008s609kemz3528",
+  "referenceId": "cmsexwt6i0008s609kemz3528",
+  "type": "BOOKING_PAYMENT",
+  "totalDebit": 551,
+  "totalCredit": 551,
+  "balanced": true,
+  "amountMatch": true,
+  "lineCount": 2,
+  "duplicatePosting": false,
+  "doubleEntryBalanced": "PASS"
+}

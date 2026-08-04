@@ -1,0 +1,9 @@
+{
+  "STEP12_RUN_ID": "stage12-cert-1785864999262",
+  "t0": { "homigo_outbox_pending": 0, "homigo_dlq_unresolved": 0 },
+  "postSuccess": { "homigo_outbox_pending": 0, "homigo_dlq_unresolved": 0 },
+  "final": { "homigo_outbox_pending": 0, "homigo_dlq_unresolved": 0 },
+  "metricsEndpoint": "GET /metrics → 401 Unauthorized (expected OPS auth)",
+  "step12DlqEntries": 0,
+  "outboxDrain": "PASS"
+}

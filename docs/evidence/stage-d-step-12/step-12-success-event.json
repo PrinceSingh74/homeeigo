@@ -1,0 +1,11 @@
+{
+  "STEP12_RUN_ID": "stage12-cert-1785864999262",
+  "eventType": "homigo.payment.success",
+  "eventId": "17fbea97-8d2d-4343-8286-16707e2b6983",
+  "aggregateId": "cmsexwt6i0008s609kemz3528",
+  "outboxStatus": "PUBLISHED",
+  "attempts": 1,
+  "createdAt": "2026-08-04T17:36:40.666Z",
+  "publishedAt": "2026-08-04T17:36:41.060Z",
+  "dlqEntries": 0
+}

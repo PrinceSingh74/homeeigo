@@ -1,0 +1,9 @@
+{
+  "STEP12_RUN_ID": "stage12-cert-1785864999262",
+  "expectedAmountPaise": 55100,
+  "razorpayAmountPaise": 55100,
+  "paymentAmountPaise": 55100,
+  "ledgerAmountPaise": 55100,
+  "reconciliation": "PASS",
+  "note": "Booking base_price 501 + platform fees/tax = 551 INR per bookingService.create"
+}

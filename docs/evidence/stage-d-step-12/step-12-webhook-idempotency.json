@@ -1,0 +1,10 @@
+{
+  "STEP12_RUN_ID": "stage12-cert-1785864999262",
+  "validSignature": "PASS",
+  "invalidSignatureRejected": "PASS",
+  "duplicateWebhookSafe": "PASS",
+  "duplicateLedger": "PASS",
+  "webhookCapturedReason": "RECONCILED",
+  "webhookFailureReason": "MARKED_FAILED",
+  "duplicateReplayReason": "DUPLICATE"
+}

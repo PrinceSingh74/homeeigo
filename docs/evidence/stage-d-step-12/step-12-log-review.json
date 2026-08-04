@@ -1,0 +1,14 @@
+{
+  "STEP12_RUN_ID": "stage12-cert-1785864999262",
+  "executionWindow": "2026-08-04T17:36:39Z — 2026-08-04T17:36:43Z",
+  "CRITICAL_P2021": 0,
+  "CRITICAL_P2022": 0,
+  "CRITICAL_PAYMENT_ERRORS": 0,
+  "CRITICAL_LEDGER_ERRORS": 0,
+  "CRITICAL_EVENT_ERRORS": 0,
+  "priorFailedAttempts": [
+    { "execution": "homigo-step12-payment-cert-bmjf7", "class": "TEST_INDUCED", "reason": "Prisma client import from standalone script path" },
+    { "execution": "homigo-step12-payment-cert-s9npt", "class": "TEST_INDUCED", "reason": "Harness webhook dedup API mismatch (fixed before pass run)" }
+  ],
+  "LOG_GATE": "PASS"
+}

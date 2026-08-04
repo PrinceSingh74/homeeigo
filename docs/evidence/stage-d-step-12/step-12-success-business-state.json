@@ -1,0 +1,15 @@
+{
+  "STEP12_RUN_ID": "stage12-cert-1785864999262",
+  "paymentId": "cmsexwt6i0008s609kemz3528",
+  "bookingId": "cmsexwt1c0001s609kkoeeyfp",
+  "customerId": "usr_stage12cert1785864999262_success",
+  "status": "SUCCESS",
+  "razorpayOrderId": "order_TLmG1zzJqypyVt",
+  "razorpayPaymentId": "pay_stage12-cert-1785864999262_ok",
+  "amount": 551,
+  "amountPaise": 55100,
+  "currency": "INR",
+  "completedAt": "2026-08-04T17:36:40.648Z",
+  "bookingPaymentStatus": "SUCCESS",
+  "applicationPath": "paymentService.verify"
+}

@@ -1,0 +1,11 @@
+{
+  "STEP12_RUN_ID": "stage12-cert-1785864999262",
+  "eventId": "372871b5-1e51-4a36-a5b4-ae83a3824e66",
+  "eventType": "homigo.payment.failed",
+  "receipts": [
+    { "consumerName": "metrics.v1", "eventId": "372871b5-1e51-4a36-a5b4-ae83a3824e66", "processedAt": "2026-08-04T17:36:42.375Z" },
+    { "consumerName": "ai-context-indexer.v1", "eventId": "372871b5-1e51-4a36-a5b4-ae83a3824e66", "processedAt": "2026-08-04T17:36:42.375Z" },
+    { "consumerName": "audit.v1", "eventId": "372871b5-1e51-4a36-a5b4-ae83a3824e66", "processedAt": "2026-08-04T17:36:42.381Z" }
+  ],
+  "duplicateReceipts": 0
+}

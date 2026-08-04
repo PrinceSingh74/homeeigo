@@ -1,0 +1,12 @@
+{
+  "STEP12_RUN_ID": "stage12-cert-1785864999262",
+  "paymentId": "cmsexwumn003xs609fev8ba9w",
+  "bookingId": "cmsexwukm003qs609x1ogxwcg",
+  "customerId": "usr_stage12cert1785864999262_failure",
+  "status": "FAILED",
+  "razorpayOrderId": "order_TLmG3zogLxIpcp",
+  "bookingPaymentStatus": "FAILED",
+  "applicationPath": "paymentService.reconcileFromWebhook payment.failed",
+  "successLedgerEntry": 0,
+  "successEventCount": 0
+}

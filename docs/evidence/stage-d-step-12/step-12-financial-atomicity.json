@@ -1,0 +1,25 @@
+{
+  "STEP12_RUN_ID": "stage12-cert-1785864999262",
+  "success": {
+    "paymentStateCommitted": true,
+    "ledgerCommitted": true,
+    "outboxCommitted": true,
+    "sameTransactionBoundary": "YES — financialTransactionManager.executeWithLedger single prisma.$transaction",
+    "operationsInTransaction": [
+      "payment.status=SUCCESS update",
+      "booking.paymentStatus=SUCCESS update",
+      "journalEntry via recordJournalInTransaction",
+      "eventOutbox homigo.payment.success via emitPaymentSuccessInTransaction"
+    ],
+    "financialEventAtomicity": "PASS"
+  },
+  "failure": {
+    "failedStateCommitted": true,
+    "failureOutboxCommitted": true,
+    "sameTransactionBoundary": "YES — prisma.$transaction in reconcileFromWebhook payment.failed handler",
+    "failureLedger": "NONE — failure path does not call executeWithLedger",
+    "failureEventAtomicity": "PASS"
+  },
+  "rollbackAtomicityTest": "NOT_AVAILABLE",
+  "consumerFailureDoesNotRollbackMoney": "Architecturally separated — outbox retry after commit"
+}
