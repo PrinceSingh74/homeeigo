@@ -2,6 +2,53 @@
 -- trigger-enforced dual-write (covers every write path incl. raw SQL),
 -- and full historical backfill.
 
+-- ============ Phase 0: subsume excluded 09260000 + wallet_transfers schema orphan ============
+-- 09260000 is superseded by this migration but previously supplied wallet_balance_paise.
+-- wallet_transfers exists in schema.prisma but had no CREATE migration in the chain.
+
+ALTER TABLE "users"
+  ADD COLUMN IF NOT EXISTS "wallet_balance_paise" BIGINT NOT NULL DEFAULT 0;
+
+ALTER TABLE "providers"
+  ADD COLUMN IF NOT EXISTS "wallet_balance_paise" BIGINT NOT NULL DEFAULT 0;
+
+DO $$ BEGIN
+  CREATE TYPE "WalletTransferStatus" AS ENUM ('PENDING', 'COMPLETED', 'CANCELLED');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+CREATE TABLE IF NOT EXISTS "wallet_transfers" (
+  "id" TEXT NOT NULL,
+  "sender_id" TEXT NOT NULL,
+  "recipient_id" TEXT NOT NULL,
+  "amount" DOUBLE PRECISION NOT NULL,
+  "amount_paise" BIGINT NOT NULL DEFAULT 0,
+  "note" TEXT,
+  "status" "WalletTransferStatus" NOT NULL DEFAULT 'PENDING',
+  "completed_at" TIMESTAMP(3),
+  "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "wallet_transfers_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX IF NOT EXISTS "wallet_transfers_sender_id_idx" ON "wallet_transfers"("sender_id");
+CREATE INDEX IF NOT EXISTS "wallet_transfers_recipient_id_idx" ON "wallet_transfers"("recipient_id");
+CREATE INDEX IF NOT EXISTS "wallet_transfers_status_idx" ON "wallet_transfers"("status");
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'wallet_transfers_sender_id_fkey') THEN
+    ALTER TABLE "wallet_transfers" ADD CONSTRAINT "wallet_transfers_sender_id_fkey"
+      FOREIGN KEY ("sender_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'wallet_transfers_recipient_id_fkey') THEN
+    ALTER TABLE "wallet_transfers" ADD CONSTRAINT "wallet_transfers_recipient_id_fkey"
+      FOREIGN KEY ("recipient_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
 -- ============ Phase A: paise columns ============
 
 ALTER TABLE "bookings"
@@ -48,10 +95,12 @@ ALTER TABLE "membership_cashbacks"
   ADD COLUMN IF NOT EXISTS "settled_amount_paise" BIGINT NOT NULL DEFAULT 0;
 
 ALTER TABLE "providers"
+  ADD COLUMN IF NOT EXISTS "wallet_balance_paise" BIGINT NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS "reserved_balance_paise" BIGINT NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS "total_earnings_paise" BIGINT NOT NULL DEFAULT 0;
 
 ALTER TABLE "users"
+  ADD COLUMN IF NOT EXISTS "wallet_balance_paise" BIGINT NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS "total_spent_paise" BIGINT NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS "total_saved_paise" BIGINT NOT NULL DEFAULT 0;
 
