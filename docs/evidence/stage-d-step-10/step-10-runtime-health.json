@@ -1,0 +1,73 @@
+{
+  "auditedAtUtc": "2026-08-04T16:19:29Z",
+  "certifiedRcSha": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+  "imageDigest": "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+  "cloudRunRevision": "homigo-backend-staging-00029-pbn",
+  "trafficPercentToRevision": 100,
+  "imageRebuilt": false,
+  "imageTag": "backend:c31f154",
+  "project": "homigo-497619",
+  "region": "asia-south1",
+  "service": "homigo-backend-staging",
+  "stagingUrl": "https://homigo-backend-staging-144968192234.asia-south1.run.app",
+  "minScale": 2,
+  "maxScale": 4,
+  "appEnv": "staging",
+  "databaseInstance": "homigo-staging-step6a-pitr-20260803",
+  "database": "homigo_staging_db",
+  "identityProof": {
+    "productionDbUsed": false,
+    "productionRedisUsed": false,
+    "productionRazorpayUsed": false,
+    "productionCredentialsUsed": false,
+    "razorpayKeyPrefix": "rzp_test_*"
+  },
+  "eventFlags": {
+    "serviceTemplate": {
+      "STAGING_EVENTS_CERTIFICATION": "1",
+      "EVENTS_OUTBOX_ENABLED": "true",
+      "EVENTS_CONSUMERS_ENABLED": "true"
+    },
+    "activeRevision": {
+      "STAGING_EVENTS_CERTIFICATION": "1",
+      "EVENTS_OUTBOX_ENABLED": "true",
+      "EVENTS_CONSUMERS_ENABLED": "true"
+    }
+  },
+  "preflight": {
+    "health": { "endpoint": "/health", "status": 200, "bodyStatus": "ok", "database": "ok", "redis": "ok", "environment": "staging", "classification": "PASS" },
+    "ready": { "endpoint": "/ready", "status": 401, "classification": "EXPECTED_AUTH" },
+    "metrics": { "endpoint": "/metrics", "unauthenticatedStatus": 401, "classification": "EXPECTED_AUTH" }
+  },
+  "databaseSafety": {
+    "migrations": "31/31",
+    "migrateStatusJob": "homigo-step9-migrate-status-gzcrz",
+    "newMigrationExecuted": false,
+    "schemaModified": false,
+    "backups": "ON",
+    "backupRetentionCount": 7,
+    "pitr": "ON",
+    "deletionProtection": "ON",
+    "STEP10_PRE_TEST_TIMESTAMP_UTC": "2026-08-04T16:18:52.535Z"
+  },
+  "step9EvidencePreservation": {
+    "path": "docs/evidence/stage-d-step-9/",
+    "step9Verdict": "PASS",
+    "eventsOutboxEnabled": true,
+    "eventsConsumersEnabled": true,
+    "outboxProcessor": "ACTIVE",
+    "consumers": "ACTIVE",
+    "productionUntouched": true,
+    "uncommittedNote": "Step 9 evidence present in repo; primary worktree remains dirty with unrelated changes — Step 10 evidence staged separately"
+  },
+  "productionSafety": {
+    "productionDeployment": false,
+    "productionMigration": false,
+    "productionDbModified": false,
+    "productionRedisModified": false,
+    "productionEventFlagsChanged": false,
+    "productionCredentialsUsed": false,
+    "razorpayLiveUsed": false
+  },
+  "secretScan": "PASS"
+}

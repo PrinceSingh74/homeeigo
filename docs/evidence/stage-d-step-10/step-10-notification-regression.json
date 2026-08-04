@@ -1,0 +1,48 @@
+{
+  "STEP10_RUN_ID": "stage10-cert-1785860332533",
+  "bookingId": "cmsev4s860001s60cshscp60g",
+  "customerId": "usr_stage10-cert-1785860332533",
+  "sourceAuthority": "apps/backend/src/services/booking.service.ts @ RC c31f154",
+  "realRecipientContacted": false,
+  "stagingEmailBoundary": "NODE_ENV=production without live external send — emailDeliveryService internal contract verified; Resend not required for PASS",
+  "matrix": {
+    "BOOKING_CREATED": {
+      "IN_APP": "NOT_EXPECTED",
+      "PUSH": "NOT_EXPECTED",
+      "EMAIL": "PASS",
+      "SMS": "NOT_EXPECTED",
+      "note": "notifyBookingConfirmation → emailDeliveryService.sendBookingConfirmation (non-blocking)"
+    },
+    "BOOKING_ASSIGNED": {
+      "IN_APP": "PASS",
+      "PUSH": "NOT_EXPECTED",
+      "EMAIL": "PASS",
+      "SMS": "NOT_EXPECTED",
+      "observedInAppType": "booking_accepted",
+      "observedCount": 1
+    },
+    "BOOKING_STARTED": {
+      "IN_APP": "PASS",
+      "PUSH": "NOT_EXPECTED",
+      "EMAIL": "NOT_EXPECTED",
+      "SMS": "NOT_EXPECTED",
+      "observedInAppType": "service_started",
+      "observedCount": 1
+    },
+    "BOOKING_COMPLETED": {
+      "IN_APP": "PASS",
+      "PUSH": "NOT_EXPECTED",
+      "EMAIL": "PASS",
+      "SMS": "NOT_EXPECTED",
+      "observedInAppType": "booking_completed",
+      "observedCount": 1
+    }
+  },
+  "aggregate": {
+    "EMAIL_REGRESSION": "PASS",
+    "PUSH_REGRESSION": "NOT_APPLICABLE",
+    "IN_APP_REGRESSION": "PASS",
+    "duplicateNotification": false
+  },
+  "verdict": "PASS"
+}

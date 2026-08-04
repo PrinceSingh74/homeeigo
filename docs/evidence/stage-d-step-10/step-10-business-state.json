@@ -1,0 +1,35 @@
+{
+  "STEP10_RUN_ID": "stage10-cert-1785860332533",
+  "bookingId": "cmsev4s860001s60cshscp60g",
+  "fixtures": {
+    "customerId": "usr_stage10-cert-1785860332533",
+    "providerId": "prov_stage10-cert-1785860332533",
+    "serviceId": "svc_stage10-cert-1785860332533",
+    "addressId": "addr_stage10-cert-1785860332533",
+    "realPiiUsed": false,
+    "syntheticEmailDomain": "@homigo-staging.test"
+  },
+  "finalState": {
+    "status": "COMPLETED",
+    "customerId": "usr_stage10-cert-1785860332533",
+    "providerId": "prov_stage10-cert-1785860332533",
+    "serviceId": "svc_stage10-cert-1785860332533",
+    "createdAt": "2026-08-04T16:18:53.312Z",
+    "acceptedAt": "2026-08-04T16:18:53.839Z",
+    "startedAt": "2026-08-04T16:18:54.379Z",
+    "completedAt": "2026-08-04T16:18:54.453Z",
+    "enRouteAt": "present",
+    "arrivedAt": "present",
+    "travelDurationMin": 1
+  },
+  "lifecycleGates": {
+    "create": "PASS",
+    "dispatch": "PASS",
+    "accept": "PASS",
+    "start": "PASS",
+    "complete": "PASS"
+  },
+  "database": "homigo_staging_db",
+  "databaseInstance": "homigo-staging-step6a-pitr-20260803",
+  "cleanupPolicy": "KEEP_FOR_FORENSICS"
+}

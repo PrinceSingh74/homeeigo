@@ -1,0 +1,33 @@
+{
+  "capturedAtUtc": "2026-08-04T16:19:29Z",
+  "revision": "homigo-backend-staging-00029-pbn",
+  "STEP10_PRE_TEST_TIMESTAMP_UTC": "2026-08-04T16:18:52.535Z",
+  "STEP10_METRICS_T0": {
+    "source": "homigo-step10-booking-cert-57szk job (DB gauge proxy)",
+    "homigo_outbox_pending": 0,
+    "homigo_dlq_unresolved": 0
+  },
+  "STEP10_METRICS_FINAL": {
+    "source": "homigo-step10-booking-cert-57szk job (DB gauge proxy)",
+    "homigo_outbox_pending": 0,
+    "homigo_dlq_unresolved": 0
+  },
+  "cloudRunMetricsEndpoint": {
+    "endpoint": "/metrics",
+    "unauthenticatedStatus": 401,
+    "classification": "EXPECTED_AUTH — OPS Bearer required per Step 9",
+    "step9Corroboration": "docs/evidence/stage-d-step-9/step-9-metrics.json — valid Prometheus with auth"
+  },
+  "deltas": {
+    "outbox_pending_delta": 0,
+    "dlq_unresolved_delta": 0,
+    "unexplainedBacklog": false,
+    "unexplainedDlqGrowth": false
+  },
+  "outboxDrain": {
+    "step10EventsTerminalSuccess": true,
+    "globalPendingFinal": 0,
+    "pass": true
+  },
+  "verdict": "PASS"
+}

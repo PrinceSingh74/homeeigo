@@ -1,0 +1,35 @@
+{
+  "scope": {
+    "timeWindowUtc": "2026-08-04T16:18:52Z — 2026-08-04T16:19:00Z",
+    "revision": "homigo-backend-staging-00029-pbn",
+    "jobExecution": "homigo-step10-booking-cert-57szk",
+    "bookingId": "cmsev4s860001s60cshscp60g"
+  },
+  "findings": [
+    {
+      "finding": "Step 10 job exit(0) — full lifecycle PASS",
+      "classification": "EXPECTED"
+    },
+    {
+      "finding": "Prior failed job attempts: missing JWT_REFRESH_SECRET (remediated); relative import path (remediated)",
+      "classification": "NON_CRITICAL"
+    },
+    {
+      "finding": "P2021/P2022 on Step 10 booking path",
+      "classification": "NONE"
+    },
+    {
+      "finding": "Critical event consumer errors on Step 10 booking",
+      "classification": "NONE"
+    },
+    {
+      "finding": "Critical notification errors on Step 10 booking",
+      "classification": "NONE"
+    },
+    {
+      "finding": "Step 10 lifecycle events in DLQ",
+      "classification": "NONE — 0 entries"
+    }
+  ],
+  "logGate": "PASS"
+}

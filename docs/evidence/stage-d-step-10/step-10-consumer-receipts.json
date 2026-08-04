@@ -1,0 +1,62 @@
+{
+  "STEP10_RUN_ID": "stage10-cert-1785860332533",
+  "bookingId": "cmsev4s860001s60cshscp60g",
+  "registeredConsumersAtRc": [
+    { "name": "metrics.v1", "eventTypes": "*" },
+    { "name": "audit.v1", "eventTypes": ["homigo.booking.created", "homigo.booking.assigned", "homigo.booking.started", "homigo.booking.completed", "homigo.booking.cancelled", "homigo.payment.success", "homigo.payment.failed", "homigo.partner.dispatched", "homigo.partner.arrived"] },
+    { "name": "automation-scheduler.v1", "eventTypes": ["homigo.booking.completed"] },
+    { "name": "ml-feature-sink.v1", "eventTypes": ["homigo.partner.arrived"] },
+    { "name": "ai-context-indexer.v1", "eventTypes": "*" }
+  ],
+  "receiptsByEvent": [
+    {
+      "eventType": "homigo.booking.created",
+      "eventId": "40542c17-dceb-4fbc-84b7-bcab4e968f0c",
+      "consumers": [
+        { "consumerName": "metrics.v1", "processedAt": "2026-08-04T16:18:53.470Z" },
+        { "consumerName": "ai-context-indexer.v1", "processedAt": "2026-08-04T16:18:53.471Z" },
+        { "consumerName": "audit.v1", "processedAt": "2026-08-04T16:18:53.546Z" }
+      ],
+      "duplicateEffectiveProcessing": false
+    },
+    {
+      "eventType": "homigo.booking.assigned",
+      "eventId": "e4b68df8-dce8-491e-bbf9-30c524782b48",
+      "consumers": [
+        { "consumerName": "metrics.v1", "processedAt": "2026-08-04T16:18:53.959Z" },
+        { "consumerName": "ai-context-indexer.v1", "processedAt": "2026-08-04T16:18:53.959Z" },
+        { "consumerName": "audit.v1", "processedAt": "2026-08-04T16:18:53.965Z" }
+      ],
+      "duplicateEffectiveProcessing": false
+    },
+    {
+      "eventType": "homigo.booking.started",
+      "eventId": "583c426b-8096-4d8e-8456-5025b404a7b2",
+      "consumers": [
+        { "consumerName": "metrics.v1", "processedAt": "2026-08-04T16:18:54.407Z" },
+        { "consumerName": "ai-context-indexer.v1", "processedAt": "2026-08-04T16:18:54.408Z" },
+        { "consumerName": "audit.v1", "processedAt": "2026-08-04T16:18:54.412Z" }
+      ],
+      "duplicateEffectiveProcessing": false
+    },
+    {
+      "eventType": "homigo.booking.completed",
+      "eventId": "7a9a0c74-9b3f-402f-82d8-b11ff2018283",
+      "consumers": [
+        { "consumerName": "metrics.v1", "processedAt": "2026-08-04T16:18:54.774Z" },
+        { "consumerName": "ai-context-indexer.v1", "processedAt": "2026-08-04T16:18:54.775Z" },
+        { "consumerName": "audit.v1", "processedAt": "2026-08-04T16:18:54.781Z" },
+        { "consumerName": "automation-scheduler.v1", "processedAt": "2026-08-04T16:18:54.789Z" }
+      ],
+      "duplicateEffectiveProcessing": false
+    }
+  ],
+  "idempotencyTest": {
+    "mechanism": "UNIQUE (consumer_name, event_id) + dispatchEvent duplicate",
+    "eventId": "40542c17-dceb-4fbc-84b7-bcab4e968f0c",
+    "receiptCountBefore": 3,
+    "receiptCountAfter": 3,
+    "pass": true
+  },
+  "verdict": "PASS"
+}

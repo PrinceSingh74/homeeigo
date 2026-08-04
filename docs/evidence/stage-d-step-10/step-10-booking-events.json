@@ -1,0 +1,96 @@
+{
+  "step": 10,
+  "STEP10_RUN_ID": "stage10-cert-1785860332533",
+  "STEP10_PRE_TEST_TIMESTAMP_UTC": "2026-08-04T16:18:52.535Z",
+  "certifiedRcSha": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+  "cloudRunRevision": "homigo-backend-staging-00029-pbn",
+  "imageDigest": "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+  "jobExecution": "homigo-step10-booking-cert-57szk",
+  "bookingId": "cmsev4s860001s60cshscp60g",
+  "sameBookingLifecycle": true,
+  "ordering": {
+    "pass": true,
+    "sequence": [
+      { "eventType": "homigo.booking.created", "eventId": "40542c17-dceb-4fbc-84b7-bcab4e968f0c", "createdAt": "2026-08-04T16:18:53.312Z" },
+      { "eventType": "homigo.booking.assigned", "eventId": "e4b68df8-dce8-491e-bbf9-30c524782b48", "createdAt": "2026-08-04T16:18:53.839Z" },
+      { "eventType": "homigo.booking.started", "eventId": "583c426b-8096-4d8e-8456-5025b404a7b2", "createdAt": "2026-08-04T16:18:54.379Z" },
+      { "eventType": "homigo.booking.completed", "eventId": "7a9a0c74-9b3f-402f-82d8-b11ff2018283", "createdAt": "2026-08-04T16:18:54.463Z" }
+    ]
+  },
+  "eventMatrix": [
+    {
+      "eventType": "homigo.booking.created",
+      "eventId": "40542c17-dceb-4fbc-84b7-bcab4e968f0c",
+      "aggregateId": "cmsev4s860001s60cshscp60g",
+      "outboxPersisted": true,
+      "outboxFinalStatus": "PUBLISHED",
+      "attempts": 1,
+      "publishedAt": "2026-08-04T16:18:53.552Z",
+      "consumerReceipts": ["metrics.v1", "ai-context-indexer.v1", "audit.v1"],
+      "duplicates": 0,
+      "dlq": 0,
+      "notificationResult": "EMAIL_PASS_INTERNAL"
+    },
+    {
+      "eventType": "homigo.booking.assigned",
+      "eventId": "e4b68df8-dce8-491e-bbf9-30c524782b48",
+      "aggregateId": "cmsev4s860001s60cshscp60g",
+      "outboxPersisted": true,
+      "outboxFinalStatus": "PUBLISHED",
+      "attempts": 1,
+      "publishedAt": "2026-08-04T16:18:53.970Z",
+      "consumerReceipts": ["metrics.v1", "ai-context-indexer.v1", "audit.v1"],
+      "duplicates": 0,
+      "dlq": 0,
+      "notificationResult": "IN_APP_PASS_EMAIL_PASS"
+    },
+    {
+      "eventType": "homigo.booking.started",
+      "eventId": "583c426b-8096-4d8e-8456-5025b404a7b2",
+      "aggregateId": "cmsev4s860001s60cshscp60g",
+      "outboxPersisted": true,
+      "outboxFinalStatus": "PUBLISHED",
+      "attempts": 1,
+      "publishedAt": "2026-08-04T16:18:54.416Z",
+      "consumerReceipts": ["metrics.v1", "ai-context-indexer.v1", "audit.v1"],
+      "duplicates": 0,
+      "dlq": 0,
+      "notificationResult": "IN_APP_PASS"
+    },
+    {
+      "eventType": "homigo.booking.completed",
+      "eventId": "7a9a0c74-9b3f-402f-82d8-b11ff2018283",
+      "aggregateId": "cmsev4s860001s60cshscp60g",
+      "outboxPersisted": true,
+      "outboxFinalStatus": "PUBLISHED",
+      "attempts": 1,
+      "publishedAt": "2026-08-04T16:18:54.821Z",
+      "consumerReceipts": ["metrics.v1", "ai-context-indexer.v1", "audit.v1", "automation-scheduler.v1"],
+      "duplicates": 0,
+      "dlq": 0,
+      "notificationResult": "IN_APP_PASS_EMAIL_PASS"
+    }
+  ],
+  "idempotency": {
+    "eventType": "homigo.booking.created",
+    "eventId": "40542c17-dceb-4fbc-84b7-bcab4e968f0c",
+    "receiptCountBefore": 3,
+    "receiptCountAfterDuplicateDispatch": 3,
+    "pass": true
+  },
+  "transactionalOutbox": {
+    "businessWithoutRequiredEvent": "NO",
+    "orphanRequiredEvent": "NO",
+    "sourceContract": "emitInTransaction in booking.service.ts @ RC c31f154",
+    "runtimeProof": "PASS — all four lifecycle transitions produced matching outbox rows"
+  },
+  "apiPaths": {
+    "CREATE_BOOKING_PATH": "POST /api/bookings/",
+    "ASSIGNMENT_PATH": "assignmentEngine.dispatchBookingNow (service)",
+    "ACCEPT_PATH": "POST /api/bookings/:id/accept",
+    "START_PATH": "POST /api/bookings/:id/start",
+    "COMPLETE_PATH": "POST /api/bookings/:id/complete",
+    "harnessNote": "Cert job uses bookingService + assignmentEngine (same code paths as API routes @ RC c31f154)"
+  },
+  "verdict": "PASS"
+}
