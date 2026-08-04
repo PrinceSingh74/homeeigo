@@ -69,11 +69,15 @@ export function validateStagingSafety(): StagingSafetyViolation[] {
     });
   }
 
-  if (process.env.EVENTS_OUTBOX_ENABLED === "true" || process.env.EVENTS_CONSUMERS_ENABLED === "true") {
+  const eventsCertMode = process.env.STAGING_EVENTS_CERTIFICATION === "1";
+  if (
+    !eventsCertMode &&
+    (process.env.EVENTS_OUTBOX_ENABLED === "true" || process.env.EVENTS_CONSUMERS_ENABLED === "true")
+  ) {
     errors.push({
       key: "EVENTS",
       message:
-        "Phase 0 event flags must remain disabled in staging baseline (EVENTS_OUTBOX_ENABLED=false, EVENTS_CONSUMERS_ENABLED=false)",
+        "Phase 0 event flags must remain disabled in staging baseline unless STAGING_EVENTS_CERTIFICATION=1 (Stage D only)",
     });
   }
 
