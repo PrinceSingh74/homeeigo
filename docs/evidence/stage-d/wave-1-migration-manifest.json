@@ -1,0 +1,125 @@
+{
+  "release": "wave-1-stage-d",
+  "version": "1.0.0",
+  "certifiedAgainst": {
+    "phase0RcSha": "e459175c72b1ece6e6246e5d69f559f23cd0a23e",
+    "phase0MigrationCount": 23,
+    "phase0FinalMigration": "20260731120000_event_foundation",
+    "stageDCommitSha": "95fbb69721b673a0634cb01e6e5bc282f6cdb36f",
+    "authoritativeDbInstance": "homigo-staging-step6a-pitr-20260803"
+  },
+  "purpose": "Minimum deferred migrations to unblock Stage-D Prisma/API paths (booking, tracking, payment) without cherry-picking Wave 2/3 feature migrations.",
+  "applyOrderRule": "Chronological timestamp order via prisma migrate deploy — manifest order matches apply sequence.",
+  "excludedSuperseded": [
+    {
+      "migration": "20260609260000_money_paise_dual_write",
+      "reason": "Subsumed by 20260609280000_money_paise_full_dual_write"
+    },
+    {
+      "migration": "20260612000000_assignment_one_sent_per_job",
+      "reason": "Index dropped by 20260616120000_assignment_broadcast_dispatch; never applied on staging"
+    }
+  ],
+  "deferredToWave2": [
+    "20260609160000_p3_gift_card_campaign_security",
+    "20260609200000_p4_retention_compliance",
+    "20260609240000_booking_slot_exclusion_wallet_atomic",
+    "20260612160000_enterprise_operations"
+  ],
+  "deferredToWave3OrLater": [
+    "20260609300000_journal_entry_number_sequence",
+    "20260610000000_saved_payment_methods",
+    "20260612140000_support_ticket_messages",
+    "20260617100000_settlement_pending_status",
+    "20260703140000_finance_config",
+    "20260703150000_enterprise_os_v6",
+    "20260704100000_add_coverage_requests",
+    "20260708120000_partner_os_v2"
+  ],
+  "deferredRuntimeNotStageD": [
+    {
+      "migration": "20260609120000_p3_admin_rbac",
+      "reason": "Admin refund RBAC — not exercised by stage-d-staging-certification.ts"
+    },
+    {
+      "migration": "20260609140000_p3_token_security",
+      "reason": "Auth token revocation — not exercised by Stage-D gates"
+    },
+    {
+      "migration": "20260609230000_legacy_admin_rbac_hardening",
+      "reason": "Data backfill; depends on 09120000 — defer unless admin RBAC included"
+    }
+  ],
+  "migrations": [
+    {
+      "order": 1,
+      "name": "20260609180000_p4_encryption_audit",
+      "stageDPaths": ["booking", "tracking", "payment"],
+      "blocker": "P2022 users.email_encrypted on any prisma.user full-row select",
+      "dependsOn": ["20260731120000_event_foundation"],
+      "provides": ["users.email_encrypted", "users.phone_encrypted", "DataEncryptionStatus enum", "encryption_keys table"]
+    },
+    {
+      "order": 2,
+      "name": "20260609220000_p0_p1_concurrency_rbac",
+      "stageDPaths": ["payment"],
+      "blocker": "P2022 payments.idempotency_key on payment.create",
+      "dependsOn": ["20260731120000_event_foundation"],
+      "provides": ["payments.idempotency_key unique constraint"]
+    },
+    {
+      "order": 3,
+      "name": "20260609250000_wallet_pending_hardening",
+      "stageDPaths": ["payment", "booking.complete"],
+      "blocker": "P2022 wallet_transactions.expires_at / idempotency_key",
+      "dependsOn": ["20260731120000_event_foundation"],
+      "provides": ["WalletTxnStatus.EXPIRED", "wallet_transactions.expires_at", "wallet_transactions.idempotency_key"]
+    },
+    {
+      "order": 4,
+      "name": "20260609280000_money_paise_full_dual_write",
+      "stageDPaths": ["booking", "tracking", "payment"],
+      "blocker": "P2022 *_paise columns on users, providers, bookings, payments, earnings, wallet_transactions",
+      "dependsOn": ["20260731120000_event_foundation"],
+      "provides": ["Full *_paise BIGINT dual-write columns + sync triggers across money tables"]
+    },
+    {
+      "order": 5,
+      "name": "20260610120000_enterprise_db_hardening",
+      "stageDPaths": ["booking", "payment"],
+      "blocker": "Non-blocking for P2022; required before production cutover for CHECK constraints on paise",
+      "dependsOn": ["20260609280000_money_paise_full_dual_write"],
+      "provides": ["Non-negative wallet_balance_paise CHECKs", "Hot-path composite indexes"]
+    },
+    {
+      "order": 6,
+      "name": "20260610140000_address_pii_encryption",
+      "stageDPaths": ["booking", "tracking"],
+      "blocker": "P2022 addresses.*_encrypted on D1 fixture load (user include addresses)",
+      "dependsOn": ["20260609180000_p4_encryption_audit"],
+      "provides": ["addresses.address_line1_encrypted", "addresses.full_address_encrypted", "addresses.data_encryption_status"]
+    },
+    {
+      "order": 7,
+      "name": "20260616120000_assignment_broadcast_dispatch",
+      "stageDPaths": ["booking"],
+      "blocker": "Runtime: broadcast dispatch semantics for D3 assignment (DROP one-sent-per-job index)",
+      "dependsOn": ["20260731120000_event_foundation"],
+      "provides": ["Removes assignment_attempts_one_sent_per_job partial unique index"]
+    },
+    {
+      "order": 8,
+      "name": "20260711120000_booking_wait_time_bigint",
+      "stageDPaths": ["booking"],
+      "blocker": "Type parity: schema BigInt vs DB INT4 on wait_time_ms at accept",
+      "dependsOn": ["20260608120000_membership_premium_engine"],
+      "provides": ["bookings.wait_time_ms BIGINT", "bookings.estimated_wait_time_ms BIGINT"]
+    }
+  ],
+  "totals": {
+    "wave1StageDMigrations": 8,
+    "excludedSuperseded": 2,
+    "deferredRemaining": 15,
+    "phase0PlusWave1": 31
+  }
+}
