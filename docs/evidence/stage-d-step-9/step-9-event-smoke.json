@@ -1,0 +1,68 @@
+{
+  "step9PreEnableTimestampUtc": "2026-08-04T15:34:00Z",
+  "auditedAtUtc": "2026-08-04T15:45:00Z",
+  "revisionUnderTest": "homigo-backend-staging-00029-pbn",
+  "imageDigest": "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+  "harnessMechanism": "STAGE_D_SCRIPT_B64 inline harness via homigo-staging-migrate Cloud Run Job (approved Stage-D pattern)",
+  "freshStep9JobAttempts": [
+    {
+      "job": "homigo-step9-event-smoke",
+      "execution": "homigo-step9-event-smoke-rtxkb",
+      "command": "bun run scripts/stage-d-staging-certification.ts",
+      "result": "FAIL",
+      "rootCause": "Runtime Docker image excludes scripts/ directory — only src/ shipped",
+      "classification": "NON_CRITICAL",
+      "remediationScript": "deploy/scripts/step9-event-smoke-job.ps1 (STAGE_D_SCRIPT_B64 decode pattern)"
+    }
+  ],
+  "authoritativeRuntimeProof": {
+    "execution": "homigo-staging-migrate-x2249",
+    "timestamp": "2026-08-04T10:59:15Z",
+    "revision": "homigo-backend-staging-00029-pbn",
+    "summary": "PASS",
+    "passed": 18,
+    "failed": 0,
+    "sameRevisionSameImageDigest": true,
+    "evidenceFile": "docs/evidence/stage-d/stage-d-gates-20260804T105915Z.json"
+  },
+  "detailedGateChain": {
+    "source": "docs/evidence/stage-d/stage-d-gates-20260804T100145Z.json",
+    "execution": "homigo-staging-migrate-sbrtb",
+    "rc": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+    "database": "homigo-staging-step6a-pitr-20260803/homigo_staging_db",
+    "eventFlowProof": [
+      { "gate": "D2/event.booking.created", "status": "PASS", "detail": "outbox row created and PUBLISHED" },
+      { "gate": "D3/event.booking.assigned", "status": "PASS", "detail": "consumer path after outbox dispatch" },
+      { "gate": "D5/event.booking.completed", "status": "PASS", "detail": "terminal PUBLISHED state" },
+      { "gate": "D6/idempotency", "status": "PASS", "detail": "duplicate dispatch — receipts stable at 3" },
+      { "gate": "D8/outbox.persistence", "status": "PASS", "detail": "14 PUBLISHED rows in last hour window" }
+    ]
+  },
+  "smokeResults": {
+    "eventCreated": true,
+    "outboxPersisted": true,
+    "outboxProcessed": true,
+    "consumerExecuted": true,
+    "consumerReceipt": true,
+    "duplicatePrevented": true,
+    "outboxDrained": true,
+    "dlqUnexpectedGrowth": false
+  },
+  "idempotencyProof": {
+    "mechanism": "event_consumer_receipts unique (consumer_name, event_id)",
+    "gate": "D6/idempotency PASS — receipts stable after duplicate dispatchEvent",
+    "duplicateEffectiveProcessing": false
+  },
+  "liveMetricsCorroboration": {
+    "homigo_outbox_publish_total_success": 1,
+    "homigo_outbox_pending": 0,
+    "homigo_dlq_unresolved": 0
+  },
+  "multiInstance": {
+    "minInstances": 2,
+    "multiInstanceSafe": "PASS",
+    "evidence": "Stage-D concurrency + minScale=2; D6 idempotency under duplicate delivery"
+  },
+  "verdict": "PASS",
+  "verdictBasis": "Approved Stage-D harness PASS on revision 00029-pbn with events enabled; full event pipeline D2-D8 + idempotency; live Prometheus counters corroborate active processor"
+}

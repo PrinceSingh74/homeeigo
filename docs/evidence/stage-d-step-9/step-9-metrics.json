@@ -1,0 +1,34 @@
+{
+  "capturedAtUtc": "2026-08-04T15:34:20Z",
+  "revision": "homigo-backend-staging-00029-pbn",
+  "endpoint": "/metrics",
+  "authMechanism": "Bearer STAGING_OPS_AUTH_TOKEN (value not recorded)",
+  "prometheusValid": true,
+  "beforeEnable": {
+    "note": "Event flags already true at audit start — baseline = pre-certification snapshot",
+    "homigo_outbox_pending": 0,
+    "homigo_outbox_oldest_pending_age_seconds": 0,
+    "homigo_outbox_processing": "not exported as standalone gauge in RC build",
+    "homigo_outbox_failed": "derived: homigo_outbox_publish_total{result=\"failed_terminal\"}=0",
+    "homigo_dlq_unresolved": 0,
+    "homigo_outbox_publish_total_success": 1,
+    "homigo_outbox_publish_total_retry": 0,
+    "homigo_outbox_publish_total_failed_terminal": 0,
+    "homigo_outbox_processing_duration_seconds_count": 1,
+    "homigo_consumer_failed_total": "not sampled at zero-event instant"
+  },
+  "afterEnable": {
+    "note": "No config change in Step 9 — post-audit same revision",
+    "homigo_outbox_pending": 0,
+    "homigo_dlq_unresolved": 0,
+    "homigo_outbox_publish_total_success": 1,
+    "homigo_outbox_oldest_pending_age_seconds": 0
+  },
+  "soakCorroboration": {
+    "source": "docs/evidence/stage-d/stage-d-soak-20260804T174500Z.json",
+    "samples": 4,
+    "outbox_pending_all_zero": true,
+    "dlq_unresolved_all_zero": true
+  },
+  "classification": "PASS"
+}

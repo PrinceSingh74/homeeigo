@@ -1,0 +1,166 @@
+{
+  "step": 9,
+  "certifiedRcSha": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+  "step8EvidenceCommit": "fa7d274b6124c9599bf76b7ed90f900de6f35adf",
+  "imageDigest": "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+  "previousRevision": "homigo-backend-staging-00029-pbn",
+  "step9Revision": "homigo-backend-staging-00029-pbn",
+  "redeployRequired": false,
+  "redeployPerformed": false,
+  "imageRebuilt": false,
+  "step9PreEnableTimestampUtc": "2026-08-04T15:34:00Z",
+  "auditedAtUtc": "2026-08-04T15:45:00Z",
+  "gitAudit": {
+    "primaryWorktreeHead": "fa7d274b6124c9599bf76b7ed90f900de6f35adf",
+    "primaryWorktreeDirty": true,
+    "originMain": "d3dee5d3b9abe5da31be396053adff293db6859b",
+    "certifiedRcRetrievable": true,
+    "certifiedRcType": "commit",
+    "releaseSourceUsed": "certified image digest only — not dirty D:\\homigo tree"
+  },
+  "project": "homigo-497619",
+  "region": "asia-south1",
+  "service": "homigo-backend-staging",
+  "stagingUrl": "https://homigo-backend-staging-144968192234.asia-south1.run.app",
+  "databaseInstance": "homigo-staging-step6a-pitr-20260803",
+  "database": "homigo_staging_db",
+  "appEnv": "staging",
+  "nodeEnv": "production",
+  "minScale": 2,
+  "maxScale": 4,
+  "trafficPercentToStep9Revision": 100,
+  "latestCreatedRevisionName": "homigo-backend-staging-00029-pbn",
+  "latestReadyRevisionName": "homigo-backend-staging-00029-pbn",
+  "identityProof": {
+    "productionDbUsed": false,
+    "productionRedisUsed": false,
+    "razorpayLiveUsed": false,
+    "razorpayKeyPrefix": "rzp_test_*",
+    "databaseSecret": "STAGING_DATABASE_URL",
+    "redisSecret": "STAGING_REDIS_URL",
+    "databaseInstanceVerified": "homigo-staging-step6a-pitr-20260803",
+    "databaseNameVerified": "homigo_staging_db"
+  },
+  "eventFlags": {
+    "serviceTemplate": {
+      "STAGING_EVENTS_CERTIFICATION": "1",
+      "EVENTS_OUTBOX_ENABLED": "true",
+      "EVENTS_CONSUMERS_ENABLED": "true",
+      "EVENTS_BOOKING_ENABLED": "true",
+      "EVENTS_PAYMENT_ENABLED": "true",
+      "EVENTS_TRACKING_ENABLED": "true",
+      "EVENTS_PARTNER_ENABLED": "true"
+    },
+    "activeRevision": {
+      "STAGING_EVENTS_CERTIFICATION": "1",
+      "EVENTS_OUTBOX_ENABLED": "true",
+      "EVENTS_CONSUMERS_ENABLED": "true",
+      "EVENTS_BOOKING_ENABLED": "true",
+      "EVENTS_PAYMENT_ENABLED": "true",
+      "EVENTS_TRACKING_ENABLED": "true",
+      "EVENTS_PARTNER_ENABLED": "true"
+    },
+    "applicationRuntime": {
+      "outboxEnabled": true,
+      "consumersEnabled": true,
+      "source": "apps/backend/src/events/core/config.ts @ RC c31f154"
+    }
+  },
+  "preEnableHealth": {
+    "health": {
+      "endpoint": "/health",
+      "status": 200,
+      "bodyStatus": "ok",
+      "database": "ok",
+      "redis": "ok",
+      "environment": "staging"
+    },
+    "ready": {
+      "endpoint": "/ready",
+      "status": 401,
+      "classification": "EXPECTED_AUTH"
+    },
+    "metrics": {
+      "endpoint": "/metrics",
+      "status": 200,
+      "classification": "PASS"
+    }
+  },
+  "postEnableHealth": {
+    "note": "Same revision — no Step 9 config mutation",
+    "health": { "status": 200, "classification": "PASS" },
+    "ready": { "status": 401, "classification": "EXPECTED_AUTH" },
+    "metrics": { "status": 200, "classification": "PASS" }
+  },
+  "databaseSafety": {
+    "migrations": "31/31",
+    "migrateStatusJob": "homigo-step9-migrate-status-gzcrz",
+    "migrateStatusCommand": "bunx prisma migrate status",
+    "migrateStatusResult": "Database schema is up to date!",
+    "newMigrationExecuted": false,
+    "schemaModified": false,
+    "phase0Tables": {
+      "event_outbox": "PASS — Step 7 catalog audit",
+      "event_consumer_receipts": "PASS — Step 7 catalog audit",
+      "event_dead_letters": "PASS — Step 7 catalog audit",
+      "scheduled_jobs": "PASS — Step 7 catalog audit"
+    },
+    "backups": "ON",
+    "backupRetentionCount": 7,
+    "pitr": "ON",
+    "deletionProtection": "ON"
+  },
+  "runtimeComponents": {
+    "outboxProcessor": "ACTIVE",
+    "consumers": "ACTIVE",
+    "outboxProcessorEvidence": "homigo_outbox_publish_total{result=success}>=1; startOutboxProcessor() in maintenance.ts",
+    "consumerEvidence": "Stage-D D2-D8 consumer receipts + D6 idempotency PASS"
+  },
+  "logReview": {
+    "scope": "homigo-backend-staging-00029-pbn",
+    "findings": [
+      {
+        "finding": "Transient eventOutbox prisma errors at 2026-08-04T10:56:28-33Z during multi-instance warm",
+        "classification": "NON_CRITICAL"
+      },
+      {
+        "finding": "Missing-table errors on gift_cards, geofences, platform_feature_flags (non-Phase-0 admin routes)",
+        "classification": "NON_CRITICAL"
+      },
+      {
+        "finding": "P2021/P2022 on event_outbox cert path post-boot",
+        "classification": "NONE"
+      },
+      {
+        "finding": "Outbox processor crash loop",
+        "classification": "NONE"
+      }
+    ]
+  },
+  "productionSafety": {
+    "productionDeployment": false,
+    "productionMigration": false,
+    "productionDbModified": false,
+    "productionRedisModified": false,
+    "productionEventFlagsChanged": false,
+    "productionCredentialsUsed": false,
+    "productionRazorpayUsed": false,
+    "productionDnsChanged": false,
+    "cloudRunServicesInProject": ["homigo-backend-staging"]
+  },
+  "rollbackPlan": {
+    "previousHealthyRevision": "homigo-backend-staging-00029-pbn",
+    "preferredRollback": "Set EVENTS_OUTBOX_ENABLED=false and EVENTS_CONSUMERS_ENABLED=false on homigo-backend-staging",
+    "runbook": "docs/evidence/stage-d/stage-d-runbook.md",
+    "rollbackExecuted": false
+  },
+  "monitoring": {
+    "prometheusRulesPresent": true,
+    "stagingMetricsAccessible": true,
+    "soakSamplesClean": true,
+    "productionAlertsModified": false,
+    "operationalWarning": "Hosted Grafana scrape of Cloud Run URL requires external collector — not a Step 9 blocker"
+  },
+  "secretScan": "PASS",
+  "productionTargeted": false
+}
