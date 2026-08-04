@@ -1,0 +1,20 @@
+{
+  "STEP13_RUN_ID": "stage13-multi-instance-1785865958963",
+  "reviewWindowUtc": {
+    "start": "2026-08-04T17:52:39.565Z",
+    "end": "2026-08-04T17:52:42.149Z"
+  },
+  "DEADLOCKS": 0,
+  "CRITICAL_LOCK_WAITS": 0,
+  "DB_CONNECTION_EXHAUSTION": "NO",
+  "P2021": 0,
+  "P2022": 0,
+  "claimMechanismForensics": {
+    "sourceFile": "apps/backend/src/events/core/outbox-processor.ts @ RC c31f154",
+    "claimSql": "UPDATE event_outbox SET status=PROCESSING, locked_at=NOW(), locked_by=$instanceId, attempts=attempts+1 WHERE id IN (SELECT id FROM event_outbox WHERE status IN (PENDING, FAILED) AND available_at <= NOW() ORDER BY created_at ASC LIMIT $batchSize FOR UPDATE SKIP LOCKED)",
+    "leaderLock": "runWithLeaderLock(maintenance:event_outbox) via Redis",
+    "staleLockRecovery": "PROCESSING rows with locked_at < now - lockTimeoutMs reset to PENDING",
+    "stateMachine": ["PENDING", "PROCESSING", "PUBLISHED", "FAILED(retryable)", "FAILED(terminal)"]
+  },
+  "note": "Normal short-lived row locks during SKIP LOCKED claim expected; no deadlock or connection exhaustion observed in Step-13 window"
+}

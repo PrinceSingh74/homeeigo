@@ -1,0 +1,40 @@
+{
+  "STEP13_RUN_ID": "stage13-multi-instance-1785865958963",
+  "certificationWindowUtc": {
+    "start": "2026-08-04T17:52:39.565Z",
+    "end": "2026-08-04T17:52:42.149Z"
+  },
+  "PROJECT": "homigo-497619",
+  "REGION": "asia-south1",
+  "SERVICE": "homigo-backend-staging",
+  "CLOUD_RUN_REVISION": "homigo-backend-staging-00029-pbn",
+  "IMAGE": "asia-south1-docker.pkg.dev/homigo-497619/homigo/backend:c31f154",
+  "IMAGE_DIGEST": "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+  "APPLICATION_RC_SHA": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+  "MIN_INSTANCES": 2,
+  "MAX_INSTANCES": 4,
+  "CONCURRENCY": 80,
+  "CPU_THROTTLING": false,
+  "OBSERVED_ACTIVE_INSTANCES": 2,
+  "CLOUD_RUN_INSTANCE_A_ID": "001548f7294ed6cd00ed3833a71e7b5ee5ee4519974506d2bbecabb4ecb156e832defa527dca43cef4786e6ab052d01980b822419de6416438e28cef92d2ac350e01b29c07c25aa3b550b80b06b7ad",
+  "CLOUD_RUN_INSTANCE_B_ID": "001548f72981096cec3ef69abcc8a5e95098eebcd6b50425d1892bc5515c32c7e2ceb45d044bf07c491a7beaee462ff8a4dc255959da532249a9a23df696624eee9fdf787f88fc662bb0d0759c91",
+  "OUTBOX_LEADER_WORKER_ID": "inst_c22fdfb26bd9",
+  "PROCESSING_MODEL": "LEADER_SINGLE_ACTIVE_WITH_SKIP_LOCKED",
+  "PROCESSING_MODEL_DETAIL": {
+    "leaderLockKey": "maintenance:event_outbox",
+    "leaderLockStore": "Redis (STAGING_REDIS_URL)",
+    "claimMechanism": "UPDATE ... FOR UPDATE SKIP LOCKED within leader tick",
+    "claimBatchSize": 50,
+    "processorIntervalMs": 5000,
+    "lockTimeoutMs": 120000,
+    "secondaryInstancesCompeteForClaims": false,
+    "secondaryInstancesRunProcessorTicks": true,
+    "secondaryAcquiresLeaderLock": false
+  },
+  "MULTI_INSTANCE_RUNTIME": "PASS",
+  "MULTI_INSTANCE_PARTICIPATION": "PASS",
+  "MULTI_INSTANCE_NOTE": "Two Cloud Run instances observed active on revision 00029-pbn. Redis leader lock ensures exactly one instance claims outbox work per tick; observed leader inst_c22fdfb26bd9 claimed all 20 Step-13 events with zero duplicate claims.",
+  "JOB_EXECUTION": "homigo-step13-multi-instance-cert-jgbwr",
+  "IMAGE_REBUILT": false,
+  "REDEPLOYED": false
+}

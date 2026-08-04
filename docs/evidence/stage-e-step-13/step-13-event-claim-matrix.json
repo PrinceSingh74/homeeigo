@@ -1,0 +1,36 @@
+{
+  "STEP13_RUN_ID": "stage13-multi-instance-1785865958963",
+  "TOTAL_EVENTS": 20,
+  "CLAIM_WORKER_ID": "inst_c22fdfb26bd9",
+  "INSTANCE_A_CLAIMS": 20,
+  "INSTANCE_B_CLAIMS": 0,
+  "OTHER_WORKER_CLAIMS": 0,
+  "UNCONTROLLED_DUPLICATE_CLAIMS": 0,
+  "CLAIM_MECHANISM": "FOR UPDATE SKIP LOCKED within Redis leader-locked processor tick",
+  "events": [
+    {"index": 0, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_0", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 1, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_1", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 2, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_2", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 3, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_3", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 4, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_4", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 5, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_5", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 6, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_6", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 7, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_7", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 8, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_8", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 9, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_9", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 10, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_10", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 11, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_11", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 12, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_12", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 13, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_13", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 14, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_14", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 15, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_15", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 16, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_16", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 17, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_17", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 18, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_18", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"},
+    {"index": 19, "aggregateId": "step13_bk_stage13-multi-instance-1785865958963_19", "instanceOrWorker": "inst_c22fdfb26bd9", "attempts": 1, "finalStatus": "PUBLISHED", "consumerCount": 3, "dlqStatus": "NONE"}
+  ],
+  "processingObservationsDuringPoll": {
+    "inst_c22fdfb26bd9": 14,
+    "note": "14 of 20 captured in PROCESSING state during 400ms poll; all 20 reached PUBLISHED with locked_by=inst_c22fdfb26bd9 in claim observations"
+  }
+}

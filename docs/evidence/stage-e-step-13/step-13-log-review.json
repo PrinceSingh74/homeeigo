@@ -1,0 +1,20 @@
+{
+  "STEP13_RUN_ID": "stage13-multi-instance-1785865958963",
+  "JOB_EXECUTION": "homigo-step13-multi-instance-cert-jgbwr",
+  "logSources": [
+    "cloud_run_job/homigo-step13-multi-instance-cert",
+    "cloud_run_revision/homigo-backend-staging-00029-pbn"
+  ],
+  "searchTerms": ["stage13-multi-instance-1785865958963", "inst_c22fdfb26bd9", "outbox", "PUBLISHED", "P2021", "P2022", "deadlock"],
+  "cloudRunInstancesObserved": 2,
+  "outboxLeaderWorkerId": "inst_c22fdfb26bd9",
+  "criticalEventErrors": 0,
+  "p2021Count": 0,
+  "p2022Count": 0,
+  "deadlockCount": 0,
+  "oomCount": 0,
+  "crashCount": 0,
+  "summary": "Job exit(0). All 20 homigo.booking.created events reached PUBLISHED. No P2021/P2022/deadlock/OOM in certification window. Two Cloud Run container instances active on revision 00029-pbn; Redis leader lock routed all outbox claims to single leader worker inst_c22fdfb26bd9.",
+  "sanitized": true,
+  "secretsInLogs": false
+}

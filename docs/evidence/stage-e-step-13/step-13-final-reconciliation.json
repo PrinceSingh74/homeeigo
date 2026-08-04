@@ -1,0 +1,31 @@
+{
+  "STEP13_RUN_ID": "stage13-multi-instance-1785865958963",
+  "reconciliation": {
+    "GENERATED": 20,
+    "PERSISTED": 20,
+    "TERMINAL_SUCCESS": 20,
+    "TERMINAL_FAILURE": 0,
+    "PENDING": 0,
+    "PROCESSING": 0,
+    "LOST": 0,
+    "STRANDED": 0,
+    "UNCONTROLLED_DUPLICATE_CLAIMS": 0,
+    "DUPLICATE_EFFECTIVE_PROCESSING": 0,
+    "DUPLICATE_CONSUMER_SIDE_EFFECTS": 0,
+    "STEP13_DLQ": 0,
+    "FINAL_PENDING": 0,
+    "FINAL_PROCESSING": 0,
+    "UNIQUE_EFFECTIVE_EVENT_PROCESSING": 20
+  },
+  "equation": "20 = 20 + 0 + 0 + 0 + 0",
+  "STEP_13_RESULT": "PASS",
+  "CRITICAL_FAILURES": 0,
+  "NON_CRITICAL_WARNINGS": 1,
+  "warnings": [
+    {
+      "id": "leader-single-active-claim-distribution",
+      "severity": "NON_CRITICAL",
+      "detail": "All 20 events claimed by leader worker inst_c22fdfb26bd9; second Cloud Run instance did not claim rows — expected with Redis leader lock semantics, independently proven"
+    }
+  ]
+}

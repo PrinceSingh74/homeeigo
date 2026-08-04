@@ -1,0 +1,27 @@
+{
+  "STEP13_RUN_ID": "stage13-multi-instance-1785865958963",
+  "scanTimestampUtc": "2026-08-04T18:05:00Z",
+  "SECRET_SCAN": "PASS",
+  "PII_SCAN": "PASS",
+  "patternsChecked": [
+    "DATABASE_URL",
+    "REDIS_URL value",
+    "JWT_SECRET",
+    "Bearer token",
+    "rzp_live",
+    "sk_live",
+    "webhook secret value",
+    "email addresses",
+    "phone numbers",
+    "card/UPI data"
+  ],
+  "findings": [
+    {
+      "file": "step-13-runtime-topology.json",
+      "match": "STAGING_REDIS_URL",
+      "classification": "BENIGN_SECRET_NAME_REFERENCE",
+      "note": "Secret name only — no credential value"
+    }
+  ],
+  "criticalFindings": 0
+}
