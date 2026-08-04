@@ -1,7 +1,7 @@
 # Stage D — Step D-REMEDIATION
 
 **Date:** 2026-08-04  
-**Status:** **WAVE-1 COMMITTED** — clean replay **FAIL** (09280000 / wallet_transfers orphan)  
+**Status:** **WAVE-1 CERTIFIED** — clean replay 31/31 @ `c31f154`  
 **Scope:** STAGING ONLY — project `homigo-497619`  
 **Production impact:** NONE
 
@@ -211,9 +211,9 @@ Before staging apply:
 | Minimum migrations determined | **DONE** — 8 migrations |
 | Dependency graph built | **DONE** — see §2 |
 | Wave-1 manifest created | **DONE** — `wave-1-migration-manifest.json` |
-| Clean DB replay proof | **PENDING** |
-| Staging apply | **PENDING** |
-| Stage-D full certification | **PENDING** |
+| Clean DB replay proof | **PASS** — 31/31 @ `c31f154` |
+| Staging apply | **PENDING** (separate gate) |
+| Stage-D full certification | **PENDING** (after staging apply + Razorpay TEST) |
 
 **STEP D-REMEDIATION (analysis): PASS**  
-**STEP D-REMEDIATION (execution): IN PROGRESS** — proceed to commit + replay proof.
+**STEP D-REMEDIATION (execution): PASS** — see `step-d-wave1-clean-replay-certification.md`.

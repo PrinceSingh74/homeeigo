@@ -1,6 +1,12 @@
 {
-  "certificationStatus": "FAIL",
+  "certificationStatus": "PASS",
+  "remediationWave": 2,
+  "stageDRcSha": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
   "wave1MigrationCommitSha": "d7ac1cf29770edd6fc0a7a576b8ac8efc87981ff",
+  "remediationCommits": [
+    "f11ee89b973824ebfeff20b9d390eb2be03c194f",
+    "c31f154a128022fa7d9c4e44652506eedf3fa3e4"
+  ],
   "replayTarget": {
     "instance": "homigo-postgres (local Docker, isolated)",
     "database": "homigo_wave1_replay",
@@ -8,92 +14,40 @@
   },
   "replayResult": {
     "expected": 31,
-    "applied": 25,
-    "failed": 1,
-    "failedMigration": "20260609280000_money_paise_full_dual_write",
-    "failureCode": "42P01",
-    "failureMessage": "relation wallet_transfers does not exist"
+    "applied": 31,
+    "failed": 0,
+    "cleanReplay31Of31": "PASS"
   },
-  "wave1Migrations": [
-    {
-      "name": "20260609180000_p4_encryption_audit",
-      "replayStatus": "applied",
-      "objectsIntroduced": {
-        "enums": ["encryption_key_status", "key_purpose", "data_encryption_status", "enterprise_actor_type", "enterprise_audit_status", "retention_category"],
-        "tables": ["encryption_keys", "enterprise_audit_logs", "enterprise_audit_log_archives"],
-        "userColumns": ["email_encrypted", "email_hash", "email_encryption_key_version", "phone_encrypted", "phone_hash", "phone_encryption_key_version", "data_encryption_status", "data_encrypted_at"],
-        "otpColumns": ["phone_hash"]
-      }
+  "remediation09280000": {
+    "subsumed09260000": ["users.wallet_balance_paise", "providers.wallet_balance_paise"],
+    "createdWalletTransfers": {
+      "enum": "WalletTransferStatus",
+      "table": "wallet_transfers",
+      "indexes": ["wallet_transfers_sender_id_idx", "wallet_transfers_recipient_id_idx", "wallet_transfers_status_idx"],
+      "foreignKeys": ["wallet_transfers_sender_id_fkey", "wallet_transfers_recipient_id_fkey"]
     },
-    {
-      "name": "20260609220000_p0_p1_concurrency_rbac",
-      "replayStatus": "applied",
-      "objectsIntroduced": {
-        "paymentColumns": ["idempotency_key"],
-        "indexes": ["payments_idempotency_key_key", "bookings_provider_scheduled_active_key", "wallet_transactions_reference_id_idx", "hcoin_transactions_reference_id_idx"]
-      }
-    },
-    {
-      "name": "20260609250000_wallet_pending_hardening",
-      "replayStatus": "applied",
-      "objectsIntroduced": {
-        "enumValues": ["WalletTxnStatus.EXPIRED"],
-        "walletTransactionColumns": ["expires_at", "idempotency_key"],
-        "indexes": ["wallet_transactions_idempotency_key_key", "wallet_txn_razorpay_order_active_unique", "wallet_transactions_user_id_status_idx", "wallet_transactions_expires_at_idx"]
-      }
-    },
-    {
-      "name": "20260609280000_money_paise_full_dual_write",
-      "replayStatus": "failed",
-      "failureAt": "ALTER TABLE wallet_transfers",
-      "objectsIntroduced": null,
-      "latentDefects": [
-        "wallet_transfers table never created in any migration",
-        "users.wallet_balance_paise and providers.wallet_balance_paise referenced but not ADD COLUMN (only in excluded 09260000)"
-      ]
-    },
-    {
-      "name": "20260610120000_enterprise_db_hardening",
-      "replayStatus": "not_reached",
-      "objectsIntroduced": {
-        "checkConstraints": ["users_wallet_balance_paise_non_negative", "providers_wallet_balance_paise_non_negative", "providers_reserved_balance_paise_non_negative", "payments_amount_paise_positive", "ratings_score_range"],
-        "indexes": ["idx_bookings_provider_scheduled", "idx_bookings_user_scheduled", "idx_bookings_status_created", "idx_payments_user_status_created", "idx_users_wallet_balance_paise_positive"]
-      }
-    },
-    {
-      "name": "20260610140000_address_pii_encryption",
-      "replayStatus": "not_reached",
-      "objectsIntroduced": {
-        "addressColumns": ["address_line1_encrypted", "address_line2_encrypted", "full_address_encrypted", "landmark_encrypted", "special_instructions_encrypted", "address_payload_hash", "encryption_key_version", "data_encryption_status"]
-      }
-    },
-    {
-      "name": "20260616120000_assignment_broadcast_dispatch",
-      "replayStatus": "not_reached",
-      "objectsIntroduced": {
-        "indexDrops": ["assignment_attempts_one_sent_per_job"]
-      }
-    },
-    {
-      "name": "20260711120000_booking_wait_time_bigint",
-      "replayStatus": "not_reached",
-      "objectsIntroduced": {
-        "typeChanges": [
-          {"table": "bookings", "column": "wait_time_ms", "from": "integer", "to": "bigint"},
-          {"table": "bookings", "column": "estimated_wait_time_ms", "from": "integer", "to": "bigint"}
-        ]
-      }
-    }
-  ],
-  "excludedSuperseded": [
-    "20260609260000_money_paise_dual_write",
-    "20260612000000_assignment_one_sent_per_job"
-  ],
-  "dependencyGap": {
-    "code": "WAVE_1_DEPENDENCY_GAP",
-    "migration": "20260609280000_money_paise_full_dual_write",
-    "missingObject": "wallet_transfers",
-    "createMigrationExists": false,
-    "stageDBlocker": true
+    "stageDSchemaOrphans": [
+      "users.email_verification_expires",
+      "users.email_verification_token",
+      "services.premium_only",
+      "bookings.addons"
+    ]
+  },
+  "prismaCriticalPathProbe": {
+    "script": "apps/backend/scripts/stage-d-wave1-prisma-probe.ts",
+    "pass": 9,
+    "fail": 0,
+    "p2021": "NONE",
+    "p2022": "NONE"
+  },
+  "wave1PhysicalVerification": {
+    "USER_ENCRYPTION_SCHEMA": "PASS",
+    "ADDRESS_ENCRYPTION_SCHEMA": "PASS",
+    "PAYMENT_IDEMPOTENCY_SCHEMA": "PASS",
+    "WALLET_RUNTIME_SCHEMA": "PASS",
+    "MONEY_PAISE_SCHEMA": "PASS",
+    "ENTERPRISE_CONSTRAINTS": "PASS",
+    "ASSIGNMENT_BROADCAST_SCHEMA": "PASS",
+    "BOOKING_WAIT_TIME_PARITY": "PASS"
   }
 }
