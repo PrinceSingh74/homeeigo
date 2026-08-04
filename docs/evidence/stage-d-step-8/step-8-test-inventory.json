@@ -1,0 +1,138 @@
+{
+  "certifiedSourceSha": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+  "worktree": "%TEMP%\\homigo-step8-c31f154",
+  "generatedAt": "2026-08-04T11:40:00Z",
+  "toolchain": {
+    "node": "v25.9.0",
+    "bun": "1.3.14",
+    "prisma": "6.19.3",
+    "typescript": "6.0.3",
+    "postgresqlTarget": "16 (Cloud SQL / docker-compose)"
+  },
+  "migrationSourceCount": 31,
+  "suites": [
+    {
+      "id": "event-foundation",
+      "files": ["src/events/__tests__/event-foundation.test.ts"],
+      "type": "PURE",
+      "dbRequired": false,
+      "redisRequired": false,
+      "externalServiceRequired": false,
+      "destructive": false,
+      "expectedCount": 8
+    },
+    {
+      "id": "event-failure-scenarios",
+      "files": ["src/events/__tests__/event-failure-scenarios.test.ts"],
+      "type": "PURE",
+      "dbRequired": false,
+      "redisRequired": false,
+      "externalServiceRequired": false,
+      "destructive": false,
+      "expectedCount": 8
+    },
+    {
+      "id": "event-bus",
+      "files": ["src/events/__tests__/event-bus.test.ts"],
+      "type": "PURE",
+      "dbRequired": false,
+      "redisRequired": false,
+      "externalServiceRequired": false,
+      "destructive": false,
+      "expectedCount": 4
+    },
+    {
+      "id": "event-integration",
+      "files": ["src/events/__tests__/event-integration.test.ts"],
+      "type": "C",
+      "dbRequired": true,
+      "redisRequired": false,
+      "externalServiceRequired": false,
+      "destructive": false,
+      "expectedCount": 2,
+      "notes": "describe.skipIf(!HAS_DB); requires migrated PostgreSQL"
+    },
+    {
+      "id": "event-suite-total",
+      "files": ["src/events/__tests__/*.test.ts"],
+      "type": "AGGREGATE",
+      "expectedCount": 22,
+      "historicalBaseline": "22/22"
+    },
+    {
+      "id": "historical-regression-13",
+      "files": [
+        "src/__tests__/p0-blockers.test.ts",
+        "src/__tests__/assignment-engine.test.ts"
+      ],
+      "type": "PURE",
+      "dbRequired": false,
+      "redisRequired": false,
+      "externalServiceRequired": false,
+      "destructive": false,
+      "expectedCount": 13,
+      "historicalBaseline": "13/13",
+      "breakdown": {
+        "p0-blockers.test.ts": 10,
+        "assignment-engine.test.ts": 3
+      }
+    },
+    {
+      "id": "observability-regression",
+      "files": ["src/__tests__/observability.test.ts"],
+      "type": "PURE",
+      "expectedCount": 7
+    },
+    {
+      "id": "staging-safety",
+      "files": ["src/lib/__tests__/staging-safety.test.ts"],
+      "type": "PURE",
+      "expectedCount": 9
+    },
+    {
+      "id": "phase0-full-certification",
+      "files": ["scripts/phase0-full-certification.ts"],
+      "type": "D",
+      "dbRequired": true,
+      "destructive": true,
+      "notes": "Harness gates: atomicity, DLQ, replay, concurrency, scheduled jobs, retention"
+    },
+    {
+      "id": "phase0-concurrency-verify",
+      "files": ["scripts/phase0-concurrency-verify.ts"],
+      "type": "D",
+      "dbRequired": true,
+      "destructive": true
+    },
+    {
+      "id": "phase0-backpressure-verify",
+      "files": ["scripts/phase0-backpressure-verify.ts"],
+      "type": "D",
+      "dbRequired": true,
+      "destructive": false
+    },
+    {
+      "id": "stage-d-staging-certification",
+      "files": ["scripts/stage-d-staging-certification.ts"],
+      "type": "E",
+      "dbRequired": true,
+      "externalServiceRequired": true,
+      "notes": "Already PASS @ same RC — stage-d-gates-20260804T105915Z.json (18/18)"
+    },
+    {
+      "id": "payment-staging-cert",
+      "files": [],
+      "type": "E",
+      "notes": "Razorpay TEST cert executed at Stage-D deploy — stage-d-razorpay-gates-20260804T105808Z.json (12/12); harness script added post-RC in dirty tree only"
+    }
+  ],
+  "dirtyTreeExcluded": {
+    "note": "Primary D:\\homigo HEAD a5b123c contains untracked migrations and tests not in certified RC",
+    "examplesNotInRc": [
+      "p0-p1-fixes.test.ts",
+      "phase16-18-regression.test.ts",
+      "booking-pricing.test.ts",
+      "stage-d-razorpay-staging-cert.ts"
+    ]
+  }
+}

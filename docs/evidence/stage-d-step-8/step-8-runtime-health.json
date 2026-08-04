@@ -1,0 +1,37 @@
+{
+  "certifiedRevision": "homigo-backend-staging-00029-pbn",
+  "imageDigest": "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+  "checkedAt": "2026-08-04T12:15:00Z",
+  "stagingUrl": "https://homigo-backend-staging-144968192234.asia-south1.run.app",
+  "health": {
+    "endpoint": "/health",
+    "status": 200,
+    "bodyStatus": "ok",
+    "database": "ok",
+    "redis": "ok",
+    "environment": "staging"
+  },
+  "ready": {
+    "endpoint": "/ready",
+    "note": "401 without OPS token — expected, not infrastructure failure"
+  },
+  "metrics": {
+    "endpoint": "/metrics",
+    "note": "Auth-gated; not fetched without OPS token",
+    "priorStageDT0": {
+      "homigo_outbox_pending": 0,
+      "homigo_dlq_unresolved": 0
+    }
+  },
+  "eventFlags": {
+    "EVENTS_OUTBOX_ENABLED": true,
+    "EVENTS_CONSUMERS_ENABLED": true
+  },
+  "criticalLogScan": {
+    "scope": "homigo-backend-staging-00029-pbn",
+    "P2021": "NONE",
+    "P2022": "NONE",
+    "uncaughtException": "NONE in sample"
+  },
+  "productionTargeted": false
+}

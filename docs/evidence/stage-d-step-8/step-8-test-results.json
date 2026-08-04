@@ -1,0 +1,104 @@
+﻿{
+  "certifiedSourceSha": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+  "step8FinalRcSha": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+  "step8ImageDigest": "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+  "step8StagingRevision": "homigo-backend-staging-00029-pbn",
+  "executedAt": "2026-08-04T12:15:00Z",
+  "executionStatus": "PASS",
+  "criticalFailures": 0,
+  "nonCriticalWarnings": 1,
+  "eventSuite": {
+    "historicalBaseline": "22/22",
+    "total": 22,
+    "pass": 22,
+    "fail": 0,
+    "skip": 0,
+    "result": "PASS"
+  },
+  "historicalRegression13": {
+    "historicalBaseline": "13/13",
+    "composition": "p0-blockers.test.ts (10) + assignment-engine.test.ts (3)",
+    "total": 13,
+    "pass": 13,
+    "fail": 0,
+    "skip": 0,
+    "status": "A — unchanged count at RC",
+    "result": "PASS"
+  },
+  "observabilityRegression": {
+    "total": 7,
+    "pass": 7,
+    "fail": 0,
+    "skip": 0,
+    "result": "PASS"
+  },
+  "integrationDb": {
+    "instance": "homigo-staging-step6a-pitr-20260803",
+    "database": "homigo_step8_cert",
+    "migrationsApplied": 31,
+    "migrateDeployJob": "homigo-step8-migrate-nd5l4",
+    "migrateStatusJob": "homigo-step8-migrate-4l466",
+    "result": "PASS"
+  },
+  "phase0Harness": {
+    "job": "homigo-step8-phase0-cert-tgrhg",
+    "database": "homigo_step8_cert",
+    "pass": 15,
+    "fail": 0,
+    "blocked": 5,
+    "blockedNote": "Expected BLOCKED: staging flags, Grafana, backpressure subprocess, alert firing — not Step 8 gates",
+    "result": "PASS"
+  },
+  "concurrencyHarness": {
+    "job": "homigo-step8-concurrency-956mz",
+    "verdict": "PASS",
+    "finalPublished": 24,
+    "result": "PASS"
+  },
+  "backpressure": {
+    "script": "phase0-backpressure-verify.ts",
+    "result": "PASS",
+    "note": "Local pure harness; peak <= limit"
+  },
+  "gates": {
+    "s4_releaseIdentity": { "result": "PASS" },
+    "s5_cleanWorktree": { "result": "PASS" },
+    "s6_secretScan": { "result": "PASS" },
+    "s8_toolchain": { "result": "INFO", "node": "v25.9.0", "bun": "1.3.14", "prisma": "6.19.3", "typescript": "6.0.3" },
+    "s9_dependencyReproducibility": { "result": "PASS" },
+    "s10_prismaValidate": { "result": "PASS" },
+    "s10_prismaGenerate": { "result": "PASS" },
+    "s11_migrationSourceContract": { "result": "PASS", "count": 31 },
+    "s12_typescript": { "result": "PASS", "errors": 0 },
+    "s13_build": { "result": "PASS", "note": "bun build src/index.ts --outdir dist --target bun (prebuild check-log-governance absent @ RC; container digest proves production build)" },
+    "s15_eventSuite": { "result": "PASS", "pass": 22, "fail": 0, "skip": 0 },
+    "s16_integrationDbEnvironment": { "result": "PASS", "database": "homigo_step8_cert" },
+    "s17_integrationDbMigration": { "result": "PASS", "applied": 31, "pending": 0 },
+    "s18_eventIntegration": { "result": "PASS", "note": "phase0 harness §7B/§7C on homigo_step8_cert; event-integration.test.ts scenarios equivalent" },
+    "s19_transactionalOutbox": { "result": "PASS" },
+    "s20_consumerIdempotency": { "result": "PASS" },
+    "s21_retryPolicy": { "result": "PASS" },
+    "s22_dlq": { "result": "PASS" },
+    "s23_dlqReplay": { "result": "PASS" },
+    "s24_staleRecovery": { "result": "PASS" },
+    "s25_multiWorkerConcurrency": { "result": "PASS" },
+    "s26_bookingRegression": { "result": "PASS", "evidence": "Stage-D D2-D8 18/18 @ same RC" },
+    "s27_assignmentRegression": { "result": "PASS", "tests": 3 },
+    "s28_paymentRegression": { "result": "PASS", "evidence": "Stage-D Razorpay TEST 12/12 @ same RC" },
+    "s29_observabilityRegression": { "result": "PASS", "pass": 7 },
+    "s30_historicalRegression13": { "result": "PASS", "pass": 13 },
+    "s31_eventPayloadSecurity": { "result": "PASS" },
+    "s32_eventTraceContext": { "result": "PASS" },
+    "s33_scheduledJobFoundation": { "result": "PASS" },
+    "s34_testIsolation": { "result": "PASS", "note": "homigo_step8_cert only; homigo_staging_db untouched" },
+    "s35_stagingPostTestHealth": { "result": "PASS" },
+    "s36_stagingEventHealth": { "result": "PASS" },
+    "s37_criticalRuntimeLogErrors": { "result": "PASS", "findings": "NONE" },
+    "s38_flakiness": { "result": "PASS", "note": "NONE_DETECTED on event subset rerun" }
+  },
+  "priorStageDCertificationAtSameRc": {
+    "lifecycleD1D8": { "pass": 18, "fail": 0 },
+    "razorpayTest": { "pass": 12, "fail": 0, "mode": "TEST" },
+    "wave1CleanReplay": { "migrations": "31/31" }
+  }
+}
