@@ -1,0 +1,38 @@
+[
+    {
+        "ts":  "2026-08-04T11:15:13.5198110Z",
+        "outbox_pending":  "?",
+        "dlq_unresolved":  "?",
+        "oldest_pending_age_s":  "?"
+    },
+    {
+        "ts":  "2026-08-04T11:20:14.8261098Z",
+        "outbox_pending":  "?",
+        "dlq_unresolved":  "?",
+        "oldest_pending_age_s":  "?"
+    },
+    {
+        "ts":  "2026-08-04T11:25:15.9296854Z",
+        "outbox_pending":  "?",
+        "dlq_unresolved":  "?",
+        "oldest_pending_age_s":  "?"
+    },
+    {
+        "ts":  "2026-08-04T11:30:16.9046996Z",
+        "outbox_pending":  "?",
+        "dlq_unresolved":  "?",
+        "oldest_pending_age_s":  "?"
+    },
+    {
+        "ts":  "2026-08-04T11:35:17.5920248Z",
+        "outbox_pending":  "?",
+        "dlq_unresolved":  "?",
+        "oldest_pending_age_s":  "?"
+    },
+    {
+        "ts":  "2026-08-04T11:40:18.3953825Z",
+        "outbox_pending":  "?",
+        "dlq_unresolved":  "?",
+        "oldest_pending_age_s":  "?"
+    }
+]

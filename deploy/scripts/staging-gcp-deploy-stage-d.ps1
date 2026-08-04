@@ -1,6 +1,6 @@
-# Stage D — enable controlled event processing on staging Cloud Run.
+# Stage D - enable controlled event processing on staging Cloud Run.
 # Requires STAGING_EVENTS_CERTIFICATION=1 (staging-safety opt-in).
-# STAGING ONLY — never use on production.
+# STAGING ONLY - never use on production.
 param(
   [Parameter(Mandatory = $true)]
   [string]$CommitSha,
@@ -17,7 +17,6 @@ $SA = "homigo-backend-staging"
 $REPO = "homigo"
 $SERVICE = "homigo-backend-staging"
 $IMAGE = "${REGION}-docker.pkg.dev/${PROJECT}/${REPO}/backend:${CommitSha}"
-$SHORT = $CommitSha.Substring(0, 7)
 $CONN = "${PROJECT}:${REGION}:${SQL_INSTANCE}"
 $SA_EMAIL = "${SA}@${PROJECT}.iam.gserviceaccount.com"
 
@@ -30,7 +29,7 @@ if (-not $OutboxOnly) {
 
 $baseEnv = "NODE_ENV=production,APP_ENV=staging,SENTRY_ENVIRONMENT=staging,$eventEnv"
 
-Write-Host "Stage D deploy — commit=$CommitSha outboxOnly=$OutboxOnly"
+Write-Host "Stage D deploy commit=$CommitSha outboxOnly=$OutboxOnly"
 Write-Host "Event env: $eventEnv"
 
 if ($DryRun) {
@@ -40,7 +39,6 @@ if ($DryRun) {
 
 & "$PSScriptRoot\staging-gcp-deploy.ps1" -CommitSha $CommitSha
 
-# Re-deploy same image with Stage D env overrides (staging-gcp-deploy pins events OFF)
 gcloud run deploy $SERVICE `
   --project=$PROJECT `
   --region=$REGION `
@@ -56,4 +54,3 @@ gcloud run deploy $SERVICE `
 
 $url = gcloud run services describe $SERVICE --region=$REGION --project=$PROJECT --format="value(status.url)"
 Write-Host "Stage D URL: $url"
-Write-Host "Verify: curl $url/health && EVENTS flags on revision"

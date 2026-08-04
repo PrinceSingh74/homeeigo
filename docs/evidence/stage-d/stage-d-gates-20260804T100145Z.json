@@ -1,0 +1,32 @@
+{
+  "tag": "staged_1785837702882",
+  "execution": "homigo-staging-migrate-sbrtb",
+  "timestamp": "2026-08-04T10:01:45Z",
+  "rc": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+  "revision": "homigo-backend-staging-00027-46w",
+  "database": "homigo-staging-step6a-pitr-20260803/homigo_staging_db",
+  "summary": "PASS",
+  "gates": [
+    { "phase": "D1", "id": "fixtures", "status": "PASS", "detail": "customer=usr_stage_d_seed_v1 provider=prov_stage_d_seed_v1 service=svc_stage_d_seed_v1" },
+    { "phase": "D2", "id": "booking.create", "status": "PASS", "detail": "id=cmsehnqyi0001s60c7ed9aevu number=HOMIGO-20260804-00001" },
+    { "phase": "D2", "id": "event.booking.created", "status": "PASS", "detail": "eventId=ced2203c-f754-4afa-842b-3f11194da5d7" },
+    { "phase": "D3", "id": "dispatch", "status": "PASS", "detail": "attempt=cmsehnrf5000ds60ccrggo8a2 provider=prov_stage_d_seed_v1" },
+    { "phase": "D3", "id": "event.partner.dispatched", "status": "PASS", "detail": "cb17b997-29a4-41ff-9761-c92bb409f481" },
+    { "phase": "D3", "id": "booking.accept", "status": "PASS", "detail": "ACCEPTED" },
+    { "phase": "D3", "id": "event.booking.assigned", "status": "PASS", "detail": "9469d95d-0509-4325-b972-24767a23df8b" },
+    { "phase": "D4", "id": "booking.en_route_at", "status": "PASS", "detail": "2026-08-04T10:01:44.922Z" },
+    { "phase": "D4", "id": "booking.arrived_at", "status": "PASS", "detail": "2026-08-04T10:01:45.106Z travel=1min" },
+    { "phase": "D4", "id": "event.partner.arrived", "status": "SKIP", "detail": "status=none" },
+    { "phase": "D5", "id": "booking.start", "status": "PASS", "detail": "IN_PROGRESS" },
+    { "phase": "D5", "id": "event.booking.started", "status": "PASS", "detail": "verified via outbox" },
+    { "phase": "D5", "id": "booking.complete", "status": "PASS", "detail": "COMPLETED" },
+    { "phase": "D5", "id": "event.booking.completed", "status": "PASS", "detail": "00bac7ec-6079-4d68-92d2-9188ac1abd7b" },
+    { "phase": "D6", "id": "idempotency", "status": "PASS", "detail": "receipts stable at 3" },
+    { "phase": "D7", "id": "dlq", "status": "PASS", "detail": "dlqId=cmsehnsu1003ns60ckjy5ecj3" },
+    { "phase": "D7", "id": "dlq.replay", "status": "PASS", "detail": "CONSUMER_REPLAY_OK" },
+    { "phase": "D8", "id": "outbox.persistence", "status": "PASS", "detail": "[{\"_count\":14,\"status\":\"PUBLISHED\"}]" }
+  ],
+  "failed": 0,
+  "blocked": 0,
+  "passed": 17
+}

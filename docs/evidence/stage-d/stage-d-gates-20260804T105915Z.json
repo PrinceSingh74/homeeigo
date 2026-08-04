@@ -1,0 +1,9 @@
+{
+  "tag": "staged_1785840955149",
+  "execution": "homigo-staging-migrate-x2249",
+  "timestamp": "2026-08-04T10:59:15Z",
+  "summary": "PASS",
+  "passed": 18,
+  "failed": 0,
+  "note": "partner.arrived fixed — aggregateId is providerId not bookingId"
+}

@@ -1,0 +1,74 @@
+[
+    {
+        "ts":  "2026-08-04T11:13:56.2326088Z",
+        "outbox_pending":  {
+
+                           },
+        "dlq_unresolved":  {
+
+                           },
+        "oldest_pending_age_s":  {
+
+                                 }
+    },
+    {
+        "ts":  "2026-08-04T11:18:57.2336995Z",
+        "outbox_pending":  {
+
+                           },
+        "dlq_unresolved":  {
+
+                           },
+        "oldest_pending_age_s":  {
+
+                                 }
+    },
+    {
+        "ts":  "2026-08-04T11:23:57.9523465Z",
+        "outbox_pending":  {
+
+                           },
+        "dlq_unresolved":  {
+
+                           },
+        "oldest_pending_age_s":  {
+
+                                 }
+    },
+    {
+        "ts":  "2026-08-04T11:28:58.7047551Z",
+        "outbox_pending":  {
+
+                           },
+        "dlq_unresolved":  {
+
+                           },
+        "oldest_pending_age_s":  {
+
+                                 }
+    },
+    {
+        "ts":  "2026-08-04T11:33:59.2700449Z",
+        "outbox_pending":  {
+
+                           },
+        "dlq_unresolved":  {
+
+                           },
+        "oldest_pending_age_s":  {
+
+                                 }
+    },
+    {
+        "ts":  "2026-08-04T11:39:00.1044844Z",
+        "outbox_pending":  {
+
+                           },
+        "dlq_unresolved":  {
+
+                           },
+        "oldest_pending_age_s":  {
+
+                                 }
+    }
+]
