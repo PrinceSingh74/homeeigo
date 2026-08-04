@@ -49,6 +49,19 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Stage-D schema orphans: present in schema.prisma but never migrated
+ALTER TABLE "users"
+  ADD COLUMN IF NOT EXISTS "email_verification_expires" TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS "email_verification_token" TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "users_email_verification_token_key" ON "users"("email_verification_token");
+
+ALTER TABLE "services"
+  ADD COLUMN IF NOT EXISTS "premium_only" BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE "bookings"
+  ADD COLUMN IF NOT EXISTS "addons" JSONB;
+
 -- ============ Phase A: paise columns ============
 
 ALTER TABLE "bookings"
