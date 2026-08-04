@@ -1,0 +1,10 @@
+{
+  "tag": "staged_pay_1785841088170",
+  "execution": "homigo-staging-migrate-4srtc",
+  "timestamp": "2026-08-04T10:58:08Z",
+  "summary": "PASS",
+  "passed": 12,
+  "failed": 0,
+  "razorpayMode": "TEST",
+  "keyPrefix": "rzp_test_SxWTI"
+}
