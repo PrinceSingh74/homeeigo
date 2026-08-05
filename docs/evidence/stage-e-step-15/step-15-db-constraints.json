@@ -1,0 +1,16 @@
+{
+  "DATABASE_IDEMPOTENCY_ENFORCEMENT": "PASS",
+  "consumerReceiptUnique": {
+    "table": "event_consumer_receipts",
+    "logicalKey": ["consumer_name", "event_id"],
+    "definition": "CREATE UNIQUE INDEX event_consumer_receipts_consumer_name_event_id_key ON public.event_consumer_receipts USING btree (consumer_name, event_id)"
+  },
+  "auditBusinessConstraint": {
+    "table": "enterprise_audit_logs",
+    "column": "trace_id",
+    "definition": "@unique on trace_id — secondary defense under concurrent duplicate when event carries deterministic traceId"
+  },
+  "migrations": "31/31",
+  "NEW_MIGRATION_EXECUTED": false,
+  "SCHEMA_MODIFIED": false
+}

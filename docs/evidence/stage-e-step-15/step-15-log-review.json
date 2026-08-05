@@ -1,0 +1,13 @@
+{
+  "STEP15_RUN_ID": "stage15-idempotency-1785909230942",
+  "execution": "homigo-step15-idempotency-cert-84pws",
+  "findings": [
+    {
+      "pattern": "Unique constraint failed on the fields: (`trace_id`)",
+      "classification": "EXPECTED_CONCURRENT_RACE_MITIGATED",
+      "detail": "During concurrent duplicate test, second audit.v1 handler attempt hit EnterpriseAuditLog.trace_id unique constraint; audit service swallowed error; auditLogCount remained 1"
+    }
+  ],
+  "notObserved": ["P2021", "P2022", "deadlock", "retry storm", "DLQ", "panic", "fatal", "unhandled rejection", "connection exhaustion"],
+  "result": "PASS"
+}

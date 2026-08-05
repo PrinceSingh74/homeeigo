@@ -1,0 +1,11 @@
+{
+  "HEALTH": { "endpoint": "/health", "status": 200, "database": "ok", "redis": "ok", "result": "PASS" },
+  "READY": { "endpoint": "/ready", "status": 401, "classification": "EXPECTED_AUTH", "result": "PASS" },
+  "OUTBOX_PENDING_T0": 0,
+  "DLQ_UNRESOLVED_T0": 0,
+  "OUTBOX_PENDING_FINAL": 0,
+  "OUTBOX_PROCESSING_FINAL": 0,
+  "STEP15_DLQ": 0,
+  "MIN_INSTANCES": 2,
+  "CLOUD_RUN_REVISION": "homigo-backend-staging-00029-pbn"
+}

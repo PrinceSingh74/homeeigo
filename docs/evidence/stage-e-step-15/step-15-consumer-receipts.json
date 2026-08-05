@@ -1,0 +1,35 @@
+{
+  "STEP15_RUN_ID": "stage15-idempotency-1785909230942",
+  "EVENT_ID": "f4bb24fb-1c7b-43d5-a4fd-58b5265b4348",
+  "receiptsBeforeReplay": 3,
+  "receiptsAfterReplay": 3,
+  "consumers": [
+    {
+      "consumer": "metrics.v1",
+      "deliveries": 2,
+      "receipts": 1,
+      "expectedEffects": 1,
+      "actualEffects": 1,
+      "duplicateEffects": 0,
+      "result": "PASS"
+    },
+    {
+      "consumer": "audit.v1",
+      "deliveries": 2,
+      "receipts": 1,
+      "expectedEffects": 1,
+      "actualEffects": 1,
+      "duplicateEffects": 0,
+      "result": "PASS"
+    },
+    {
+      "consumer": "ai-context-indexer.v1",
+      "deliveries": 2,
+      "receipts": 1,
+      "expectedEffects": 1,
+      "actualEffects": 1,
+      "duplicateEffects": 0,
+      "result": "PASS"
+    }
+  ]
+}

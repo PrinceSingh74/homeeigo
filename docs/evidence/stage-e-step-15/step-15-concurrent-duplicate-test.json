@@ -1,0 +1,13 @@
+{
+  "STEP15_RUN_ID": "stage15-idempotency-1785909230942",
+  "CONCURRENT_EVENT_ID": "f66fb8ae-b9bd-4c9a-852b-fcbc0498f14e",
+  "CONCURRENT_DELIVERY_ATTEMPTS": 2,
+  "EFFECTIVE_EXECUTIONS": 3,
+  "DUPLICATE_RECEIPTS": 0,
+  "auditLogCountBefore": 0,
+  "auditLogCountAfter": 1,
+  "receiptCountAfter": 3,
+  "DUPLICATE_EFFECTS": 0,
+  "result": "PASS",
+  "note": "Concurrent race observed trace_id unique constraint in logs; second audit insert rejected; auditLogCount remained 1"
+}

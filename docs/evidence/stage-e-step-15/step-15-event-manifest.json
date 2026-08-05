@@ -1,0 +1,20 @@
+{
+  "STEP15_RUN_ID": "stage15-idempotency-1785909230942",
+  "sequentialTest": {
+    "EVENT_ID": "f4bb24fb-1c7b-43d5-a4fd-58b5265b4348",
+    "EVENT_TYPE": "homigo.booking.created",
+    "AGGREGATE_ID": "step15_bk_stage15-idempotency-1785909230942",
+    "TRACE_ID": "step15-trace-f4bb24fb-1c7b-43d5-a4fd-58b5265b4348",
+    "deliveryMethodFirst": "emitStandalone → staging outbox processor → dispatchEvent",
+    "deliveryMethodSecond": "dispatchEvent(same payload) intentional replay"
+  },
+  "concurrentTest": {
+    "EVENT_ID": "f66fb8ae-b9bd-4c9a-852b-fcbc0498f14e",
+    "AGGREGATE_ID": "step15_conc_stage15-idempotency-1785909230942",
+    "TRACE_ID": "step15-trace-f66fb8ae-b9bd-4c9a-852b-fcbc0498f14e",
+    "CONCURRENT_DELIVERY_ATTEMPTS": 2,
+    "deliveryMethod": "Promise.all([dispatchEvent, dispatchEvent])"
+  },
+  "discoveredConsumers": ["metrics.v1", "audit.v1", "ai-context-indexer.v1"],
+  "testDataDisposition": "KEEP_FOR_FORENSICS"
+}

@@ -1,0 +1,13 @@
+{
+  "STEP15_RUN_ID": "stage15-idempotency-1785909230942",
+  "EVENT_ID": "f4bb24fb-1c7b-43d5-a4fd-58b5265b4348",
+  "effects": [
+    { "effect": "audit", "before": 0, "afterFirstDelivery": 1, "afterReplay": 1, "expectedFinal": 1, "result": "PASS" },
+    { "effect": "notification", "before": 0, "afterFirstDelivery": 0, "afterReplay": 0, "expectedFinal": 0, "result": "PASS" },
+    { "effect": "payment", "before": 0, "afterFirstDelivery": 0, "afterReplay": 0, "expectedFinal": 0, "result": "VERIFIED_NO_EFFECT" },
+    { "effect": "ledger", "before": 0, "afterFirstDelivery": 0, "afterReplay": 0, "expectedFinal": 0, "result": "VERIFIED_NO_EFFECT" },
+    { "effect": "wallet", "before": 0, "afterFirstDelivery": 0, "afterReplay": 0, "expectedFinal": 0, "result": "VERIFIED_NO_EFFECT" },
+    { "effect": "refund", "before": 0, "afterFirstDelivery": 0, "afterReplay": 0, "expectedFinal": 0, "result": "VERIFIED_NO_EFFECT" },
+    { "effect": "automation", "before": 0, "afterFirstDelivery": 0, "afterReplay": 0, "expectedFinal": 0, "result": "NOT_APPLICABLE" }
+  ]
+}
