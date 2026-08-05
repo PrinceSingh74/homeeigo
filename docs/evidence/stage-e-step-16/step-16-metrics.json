@@ -1,0 +1,11 @@
+{
+  "OUTBOX_PENDING_T0": 0,
+  "OUTBOX_PENDING_PEAK": 1,
+  "OUTBOX_PENDING_FINAL": 0,
+  "DLQ_UNRESOLVED_T0": 0,
+  "DLQ_UNRESOLVED_PEAK": 1,
+  "DLQ_UNRESOLVED_FINAL": 0,
+  "STEP16_UNRESOLVED_DLQ_FINAL": 0,
+  "expectedCurve": "failure → consumer_retry ↑ → DLQ +1 → replay → DLQ resolved → baseline restored",
+  "metricLeak": false
+}

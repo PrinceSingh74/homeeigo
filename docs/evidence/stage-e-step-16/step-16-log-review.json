@@ -1,0 +1,13 @@
+{
+  "execution": "homigo-step16-retry-dlq-replay-cert-jwmng",
+  "P2021": 0,
+  "P2022": 0,
+  "EXPECTED_FAILURE_LOGS": [
+    "event_consumer_failed (STEP16_CONTROLLED_FAIL attempt=1..3)"
+  ],
+  "UNEXPECTED_CRITICAL_ERRORS": [],
+  "classification": {
+    "STEP16_CONTROLLED_FAIL": "EXPECTED_CONTROLLED_FAILURE",
+    "module_not_found_first_run": "INFRA_FIXED — secret mount path corrected for second run"
+  }
+}

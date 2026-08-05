@@ -1,0 +1,21 @@
+{
+  "AUDIT_GATE": "PASS_WITH_GAP",
+  "gaps": [
+    "Operator identity (WHO) not persisted on replayDeadLetterById — no operatorId/auditId field on DLQ resolution"
+  ],
+  "traceableEvents": [
+    { "what": "event created", "when": "2026-08-05T06:11:44.517Z", "eventId": "11087a8e-2a00-4e06-8e08-274e94203539" },
+    { "what": "consumer attempt 1 fail", "when": "2026-08-05T06:11:44.551Z", "consumer": "step16.fail.v1" },
+    { "what": "consumer attempt 2 fail", "when": "2026-08-05T06:11:46.713Z", "backoffMs": 2162 },
+    { "what": "consumer attempt 3 fail", "when": "2026-08-05T06:11:50.904Z", "backoffMs": 4191 },
+    { "what": "DLQ created", "when": "2026-08-05T06:11:50.906Z", "dlqId": "cmsfovz7e0001s60aod0dulv9" },
+    { "what": "operator replay", "when": "2026-08-05T06:11:51.054Z", "method": "replayDeadLetterById", "result": "CONSUMER_REPLAY_OK" },
+    { "what": "DLQ resolved", "when": "2026-08-05T06:11:51.054Z", "resolution": "manual_replay" },
+    { "what": "business effect", "when": "2026-08-05T06:11:51.054Z", "action": "step16.cert.success" }
+  ],
+  "logEvents": [
+    "event_consumer_failed",
+    "event_consumer_ok",
+    "event_replay_consumer"
+  ]
+}

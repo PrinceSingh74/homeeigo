@@ -1,0 +1,11 @@
+{
+  "consumer": "step16.fail.v1",
+  "failureDeliveries": 3,
+  "successDeliveries": 1,
+  "receiptsAfterFailure": 0,
+  "receiptsAfterReplay": 1,
+  "skippedReceiptAfterDlq": true,
+  "duplicateReceipts": 0,
+  "falseSuccessReceipts": 0,
+  "finalResult": "PASS"
+}

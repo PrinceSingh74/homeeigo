@@ -1,0 +1,9 @@
+{
+  "effect": "step16.cert.success audit log",
+  "EFFECT_BEFORE": 0,
+  "EFFECT_AFTER_FAILURES": 0,
+  "EFFECT_AFTER_REPLAY": 1,
+  "EFFECT_AFTER_DUPLICATE_REPLAY": 1,
+  "DUPLICATE_EFFECTS": 0,
+  "equation": "0 → 0 (failures) → 1 (replay) → 1 (duplicate replay)"
+}

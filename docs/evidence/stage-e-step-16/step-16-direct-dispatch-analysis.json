@@ -1,0 +1,23 @@
+{
+  "DIRECT_DISPATCH_DLQ_BEHAVIOR": "SUPPORTED_WITH_LIMITATIONS",
+  "NORMAL_OUTBOX_PATH": {
+    "flow": "outbox → claimBatch(FOR UPDATE SKIP LOCKED) → dispatchEvent → processConsumer → inline retry → DLQ → replayDeadLetterById",
+    "certified": true
+  },
+  "DIRECT_DISPATCH_PATH": {
+    "flow": "dispatchEvent → processConsumer → inline retry → DLQ",
+    "outboxRetryOnConsumerFail": false,
+    "dlqOnConsumerFail": true,
+    "replayRequiresOutboxRow": true,
+    "certifiedForDurableDelivery": false
+  },
+  "comparison": {
+    "sameConsumerRetrySemantics": true,
+    "sameDlqCreation": true,
+    "sameAttemptIncrement": true,
+    "outboxLevelRetryOnConsumerFail": false,
+    "directDispatchBypassesOutboxTerminalization": "N/A — outbox already PUBLISHED before consumer runs in normal path"
+  },
+  "DECISION": "PRODUCTION_OUTBOX_RETRY_DLQ=CERTIFIED; DIRECT_DISPATCH_DURABILITY=NOT_CERTIFIED_FOR_DURABLE_DELIVERY",
+  "FIX_BEFORE_USE": true
+}

@@ -1,0 +1,12 @@
+{
+  "STEP16_RUN_ID": "stage16-cert-1785910303812",
+  "EVENT_ID": "11087a8e-2a00-4e06-8e08-274e94203539",
+  "EVENT_TYPE": "homigo.booking.created",
+  "AGGREGATE_ID": "step16_bk_stage16-cert-1785910303812",
+  "TRACE_ID": "step16-trace-11087a8e-2a00-4e06-8e08-274e94203539",
+  "createdAt": "2026-08-05T06:11:44.517Z",
+  "certMarker": "stage16-cert-1785910303812",
+  "deliveryPath": "emitStandalone → outbox PENDING → processOutboxBatch (cert job) → dispatchEvent → step16.fail.v1",
+  "execution": "homigo-step16-retry-dlq-replay-cert-jwmng",
+  "image": "asia-south1-docker.pkg.dev/homigo-497619/homigo/backend:c31f154"
+}

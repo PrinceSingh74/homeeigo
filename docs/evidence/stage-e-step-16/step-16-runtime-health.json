@@ -1,0 +1,26 @@
+{
+  "capturedAt": "2026-08-05T06:14:53.837Z",
+  "health": {
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "message": "HOMIGO Backend is running!",
+      "environment": "staging",
+      "services": {
+        "database": "ok",
+        "redis": "ok"
+      }
+    }
+  },
+  "ready": {
+    "status": 401,
+    "classification": "EXPECTED_AUTH",
+    "note": "OPS token required; not application failure"
+  },
+  "databaseInstance": "homigo-staging-step6a-pitr-20260803",
+  "backupEnabled": true,
+  "pitrEnabled": true,
+  "deletionProtection": true,
+  "minInstances": 2,
+  "migrations": "31/31"
+}

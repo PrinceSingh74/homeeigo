@@ -1,0 +1,43 @@
+{
+  "callSites": [
+    {
+      "file": "apps/backend/src/events/core/outbox-processor.ts",
+      "line": 114,
+      "classification": "PRODUCTION_RUNTIME",
+      "durable": true
+    },
+    {
+      "file": "apps/backend/src/events/core/replay.ts",
+      "line": 51,
+      "classification": "REPLAY",
+      "durable": false
+    },
+    {
+      "file": "apps/backend/scripts/stage-e-step-15-idempotency-cert.ts",
+      "classification": "CERTIFICATION_HARNESS"
+    },
+    {
+      "file": "apps/backend/scripts/stage-d-staging-certification.ts",
+      "classification": "CERTIFICATION_HARNESS"
+    },
+    {
+      "file": "apps/backend/scripts/stage-d-step-10-booking-cert.ts",
+      "classification": "CERTIFICATION_HARNESS"
+    },
+    {
+      "file": "apps/backend/scripts/stage-d-step-11-partner-cert.ts",
+      "classification": "CERTIFICATION_HARNESS"
+    },
+    {
+      "file": "apps/backend/scripts/phase0-full-certification.ts",
+      "classification": "CERTIFICATION_HARNESS"
+    },
+    {
+      "file": "apps/backend/scripts/phase0-backpressure-verify.ts",
+      "classification": "CERTIFICATION_HARNESS"
+    }
+  ],
+  "productionRuntimeCallSites": 1,
+  "DIRECT_DISPATCH_DURABILITY_GAP": false,
+  "note": "Only outbox-processor uses dispatchEvent in production runtime path; certification harnesses use direct dispatch for testing"
+}

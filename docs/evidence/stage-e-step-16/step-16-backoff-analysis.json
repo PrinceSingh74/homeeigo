@@ -1,0 +1,36 @@
+{
+  "formula": "min(300000, 2000 * 2^(attempt-1)) + jitter(0..min(1000, exp*0.1))",
+  "BASE_BACKOFF_MS": 2000,
+  "MAX_BACKOFF_MS": 300000,
+  "CONSUMER_INLINE_MAX_ATTEMPTS": 3,
+  "BACKOFF_GATE": "PASS",
+  "attempts": [
+    {
+      "attempt": 1,
+      "timestamp": "2026-08-05T06:11:44.551Z",
+      "actualBackoffMs": null,
+      "expectedMinMs": 0,
+      "expectedMaxMs": 0,
+      "withinTolerance": true
+    },
+    {
+      "attempt": 2,
+      "timestamp": "2026-08-05T06:11:46.713Z",
+      "previousTimestamp": "2026-08-05T06:11:44.551Z",
+      "actualBackoffMs": 2162,
+      "expectedMinMs": 2000,
+      "expectedMaxMs": 2200,
+      "withinTolerance": true
+    },
+    {
+      "attempt": 3,
+      "timestamp": "2026-08-05T06:11:50.904Z",
+      "previousTimestamp": "2026-08-05T06:11:46.713Z",
+      "actualBackoffMs": 4191,
+      "expectedMinMs": 4000,
+      "expectedMaxMs": 4400,
+      "withinTolerance": true
+    }
+  ],
+  "hotLoopDetected": false
+}

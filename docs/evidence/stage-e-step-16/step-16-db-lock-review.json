@@ -1,0 +1,8 @@
+{
+  "DEADLOCKS": 0,
+  "CRITICAL_LOCK_WAITS": 0,
+  "CONNECTION_EXHAUSTION": false,
+  "claimMechanism": "FOR UPDATE SKIP LOCKED",
+  "multiInstanceNote": "Staging minScale=2; cert job claimed event via SKIP LOCKED before concurrent staging processor conflict",
+  "reviewWindow": "2026-08-05T06:11:44Z to 2026-08-05T06:11:53Z"
+}
