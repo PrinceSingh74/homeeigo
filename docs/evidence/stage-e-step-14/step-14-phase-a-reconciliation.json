@@ -1,0 +1,24 @@
+{
+  "terminalSuccess": 100,
+  "terminalFailed": 0,
+  "lost": 0,
+  "stranded": 0,
+  "dlq": 0,
+  "uncontrolledDuplicateClaims": 0,
+  "duplicateEffectiveProcessing": 0,
+  "finalPending": 0,
+  "finalProcessing": 0,
+  "attempts1": 100,
+  "attempts2": 0,
+  "attemptsGt2": 0,
+  "unexplainedRetries": 0,
+  "pass": true,
+  "latencyMs": {
+    "min": 1397,
+    "avg": 3290,
+    "p50": 2549,
+    "p95": 5064,
+    "p99": 5176,
+    "max": 5259
+  }
+}

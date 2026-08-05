@@ -1,0 +1,11 @@
+{
+  "certJob": "homigo-step14-outbox-drain-cert-j8dft",
+  "reconJob": "homigo-step14-reconcile-zk79j",
+  "STEP14_RUN_ID": "stage14-outbox-drain-1785867261931",
+  "p2021": 0,
+  "p2022": 0,
+  "criticalEventErrors": 0,
+  "crashLoops": 0,
+  "healthChecksTotal": 8,
+  "healthChecksFailed": 0
+}

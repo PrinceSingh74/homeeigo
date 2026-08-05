@@ -1,0 +1,50 @@
+{
+  "STEP14_RUN_ID": "stage14-outbox-drain-1785867261931",
+  "STEP14_PHASE_A_ID": "stage14-outbox-drain-1785867261931-100",
+  "STEP14_PHASE_B_ID": "stage14-outbox-drain-1785867261931-500",
+  "STEP14_T0_UTC": "2026-08-04T18:14:22.449Z",
+  "STEP14_T1_UTC": "2026-08-04T18:15:26.562Z",
+  "jobExecution": "homigo-step14-outbox-drain-cert-j8dft",
+  "reconExecution": "homigo-step14-reconcile-zk79j",
+  "summary": "PASS",
+  "baseline": {
+    "outboxPendingT0": 0,
+    "outboxProcessingT0": 0,
+    "dlqUnresolvedT0": 0,
+    "oldestPendingAgeT0": null,
+    "health": "PASS"
+  },
+  "processingModel": {
+    "model": "LEADER_SINGLE_ACTIVE_WITH_SKIP_LOCKED",
+    "leaderLock": "maintenance:event_outbox",
+    "claimMechanism": "FOR UPDATE SKIP LOCKED",
+    "batchSize": 50,
+    "intervalMs": 5000,
+    "lockTimeoutMs": 120000,
+    "maxAttempts": 5,
+    "retryBackoff": "exponential base 2000ms max 300000ms with jitter (computeRetryDelayMs @ RC c31f154)"
+  },
+  "testEventContract": {
+    "eventType": "booking.created",
+    "expectedConsumersPerEvent": 3,
+    "expectedConsumers": [
+      "metrics",
+      "audit",
+      "ai-context-indexer"
+    ],
+    "expectedSideEffects": "idempotent consumer receipts only — no notifications, no PII, no live payments"
+  },
+  "environment": {
+    "project": "homigo-497619",
+    "region": "asia-south1",
+    "service": "homigo-backend-staging",
+    "databaseInstance": "homigo-staging-step6a-pitr-20260803",
+    "database": "homigo_staging_db",
+    "appEnv": "staging",
+    "minInstances": 2,
+    "maxInstances": 4,
+    "certifiedRcSha": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+    "imageDigest": "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+    "cloudRunRevision": "homigo-backend-staging-00029-pbn"
+  }
+}

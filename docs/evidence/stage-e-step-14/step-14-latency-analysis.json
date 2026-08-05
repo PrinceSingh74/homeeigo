@@ -1,0 +1,21 @@
+{
+  "phaseA": {
+    "min": 1397,
+    "avg": 3290,
+    "p50": 2549,
+    "p95": 5064,
+    "p99": 5176,
+    "max": 5259
+  },
+  "phaseB": {
+    "min": 2452,
+    "avg": 13114,
+    "p50": 12769,
+    "p95": 23084,
+    "p99": 23467,
+    "max": 23619
+  },
+  "p95DegradationRatio": 4.558451816745656,
+  "definition": "published_at - created_at (milliseconds)",
+  "assessment": "Phase B latency higher under 500-event burst as expected; bounded and converged with zero stranded events"
+}

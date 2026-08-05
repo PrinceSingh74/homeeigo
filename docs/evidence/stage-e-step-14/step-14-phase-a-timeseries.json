@@ -1,0 +1,79 @@
+{
+  "generated": 100,
+  "persisted": 100,
+  "injectionDurationMs": 536,
+  "injectionStart": "2026-08-04T18:14:22.527Z",
+  "injectionEnd": "2026-08-04T18:14:23.063Z",
+  "drainStart": "2026-08-04T18:14:23.072Z",
+  "drainEnd": "2026-08-04T18:14:29.221Z",
+  "drainDurationMs": 6149,
+  "drainRateEventsPerSec": 16.26,
+  "pendingPeak": 100,
+  "processingPeak": 26,
+  "timeToPeakMs": 0,
+  "timeTo50PercentMs": 1527,
+  "timeTo10PercentMs": 4584,
+  "timeToZeroMs": 6105,
+  "backlogConvergence": "PASS",
+  "oldestPendingAgePeakSeconds": 3.37,
+  "timeseriesSamples": [
+    {
+      "pending": 100,
+      "processing": 26,
+      "publishedForRun": 0,
+      "oldestPendingAgeSeconds": 0.58
+    },
+    {
+      "pending": 50,
+      "processing": 26,
+      "publishedForRun": 24,
+      "oldestPendingAgeSeconds": 1.83
+    },
+    {
+      "pending": 50,
+      "processing": 0,
+      "publishedForRun": 50,
+      "oldestPendingAgeSeconds": 3.37
+    },
+    {
+      "pending": 0,
+      "processing": 0,
+      "publishedForRun": 80,
+      "oldestPendingAgeSeconds": null
+    },
+    {
+      "pending": 0,
+      "processing": 0,
+      "publishedForRun": 100,
+      "oldestPendingAgeSeconds": null
+    }
+  ],
+  "reconciliation": {
+    "terminalSuccess": 100,
+    "terminalFailed": 0,
+    "lost": 0,
+    "stranded": 0,
+    "dlq": 0,
+    "uncontrolledDuplicateClaims": 0,
+    "duplicateEffectiveProcessing": 0,
+    "finalPending": 0,
+    "finalProcessing": 0,
+    "attempts1": 100,
+    "attempts2": 0,
+    "attemptsGt2": 0,
+    "unexplainedRetries": 0
+  },
+  "latencyMs": {
+    "min": 1397,
+    "avg": 3290,
+    "p50": 2549,
+    "p95": 5064,
+    "p99": 5176,
+    "max": 5259
+  },
+  "consumerReceipts": {
+    "expected": 300,
+    "actual": 300,
+    "missing": 0
+  }
+}

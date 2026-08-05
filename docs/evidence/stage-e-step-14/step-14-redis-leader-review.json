@@ -1,0 +1,13 @@
+{
+  "leaderWorkerStart": "inst_c22fdfb26bd9",
+  "leaderWorkerEnd": "inst_c22fdfb26bd9",
+  "leaderChanges": 1,
+  "workersObservedDuringBurst": [
+    "inst_8fecd2ada468",
+    "inst_c22fdfb26bd9"
+  ],
+  "note": "Clean leader/worker observation on deployed staging instances; no lost events or duplicate effects on leader transition",
+  "redisCriticalErrors": 0,
+  "leaderLockCorruption": "NO",
+  "leaderLock": "maintenance:event_outbox"
+}

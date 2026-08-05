@@ -1,0 +1,42 @@
+{
+  "generated": 500,
+  "persisted": 500,
+  "injectionDurationMs": 2357,
+  "injectionStart": "2026-08-04T18:14:44.242Z",
+  "injectionEnd": "2026-08-04T18:14:46.599Z",
+  "drainDurationMs": 24844,
+  "drainRateEventsPerSec": 20.13,
+  "pendingPeak": 500,
+  "processingPeak": 50,
+  "note": "processingPeak=50 matches configured EVENTS_OUTBOX_BATCH_SIZE on staging",
+  "oldestPendingAgePeakSeconds": 21.95,
+  "backlogConvergence": "PASS",
+  "reconciliation": {
+    "terminalSuccess": 500,
+    "terminalFailed": 0,
+    "lost": 0,
+    "stranded": 0,
+    "dlq": 0,
+    "uncontrolledDuplicateClaims": 0,
+    "duplicateEffectiveProcessing": 0,
+    "finalPending": 0,
+    "finalProcessing": 0,
+    "attempts1": 500,
+    "attempts2": 0,
+    "attemptsGt2": 0,
+    "unexplainedRetries": 0
+  },
+  "latencyMs": {
+    "min": 2452,
+    "avg": 13114,
+    "p50": 12769,
+    "p95": 23084,
+    "p99": 23467,
+    "max": 23619
+  },
+  "consumerReceipts": {
+    "expected": 1500,
+    "actual": 1500,
+    "missing": 0
+  }
+}

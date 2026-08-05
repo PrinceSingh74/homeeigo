@@ -1,0 +1,8 @@
+{
+  "deadlocks": 0,
+  "criticalLockWaits": 0,
+  "connectionExhaustion": "NO",
+  "migrationsBefore": "31/31",
+  "migrationsAfter": "31/31",
+  "schemaModified": false
+}

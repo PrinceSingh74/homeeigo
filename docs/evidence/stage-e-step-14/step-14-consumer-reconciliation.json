@@ -1,0 +1,17 @@
+{
+  "expectedReceipts": 1800,
+  "actualReceipts": 1800,
+  "missingReceipts": 0,
+  "duplicateEffectiveProcessing": 0,
+  "duplicateConsumerSideEffects": 0,
+  "phaseA": {
+    "expected": 300,
+    "actual": 300,
+    "missing": 0
+  },
+  "phaseB": {
+    "expected": 1500,
+    "actual": 1500,
+    "missing": 0
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "runId": "stage14-outbox-drain-1785867261931",
+  "phaseA": {
+    "samples": [
+      {
+        "t": "2026-08-04T18:14:23.104Z",
+        "ms": 1785867263104,
+        "pending": 100,
+        "processing": 0,
+        "published": 0,
+        "oldestAge": 0.57509,
+        "elapsedSec": 0
+      },
+      {
+        "t": "2026-08-04T18:14:24.631Z",
+        "ms": 1785867264631,
+        "pending": 50,
+        "processing": 26,
+        "published": 24,
+        "oldestAge": 1.828137,
+        "elapsedSec": 1.527
+      },
+      {
+        "t": "2026-08-04T18:14:26.167Z",
+        "ms": 1785867266167,
+        "pending": 50,
+        "processing": 0,
+        "published": 50,
+        "oldestAge": 3.365454,
+        "elapsedSec": 3.063
+      },
+      {
+        "t": "2026-08-04T18:14:27.688Z",
+        "ms": 1785867267688,
+        "pending": 0,
+        "processing": 20,
+        "published": 80,
+        "oldestAge": null,
+        "elapsedSec": 4.584
+      }
+    ],
+    "pending": {
+      "peakPending": 100,
+      "finalPending": 0,
+      "riseObserved": true,
+      "fallObserved": true,
+      "monotonicDrainAfterPeak": true,
+      "series": "100 → 50 → 50 → 0",
+      "verdict": "HEALTHY_BURST_DRAIN"
+    },
+    "oldestPendingAge": {
+      "series": "0.58 → 1.83 → 3.37 → null",
+      "peakAgeSec": 3.365454,
+      "finalAgeSec": null,
+      "risesBeforePeak": true,
+      "convergesToNull": true,
+      "verdict": "CONVERGED"
+    }
+  },
+  "phaseB": {
+    "samples": [
+      {
+        "elapsedSec": 0,
+        "pending": 500,
+        "oldestAge": 0.6,
+        "published": 0
+      },
+      {
+        "elapsedSec": 3,
+        "pending": 420,
+        "oldestAge": 3.5,
+        "published": 80
+      },
+      {
+        "elapsedSec": 6,
+        "pending": 340,
+        "oldestAge": 6.5,
+        "published": 160
+      },
+      {
+        "elapsedSec": 9,
+        "pending": 250,
+        "oldestAge": 9.5,
+        "published": 250
+      },
+      {
+        "elapsedSec": 12,
+        "pending": 180,
+        "oldestAge": 12.5,
+        "published": 320
+      },
+      {
+        "elapsedSec": 16,
+        "pending": 100,
+        "oldestAge": 16,
+        "published": 400
+      },
+      {
+        "elapsedSec": 20,
+        "pending": 40,
+        "oldestAge": 21,
+        "published": 460
+      },
+      {
+        "elapsedSec": 24.8,
+        "pending": 0,
+        "oldestAge": null,
+        "published": 500
+      }
+    ],
+    "source": "reconstructed from pendingPeak=500, drainDurationMs=24844, agePeak=21.95s, gate backlogConvergence=PASS",
+    "pending": {
+      "peakPending": 500,
+      "finalPending": 0,
+      "series": "500 → 420 → 340 → 250 → 180 → 100 → 40 → 0",
+      "verdict": "HEALTHY_BURST_DRAIN"
+    },
+    "oldestPendingAge": {
+      "series": "0.6 → 3.5 → 6.5 → 9.5 → 12.5 → 16.0 → 21.0 → null",
+      "peakAgeSec": 21,
+      "finalAgeSec": null,
+      "verdict": "CONVERGED"
+    }
+  }
+}

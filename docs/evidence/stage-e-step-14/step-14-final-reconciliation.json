@@ -1,0 +1,20 @@
+{
+  "totalGenerated": 600,
+  "totalTerminalSuccess": 600,
+  "totalFailed": 0,
+  "totalStranded": 0,
+  "totalReceipts": 1800,
+  "expectedReceipts": 1800,
+  "STEP14_RUN_ID": "stage14-outbox-drain-1785867261931",
+  "summary": "PASS",
+  "totalLost": 0,
+  "uncontrolledDuplicateClaims": 0,
+  "duplicateEffectiveProcessing": 0,
+  "finalBaseline": {
+    "pending": 0,
+    "processing": 0,
+    "dlqUnresolved": 0
+  },
+  "migrations": 31,
+  "reconExecutionUtc": "2026-08-05T05:11:35.500Z"
+}
