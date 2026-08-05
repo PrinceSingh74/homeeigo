@@ -1,0 +1,20 @@
+{
+  "certificationRunId": "stage18-final-20260805172345",
+  "certifiedAt": "2026-08-05T12:20:00Z",
+  "cleanupJob": "homigo-step18-final-cert (STEP18_CLEANUP=1)",
+  "injectorRemoved": true,
+  "prometheusInjectorScrapeRemoved": true,
+  "postCleanupMetrics": {
+    "homigo_outbox_pending": 0,
+    "homigo_dlq_unresolved": 0
+  },
+  "postCleanupAlertStates": {
+    "EventOutboxBacklogHigh": "inactive",
+    "EventOutboxOldestPendingStale": "inactive",
+    "EventConsumerFailureRateHigh": "inactive",
+    "EventDlqGrowing": "inactive",
+    "ScheduledJobLagHigh": "firing (legitimate lag — not synthetic)"
+  },
+  "syntheticRowsRemoved": true,
+  "baselineReconciliation": "PASS"
+}

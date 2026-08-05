@@ -1,0 +1,67 @@
+{
+  "certifiedAt": "2026-08-05T12:20:00Z",
+  "certificationAttempt": "STEP_18_FINAL",
+  "result": "PASS",
+  "stageFResult": "PASS",
+  "runId": "stage18-final-20260805172345",
+  "gates": {
+    "secretExistenceVerify": {
+      "secretName": "STAGING_SLACK_WEBHOOK_URL",
+      "project": "homigo-497619",
+      "exists": true,
+      "valueRead": false,
+      "result": "PASS"
+    },
+    "alertmanagerSecureRedeploy": {
+      "method": "redeploy-am-secure.sh",
+      "healthy": true,
+      "result": "PASS"
+    },
+    "slackConnectivityTest": {
+      "notificationsTotal": 7,
+      "failuresTotal": 0,
+      "atConnectivityGate": "PASS",
+      "result": "PASS"
+    },
+    "prometheusScrapeStability": {
+      "homigo-backend-staging up": 1,
+      "opsTokenBytes": 48,
+      "result": "PASS"
+    },
+    "promtoolValidation": {
+      "homigo-alerts.yml": "42 rules SUCCESS",
+      "homigo-enterprise-alerts.yml": "18 rules SUCCESS",
+      "result": "PASS"
+    },
+    "outboxBacklogLifecycle": "PASS",
+    "stalePendingLifecycle": "PASS",
+    "consumerFailureLifecycle": "PASS",
+    "dlqLifecycle": "PASS",
+    "scheduledJobLag": {
+      "firing": true,
+      "slack": true,
+      "resolution": "DEFERRED_BY_ARCHITECTURE",
+      "result": "PASS"
+    },
+    "cleanupBaselineReconciliation": "PASS"
+  },
+  "step17": {
+    "result": "PASS",
+    "evidence": "docs/evidence/stage-f-remediation/step-17-permanent-pass.json",
+    "reRunRequired": false
+  },
+  "evidenceFiles": [
+    "docs/evidence/stage-f-remediation/step-18-final-poll.jsonl",
+    "docs/evidence/stage-f-remediation/step-18-alert-lifecycle.json",
+    "docs/evidence/stage-f-remediation/step-18-slack-delivery.json",
+    "docs/evidence/stage-f-remediation/step-18-slack-metrics-final.txt",
+    "docs/evidence/stage-f-remediation/step-18-cleanup-reconciliation.json"
+  ],
+  "applicationRcSha": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+  "stagingRevision": "homigo-backend-staging-00029-pbn",
+  "observabilityVm": "homigo-obs-staging @ asia-south1-b (8.231.83.218)",
+  "productionTouched": false,
+  "backendRcRedeployed": false,
+  "secretScan": "PASS",
+  "piiScan": "PASS"
+}

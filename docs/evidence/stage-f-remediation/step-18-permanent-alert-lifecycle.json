@@ -1,0 +1,51 @@
+{
+  "platform": "permanent Prometheus on homigo-obs-staging",
+  "injectionJob": "homigo-step18-perm-recert-l2d8v",
+  "injectionRunId": "stage18-perm-*",
+  "cleanupJob": "homigo-step18-cleanup-gfxdj",
+  "ruleValidation": "promtool check rules — 42 rules (from first-pass evidence, unchanged)",
+  "stageFAlerts": {
+    "EventOutboxBacklogHigh": {
+      "inactive": true,
+      "pending": true,
+      "firing": "not awaited (for: 10m; observed pending at value 551)",
+      "resolved": true,
+      "delivery": "NOT_CONFIGURED"
+    },
+    "EventOutboxOldestPendingStale": {
+      "inactive": true,
+      "pending": true,
+      "firing": "not awaited (for: 5m; observed pending at oldest_age ~1347s)",
+      "resolved": true,
+      "delivery": "NOT_CONFIGURED"
+    },
+    "EventConsumerFailureRateHigh": {
+      "inactive": true,
+      "pending": false,
+      "firing": false,
+      "resolved": "N/A",
+      "delivery": "NOT_CONFIGURED",
+      "blocker": "Cannot safely sustain >1 fail/s for 10m on staging without app-level cert overlay"
+    },
+    "EventDlqGrowing": {
+      "inactive": true,
+      "pending": true,
+      "firing": "not awaited (for: 15m; observed pending at value 26)",
+      "resolved": true,
+      "delivery": "NOT_CONFIGURED"
+    },
+    "ScheduledJobLagHigh": {
+      "inactive": false,
+      "pending": true,
+      "firing": true,
+      "resolved": false,
+      "delivery": "NOT_CONFIGURED",
+      "rootCause": "Phase 6 automation execution engine not implemented; 4 overdue automation.review_request jobs"
+    }
+  },
+  "postCleanupMetrics": {
+    "homigo_outbox_pending": 0,
+    "homigo_dlq_unresolved": 0
+  },
+  "firstPassTempStackFullCycles": "docs/evidence/stage-f-step-18/ (OutboxBacklog + StalePending full lifecycle on temp Docker stack)"
+}

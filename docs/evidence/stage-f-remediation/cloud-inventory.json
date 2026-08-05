@@ -1,0 +1,38 @@
+{
+  "certifiedAt": "2026-08-05",
+  "project": "homigo-497619",
+  "region": "asia-south1",
+  "productionTouched": false,
+  "applicationRcSha": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+  "imageDigest": "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+  "stagingRevision": "homigo-backend-staging-00029-pbn",
+  "stagingBackendUrl": "https://homigo-backend-staging-144968192234.asia-south1.run.app",
+  "observabilityVm": {
+    "name": "homigo-obs-staging",
+    "zone": "asia-south1-b",
+    "machineType": "e2-small",
+    "externalIp": "8.231.83.218",
+    "tags": ["homigo-obs-staging"],
+    "status": "RUNNING",
+    "stack": {
+      "prometheus": "http://localhost:9090 (IAP-restricted ingress intended)",
+      "grafana": "http://localhost:3000 (v11.3.0, auth required)",
+      "alertmanager": "http://localhost:9093"
+    }
+  },
+  "secretsVerified": [
+    "STAGING_OPS_AUTH_TOKEN",
+    "STAGING_GRAFANA_ADMIN_PASSWORD",
+    "STAGING_DATABASE_URL",
+    "STAGING_REDIS_URL"
+  ],
+  "secretsMissing": [
+    "STAGING_SLACK_WEBHOOK_URL"
+  ],
+  "cloudRunJobsUsedForCert": [
+    "homigo-step18-alert-cert",
+    "homigo-step18-perm-recert",
+    "homigo-step18-cleanup",
+    "homigo-step17-recert"
+  ]
+}

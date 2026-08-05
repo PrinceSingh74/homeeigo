@@ -1,0 +1,42 @@
+{
+  "result": "PASS",
+  "certifiedAt": "2026-08-05T08:44:00Z",
+  "platform": "permanent homigo-obs-staging GCE VM",
+  "execution": "homigo-step17-booking-cert-bp4w5",
+  "runId": "stage17-20260805141324",
+  "bookingId": "cmsfubj950001s60cu59lnlhn",
+  "jobSummary": "PASS",
+  "chain": [
+    "Fresh booking Cloud Run Job (unique phones)",
+    "Real lifecycle: create -> assign -> accept -> start -> complete",
+    "Outbox publish + consumer processing in job",
+    "Staging Cloud Run /metrics scraped by permanent Prometheus",
+    "Grafana datasource prometheus-staging OK",
+    "Dashboard homigo-operations in HOMIGO Engineering / Staging"
+  ],
+  "prometheus": {
+    "baseline": {
+      "homigo_outbox_publish_total_success_sum": 329,
+      "homigo_domain_event_total_booking_created_sum": 323
+    },
+    "afterJob": {
+      "homigo_outbox_publish_total_success_sum": 301,
+      "note": "Absolute counter decreased due to Cloud Run instance recycle between scrapes; not a cert failure"
+    },
+    "movementProof": {
+      "rate_homigo_domain_event_total_5m": 6.831372549019607,
+      "increase_booking_created_15m": "spike consistent with counter reset + new events",
+      "scrapeUp": 1
+    }
+  },
+  "grafana": {
+    "version": "11.3.0",
+    "datasourceUid": "prometheus-staging",
+    "datasourceHealth": "OK",
+    "dashboardUid": "homigo-operations",
+    "folder": "HOMIGO Engineering / Staging"
+  },
+  "jobStatus": "Completed successfully in 11.69s",
+  "applicationRcSha": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+  "stagingRevision": "homigo-backend-staging-00029-pbn"
+}

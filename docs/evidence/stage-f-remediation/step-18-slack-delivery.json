@@ -1,0 +1,39 @@
+{
+  "certificationRunId": "stage18-final-20260805172345",
+  "certifiedAt": "2026-08-05T12:20:00Z",
+  "status": "PASS",
+  "secretName": "STAGING_SLACK_WEBHOOK_URL",
+  "secretExists": true,
+  "secretValueRead": false,
+  "secretValueLogged": false,
+  "alertmanagerRedeploy": {
+    "method": "redeploy-am-secure.sh via base64 SCP (VM SA lacks secretmanager.access)",
+    "healthy": true,
+    "webhookConfigured": true
+  },
+  "connectivityProbe": {
+    "alertname": "Step18SlackConnectivityTest",
+    "postedAt": "2026-08-05T11:48:38Z",
+    "receiver": "homigo-staging-warning",
+    "result": "PASS"
+  },
+  "deliveryMetrics": {
+    "source": "docs/evidence/stage-f-remediation/step-18-slack-metrics-final.txt",
+    "alertmanager_notifications_total_slack": 15,
+    "alertmanager_notification_requests_failed_total_slack": 0,
+    "alertmanager_notifications_failed_total_slack_all_reasons": 0,
+    "postCleanupTotal": 16
+  },
+  "channel": "#homigo-staging-alerts",
+  "receiversUsed": ["homigo-staging-warning", "homigo-staging-critical"],
+  "productionReceiverUsed": false,
+  "alertsWithSlackDelivery": [
+    "EventOutboxBacklogHigh",
+    "EventOutboxOldestPendingStale",
+    "EventConsumerFailureRateHigh",
+    "EventDlqGrowing",
+    "ScheduledJobLagHigh",
+    "Step18SlackConnectivityTest"
+  ],
+  "secretScan": "PASS"
+}

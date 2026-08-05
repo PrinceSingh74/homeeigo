@@ -1,0 +1,377 @@
+groups:
+  - name: homigo_platform
+    rules:
+      - alert: HighErrorRate
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: HTTP 5xx error rate above 5%
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Redis is unreachable
+
+      - alert: HighMemory
+        expr: process_resident_memory_bytes > 1073741824
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Process RSS exceeds 1GB
+
+      - alert: PaymentFailureSpike
+        expr: increase(payment_failed_total[15m]) > 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Payment failure spike detected
+
+      - alert: RefundFailureSpike
+        expr: increase(refund_failure_total[1h]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Refund failure spike detected
+
+      - alert: SettlementMismatch
+        expr: increase(settlement_mismatch_total[24h]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Settlement mismatch detected
+
+      - alert: ProviderPayoutMismatch
+        expr: increase(provider_payout_mismatch_total[1h]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Provider payout mismatch detected
+
+      - alert: FinancialIntegrityBelow100
+        expr: financial_integrity_score < 100
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Financial integrity score below 100
+
+      - alert: ReconciliationMatchRateLow
+        expr: payment_reconciliation_match_pct < 98
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: Payment reconciliation match rate below 98%
+
+      - alert: SettlementDelay48h
+        expr: settlement_delay_hours > 48
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Settlement delay exceeds 48 hours
+
+      - alert: ProviderPayableDrift
+        expr: abs(provider_payable_drift_inr) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Provider payable ledger drift detected
+
+      - alert: WalletLiabilityDrift
+        expr: abs(wallet_liability_drift_inr) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Customer wallet liability drift detected
+
+      - alert: DuplicatePaymentDetected
+        expr: increase(duplicate_payment_total[1h]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Duplicate payment detected
+
+      - alert: ChargebackSpike
+        expr: increase(chargeback_total[24h]) > 10
+        for: 5m
+        labels:
+          severity: escalation
+        annotations:
+          summary: Chargeback spike detected
+
+      - alert: WebSocketConnectionsHigh
+        expr: ws_connections_total > 5000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: WebSocket connections exceed threshold
+
+      - alert: AssignmentQueueBacklog
+        expr: assignment_queue_backlog > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Assignment queue backlog high
+
+      # --- P2 additions: close the gaps surfaced by alert-reliability validator ---
+
+      # Database outage: the readiness probe returns 503 (scrape fails) when the DB
+      # is unreachable, so Prometheus marks the homigo-ready target down.
+      - alert: DatabaseDown
+        expr: up{job="homigo-ready"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Database unreachable (readiness probe failing)
+
+      - alert: BackendDown
+        expr: up{job="homigo-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Backend instance is down (metrics scrape failing)
+
+      # High latency: p95 request latency over the histogram.
+      - alert: HighRequestLatency
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 1.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: p95 HTTP latency above 1.5s
+
+      # Webhook failure: surfaced via the ops-alert counter (Razorpay webhook etc.).
+      - alert: WebhookFailureSpike
+        expr: increase(ops_alerts_total{alertType="webhook_failure"}[15m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Webhook processing failures detected
+
+      # Finance integrity invariants breaking is always critical.
+      - alert: FinanceIntegrityFailure
+        expr: increase(finance_integrity_failures_total[1h]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Financial integrity invariant violation detected
+
+      - alert: ReconciliationMismatch
+        expr: increase(reconciliation_mismatch_total[24h]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Ledger reconciliation mismatch detected
+
+      # Wallet liability drift: ops wallet sum vs ledger CUSTOMER_WALLET balance.
+      - alert: WalletLiabilityMismatch
+        expr: abs(ledger_reconciliation_max_delta) > 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Customer wallet liability vs ledger drift detected
+
+      # Provider payable drift: ops provider wallet sum vs ledger PROVIDER_PAYABLE.
+      - alert: ProviderPayableMismatch
+        expr: increase(provider_payable_mismatch_total[1h]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Provider payable liability vs ledger drift detected
+
+      # Booking spike: sudden surge in booking creation (abuse / runaway client).
+      - alert: BookingSpike
+        expr: increase(booking_created_total[5m]) > 500
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Abnormal booking creation spike detected
+
+      # DB connection pool saturation: active connections near max pool size.
+      - alert: DatabasePoolSaturation
+        expr: db_pool_active_connections / db_pool_max_connections > 0.9
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Database connection pool above 90% saturation
+
+      # Disk / CPU pressure require node_exporter (see prometheus.yml node job).
+      - alert: DiskPressure
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Root filesystem below 15% free
+
+      - alert: CpuPressure
+        expr: (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: CPU utilisation above 85%
+
+      - alert: MemoryPressureNode
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Node memory utilisation above 90%
+
+      # --- Mobile startup observability (homigo-mobile → /api/ux-signals) ---
+
+      - alert: MobileStartupDurationP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(homigo_mobile_startup_duration_seconds_bucket{phase="startup"}[5m])) by (le, platform)
+          ) > 3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Mobile cold-start p95 exceeds 3s
+
+      - alert: MobileStartupFailureRateHigh
+        expr: |
+          (
+            sum(rate(homigo_mobile_startup_failure_total[15m]))
+            /
+            clamp_min(sum(rate(homigo_mobile_startup_observed_total{phase="startup_duration"}[15m])), 1)
+          ) > 0.01
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: Mobile startup failure rate exceeds 1%
+
+      - alert: MobileAuthBootstrapFailureHigh
+        expr: |
+          (
+            sum(rate(homigo_mobile_auth_bootstrap_failure_total[15m]))
+            /
+            clamp_min(sum(rate(homigo_mobile_startup_observed_total{phase="auth_duration"}[15m])), 1)
+          ) > 0.01
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: Mobile auth bootstrap failure rate exceeds 1%
+
+      - alert: MobileHydrationTimeoutHigh
+        expr: |
+          (
+            sum(rate(homigo_mobile_hydration_timeout_total[15m]))
+            /
+            clamp_min(sum(rate(homigo_mobile_startup_observed_total{phase="hydration_duration"}[15m])), 1)
+          ) > 0.01
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Mobile hydration timeout rate exceeds 1%
+
+  - name: homigo_backup
+    rules:
+      - alert: BackupStale
+        expr: time() - backup_last_success_timestamp > 86400
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: No successful database backup in the last 24 hours
+
+      - alert: BackupMissing
+        expr: backup_total == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: No local database backups present
+
+      - alert: BackupRetentionDeletionsSpike
+        expr: increase(backup_retention_deleted_total[1h]) > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Unusually high backup retention deletions in the last hour
+
+  - name: homigo_admin_alerts
+    rules:
+      - alert: AdminAlertsNoSubscribers
+        expr: increase(admin_alerts_skipped_total{reason="no_subscribers"}[15m]) > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Admin alerts being skipped — no WebSocket subscribers on admin:ops room
+
+  - name: homigo_events
+    rules:
+      - alert: EventOutboxBacklogHigh
+        expr: homigo_outbox_pending > 500
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Domain event outbox backlog exceeds 500 rows
+
+      - alert: EventOutboxOldestPendingStale
+        expr: homigo_outbox_oldest_pending_age_seconds > 900
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Oldest pending outbox event is older than 15 minutes
+
+      - alert: EventConsumerFailureRateHigh
+        expr: sum(rate(homigo_consumer_failed_total[10m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Domain event consumer failure rate elevated
+
+      - alert: EventDlqGrowing
+        expr: homigo_dlq_unresolved > 25
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: Unresolved domain event DLQ entries exceed 25
+
+      - alert: ScheduledJobLagHigh
+        expr: homigo_scheduled_job_lag_seconds > 3600
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Scheduled automation jobs lagging more than 1 hour

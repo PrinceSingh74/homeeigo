@@ -1,0 +1,113 @@
+# HOMIGO Enterprise SLO-driven alerts. Loaded alongside homigo-alerts.yml.
+# Labels: severity (page/critical/warning), priority (P0..P3), team (L1..L4) — drive Alertmanager routing.
+groups:
+  - name: homigo_payments
+    rules:
+      - alert: PaymentSuccessRateLow
+        expr: 100 * sum(increase(payment_success_total[15m])) / clamp_min(sum(increase(payment_success_total[15m])) + sum(increase(payment_failed_total[15m])), 1) < 95
+        for: 10m
+        labels: { severity: critical, priority: P0, team: L2 }
+        annotations: { summary: "Payment success rate < 95% (15m)", slo: "payment_success>99%" }
+      - alert: FinancialIntegrityBelow100
+        expr: financial_integrity_score < 100
+        for: 5m
+        labels: { severity: critical, priority: P0, team: L3 }
+        annotations: { summary: "Financial integrity score < 100 — ledger/wallet drift", runbook: "scripts/recovery/validate-financial-integrity.ts" }
+      - alert: WalletDriftSuspected
+        expr: financial_integrity_score < 92
+        for: 2m
+        labels: { severity: critical, priority: P0, team: L3 }
+        annotations: { summary: "Integrity < 92 — wallet/provider-payable drift, investigate immediately" }
+
+  - name: homigo_dispatch
+    rules:
+      - alert: DispatchFailureHigh
+        expr: 100 * sum(increase(dispatch_timeout_total[15m])) / clamp_min(sum(increase(dispatch_attempts_total[15m])), 1) > 5
+        for: 10m
+        labels: { severity: critical, priority: P1, team: L2 }
+        annotations: { summary: "Dispatch failure (timeout) > 5%", slo: "dispatch_success>95%" }
+      - alert: ProviderAcceptanceLow
+        expr: provider_acceptance_rate < 60
+        for: 15m
+        labels: { severity: warning, priority: P2, team: L2 }
+        annotations: { summary: "Provider acceptance rate < 60% (24h)" }
+
+  - name: homigo_database
+    rules:
+      - alert: DBConnectionsHigh
+        expr: (db_connections_active + db_connections_idle) > 80
+        for: 5m
+        labels: { severity: critical, priority: P1, team: L2 }
+        annotations: { summary: "DB connections > 80 (pool exhaustion / duplicate backend)" }
+      - alert: DBDuplicateBackendSuspected
+        expr: (db_connections_active + db_connections_idle) > 24
+        for: 3m
+        labels: { severity: warning, priority: P2, team: L2 }
+        annotations: { summary: "DB connections > 24 — possible duplicate backend process", runbook: "scripts/recovery/detect-duplicate-process.ts" }
+
+  - name: homigo_redis
+    rules:
+      - alert: RedisDownP1
+        expr: redis_up == 0
+        for: 2m
+        labels: { severity: critical, priority: P1, team: L2 }
+        annotations: { summary: "Redis down — WS fan-out + distributed locks degraded" }
+      - alert: RedisHitRateLow
+        expr: redis_hit_rate < 0.5
+        for: 10m
+        labels: { severity: warning, priority: P3, team: L2 }
+        annotations: { summary: "Redis hit rate < 50% — cache effectiveness degraded" }
+
+  - name: homigo_api
+    rules:
+      - alert: APIErrorRateHigh
+        expr: 100 * sum(rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1) > 2
+        for: 5m
+        labels: { severity: critical, priority: P1, team: L2 }
+        annotations: { summary: "API 5xx error rate > 2%", slo: "error_rate<2%" }
+      - alert: APIP95LatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 0.3
+        for: 10m
+        labels: { severity: warning, priority: P2, team: L2 }
+        annotations: { summary: "API p95 latency > 300ms", slo: "p95<200ms" }
+      - alert: GoogleMapsFailuresHigh
+        expr: sum(rate(google_api_failures_total[5m])) > 0.5
+        for: 5m
+        labels: { severity: warning, priority: P2, team: L2 }
+        annotations: { summary: "Google Maps API failures elevated" }
+
+  - name: homigo_security
+    rules:
+      - alert: FailedLoginSpike
+        expr: sum(rate(http_requests_total{route="/api/auth/login",status="401"}[5m])) > 1
+        for: 5m
+        labels: { severity: warning, priority: P2, team: L2 }
+        annotations: { summary: "Failed-login spike (>1/s over 5m) — credential stuffing?" }
+      - alert: UnauthorizedAdminAccess
+        expr: sum(rate(http_requests_total{route=~"/api/admin/.*",status=~"401|403"}[5m])) > 0.5
+        for: 5m
+        labels: { severity: critical, priority: P1, team: L3 }
+        annotations: { summary: "Elevated unauthorized admin access attempts (RBAC denials)" }
+      - alert: RateLimitViolationSpike
+        expr: sum(rate(http_requests_total{status="429"}[5m])) > 2
+        for: 5m
+        labels: { severity: warning, priority: P2, team: L2 }
+        annotations: { summary: "Rate-limit (429) spike — possible API abuse" }
+
+  - name: homigo_notifications
+    rules:
+      - alert: EmailCircuitOpen
+        expr: circuit_breaker_state{breaker="email"} == 2
+        for: 2m
+        labels: { severity: critical, priority: P1, team: L2 }
+        annotations: { summary: "Email circuit breaker OPEN — Resend delivery failing", runbook: "GET /api/admin/observability/email-health" }
+      - alert: WebSocketFanoutDegraded
+        expr: sum(ws_connections_total) > 0 and sum(rate(ws_messages_dropped_total[5m])) > 1
+        for: 5m
+        labels: { severity: warning, priority: P2, team: L2 }
+        annotations: { summary: "WebSocket message drops detected — fan-out degraded" }
+      - alert: AssignmentQueueFailureHigh
+        expr: sum(increase(assignment_failed_total[15m])) > 10
+        for: 10m
+        labels: { severity: critical, priority: P1, team: L2 }
+        annotations: { summary: "Assignment queue failures elevated (>10 in 15m)" }

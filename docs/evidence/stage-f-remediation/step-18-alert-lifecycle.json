@@ -1,0 +1,59 @@
+{
+  "certificationRunId": "stage18-final-20260805172345",
+  "certifiedAt": "2026-08-05T12:20:00Z",
+  "pollSource": "docs/evidence/stage-f-remediation/step-18-final-poll.jsonl",
+  "pollSamples": 44,
+  "scrapeStable": true,
+  "prometheusRestartDuringForWindow": false,
+  "lifecycles": {
+    "EventOutboxBacklogHigh": {
+      "forDuration": "10m",
+      "inactiveUntil": "2026-08-05T11:55:42Z",
+      "pendingAt": "2026-08-05T11:55:42Z",
+      "firingAt": "2026-08-05T12:06:03Z",
+      "resolvedAt": "2026-08-05T12:18:00Z",
+      "slackDelivered": true,
+      "result": "PASS"
+    },
+    "EventOutboxOldestPendingStale": {
+      "forDuration": "5m",
+      "inactiveUntil": "2026-08-05T11:55:42Z",
+      "pendingAt": "2026-08-05T11:55:42Z",
+      "firingAt": "2026-08-05T12:01:01Z",
+      "resolvedAt": "2026-08-05T12:18:00Z",
+      "slackDelivered": true,
+      "result": "PASS"
+    },
+    "EventConsumerFailureRateHigh": {
+      "forDuration": "10m",
+      "inactiveUntil": "2026-08-05T11:58:12Z",
+      "pendingAt": "2026-08-05T11:58:12Z",
+      "firingAt": "2026-08-05T12:08:33Z",
+      "resolvedAt": "2026-08-05T12:22:00Z",
+      "injectorService": "homigo-step18-fail-injector (deleted post-cert)",
+      "slackDelivered": true,
+      "result": "PASS"
+    },
+    "EventDlqGrowing": {
+      "forDuration": "15m",
+      "inactiveUntil": "2026-08-05T11:55:42Z",
+      "pendingAt": "2026-08-05T11:55:42Z",
+      "firingAt": "2026-08-05T12:11:04Z",
+      "resolvedAt": "2026-08-05T12:18:00Z",
+      "slackDelivered": true,
+      "result": "PASS"
+    },
+    "ScheduledJobLagHigh": {
+      "forDuration": "10m",
+      "firingAt": "2026-08-05T09:36:27Z",
+      "resolution": "DEFERRED_BY_ARCHITECTURE",
+      "resolutionReason": "Legitimate overdue automation.review_request jobs (~24h lag); Phase 6 scheduler deferred",
+      "slackDelivered": true,
+      "result": "PASS"
+    }
+  },
+  "alertmanagerReceipt": {
+    "maxAmAlertCountDuringRun": 13,
+    "verified": true
+  }
+}

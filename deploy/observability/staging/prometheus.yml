@@ -1,0 +1,29 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: staging
+    platform: homigo
+
+rule_files:
+  - /etc/prometheus/rules/homigo-alerts.yml
+  - /etc/prometheus/rules/homigo-enterprise-alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: homigo-backend-staging
+    metrics_path: /metrics
+    scheme: https
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/ops-token
+    static_configs:
+      - targets:
+          - homigo-backend-staging-144968192234.asia-south1.run.app
+        labels:
+          service: homigo-backend-staging
+          region: asia-south1

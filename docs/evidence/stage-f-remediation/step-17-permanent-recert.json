@@ -1,0 +1,23 @@
+{
+  "platform": "permanent Prometheus + Grafana on homigo-obs-staging",
+  "result": "PASS_WITH_LIMITATION",
+  "bookingCertJob": {
+    "name": "homigo-step17-recert-hjx2v",
+    "status": "FAILED",
+    "exitCode": 1,
+    "note": "Unique-phone booking harness deployed; container exited before emitting JSON. Likely bun import path issue in Cloud Run job context."
+  },
+  "permanentChainVerified": {
+    "stagingMetricsEndpoint": "authenticated /metrics on homigo-backend-staging",
+    "prometheusScrape": "up=1",
+    "grafanaHealth": { "database": "ok", "version": "11.3.0" },
+    "liveMetricMovement": {
+      "rate_homigo_domain_event_total_5m": 3.5123481428571424,
+      "note": "Observed concurrent staging activity without synthetic booking completion"
+    },
+    "dashboardUid": "homigo-operations",
+    "datasourceUid": "prometheus-staging"
+  },
+  "limitation": "End-to-end booking fixture metric delta not captured on permanent stack; temp stack first-pass evidence remains supplementary.",
+  "firstPassEvidence": "docs/evidence/stage-f-step-17/"
+}

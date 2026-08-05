@@ -1,0 +1,30 @@
+{
+  "verifiedAt": "2026-08-05",
+  "secretScan": {
+    "result": "PASS",
+    "notes": [
+      "No plaintext Slack webhook in committed IaC (placeholder DISABLED URL in deploy script only)",
+      "OPS token stored in Secret Manager + VM file mount, not in evidence",
+      "Grafana admin password in STAGING_GRAFANA_ADMIN_PASSWORD secret only"
+    ]
+  },
+  "piiScan": {
+    "result": "PASS",
+    "notes": "Evidence uses synthetic @homigo-staging.test emails and generated phone suffixes only"
+  },
+  "environmentIsolation": {
+    "result": "PASS",
+    "stagingOnlyResources": ["homigo-obs-staging VM", "alertmanager-staging.yml", "prometheus-staging scrape"],
+    "productionReceiversActivated": false,
+    "productionDeployment": false,
+    "productionDbModified": false,
+    "productionRedisModified": false,
+    "productionAlertingModified": false
+  },
+  "grafanaAuth": {
+    "anonymousAdmin": false,
+    "adminPasswordSecret": "STAGING_GRAFANA_ADMIN_PASSWORD"
+  },
+  "databaseMigration": "NOT_PERFORMED",
+  "applicationRcChanged": false
+}

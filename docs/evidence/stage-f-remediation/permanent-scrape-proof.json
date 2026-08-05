@@ -1,0 +1,25 @@
+{
+  "platform": "homigo-obs-staging GCE VM",
+  "scrapeTarget": "homigo-backend-staging-144968192234.asia-south1.run.app:443",
+  "authModel": "OPS Bearer token via file mount (not public /metrics)",
+  "verifiedAt": "2026-08-05T08:22:08Z",
+  "queries": {
+    "up": { "value": "1", "status": "success" },
+    "homigo_outbox_pending": { "postCleanupValue": "0", "status": "success" },
+    "homigo_dlq_unresolved": { "postCleanupValue": "0", "status": "success" },
+    "homigo_scheduled_job_lag_seconds": { "value": "~73000", "note": "pre-existing Phase 6 automation debt" },
+    "rate_homigo_domain_event_total_5m": { "value": "3.51", "note": "live staging event activity" }
+  },
+  "requiredMetricsPresent": [
+    "homigo_domain_event_total",
+    "homigo_outbox_pending",
+    "homigo_outbox_oldest_pending_age_seconds",
+    "homigo_outbox_publish_total",
+    "homigo_outbox_processing_duration_seconds_bucket",
+    "homigo_consumer_processed_total",
+    "homigo_consumer_failed_total",
+    "homigo_dlq_unresolved",
+    "homigo_scheduled_job_lag_seconds",
+    "homigo_scheduled_jobs_pending"
+  ]
+}
