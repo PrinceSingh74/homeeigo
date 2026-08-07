@@ -1,0 +1,8 @@
+{
+  "verifiedAt": "2026-08-07T11:15:00+05:30",
+  "implementation": "data_freshness_snapshots + updateFreshnessSnapshot()",
+  "fields": ["lastSyncAt", "lagSeconds", "freshnessScore", "stalenessScore", "delaySeconds", "slaTargetSeconds", "slaMet", "pipelineHealth"],
+  "datasetsTracked": 17,
+  "liveDataAfterMigration": "awaiting successful ETL runs per domain",
+  "verdict": "PASS"
+}

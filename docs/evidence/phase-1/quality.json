@@ -1,0 +1,36 @@
+{
+  "verifiedAt": "2026-08-07T11:15:00+05:30",
+  "rulesCount": 9,
+  "rules": [
+    "dq.duplicate_booking",
+    "dq.duplicate_payment",
+    "dq.negative_amount",
+    "dq.invalid_gps",
+    "dq.future_timestamp",
+    "dq.null_customer",
+    "dq.invalid_coords",
+    "dq.missing_event",
+    "dq.broken_ledger"
+  ],
+  "present": {
+    "duplicateDetection": true,
+    "missingFields": true,
+    "negativeAmount": true,
+    "gpsValidation": true,
+    "timestampValidation": true,
+    "ledgerValidation": true,
+    "qualityScore": true,
+    "repairSuggestion": true,
+    "history": true,
+    "severity": true
+  },
+  "missing": {
+    "brokenFk": true,
+    "paymentValidationRule": true,
+    "schemaDrift": true,
+    "dataDrift": true,
+    "quarantineAction": true
+  },
+  "liveRun": "NOT_RUN — depends on BQ tables for new domains",
+  "verdict": "PARTIAL"
+}

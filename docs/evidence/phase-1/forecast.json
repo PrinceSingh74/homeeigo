@@ -1,0 +1,21 @@
+{
+  "verifiedAt": "2026-08-07T11:15:00+05:30",
+  "sqlUpgradeInRepo": true,
+  "modelDemandForecastExistsInBQ": false,
+  "modelsExpected": [
+    "model_demand_forecast",
+    "model_demand_forecast_daily",
+    "model_demand_forecast_weekly",
+    "model_city_demand_forecast",
+    "model_partner_earnings_forecast"
+  ],
+  "granularities": {
+    "hourly": { "code": true, "deployed": false },
+    "daily": { "code": true, "deployed": false },
+    "weekly": { "code": true, "deployed": false },
+    "monthly": { "sql": true, "service": false }
+  },
+  "surgeViewDeployed": false,
+  "capacityPlanningDataset": "homigo_analytics_analytics.agg_hourly_demand — NOT DEPLOYED",
+  "verdict": "FAIL"
+}

@@ -1,0 +1,308 @@
+{
+  "timestamp": "2026-08-07T06:07:39.386Z",
+  "passed": 46,
+  "total": 46,
+  "allEtlPass": true,
+  "gates": [
+    {
+      "name": "prisma_no_pending",
+      "passed": true,
+      "detail": "all applied"
+    },
+    {
+      "name": "regression_addons_column",
+      "passed": true,
+      "detail": "present"
+    },
+    {
+      "name": "reset_watermark_upsert",
+      "passed": true,
+      "detail": "upsert OK (no P2025)"
+    },
+    {
+      "name": "scheduler_max_parallel",
+      "passed": true,
+      "detail": "maxParallelJobs=3"
+    },
+    {
+      "name": "etl_handlers",
+      "passed": true,
+      "detail": "17 handlers"
+    },
+    {
+      "name": "bq_dataset_homigo_analytics_raw",
+      "passed": true,
+      "detail": "exists"
+    },
+    {
+      "name": "bq_dataset_homigo_analytics_validated",
+      "passed": true,
+      "detail": "exists"
+    },
+    {
+      "name": "bq_dataset_homigo_analytics",
+      "passed": true,
+      "detail": "exists"
+    },
+    {
+      "name": "bq_dataset_homigo_analytics_feature",
+      "passed": true,
+      "detail": "exists"
+    },
+    {
+      "name": "bq_dataset_homigo_analytics_analytics",
+      "passed": true,
+      "detail": "exists"
+    },
+    {
+      "name": "bq_table_fact_bookings",
+      "passed": true,
+      "detail": "homigo_analytics.fact_bookings"
+    },
+    {
+      "name": "bq_table_dim_partner",
+      "passed": true,
+      "detail": "homigo_analytics.dim_partner"
+    },
+    {
+      "name": "bq_table_dim_customer",
+      "passed": true,
+      "detail": "homigo_analytics.dim_customer"
+    },
+    {
+      "name": "bq_table_fact_payments",
+      "passed": true,
+      "detail": "homigo_analytics.fact_payments"
+    },
+    {
+      "name": "bq_table_fact_notifications",
+      "passed": true,
+      "detail": "homigo_analytics_raw.fact_notifications"
+    },
+    {
+      "name": "bq_table_fact_domain_events",
+      "passed": true,
+      "detail": "homigo_analytics_raw.fact_domain_events"
+    },
+    {
+      "name": "bq_table_agg_hourly_demand",
+      "passed": true,
+      "detail": "homigo_analytics_analytics.agg_hourly_demand"
+    },
+    {
+      "name": "bq_fact_bookings_updated_at",
+      "passed": true,
+      "detail": "present"
+    },
+    {
+      "name": "bq_view_vw_train_demand",
+      "passed": true,
+      "detail": "exists"
+    },
+    {
+      "name": "bq_view_fs_customer_features_v2",
+      "passed": true,
+      "detail": "exists"
+    },
+    {
+      "name": "arima_model_demand_forecast",
+      "passed": true,
+      "detail": "trained"
+    },
+    {
+      "name": "arima_model_demand_forecast_daily",
+      "passed": true,
+      "detail": "trained"
+    },
+    {
+      "name": "arima_model_city_demand_forecast",
+      "passed": true,
+      "detail": "trained"
+    },
+    {
+      "name": "live_etl_etl.booking",
+      "passed": true,
+      "detail": "rows=0"
+    },
+    {
+      "name": "live_etl_etl.partner",
+      "passed": true,
+      "detail": "rows=0"
+    },
+    {
+      "name": "live_etl_etl.payment",
+      "passed": true,
+      "detail": "rows=0"
+    },
+    {
+      "name": "live_etl_etl.wallet",
+      "passed": true,
+      "detail": "rows=0"
+    },
+    {
+      "name": "live_etl_etl.ledger",
+      "passed": true,
+      "detail": "rows=0"
+    },
+    {
+      "name": "live_etl_etl.fraud",
+      "passed": true,
+      "detail": "rows=0"
+    },
+    {
+      "name": "live_etl_etl.location",
+      "passed": true,
+      "detail": "rows=0"
+    },
+    {
+      "name": "live_etl_etl.customer",
+      "passed": true,
+      "detail": "rows=2"
+    },
+    {
+      "name": "live_etl_etl.notification",
+      "passed": true,
+      "detail": "rows=0"
+    },
+    {
+      "name": "live_etl_etl.review",
+      "passed": true,
+      "detail": "rows=0"
+    },
+    {
+      "name": "live_etl_etl.referral",
+      "passed": true,
+      "detail": "rows=0"
+    },
+    {
+      "name": "live_etl_etl.hcoin",
+      "passed": true,
+      "detail": "rows=0"
+    },
+    {
+      "name": "live_etl_etl.automation",
+      "passed": true,
+      "detail": "rows=0"
+    },
+    {
+      "name": "live_etl_etl.events",
+      "passed": true,
+      "detail": "rows=0"
+    },
+    {
+      "name": "live_etl_etl.audit",
+      "passed": true,
+      "detail": "rows=3000"
+    },
+    {
+      "name": "live_etl_etl.dimensions",
+      "passed": true,
+      "detail": "rows=59"
+    },
+    {
+      "name": "live_etl_etl.aggregates",
+      "passed": true,
+      "detail": "rows=120"
+    },
+    {
+      "name": "data_quality",
+      "passed": true,
+      "detail": "score=100, critical=0"
+    },
+    {
+      "name": "freshness",
+      "passed": true,
+      "detail": "17 datasets"
+    },
+    {
+      "name": "forecast_api",
+      "passed": true,
+      "detail": "24 rows"
+    },
+    {
+      "name": "surge_planning",
+      "passed": true,
+      "detail": "OK"
+    },
+    {
+      "name": "capacity_planning",
+      "passed": true,
+      "detail": "OK"
+    },
+    {
+      "name": "mlops_health",
+      "passed": true,
+      "detail": "trained=3, partial=2, blocked=3"
+    }
+  ],
+  "etlResults": {
+    "etl.booking": {
+      "success": true,
+      "rows": 0
+    },
+    "etl.partner": {
+      "success": true,
+      "rows": 0
+    },
+    "etl.payment": {
+      "success": true,
+      "rows": 0
+    },
+    "etl.wallet": {
+      "success": true,
+      "rows": 0
+    },
+    "etl.ledger": {
+      "success": true,
+      "rows": 0
+    },
+    "etl.fraud": {
+      "success": true,
+      "rows": 0
+    },
+    "etl.location": {
+      "success": true,
+      "rows": 0
+    },
+    "etl.customer": {
+      "success": true,
+      "rows": 2
+    },
+    "etl.notification": {
+      "success": true,
+      "rows": 0
+    },
+    "etl.review": {
+      "success": true,
+      "rows": 0
+    },
+    "etl.referral": {
+      "success": true,
+      "rows": 0
+    },
+    "etl.hcoin": {
+      "success": true,
+      "rows": 0
+    },
+    "etl.automation": {
+      "success": true,
+      "rows": 0
+    },
+    "etl.events": {
+      "success": true,
+      "rows": 0
+    },
+    "etl.audit": {
+      "success": true,
+      "rows": 3000
+    },
+    "etl.dimensions": {
+      "success": true,
+      "rows": 59
+    },
+    "etl.aggregates": {
+      "success": true,
+      "rows": 120
+    }
+  }
+}

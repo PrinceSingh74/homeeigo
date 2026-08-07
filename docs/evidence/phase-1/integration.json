@@ -1,0 +1,18 @@
+{
+  "verifiedAt": "2026-08-07T11:15:00+05:30",
+  "phase0Extensions": {
+    "transactionalOutbox": "UNTOUCHED — no duplicate",
+    "eventBus": "UNTOUCHED",
+    "retryEngine": "REUSED — computeRetryDelayMs from events/core/retry.ts",
+    "dlq": "UNTOUCHED",
+    "leaderLock": "REUSED — runWithLeaderLock from distributed-scheduler.ts",
+    "observability": "EXTENDED — homigo_etl_* metrics added",
+    "duplicateScheduler": false,
+    "duplicateOutbox": false
+  },
+  "maintenanceIntegration": {
+    "startOutboxProcessor": true,
+    "startEtlScheduler": true
+  },
+  "verdict": "PASS"
+}

@@ -1,0 +1,14 @@
+{
+  "verifiedAt": "2026-08-07T11:15:00+05:30",
+  "leaderLock": { "key": "maintenance:etl_scheduler", "mechanism": "runWithLeaderLock (Phase 0)", "verdict": "PASS" },
+  "cron": { "implementation": "UTC hour === 2 daily check", "fullCronParser": false, "verdict": "PARTIAL" },
+  "interval15Min": { "configMs": 900000, "verdict": "PASS" },
+  "dailyFull": { "trigger": "cron at 02:00 UTC", "runMode": "FULL", "verdict": "PASS" },
+  "manualRun": { "endpoint": "POST /api/analytics/etl/run", "verdict": "PASS" },
+  "eventTriggered": { "consumer": "ml-feature-sink.v1", "verdict": "PASS" },
+  "executionHistory": { "table": "etl_job_executions", "verdict": "PASS" },
+  "metrics": { "series": ["homigo_etl_scheduler_runs_total", "homigo_etl_scheduler_duration_seconds"], "verdict": "PASS" },
+  "dependencies": { "topologicalSort": true, "verdict": "PASS" },
+  "concurrency": { "maxParallelJobs": 3, "enforced": false, "verdict": "FAIL" },
+  "verdict": "PARTIAL"
+}

@@ -1,0 +1,45 @@
+{
+  "verifiedAt": "2026-08-07T11:15:00+05:30",
+  "codeReview": {
+    "incremental": true,
+    "full": true,
+    "recovery": "PARTIAL — EtlRunMode.RECOVERY enum exists; engine uses RECOVERING status on retry, no distinct RECOVERY handler",
+    "replay": true,
+    "backfill": true,
+    "checkpoint": true,
+    "watermark": true,
+    "cursor": true,
+    "batchProcessing": true,
+    "retry": true,
+    "logging": true,
+    "audit": true,
+    "traceId": true,
+    "correlationId": true,
+    "parallelProcessing": false,
+    "exactlyOnce": false,
+    "note": "maxParallelJobs configured but runEtlPipeline executes jobs sequentially; WRITE_APPEND without merge dedup"
+  },
+  "domains": {
+    "booking": { "handler": true, "liveRun": "FAIL", "error": "BQ schema missing updated_at column" },
+    "partner": { "handler": true, "liveRun": "NOT_RUN" },
+    "payment": { "handler": true, "liveRun": "NOT_RUN" },
+    "ledger": { "handler": true, "liveRun": "NOT_RUN" },
+    "wallet": { "handler": true, "liveRun": "NOT_RUN" },
+    "fraud": { "handler": true, "liveRun": "NOT_RUN" },
+    "customer": { "handler": true, "liveRun": "NOT_RUN" },
+    "notification": { "handler": true, "liveRun": "NOT_RUN" },
+    "review": { "handler": true, "liveRun": "NOT_RUN" },
+    "referral": { "handler": true, "liveRun": "NOT_RUN" },
+    "hcoin": { "handler": true, "liveRun": "NOT_RUN" },
+    "automation": { "handler": true, "liveRun": "NOT_RUN" },
+    "audit": { "handler": true, "liveRun": "NOT_RUN" },
+    "events": { "handler": true, "liveRun": "NOT_RUN" },
+    "location": { "handler": true, "liveRun": "NOT_RUN" },
+    "dimensions": { "handler": true, "liveRun": "PASS", "rowsLoaded": 59, "durationMs": 6585 }
+  },
+  "bugs": [
+    "resetWatermark() fails on FULL/REPLAY when etl_watermarks row does not exist (P2025)",
+    "Incremental booking load sends updated_at field absent from deployed fact_bookings schema"
+  ],
+  "verdict": "FAIL"
+}

@@ -1,0 +1,48 @@
+{
+  "verifiedAt": "2026-08-07T11:15:00+05:30",
+  "project": "homigo-497619",
+  "datasetsFound": ["homigo_analytics"],
+  "datasetsExpected": [
+    "homigo_analytics_raw",
+    "homigo_analytics_validated",
+    "homigo_analytics",
+    "homigo_analytics_feature",
+    "homigo_analytics_analytics"
+  ],
+  "layersDeployed": {
+    "raw": false,
+    "validated": false,
+    "curated": true,
+    "feature": false,
+    "analytics": false
+  },
+  "tablesInCurated": [
+    "agg_hourly_demand",
+    "dim_service",
+    "dim_zone",
+    "fact_bookings",
+    "fact_geofence_events",
+    "fact_gps_pings",
+    "model_registry"
+  ],
+  "phase1TablesMissing": [
+    "dim_partner",
+    "dim_customer",
+    "fact_payments",
+    "fact_wallet_txns",
+    "fact_ledger_entries",
+    "fact_fraud_signals",
+    "fact_reviews",
+    "fact_referrals",
+    "fact_hcoin_txns",
+    "fact_notifications",
+    "fact_scheduled_jobs",
+    "fact_domain_events",
+    "fact_audit_logs"
+  ],
+  "factBookingsRowCount": 171,
+  "partitionClusterInDDL": true,
+  "retentionInDDL": true,
+  "ddlApplied": false,
+  "verdict": "FAIL"
+}

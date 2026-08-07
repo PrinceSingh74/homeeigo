@@ -1,0 +1,16 @@
+{
+  "verifiedAt": "2026-08-07T11:15:00+05:30",
+  "rulesFiles": [
+    "apps/backend/monitoring/rules/homigo-alerts.yml",
+    "deploy/observability/staging/rules/homigo-alerts.yml"
+  ],
+  "phase1Alerts": [
+    { "name": "EtlJobFailureSpike", "present": true },
+    { "name": "DataQualityScoreLow", "present": true },
+    { "name": "DataQualityCriticalFailures", "present": true },
+    { "name": "DataFreshnessSlaViolation", "present": true },
+    { "name": "EtlJobsFailed24h", "present": true }
+  ],
+  "alertLifecycleTested": false,
+  "verdict": "PARTIAL"
+}

@@ -90,7 +90,7 @@ export async function runEtlJob(jobId: string, options: RunEtlOptions = {}): Pro
   const maxAttempts = options.maxAttempts ?? 3;
 
   if (runMode === "FULL" || runMode === "REPLAY") {
-    await resetWatermark(jobId);
+    await resetWatermark(jobId, def.targetTable);
   }
 
   const watermark = await getWatermark(jobId, def.targetTable);
@@ -121,7 +121,7 @@ export async function runEtlJob(jobId: string, options: RunEtlOptions = {}): Pro
       );
       const result = await Promise.race([handler(ctx), timeoutPromise]);
 
-      await updateWatermark(jobId, {
+      await updateWatermark(jobId, def.targetTable, {
         lowWatermark: result.lowWatermark,
         highWatermark: result.highWatermark,
         cursorId: result.cursorEnd,
@@ -207,16 +207,57 @@ function sortJobs(jobIds: string[]): string[] {
   return sorted;
 }
 
+/** Build dependency levels for parallel execution within each level. */
+function getDependencyLevels(jobIds: string[]): string[][] {
+  const ordered = sortJobs(jobIds);
+  const levels: string[][] = [];
+  const placed = new Set<string>();
+
+  while (placed.size < ordered.length) {
+    const level = ordered.filter((id) => {
+      if (placed.has(id)) return false;
+      const deps = getJobDefinition(id)?.dependencies ?? [];
+      return deps.every((d) => placed.has(d) || !ordered.includes(d));
+    });
+    if (level.length === 0) {
+      levels.push(ordered.filter((id) => !placed.has(id)));
+      break;
+    }
+    levels.push(level);
+    for (const id of level) placed.add(id);
+  }
+  return levels;
+}
+
+async function runLevelParallel(
+  jobIds: string[],
+  options: RunEtlOptions,
+  concurrency: number,
+): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  const queue = [...jobIds];
+  const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const jobId = queue.shift()!;
+      const result = await runEtlJob(jobId, options);
+      counts[jobId] = result.rowsLoaded;
+    }
+  });
+  await Promise.all(workers);
+  return counts;
+}
+
 export async function runEtlPipeline(options: RunEtlOptions = {}): Promise<Record<string, number>> {
   const traceId = options.traceId ?? newTraceId();
   const correlationId = options.correlationId ?? traceId;
   const jobIds = options.jobIds ?? ETL_JOB_DEFINITIONS.map((j) => j.id);
-  const ordered = sortJobs(jobIds);
+  const levels = getDependencyLevels(jobIds);
+  const concurrency = ANALYTICS_CONFIG.maxParallelJobs;
   const counts: Record<string, number> = {};
 
-  for (const jobId of ordered) {
-    const result = await runEtlJob(jobId, { ...options, traceId, correlationId });
-    counts[jobId] = result.rowsLoaded;
+  for (const level of levels) {
+    const levelCounts = await runLevelParallel(level, { ...options, traceId, correlationId }, concurrency);
+    Object.assign(counts, levelCounts);
   }
 
   return counts;
@@ -228,9 +269,19 @@ export async function runEtl(): Promise<Record<string, number>> {
 }
 
 export async function runEtlBackfill(jobId: string, since: Date): Promise<{ success: boolean; rowsLoaded: number }> {
-  await prisma.etlWatermark.update({
+  const def = getJobDefinition(jobId);
+  if (!def) throw new Error(`Unknown ETL job: ${jobId}`);
+  await prisma.etlWatermark.upsert({
     where: { jobId },
-    data: { lowWatermark: since, highWatermark: null, cursorId: null },
+    create: {
+      jobId,
+      dataset: def.targetTable,
+      lowWatermark: since,
+      highWatermark: null,
+      cursorId: null,
+      pipelineVersion: ANALYTICS_CONFIG.pipelineVersion,
+    },
+    update: { lowWatermark: since, highWatermark: null, cursorId: null },
   });
   return runEtlJob(jobId, { runMode: "BACKFILL" });
 }

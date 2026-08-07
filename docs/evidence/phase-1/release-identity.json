@@ -1,0 +1,18 @@
+{
+  "verifiedAt": "2026-08-07T11:15:00+05:30",
+  "rcSha": "2483624b0361ffb17320b3ca307405f80920fe3b",
+  "gitBranch": "cursor/stage-e-step-13-certification",
+  "gitCommit": "2483624",
+  "workingTree": "DIRTY — unrelated modifications present (.env.example, README.md, admin-panel, web, mobile, etc.)",
+  "imageDigest": "NOT_VERIFIED — no Cloud Run revision queried in this verification run",
+  "cloudRunRevision": "NOT_VERIFIED",
+  "migrationStatus": {
+    "beforeVerification": "PENDING — 20260807120000_phase1_ml_data_platform not applied",
+    "afterLocalApply": "APPLIED — all 49 migrations including phase1_ml_data_platform",
+    "stagingProduction": "UNKNOWN"
+  },
+  "bigQueryVersion": "LEGACY — only homigo_analytics dataset deployed; Phase 1 layer DDL (05/06/07) not applied",
+  "featureStoreVersion": "v1 views in BQ (fs_*); v2 SQL exists in repo but not deployed",
+  "mlVersion": "NO ARIMA_PLUS models present in BigQuery at verification time",
+  "verdict": "PARTIAL"
+}

@@ -34,10 +34,25 @@ export async function getWatermark(jobId: string, dataset: string): Promise<Wate
 
 export async function updateWatermark(
   jobId: string,
+  dataset: string,
   update: Partial<WatermarkState> & { rowsDelta?: number },
 ): Promise<void> {
   const existing = await prisma.etlWatermark.findUnique({ where: { jobId } });
-  if (!existing) return;
+  if (!existing) {
+    await prisma.etlWatermark.create({
+      data: {
+        jobId,
+        dataset,
+        lowWatermark: update.lowWatermark ?? null,
+        highWatermark: update.highWatermark ?? null,
+        cursorId: update.cursorId ?? null,
+        rowsSynced: BigInt(update.rowsDelta ?? 0),
+        lastSyncAt: new Date(),
+        pipelineVersion: ANALYTICS_CONFIG.pipelineVersion,
+      },
+    });
+    return;
+  }
   await prisma.etlWatermark.update({
     where: { jobId },
     data: {
@@ -53,9 +68,26 @@ export async function updateWatermark(
   });
 }
 
-export async function resetWatermark(jobId: string): Promise<void> {
-  await prisma.etlWatermark.update({
+/** Reset watermark for FULL/REPLAY — upserts so first execution never throws P2025. */
+export async function resetWatermark(jobId: string, dataset: string): Promise<void> {
+  await prisma.etlWatermark.upsert({
     where: { jobId },
-    data: { lowWatermark: null, highWatermark: null, cursorId: null, rowsSynced: 0n },
+    create: {
+      jobId,
+      dataset,
+      lowWatermark: null,
+      highWatermark: null,
+      cursorId: null,
+      rowsSynced: 0n,
+      pipelineVersion: ANALYTICS_CONFIG.pipelineVersion,
+    },
+    update: {
+      lowWatermark: null,
+      highWatermark: null,
+      cursorId: null,
+      rowsSynced: 0n,
+      lastSyncAt: null,
+      pipelineVersion: ANALYTICS_CONFIG.pipelineVersion,
+    },
   });
 }

@@ -1,0 +1,23 @@
+{
+  "verifiedAt": "2026-08-07T11:15:00+05:30",
+  "prometheusSeries": {
+    "homigo_etl_jobs_total": true,
+    "homigo_etl_duration_seconds": true,
+    "homigo_etl_scheduler_runs_total": true,
+    "homigo_data_quality_score": true,
+    "homigo_data_freshness_lag_seconds": true,
+    "homigo_data_freshness_sla_met": true,
+    "homigo_forecast_runtime_seconds": true
+  },
+  "grafanaDashboard": {
+    "path": "apps/backend/monitoring/grafana/dashboards/homigo-analytics-pipeline.json",
+    "stagingObsStack": false
+  },
+  "alertmanagerRules": {
+    "backend": true,
+    "staging": true,
+    "rules": ["EtlJobFailureSpike", "DataQualityScoreLow", "DataQualityCriticalFailures", "DataFreshnessSlaViolation", "EtlJobsFailed24h"]
+  },
+  "liveScrapeVerified": false,
+  "verdict": "PARTIAL"
+}

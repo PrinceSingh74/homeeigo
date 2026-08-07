@@ -8,11 +8,24 @@ import { fqTable, iso, loadRows, bqQuery } from "../bq-client";
 import type { EtlJobContext, EtlJobResult, EtlJobRegistry } from "../types";
 import { ANALYTICS_CONFIG } from "../../config";
 
+/** Incremental extraction cursor — advances from highWatermark to prevent duplicate loads. */
+function incrementalSince(ctx: EtlJobContext, fallbackDays = 365): Date {
+  if (ctx.runMode === "FULL" || ctx.runMode === "REPLAY") return new Date(0);
+  const cursor = ctx.highWatermark ?? ctx.lowWatermark;
+  if (cursor) return cursor;
+  if (fallbackDays <= 0) return new Date(0);
+  return new Date(Date.now() - fallbackDays * 86400_000);
+}
+
+function sinceOp(ctx: EtlJobContext): "gt" | "gte" {
+  return ctx.runMode === "FULL" || ctx.runMode === "REPLAY" ? "gte" : "gt";
+}
+
 async function syncBookings(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(0) : ctx.lowWatermark ?? new Date(Date.now() - 365 * 86400_000);
+  const since = incrementalSince(ctx, 365);
   const now = new Date().toISOString();
   const bookings = await prisma.booking.findMany({
-    where: { updatedAt: { gte: since }, ...(ctx.cursorId ? { id: { gt: ctx.cursorId } } : {}) },
+    where: { updatedAt: { [sinceOp(ctx)]: since }, ...(ctx.cursorId ? { id: { gt: ctx.cursorId } } : {}) },
     select: {
       id: true, createdAt: true, updatedAt: true, scheduledDate: true, completedAt: true,
       userId: true, providerId: true, serviceId: true, status: true, baseAmount: true,
@@ -46,10 +59,10 @@ async function syncBookings(ctx: EtlJobContext): Promise<EtlJobResult> {
 }
 
 async function syncPartners(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(0) : ctx.lowWatermark ?? new Date(0);
+  const since = incrementalSince(ctx, 0);
   const now = new Date().toISOString();
   const providers = await prisma.provider.findMany({
-    where: { updatedAt: { gte: since } },
+    where: { updatedAt: { [sinceOp(ctx)]: since } },
     select: {
       id: true, userId: true, isVerified: true, isActive: true, rating: true,
       totalBookings: true, acceptanceRate: true, cancellationRate: true,
@@ -68,10 +81,10 @@ async function syncPartners(ctx: EtlJobContext): Promise<EtlJobResult> {
 }
 
 async function syncPayments(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(0) : ctx.lowWatermark ?? new Date(Date.now() - 365 * 86400_000);
+  const since = incrementalSince(ctx, 365);
   const now = new Date().toISOString();
   const payments = await prisma.payment.findMany({
-    where: { updatedAt: { gte: since } },
+    where: { updatedAt: { [sinceOp(ctx)]: since } },
     select: { id: true, bookingId: true, userId: true, amount: true, amountPaise: true, status: true, paymentMethod: true, createdAt: true, updatedAt: true },
     take: ctx.batchSize, orderBy: { id: "asc" },
   });
@@ -85,10 +98,10 @@ async function syncPayments(ctx: EtlJobContext): Promise<EtlJobResult> {
 }
 
 async function syncWallet(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(0) : ctx.lowWatermark ?? new Date(Date.now() - 365 * 86400_000);
+  const since = incrementalSince(ctx, 365);
   const now = new Date().toISOString();
   const txns = await prisma.walletTransaction.findMany({
-    where: { createdAt: { gte: since } },
+    where: { createdAt: { [sinceOp(ctx)]: since } },
     select: { id: true, userId: true, amount: true, type: true, description: true, createdAt: true },
     take: ctx.batchSize, orderBy: { id: "asc" },
   });
@@ -101,10 +114,10 @@ async function syncWallet(ctx: EtlJobContext): Promise<EtlJobResult> {
 }
 
 async function syncLedger(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(0) : ctx.lowWatermark ?? new Date(Date.now() - 365 * 86400_000);
+  const since = incrementalSince(ctx, 365);
   const now = new Date().toISOString();
   const entries = await prisma.ledgerEntry.findMany({
-    where: { createdAt: { gte: since } },
+    where: { createdAt: { [sinceOp(ctx)]: since } },
     select: { id: true, accountId: true, debitPaise: true, creditPaise: true, createdAt: true, journalId: true },
     take: ctx.batchSize, orderBy: { id: "asc" },
   });
@@ -118,10 +131,10 @@ async function syncLedger(ctx: EtlJobContext): Promise<EtlJobResult> {
 }
 
 async function syncFraud(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(0) : ctx.lowWatermark ?? new Date(Date.now() - 90 * 86400_000);
+  const since = incrementalSince(ctx, 90);
   const now = new Date().toISOString();
   const signals = await prisma.fraudSignal.findMany({
-    where: { createdAt: { gte: since } },
+    where: { createdAt: { [sinceOp(ctx)]: since } },
     select: { id: true, userId: true, eventType: true, referenceId: true, referenceType: true, city: true, createdAt: true },
     take: ctx.batchSize, orderBy: { id: "asc" },
   });
@@ -135,10 +148,12 @@ async function syncFraud(ctx: EtlJobContext): Promise<EtlJobResult> {
 }
 
 async function syncLocation(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(Date.now() - 30 * 86400_000) : ctx.lowWatermark ?? new Date(Date.now() - 30 * 86400_000);
+  const since = ctx.runMode === "FULL"
+    ? new Date(Date.now() - 30 * 86400_000)
+    : incrementalSince(ctx, 30);
   const now = new Date().toISOString();
   const pings = await prisma.locationHistory.findMany({
-    where: { timestamp: { gte: since } },
+    where: { timestamp: { [sinceOp(ctx)]: since } },
     select: { id: true, providerId: true, latitude: true, longitude: true, accuracy: true, timestamp: true, tracking: { select: { bookingId: true } } },
     take: ctx.batchSize, orderBy: { id: "asc" },
   });
@@ -151,10 +166,10 @@ async function syncLocation(ctx: EtlJobContext): Promise<EtlJobResult> {
 }
 
 async function syncCustomers(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(0) : ctx.lowWatermark ?? new Date(0);
+  const since = incrementalSince(ctx, 0);
   const now = new Date().toISOString();
   const users = await prisma.user.findMany({
-    where: { updatedAt: { gte: since }, role: "CUSTOMER" },
+    where: { updatedAt: { [sinceOp(ctx)]: since }, role: "CUSTOMER" },
     select: { id: true, createdAt: true, updatedAt: true, preferredCity: true },
     take: ctx.batchSize, orderBy: { id: "asc" },
   });
@@ -166,10 +181,10 @@ async function syncCustomers(ctx: EtlJobContext): Promise<EtlJobResult> {
 }
 
 async function syncNotifications(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(0) : ctx.lowWatermark ?? new Date(Date.now() - 90 * 86400_000);
+  const since = incrementalSince(ctx, 90);
   const now = new Date().toISOString();
   const items = await prisma.notification.findMany({
-    where: { createdAt: { gte: since } },
+    where: { createdAt: { [sinceOp(ctx)]: since } },
     select: { id: true, userId: true, type: true, title: true, isRead: true, createdAt: true },
     take: ctx.batchSize, orderBy: { id: "asc" },
   });
@@ -182,10 +197,10 @@ async function syncNotifications(ctx: EtlJobContext): Promise<EtlJobResult> {
 }
 
 async function syncReviews(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(0) : ctx.lowWatermark ?? new Date(Date.now() - 365 * 86400_000);
+  const since = incrementalSince(ctx, 365);
   const now = new Date().toISOString();
   const ratings = await prisma.rating.findMany({
-    where: { createdAt: { gte: since } },
+    where: { createdAt: { [sinceOp(ctx)]: since } },
     select: { id: true, bookingId: true, userId: true, providerId: true, stars: true, createdAt: true },
     take: ctx.batchSize, orderBy: { id: "asc" },
   });
@@ -198,10 +213,10 @@ async function syncReviews(ctx: EtlJobContext): Promise<EtlJobResult> {
 }
 
 async function syncReferrals(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(0) : ctx.lowWatermark ?? new Date(0);
+  const since = incrementalSince(ctx, 0);
   const now = new Date().toISOString();
   const txns = await prisma.referralTransaction.findMany({
-    where: { createdAt: { gte: since } },
+    where: { createdAt: { [sinceOp(ctx)]: since } },
     select: { id: true, referrerId: true, refereeId: true, status: true, fraudFlagged: true, createdAt: true },
     take: ctx.batchSize, orderBy: { id: "asc" },
   });
@@ -214,10 +229,10 @@ async function syncReferrals(ctx: EtlJobContext): Promise<EtlJobResult> {
 }
 
 async function syncHcoin(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(0) : ctx.lowWatermark ?? new Date(Date.now() - 365 * 86400_000);
+  const since = incrementalSince(ctx, 365);
   const now = new Date().toISOString();
   const txns = await prisma.hCoinTransaction.findMany({
-    where: { createdAt: { gte: since } },
+    where: { createdAt: { [sinceOp(ctx)]: since } },
     select: { id: true, userId: true, amount: true, type: true, reason: true, createdAt: true },
     take: ctx.batchSize, orderBy: { id: "asc" },
   });
@@ -230,10 +245,10 @@ async function syncHcoin(ctx: EtlJobContext): Promise<EtlJobResult> {
 }
 
 async function syncAutomation(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(0) : ctx.lowWatermark ?? new Date(Date.now() - 90 * 86400_000);
+  const since = incrementalSince(ctx, 90);
   const now = new Date().toISOString();
   const jobs = await prisma.scheduledJob.findMany({
-    where: { createdAt: { gte: since } },
+    where: { createdAt: { [sinceOp(ctx)]: since } },
     select: { id: true, jobType: true, status: true, runAt: true, attempts: true, createdAt: true, completedAt: true },
     take: ctx.batchSize, orderBy: { id: "asc" },
   });
@@ -246,10 +261,10 @@ async function syncAutomation(ctx: EtlJobContext): Promise<EtlJobResult> {
 }
 
 async function syncEvents(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(0) : ctx.lowWatermark ?? new Date(Date.now() - 30 * 86400_000);
+  const since = incrementalSince(ctx, 30);
   const now = new Date().toISOString();
   const events = await prisma.eventOutbox.findMany({
-    where: { createdAt: { gte: since }, status: "PUBLISHED" },
+    where: { createdAt: { [sinceOp(ctx)]: since }, status: "PUBLISHED" },
     select: { id: true, eventId: true, eventType: true, aggregateType: true, aggregateId: true, publishedAt: true, createdAt: true },
     take: ctx.batchSize, orderBy: { id: "asc" },
   });
@@ -263,10 +278,10 @@ async function syncEvents(ctx: EtlJobContext): Promise<EtlJobResult> {
 }
 
 async function syncAudit(ctx: EtlJobContext): Promise<EtlJobResult> {
-  const since = ctx.runMode === "FULL" ? new Date(0) : ctx.lowWatermark ?? new Date(Date.now() - 90 * 86400_000);
+  const since = incrementalSince(ctx, 90);
   const now = new Date().toISOString();
   const logs = await prisma.enterpriseAuditLog.findMany({
-    where: { createdAt: { gte: since } },
+    where: { createdAt: { [sinceOp(ctx)]: since } },
     select: { id: true, action: true, actor: true, actorType: true, resource: true, resourceId: true, createdAt: true },
     take: ctx.batchSize, orderBy: { id: "asc" },
   });
@@ -322,7 +337,9 @@ async function syncAggregates(_ctx: EtlJobContext): Promise<EtlJobResult> {
       COUNT(*) AS bookings, COUNTIF(is_completed) AS completed, SUM(total_amount) AS revenue, CURRENT_TIMESTAMP() AS loaded_at
     FROM ${curated} GROUP BY zone_id, city, month_ts;
   `);
-  return { rowsExtracted: 0, rowsLoaded: 0, lowWatermark: null, highWatermark: new Date(), cursorEnd: null, metadata: { rebuilt: ["agg_hourly_demand", "agg_daily_demand", "agg_weekly_demand", "agg_monthly_demand"] } };
+  const [countRow] = await bqQuery<{ n: number }>(`SELECT COUNT(*) AS n FROM ${hourly}`);
+  const rowCount = Number(countRow?.n ?? 0);
+  return { rowsExtracted: rowCount, rowsLoaded: rowCount, lowWatermark: null, highWatermark: new Date(), cursorEnd: null, metadata: { rebuilt: ["agg_hourly_demand", "agg_daily_demand", "agg_weekly_demand", "agg_monthly_demand"] } };
 }
 
 export const ETL_JOB_REGISTRY: EtlJobRegistry = {

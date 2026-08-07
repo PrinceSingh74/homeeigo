@@ -1,5 +1,6 @@
 import { BigQuery } from "@google-cloud/bigquery";
 import { ANALYTICS_CONFIG, BQ_DATASETS } from "../config";
+import { projectRows } from "./table-schemas";
 
 let _bq: BigQuery | null = null;
 
@@ -25,6 +26,7 @@ export async function loadRows(
   writeDisposition: "WRITE_TRUNCATE" | "WRITE_APPEND" = "WRITE_APPEND",
 ): Promise<number> {
   if (rows.length === 0) return 0;
+  const projected = projectRows(tableId, rows);
   const dataset = BQ_DATASETS[layer];
   const table = getBigQuery().dataset(dataset).table(tableId);
   await new Promise<void>((resolve, reject) => {
@@ -35,10 +37,10 @@ export async function loadRows(
     });
     stream.on("error", reject);
     stream.on("job", (job) => job.on("complete", () => resolve()).on("error", reject));
-    for (const r of rows) stream.write(Buffer.from(JSON.stringify(r) + "\n"));
+    for (const r of projected) stream.write(Buffer.from(JSON.stringify(r) + "\n"));
     stream.end();
   });
-  return rows.length;
+  return projected.length;
 }
 
 export const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);

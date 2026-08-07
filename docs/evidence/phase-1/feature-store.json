@@ -1,0 +1,12 @@
+{
+  "verifiedAt": "2026-08-07T11:15:00+05:30",
+  "v2GroupsInCode": ["customer", "partner", "payment", "finance", "fraud", "geo", "demand"],
+  "v2DeployedInBQ": false,
+  "v1ViewsInBQ": ["fs_booking_features", "fs_customer_features", "fs_provider_features"],
+  "bookingFeaturesV2": false,
+  "exportTrainingValidationTesting": true,
+  "batchPrediction": true,
+  "onlinePredictionEndpoint": false,
+  "shadowModels": false,
+  "verdict": "PARTIAL"
+}

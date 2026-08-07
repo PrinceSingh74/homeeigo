@@ -1,0 +1,9 @@
+{
+  "verifiedAt": "2026-08-07T11:15:00+05:30",
+  "testRun": "bun test src/__tests__/release-blocker-wave2.test.ts",
+  "result": "FAIL",
+  "error": "Prisma P2022 — column bookings.addons does not exist in database (schema drift vs Prisma client)",
+  "phase1CodeChangesToDomainServices": "NONE — analytics module is additive",
+  "note": "Regression cannot be certified PASS until DB schema matches Prisma; failure may be environmental not caused by Phase 1",
+  "verdict": "FAIL"
+}
