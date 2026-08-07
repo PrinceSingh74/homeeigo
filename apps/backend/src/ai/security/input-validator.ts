@@ -71,6 +71,12 @@ export function validateAiInput(raw: unknown): InputValidationResult {
     errors.push("responseSchema must be an object");
   }
 
+  if (body.conversationId != null) {
+    if (typeof body.conversationId !== "string" || !CUID_PATTERN.test(body.conversationId)) {
+      errors.push("conversationId format invalid");
+    }
+  }
+
   if (errors.length > 0) return { valid: false, errors };
 
   return {
@@ -78,6 +84,7 @@ export function validateAiInput(raw: unknown): InputValidationResult {
     input: {
       message: (body.message as string).trim(),
       templateId: body.templateId as string | undefined,
+      conversationId: body.conversationId as string | undefined,
       context: body.context as AiGatewayInput["context"],
       history: body.history as AiMessage[] | undefined,
       responseSchema: body.responseSchema as Record<string, unknown> | undefined,

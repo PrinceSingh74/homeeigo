@@ -1,0 +1,96 @@
+{
+  "uid": "homigo-ai-brain",
+  "title": "19 — AI Brain (Context · Memory · Prompts)",
+  "tags": ["homigo", "enterprise", "phase4", "ai-brain"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Context Builds/sec",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(homigo_context_build_total[5m])) by (role)", "legendFormat": "{{role}}", "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "title": "Context Build Latency p95",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(homigo_context_latency_bucket[5m])) by (le, role))", "legendFormat": "{{role}}", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "title": "Context Size (avg)",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "avg(homigo_context_size)", "refId": "A" }]
+    },
+    {
+      "id": 4,
+      "title": "Memory Reads",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 6, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(homigo_memory_reads[5m])) by (memory_type)", "legendFormat": "{{memory_type}}", "refId": "A" }]
+    },
+    {
+      "id": 5,
+      "title": "Memory Writes",
+      "type": "timeseries",
+      "gridPos": { "x": 6, "y": 6, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(homigo_memory_writes[5m])) by (memory_type)", "legendFormat": "{{memory_type}}", "refId": "A" }]
+    },
+    {
+      "id": 6,
+      "title": "Cache Hit Rate",
+      "type": "gauge",
+      "gridPos": { "x": 12, "y": 6, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{
+        "expr": "100 * sum(homigo_memory_hits) / clamp_min(sum(homigo_memory_hits) + sum(homigo_memory_misses), 1)",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 7,
+      "title": "Active Memories",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 6, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "homigo_ai_brain_memory_total", "refId": "A" }]
+    },
+    {
+      "id": 8,
+      "title": "Prompt Tokens",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 11, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(homigo_prompt_tokens_bucket[5m])) by (le, role))", "legendFormat": "{{role}} p95", "refId": "A" }]
+    },
+    {
+      "id": 9,
+      "title": "Prompt Blocked",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 11, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } },
+      "targets": [{ "expr": "sum(homigo_prompt_blocked_total)", "refId": "A" }]
+    },
+    {
+      "id": 10,
+      "title": "Compression Ratio",
+      "type": "gauge",
+      "gridPos": { "x": 18, "y": 11, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "avg(homigo_prompt_compression_ratio)", "refId": "A" }]
+    }
+  ]
+}

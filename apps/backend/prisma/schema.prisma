@@ -909,13 +909,22 @@ model ActivityLog {
 }
 
 model AiConversation {
-  id        String      @id @default(cuid())
-  userId    String      @map("user_id")
-  title     String?
-  createdAt DateTime    @default(now()) @map("created_at")
-  updatedAt DateTime    @updatedAt @map("updated_at")
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages  AiMessage[]
+  id            String      @id @default(cuid())
+  userId        String      @map("user_id")
+  title         String?
+  summary       String?
+  topics        Json?
+  pinnedFacts   Json?       @map("pinned_facts")
+  entities      Json?
+  intentHistory Json?       @map("intent_history")
+  sentiment     String?
+  resolution    String?
+  compressedAt  DateTime?   @map("compressed_at")
+  tokenBudget   Int?        @map("token_budget")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages      AiMessage[]
 
   @@index([userId, updatedAt])
   @@map("ai_conversations")
@@ -926,6 +935,10 @@ model AiMessage {
   conversationId String         @map("conversation_id")
   role           String
   content        String
+  tokens         Int?
+  intent         String?
+  entities       Json?
+  sentiment      String?
   createdAt      DateTime       @default(now()) @map("created_at")
   conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -4017,4 +4030,171 @@ model AiPromptTemplate {
   @@index([category, isActive])
   @@index([actorRole, isActive])
   @@map("ai_prompt_templates")
+}
+
+// ── Phase 4: Enterprise AI Brain ────────────────────────────────────────────
+
+enum AiMemoryType {
+  SESSION
+  CONVERSATION
+  BUSINESS
+  USER
+  PARTNER
+  ADMIN
+  OPERATIONAL
+  SEMANTIC
+  WORKING
+  HISTORICAL
+}
+
+enum AiPromptApprovalStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  DEPRECATED
+}
+
+enum AiPromptSafetyLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model AiMemory {
+  id         String       @id @default(cuid())
+  memoryKey  String       @map("memory_key")
+  memoryType AiMemoryType @map("memory_type")
+  ownerId    String?      @map("owner_id")
+  tenantId   String?      @map("tenant_id")
+  content    Json
+  summary    String?
+  priority   Int          @default(0)
+  importance Float        @default(0.5)
+  confidence Float        @default(1.0)
+  freshness  DateTime     @default(now())
+  ttlSeconds Int?         @map("ttl_seconds")
+  expiresAt  DateTime?    @map("expires_at")
+  version    Int          @default(1)
+  isArchived Boolean      @default(false) @map("is_archived")
+  metadata   Json?
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+
+  @@unique([memoryKey, ownerId, memoryType])
+  @@index([ownerId, memoryType])
+  @@index([expiresAt])
+  @@index([memoryType, isArchived])
+  @@map("ai_memory")
+}
+
+model AiPromptRegistry {
+  id              String                 @id @default(cuid())
+  promptId        String                 @unique @map("prompt_id")
+  name            String
+  category        String
+  owner           String
+  description     String?
+  approvalStatus  AiPromptApprovalStatus @default(DRAFT) @map("approval_status")
+  createdBy       String?                @map("created_by")
+  updatedBy       String?                @map("updated_by")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  versions        AiPromptVersion[]
+
+  @@index([category])
+  @@index([approvalStatus])
+  @@map("ai_prompt_registry")
+}
+
+model AiPromptVersion {
+  id               String              @id @default(cuid())
+  registryId       String              @map("registry_id")
+  version          Int
+  systemPrompt     String              @map("system_prompt")
+  userTemplate     String?             @map("user_template")
+  variables        Json?
+  inputs           Json?
+  outputs          Json?
+  temperature      Float               @default(0.7)
+  maxTokens        Int                 @default(2048) @map("max_tokens")
+  safetyLevel      AiPromptSafetyLevel @default(MEDIUM) @map("safety_level")
+  fallbackPromptId String?             @map("fallback_prompt_id")
+  diffFromPrevious String?             @map("diff_from_previous")
+  experimentTag    String?             @map("experiment_tag")
+  isActive         Boolean             @default(false) @map("is_active")
+  isDeprecated     Boolean             @default(false) @map("is_deprecated")
+  approvedBy       String?             @map("approved_by")
+  approvedAt       DateTime?           @map("approved_at")
+  createdBy        String?             @map("created_by")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  registry         AiPromptRegistry    @relation(fields: [registryId], references: [id], onDelete: Cascade)
+
+  @@unique([registryId, version])
+  @@index([registryId, isActive])
+  @@map("ai_prompt_versions")
+}
+
+model AiContextSnapshot {
+  id          String        @id @default(cuid())
+  requestId   String?       @map("request_id")
+  actorId     String?       @map("actor_id")
+  actorRole   AiGatewayRole @map("actor_role")
+  contextHash String        @map("context_hash")
+  contextSize Int           @map("context_size")
+  sections    Json
+  builtAt     DateTime      @default(now()) @map("built_at")
+  expiresAt   DateTime?     @map("expires_at")
+
+  @@index([actorId, builtAt])
+  @@index([requestId])
+  @@map("ai_context_snapshots")
+}
+
+model AiActivityTimeline {
+  id               String          @id @default(cuid())
+  requestId        String          @map("request_id")
+  actorId          String?         @map("actor_id")
+  actorRole        AiGatewayRole   @map("actor_role")
+  promptId         String?         @map("prompt_id")
+  promptVersion    Int?            @map("prompt_version")
+  model            String?
+  provider         AiProviderType?
+  contextHash      String?         @map("context_hash")
+  traceId          String?         @map("trace_id")
+  promptTokens     Int             @default(0) @map("prompt_tokens")
+  completionTokens Int             @default(0) @map("completion_tokens")
+  latencyMs        Int?            @map("latency_ms")
+  costUsd          Float           @default(0) @map("cost_usd")
+  status           AiRequestStatus
+  fallbackUsed     Boolean         @default(false) @map("fallback_used")
+  blocked          Boolean         @default(false)
+  blockReason      String?         @map("block_reason")
+  resultHash       String?         @map("result_hash")
+  metadata         Json?
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  @@index([actorId, createdAt])
+  @@index([requestId])
+  @@index([traceId])
+  @@index([status, createdAt])
+  @@map("ai_activity_timeline")
+}
+
+model AiContextCache {
+  id          String        @id @default(cuid())
+  cacheKey    String        @unique @map("cache_key")
+  actorId     String?       @map("actor_id")
+  actorRole   AiGatewayRole @map("actor_role")
+  contextHash String        @map("context_hash")
+  contextData Json          @map("context_data")
+  hitCount    Int           @default(0) @map("hit_count")
+  expiresAt   DateTime      @map("expires_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  @@index([actorId, actorRole])
+  @@index([expiresAt])
+  @@map("ai_context_cache")
 }

@@ -1,0 +1,71 @@
+{
+  "generatedAt": "2026-08-07T09:29:02.700Z",
+  "dryRun": true,
+  "benchmarks": [
+    {
+      "label": "gateway_100",
+      "count": 100,
+      "totalMs": 5366,
+      "avgMs": 54,
+      "p95Ms": 87,
+      "minMs": 33,
+      "maxMs": 172
+    },
+    {
+      "label": "gateway_500",
+      "count": 500,
+      "totalMs": 28007,
+      "avgMs": 56,
+      "p95Ms": 90,
+      "minMs": 28,
+      "maxMs": 281
+    },
+    {
+      "label": "gateway_1000",
+      "count": 1000,
+      "totalMs": 68608,
+      "avgMs": 69,
+      "p95Ms": 128,
+      "minMs": 23,
+      "maxMs": 439
+    },
+    {
+      "label": "context_build_100",
+      "count": 100,
+      "totalMs": 1145,
+      "avgMs": 11,
+      "p95Ms": 20,
+      "minMs": 4,
+      "maxMs": 49
+    },
+    {
+      "label": "memory_recall_100",
+      "count": 100,
+      "totalMs": 922,
+      "avgMs": 9,
+      "p95Ms": 20,
+      "minMs": 2,
+      "maxMs": 30
+    },
+    {
+      "label": "prompt_compose_100",
+      "count": 100,
+      "totalMs": 1072,
+      "avgMs": 11,
+      "p95Ms": 20,
+      "minMs": 4,
+      "maxMs": 35
+    }
+  ],
+  "memory": {
+    "heapUsedMb": 11,
+    "heapTotalMb": 20,
+    "rssMb": 150
+  },
+  "thresholds": {
+    "gatewayAvgMsTarget": 500,
+    "contextAvgMsTarget": 200,
+    "memoryAvgMsTarget": 50,
+    "promptAvgMsTarget": 100
+  }
+}

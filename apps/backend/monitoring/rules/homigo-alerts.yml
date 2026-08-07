@@ -507,3 +507,45 @@ groups:
           severity: warning
         annotations:
           summary: AI daily cost exceeds $100 USD
+
+  - name: homigo_ai_brain
+    rules:
+      - alert: AiBrainMemoryFailure
+        expr: increase(homigo_memory_writes{memory_type=~".*_archived"}[15m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Abnormal AI memory archive rate — possible memory engine failure
+
+      - alert: AiBrainPromptFailure
+        expr: increase(homigo_prompt_blocked_total[15m]) > 15
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: AI Brain prompt failures spiking
+
+      - alert: AiBrainLargeContext
+        expr: histogram_quantile(0.95, sum(rate(homigo_context_size_bucket[5m])) by (le)) > 50000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: AI context size p95 exceeds 50KB — token budget risk
+
+      - alert: AiBrainMemoryCorruption
+        expr: homigo_ai_brain_memory_total < 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: AI memory gauge corruption detected
+
+      - alert: AiBrainPromptRegistryInconsistency
+        expr: homigo_ai_brain_prompts_active == 0 and homigo_prompt_registry_total > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Prompt registry has entries but no active versions

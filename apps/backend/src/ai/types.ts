@@ -14,6 +14,7 @@ export type AiGatewayContext = {
 export type AiGatewayInput = {
   message: string;
   templateId?: string;
+  conversationId?: string;
   context?: AiGatewayContext;
   history?: AiMessage[];
   responseSchema?: Record<string, unknown>;
@@ -43,6 +44,7 @@ export type AiGatewayResult = {
   costUsd: number;
   fallbackUsed: boolean;
   templateId?: string;
+  conversationId?: string;
 };
 
 export type AiActorContext = {

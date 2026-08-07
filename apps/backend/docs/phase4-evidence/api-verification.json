@@ -1,0 +1,112 @@
+{
+  "generatedAt": "2026-08-07T09:32:26.816Z",
+  "checks": [
+    {
+      "method": "GET",
+      "route": "/api/ai/memory",
+      "passed": true,
+      "status": 200,
+      "detail": "ok"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ai/memory/stats",
+      "passed": true,
+      "status": 200,
+      "detail": "ok"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ai/prompts",
+      "passed": true,
+      "status": 200,
+      "detail": "ok"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ai/prompt-versions/customer.support.v1",
+      "passed": true,
+      "status": 200,
+      "detail": "ok"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ai/prompt-versions/customer.support.v1/diff/1",
+      "passed": true,
+      "status": 200,
+      "detail": "ok"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ai/context/cache",
+      "passed": true,
+      "status": 200,
+      "detail": "ok"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ai/context/history",
+      "passed": true,
+      "status": 200,
+      "detail": "ok"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ai/timeline?limit=5",
+      "passed": true,
+      "status": 200,
+      "detail": "ok"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ai/conversations?limit=5",
+      "passed": true,
+      "status": 200,
+      "detail": "ok"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ai/conversations/recall?q=services",
+      "passed": true,
+      "status": 200,
+      "detail": "ok"
+    },
+    {
+      "method": "POST",
+      "route": "/api/ai/context",
+      "passed": true,
+      "status": 200,
+      "detail": "ok"
+    },
+    {
+      "method": "POST",
+      "route": "/api/ai/memory",
+      "passed": true,
+      "status": 200,
+      "detail": "ok"
+    },
+    {
+      "method": "POST",
+      "route": "/api/ai/memory/cmsiqxnei0006tzdcsk7bk7gv/compress",
+      "passed": true,
+      "status": 200,
+      "detail": "compress"
+    },
+    {
+      "method": "POST",
+      "route": "/api/ai/prompt-versions/reject",
+      "passed": true,
+      "status": 200,
+      "detail": "reject"
+    },
+    {
+      "method": "POST",
+      "route": "/api/ai/prompt-versions/approve",
+      "passed": true,
+      "status": 200,
+      "detail": "approve-restore"
+    }
+  ],
+  "passed": 15,
+  "failed": 0
+}

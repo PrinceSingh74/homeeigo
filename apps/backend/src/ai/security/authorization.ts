@@ -43,6 +43,10 @@ export function authorizeAiRequest(
   return { allowed: true };
 }
 
+export function getRolePermissions(actorRole: AiGatewayRole): string[] {
+  return ROLE_PERMISSIONS[actorRole] ?? [];
+}
+
 export function mapUserRoleToAiRole(
   userRole: string,
   endpoint: keyof typeof ENDPOINT_ROLE_MAP,

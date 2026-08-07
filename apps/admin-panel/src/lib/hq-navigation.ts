@@ -35,6 +35,7 @@ import {
   FileText,
   UserX,
   Bot,
+  Brain,
   Settings,
   TrendingUp,
   Activity,
@@ -198,7 +199,14 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     dashboardHref: "/hq/ai",
     description: "AI systems, forecasting, demand prediction, and smart allocation.",
     accent: "cyan",
-    items: [{ href: "/ai", label: "AI Systems", icon: Bot }],
+    items: [
+      { href: "/ai-brain", label: "AI Brain Console", icon: Brain },
+      { href: "/ai-brain/context", label: "Context Explorer", icon: Layers },
+      { href: "/ai-brain/memory", label: "Memory Explorer", icon: Database },
+      { href: "/ai-brain/prompts", label: "Prompt Registry", icon: FileText },
+      { href: "/ai-brain/timeline", label: "Activity Timeline", icon: Clock },
+      { href: "/ai", label: "AI Systems", icon: Bot },
+    ],
   },
   {
     id: "monitoring",

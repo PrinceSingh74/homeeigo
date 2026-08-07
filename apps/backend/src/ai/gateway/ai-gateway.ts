@@ -6,8 +6,14 @@ import { AI_TIMEOUT_MS } from "../types";
 import { validateAiInput } from "../security/input-validator";
 import { validatePromptSecurity, isolateSystemPrompt } from "../security/prompt-security";
 import { validateAiOutput } from "../security/output-validator";
-import { authorizeAiRequest } from "../security/authorization";
+import { authorizeAiRequest, getRolePermissions } from "../security/authorization";
 import { checkAiRateLimit } from "../rate-limit/ai-rate-limit";
+import { buildEnterpriseContext } from "../../ai-brain/context/enterprise-context-builder";
+import { composePrompt, injectHallucinationGuard } from "../../ai-brain/prompts/prompt-intelligence";
+import { recordTimelineEntry } from "../../ai-brain/timeline/activity-timeline";
+import { validateBrainInput, validateBrainOutput } from "../../ai-brain/security/brain-security";
+import { persistGatewayTurn } from "../../ai-brain/gateway/conversation-bridge";
+import { aiBrainConfig } from "../../ai-brain/config";
 import { buildAiContext } from "../context/context-engine";
 import { getTemplate, renderUserPrompt } from "../templates/prompt-templates";
 import { routeModelRequest } from "../router/model-router";
@@ -39,56 +45,157 @@ export class AiGatewayError extends Error {
   }
 }
 
+async function recordBlockedTimeline(params: {
+  requestId: string;
+  actor: AiActorContext;
+  reason: string;
+  code: string;
+  templateId?: string;
+  latencyMs?: number;
+}): Promise<void> {
+  if (!aiBrainConfig.enabled) return;
+  await recordTimelineEntry({
+    requestId: params.requestId,
+    traceId: params.actor.traceId,
+    actorId: params.actor.actorId,
+    actorRole: params.actor.actorRole,
+    promptId: params.templateId,
+    promptTokens: 0,
+    completionTokens: 0,
+    latencyMs: params.latencyMs ?? 0,
+    costUsd: 0,
+    status: "BLOCKED",
+    fallbackUsed: false,
+    blocked: true,
+    blockReason: params.reason,
+    metadata: { code: params.code },
+  });
+}
+
 export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<AiGatewayResult> {
   if (!aiConfig.enabled) {
     throw new AiGatewayError("AI Gateway disabled", "GATEWAY_DISABLED", "FAILED");
   }
 
   const requestId = crypto.randomUUID();
+  const traceId = options.actor.traceId ?? requestId;
+  const actor: AiActorContext = { ...options.actor, traceId };
   const t0 = Date.now();
-  const { actor, endpoint } = options;
+  const { endpoint } = options;
 
   const validation = validateAiInput(options.input);
   if (!validation.valid) {
+    await recordBlockedTimeline({
+      requestId,
+      actor,
+      reason: validation.errors.join("; "),
+      code: "VALIDATION_ERROR",
+      latencyMs: Date.now() - t0,
+    });
     throw new AiGatewayError(validation.errors.join("; "), "VALIDATION_ERROR", "BLOCKED");
   }
   const input: AiGatewayInput = validation.input;
 
   const auth = authorizeAiRequest(actor.actorRole, endpoint, input.templateId);
   if (!auth.allowed) {
+    await recordBlockedTimeline({
+      requestId,
+      actor,
+      reason: auth.reason,
+      code: "FORBIDDEN",
+      templateId: input.templateId,
+      latencyMs: Date.now() - t0,
+    });
     throw new AiGatewayError(auth.reason, "FORBIDDEN", "BLOCKED");
   }
 
   const rate = await checkAiRateLimit(actor.actorId, actor.actorRole, actor.ipAddress);
   if (!rate.allowed) {
+    await recordBlockedTimeline({
+      requestId,
+      actor,
+      reason: "Rate limit exceeded",
+      code: "RATE_LIMITED",
+      templateId: input.templateId,
+      latencyMs: Date.now() - t0,
+    });
     throw new AiGatewayError("Rate limit exceeded", "RATE_LIMITED", "BLOCKED");
   }
 
-  const security = validatePromptSecurity(input.message, actor.actorRole);
+  const security = aiBrainConfig.enabled
+    ? validateBrainInput(input.message, actor.actorRole)
+    : validatePromptSecurity(input.message, actor.actorRole);
+
   if (!security.safe) {
-    await recordAiAudit({
-      requestId,
-      actorId: actor.actorId,
-      actorRole: actor.actorRole,
-      action: "prompt_blocked",
-      reason: security.reason,
-      promptHash: hashResponse(input.message),
-      promptTokens: 0,
-      completionTokens: 0,
-      costUsd: 0,
-      status: "BLOCKED",
-      ipAddress: actor.ipAddress,
-      traceId: actor.traceId,
-    });
-    throw new AiGatewayError(security.reason, "PROMPT_BLOCKED", "BLOCKED");
+    await Promise.all([
+      recordAiAudit({
+        requestId,
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+        action: "prompt_blocked",
+        reason: security.reason,
+        promptHash: security.promptHash,
+        promptTokens: 0,
+        completionTokens: 0,
+        costUsd: 0,
+        status: "BLOCKED",
+        ipAddress: actor.ipAddress,
+        traceId,
+      }),
+      recordBlockedTimeline({
+        requestId,
+        actor,
+        reason: security.reason ?? "prompt blocked",
+        code: "PROMPT_BLOCKED",
+        templateId: input.templateId,
+        latencyMs: Date.now() - t0,
+      }),
+    ]);
+    throw new AiGatewayError(security.reason ?? "Prompt blocked", "PROMPT_BLOCKED", "BLOCKED");
   }
 
   recordAiMetric(actor.actorRole, endpoint);
 
-  const template = await getTemplate(input.templateId, actor.actorRole);
-  const built = await buildAiContext(actor.actorRole, security.sanitized, input.context, input.history);
-  const userPrompt = renderUserPrompt(template, security.sanitized, built.systemContext);
-  const systemPrompt = isolateSystemPrompt(template.systemPrompt, userPrompt);
+  const permissions = getRolePermissions(actor.actorRole);
+
+  const enterpriseCtx = aiBrainConfig.enabled
+    ? await buildEnterpriseContext(
+        {
+          actorId: actor.actorId,
+          actorRole: actor.actorRole,
+          message: security.sanitized,
+          context: input.context,
+          history: input.history,
+          conversationId: input.conversationId,
+          organizationId: actor.organizationId,
+        },
+        requestId,
+      )
+    : null;
+
+  const composed = aiBrainConfig.enabled && enterpriseCtx
+    ? await composePrompt({
+        promptId: input.templateId,
+        role: actor.actorRole,
+        context: enterpriseCtx,
+        message: security.sanitized,
+        permissions,
+        actorId: actor.actorId,
+      })
+    : null;
+
+  const legacyTemplate = await getTemplate(input.templateId, actor.actorRole);
+  const template = composed
+    ? { templateId: composed.promptId, maxTokens: legacyTemplate.maxTokens, systemPrompt: composed.systemPrompt }
+    : legacyTemplate;
+
+  const built = enterpriseCtx ?? await buildAiContext(actor.actorRole, security.sanitized, input.context, input.history);
+  const userPrompt = composed?.userPrompt ?? renderUserPrompt(template, security.sanitized, built.systemContext);
+  const hallucinationGuard = enterpriseCtx ? injectHallucinationGuard(enterpriseCtx) : "";
+  const systemPrompt = isolateSystemPrompt(
+    composed?.systemPrompt ?? template.systemPrompt,
+    `${hallucinationGuard}\n${userPrompt}`,
+  );
 
   try {
     const routed = await Promise.race([
@@ -102,14 +209,19 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
       ),
     ]);
 
-    const output = await validateAiOutput(routed.content, {
-      expectJson: Boolean(input.responseSchema),
-      schema: input.responseSchema,
-      validateIds: true,
-    });
+    const output = aiBrainConfig.enabled
+      ? await validateBrainOutput(routed.content, {
+          expectJson: Boolean(input.responseSchema),
+          schema: input.responseSchema,
+        })
+      : await validateAiOutput(routed.content, {
+          expectJson: Boolean(input.responseSchema),
+          schema: input.responseSchema,
+          validateIds: true,
+        });
 
     if (!output.valid) {
-      throw new AiGatewayError(output.reason, "OUTPUT_VALIDATION_FAILED", "FAILED");
+      throw new AiGatewayError(output.reason ?? "Output validation failed", "OUTPUT_VALIDATION_FAILED", "FAILED");
     }
 
     const costUsd = computeTokenCost(
@@ -121,6 +233,17 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
     const latencyMs = Date.now() - t0;
     const status: AiRequestStatus = routed.fallbackUsed ? "FALLBACK" : "SUCCESS";
     const responseHash = hashResponse(output.content);
+
+    let conversationId = input.conversationId;
+    if (aiBrainConfig.enabled) {
+      const turn = await persistGatewayTurn(
+        actor.actorId,
+        input.conversationId,
+        security.sanitized,
+        output.content,
+      );
+      conversationId = turn.conversationId;
+    }
 
     await Promise.all([
       recordAiRequest({
@@ -139,7 +262,7 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
         costUsd,
         fallbackUsed: routed.fallbackUsed,
         ipAddress: actor.ipAddress,
-        traceId: actor.traceId,
+        traceId,
       }),
       recordAiAudit({
         requestId,
@@ -155,9 +278,36 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
         costUsd,
         status,
         ipAddress: actor.ipAddress,
-        traceId: actor.traceId,
+        traceId,
       }),
       recordDailyCost(prisma, new Date(), routed.provider, actor.actorRole, routed.promptTokens, routed.completionTokens, costUsd),
+      aiBrainConfig.enabled
+        ? recordTimelineEntry({
+            requestId,
+            traceId,
+            actorId: actor.actorId,
+            actorRole: actor.actorRole,
+            promptId: composed?.promptId ?? template.templateId,
+            promptVersion: composed?.promptVersion,
+            model: routed.model,
+            provider: routed.provider,
+            contextHash: enterpriseCtx?.contextHash,
+            promptTokens: routed.promptTokens,
+            completionTokens: routed.completionTokens,
+            latencyMs,
+            costUsd,
+            status,
+            fallbackUsed: routed.fallbackUsed,
+            blocked: false,
+            resultHash: responseHash,
+            metadata: {
+              endpoint,
+              compressionRatio: composed?.compressionRatio,
+              conversationId,
+              permissions,
+            },
+          })
+        : Promise.resolve(),
     ]);
 
     recordAiSuccess(actor.actorRole, routed.provider);
@@ -177,6 +327,7 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
       costUsd,
       fallbackUsed: routed.fallbackUsed,
       templateId: template.templateId,
+      conversationId,
     };
   } catch (err) {
     const latencyMs = Date.now() - t0;
@@ -184,23 +335,43 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
     const status: AiRequestStatus = code === "TIMEOUT" ? "TIMEOUT" : "FAILED";
     recordAiFailure(actor.actorRole, code);
 
-    await recordAiRequest({
-      requestId,
-      actorId: actor.actorId,
-      actorRole: actor.actorRole,
-      templateId: input.templateId,
-      promptHash: security.promptHash,
-      status,
-      latencyMs,
-      promptTokens: 0,
-      completionTokens: 0,
-      cachedTokens: 0,
-      costUsd: 0,
-      fallbackUsed: false,
-      errorCode: code,
-      ipAddress: actor.ipAddress,
-      traceId: actor.traceId,
-    }).catch(() => undefined);
+    await Promise.all([
+      recordAiRequest({
+        requestId,
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+        templateId: input.templateId,
+        promptHash: security.promptHash,
+        status,
+        latencyMs,
+        promptTokens: 0,
+        completionTokens: 0,
+        cachedTokens: 0,
+        costUsd: 0,
+        fallbackUsed: false,
+        errorCode: code,
+        ipAddress: actor.ipAddress,
+        traceId,
+      }),
+      aiBrainConfig.enabled
+        ? recordTimelineEntry({
+            requestId,
+            traceId,
+            actorId: actor.actorId,
+            actorRole: actor.actorRole,
+            promptId: input.templateId,
+            contextHash: enterpriseCtx?.contextHash,
+            promptTokens: 0,
+            completionTokens: 0,
+            latencyMs,
+            costUsd: 0,
+            status,
+            fallbackUsed: false,
+            blocked: code === "PROMPT_BLOCKED" || code === "FORBIDDEN" || code === "VALIDATION_ERROR",
+            blockReason: code,
+          })
+        : Promise.resolve(),
+    ]).catch(() => undefined);
 
     throw err;
   }

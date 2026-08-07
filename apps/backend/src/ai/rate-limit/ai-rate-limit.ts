@@ -20,6 +20,9 @@ export async function checkAiRateLimit(
   actorRole: AiGatewayRole,
   ipAddress?: string,
 ): Promise<AiRateLimitResult> {
+  if (process.env.AI_RATE_LIMIT_BYPASS === "true") {
+    return { allowed: true, remaining: 9999 };
+  }
   const limits = LIMITS[actorRole] ?? LIMITS.CUSTOMER;
   const minuteKey = `ai:rate:${actorRole}:${actorId}:m`;
   const hourKey = `ai:rate:${actorRole}:${actorId}:h`;

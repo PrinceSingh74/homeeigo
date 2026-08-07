@@ -28,6 +28,9 @@ import { financialLedgerService } from "../services/financial-ledger.service";
 import { cleanupPublishedOutbox, startOutboxProcessor, stopOutboxProcessor } from "../events/core/outbox-processor";
 import { cleanupEventPlatformData } from "../events/core/retention";
 import { startEtlScheduler, stopEtlScheduler } from "../../analytics/scheduler/etl-scheduler";
+import { expireStaleMemories, purgeExpiredContextCache } from "../ai-brain";
+
+const AI_BRAIN_MAINTENANCE_INTERVAL_MS = 60 * 60 * 1000;
 
 const OTP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const ASSIGNMENT_INTERVAL_MS = 30 * 1000;
@@ -62,6 +65,7 @@ let archivalTimer: ReturnType<typeof setInterval> | null = null;
 let tokenCleanupTimer: ReturnType<typeof setInterval> | null = null;
 let retentionTickTimer: ReturnType<typeof setInterval> | null = null;
 let refundRetryTimer: ReturnType<typeof setInterval> | null = null;
+let aiBrainMaintenanceTimer: ReturnType<typeof setInterval> | null = null;
 
 const otpService = new OTPService(prisma);
 const refreshTokenService = new RefreshTokenService(prisma, new JWTService());
@@ -306,6 +310,22 @@ async function runRetentionTick(): Promise<void> {
   });
 }
 
+async function runAiBrainMaintenance(): Promise<void> {
+  await runWithLeaderLock("maintenance:ai_brain", 600, async () => {
+    const [expiredMemories, purgedCache] = await Promise.all([
+      expireStaleMemories(),
+      purgeExpiredContextCache(),
+    ]);
+    if (expiredMemories > 0 || purgedCache > 0) {
+      logger.info("ai_brain_maintenance", {
+        category: "APPLICATION",
+        expiredMemories,
+        purgedCache,
+      });
+    }
+  });
+}
+
 export function startMaintenance(): void {
   if (otpTimer) return;
   void consentService.ensurePolicyVersionsSeeded().catch(() => undefined);
@@ -321,9 +341,11 @@ export function startMaintenance(): void {
   void runOpsAlertDispatch();
   void runTokenSecurityCleanup();
   void runRetentionTick();
+  void runAiBrainMaintenance();
   void runRefundRetry();
   otpTimer = setInterval(() => void runOtpCleanup(), OTP_INTERVAL_MS);
   refundRetryTimer = setInterval(() => void runRefundRetry(), REFUND_RETRY_INTERVAL_MS);
+  aiBrainMaintenanceTimer = setInterval(() => void runAiBrainMaintenance(), AI_BRAIN_MAINTENANCE_INTERVAL_MS);
   retentionTickTimer = setInterval(() => void runRetentionTick(), RETENTION_TICK_INTERVAL_MS);
   tokenCleanupTimer = setInterval(() => void runTokenSecurityCleanup(), TOKEN_CLEANUP_INTERVAL_MS);
   reconcileTimer = setInterval(() => void runReconcile(), RECONCILE_INTERVAL_MS);
@@ -352,6 +374,7 @@ export function startMaintenance(): void {
     tokenCleanupTimer,
     retentionTickTimer,
     refundRetryTimer,
+    aiBrainMaintenanceTimer,
   ]) {
     (t as { unref?: () => void }).unref?.();
   }
@@ -376,6 +399,7 @@ export function stopMaintenance(): void {
     tokenCleanupTimer,
     retentionTickTimer,
     refundRetryTimer,
+    aiBrainMaintenanceTimer,
   ]) {
     if (t) clearInterval(t);
   }
@@ -393,5 +417,6 @@ export function stopMaintenance(): void {
     tokenCleanupTimer =
     retentionTickTimer =
     refundRetryTimer =
+    aiBrainMaintenanceTimer =
       null;
 }

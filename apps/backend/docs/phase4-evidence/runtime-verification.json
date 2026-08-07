@@ -1,0 +1,97 @@
+{
+  "generatedAt": "2026-08-07T09:29:41.803Z",
+  "checks": [
+    {
+      "id": "rbac_customer",
+      "passed": true,
+      "detail": "permissions=customer.support.v1,customer.*"
+    },
+    {
+      "id": "rbac_admin_finance",
+      "passed": true,
+      "detail": "admin.*,fraud.*,finance.*,operations.*,analytics.*,eta.*"
+    },
+    {
+      "id": "collector_support",
+      "passed": true,
+      "detail": "sections=legacy_context,memory,business_objects,permissions,identity"
+    },
+    {
+      "id": "collector_admin",
+      "passed": true,
+      "detail": "sections=legacy_context,memory,business_objects,intent,permissions,identity"
+    },
+    {
+      "id": "memory_compression",
+      "passed": true,
+      "detail": "id=cmsiqu2wr0000tz1cyu612h8m"
+    },
+    {
+      "id": "memory_expiry",
+      "passed": true,
+      "detail": "expired=1"
+    },
+    {
+      "id": "prompt_diff",
+      "passed": true,
+      "detail": "v1"
+    },
+    {
+      "id": "prompt_fallback_resolve",
+      "passed": true,
+      "detail": "customer.support.v1"
+    },
+    {
+      "id": "prompt_ab_routing",
+      "passed": true,
+      "detail": "v1"
+    },
+    {
+      "id": "api_context_cache",
+      "passed": true,
+      "detail": "entries=5"
+    },
+    {
+      "id": "gateway_persistence",
+      "passed": true,
+      "detail": "conversationId=cmsiqu42j000ctz1cdqfyrrkc"
+    },
+    {
+      "id": "gateway_content",
+      "passed": true,
+      "detail": "requestId=c89ee9b5-4d27-477d-a5d4-7362059bbb76"
+    },
+    {
+      "id": "conversation_storage",
+      "passed": true,
+      "detail": "messages=2"
+    },
+    {
+      "id": "conversation_intent",
+      "passed": true,
+      "detail": "intents=general"
+    },
+    {
+      "id": "trace_id",
+      "passed": true,
+      "detail": "traceId=runtime-verify-1786094980124"
+    },
+    {
+      "id": "blocked_timeline",
+      "passed": true,
+      "detail": "reason=injection_pattern:ignore\\s+(all\\s+)?(previous|prior|above)"
+    },
+    {
+      "id": "rbac_prompt_injection",
+      "passed": true,
+      "detail": "tokens=285"
+    },
+    {
+      "id": "benchmark_report",
+      "passed": true,
+      "detail": "gateway_100_avg=54ms"
+    }
+  ],
+  "passed": 18,
+  "failed": 0
+}
