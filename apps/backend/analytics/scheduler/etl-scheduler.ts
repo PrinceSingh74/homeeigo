@@ -88,9 +88,10 @@ export async function triggerManualEtl(jobIds?: string[], runMode: EtlRunMode = 
 
 export async function triggerEventEtl(eventType: string, aggregateId: string): Promise<void> {
   const domainMap: Record<string, string[]> = {
-    "homigo.booking.completed": ["etl.booking", "etl.aggregates"],
+    "homigo.booking.completed": ["etl.booking", "etl.aggregates", "etl.eta"],
     "homigo.payment.captured": ["etl.payment", "etl.ledger"],
     "homigo.partner.arrived": ["etl.booking", "etl.location"],
+    "eta.label.created": ["etl.eta"],
   };
   const jobIds = domainMap[eventType];
   if (!jobIds) return;

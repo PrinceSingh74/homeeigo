@@ -1,0 +1,510 @@
+{
+  "certifiedAt": "2026-08-07T06:58:53.881Z",
+  "runId": "phase2-cert-1786085847281",
+  "phase": "2.0",
+  "scope": "ETA Intelligence Label Collection — NO ML inference",
+  "baseline": {
+    "phase0": "CERTIFIED",
+    "phase1": "CERTIFIED",
+    "rcSha": "c31f154a128022fa7d9c4e44652506eedf3fa3e4"
+  },
+  "summary": {
+    "totalGates": 78,
+    "passed": 78,
+    "failed": 0,
+    "criticalFailures": 0,
+    "certified": true
+  },
+  "sections": {
+    "Architecture": "PASS",
+    "Migration": "PASS",
+    "BigQuery": "PASS",
+    "Label Collection": "PASS",
+    "Google Snapshot": "PASS",
+    "GPS Pipeline": "PASS",
+    "Feature Engineering": "PASS",
+    "Feature Store": "PASS",
+    "ETL": "PASS",
+    "Observability": "PASS",
+    "Alerts": "PASS",
+    "Dashboard": "PASS",
+    "Security": "PASS",
+    "Regression": "PASS",
+    "Performance": "PASS",
+    "Integration": "PASS",
+    "Business Regression": "PASS"
+  },
+  "gates": [
+    {
+      "step": "1",
+      "name": "commit_sha",
+      "passed": true,
+      "detail": "fac534358812"
+    },
+    {
+      "step": "1",
+      "name": "branch",
+      "passed": true,
+      "detail": "cursor/stage-e-step-13-certification"
+    },
+    {
+      "step": "1",
+      "name": "phase2_migration_file",
+      "passed": true,
+      "detail": "migration present"
+    },
+    {
+      "step": "2",
+      "name": "table_eta_training_labels",
+      "passed": true,
+      "detail": "exists"
+    },
+    {
+      "step": "2",
+      "name": "table_eta_google_snapshots",
+      "passed": true,
+      "detail": "exists"
+    },
+    {
+      "step": "2",
+      "name": "table_eta_gps_tracks",
+      "passed": true,
+      "detail": "exists"
+    },
+    {
+      "step": "2",
+      "name": "indexes_present",
+      "passed": true,
+      "detail": "10 indexes"
+    },
+    {
+      "step": "2",
+      "name": "unique_booking_id",
+      "passed": true,
+      "detail": "booking_id unique on labels/gps"
+    },
+    {
+      "step": "2",
+      "name": "migration_applied",
+      "passed": true,
+      "detail": "applied"
+    },
+    {
+      "step": "3",
+      "name": "bq_table_eta_raw",
+      "passed": true,
+      "detail": "homigo_analytics_raw.eta_raw"
+    },
+    {
+      "step": "3",
+      "name": "bq_table_eta_validated",
+      "passed": true,
+      "detail": "homigo_analytics_validated.eta_validated"
+    },
+    {
+      "step": "3",
+      "name": "bq_table_eta_feature",
+      "passed": true,
+      "detail": "homigo_analytics_feature.eta_feature"
+    },
+    {
+      "step": "3",
+      "name": "bq_table_eta_training",
+      "passed": true,
+      "detail": "homigo_analytics_analytics.eta_training"
+    },
+    {
+      "step": "3",
+      "name": "bq_table_eta_prediction_history",
+      "passed": true,
+      "detail": "homigo_analytics_analytics.eta_prediction_history"
+    },
+    {
+      "step": "3",
+      "name": "bq_table_eta_google_snapshots",
+      "passed": true,
+      "detail": "homigo_analytics_raw.eta_google_snapshots"
+    },
+    {
+      "step": "3",
+      "name": "bq_table_eta_gps_tracks",
+      "passed": true,
+      "detail": "homigo_analytics_raw.eta_gps_tracks"
+    },
+    {
+      "step": "3",
+      "name": "bq_view_fs_eta_features_v2",
+      "passed": true,
+      "detail": "exists"
+    },
+    {
+      "step": "3",
+      "name": "bq_view_vw_train_eta_v2",
+      "passed": true,
+      "detail": "exists"
+    },
+    {
+      "step": "4",
+      "name": "outbox_enabled",
+      "passed": true,
+      "detail": "true"
+    },
+    {
+      "step": "4",
+      "name": "consumers_enabled",
+      "passed": true,
+      "detail": "true"
+    },
+    {
+      "step": "4",
+      "name": "booking_created",
+      "passed": true,
+      "detail": "cmsilelez0001tzpowxqbvyg5"
+    },
+    {
+      "step": "4",
+      "name": "partner_dispatched",
+      "passed": true,
+      "detail": "2026-08-07T06:57:42.904Z"
+    },
+    {
+      "step": "4",
+      "name": "partner_accepted",
+      "passed": true,
+      "detail": "ACCEPTED"
+    },
+    {
+      "step": "4",
+      "name": "en_route_timestamp",
+      "passed": true,
+      "detail": "2026-08-07T06:58:16.693Z"
+    },
+    {
+      "step": "4",
+      "name": "arrival_timestamp",
+      "passed": true,
+      "detail": "2026-08-07T06:58:17.845Z"
+    },
+    {
+      "step": "4",
+      "name": "booking_started",
+      "passed": true,
+      "detail": "cmsilelez0001tzpowxqbvyg5"
+    },
+    {
+      "step": "4",
+      "name": "booking_completed",
+      "passed": true,
+      "detail": "COMPLETED"
+    },
+    {
+      "step": "4",
+      "name": "outbox_booking_completed",
+      "passed": true,
+      "detail": "86a559fd-4d44-477c-bd5f-85f714cc484c"
+    },
+    {
+      "step": "4",
+      "name": "training_label_generated",
+      "passed": true,
+      "detail": "TRAINING_READY"
+    },
+    {
+      "step": "4",
+      "name": "google_snapshot_created",
+      "passed": true,
+      "detail": "600ms"
+    },
+    {
+      "step": "4",
+      "name": "gps_compressed",
+      "passed": true,
+      "detail": "8 pings"
+    },
+    {
+      "step": "4",
+      "name": "feature_engineering",
+      "passed": true,
+      "detail": "short"
+    },
+    {
+      "step": "4",
+      "name": "etl_eta_completed",
+      "passed": true,
+      "detail": "4 rows"
+    },
+    {
+      "step": "4",
+      "name": "eta_label_created_event",
+      "passed": true,
+      "detail": "b2d9fa69-1d14-4578-9520-1249f99203db"
+    },
+    {
+      "step": "4",
+      "name": "eta_label_consumer_receipt",
+      "passed": true,
+      "detail": "eta-label.v1"
+    },
+    {
+      "step": "5",
+      "name": "no_duplicate_labels",
+      "passed": true,
+      "detail": "duplicates=0"
+    },
+    {
+      "step": "5",
+      "name": "no_negative_duration",
+      "passed": true,
+      "detail": "0 negative"
+    },
+    {
+      "step": "5",
+      "name": "no_missing_timestamps",
+      "passed": true,
+      "detail": "0 missing"
+    },
+    {
+      "step": "5",
+      "name": "no_invalid_gps",
+      "passed": true,
+      "detail": "0 null island"
+    },
+    {
+      "step": "5",
+      "name": "no_future_timestamps",
+      "passed": true,
+      "detail": "0 future"
+    },
+    {
+      "step": "5",
+      "name": "validation_engine",
+      "passed": true,
+      "detail": "score=90 status=TRAINING_READY"
+    },
+    {
+      "step": "6",
+      "name": "fs_eta_features_v2_registered",
+      "passed": true,
+      "detail": "homigo_analytics_feature.fs_eta_features_v2"
+    },
+    {
+      "step": "6",
+      "name": "fs_eta_features_v2_view",
+      "passed": true,
+      "detail": "exists"
+    },
+    {
+      "step": "6",
+      "name": "feature_version_tag",
+      "passed": true,
+      "detail": "feature-1786085932742-e1eb81b0"
+    },
+    {
+      "step": "7",
+      "name": "alert_EtaMissingLabels",
+      "passed": true,
+      "detail": "defined"
+    },
+    {
+      "step": "7",
+      "name": "alert_EtaLabelQualityLow",
+      "passed": true,
+      "detail": "defined"
+    },
+    {
+      "step": "7",
+      "name": "alert_EtaGoogleLatencyHigh",
+      "passed": true,
+      "detail": "defined"
+    },
+    {
+      "step": "7",
+      "name": "alert_EtaTrainingReadinessLow",
+      "passed": true,
+      "detail": "defined"
+    },
+    {
+      "step": "7",
+      "name": "alert_EtaLabelFailureSpike",
+      "passed": true,
+      "detail": "defined"
+    },
+    {
+      "step": "7",
+      "name": "grafana_dashboard_file",
+      "passed": true,
+      "detail": "D:\\homigo\\apps\\backend\\monitoring\\grafana\\dashboards\\homigo-eta-intelligence.json"
+    },
+    {
+      "step": "7",
+      "name": "grafana_dashboard_uid",
+      "passed": true,
+      "detail": "homigo-eta-intelligence"
+    },
+    {
+      "step": "7",
+      "name": "grafana_panels",
+      "passed": true,
+      "detail": "11 panels"
+    },
+    {
+      "step": "7",
+      "name": "metric_homigo_eta_labels_total",
+      "passed": true,
+      "detail": "defined"
+    },
+    {
+      "step": "7",
+      "name": "metric_homigo_eta_label_failures_total",
+      "passed": true,
+      "detail": "defined"
+    },
+    {
+      "step": "7",
+      "name": "metric_homigo_eta_google_latency",
+      "passed": true,
+      "detail": "defined"
+    },
+    {
+      "step": "7",
+      "name": "metric_homigo_eta_training_ready",
+      "passed": true,
+      "detail": "defined"
+    },
+    {
+      "step": "7",
+      "name": "metric_homigo_eta_quality_score",
+      "passed": true,
+      "detail": "defined"
+    },
+    {
+      "step": "8",
+      "name": "api_route_/eta",
+      "passed": true,
+      "detail": "/eta"
+    },
+    {
+      "step": "8",
+      "name": "api_route_/eta/quality",
+      "passed": true,
+      "detail": "/eta/quality"
+    },
+    {
+      "step": "8",
+      "name": "api_route_/eta/readiness",
+      "passed": true,
+      "detail": "/eta/readiness"
+    },
+    {
+      "step": "8",
+      "name": "api_route_/eta/trips",
+      "passed": true,
+      "detail": "/eta/trips"
+    },
+    {
+      "step": "8",
+      "name": "api_route_/eta/google",
+      "passed": true,
+      "detail": "/eta/google"
+    },
+    {
+      "step": "8",
+      "name": "rbac_admin",
+      "passed": true,
+      "detail": "ADMIN RBAC on analytics routes"
+    },
+    {
+      "step": "8",
+      "name": "api_dashboard_service",
+      "passed": true,
+      "detail": "3 trips"
+    },
+    {
+      "step": "8",
+      "name": "api_quality_service",
+      "passed": true,
+      "detail": "score=93.3"
+    },
+    {
+      "step": "8",
+      "name": "api_readiness_service",
+      "passed": true,
+      "detail": "6%"
+    },
+    {
+      "step": "9",
+      "name": "hashed_identifiers",
+      "passed": true,
+      "detail": "no @ in hashes"
+    },
+    {
+      "step": "9",
+      "name": "hash_format",
+      "passed": true,
+      "detail": "sha256-length hashes"
+    },
+    {
+      "step": "9",
+      "name": "no_pii_in_label_fields",
+      "passed": true,
+      "detail": "partnerHash/customerHash only — no raw userId in BQ sync"
+    },
+    {
+      "step": "9",
+      "name": "audit_on_booking_completed",
+      "passed": true,
+      "detail": "audit consumer registered"
+    },
+    {
+      "step": "10",
+      "name": "outbox_drained",
+      "passed": true,
+      "detail": "pending=3"
+    },
+    {
+      "step": "10",
+      "name": "dlq_clean",
+      "passed": true,
+      "detail": "unresolved=0"
+    },
+    {
+      "step": "10",
+      "name": "phase0_outbox_intact",
+      "passed": true,
+      "detail": "outbox processor exists"
+    },
+    {
+      "step": "10",
+      "name": "phase0_retry_intact",
+      "passed": true,
+      "detail": "retry exists"
+    },
+    {
+      "step": "10",
+      "name": "phase1_etl_intact",
+      "passed": true,
+      "detail": "ETL engine exists"
+    },
+    {
+      "step": "10",
+      "name": "phase1_ml_sink_intact",
+      "passed": true,
+      "detail": "ml-feature-sink.v1"
+    },
+    {
+      "step": "10",
+      "name": "unit_tests_pass",
+      "passed": true,
+      "detail": "4/4"
+    },
+    {
+      "step": "10",
+      "name": "phase0_event_tests",
+      "passed": true,
+      "detail": "event foundation tests pass"
+    }
+  ],
+  "bookingId": "cmsilelez0001tzpowxqbvyg5",
+  "mlInference": false,
+  "productionTouched": false
+}

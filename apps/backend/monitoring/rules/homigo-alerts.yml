@@ -416,3 +416,44 @@ groups:
           severity: critical
         annotations:
           summary: More than 5 ETL job failures in 24 hours
+
+      # Phase 2 — ETA Intelligence
+      - alert: EtaMissingLabels
+        expr: homigo_eta_missing_labels > 10
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: ETA label collection has rejected or missing labels
+
+      - alert: EtaLabelQualityLow
+        expr: homigo_eta_quality_score < 80
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: ETA label quality score below 80
+
+      - alert: EtaGoogleLatencyHigh
+        expr: histogram_quantile(0.95, rate(homigo_eta_google_latency_bucket[5m])) > 3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Google ETA API p95 latency exceeds 3 seconds
+
+      - alert: EtaTrainingReadinessLow
+        expr: homigo_eta_training_ready < 50
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: ETA training label count below minimum threshold (50)
+
+      - alert: EtaLabelFailureSpike
+        expr: increase(homigo_eta_label_failures_total[1h]) > 5
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: ETA label collection failure spike detected

@@ -411,13 +411,31 @@ export class TrackingService {
       }
     }
     // Stale/missing: refresh the Google ETA in the background, return instant haversine now.
-    void this.refreshGoogleEta(key, from, to).catch(() => undefined);
+    void this.refreshGoogleEta(key, from, to, bookingId).catch(() => undefined);
     return etaMinutes(distKm);
   }
 
-  private async refreshGoogleEta(key: string, from: { lat: number; lng: number }, to: { lat: number; lng: number }): Promise<void> {
+  private async refreshGoogleEta(key: string, from: { lat: number; lng: number }, to: { lat: number; lng: number }, bookingId?: string): Promise<void> {
+    const requestTimestamp = new Date();
     const r = await mapsService.eta(from, to);
+    const responseTimestamp = new Date();
     await cacheSet(key, JSON.stringify({ eta: r.etaMinutes, at: Date.now() }), ETA_REFRESH_SEC * 2).catch(() => {});
+    if (bookingId && r.source === "google") {
+      void import("./eta-intelligence.service")
+        .then(({ etaIntelligenceService }) =>
+          etaIntelligenceService.captureGoogleSnapshot({
+            bookingId,
+            requestTimestamp,
+            responseTimestamp,
+            status: "OK",
+            etaSeconds: r.etaMinutes * 60,
+            distanceMeters: r.distanceKm * 1000,
+            trafficModel: r.withTraffic ? "best_guess" : "static",
+            source: r.source,
+          }),
+        )
+        .catch(() => undefined);
+    }
   }
 
   async get(bookingId: string, userId?: string, providerId?: string) {

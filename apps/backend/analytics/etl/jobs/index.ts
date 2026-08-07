@@ -342,6 +342,90 @@ async function syncAggregates(_ctx: EtlJobContext): Promise<EtlJobResult> {
   return { rowsExtracted: rowCount, rowsLoaded: rowCount, lowWatermark: null, highWatermark: new Date(), cursorEnd: null, metadata: { rebuilt: ["agg_hourly_demand", "agg_daily_demand", "agg_weekly_demand", "agg_monthly_demand"] } };
 }
 
+async function syncEta(ctx: EtlJobContext): Promise<EtlJobResult> {
+  const since = incrementalSince(ctx, 365);
+  const now = new Date().toISOString();
+  const labels = await prisma.etaTrainingLabel.findMany({
+    where: { updatedAt: { [sinceOp(ctx)]: since }, ...(ctx.cursorId ? { id: { gt: ctx.cursorId } } : {}) },
+    take: ctx.batchSize,
+    orderBy: { id: "asc" },
+  });
+
+  const rawRows = labels.map((l) => ({
+    booking_id: l.bookingId,
+    partner_hash: l.partnerHash,
+    customer_hash: l.customerHash,
+    city: l.city,
+    service_category: l.serviceCategory,
+    dispatch_at: l.dispatchTimestamp?.toISOString() ?? null,
+    arrival_at: l.arrivalTimestamp?.toISOString() ?? null,
+    actual_travel_duration_sec: l.actualTravelDurationSec,
+    google_eta_seconds: l.googleEtaSeconds,
+    google_distance_meters: l.travelDistanceMeters,
+    status: l.status,
+    ingested_at: now,
+  }));
+
+  const validatedRows = labels
+    .filter((l) => l.status !== "REJECTED")
+    .map((l) => ({ ...rawRows.find((r) => r.booking_id === l.bookingId)!, quality_score: l.qualityScore }));
+
+  const featureRows = labels
+    .filter((l) => l.status === "TRAINING_READY")
+    .map((l) => ({
+      booking_id: l.bookingId,
+      partner_hash: l.partnerHash,
+      city: l.city,
+      distance_bucket: l.distanceBucket,
+      weather_bucket: l.weatherBucket,
+      bearing: l.bearing,
+      route_efficiency: l.routeEfficiency,
+      average_speed: l.averageSpeed,
+      peak_hour: l.peakHour,
+      rush_hour: l.rushHour,
+      rain: l.rain,
+      temperature: l.temperature,
+      partner_rating: l.partnerRating,
+      hour: l.hour,
+      weekday: l.weekday,
+      feature_generated_at: now,
+    }));
+
+  const trainingRows = labels
+    .filter((l) => l.status === "TRAINING_READY")
+    .map((l) => ({
+      booking_id: l.bookingId,
+      label_actual_travel_duration_sec: l.actualTravelDurationSec,
+      label_actual_travel_duration_min: l.actualTravelDurationMin,
+      feature_google_eta_seconds: l.googleEtaSeconds,
+      feature_google_eta_minutes: l.googleEtaMinutes,
+      feature_distance_meters: l.travelDistanceMeters,
+      feature_city: l.city,
+      feature_hour: l.hour,
+      feature_weekday: l.weekday,
+      gap_seconds:
+        l.actualTravelDurationSec != null && l.googleEtaSeconds != null
+          ? l.actualTravelDurationSec - l.googleEtaSeconds
+          : null,
+      training_version: "2.0.0",
+      created_at: l.createdAt.toISOString(),
+    }));
+
+  let loaded = 0;
+  if (rawRows.length) loaded += await loadRows("raw", "eta_raw", rawRows, ctx.runMode === "FULL" ? "WRITE_TRUNCATE" : "WRITE_APPEND");
+  if (validatedRows.length) loaded += await loadRows("validated", "eta_validated", validatedRows, "WRITE_APPEND");
+  if (featureRows.length) loaded += await loadRows("feature", "eta_feature", featureRows, "WRITE_APPEND");
+  if (trainingRows.length) loaded += await loadRows("analytics", "eta_training", trainingRows, "WRITE_APPEND");
+
+  return {
+    rowsExtracted: labels.length,
+    rowsLoaded: loaded,
+    lowWatermark: since,
+    highWatermark: labels.at(-1)?.updatedAt ?? ctx.highWatermark,
+    cursorEnd: labels.at(-1)?.id ?? ctx.cursorId,
+  };
+}
+
 export const ETL_JOB_REGISTRY: EtlJobRegistry = {
   "etl.booking": syncBookings,
   "etl.partner": syncPartners,
@@ -360,4 +444,5 @@ export const ETL_JOB_REGISTRY: EtlJobRegistry = {
   "etl.audit": syncAudit,
   "etl.dimensions": syncDimensions,
   "etl.aggregates": syncAggregates,
+  "etl.eta": syncEta,
 };

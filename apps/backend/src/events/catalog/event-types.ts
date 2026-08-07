@@ -12,6 +12,9 @@ export const EVENT_TYPES = {
   PARTNER_DISPATCHED: "homigo.partner.dispatched",
   PARTNER_EN_ROUTE: "homigo.partner.en_route",
   PARTNER_ARRIVED: "homigo.partner.arrived",
+  ETA_LABEL_CREATED: "eta.label.created",
+  ETA_TRIP_COMPLETED: "eta.trip.completed",
+  ETA_FEATURE_UPDATED: "eta.feature.updated",
 } as const;
 
 export type EventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];
@@ -24,4 +27,5 @@ export const EVENT_SOURCES = {
   ASSIGNMENT: "homigo/assignment-engine",
   PROVIDER: "homigo/provider-service",
   TRACKING: "homigo/tracking-service",
+  ETA_INTELLIGENCE: "homigo/eta-intelligence",
 } as const;

@@ -7,6 +7,7 @@ import {
   AUTOMATION_SCHEDULER_CONSUMER_NAME,
 } from "./automation-scheduler.consumer";
 import { mlFeatureSinkConsumer, ML_FEATURE_SINK_CONSUMER_NAME } from "./ml-feature-sink.consumer";
+import { etaLabelConsumer, ETA_LABEL_CONSUMER_NAME } from "./eta-label.consumer";
 import { aiContextIndexerConsumer, AI_CONTEXT_INDEXER_CONSUMER_NAME } from "./ai-context-indexer.consumer";
 import { EVENT_TYPES } from "../catalog/event-types";
 
@@ -51,6 +52,13 @@ export function bootstrapEventConsumers(): void {
     name: ML_FEATURE_SINK_CONSUMER_NAME,
     eventTypes: [EVENT_TYPES.PARTNER_ARRIVED],
     handler: mlFeatureSinkConsumer,
+    maxAttempts: 3,
+  });
+
+  registerConsumer({
+    name: ETA_LABEL_CONSUMER_NAME,
+    eventTypes: [EVENT_TYPES.BOOKING_COMPLETED, EVENT_TYPES.PARTNER_ARRIVED],
+    handler: etaLabelConsumer,
     maxAttempts: 3,
   });
 

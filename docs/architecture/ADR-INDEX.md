@@ -37,8 +37,9 @@ ADRs are **normative for RC `c31f154`**. Changes that alter documented decisions
 | ADR-011 | Staging Certification Strategy | Accepted | Release Engineering | 2027-02-06 | [adr-011-staging-certification-strategy.md](./adr-011-staging-certification-strategy.md) |
 | ADR-012 | Production Promotion Strategy | Accepted | Release Engineering / CTO | 2027-02-06 | [adr-012-production-promotion-strategy.md](./adr-012-production-promotion-strategy.md) |
 | ADR-013 | Phase 1 ML Data Platform | Accepted | Platform / Data Engineering | 2027-02-06 | [adr-013-phase-1-ml-data-platform.md](./adr-013-phase-1-ml-data-platform.md) |
+| ADR-014 | Phase 2 ETA Intelligence Label Collection | Accepted | Platform / Data Engineering | 2027-02-07 | [adr-014-phase-2-eta-intelligence.md](./adr-014-phase-2-eta-intelligence.md) |
 
-**Total ADRs:** 13
+**Total ADRs:** 14
 
 ---
 

@@ -34,7 +34,8 @@ export type EtlDomain =
   | "hcoin"
   | "automation"
   | "events"
-  | "audit";
+  | "audit"
+  | "eta";
 
 export type EtlJobDefinition = {
   id: string;
@@ -66,6 +67,7 @@ export const ETL_JOB_DEFINITIONS: EtlJobDefinition[] = [
   { id: "etl.audit", domain: "audit", targetTable: "fact_audit_logs", bqLayer: "raw", priority: 50, dependencies: [], defaultBatchSize: 3000, slaTargetSeconds: 86400, supportsIncremental: true },
   { id: "etl.dimensions", domain: "booking", targetTable: "dim_service", bqLayer: "curated", priority: 5, dependencies: [], defaultBatchSize: 500, slaTargetSeconds: 86400, supportsIncremental: false },
   { id: "etl.aggregates", domain: "booking", targetTable: "agg_hourly_demand", bqLayer: "analytics", priority: 50, dependencies: ["etl.booking"], defaultBatchSize: 0, slaTargetSeconds: 7200, supportsIncremental: false },
+  { id: "etl.eta", domain: "eta", targetTable: "eta_training", bqLayer: "analytics", priority: 12, dependencies: ["etl.booking"], defaultBatchSize: 2000, slaTargetSeconds: 3600, supportsIncremental: true },
 ];
 
 export function getJobDefinition(jobId: string): EtlJobDefinition | undefined {

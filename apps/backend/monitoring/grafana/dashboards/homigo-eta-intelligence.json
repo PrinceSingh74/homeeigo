@@ -1,0 +1,91 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Trips Collected",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(increase(homigo_eta_labels_total[24h]))", "legendFormat": "labels/24h" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } } }
+    },
+    {
+      "title": "Training Ready",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "homigo_eta_training_ready", "legendFormat": "ready" }],
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "steps": [{ "color": "red", "value": 0 }, { "color": "yellow", "value": 25 }, { "color": "green", "value": 50 }] } } }
+    },
+    {
+      "title": "Label Quality Score",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [{ "expr": "homigo_eta_quality_score", "legendFormat": "quality" }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 100, "unit": "percent" } }
+    },
+    {
+      "title": "Missing / Rejected Labels",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [{ "expr": "homigo_eta_missing_labels", "legendFormat": "rejected" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "red", "value": 10 }] } } }
+    },
+    {
+      "title": "Labels Created Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [{ "expr": "rate(homigo_eta_labels_total[5m])", "legendFormat": "{{city}}" }]
+    },
+    {
+      "title": "Google ETA API Latency (p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [{ "expr": "histogram_quantile(0.95, rate(homigo_eta_google_latency_bucket[5m]))", "legendFormat": "p95 {{status}}" }]
+    },
+    {
+      "title": "Label Failures",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [{ "expr": "increase(homigo_eta_label_failures_total[1h])", "legendFormat": "{{reason}}" }]
+    },
+    {
+      "title": "Collection Latency (p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [{ "expr": "histogram_quantile(0.95, rate(homigo_eta_collection_latency_bucket[5m]))", "legendFormat": "p95" }]
+    },
+    {
+      "title": "Distance Bucket Distribution",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 20 },
+      "targets": [{ "expr": "sum by (bucket) (homigo_eta_distance_bucket)", "legendFormat": "{{bucket}}" }]
+    },
+    {
+      "title": "Training Readiness",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 20 },
+      "targets": [{ "expr": "homigo_eta_training_ready / 50 * 100", "legendFormat": "readiness %" }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 100, "unit": "percent" } }
+    },
+    {
+      "title": "GPS Quality (avg sampling Hz proxy)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 20 },
+      "description": "Derived from eta_gps_tracks avg_sampling_hz in PG",
+      "targets": [{ "expr": "homigo_eta_training_ready", "legendFormat": "tracks with GPS" }]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["homigo", "eta", "phase-2"],
+  "templating": { "list": [] },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "Asia/Kolkata",
+  "title": "HOMIGO ETA Intelligence",
+  "uid": "homigo-eta-intelligence",
+  "version": 1
+}

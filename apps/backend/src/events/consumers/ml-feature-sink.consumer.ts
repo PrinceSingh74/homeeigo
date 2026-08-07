@@ -3,9 +3,9 @@ import { logger } from "../../lib/logger";
 import type { HomigoEvent } from "../core/homigo-event";
 import { EVENT_TYPES } from "../catalog/event-types";
 import type { PartnerArrivedPayload } from "../catalog/partner.events";
-import { hashPii } from "../../analytics/etl/pii";
-import { loadRows } from "../../analytics/etl/bq-client";
-import { triggerEventEtl } from "../../analytics/scheduler/etl-scheduler";
+import { hashPii } from "../../../analytics/etl/pii";
+import { loadRows } from "../../../analytics/etl/bq-client";
+import { triggerEventEtl } from "../../../analytics/scheduler/etl-scheduler";
 
 /**
  * ML feature sink — Phase 1: persists ETA labels to staging + BigQuery feature layer.

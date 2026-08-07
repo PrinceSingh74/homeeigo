@@ -10,7 +10,7 @@ const P = ANALYTICS_CONFIG.projectId;
 const D = ANALYTICS_CONFIG.dataset;
 const F = `${D}_feature`;
 
-export type FeatureGroup = "customer" | "partner" | "payment" | "finance" | "fraud" | "geo" | "demand";
+export type FeatureGroup = "customer" | "partner" | "payment" | "finance" | "fraud" | "geo" | "demand" | "eta";
 
 const FEATURE_VIEWS: Record<FeatureGroup, string> = {
   customer: `${F}.fs_customer_features_v2`,
@@ -20,6 +20,7 @@ const FEATURE_VIEWS: Record<FeatureGroup, string> = {
   fraud: `${F}.fs_fraud_features_v2`,
   geo: `${F}.fs_geo_features_v2`,
   demand: `${F}.fs_demand_features_v2`,
+  eta: `${F}.fs_eta_features_v2`,
 };
 
 export class FeatureStoreService {

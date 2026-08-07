@@ -129,4 +129,32 @@ export const analyticsRoutes = new Elysia({ prefix: "/api/analytics" })
         mlops,
       },
     };
+  })
+
+  // Phase 2 — ETA Intelligence (label collection only, no ML inference)
+  .get("/eta", async ({ requireRole }) => {
+    requireRole("ADMIN");
+    const { etaIntelligenceService } = await import("../services/eta-intelligence.service");
+    return { success: true, ...(await etaIntelligenceService.getDashboardStats()) };
+  })
+  .get("/eta/quality", async ({ requireRole }) => {
+    requireRole("ADMIN");
+    const { etaIntelligenceService } = await import("../services/eta-intelligence.service");
+    return { success: true, ...(await etaIntelligenceService.getQualityReport()) };
+  })
+  .get("/eta/readiness", async ({ requireRole }) => {
+    requireRole("ADMIN");
+    const { etaIntelligenceService } = await import("../services/eta-intelligence.service");
+    return { success: true, ...(await etaIntelligenceService.getReadinessReport()) };
+  })
+  .get("/eta/trips", async ({ requireRole, query }) => {
+    requireRole("ADMIN");
+    const { etaIntelligenceService } = await import("../services/eta-intelligence.service");
+    const trips = await etaIntelligenceService.listTrips(Number(query.limit ?? 50), Number(query.offset ?? 0));
+    return { success: true, trips };
+  })
+  .get("/eta/google", async ({ requireRole }) => {
+    requireRole("ADMIN");
+    const { etaIntelligenceService } = await import("../services/eta-intelligence.service");
+    return { success: true, ...(await etaIntelligenceService.getGoogleStats()) };
   });
