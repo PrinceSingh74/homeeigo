@@ -34,6 +34,7 @@ import { adminApiRoutes } from "./routes/admin";
 import { partnerRegisterRoutes } from "./routes/partner-register";
 import { webhooksRoutes } from "./routes/webhooks";
 import { aiRoutes } from "./routes/ai";
+import { aiGatewayRoutes } from "./routes/ai-gateway.routes";
 import { trackingWs } from "./websocket/tracking.ws";
 import { notificationsWs } from "./websocket/notifications.ws";
 import { bookingWs } from "./websocket/booking.ws";
@@ -203,6 +204,7 @@ const app = new Elysia()
   .use(weatherRoutes)
   .use(notificationsRoutes)
   .use(aiRoutes)
+  .use(aiGatewayRoutes)
   .use(adminApiRoutes)
   .use(subscriptionsRoutes)
   .use(supportRoutes)
@@ -299,6 +301,8 @@ app.onStart(() => {
   void import("./services/mlops.service").then((m) => m.registerMlopsSamplers()).catch(() => undefined);
   void import("./lib/etl-metrics").then((m) => { m.initEtlMetricsAtZero(); m.registerEtlMetricSamplers(); }).catch(() => undefined);
   void import("./lib/eta-metrics").then((m) => { m.initEtaMetricsAtZero(); m.registerEtaMetricSamplers(); }).catch(() => undefined);
+  void import("./lib/ai-metrics").then((m) => { m.initAiMetricsAtZero(); m.registerAiMetricSamplers(); }).catch(() => undefined);
+  void import("./ai/templates/prompt-templates").then((m) => m.seedPromptTemplates()).catch(() => undefined);
   void redisClient.connect().then(() => {
     redisClient.startHealthChecking();
     // Cross-instance WebSocket fan-out (no-op when Redis is disabled).

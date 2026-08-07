@@ -1,0 +1,92 @@
+{
+  "uid": "homigo-ai-core",
+  "title": "18 — AI Core (Enterprise Gateway)",
+  "tags": ["homigo", "enterprise", "phase3", "ai"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Requests/sec",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(homigo_ai_requests_total[5m]))", "legendFormat": "req/s", "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "title": "Latency p95",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(homigo_ai_latency_bucket[5m])) by (le))", "legendFormat": "p95", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "title": "Daily Cost (USD)",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" } },
+      "targets": [{ "expr": "homigo_ai_daily_cost_usd", "refId": "A" }]
+    },
+    {
+      "id": 4,
+      "title": "Gemini %",
+      "type": "gauge",
+      "gridPos": { "x": 0, "y": 6, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{
+        "expr": "100 * sum(homigo_ai_provider_usage{provider=\"GEMINI\",status=\"success\"}) / clamp_min(sum(homigo_ai_provider_usage{status=\"success\"}), 1)",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 5,
+      "title": "OpenAI %",
+      "type": "gauge",
+      "gridPos": { "x": 6, "y": 6, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{
+        "expr": "100 * sum(homigo_ai_provider_usage{provider=\"OPENAI\",status=\"success\"}) / clamp_min(sum(homigo_ai_provider_usage{status=\"success\"}), 1)",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 6,
+      "title": "Fallbacks",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 6, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(homigo_ai_fallback_total)", "refId": "A" }]
+    },
+    {
+      "id": 7,
+      "title": "Errors",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 6, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } },
+      "targets": [{ "expr": "sum(homigo_ai_failures_total)", "refId": "A" }]
+    },
+    {
+      "id": 8,
+      "title": "Blocked Prompts",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 11, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(homigo_ai_prompt_blocked[5m])) by (category)", "legendFormat": "{{category}}", "refId": "A" }]
+    },
+    {
+      "id": 9,
+      "title": "Timeouts",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 11, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(homigo_ai_timeout_total[5m])) by (provider)", "legendFormat": "{{provider}}", "refId": "A" }]
+    }
+  ]
+}

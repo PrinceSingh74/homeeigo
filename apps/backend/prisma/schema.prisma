@@ -3879,3 +3879,142 @@ model EtaGpsTrack {
   @@index([partnerHash])
   @@map("eta_gps_tracks")
 }
+
+// ── Phase 3: Enterprise AI Core ─────────────────────────────────────────────
+
+enum AiGatewayRole {
+  CUSTOMER
+  PARTNER
+  ADMIN
+  SUPPORT
+  SYSTEM
+  AUTOMATION
+}
+
+enum AiProviderType {
+  GEMINI
+  OPENAI
+}
+
+enum AiRequestStatus {
+  SUCCESS
+  FAILED
+  BLOCKED
+  TIMEOUT
+  FALLBACK
+}
+
+model AiGatewayRequest {
+  id               String          @id @default(cuid())
+  requestId        String          @unique @map("request_id")
+  actorId          String?         @map("actor_id")
+  actorRole        AiGatewayRole   @map("actor_role")
+  templateId       String?         @map("template_id")
+  promptHash       String          @map("prompt_hash")
+  responseHash     String?         @map("response_hash")
+  provider         AiProviderType?
+  status           AiRequestStatus @default(SUCCESS)
+  latencyMs        Int?            @map("latency_ms")
+  promptTokens     Int             @default(0) @map("prompt_tokens")
+  completionTokens Int             @default(0) @map("completion_tokens")
+  cachedTokens     Int             @default(0) @map("cached_tokens")
+  costUsd          Float           @default(0) @map("cost_usd")
+  fallbackUsed     Boolean         @default(false) @map("fallback_used")
+  errorCode        String?         @map("error_code")
+  ipAddress        String?         @map("ip_address")
+  traceId          String?         @map("trace_id")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  @@index([actorId, createdAt])
+  @@index([actorRole, createdAt])
+  @@index([status, createdAt])
+  @@index([provider, createdAt])
+  @@map("ai_gateway_requests")
+}
+
+model AiGatewayUsage {
+  id               String        @id @default(cuid())
+  periodStart      DateTime      @map("period_start")
+  periodEnd        DateTime      @map("period_end")
+  granularity      String        @default("hourly")
+  actorRole        AiGatewayRole @map("actor_role")
+  provider         AiProviderType @map("provider")
+  requestCount     Int           @default(0) @map("request_count")
+  successCount     Int           @default(0) @map("success_count")
+  failureCount     Int           @default(0) @map("failure_count")
+  fallbackCount    Int           @default(0) @map("fallback_count")
+  blockedCount     Int           @default(0) @map("blocked_count")
+  promptTokens     Int           @default(0) @map("prompt_tokens")
+  completionTokens Int           @default(0) @map("completion_tokens")
+  totalCostUsd     Float         @default(0) @map("total_cost_usd")
+  avgLatencyMs     Float         @default(0) @map("avg_latency_ms")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  @@unique([periodStart, granularity, actorRole, provider])
+  @@index([periodStart, actorRole])
+  @@map("ai_gateway_usage")
+}
+
+model AiGatewayAudit {
+  id           String          @id @default(cuid())
+  requestId    String          @map("request_id")
+  actorId      String?         @map("actor_id")
+  actorRole    AiGatewayRole   @map("actor_role")
+  action       String
+  reason       String?
+  promptHash   String          @map("prompt_hash")
+  responseHash String?         @map("response_hash")
+  provider     AiProviderType?
+  latencyMs    Int?            @map("latency_ms")
+  promptTokens Int             @default(0) @map("prompt_tokens")
+  completionTokens Int         @default(0) @map("completion_tokens")
+  costUsd      Float           @default(0) @map("cost_usd")
+  status       AiRequestStatus
+  ipAddress    String?         @map("ip_address")
+  traceId      String?         @map("trace_id")
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  @@index([requestId])
+  @@index([actorId, createdAt])
+  @@index([status, createdAt])
+  @@map("ai_gateway_audit")
+}
+
+model AiGatewayCost {
+  id               String         @id @default(cuid())
+  date             DateTime       @db.Date
+  provider         AiProviderType @map("provider")
+  actorRole        AiGatewayRole  @map("actor_role")
+  requestCount     Int            @default(0) @map("request_count")
+  promptTokens     Int            @default(0) @map("prompt_tokens")
+  completionTokens Int            @default(0) @map("completion_tokens")
+  totalCostUsd     Float          @default(0) @map("total_cost_usd")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  @@unique([date, provider, actorRole])
+  @@index([date, provider])
+  @@map("ai_gateway_cost")
+}
+
+model AiPromptTemplate {
+  id          String        @id @default(cuid())
+  templateId  String        @unique @map("template_id")
+  name        String
+  category    String
+  actorRole   AiGatewayRole @map("actor_role")
+  systemPrompt String       @map("system_prompt")
+  userTemplate String?      @map("user_template")
+  maxTokens   Int           @default(2048) @map("max_tokens")
+  version     Int           @default(1)
+  isActive    Boolean       @default(true) @map("is_active")
+  metadata    Json?
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  @@index([category, isActive])
+  @@index([actorRole, isActive])
+  @@map("ai_prompt_templates")
+}

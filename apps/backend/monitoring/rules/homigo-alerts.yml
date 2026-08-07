@@ -457,3 +457,53 @@ groups:
           severity: critical
         annotations:
           summary: ETA label collection failure spike detected
+
+  - name: homigo_ai_core
+    rules:
+      - alert: AiGeminiUnavailable
+        expr: sum(homigo_ai_provider_usage{provider="GEMINI",status="failure"}) / clamp_min(sum(homigo_ai_provider_usage{provider="GEMINI"}), 1) > 0.8
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Gemini provider failure rate above 80%
+
+      - alert: AiFallbackSpike
+        expr: increase(homigo_ai_fallback_total[15m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: AI fallback to OpenAI spiking
+
+      - alert: AiLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(homigo_ai_latency_bucket[5m])) by (le)) > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: AI Gateway p95 latency exceeds 20 seconds
+
+      - alert: AiPromptAttackSpike
+        expr: increase(homigo_ai_prompt_blocked[15m]) > 20
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Prompt injection attack spike detected
+
+      - alert: AiRateLimitAbuse
+        expr: increase(rate_limit_triggered_total{scope="ai_gateway"}[15m]) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: AI Gateway rate limit abuse detected
+
+      - alert: AiHighCost
+        expr: homigo_ai_daily_cost_usd > 100
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: AI daily cost exceeds $100 USD
