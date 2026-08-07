@@ -10,4 +10,5 @@ export const mlopsRoutes = new Elysia({ prefix: "/api/mlops" })
   .use(authPlugin)
   .get("/registry", async ({ requireRole }) => { requireRole("ADMIN"); return { success: true, ...(await svc.registry()) }; })
   .get("/data-quality", async ({ requireRole }) => { requireRole("ADMIN"); return { success: true, data: await svc.dataQuality(), generatedAt: new Date().toISOString() }; })
-  .get("/health", async ({ requireRole }) => { requireRole("ADMIN"); return { success: true, data: await svc.health() }; });
+  .get("/health", async ({ requireRole }) => { requireRole("ADMIN"); return { success: true, data: await svc.health() }; })
+  .get("/metrics", async ({ requireRole }) => { requireRole("ADMIN"); return { success: true, ...(await svc.modelMetrics()) }; });

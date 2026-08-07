@@ -3599,3 +3599,151 @@ model ScheduledJob {
   @@index([jobType, status])
   @@map("scheduled_jobs")
 }
+
+// ── Phase 1: Enterprise ML Data Platform ────────────────────────────────────
+
+enum EtlJobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  RECOVERING
+}
+
+enum EtlRunMode {
+  INCREMENTAL
+  FULL
+  RECOVERY
+  BACKFILL
+  REPLAY
+}
+
+enum DataQualitySeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model EtlWatermark {
+  id            String    @id @default(cuid())
+  jobId         String    @unique @map("job_id")
+  dataset       String
+  lowWatermark  DateTime? @map("low_watermark")
+  highWatermark DateTime? @map("high_watermark")
+  cursorId      String?   @map("cursor_id")
+  rowsSynced    BigInt    @default(0) @map("rows_synced")
+  lastSyncAt    DateTime? @map("last_sync_at")
+  pipelineVersion String  @default("1.0.0") @map("pipeline_version")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([dataset, lastSyncAt])
+  @@map("etl_watermarks")
+}
+
+model EtlJobExecution {
+  id              String       @id @default(cuid())
+  jobId           String       @map("job_id")
+  runMode         EtlRunMode   @map("run_mode")
+  status          EtlJobStatus @default(PENDING)
+  traceId         String?      @map("trace_id")
+  correlationId   String?      @map("correlation_id")
+  batchSize       Int          @default(1000) @map("batch_size")
+  rowsProcessed   BigInt       @default(0) @map("rows_processed")
+  rowsLoaded      BigInt       @default(0) @map("rows_loaded")
+  lowWatermark    DateTime?    @map("low_watermark")
+  highWatermark   DateTime?    @map("high_watermark")
+  cursorStart     String?      @map("cursor_start")
+  cursorEnd       String?      @map("cursor_end")
+  durationMs      Int?         @map("duration_ms")
+  attempt         Int          @default(1)
+  maxAttempts     Int          @default(3) @map("max_attempts")
+  errorMessage    String?      @map("error_message")
+  metadata        Json?
+  startedAt       DateTime?    @map("started_at")
+  completedAt     DateTime?    @map("completed_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  @@index([jobId, status, createdAt])
+  @@index([traceId])
+  @@index([correlationId])
+  @@index([status, createdAt])
+  @@map("etl_job_executions")
+}
+
+model DataQualityResult {
+  id               String              @id @default(cuid())
+  ruleId           String              @map("rule_id")
+  dataset          String
+  severity         DataQualitySeverity
+  passed           Boolean
+  violationCount   Int                 @default(0) @map("violation_count")
+  sampleViolations Json?               @map("sample_violations")
+  repairSuggestion String?             @map("repair_suggestion")
+  qualityScore     Float?              @map("quality_score")
+  executionId      String?             @map("execution_id")
+  evaluatedAt      DateTime            @default(now()) @map("evaluated_at")
+  createdAt        DateTime            @default(now()) @map("created_at")
+
+  @@index([dataset, evaluatedAt])
+  @@index([ruleId, evaluatedAt])
+  @@index([severity, passed])
+  @@map("data_quality_results")
+}
+
+model DataFreshnessSnapshot {
+  id              String   @id @default(cuid())
+  dataset         String   @unique
+  lastSyncAt      DateTime? @map("last_sync_at")
+  lagSeconds      Int?     @map("lag_seconds")
+  freshnessScore  Float?   @map("freshness_score")
+  stalenessScore  Float?   @map("staleness_score")
+  delaySeconds    Int?     @map("delay_seconds")
+  slaTargetSeconds Int     @default(3600) @map("sla_target_seconds")
+  slaMet          Boolean  @default(false) @map("sla_met")
+  pipelineHealth  String   @default("unknown") @map("pipeline_health")
+  sourceRowCount  BigInt?  @map("source_row_count")
+  targetRowCount  BigInt?  @map("target_row_count")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([slaMet, updatedAt])
+  @@map("data_freshness_snapshots")
+}
+
+model DataVersion {
+  id              String   @id @default(cuid())
+  versionType     String   @map("version_type")
+  versionTag      String   @map("version_tag")
+  schemaVersion   String   @map("schema_version")
+  pipelineVersion String   @map("pipeline_version")
+  datasetVersion  String?  @map("dataset_version")
+  featureVersion  String?  @map("feature_version")
+  trainingVersion String?  @map("training_version")
+  checksum        String?
+  metadata        Json?
+  isActive        Boolean  @default(true) @map("is_active")
+  rollbackOf      String?  @map("rollback_of")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([versionType, versionTag])
+  @@index([versionType, isActive])
+  @@map("data_versions")
+}
+
+model MlFeatureStaging {
+  id          String   @id @default(cuid())
+  sinkType    String   @map("sink_type")
+  eventId     String   @map("event_id")
+  bookingId   String?  @map("booking_id")
+  payload     Json
+  processed   Boolean  @default(false)
+  processedAt DateTime? @map("processed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([sinkType, processed, createdAt])
+  @@index([eventId])
+  @@map("ml_feature_staging")
+}

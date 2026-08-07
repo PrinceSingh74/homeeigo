@@ -1,16 +1,6 @@
 /**
- * MLOps retraining pipeline (Phase-4 Track 5, Part D/E).
- *
+ * Phase 1 model retraining — extends ARIMA_PLUS with multi-granularity forecasts.
  *   bun run --env-file=.env src/scripts/train-models.ts
- *
- * Honest by construction: each model is trained ONLY if its training view has enough data;
- * otherwise it is recorded as BLOCKED with the exact reason. Real ML.EVALUATE metrics are
- * written to the BigQuery model_registry. No fabricated accuracy.
- *
- * Retraining triggers (wire to Cloud Scheduler / drift alerts):
- *   - schedule: run this script nightly
- *   - data drift: when dq_checks / feature distributions shift beyond threshold
- *   - accuracy degradation: when ML.EVALUATE metrics regress vs the registry baseline
  */
 import { BigQuery } from "@google-cloud/bigquery";
 
@@ -21,39 +11,53 @@ const bq = new BigQuery({ projectId: P });
 const run = async (sql: string) => (await bq.query({ query: sql, location: LOC }))[0];
 const count = async (view: string) => Number((await run(`SELECT COUNT(*) AS n FROM \`${P}.${D}.${view}\``))[0].n);
 
+async function trainArima(name: string, sql: string, minRows: number, view: string): Promise<void> {
+  const rows = await count(view);
+  if (rows >= minRows) {
+    await run(sql);
+    console.log(`✅ ${name} retrained (${rows} rows)`);
+  } else {
+    console.log(`⛔ ${name} BLOCKED — only ${rows} rows (need ${minRows})`);
+  }
+}
+
 async function main() {
-  console.log("HOMIGO model retraining — honest pipeline\n");
+  console.log("HOMIGO Phase 1 model retraining — ARIMA_PLUS upgrade\n");
 
-  // 1) DEMAND (ARIMA_PLUS) — needs ≥ ~30 hourly points.
-  const demandRows = await count("vw_train_demand");
-  if (demandRows >= 24) {
-    await run(`CREATE OR REPLACE MODEL \`${P}.${D}.model_demand_forecast\` OPTIONS(model_type='ARIMA_PLUS', time_series_timestamp_col='hour_ts', time_series_data_col='demand', time_series_id_col='zone_id', horizon=24, auto_arima=TRUE, data_frequency='HOURLY') AS SELECT zone_id, hour_ts, demand FROM \`${P}.${D}.vw_train_demand\``);
-    console.log(`✅ model_demand_forecast retrained (${demandRows} rows)`);
-  } else console.log(`⛔ model_demand_forecast BLOCKED — only ${demandRows} rows`);
+  await trainArima("model_demand_forecast (hourly/zone)",
+    `CREATE OR REPLACE MODEL \`${P}.${D}.model_demand_forecast\` OPTIONS(model_type='ARIMA_PLUS', time_series_timestamp_col='hour_ts', time_series_data_col='demand', time_series_id_col='zone_id', horizon=168, auto_arima=TRUE, data_frequency='HOURLY', holiday_region='IN', clean_spikes_and_dips=TRUE) AS SELECT zone_id, hour_ts, demand FROM \`${P}.${D}.vw_train_demand\``,
+    24, "vw_train_demand");
 
-  // 2) REVENUE (ARIMA_PLUS).
-  const revRows = await count("agg_hourly_demand");
-  if (revRows >= 24) {
-    await run(`CREATE OR REPLACE MODEL \`${P}.${D}.model_revenue_forecast\` OPTIONS(model_type='ARIMA_PLUS', time_series_timestamp_col='hour_ts', time_series_data_col='revenue', time_series_id_col='zone_id', horizon=24, auto_arima=TRUE, data_frequency='HOURLY') AS SELECT COALESCE(zone_id,'all') AS zone_id, hour_ts, COALESCE(revenue,0) AS revenue FROM \`${P}.${D}.agg_hourly_demand\``);
-    console.log(`✅ model_revenue_forecast retrained (${revRows} rows)`);
-  } else console.log(`⛔ model_revenue_forecast BLOCKED — only ${revRows} rows`);
+  await trainArima("model_demand_forecast_daily",
+    `CREATE OR REPLACE MODEL \`${P}.${D}.model_demand_forecast_daily\` OPTIONS(model_type='ARIMA_PLUS', time_series_timestamp_col='ts', time_series_data_col='demand', time_series_id_col='zone_id', horizon=30, auto_arima=TRUE, data_frequency='DAILY', holiday_region='IN') AS SELECT zone_id, ts, demand FROM \`${P}.${D}.vw_train_demand_daily\``,
+    14, "vw_train_demand_daily");
 
-  // 3) CLV (LINEAR_REG) — trains but flagged PARTIAL until N is large + holdout validated.
+  await trainArima("model_demand_forecast_weekly",
+    `CREATE OR REPLACE MODEL \`${P}.${D}.model_demand_forecast_weekly\` OPTIONS(model_type='ARIMA_PLUS', time_series_timestamp_col='ts', time_series_data_col='demand', time_series_id_col='zone_id', horizon=12, auto_arima=TRUE, data_frequency='WEEKLY') AS SELECT zone_id, ts, demand FROM \`${P}.${D}.vw_train_demand_weekly\``,
+    8, "vw_train_demand_weekly");
+
+  await trainArima("model_city_demand_forecast",
+    `CREATE OR REPLACE MODEL \`${P}.${D}.model_city_demand_forecast\` OPTIONS(model_type='ARIMA_PLUS', time_series_timestamp_col='hour_ts', time_series_data_col='demand', time_series_id_col='city', horizon=168, auto_arima=TRUE, data_frequency='HOURLY', holiday_region='IN') AS SELECT city, hour_ts, demand FROM \`${P}.${D}.vw_train_city_demand\``,
+    24, "vw_train_city_demand");
+
+  await trainArima("model_partner_earnings_forecast",
+    `CREATE OR REPLACE MODEL \`${P}.${D}.model_partner_earnings_forecast\` OPTIONS(model_type='ARIMA_PLUS', time_series_timestamp_col='hour_ts', time_series_data_col='revenue', time_series_id_col='zone_id', horizon=168, auto_arima=TRUE, data_frequency='HOURLY') AS SELECT COALESCE(zone_id,'all') AS zone_id, hour_ts, COALESCE(revenue,0) AS revenue FROM \`${P}.${D}_analytics.agg_hourly_demand\``,
+    24, "agg_hourly_demand");
+
+  await trainArima("model_revenue_forecast",
+    `CREATE OR REPLACE MODEL \`${P}.${D}.model_revenue_forecast\` OPTIONS(model_type='ARIMA_PLUS', time_series_timestamp_col='hour_ts', time_series_data_col='revenue', time_series_id_col='zone_id', horizon=168, auto_arima=TRUE, data_frequency='HOURLY') AS SELECT COALESCE(zone_id,'all') AS zone_id, hour_ts, COALESCE(revenue,0) AS revenue FROM \`${P}.${D}_analytics.agg_hourly_demand\``,
+    24, "agg_hourly_demand");
+
   const clvRows = await count("vw_customer_clv");
   if (clvRows >= 10) {
     await run(`CREATE OR REPLACE MODEL \`${P}.${D}.model_clv\` OPTIONS(model_type='LINEAR_REG', input_label_cols=['lifetime_revenue']) AS SELECT bookings, completed, tenure_days, recency_days, avg_order_value, lifetime_revenue FROM \`${P}.${D}.vw_customer_clv\` WHERE lifetime_revenue IS NOT NULL`);
-    console.log(`⚠️  model_clv retrained (${clvRows} rows) — PARTIAL: validate on independent holdout`);
+    console.log(`⚠️  model_clv retrained (${clvRows} rows) — PARTIAL: validate on holdout`);
   } else console.log(`⛔ model_clv BLOCKED — only ${clvRows} rows`);
 
-  // 4) CHURN — requires a positive class.
-  const churnPos = Number((await run(`SELECT SUM(churned_30d) AS p FROM \`${P}.${D}.vw_customer_churn_features\``))[0].p ?? 0);
-  console.log(churnPos > 0 ? `✅ churn trainable (${churnPos} positives)` : `⛔ model_churn BLOCKED — 0 churned examples (degenerate positive class)`);
-
-  // 5) ETA — requires realised-travel labels.
   const etaRows = await count("vw_train_eta");
-  console.log(etaRows >= 50 ? `✅ eta trainable (${etaRows} rows)` : `⛔ model_eta BLOCKED — ${etaRows} labelled rows (no dispatch→ARRIVED signal)`);
+  console.log(etaRows >= 50 ? `✅ model_eta trainable (${etaRows} rows)` : `⛔ model_eta BLOCKED — ${etaRows} labelled rows`);
 
-  console.log("\nDone. Update model_registry via 04_mlops.sql with fresh ML.EVALUATE metrics.");
+  console.log("\nDone. Run ML.EVALUATE and update model_registry with fresh metrics.");
   process.exit(0);
 }
 main().catch((e) => { console.error("retrain failed:", e?.message ?? e); process.exit(1); });

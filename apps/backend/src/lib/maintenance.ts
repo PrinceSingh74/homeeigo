@@ -27,6 +27,7 @@ import { bookingRefundService } from "../services/booking-refund.service";
 import { financialLedgerService } from "../services/financial-ledger.service";
 import { cleanupPublishedOutbox, startOutboxProcessor, stopOutboxProcessor } from "../events/core/outbox-processor";
 import { cleanupEventPlatformData } from "../events/core/retention";
+import { startEtlScheduler, stopEtlScheduler } from "../../analytics/scheduler/etl-scheduler";
 
 const OTP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const ASSIGNMENT_INTERVAL_MS = 30 * 1000;
@@ -310,6 +311,7 @@ export function startMaintenance(): void {
   void consentService.ensurePolicyVersionsSeeded().catch(() => undefined);
   void bootstrapRetention().catch(() => undefined);
   startOutboxProcessor();
+  startEtlScheduler();
   void runOtpCleanup();
   void runReconcile();
   void runAssignmentDispatch();
@@ -357,6 +359,7 @@ export function startMaintenance(): void {
 
 export function stopMaintenance(): void {
   stopOutboxProcessor();
+  stopEtlScheduler();
   for (const t of [
     otpTimer,
     reconcileTimer,

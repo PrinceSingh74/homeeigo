@@ -1,0 +1,65 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "ETL Success Rate",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(rate(homigo_etl_jobs_total{status=\"success\"}[1h])) / sum(rate(homigo_etl_jobs_total[1h])) * 100", "legendFormat": "Success %" }]
+    },
+    {
+      "title": "Data Quality Score",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "homigo_data_quality_score", "legendFormat": "Score" }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 100, "thresholds": { "steps": [{ "color": "red", "value": 0 }, { "color": "yellow", "value": 80 }, { "color": "green", "value": 95 }] } } }
+    },
+    {
+      "title": "ETL Jobs Running",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "targets": [{ "expr": "homigo_etl_jobs_running", "legendFormat": "Running" }]
+    },
+    {
+      "title": "ETL Failures (24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "targets": [{ "expr": "homigo_etl_jobs_failed_24h", "legendFormat": "Failed" }]
+    },
+    {
+      "title": "ETL Duration by Job",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(homigo_etl_duration_seconds_bucket[5m])) by (le, job_id))", "legendFormat": "{{job_id}}" }]
+    },
+    {
+      "title": "Data Freshness Lag (seconds)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [{ "expr": "homigo_data_freshness_lag_seconds", "legendFormat": "{{dataset}}" }]
+    },
+    {
+      "title": "Freshness SLA Met",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [{ "expr": "homigo_data_freshness_sla_met", "legendFormat": "{{dataset}}" }]
+    },
+    {
+      "title": "Forecast Runtime",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(homigo_forecast_runtime_seconds_bucket[5m])) by (le, model))", "legendFormat": "{{model}}" }]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["homigo", "analytics", "phase-1"],
+  "templating": { "list": [] },
+  "time": { "from": "now-24h", "to": "now" },
+  "title": "HOMIGO Analytics Pipeline (Phase 1)",
+  "uid": "homigo-analytics-p1"
+}

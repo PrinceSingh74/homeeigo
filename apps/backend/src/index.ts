@@ -24,6 +24,7 @@ import { pricingRoutes } from "./routes/pricing";
 import { customerIntelligenceRoutes } from "./routes/customer-intelligence";
 import { digitalTwinRoutes } from "./routes/digital-twin";
 import { mlopsRoutes } from "./routes/mlops";
+import { analyticsRoutes } from "./routes/analytics";
 import { partnerNavRoutes } from "./routes/partner-nav";
 import { vitalsRoutes } from "./routes/vitals";
 import { uxSignalsRoutes } from "./routes/ux-signals";
@@ -195,6 +196,7 @@ const app = new Elysia()
   .use(customerIntelligenceRoutes)
   .use(digitalTwinRoutes)
   .use(mlopsRoutes)
+  .use(analyticsRoutes)
   .use(partnerNavRoutes)
   .use(vitalsRoutes)
   .use(uxSignalsRoutes)
@@ -295,6 +297,7 @@ app.onStart(() => {
   void import("./lib/finance-intelligence-metrics").then((m) => m.registerFinanceIntelligenceSamplers()).catch(() => undefined);
   void import("./lib/enterprise-intelligence-metrics").then((m) => m.registerEnterpriseIntelligenceSamplers()).catch(() => undefined);
   void import("./services/mlops.service").then((m) => m.registerMlopsSamplers()).catch(() => undefined);
+  void import("./lib/etl-metrics").then((m) => { m.initEtlMetricsAtZero(); m.registerEtlMetricSamplers(); }).catch(() => undefined);
   void redisClient.connect().then(() => {
     redisClient.startHealthChecking();
     // Cross-instance WebSocket fan-out (no-op when Redis is disabled).

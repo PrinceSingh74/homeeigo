@@ -375,3 +375,44 @@ groups:
           severity: warning
         annotations:
           summary: Scheduled automation jobs lagging more than 1 hour
+
+      # Phase 1 — ML Data Platform
+      - alert: EtlJobFailureSpike
+        expr: increase(homigo_etl_jobs_total{status="failure"}[1h]) > 3
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: ETL job failure spike detected
+
+      - alert: DataQualityScoreLow
+        expr: homigo_data_quality_score < 90
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Data quality score below 90
+
+      - alert: DataQualityCriticalFailures
+        expr: homigo_data_quality_critical_failures > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Critical data quality rule violations detected
+
+      - alert: DataFreshnessSlaViolation
+        expr: homigo_data_freshness_sla_met == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: Dataset freshness SLA not met
+
+      - alert: EtlJobsFailed24h
+        expr: homigo_etl_jobs_failed_24h > 5
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: More than 5 ETL job failures in 24 hours
