@@ -47,14 +47,16 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD required}
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3006}
     volumes:
       - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
       - ./grafana/dashboards-provider:/etc/grafana/provisioning/dashboards:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     ports:
-      - "3000:3000"
+      # 3000 is the Homigo backend's port — Grafana must never claim it.
+      # Sibling stacks: _obsstack=3004, stage-f-obs=3005, staging=3006.
+      - "3006:3000"
     depends_on:
       - prometheus
     networks:
