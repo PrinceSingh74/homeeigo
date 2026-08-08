@@ -35,6 +35,8 @@ import { cancellationPolicyService } from "./cancellation-policy.service";
 import { financialLedgerService } from "./financial-ledger.service";
 import { earningsLiveService } from "./earnings-live.service";
 import { userPiiService } from "./user-pii.service";
+import { trackingService } from "./tracking.service";
+import { distanceKm as distanceBetweenKm } from "../lib/geo";
 import { fraudContextForUser } from "../lib/fraud-context";
 import { withTxRetry } from "../lib/db-retry";
 import { withRescheduleGate } from "../lib/reschedule-gate";
@@ -1037,7 +1039,57 @@ export class BookingService {
         referenceId: id,
       });
     }
+
+    // A partner who is starting the service has demonstrably arrived. Without this,
+    // any job that skips the GPS geofence (ACCEPTED -> IN_PROGRESS directly) never
+    // records arrivedAt, and Phase 2 can never accumulate ETA training labels.
+    // Idempotent: a no-op if the geofence already recorded the arrival.
+    void this.backfillArrivalFromStart(id, providerId, lat, lng).catch(() => undefined);
+
     return started;
+  }
+
+  /**
+   * Records arrival at job start when the geofence never fired.
+   *
+   * The timestamp is slightly later than true arrival — it includes any idle time
+   * before work began — so it is tagged `job_start` and the ETA validator scores it
+   * below a GPS-confirmed arrival rather than treating the two as equivalent.
+   */
+  private async backfillArrivalFromStart(
+    bookingId: string,
+    providerId: string,
+    lat: number,
+    lng: number,
+  ): Promise<void> {
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        arrivedAt: true,
+        enRouteAt: true,
+        assignedAt: true,
+        eta: true,
+        address: { select: { city: true, latitude: true, longitude: true } },
+        service: { select: { category: true } },
+      },
+    });
+    if (!booking || booking.arrivedAt) return;
+
+    const distanceKm = booking.address
+      ? distanceBetweenKm(lat, lng, booking.address.latitude, booking.address.longitude)
+      : null;
+
+    await trackingService.recordArrival({
+      bookingId,
+      providerId,
+      enRouteAt: booking.enRouteAt,
+      assignedAt: booking.assignedAt,
+      city: booking.address?.city ?? null,
+      serviceCategory: booking.service?.category ?? null,
+      distanceKm,
+      googleEtaMin: booking.eta ?? null,
+      source: "job_start",
+    });
   }
 
   async complete(

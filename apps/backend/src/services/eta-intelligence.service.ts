@@ -159,6 +159,10 @@ class EtaIntelligenceService {
         historicalAvgDuration,
       });
 
+      // Provenance rides on the partner.arrived event that triggered this collection.
+      // Absent (e.g. direct invocation), assume the precise GPS path.
+      const arrivalSource = await this.resolveArrivalSource(eventId);
+
       const validation = validateEtaLabel({
         bookingId,
         dispatchTimestamp,
@@ -170,6 +174,7 @@ class EtaIntelligenceService {
         partnerLngArrival,
         travelDistanceMeters,
         googleEtaSeconds,
+        arrivalSource,
       });
 
       const labelData = {
@@ -250,7 +255,9 @@ class EtaIntelligenceService {
         status: validation.status,
         rejectionReason: validation.rejectionReasons.length ? validation.rejectionReasons.join(",") : null,
         eventId: eventId ?? null,
-        features: engineered as object,
+        // arrivalSource lives in features so training queries can filter or weight by
+        // arrival precision without a schema migration.
+        features: { ...engineered, arrivalSource } as object,
       };
 
       const label = await prisma.etaTrainingLabel.upsert({
@@ -321,6 +328,28 @@ class EtaIntelligenceService {
         error: err instanceof Error ? err.message : String(err),
       });
       return null;
+    }
+  }
+
+  /**
+   * Reads arrival provenance off the triggering partner.arrived outbox event.
+   *
+   * Only `eventId` can identify that event: partner events use providerId as their
+   * aggregateId, so there is no bookingId-keyed lookup. Without an eventId — direct
+   * invocation, or a label predating provenance — we assume the precise GPS path,
+   * which matches how every historical label was produced.
+   */
+  private async resolveArrivalSource(eventId?: string): Promise<"gps_geofence" | "job_start"> {
+    if (!eventId) return "gps_geofence";
+    try {
+      const row = await prisma.eventOutbox.findUnique({
+        where: { eventId },
+        select: { payload: true },
+      });
+      const payload = row?.payload as { data?: { arrivalSource?: string } } | null;
+      return payload?.data?.arrivalSource === "job_start" ? "job_start" : "gps_geofence";
+    } catch {
+      return "gps_geofence";
     }
   }
 

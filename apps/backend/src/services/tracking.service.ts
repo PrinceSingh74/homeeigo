@@ -9,7 +9,11 @@ import { recordFeatureEvent, observeHist } from "../lib/metrics";
 import { geofenceService } from "./geofence.service";
 import { eventPlatformConfig } from "../events/core/config";
 import { emitInTransaction } from "../events/core/event-publisher";
-import { buildPartnerArrivedEvent, buildPartnerEnRouteEvent } from "../events/catalog/partner.events";
+import {
+  buildPartnerArrivedEvent,
+  buildPartnerEnRouteEvent,
+  type ArrivalSource,
+} from "../events/catalog/partner.events";
 
 // Phase 17.1 — throttling + presence constants.
 const THROTTLE_DISTANCE_M = 10; // ignore moves smaller than this …
@@ -344,9 +348,42 @@ export class TrackingService {
     await cacheSet(arrivalNearKey(input.bookingId), String(nearCount), ARRIVAL_NEAR_TTL_SEC);
     if (nearCount < MIN_ARRIVAL_NEAR_PINGS) return;
 
+    await this.recordArrival({
+      bookingId: input.bookingId,
+      providerId: input.providerId,
+      enRouteAt: input.booking.enRouteAt,
+      assignedAt: input.booking.assignedAt,
+      city: input.booking.address.city,
+      serviceCategory: input.booking.service.category,
+      distanceKm: input.distanceKm,
+      googleEtaMin: input.googleEtaMin,
+      source: "gps_geofence",
+    });
+  }
+
+  /**
+   * Commits the arrival transition and emits `partner.arrived`.
+   *
+   * Shared by the GPS geofence path and by job start. Idempotent via
+   * `updateMany … where arrivedAt: null`, so whichever signal lands first wins and the
+   * other becomes a no-op — the two can race safely.
+   */
+  async recordArrival(input: {
+    bookingId: string;
+    providerId: string;
+    enRouteAt: Date | null;
+    assignedAt: Date | null;
+    city: string | null;
+    serviceCategory: string | null;
+    distanceKm: number | null;
+    googleEtaMin: number | null;
+    source: ArrivalSource;
+  }): Promise<boolean> {
+    if (!eventPlatformConfig.outboxEnabled || !eventPlatformConfig.trackingEventsEnabled) return false;
+
     const arrivedAt = new Date();
-    const travelDurationMin = input.booking.enRouteAt
-      ? Math.max(1, Math.round((arrivedAt.getTime() - input.booking.enRouteAt.getTime()) / 60_000))
+    const travelDurationMin = input.enRouteAt
+      ? Math.max(1, Math.round((arrivedAt.getTime() - input.enRouteAt.getTime()) / 60_000))
       : null;
 
     const attempt = await prisma.assignmentAttempt.findFirst({
@@ -355,12 +392,12 @@ export class TrackingService {
       select: { dispatchedAt: true },
     });
 
-    await prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx) => {
       const updated = await tx.booking.updateMany({
         where: { id: input.bookingId, arrivedAt: null },
         data: { arrivedAt, travelDurationMin },
       });
-      if (updated.count === 0) return;
+      if (updated.count === 0) return false;
 
       await tx.tracking.updateMany({
         where: { bookingId: input.bookingId },
@@ -378,15 +415,17 @@ export class TrackingService {
           providerId: input.providerId,
           bookingId: input.bookingId,
           arrivedAt,
-          dispatchedAt: attempt?.dispatchedAt ?? input.booking.assignedAt,
-          enRouteAt: input.booking.enRouteAt,
+          dispatchedAt: attempt?.dispatchedAt ?? input.assignedAt,
+          enRouteAt: input.enRouteAt,
           travelDurationMin,
-          city: input.booking.address.city,
-          serviceCategory: input.booking.service.category,
-          distanceKm: Math.round(input.distanceKm * 10) / 10,
+          city: input.city,
+          serviceCategory: input.serviceCategory,
+          distanceKm: input.distanceKm != null ? Math.round(input.distanceKm * 10) / 10 : null,
           googleEtaMin: input.googleEtaMin,
+          arrivalSource: input.source,
         }),
       );
+      return true;
     });
   }
 

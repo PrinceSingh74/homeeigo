@@ -4,6 +4,9 @@
  */
 import type { EtaLabelStatus } from "@prisma/client";
 
+/** How the arrival timestamp was established — mirrors the partner.arrived event. */
+export type ArrivalProvenance = "gps_geofence" | "job_start";
+
 export type LabelValidationInput = {
   bookingId: string;
   dispatchTimestamp: Date | null;
@@ -15,6 +18,8 @@ export type LabelValidationInput = {
   partnerLngArrival: number | null;
   travelDistanceMeters: number | null;
   googleEtaSeconds: number | null;
+  /** Defaults to gps_geofence for labels created before provenance was tracked. */
+  arrivalSource?: ArrivalProvenance;
 };
 
 export type LabelValidationResult = {
@@ -91,6 +96,14 @@ export function validateEtaLabel(input: LabelValidationInput): LabelValidationRe
   if (input.googleEtaSeconds != null && input.googleEtaSeconds <= 0) {
     reasons.push("invalid_google_eta");
     score -= 10;
+  }
+
+  // An arrival inferred at job start is later than the true arrival by however long the
+  // partner idled before beginning work. The label is still usable — it is a real trip —
+  // but it must not be weighted as equal to a GPS-geofenced arrival.
+  if (input.arrivalSource === "job_start") {
+    reasons.push("arrival_inferred_from_job_start");
+    score -= 15;
   }
 
   const critical = reasons.some((r) =>

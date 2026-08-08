@@ -30,6 +30,13 @@ export type PartnerEnRoutePayload = {
   googleEtaMin: number | null;
 };
 
+/**
+ * How the arrival was established. ML training must be able to tell a GPS-geofenced
+ * arrival (precise) from one inferred at job start (includes idle time before the
+ * partner began work), so the provenance travels with the event.
+ */
+export type ArrivalSource = "gps_geofence" | "job_start";
+
 export type PartnerArrivedPayload = {
   providerId: string;
   bookingId: string;
@@ -41,6 +48,7 @@ export type PartnerArrivedPayload = {
   serviceCategory: string | null;
   distanceKm: number | null;
   googleEtaMin: number | null;
+  arrivalSource: ArrivalSource;
   hourOfDay: number;
   dayOfWeek: number;
 };
@@ -155,6 +163,7 @@ export function buildPartnerArrivedEvent(input: {
   serviceCategory: string | null;
   distanceKm: number | null;
   googleEtaMin: number | null;
+  arrivalSource?: ArrivalSource;
 }): HomigoEvent<PartnerArrivedPayload> {
   const arrivedAt = input.arrivedAt;
   return partnerEnvelope(
@@ -172,6 +181,7 @@ export function buildPartnerArrivedEvent(input: {
       serviceCategory: input.serviceCategory,
       distanceKm: input.distanceKm,
       googleEtaMin: input.googleEtaMin,
+      arrivalSource: input.arrivalSource ?? "gps_geofence",
       hourOfDay: arrivedAt.getHours(),
       dayOfWeek: arrivedAt.getDay(),
     },
