@@ -12,9 +12,9 @@ export const EVENT_TYPES = {
   PARTNER_DISPATCHED: "homigo.partner.dispatched",
   PARTNER_EN_ROUTE: "homigo.partner.en_route",
   PARTNER_ARRIVED: "homigo.partner.arrived",
-  ETA_LABEL_CREATED: "eta.label.created",
-  ETA_TRIP_COMPLETED: "eta.trip.completed",
-  ETA_FEATURE_UPDATED: "eta.feature.updated",
+  ETA_LABEL_CREATED: "homigo.eta.label.created",
+  ETA_TRIP_COMPLETED: "homigo.eta.trip.completed",
+  ETA_FEATURE_UPDATED: "homigo.eta.feature.updated",
 } as const;
 
 export type EventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];

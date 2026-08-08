@@ -91,7 +91,7 @@ export async function triggerEventEtl(eventType: string, aggregateId: string): P
     "homigo.booking.completed": ["etl.booking", "etl.aggregates", "etl.eta"],
     "homigo.payment.captured": ["etl.payment", "etl.ledger"],
     "homigo.partner.arrived": ["etl.booking", "etl.location"],
-    "eta.label.created": ["etl.eta"],
+    "homigo.eta.label.created": ["etl.eta"],
   };
   const jobIds = domainMap[eventType];
   if (!jobIds) return;
