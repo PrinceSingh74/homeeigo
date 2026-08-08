@@ -2,6 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { buildBookingCreatedEvent, buildBookingCompletedEvent } from "../catalog/booking.events";
 import { buildPaymentSuccessEvent } from "../catalog/payment.events";
 import { buildPartnerArrivedEvent } from "../catalog/partner.events";
+import {
+  buildEtaFeatureUpdatedEvent,
+  buildEtaLabelCreatedEvent,
+  buildEtaTripCompletedEvent,
+} from "../catalog/eta.events";
+import { EVENT_TYPES } from "../catalog/event-types";
 import { assertNoProhibitedPii, sanitizeEventPayload } from "../core/pii";
 import { validateEventEnvelope } from "../core/validation";
 import { computeRetryDelayMs, isTransientConsumerError } from "../core/retry";
@@ -101,5 +107,53 @@ describe("retry semantics", () => {
   test("validation errors are permanent", () => {
     expect(isTransientConsumerError(new Error("Invalid event envelope"))).toBe(false);
     expect(isTransientConsumerError(new Error("connection reset"))).toBe(true);
+  });
+});
+
+describe("event type namespace contract", () => {
+  test("every registered event type uses the homigo namespace", () => {
+    const offenders = Object.entries(EVENT_TYPES)
+      .filter(([, type]) => !type.startsWith("homigo."))
+      .map(([name, type]) => `${name}="${type}"`);
+    expect(offenders).toEqual([]);
+  });
+
+  test("ETA events are registered and pass envelope validation", () => {
+    const events = [
+      buildEtaLabelCreatedEvent({
+        bookingId: "bk_eta_1",
+        partnerHash: "hash",
+        city: "Delhi",
+        actualTravelDurationSec: 600,
+        googleEtaSeconds: 540,
+        qualityScore: 95,
+        status: "TRAINING_READY",
+      }),
+      buildEtaTripCompletedEvent({
+        bookingId: "bk_eta_2",
+        partnerHash: "hash",
+        actualTravelDurationMin: 10,
+        googleEtaMinutes: 9,
+        gapMinutes: 1,
+        city: "Delhi",
+      }),
+      buildEtaFeatureUpdatedEvent({
+        bookingId: "bk_eta_3",
+        featureGroup: "eta",
+        versionTag: "v2.0",
+        rowCount: 1,
+      }),
+    ];
+
+    expect(events.map((e) => e.type)).toEqual([
+      "homigo.eta.label.created",
+      "homigo.eta.trip.completed",
+      "homigo.eta.feature.updated",
+    ]);
+
+    for (const event of events) {
+      expect(validateEventEnvelope(event).id).toBe(event.id);
+      expect(event.homigo.aggregateType).toBe("eta");
+    }
   });
 });

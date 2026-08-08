@@ -1,0 +1,28 @@
+{
+  "collectedAt": "2026-08-08T05:15:00Z",
+  "git": {
+    "headSha": "914c7dde4ef592d511ac9f79a794aa81c9bc234f",
+    "headShaShort": "914c7dd",
+    "headSubject": "fix(events): register Phase 2 ETA events with homigo namespace per Phase 0 contract",
+    "branch": "cursor/stage-e-step-13-certification",
+    "workingTreeClean": false,
+    "workingTreeNote": "Large pre-existing unstaged diff across admin-panel/mobile/backend unrelated to the event contract. Neither event-types.ts nor etl-scheduler.ts appears as modified, i.e. both are committed at HEAD with no local drift."
+  },
+  "runtimeConstants": {
+    "source": "direct import of src/events/catalog/event-types.ts in a fresh bun process",
+    "EVENT_TYPES.ETA_LABEL_CREATED": "homigo.eta.label.created",
+    "EVENT_TYPES.ETA_TRIP_COMPLETED": "homigo.eta.trip.completed",
+    "EVENT_TYPES.ETA_FEATURE_UPDATED": "homigo.eta.feature.updated",
+    "allUseHomigoPrefix": true
+  },
+  "runningBackendProof": {
+    "method": "Emitted one fresh homigo.eta.label.created event and let the ALREADY-RUNNING backend outbox processor handle it. No restart, no code injection.",
+    "eventId": "3830b4fb-d816-4c00-9270-306afb484ecc",
+    "eventType": "homigo.eta.label.created",
+    "observedTransition": "PENDING -> PUBLISHED within 5s",
+    "attempts": 1,
+    "lastError": null,
+    "conclusion": "The running backend process accepts homigo.eta.* and publishes it on the first attempt. The running process IS executing 914c7dd code."
+  },
+  "verdict": "RUNTIME CODE MATCHES 914c7dd — no code/deployment mismatch"
+}

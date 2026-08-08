@@ -1,0 +1,35 @@
+{
+  "collectedAt": "2026-08-08T05:15:00Z",
+  "requirement": "ZERO active producers may generate eta.label.created / eta.trip.completed / eta.feature.updated",
+  "result": "REQUIREMENT MET",
+  "literalSearch": {
+    "pattern": "[\"'`]eta\\.(label\\.created|trip\\.completed|feature\\.updated)[\"'`]",
+    "scope": "entire repository, all file types",
+    "matches": 0,
+    "conclusion": "No source file anywhere in the repo contains the old namespace as a string literal."
+  },
+  "newNamespaceRegistrations": [
+    { "file": "apps/backend/src/events/catalog/event-types.ts", "line": 15, "value": "homigo.eta.label.created",   "purpose": "EVENT_TYPES.ETA_LABEL_CREATED constant",    "runtimeReachable": true },
+    { "file": "apps/backend/src/events/catalog/event-types.ts", "line": 16, "value": "homigo.eta.trip.completed",  "purpose": "EVENT_TYPES.ETA_TRIP_COMPLETED constant",   "runtimeReachable": true },
+    { "file": "apps/backend/src/events/catalog/event-types.ts", "line": 17, "value": "homigo.eta.feature.updated", "purpose": "EVENT_TYPES.ETA_FEATURE_UPDATED constant",  "runtimeReachable": true },
+    { "file": "apps/backend/analytics/scheduler/etl-scheduler.ts", "line": 94, "value": "homigo.eta.label.created", "purpose": "event-type -> ETL job id mapping in triggerEventEtl()", "runtimeReachable": true }
+  ],
+  "eventBuilders": [
+    { "file": "apps/backend/src/events/catalog/eta.events.ts", "line": 64, "fn": "buildEtaLabelCreatedEvent",   "typeSource": "EVENT_TYPES.ETA_LABEL_CREATED",   "hardcoded": false },
+    { "file": "apps/backend/src/events/catalog/eta.events.ts", "line": 68, "fn": "buildEtaTripCompletedEvent",  "typeSource": "EVENT_TYPES.ETA_TRIP_COMPLETED",  "hardcoded": false },
+    { "file": "apps/backend/src/events/catalog/eta.events.ts", "line": 72, "fn": "buildEtaFeatureUpdatedEvent", "typeSource": "EVENT_TYPES.ETA_FEATURE_UPDATED", "hardcoded": false }
+  ],
+  "builderCallSites": [
+    { "file": "apps/backend/src/services/eta-intelligence.service.ts", "line": 274, "fn": "buildEtaLabelCreatedEvent",   "runtimeReachable": true },
+    { "file": "apps/backend/src/services/eta-intelligence.service.ts", "line": 292, "fn": "buildEtaTripCompletedEvent",  "runtimeReachable": true },
+    { "file": "apps/backend/src/services/eta-intelligence.service.ts", "line": 304, "fn": "buildEtaFeatureUpdatedEvent", "runtimeReachable": true }
+  ],
+  "allOutboxWritePaths": [
+    { "file": "apps/backend/src/events/core/event-publisher.ts", "line": 45, "fn": "emitInTransaction", "typeSource": "event.type from a HomigoEvent built via EVENT_TYPES", "runtimeReachable": true },
+    { "file": "apps/backend/src/events/core/event-publisher.ts", "line": 71, "fn": "emitStandalone",    "typeSource": "event.type from a HomigoEvent built via EVENT_TYPES", "runtimeReachable": true },
+    { "file": "apps/backend/scripts/phase0-full-certification.ts", "line": 322, "fn": "prisma.eventOutbox.create", "purpose": "certification fixture", "runtimeReachable": false },
+    { "file": "apps/backend/scripts/phase0-full-certification.ts", "line": 334, "fn": "prisma.eventOutbox.create", "purpose": "certification fixture", "runtimeReachable": false }
+  ],
+  "conclusion": "Exactly two runtime paths write to event_outbox, and both derive eventType from a HomigoEvent whose type came from the EVENT_TYPES catalog. Since every ETA entry in that catalog now carries the homigo. prefix, no runtime path can emit the old namespace. ROOT_CAUSE_B and ROOT_CAUSE_E are excluded.",
+  "noDatabaseSideProducer": "No trigger, job, or script writes event_outbox outside these paths; the 6 stale rows carry source=homigo/eta-intelligence and createdAt values ~22h before the fix, consistent with the pre-fix application code."
+}

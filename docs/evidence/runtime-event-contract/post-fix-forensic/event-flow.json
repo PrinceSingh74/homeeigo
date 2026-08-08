@@ -1,0 +1,48 @@
+{
+  "collectedAt": "2026-08-08T05:15:00Z",
+  "traceOfFreshEvent": {
+    "eventId": "3830b4fb-d816-4c00-9270-306afb484ecc",
+    "stages": [
+      { "stage": "1. ETA service call site",  "component": "eta-intelligence.service.ts -> buildEtaLabelCreatedEvent", "eventType": "(delegated to builder)" },
+      { "stage": "2. Event builder",          "component": "eta.events.ts:etaEnvelope via EVENT_TYPES.ETA_LABEL_CREATED", "eventType": "homigo.eta.label.created" },
+      { "stage": "3. In-memory event object", "component": "HomigoEvent envelope", "eventType": "homigo.eta.label.created", "aggregateType": "eta", "version": "1.0" },
+      { "stage": "4. Outbox insert",          "component": "event-publisher.ts:emitStandalone", "eventTypePersisted": "homigo.eta.label.created", "statusOnInsert": "PENDING", "attempts": 0 },
+      { "stage": "5. Processor claim",        "component": "outbox-processor.ts:claimBatch (RUNNING backend, PID 32528)", "attemptsAfterClaim": 1 },
+      { "stage": "6. Namespace validation",   "component": "validation.ts:validateEventEnvelope", "result": "ACCEPTED", "error": null },
+      { "stage": "7. Publish",                "component": "event-bus.ts:dispatchEvent -> markPublished", "finalStatus": "PUBLISHED", "elapsed": "<5s" }
+    ],
+    "eventTypeConsistentAtEveryStage": true,
+    "conclusion": "No divergence between the in-memory event and the persisted row. The persistence layer is faithful; there is no serialization or mapping defect."
+  },
+  "secondaryDefect": {
+    "title": "FAILED is not terminal — the outbox processor re-claims permanently-failed rows forever",
+    "severity": "HIGH",
+    "phase": "Phase 0 (predates the ETA namespace issue; affects ANY permanently-failing event)",
+    "status": "IDENTIFIED, NOT FIXED — remediation proposed, not executed",
+    "evidence": {
+      "configuredMaxAttempts": 5,
+      "observedAttempts": 7106,
+      "attemptGrowthOver30s": 36,
+      "rowCount": 6,
+      "derivedRate": "36 attempts / 6 rows / 30s = 1 claim per row per 5s, exactly EVENTS_OUTBOX_INTERVAL_MS"
+    },
+    "mechanism": [
+      "outbox-processor.ts:claimBatch selects WHERE status IN ('PENDING','FAILED') AND available_at <= NOW()",
+      "outbox-processor.ts:markFailed, on the attempts >= maxAttempts branch, sets status='FAILED' but does NOT advance available_at",
+      "available_at therefore stays frozen at its original value (e.g. 2026-08-07T06:59:15Z), which is permanently <= NOW()",
+      "so the row satisfies the claim predicate on EVERY tick and is re-claimed forever, incrementing attempts each time"
+    ],
+    "consequences": [
+      "Unbounded error-log spam (this is the log noise reported as a post-fix failure)",
+      "Unbounded DB write amplification: 6 rows x 12 claims/min, indefinitely",
+      "homigo_outbox_publish_total{result=\"failed_terminal\"} increments forever, poisoning the metric",
+      "A genuinely poisoned event never comes to rest, so no true dead-letter state is ever reached"
+    ],
+    "proposedRemediationNotApplied": "Make the terminal branch actually terminal — either exclude FAILED from the claim predicate, or move terminally-failed rows to the DLQ status. This TIGHTENS the contract; it does not weaken validation, does not touch the namespace check, and does not hide the failure. Requires explicit approval before implementation.",
+    "explicitlyNotDone": [
+      "namespace validation was NOT relaxed",
+      "retry behaviour was NOT altered to suppress the symptom",
+      "no outbox rows were deleted, truncated, or migrated"
+    ]
+  }
+}

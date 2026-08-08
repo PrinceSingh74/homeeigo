@@ -1,0 +1,27 @@
+{
+  "collectedAt": "2026-08-08T05:15:00Z",
+  "purpose": "OBJECTIVE 13 — one controlled ETA lifecycle against the CURRENT runtime",
+  "method": "Emit a single ETA event into the outbox, then poll read-only until the ALREADY-RUNNING backend (PID 32528) transitions it. The backend was not restarted and no code was injected into it.",
+  "event": {
+    "eventId": "3830b4fb-d816-4c00-9270-306afb484ecc",
+    "eventType": "homigo.eta.label.created",
+    "aggregateType": "eta",
+    "aggregateId": "forensic-<timestamp>",
+    "version": "1.0",
+    "source": "homigo/eta-intelligence"
+  },
+  "observedTimeline": [
+    { "t": "t+0s", "status": "PENDING",   "attempts": 0, "actor": "diagnostic (emitStandalone)" },
+    { "t": "t+5s", "status": "PUBLISHED", "attempts": 1, "actor": "running backend outbox processor", "lastError": null }
+  ],
+  "assertions": {
+    "newEventUsesHomigoEtaNamespace": true,
+    "publisherAcceptedEvent": true,
+    "outboxProcessedEvent": true,
+    "consumerDispatchSucceeded": true,
+    "reachedPublishedState": true,
+    "retryStormOnThisEvent": false,
+    "attemptsWithinMaxAttempts": true
+  },
+  "conclusion": "The running backend publishes a homigo.eta.* event on the first attempt with no error. This is direct runtime proof that the 914c7dd fix is loaded and effective in the live process, and that the Phase 2 -> Phase 0 event path is healthy for all newly produced events."
+}

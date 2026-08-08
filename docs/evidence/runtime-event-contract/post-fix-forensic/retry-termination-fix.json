@@ -1,0 +1,55 @@
+{
+  "collectedAt": "2026-08-08T05:33:00Z",
+  "remediation": "R1 — make the terminal branch actually terminal",
+  "approvedBy": "user (explicit: 'Fix it — exclude FAILED from claim')",
+  "defect": {
+    "title": "FAILED is not terminal — outbox processor re-claims permanently-failed rows forever",
+    "phase": "Phase 0",
+    "mechanism": "claimBatch selected status IN ('PENDING','FAILED'); markFailed's terminal branch set status='FAILED' without advancing available_at, so available_at stayed permanently <= NOW() and the row satisfied the claim predicate on every tick."
+  },
+  "change": {
+    "file": "apps/backend/src/events/core/outbox-processor.ts",
+    "before": "WHERE status IN ('PENDING'::\"EventOutboxStatus\", 'FAILED'::\"EventOutboxStatus\")",
+    "after": "WHERE status = 'PENDING'::\"EventOutboxStatus\"",
+    "linesChanged": 1,
+    "commentAdded": "Claims PENDING only — retries re-enter via PENDING, so FAILED must stay terminal or rows re-claim forever."
+  },
+  "safetyAnalysisBeforeChange": {
+    "retryPathUnaffected": "markFailed's non-terminal branch sets status='PENDING' with a backoff available_at. claimBatch still selects PENDING, so genuine retries are untouched.",
+    "staleClaimRecoveryUnaffected": "recoverStaleClaims resets expired PROCESSING rows to PENDING, which remains claimable.",
+    "operatorReplayUnaffected": "replayOutboxEvent (events/core/replay.ts) looks a row up by eventId regardless of status and dispatches directly through the bus. It never depended on claimBatch re-claiming FAILED rows.",
+    "dlqUnaffected": "The EventOutboxStatus enum contains only PENDING/PROCESSING/PUBLISHED/FAILED — there is no DEAD_LETTERED member. Dead-lettering is a separate table reached via replayDeadLetterById, untouched by this change.",
+    "metricsUnaffected": "retention.ts counts PENDING/PROCESSING/FAILED for the backlog gauge; that query is independent of the claim predicate.",
+    "validationUntouched": "The homigo.* namespace check in validation.ts was NOT modified, relaxed, or bypassed."
+  },
+  "runtimeVerification": {
+    "method": "The backend runs under `bun --watch`, so it hot-reloaded on the edit. Two read-only 30s observation windows were compared, before and after.",
+    "before": { "windowSeconds": 30, "etaRowDelta": 0, "cumulativeAttemptDelta": 36, "interpretation": "1 re-claim per row per 5s tick — storm active" },
+    "after":  { "windowSeconds": 30, "etaRowDelta": 0, "cumulativeAttemptDelta": 0,  "interpretation": "fully quiescent — storm halted" },
+    "attemptsAtFreeze": 43332,
+    "freshEventStillPublishes": {
+      "eventId": "467402a0-5ecc-44a3-8053-05203e1f9af1",
+      "eventType": "homigo.eta.label.created",
+      "transition": "PENDING -> PUBLISHED within 5s",
+      "attempts": 1,
+      "conclusion": "Normal publishing is unbroken by the claim-predicate change."
+    }
+  },
+  "regressionGuard": {
+    "file": "apps/backend/src/events/__tests__/event-foundation.test.ts",
+    "testsAdded": [
+      "every registered event type uses the homigo namespace — iterates EVENT_TYPES and asserts zero offenders",
+      "ETA events are registered and pass envelope validation — asserts the three homigo.eta.* types and aggregateType=eta"
+    ],
+    "guardProvenNonVacuous": "The same predicate applied to the pre-fix constant values flags exactly the 3 old ETA entries while passing the 2 valid ones, so the assertion has teeth rather than passing trivially.",
+    "suiteResults": "26 pass / 0 fail across event-foundation, event-bus, event-failure-scenarios, eta-intelligence"
+  },
+  "notRun": {
+    "suite": "src/events/__tests__/event-integration.test.ts",
+    "reason": "It writes to the live homigo_db, which is a documented hazard in this project. Its coverage of the outbox insert -> claim -> publish path was instead obtained from the fresh-lifecycle run against the real running backend, which is stronger evidence than the in-process test."
+  },
+  "testArtifactsLeftInPlace": {
+    "rows": "A small number of PUBLISHED homigo.eta.* outbox rows with synthetic bookingIds were created by the diagnostic scripts.",
+    "action": "LEFT UNTOUCHED — the standing instruction prohibits deleting outbox rows. They are terminal PUBLISHED records and will age out under the normal published-retention policy (EVENTS_OUTBOX_PUBLISHED_RETENTION_DAYS=14)."
+  }
+}

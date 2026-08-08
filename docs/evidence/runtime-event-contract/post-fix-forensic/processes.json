@@ -1,0 +1,48 @@
+{
+  "collectedAt": "2026-08-08T05:15:00Z",
+  "note": "Nothing was killed during this forensic pass. Enumeration only.",
+  "bunProcesses": [
+    {
+      "pid": 23136,
+      "name": "bun",
+      "workingSetMB": 19.6,
+      "commandLine": "bun.exe run dev",
+      "role": "package-script wrapper (bun run dev -> bun --env-file=.env run --watch src/index.ts)",
+      "ownsPort3000": false
+    },
+    {
+      "pid": 26276,
+      "name": "bun",
+      "workingSetMB": 10.9,
+      "commandLine": "bun.exe --env-file=.env run --watch src/index.ts",
+      "role": "watch supervisor (low RSS, not the serving process)",
+      "ownsPort3000": false
+    },
+    {
+      "pid": 32528,
+      "name": "bun",
+      "workingSetMB": 294.2,
+      "commandLine": "bun.exe --env-file=.env run --watch src/index.ts",
+      "role": "ACTIVE BACKEND — bound to port 3000, runs outbox processor",
+      "ownsPort3000": true
+    }
+  ],
+  "port3000": {
+    "listener": "0.0.0.0:3000 LISTENING -> PID 32528",
+    "singleListener": true
+  },
+  "multiInstanceAnalysis": {
+    "question": "Could a second, stale-code backend instance be producing eta.* events?",
+    "answer": "NO",
+    "proof1": "Only PID 32528 holds port 3000. The other two are the wrapper and watch supervisor of the same invocation.",
+    "proof2": "Observation window measured exactly +36 attempts across 6 rows in 30s = 6 attempts/row = 1 claim per row per 5s tick, which equals EVENTS_OUTBOX_INTERVAL_MS exactly. A second active processor would have produced ~2x that rate. Therefore exactly ONE outbox processor is running.",
+    "proof3": "The outbox processor is gated by runWithLeaderLock('maintenance:event_outbox'), so duplicates cannot double-process regardless.",
+    "housekeeping": "PIDs 23136/26276 are redundant leftovers of the dev watch chain and can be tidied, but they are NOT a root cause and were left running."
+  },
+  "dormantCodeCopy": {
+    "path": ".step8-tmp/homigo-step8-c31f154/apps/backend/src/events/catalog/event-types.ts",
+    "containsOldNamespace": true,
+    "runtimeReachable": false,
+    "note": "Stale snapshot of an earlier repo state. No process has this as its working directory; it is not imported by the live tree. Dormant, not a producer."
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "collectedAt": "2026-08-08T05:15:00Z",
+  "queryMode": "READ-ONLY — no rows created, updated, or deleted by this analysis",
+  "oldNamespace": {
+    "totalRows": 6,
+    "byEventType": {
+      "eta.label.created": 2,
+      "eta.trip.completed": 2,
+      "eta.feature.updated": 2
+    },
+    "byStatus": { "PENDING": 0, "PROCESSING": 0, "PUBLISHED": 0, "FAILED": 6, "DEAD_LETTERED": 0 },
+    "oldestCreatedAt": "2026-08-07T06:53:44.984Z",
+    "newestCreatedAt": "2026-08-07T06:58:39.593Z",
+    "highestAttempts": 7106,
+    "cumulativeAttempts": 42282,
+    "source": "homigo/eta-intelligence (all 6)",
+    "rows": [
+      { "eventId": "fdf439c4-a927-46e1-af68-44f23d92fcad", "type": "eta.label.created",   "status": "FAILED", "attempts": 7070, "createdAt": "2026-08-07T06:53:44.984Z", "availableAt": "2026-08-07T06:54:46.519Z" },
+      { "eventId": "2156b539-221f-46e6-84cc-7db556b9f240", "type": "eta.trip.completed",  "status": "FAILED", "attempts": 7068, "createdAt": "2026-08-07T06:53:45.554Z", "availableAt": "2026-08-07T06:54:49.495Z" },
+      { "eventId": "85870be5-f2c3-4411-993e-6943f833b668", "type": "eta.feature.updated", "status": "FAILED", "attempts": 7106, "createdAt": "2026-08-07T06:53:48.111Z", "availableAt": "2026-08-07T06:54:52.900Z" },
+      { "eventId": "b2d9fa69-1d14-4578-9520-1249f99203db", "type": "eta.label.created",   "status": "FAILED", "attempts": 6986, "createdAt": "2026-08-07T06:58:39.569Z", "availableAt": "2026-08-07T06:59:15.026Z" },
+      { "eventId": "94abd6a9-31d2-4548-afb8-6fc81e533640", "type": "eta.trip.completed",  "status": "FAILED", "attempts": 6987, "createdAt": "2026-08-07T06:58:39.583Z", "availableAt": "2026-08-07T06:59:15.650Z" },
+      { "eventId": "5cb1b1c6-96aa-4894-bccf-82378adb34ab", "type": "eta.feature.updated", "status": "FAILED", "attempts": 6987, "createdAt": "2026-08-07T06:58:39.593Z", "availableAt": "2026-08-07T06:59:15.360Z" }
+    ]
+  },
+  "newNamespace": {
+    "totalRows": 4,
+    "byEventType": {
+      "homigo.eta.label.created": 2,
+      "homigo.eta.trip.completed": 1,
+      "homigo.eta.feature.updated": 1
+    },
+    "byStatus": { "PENDING": 0, "PROCESSING": 0, "PUBLISHED": 4, "FAILED": 0, "DEAD_LETTERED": 0 },
+    "maxAttempts": 1,
+    "allPublishedOnFirstAttempt": true,
+    "earliestCreatedAt": "2026-08-08T04:54:14.582Z"
+  },
+  "criticalObservation": {
+    "configuredMaxAttempts": 5,
+    "observedAttempts": 7106,
+    "ratio": "1421x over the configured ceiling",
+    "meaning": "attempts vastly exceeding maxAttempts is structurally impossible under a correct retry ceiling. This is the fingerprint of a SECOND, independent defect: terminal-FAILED rows are being re-claimed by the processor. See event-flow.json."
+  },
+  "nonEtaHealth": {
+    "note": "All non-ETA outbox traffic is healthy; 257 rows PUBLISHED at the time of the original investigation, with no FAILED rows outside the 6 ETA records."
+  }
+}

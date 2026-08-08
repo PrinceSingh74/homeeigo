@@ -1,0 +1,31 @@
+{
+  "collectedAt": "2026-08-08T05:15:00Z",
+  "purpose": "OBJECTIVE 10 — distinguish an active producer defect from stale historical rows",
+  "method": "Read-only snapshot, 30s wait (outbox tick = 5s, so ~6 processor ticks), second read-only snapshot. Nothing mutated.",
+  "windowSeconds": 30,
+  "t0": {
+    "oldNamespaceRowCount": 6,
+    "oldNamespaceCumulativeAttempts": 42282,
+    "newNamespaceRowCount": 4,
+    "newestOldNamespaceCreatedAt": "2026-08-07T06:58:39.593Z"
+  },
+  "t30": {
+    "oldNamespaceRowCount": 6,
+    "oldNamespaceCumulativeAttempts": 42318,
+    "newNamespaceRowCount": 4,
+    "newestOldNamespaceCreatedAt": "2026-08-07T06:58:39.593Z"
+  },
+  "delta": {
+    "oldNamespaceRowCount": 0,
+    "oldNamespaceCumulativeAttempts": 36,
+    "newNamespaceRowCount": 0,
+    "newestCreatedAtChanged": false
+  },
+  "interpretation": {
+    "rowCountFlat": "ZERO new eta.* rows were created during the window. No producer is emitting the old namespace.",
+    "createdAtFrozen": "The newest eta.* row is dated 2026-08-07T06:58:39Z — roughly 22 hours before this observation and before the 914c7dd fix. Nothing has been appended since.",
+    "attemptsClimbing": "Attempts rose by 36 on the SAME 6 rows. This is re-processing of existing records, not creation of new ones. It is the sole source of the ongoing error logs.",
+    "rateAnalysis": "36 / 6 rows / 30s = exactly one claim per row per 5s tick, matching EVENTS_OUTBOX_INTERVAL_MS. A second concurrent processor would have doubled this, so exactly one processor is active."
+  },
+  "verdict": "STALE OUTBOX EVENTS CONFIRMED — NO ACTIVE PRODUCER DEFECT. The log spam is re-processing of 6 pre-fix rows, caused by the separate FAILED-is-not-terminal defect."
+}

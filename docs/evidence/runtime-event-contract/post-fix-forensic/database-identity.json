@@ -1,0 +1,21 @@
+{
+  "collectedAt": "2026-08-08T05:15:00Z",
+  "note": "Safe metadata only. No credentials captured.",
+  "diagnosticConnection": {
+    "envFileUsed": ".env (same file the running backend uses: bun --env-file=.env run --watch src/index.ts)",
+    "currentDatabase": "homigo_db",
+    "serverAddr": "172.18.0.4/32",
+    "serverPort": 5432,
+    "clientUrlHostPort": "localhost:5433",
+    "urlRedacted": "postgresql://***@localhost:5433/homigo_db",
+    "explanation": "localhost:5433 is the host-side published port; 172.18.0.4:5432 is the Postgres container's address on the Docker bridge network. Same instance, viewed from two sides."
+  },
+  "sameDatabaseAsBackendProof": {
+    "question": "Is the diagnostic query hitting the same DB as the backend? (backend -> DB A, query -> DB B would invalidate everything)",
+    "answer": "YES — proven, not assumed",
+    "proof1": "The diagnostic used the identical --env-file=.env as the running backend, so it resolves the same DATABASE_URL.",
+    "proof2": "LIVE COUPLING: the diagnostic observed updatedAt on the 6 eta.* rows advancing in real time (last update 0.1 minutes before the read) and attempts incrementing +36 over a 30s window. Those writes are produced ONLY by the backend's outbox processor. Observing the backend's own writes as they happen proves a shared database.",
+    "proof3": "The fresh event emitted by the diagnostic was picked up and PUBLISHED by the backend's processor within 5s — a write by the diagnostic was read and acted on by the backend."
+  },
+  "verdict": "NO DATABASE/ENVIRONMENT MISMATCH — ROOT_CAUSE_D excluded"
+}

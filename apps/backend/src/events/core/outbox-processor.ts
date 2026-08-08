@@ -40,6 +40,7 @@ async function recoverStaleClaims(): Promise<number> {
   return result.count;
 }
 
+/** Claims PENDING only — retries re-enter via PENDING, so FAILED must stay terminal or rows re-claim forever. */
 async function claimBatch(): Promise<ClaimedRow[]> {
   const instanceId = eventPlatformConfig.instanceId();
   const batchSize = eventPlatformConfig.batchSize;
@@ -54,7 +55,7 @@ async function claimBatch(): Promise<ClaimedRow[]> {
     WHERE o.id IN (
       SELECT id
       FROM event_outbox
-      WHERE status IN ('PENDING'::"EventOutboxStatus", 'FAILED'::"EventOutboxStatus")
+      WHERE status = 'PENDING'::"EventOutboxStatus"
         AND available_at <= NOW()
       ORDER BY created_at ASC
       LIMIT ${batchSize}

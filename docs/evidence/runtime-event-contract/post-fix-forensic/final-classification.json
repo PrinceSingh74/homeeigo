@@ -1,0 +1,57 @@
+{
+  "collectedAt": "2026-08-08T05:15:00Z",
+  "verdict": "STALE OUTBOX EVENTS CONFIRMED — NO ACTIVE PRODUCER DEFECT",
+  "primaryClassification": "ROOT_CAUSE_A",
+  "primaryClassificationLabel": "Stale historical outbox rows only",
+  "secondaryFinding": {
+    "classification": "ROOT_CAUSE_G",
+    "label": "Other — Phase 0 defect: terminal-FAILED outbox rows are re-claimed indefinitely because markFailed does not advance available_at on the terminal branch, while claimBatch still selects status IN ('PENDING','FAILED')",
+    "status": "FIXED — R1 applied with user approval; see retry-termination-fix.json",
+    "isTheActualCauseOfTheLogSpam": true,
+    "runtimeProof": "Cumulative attempt delta over a 30s window fell from +36 to +0 while fresh events continued publishing in 1 attempt."
+  },
+  "excludedCauses": {
+    "ROOT_CAUSE_B": { "excluded": true, "label": "Current producer still emits old namespace", "why": "Zero old-namespace string literals repo-wide; both runtime outbox write paths derive eventType from EVENT_TYPES, which is fully migrated. Row count flat over the observation window." },
+    "ROOT_CAUSE_C": { "excluded": true, "label": "Multiple backend/worker processes", "why": "Only PID 32528 holds port 3000. Measured claim rate is exactly 1 per row per 5s tick, matching a single processor; a second would double it. Outbox is additionally leader-locked." },
+    "ROOT_CAUSE_D": { "excluded": true, "label": "Wrong database/environment", "why": "Diagnostic used the same --env-file=.env as the backend and observed the backend's own writes landing in real time; the backend also consumed a row the diagnostic wrote. Same homigo_db instance." },
+    "ROOT_CAUSE_E": { "excluded": true, "label": "Another producer/script/job", "why": "No trigger, job, or script writes event_outbox outside event-publisher.ts. The 6 rows carry source=homigo/eta-intelligence with pre-fix timestamps." },
+    "ROOT_CAUSE_F": { "excluded": true, "label": "Deployment did not load 914c7dd", "why": "The running backend published a freshly emitted homigo.eta.label.created event in 1 attempt within 5s. It is executing the fixed code." }
+  },
+  "evidenceForPrimaryClassification": [
+    "All 6 eta.* rows have createdAt between 2026-08-07T06:53:44Z and 2026-08-07T06:58:39Z — approximately 22 hours BEFORE the 914c7dd fix.",
+    "Over a 30s observation window the eta.* row count did not change (+0) and the newest createdAt did not move.",
+    "Over the same window, new homigo.eta.* events were published successfully on the first attempt.",
+    "Cumulative attempts on the stale rows rose +36, i.e. re-processing of existing rows rather than creation of new ones."
+  ],
+  "correctionOfPriorClaim": {
+    "priorClaim": "EVENT CONTRACT PASS / fix live and verified",
+    "status": "WITHDRAWN — the claim was premature",
+    "whatWasWrong": "PASS was asserted from database state (new rows publishing) without reconciling it against live runtime logs that were still emitting namespace errors. The two observations were never joined, so the ongoing log spam went unexplained.",
+    "whatIsTrueNow": "The namespace fix itself is genuinely correct and runtime-proven. But the outstanding log spam was NOT explained by that fix — it is a separate, still-unfixed Phase 0 retry-termination defect. Certification must therefore remain withheld."
+  },
+  "certificationStatus": "ALL SIX GATES PASS",
+  "gates": {
+    "1_newEventsUseHomigoNamespace": "PASS",
+    "2_publisherAcceptsThem": "PASS",
+    "3_outboxProcessesThem": "PASS",
+    "4_consumersReceiveThem": "PASS",
+    "5_noNewOldNamespaceEventsCreated": "PASS",
+    "6_retryStormStops": "PASS — attempt delta +36/30s -> +0/30s after R1"
+  },
+  "blockers": [],
+  "openItems": [
+    "R2 — disposition of the 6 stale eta.* rows. Deferred by user decision until after R1; they are now inert (terminal FAILED, no longer re-claimed) so there is no time pressure. Options remain: park in DLQ, migrate namespace, or leave as forensic evidence.",
+    "R4 — housekeeping: redundant bun PIDs 23136/26276 and the dormant .step8-tmp snapshot."
+  ],
+  "prohibitedActionsNotTaken": [
+    "No outbox rows deleted",
+    "No tables truncated",
+    "No database reset",
+    "No namespace validation disabled or relaxed",
+    "No retry behaviour modified to hide the symptom",
+    "No blind migration of eta.* rows to homigo.eta.*",
+    "No Phase 5 Gold Certification started",
+    "No Phase 6 started",
+    "Production untouched"
+  ]
+}
