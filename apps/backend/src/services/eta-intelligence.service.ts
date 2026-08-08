@@ -6,7 +6,7 @@ import { gzipSync } from "node:zlib";
 import prisma from "../lib/prisma";
 import { logger } from "../lib/logger";
 import { hashPii } from "../../analytics/etl/pii";
-import { loadRows } from "../../analytics/etl/bq-client";
+import { mergeRows } from "../../analytics/etl/bq-client";
 import { emitStandalone } from "../events/core/event-publisher";
 import {
   buildEtaFeatureUpdatedEvent,
@@ -26,6 +26,22 @@ import {
   recordEtaTrainingReady,
 } from "../lib/eta-metrics";
 import type { EtaLabelStatus } from "@prisma/client";
+
+/**
+ * Only `nextBookingNumber()` (src/lib/booking-number.ts) can mint a production booking
+ * number, and it always emits `HOMIGO-YYYYMMDD-NNNNN`. Anything else was created by a
+ * certification script, test fixture or seed — such trips are real data structurally but
+ * not real business events, so they must never reach ETA model training.
+ *
+ * Deliberately an allowlist: a new fixture prefix is excluded by default rather than
+ * silently entering the training set.
+ */
+const PRODUCTION_BOOKING_NUMBER = /^HOMIGO-\d{8}-\d{5}$/;
+
+export function isSyntheticBookingNumber(bookingNumber: string | null | undefined): boolean {
+  if (!bookingNumber) return true;
+  return !PRODUCTION_BOOKING_NUMBER.test(bookingNumber);
+}
 
 export type EtaLabelSummary = {
   bookingId: string;
@@ -269,7 +285,10 @@ class EtaIntelligenceService {
       if (engineered.distanceBucket) recordEtaDistanceBucket(engineered.distanceBucket);
 
       await this.compressGpsTrack(bookingId, hashPii(booking.providerId), pings);
-      await this.syncToBigQuery(label);
+      await this.syncToBigQuery(label, {
+        arrivalSource,
+        isSynthetic: isSyntheticBookingNumber(booking.bookingNumber),
+      });
 
       if (validation.passed) {
         recordEtaLabelCreated(label.city, validation.qualityScore);
@@ -546,7 +565,7 @@ class EtaIntelligenceService {
     temperature: number | null;
     partnerRating: number | null;
     createdAt: Date;
-  }): Promise<void> {
+  }, provenance: { arrivalSource: string; isSynthetic: boolean }): Promise<void> {
     const now = new Date().toISOString();
     const rawRow = {
       booking_id: label.bookingId,
@@ -554,6 +573,8 @@ class EtaIntelligenceService {
       customer_hash: label.customerHash,
       city: label.city,
       service_category: label.serviceCategory,
+      arrival_source: provenance.arrivalSource,
+      is_synthetic: provenance.isSynthetic,
       dispatch_at: label.dispatchTimestamp?.toISOString() ?? null,
       arrival_at: label.arrivalTimestamp?.toISOString() ?? null,
       actual_travel_duration_sec: label.actualTravelDurationSec,
@@ -564,14 +585,20 @@ class EtaIntelligenceService {
     };
 
     try {
-      await loadRows("raw", "eta_raw", [rawRow]);
+      // MERGE, not append: a label may be re-collected (retry, replay, backfill) and the
+      // warehouse must still hold exactly one canonical row per booking. booking_id is the
+      // business key — it is @unique on eta_training_labels in Postgres and NOT NULL on
+      // every ETA table; there is no separate label id in the warehouse.
+      await mergeRows("raw", "eta_raw", "booking_id", [rawRow]);
 
       if (label.status !== "REJECTED") {
-        await loadRows("validated", "eta_validated", [{ ...rawRow, quality_score: label.qualityScore }]);
+        await mergeRows("validated", "eta_validated", "booking_id", [
+          { ...rawRow, quality_score: label.qualityScore },
+        ]);
       }
 
       if (label.status === "TRAINING_READY") {
-        await loadRows("feature", "eta_feature", [{
+        await mergeRows("feature", "eta_feature", "booking_id", [{
           booking_id: label.bookingId,
           partner_hash: label.partnerHash,
           city: label.city,
@@ -587,10 +614,14 @@ class EtaIntelligenceService {
           partner_rating: label.partnerRating,
           hour: label.hour,
           weekday: label.weekday,
+          arrival_source: provenance.arrivalSource,
+          quality_score: label.qualityScore,
+          validation_status: label.status,
+          is_synthetic: provenance.isSynthetic,
           feature_generated_at: now,
         }]);
 
-        await loadRows("analytics", "eta_training", [{
+        await mergeRows("analytics", "eta_training", "booking_id", [{
           booking_id: label.bookingId,
           label_actual_travel_duration_sec: label.actualTravelDurationSec,
           label_actual_travel_duration_min: label.actualTravelDurationMin,
@@ -604,6 +635,12 @@ class EtaIntelligenceService {
             label.actualTravelDurationSec != null && label.googleEtaSeconds != null
               ? label.actualTravelDurationSec - label.googleEtaSeconds
               : null,
+          // Carried into the training layer so a trainer can filter on precision,
+          // readiness and origin without re-joining upstream tables.
+          arrival_source: provenance.arrivalSource,
+          quality_score: label.qualityScore,
+          validation_status: label.status,
+          is_synthetic: provenance.isSynthetic,
           training_version: "2.0.0",
           created_at: label.createdAt.toISOString(),
         }]);
