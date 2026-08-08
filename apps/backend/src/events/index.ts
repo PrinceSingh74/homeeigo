@@ -4,6 +4,13 @@ export { emitPaymentSuccessInTransaction, emitPaymentFailedInTransaction } from 
 export { eventPlatformConfig, validateEventPlatformConfig } from "./core/config";
 export { runWithEventContext, getEventContext, bindEventContextFromRequest, setCausationId } from "./core/event-context";
 export { startOutboxProcessor, stopOutboxProcessor, processOutboxBatch } from "./core/outbox-processor";
+export {
+  startScheduledJobProcessor,
+  stopScheduledJobProcessor,
+  processScheduledJobBatch,
+} from "./core/job-processor";
+export { registerJobHandler, getJobHandler, listJobHandlers } from "./core/job-registry";
+export { bootstrapScheduledJobs } from "./jobs";
 export { cleanupEventPlatformData, refreshEventPlatformGauges } from "./core/retention";
 export { replayOutboxEvent, replayDeadLetterById } from "./core/replay";
 export { eventBus } from "./core/event-bus";

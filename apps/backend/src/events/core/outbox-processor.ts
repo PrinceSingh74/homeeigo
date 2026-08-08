@@ -8,6 +8,10 @@ import { dispatchEvent } from "./event-bus";
 import { computeRetryDelayMs } from "./retry";
 import { validateEventEnvelope } from "./validation";
 import { refreshEventPlatformGauges } from "./retention";
+import { recordDeadLetter } from "./dead-letter";
+
+/** Attributed as the DLQ "consumer" when the publisher itself gives up on an event. */
+const OUTBOX_PUBLISHER_SOURCE = "outbox.publisher";
 
 let processorTimer: ReturnType<typeof setInterval> | null = null;
 let shuttingDown = false;
@@ -80,11 +84,11 @@ async function markPublished(id: string): Promise<void> {
   incCounter("homigo_outbox_publish_total", { result: "success" });
 }
 
-async function markFailed(id: string, attempts: number, error: string): Promise<void> {
+async function markFailed(row: ClaimedRow, error: string): Promise<void> {
   const maxAttempts = eventPlatformConfig.maxAttempts;
-  if (attempts >= maxAttempts) {
+  if (row.attempts >= maxAttempts) {
     await prisma.eventOutbox.update({
-      where: { id },
+      where: { id: row.id },
       data: {
         status: "FAILED",
         lastError: error.slice(0, 4000),
@@ -92,17 +96,33 @@ async function markFailed(id: string, attempts: number, error: string): Promise<
         lockedBy: null,
       },
     });
+    // Terminal publish failures must surface in the DLQ, otherwise an operator
+    // reading dead-letter counts sees zero while events are permanently lost.
+    await recordDeadLetter({
+      eventId: row.event_id,
+      eventType: row.event_type,
+      consumerName: OUTBOX_PUBLISHER_SOURCE,
+      payload: (row.payload ?? {}) as Record<string, unknown>,
+      error,
+      attempts: row.attempts,
+    }).catch((err) => {
+      logger.error("outbox_dead_letter_failed", {
+        eventId: row.event_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
     incCounter("homigo_outbox_publish_total", { result: "failed_terminal" });
+    incCounter("homigo_dlq_total", { consumer: OUTBOX_PUBLISHER_SOURCE, event_type: row.event_type });
     return;
   }
   await prisma.eventOutbox.update({
-    where: { id },
+    where: { id: row.id },
     data: {
       status: "PENDING",
       lastError: error.slice(0, 4000),
       lockedAt: null,
       lockedBy: null,
-      availableAt: computeRetryDelayMs(attempts),
+      availableAt: computeRetryDelayMs(row.attempts),
     },
   });
   incCounter("homigo_outbox_publish_total", { result: "retry" });
@@ -117,7 +137,7 @@ async function publishRow(row: ClaimedRow): Promise<void> {
     observeHist("homigo_outbox_processing_duration_seconds", (Date.now() - start) / 1000);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await markFailed(row.id, row.attempts, message);
+    await markFailed(row, message);
     logger.error("outbox_publish_failed", {
       eventId: row.event_id,
       eventType: row.event_type,

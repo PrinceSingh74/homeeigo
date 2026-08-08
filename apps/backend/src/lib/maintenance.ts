@@ -26,6 +26,8 @@ import { ledgerReconciliationService } from "../services/ledger-reconciliation.s
 import { bookingRefundService } from "../services/booking-refund.service";
 import { financialLedgerService } from "../services/financial-ledger.service";
 import { cleanupPublishedOutbox, startOutboxProcessor, stopOutboxProcessor } from "../events/core/outbox-processor";
+import { startScheduledJobProcessor, stopScheduledJobProcessor } from "../events/core/job-processor";
+import { bootstrapScheduledJobs } from "../events/jobs";
 import { cleanupEventPlatformData } from "../events/core/retention";
 import { startEtlScheduler, stopEtlScheduler } from "../../analytics/scheduler/etl-scheduler";
 import { expireStaleMemories, purgeExpiredContextCache } from "../ai-brain";
@@ -312,15 +314,17 @@ async function runRetentionTick(): Promise<void> {
 
 async function runAiBrainMaintenance(): Promise<void> {
   await runWithLeaderLock("maintenance:ai_brain", 600, async () => {
-    const [expiredMemories, purgedCache] = await Promise.all([
+    const [expiredMemories, purgedCache, expiredApprovals] = await Promise.all([
       expireStaleMemories(),
       purgeExpiredContextCache(),
+      import("../ai-tools/approval/approval-engine").then((m) => m.expireStaleApprovals()).catch(() => 0),
     ]);
-    if (expiredMemories > 0 || purgedCache > 0) {
+    if (expiredMemories > 0 || purgedCache > 0 || expiredApprovals > 0) {
       logger.info("ai_brain_maintenance", {
         category: "APPLICATION",
         expiredMemories,
         purgedCache,
+        expiredApprovals,
       });
     }
   });
@@ -331,6 +335,8 @@ export function startMaintenance(): void {
   void consentService.ensurePolicyVersionsSeeded().catch(() => undefined);
   void bootstrapRetention().catch(() => undefined);
   startOutboxProcessor();
+  bootstrapScheduledJobs();
+  startScheduledJobProcessor();
   startEtlScheduler();
   void runOtpCleanup();
   void runReconcile();
@@ -382,6 +388,7 @@ export function startMaintenance(): void {
 
 export function stopMaintenance(): void {
   stopOutboxProcessor();
+  stopScheduledJobProcessor();
   stopEtlScheduler();
   for (const t of [
     otpTimer,
