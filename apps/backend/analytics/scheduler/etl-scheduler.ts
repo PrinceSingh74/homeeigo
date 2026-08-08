@@ -11,6 +11,7 @@ import { runEtlPipeline, runEtlJob } from "../etl/engine";
 import { runDataQualityChecks } from "../data-quality/engine";
 import { refreshAllFreshness } from "../freshness/service";
 import { createVersion } from "../versioning/service";
+import { drainFeatureStagingBacklog } from "../feature-store/service";
 import { recordSchedulerMetrics } from "../../src/lib/etl-metrics";
 
 const ETL_LOCK_KEY = "maintenance:etl_scheduler";
@@ -40,6 +41,8 @@ export async function runScheduledEtl(options: {
 
     await runDataQualityChecks();
     await refreshAllFreshness();
+    // Retry feature rows whose warehouse load failed on a previous run.
+    const drained = await drainFeatureStagingBacklog().catch(() => ({ attempted: 0, loaded: 0 }));
     await createVersion("pipeline", { trigger, counts, instanceId: getSchedulerInstanceId() });
 
     const durationMs = Date.now() - t0;
@@ -49,6 +52,7 @@ export async function runScheduledEtl(options: {
       trigger,
       correlationId,
       jobsRun: Object.keys(counts).length,
+      featureBacklogDrained: drained.loaded,
       durationMs,
     });
 

@@ -2,9 +2,12 @@
  * Feature Store Service — versioned, reproducible feature layers for ML.
  */
 import { ANALYTICS_CONFIG } from "../config";
-import { bqQuery } from "../etl/bq-client";
+import { bqQuery, loadRows } from "../etl/bq-client";
 import { cacheService } from "../../src/services/cache.service";
 import { createVersion } from "../versioning/service";
+import prisma from "../../src/lib/prisma";
+import { logger } from "../../src/lib/logger";
+import { hashPii } from "../etl/pii";
 
 const P = ANALYTICS_CONFIG.projectId;
 const D = ANALYTICS_CONFIG.dataset;
@@ -54,9 +57,64 @@ export class FeatureStoreService {
   /** Batch prediction input — latest features for online/shadow models. */
   async getBatchPredictionInput(group: FeatureGroup, keys: string[], keyColumn: string): Promise<Record<string, unknown>[]> {
     if (keys.length === 0) return [];
+    // keyColumn lands unquoted in the WHERE clause, so it must be an identifier and
+    // nothing else — values are escaped, but a column name cannot be parameterised.
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(keyColumn)) {
+      throw new Error(`Invalid key column: ${keyColumn}`);
+    }
     const view = FEATURE_VIEWS[group];
     const inList = keys.map((k) => `'${k.replace(/'/g, "''")}'`).join(",");
     return bqQuery(`SELECT * FROM \`${P}.${view}\` WHERE ${keyColumn} IN (${inList})`);
+  }
+}
+
+/**
+ * Retry ML feature rows whose BigQuery load previously failed.
+ *
+ * The sink writes to `ml_feature_staging` first and then loads to BigQuery, catching
+ * load errors so a warehouse outage never breaks the booking flow. Nothing drained that
+ * buffer, so a failed row stayed `processed: false` forever. This closes the loop.
+ */
+export async function drainFeatureStagingBacklog(limit = 200): Promise<{ attempted: number; loaded: number }> {
+  const pending = await prisma.mlFeatureStaging.findMany({
+    where: { processed: false, sinkType: "eta_labels" },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+  });
+  if (pending.length === 0) return { attempted: 0, loaded: 0 };
+
+  const rows = pending.map((r) => {
+    const p = (r.payload ?? {}) as Record<string, unknown>;
+    return {
+      event_id: r.eventId,
+      booking_id: r.bookingId,
+      provider_hash: typeof p.providerId === "string" ? hashPii(p.providerId) : null,
+      travel_duration_min: p.travelDurationMin ?? null,
+      distance_km: p.distanceKm ?? null,
+      google_eta_min: p.googleEtaMin ?? null,
+      hour_of_day: p.hourOfDay ?? null,
+      day_of_week: p.dayOfWeek ?? null,
+      city: p.city ?? null,
+      service_category: p.serviceCategory ?? null,
+      ingested_at: new Date().toISOString(),
+    };
+  });
+
+  try {
+    const loaded = await loadRows("feature", "ml_eta_labels", rows);
+    await prisma.mlFeatureStaging.updateMany({
+      where: { id: { in: pending.map((r) => r.id) } },
+      data: { processed: true, processedAt: new Date() },
+    });
+    logger.info("ml_feature_backlog_drained", { attempted: pending.length, loaded });
+    return { attempted: pending.length, loaded };
+  } catch (err) {
+    // Leave rows unprocessed so the next tick retries them.
+    logger.warn("ml_feature_backlog_drain_deferred", {
+      attempted: pending.length,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { attempted: pending.length, loaded: 0 };
   }
 }
 

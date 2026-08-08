@@ -10,7 +10,11 @@ import { runDataQualityChecks, getQualityHistory } from "../../analytics/data-qu
 import { getFreshnessDashboard, getSlaViolations } from "../../analytics/freshness/service";
 import { featureStoreService } from "../../analytics/feature-store/service";
 import { listVersions, getActiveVersion, rollbackVersion } from "../../analytics/versioning/service";
-import { demandForecastService } from "../../analytics/forecast/demand-forecast.service";
+import {
+  demandForecastService,
+  type ForecastGranularity,
+  type ForecastScope,
+} from "../../analytics/forecast/demand-forecast.service";
 import { ETL_JOB_DEFINITIONS } from "../../analytics/config";
 import prisma from "../lib/prisma";
 
@@ -85,15 +89,29 @@ export const analyticsRoutes = new Elysia({ prefix: "/api/analytics" })
     return { success: ok };
   }, { body: t.Object({ versionType: t.String(), versionTag: t.String() }) })
 
-  // Demand Forecast (ARIMA_PLUS upgrade)
-  .get("/forecast/:scope/:granularity", async ({ requireRole, params, query }) => {
+  // Demand Forecast (ARIMA_PLUS)
+  .get("/forecast/models", async ({ requireRole }) => {
     requireRole("ADMIN");
-    const rows = await demandForecastService.forecast(
-      params.scope as "zone",
-      params.granularity as "hourly",
-      query.horizon ? Number(query.horizon) : undefined,
+    return { success: true, models: demandForecastService.listAvailableModels() };
+  })
+  .get("/forecast/model-metrics", async ({ requireRole }) => {
+    requireRole("ADMIN");
+    return { success: true, ...(await demandForecastService.modelMetrics()) };
+  })
+  .get("/forecast/:scope/:granularity", async ({ requireRole, params, query, set }) => {
+    requireRole("ADMIN");
+    const result = await demandForecastService.forecastSafe(
+      params.scope as ForecastScope,
+      params.granularity as ForecastGranularity,
+      query.horizon !== undefined ? Number(query.horizon) : undefined,
+      query.confidence !== undefined ? Number(query.confidence) : undefined,
     );
-    return { success: true, forecasts: rows };
+    if (!result.available) {
+      // Unknown scope/granularity is a caller error; an infrastructure failure is not.
+      set.status = result.reason.startsWith("No trained model") ? 400 : 503;
+      return { success: false, error: result.reason, scope: result.scope, granularity: result.granularity };
+    }
+    return { success: true, forecasts: result.forecasts, meta: result.meta };
   })
   .get("/forecast/surge-planning", async ({ requireRole }) => {
     requireRole("ADMIN");
