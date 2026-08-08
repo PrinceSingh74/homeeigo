@@ -292,8 +292,9 @@ class EtaIntelligenceService {
 
       if (validation.passed) {
         recordEtaLabelCreated(label.city, validation.qualityScore);
-        const readyCount = await prisma.etaTrainingLabel.count({ where: { status: "TRAINING_READY" } });
-        recordEtaTrainingReady(readyCount);
+        // Authoritative count — excludes synthetic fixtures, so the gauge cannot report
+        // labels that BigQuery training would reject.
+        recordEtaTrainingReady(await this.countTrainingEligible());
 
         await emitStandalone(
           prisma,
@@ -370,6 +371,33 @@ class EtaIntelligenceService {
     } catch {
       return "gps_geofence";
     }
+  }
+
+  /**
+   * Re-projects an already-stored label to the warehouse without recollecting it.
+   *
+   * For maintenance paths that change a label in Postgres — a contract re-validation, for
+   * instance — and need the warehouse to agree. Reuses the same MERGE projection as the
+   * live collection path, so provenance and synthetic classification are applied
+   * identically. Creates nothing and recomputes no features.
+   */
+  async resyncLabelToWarehouse(bookingId: string): Promise<boolean> {
+    const label = await prisma.etaTrainingLabel.findUnique({ where: { bookingId } });
+    if (!label) return false;
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { bookingNumber: true },
+    });
+
+    const f = (label.features ?? {}) as Record<string, unknown>;
+    const arrivalSource = f.arrivalSource === "job_start" ? "job_start" : "gps_geofence";
+
+    await this.syncToBigQuery(label, {
+      arrivalSource,
+      isSynthetic: isSyntheticBookingNumber(booking?.bookingNumber),
+    });
+    return true;
   }
 
   /** Persist Google Maps API snapshot — called asynchronously from tracking/maps. */
@@ -489,8 +517,29 @@ class EtaIntelligenceService {
     };
   }
 
+  /**
+   * THE authoritative training-eligible count.
+   *
+   * Postgres validation cannot see booking numbers, so `status = TRAINING_READY` alone
+   * still admits certification fixtures. This applies the last contract condition —
+   * `is_synthetic = false` — so the number matches
+   * `vw_eta_training_eligible` in BigQuery exactly. Every readiness signal reads from here
+   * rather than counting statuses independently, which is how the two layers drifted apart
+   * in the first place.
+   */
+  async countTrainingEligible(): Promise<number> {
+    const rows = await prisma.$queryRaw<Array<{ n: bigint }>>`
+      SELECT COUNT(*)::bigint AS n
+      FROM eta_training_labels l
+      JOIN bookings b ON b.id = l.booking_id
+      WHERE l.status = 'TRAINING_READY'
+        AND b.booking_number ~ '^HOMIGO-[0-9]{8}-[0-9]{5}$'`;
+    return Number(rows[0]?.n ?? 0);
+  }
+
   async getReadinessReport(): Promise<{
     trainingReady: number;
+    trainingReadyIncludingSynthetic: number;
     validated: number;
     raw: number;
     rejected: number;
@@ -500,13 +549,16 @@ class EtaIntelligenceService {
     const MIN_LABELS = 50;
     const counts = await prisma.etaTrainingLabel.groupBy({ by: ["status"], _count: { status: true } });
     const map = Object.fromEntries(counts.map((c) => [c.status, c._count.status]));
-    const ready = map.TRAINING_READY ?? 0;
+    // `trainingReady` is the eligible count; the raw status tally is exposed separately so
+    // an operator can see the gap rather than having it hidden.
+    const eligible = await this.countTrainingEligible();
     return {
-      trainingReady: ready,
+      trainingReady: eligible,
+      trainingReadyIncludingSynthetic: map.TRAINING_READY ?? 0,
       validated: map.VALIDATED ?? 0,
       raw: map.RAW ?? 0,
       rejected: map.REJECTED ?? 0,
-      readinessPct: Math.min(100, Math.round((ready / MIN_LABELS) * 100)),
+      readinessPct: Math.min(100, Math.round((eligible / MIN_LABELS) * 100)),
       minLabelsForTraining: MIN_LABELS,
     };
   }
@@ -597,7 +649,12 @@ class EtaIntelligenceService {
         ]);
       }
 
-      if (label.status === "TRAINING_READY") {
+      // Mirror every non-rejected label into the feature and training layers, carrying its
+      // CURRENT validation_status. Gating the write on TRAINING_READY left a stale
+      // TRAINING_READY row behind whenever a label was later downgraded — the warehouse
+      // would then disagree with Postgres. Eligibility is decided by
+      // vw_eta_training_eligible, not by whether the row exists.
+      if (label.status !== "REJECTED") {
         await mergeRows("feature", "eta_feature", "booking_id", [{
           booking_id: label.bookingId,
           partner_hash: label.partnerHash,
