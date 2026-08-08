@@ -1,0 +1,43 @@
+{
+  "certificationMode": true,
+  "rateLimitNote": "Rate limits bypassed in certification mode; production limit documented separately",
+  "n100": {
+    "totalMs": 4839,
+    "avgMs": 48,
+    "medianMs": 45,
+    "p95Ms": 95,
+    "p99Ms": 117,
+    "executionFailures": 0,
+    "rateLimited": 0,
+    "rssMbDelta": 1,
+    "heapUsedMbDelta": 3,
+    "cpuUserMs": 3219,
+    "cpuSystemMs": 500
+  },
+  "n500": {
+    "totalMs": 23426,
+    "avgMs": 47,
+    "medianMs": 43,
+    "p95Ms": 82,
+    "p99Ms": 112,
+    "executionFailures": 0,
+    "rateLimited": 0,
+    "rssMbDelta": 8,
+    "heapUsedMbDelta": 13,
+    "cpuUserMs": 15125,
+    "cpuSystemMs": 4250
+  },
+  "n1000": {
+    "totalMs": 39296,
+    "avgMs": 39,
+    "medianMs": 34,
+    "p95Ms": 79,
+    "p99Ms": 109,
+    "executionFailures": 0,
+    "rateLimited": 0,
+    "rssMbDelta": 4,
+    "heapUsedMbDelta": -15,
+    "cpuUserMs": 22984,
+    "cpuSystemMs": 6594
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "noPrismaInHandlers": true,
+  "noSqlInHandlers": true,
+  "handlersImportServices": true,
+  "moduleRegistered": true,
+  "routesRegistered": true,
+  "gatewayBrainToolsChain": true
+}

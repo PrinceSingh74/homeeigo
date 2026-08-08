@@ -1,0 +1,54 @@
+# Phase 5 AI Tools alerts — loaded into local _obsstack Prometheus.
+# Cert environment uses shorter `for` windows than production (monitoring/rules/homigo-alerts.yml).
+groups:
+  - name: homigo_ai_tools
+    rules:
+      - alert: AiToolFailureSpike
+        expr: sum(rate(homigo_ai_tool_failure_total[1m])) > 0.01
+        for: 15s
+        labels:
+          severity: critical
+          domain: ai-tools
+        annotations:
+          summary: AI tool failure rate spiking
+          description: Phase 5 operational cert — failure rate elevated
+
+      - alert: AiToolApprovalQueueGrowing
+        expr: homigo_ai_tool_pending_approvals > 2
+        for: 30s
+        labels:
+          severity: warning
+          domain: ai-tools
+        annotations:
+          summary: AI tool approval queue exceeds threshold
+          description: Pending approvals gauge above cert threshold
+
+      - alert: AiToolExecutionTimeout
+        expr: sum(rate(homigo_ai_tool_timeout[1m])) > 0.005
+        for: 15s
+        labels:
+          severity: warning
+          domain: ai-tools
+        annotations:
+          summary: AI tool execution timeouts increasing
+          description: Timeout counter rate elevated
+
+      - alert: AiToolUnauthorizedAccess
+        expr: sum(rate(homigo_ai_tool_denied[1m])) > 0.1
+        for: 30s
+        labels:
+          severity: warning
+          domain: ai-tools
+        annotations:
+          summary: Elevated unauthorized AI tool access attempts
+          description: Denied request rate elevated
+
+      - alert: AiToolAbuse
+        expr: sum(rate(homigo_ai_tool_requests_total[1m])) by (role) > 2
+        for: 15s
+        labels:
+          severity: critical
+          domain: ai-tools
+        annotations:
+          summary: Potential AI tool abuse detected — request rate anomaly
+          description: Request rate per role above cert threshold

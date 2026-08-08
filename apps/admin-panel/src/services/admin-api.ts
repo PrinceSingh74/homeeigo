@@ -1458,6 +1458,55 @@ export const adminApi = {
     events: (query: { geofenceId?: string; eventType?: string; limit?: number } = {}) =>
       apiRequest<ApiResponse<{ events: GeofenceEvent[] }>>("/api/geo/geofence-events", { auth: true, query: { ...query } }).then((r) => r.data!.events),
   },
+
+  aiBrain: {
+    timeline: (days = 7) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>("/api/ai/timeline", { auth: true, query: { days } }).then((r) => r.data!),
+    memoryStats: () =>
+      apiRequest<ApiResponse<Record<string, unknown>>>("/api/ai/memory/stats", { auth: true }).then((r) => r.data!),
+    memories: (query: { type?: string; q?: string; limit?: number } = {}) =>
+      apiRequest<ApiResponse<Array<Record<string, unknown>>>>("/api/ai/memory", { auth: true, query }).then((r) => r.data!),
+    prompts: (category?: string) =>
+      apiRequest<ApiResponse<{ prompts: Array<Record<string, unknown>>; categories: string[] }>>("/api/ai/prompts", {
+        auth: true,
+        query: category ? { category } : {},
+      }).then((r) => r.data!),
+    promptVersions: (promptId: string) =>
+      apiRequest<ApiResponse<Array<Record<string, unknown>>>>(`/api/ai/prompt-versions/${promptId}`, { auth: true }).then((r) => r.data!),
+    contextHistory: (limit = 20) =>
+      apiRequest<ApiResponse<Array<Record<string, unknown>>>>("/api/ai/context/history", { auth: true, query: { limit } }).then((r) => r.data!),
+    health: () =>
+      apiRequest<ApiResponse<Record<string, unknown>>>("/api/ai/health", { auth: true }).then((r) => r.data!),
+    usage: (days = 7) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>("/api/ai/usage", { auth: true, query: { days } }).then((r) => r.data!),
+  },
+
+  aiTools: {
+    health: () =>
+      apiRequest<ApiResponse<Record<string, unknown>>>("/api/ai/tools/health").then((r) => r.data!),
+    registry: () =>
+      apiRequest<ApiResponse<Record<string, unknown>>>("/api/ai/tools/registry", { auth: true }).then((r) => r.data!),
+    list: (query: { category?: string; status?: string; source?: string } = {}) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>("/api/ai/tools", { auth: true, query }).then((r) => r.data!),
+    get: (toolId: string) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>(`/api/ai/tools/${encodeURIComponent(toolId)}`, { auth: true }).then((r) => r.data!),
+    execute: (body: { toolId: string; arguments?: Record<string, unknown>; idempotencyKey?: string; approvalId?: string }) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>("/api/ai/tools/execute", { auth: true, method: "POST", body }).then((r) => r.data!),
+    history: (query: { toolId?: string; status?: string; limit?: number } = {}) =>
+      apiRequest<ApiResponse<Array<Record<string, unknown>>>>("/api/ai/tools/history", { auth: true, query }).then((r) => r.data!),
+    approvals: (query: { toolId?: string; limit?: number } = {}) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>("/api/ai/tools/approvals", { auth: true, query }).then((r) => r.data!),
+    decideApproval: (approvalId: string, body: { decision: "APPROVED" | "REJECTED"; reason?: string }) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>(`/api/ai/tools/approvals/${approvalId}/decide`, { auth: true, method: "POST", body }).then((r) => r.data!),
+    policies: (query: { toolId?: string; decision?: string; limit?: number } = {}) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>("/api/ai/tools/policies", { auth: true, query }).then((r) => r.data!),
+    denied: (limit = 50) =>
+      apiRequest<ApiResponse<Array<Record<string, unknown>>>>("/api/ai/tools/denied", { auth: true, query: { limit } }).then((r) => r.data!),
+    highRisk: (limit = 50) =>
+      apiRequest<ApiResponse<Array<Record<string, unknown>>>>("/api/ai/tools/high-risk", { auth: true, query: { limit } }).then((r) => r.data!),
+    metrics: (days = 7) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>("/api/ai/tools/metrics", { auth: true, query: { days } }).then((r) => r.data!),
+  },
 };
 
 export type CanonicalGmv = {

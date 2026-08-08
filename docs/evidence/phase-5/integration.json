@@ -1,0 +1,22 @@
+{
+  "phase0_outbox": false,
+  "phase3_gateway": true,
+  "phase4_brain": true,
+  "phase5_tools": true,
+  "automaticToolOrchestration": "NOT_WIRED",
+  "manualBridgeVerified": true,
+  "gatewayHealth": 200,
+  "toolsHealth": 200,
+  "brainContextBuilt": false,
+  "toolExecution": "SUCCESS",
+  "auditRecorded": true,
+  "metricsSummary": {
+    "totalRequests": 9589,
+    "successCount": 9526,
+    "failureCount": 15,
+    "deniedCount": 48,
+    "approvalRequiredCount": 0,
+    "avgLatencyMs": 77,
+    "totalCostUsd": 1.037799999999909
+  }
+}

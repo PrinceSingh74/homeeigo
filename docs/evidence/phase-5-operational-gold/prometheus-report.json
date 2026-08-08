@@ -1,0 +1,45 @@
+{
+  "verifiedAt": "2026-08-07T12:28:01.902Z",
+  "backendUrl": "http://localhost:3010",
+  "prometheusUrl": "http://localhost:9090",
+  "scrapeTarget": {
+    "status": "success",
+    "data": {
+      "activeTargets": [
+        {
+          "discoveredLabels": {
+            "__address__": "host.docker.internal:3010",
+            "__metrics_path__": "/metrics",
+            "__scheme__": "http",
+            "__scrape_interval__": "10s",
+            "__scrape_timeout__": "10s",
+            "job": "homigo-backend"
+          },
+          "labels": {
+            "instance": "homigo-api-3010",
+            "job": "homigo-backend"
+          },
+          "scrapePool": "homigo-backend",
+          "scrapeUrl": "http://host.docker.internal:3010/metrics",
+          "globalUrl": "http://host.docker.internal:3010/metrics",
+          "lastError": "",
+          "lastScrape": "2026-08-07T12:27:36.16357395Z",
+          "lastScrapeDuration": 0.22350156,
+          "health": "up",
+          "scrapeInterval": "10s",
+          "scrapeTimeout": "10s"
+        }
+      ],
+      "droppedTargets": [],
+      "droppedTargetCounts": {
+        "homigo-backend": 0
+      }
+    }
+  },
+  "targetHealthyOn3010": true,
+  "requestsBefore": 0,
+  "requestsAfter": 20,
+  "liveDelta": 20,
+  "successTotal": 20,
+  "failureTotal": 0
+}

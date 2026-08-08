@@ -1,0 +1,44 @@
+{
+  "verifiedAt": "2026-08-07T12:17:54.573Z",
+  "beforeStop": {
+    "status": "SUCCESS",
+    "durationMs": 112
+  },
+  "metricsDuringOutage": {
+    "enabled": true,
+    "available": false,
+    "topology": "standalone",
+    "connectedClients": 0,
+    "usedMemoryHuman": "n/a",
+    "usedMemoryBytes": 0,
+    "evictedKeys": 0,
+    "keyspaceHits": 0,
+    "keyspaceMisses": 0,
+    "hitRate": 0,
+    "subscriptions": 0,
+    "lastError": null
+  },
+  "duringOutage": {
+    "status": "SUCCESS",
+    "durationMs": 148
+  },
+  "metricsAfterRecovery": {
+    "enabled": true,
+    "available": false,
+    "topology": "standalone",
+    "connectedClients": 0,
+    "usedMemoryHuman": "n/a",
+    "usedMemoryBytes": 0,
+    "evictedKeys": 0,
+    "keyspaceHits": 0,
+    "keyspaceMisses": 0,
+    "hitRate": 0,
+    "subscriptions": 0,
+    "lastError": null
+  },
+  "afterRecovery": {
+    "status": "SUCCESS",
+    "durationMs": 58
+  },
+  "result": "PASS"
+}

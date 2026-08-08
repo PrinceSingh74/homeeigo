@@ -1,0 +1,10 @@
+{
+  "public": {
+    "status": 200,
+    "enabled": true
+  },
+  "authed": {
+    "status": 200
+  },
+  "rationale": "Public health follows /api/ai/health probe pattern — no JWT required for load balancers"
+}

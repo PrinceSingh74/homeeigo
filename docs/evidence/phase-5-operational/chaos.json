@@ -1,0 +1,31 @@
+{
+  "verifiedAt": "2026-08-07T12:18:10.904Z",
+  "scenarios": [
+    {
+      "scenario": "unknown_tool",
+      "status": "PASS",
+      "detail": "Unknown tool: chaos.nonexistent"
+    },
+    {
+      "scenario": "validation_denied",
+      "status": "PASS",
+      "detail": "Missing required parameter: bookingId"
+    },
+    {
+      "scenario": "timeout_pressure",
+      "status": "PASS",
+      "detail": "completed"
+    },
+    {
+      "scenario": "high_risk_blocked",
+      "status": "PASS",
+      "detail": "High-risk tools cannot be executed directly by AI"
+    },
+    {
+      "scenario": "platform_still_responsive",
+      "status": "PASS",
+      "detail": "SUCCESS"
+    }
+  ],
+  "platformStable": true
+}

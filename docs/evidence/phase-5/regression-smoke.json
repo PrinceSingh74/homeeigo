@@ -1,0 +1,18 @@
+[
+  {
+    "route": "/api/admin/dashboard",
+    "status": 200
+  },
+  {
+    "route": "/api/admin/bookings?limit=1",
+    "status": 200
+  },
+  {
+    "route": "/api/ai/health",
+    "status": 200
+  },
+  {
+    "route": "/api/ai/tools/health",
+    "status": 200
+  }
+]

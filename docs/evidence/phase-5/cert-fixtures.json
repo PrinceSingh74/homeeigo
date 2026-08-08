@@ -1,0 +1,29 @@
+{
+  "generatedAt": "2026-08-07T12:00:22.181Z",
+  "certTag": "phase5-cert",
+  "customer": {
+    "id": "cmq9h68mp0008tz8so7py2429",
+    "email": "customer@homigo.demo"
+  },
+  "partner": {
+    "id": "cmq9h68780003tz8sc6scw3kj",
+    "email": "partner@homigo.demo",
+    "providerId": "cmq9h687s0005tz8swhtkju1p"
+  },
+  "vendor": {
+    "id": "cmsitqx7z0000tzbcqrkf5t83",
+    "email": "vendor@homigo.demo",
+    "providerId": "cmsitqxy40002tzbczjyo2ex8"
+  },
+  "admin": {
+    "id": "cmq9h67pk0000tz8s6tvnpet5",
+    "email": "admin@homigo.demo"
+  },
+  "serviceId": "cmq7v7se91y0stz7gl27s2h5o",
+  "addressId": "cmqaib3py003htzfcu4sqm5n4",
+  "bookings": {
+    "acceptBookingId": "cmsitr26v0008tzbc6glr4d26",
+    "rejectBookingId": "cmsitr4cy000ktzbckc5j0yqh",
+    "writableBookingId": "cmsitv02a0001tzekza6n1k01"
+  }
+}

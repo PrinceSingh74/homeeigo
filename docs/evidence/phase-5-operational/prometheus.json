@@ -1,0 +1,104 @@
+{
+  "verifiedAt": "2026-08-07T12:17:50.747Z",
+  "requiresApprovalIncrementNote": "homigo_ai_tool_requires_approval series present; runtime increment blocked by HIGH_RISK validation gate before policy engine",
+  "requiresApprovalIncrementVerified": "NOT_VERIFIED — HIGH_RISK validation blocks before policy REQUIRES_APPROVAL path",
+  "inProcessScrape": {
+    "before": {
+      "requests": 0,
+      "success": 0,
+      "failure": 0,
+      "retry": 0,
+      "timeout": 0,
+      "denied": 0,
+      "requiresApproval": 0
+    },
+    "after": {
+      "requests": 6,
+      "success": 4,
+      "failure": 1,
+      "retry": 2,
+      "timeout": 0,
+      "denied": 1,
+      "requiresApproval": 0
+    },
+    "deltas": {
+      "requests": 6,
+      "success": 4,
+      "failure": 1,
+      "retry": 2,
+      "timeout": 0,
+      "denied": 1,
+      "requiresApproval": 0
+    },
+    "metricNamesPresent": [
+      "homigo_ai_tool_cost",
+      "homigo_ai_tool_cost_bucket",
+      "homigo_ai_tool_cost_count",
+      "homigo_ai_tool_cost_sum",
+      "homigo_ai_tool_denied",
+      "homigo_ai_tool_execution_time",
+      "homigo_ai_tool_execution_time_bucket",
+      "homigo_ai_tool_execution_time_count",
+      "homigo_ai_tool_execution_time_sum",
+      "homigo_ai_tool_failure_total",
+      "homigo_ai_tool_latency",
+      "homigo_ai_tool_latency_bucket",
+      "homigo_ai_tool_latency_count",
+      "homigo_ai_tool_latency_sum",
+      "homigo_ai_tool_pending_approvals",
+      "homigo_ai_tool_requests_total",
+      "homigo_ai_tool_requires_approval",
+      "homigo_ai_tool_retry",
+      "homigo_ai_tool_success_total",
+      "homigo_ai_tool_timeout"
+    ],
+    "missingMetrics": [],
+    "hasHistograms": true,
+    "hasCost": true
+  },
+  "livePrometheus": {
+    "url": "http://localhost:9090",
+    "queryResult": {
+      "status": "success",
+      "data": {
+        "resultType": "vector",
+        "result": []
+      }
+    },
+    "targets": {
+      "status": "success",
+      "data": {
+        "activeTargets": [
+          {
+            "discoveredLabels": {
+              "__address__": "host.docker.internal:3000",
+              "__metrics_path__": "/metrics",
+              "__scheme__": "http",
+              "__scrape_interval__": "10s",
+              "__scrape_timeout__": "10s",
+              "job": "homigo-backend"
+            },
+            "labels": {
+              "instance": "host.docker.internal:3000",
+              "job": "homigo-backend"
+            },
+            "scrapePool": "homigo-backend",
+            "scrapeUrl": "http://host.docker.internal:3000/metrics",
+            "globalUrl": "http://host.docker.internal:3000/metrics",
+            "lastError": "",
+            "lastScrape": "2026-08-07T12:17:46.341534663Z",
+            "lastScrapeDuration": 0.064017373,
+            "health": "up",
+            "scrapeInterval": "10s",
+            "scrapeTimeout": "10s"
+          }
+        ],
+        "droppedTargets": [],
+        "droppedTargetCounts": {
+          "homigo-backend": 0
+        }
+      }
+    },
+    "note": "Local Prometheus scrapes host.docker.internal:3000; Homigo backend metrics served on :3010 during cert — live federation may not reflect in-process deltas"
+  }
+}

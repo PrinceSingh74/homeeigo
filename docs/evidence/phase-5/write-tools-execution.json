@@ -1,0 +1,62 @@
+[
+  {
+    "toolId": "write.booking.createBooking",
+    "status": "SUCCESS",
+    "detail": "ok"
+  },
+  {
+    "toolId": "write.booking.updateBooking",
+    "status": "SUCCESS",
+    "detail": "ok"
+  },
+  {
+    "toolId": "write.booking.rescheduleBooking",
+    "status": "SUCCESS",
+    "detail": "ok"
+  },
+  {
+    "toolId": "write.booking.cancelBooking",
+    "status": "SUCCESS",
+    "detail": "ok"
+  },
+  {
+    "toolId": "write.partner.acceptJob",
+    "status": "SUCCESS",
+    "detail": "ok"
+  },
+  {
+    "toolId": "write.partner.rejectJob",
+    "status": "SUCCESS",
+    "detail": "ok"
+  },
+  {
+    "toolId": "write.partner.updateAvailability",
+    "status": "SUCCESS",
+    "detail": "ok"
+  },
+  {
+    "toolId": "write.support.createSupportTicket",
+    "status": "SUCCESS",
+    "detail": "ok"
+  },
+  {
+    "toolId": "write.support.closeSupportTicket",
+    "status": "SUCCESS",
+    "detail": "ok"
+  },
+  {
+    "toolId": "write.wallet.redeemCoupon",
+    "status": "SUCCESS",
+    "detail": "validation executed"
+  },
+  {
+    "toolId": "write.notification.sendCustomerNotification",
+    "status": "SUCCESS",
+    "detail": "ok"
+  },
+  {
+    "toolId": "write.notification.sendPartnerNotification",
+    "status": "SUCCESS",
+    "detail": "ok"
+  }
+]

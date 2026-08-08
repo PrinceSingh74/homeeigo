@@ -1,0 +1,90 @@
+{
+  "uid": "homigo-ai-tools",
+  "title": "20 — Enterprise AI Tools (Registry · Policy · Execution)",
+  "tags": ["homigo", "enterprise", "phase5", "ai-tools"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Tool Requests/sec",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(homigo_ai_tool_requests_total[5m])) by (category)", "legendFormat": "{{category}}", "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "title": "Tool Success Rate",
+      "type": "gauge",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{
+        "expr": "100 * sum(rate(homigo_ai_tool_success_total[5m])) / clamp_min(sum(rate(homigo_ai_tool_requests_total[5m])), 0.001)",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 3,
+      "title": "Pending Approvals",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "homigo_ai_tool_pending_approvals", "refId": "A" }]
+    },
+    {
+      "id": 4,
+      "title": "Tool Failures",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 6, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(homigo_ai_tool_failure_total[5m])) by (reason)", "legendFormat": "{{reason}}", "refId": "A" }]
+    },
+    {
+      "id": 5,
+      "title": "Denied Requests",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 6, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(homigo_ai_tool_denied[5m])) by (reason)", "legendFormat": "{{reason}}", "refId": "A" }]
+    },
+    {
+      "id": 6,
+      "title": "Requires Approval",
+      "type": "timeseries",
+      "gridPos": { "x": 16, "y": 6, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(homigo_ai_tool_requires_approval[5m]))", "refId": "A" }]
+    },
+    {
+      "id": 7,
+      "title": "Execution Latency p95",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(homigo_ai_tool_execution_time_bucket[5m])) by (le, category))", "legendFormat": "{{category}}", "refId": "A" }]
+    },
+    {
+      "id": 8,
+      "title": "Tool Timeouts & Retries",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(homigo_ai_tool_timeout[5m]))", "legendFormat": "timeouts", "refId": "A" },
+        { "expr": "sum(rate(homigo_ai_tool_retry[5m]))", "legendFormat": "retries", "refId": "B" }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Tool Cost (USD)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(homigo_ai_tool_cost_sum[5m])) by (tool_id)", "legendFormat": "{{tool_id}}", "refId": "A" }]
+    }
+  ]
+}

@@ -549,3 +549,45 @@ groups:
           severity: warning
         annotations:
           summary: Prompt registry has entries but no active versions
+
+  - name: homigo_ai_tools
+    rules:
+      - alert: AiToolFailureSpike
+        expr: sum(rate(homigo_ai_tool_failure_total[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: AI tool failure rate spiking
+
+      - alert: AiToolApprovalQueueGrowing
+        expr: homigo_ai_tool_pending_approvals > 10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: AI tool approval queue exceeds 10 pending items
+
+      - alert: AiToolExecutionTimeout
+        expr: sum(rate(homigo_ai_tool_timeout[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: AI tool execution timeouts increasing
+
+      - alert: AiToolUnauthorizedAccess
+        expr: sum(rate(homigo_ai_tool_denied[5m])) by (reason) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Elevated unauthorized AI tool access attempts
+
+      - alert: AiToolAbuse
+        expr: sum(rate(homigo_ai_tool_requests_total[1m])) by (role) > 50
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: Potential AI tool abuse detected — request rate anomaly

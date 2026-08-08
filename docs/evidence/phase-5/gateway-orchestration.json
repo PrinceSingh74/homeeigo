@@ -1,0 +1,20 @@
+{
+  "automaticOrchestration": "NOT_WIRED",
+  "phase6Scope": "LLM tool selection loop belongs to Phase 6 Agents",
+  "certificationMode": true,
+  "gatewayHealth": 200,
+  "toolsHealth": 200,
+  "brainContextBuilt": false,
+  "toolExecution": "SUCCESS",
+  "executionId": "ee7142dd-1666-4de7-a891-8811a6786bdf",
+  "auditRecorded": true,
+  "metricsSummary": {
+    "totalRequests": 6258,
+    "successCount": 6229,
+    "failureCount": 15,
+    "deniedCount": 14,
+    "approvalRequiredCount": 0,
+    "avgLatencyMs": 105,
+    "totalCostUsd": 0.6838999999999459
+  }
+}

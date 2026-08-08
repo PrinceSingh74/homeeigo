@@ -1,0 +1,57 @@
+{
+  "verifiedAt": "2026-08-07T12:22:29.112Z",
+  "certificationMode": true,
+  "results": {
+    "n100": {
+      "requests": 100,
+      "durationMs": 5034,
+      "avgMs": 50,
+      "medianMs": 47,
+      "p95Ms": 80,
+      "p99Ms": 120,
+      "execFailures": 0,
+      "rateLimited": 0,
+      "memoryEnd": {
+        "rss": 242614272,
+        "heapTotal": 34616320,
+        "heapUsed": 39016162,
+        "external": 11411538,
+        "arrayBuffers": 364073
+      }
+    },
+    "n500": {
+      "requests": 500,
+      "durationMs": 19341,
+      "avgMs": 39,
+      "medianMs": 36,
+      "p95Ms": 67,
+      "p99Ms": 84,
+      "execFailures": 0,
+      "rateLimited": 0,
+      "memoryEnd": {
+        "rss": 252338176,
+        "heapTotal": 39350272,
+        "heapUsed": 46887008,
+        "external": 13245760,
+        "arrayBuffers": 644073
+      }
+    },
+    "n1000": {
+      "requests": 1000,
+      "durationMs": 34243,
+      "avgMs": 34,
+      "medianMs": 32,
+      "p95Ms": 57,
+      "p99Ms": 71,
+      "execFailures": 0,
+      "rateLimited": 0,
+      "memoryEnd": {
+        "rss": 272216064,
+        "heapTotal": 51214336,
+        "heapUsed": 61160941,
+        "external": 16421101,
+        "arrayBuffers": 1204073
+      }
+    }
+  }
+}

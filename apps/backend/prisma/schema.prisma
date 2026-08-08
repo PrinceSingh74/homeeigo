@@ -4198,3 +4198,165 @@ model AiContextCache {
   @@index([expiresAt])
   @@map("ai_context_cache")
 }
+
+// ── Phase 5: Enterprise AI Tools ────────────────────────────────────────────
+
+enum AiToolCategory {
+  READ
+  WRITE
+  HIGH_RISK
+}
+
+enum AiToolRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AiToolStatus {
+  ACTIVE
+  DEPRECATED
+  DISABLED
+}
+
+enum AiToolPolicyDecision {
+  ALLOW
+  DENY
+  REQUIRES_APPROVAL
+}
+
+enum AiToolExecutionStatus {
+  PENDING
+  PENDING_APPROVAL
+  RUNNING
+  SUCCESS
+  FAILED
+  DENIED
+  TIMEOUT
+  CANCELLED
+}
+
+enum AiToolApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum AiToolApprovalMode {
+  SINGLE
+  SEQUENTIAL
+  PARALLEL
+}
+
+model AiToolRegistry {
+  id                 String           @id @default(cuid())
+  toolId             String           @unique @map("tool_id")
+  name               String
+  description        String
+  category           AiToolCategory
+  version            String           @default("1.0.0")
+  requiredPermission String           @map("required_permission")
+  requiredRole       String           @map("required_role")
+  requiredPolicy     String           @map("required_policy")
+  riskLevel          AiToolRiskLevel  @map("risk_level")
+  parameters         Json
+  validationSchema   Json             @map("validation_schema")
+  timeoutMs          Int              @default(30000) @map("timeout_ms")
+  maxRetries         Int              @default(2) @map("max_retries")
+  auditRequired      Boolean          @default(true) @map("audit_required")
+  approvalRequired   Boolean          @default(false) @map("approval_required")
+  serviceMapping     String           @map("service_mapping")
+  eventMapping       String?          @map("event_mapping")
+  metricsKey         String?          @map("metrics_key")
+  costEstimateUsd    Float            @default(0) @map("cost_estimate_usd")
+  owner              String
+  status             AiToolStatus     @default(ACTIVE)
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  executions         AiToolExecution[]
+  approvals          AiToolApproval[]
+
+  @@index([category, status])
+  @@index([riskLevel])
+  @@map("ai_tool_registry")
+}
+
+model AiToolExecution {
+  id             String                @id @default(cuid())
+  executionId    String                @unique @map("execution_id")
+  toolId         String                @map("tool_id")
+  actorId        String?               @map("actor_id")
+  actorRole      AiGatewayRole         @map("actor_role")
+  argumentsHash  String                @map("arguments_hash")
+  policyDecision AiToolPolicyDecision  @map("policy_decision")
+  status         AiToolExecutionStatus
+  resultHash     String?               @map("result_hash")
+  errorCode      String?               @map("error_code")
+  errorMessage   String?               @map("error_message")
+  durationMs     Int?                  @map("duration_ms")
+  retryCount     Int                   @default(0) @map("retry_count")
+  correlationId  String?               @map("correlation_id")
+  traceId        String?               @map("trace_id")
+  idempotencyKey String?               @unique @map("idempotency_key")
+  approvalId     String?               @map("approval_id")
+  ipAddress      String?               @map("ip_address")
+  costUsd        Float                 @default(0) @map("cost_usd")
+  metadata       Json?
+  startedAt      DateTime              @default(now()) @map("started_at")
+  completedAt    DateTime?             @map("completed_at")
+  tool           AiToolRegistry        @relation(fields: [toolId], references: [toolId])
+  approval       AiToolApproval?       @relation(fields: [approvalId], references: [id])
+
+  @@index([toolId, startedAt])
+  @@index([actorId, startedAt])
+  @@index([status, startedAt])
+  @@index([traceId])
+  @@map("ai_tool_executions")
+}
+
+model AiToolApproval {
+  id                String               @id @default(cuid())
+  approvalId        String               @unique @map("approval_id")
+  toolId            String               @map("tool_id")
+  executionId       String?              @map("execution_id")
+  requestedBy       String               @map("requested_by")
+  requestedRole     AiGatewayRole        @map("requested_role")
+  argumentsHash     String               @map("arguments_hash")
+  riskScore         Float                @default(0) @map("risk_score")
+  status            AiToolApprovalStatus @default(PENDING)
+  approvalMode      AiToolApprovalMode   @default(SINGLE) @map("approval_mode")
+  requiredApprovers Int                  @default(1) @map("required_approvers")
+  approvedBy        String?              @map("approved_by")
+  rejectedBy        String?              @map("rejected_by")
+  decisionReason    String?              @map("decision_reason")
+  expiresAt         DateTime             @map("expires_at")
+  decidedAt         DateTime?            @map("decided_at")
+  metadata          Json?
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  tool              AiToolRegistry       @relation(fields: [toolId], references: [toolId])
+  executions        AiToolExecution[]
+
+  @@index([status, expiresAt])
+  @@index([toolId, status])
+  @@map("ai_tool_approvals")
+}
+
+model AiToolPolicyLog {
+  id          String               @id @default(cuid())
+  toolId      String               @map("tool_id")
+  actorId     String?              @map("actor_id")
+  actorRole   AiGatewayRole        @map("actor_role")
+  decision    AiToolPolicyDecision
+  reason      String?
+  ruleMatched String?              @map("rule_matched")
+  traceId     String?              @map("trace_id")
+  createdAt   DateTime             @default(now()) @map("created_at")
+
+  @@index([toolId, createdAt])
+  @@index([decision, createdAt])
+  @@map("ai_tool_policy_logs")
+}

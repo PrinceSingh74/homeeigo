@@ -1,0 +1,77 @@
+[
+  {
+    "toolId": "high_risk.finance.refund",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  },
+  {
+    "toolId": "high_risk.finance.walletAdjustment",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  },
+  {
+    "toolId": "high_risk.finance.settlement",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  },
+  {
+    "toolId": "high_risk.finance.payout",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  },
+  {
+    "toolId": "high_risk.finance.ledgerEntry",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  },
+  {
+    "toolId": "high_risk.finance.financeApproval",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  },
+  {
+    "toolId": "high_risk.compliance.accountFreeze",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  },
+  {
+    "toolId": "high_risk.compliance.partnerSuspend",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  },
+  {
+    "toolId": "high_risk.compliance.customerBan",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  },
+  {
+    "toolId": "high_risk.security.roleEscalation",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  },
+  {
+    "toolId": "high_risk.platform.featureFlagChange",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  },
+  {
+    "toolId": "high_risk.platform.secrets",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  },
+  {
+    "toolId": "high_risk.platform.configuration",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  },
+  {
+    "toolId": "high_risk.platform.infrastructure",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  },
+  {
+    "toolId": "policy.high_risk.finance.refund",
+    "blocked": true,
+    "detail": "REQUIRES_APPROVAL"
+  }
+]

@@ -39,8 +39,10 @@ ADRs are **normative for RC `c31f154`**. Changes that alter documented decisions
 | ADR-013 | Phase 1 ML Data Platform | Accepted | Platform / Data Engineering | 2027-02-06 | [adr-013-phase-1-ml-data-platform.md](./adr-013-phase-1-ml-data-platform.md) |
 | ADR-014 | Phase 2 ETA Intelligence Label Collection | Accepted | Platform / Data Engineering | 2027-02-07 | [adr-014-phase-2-eta-intelligence.md](./adr-014-phase-2-eta-intelligence.md) |
 | ADR-015 | Phase 3 Enterprise AI Core Platform | Accepted | Platform / AI Engineering | 2027-02-07 | [adr-015-phase-3-enterprise-ai-core.md](./adr-015-phase-3-enterprise-ai-core.md) |
+| ADR-016 | Phase 4 Enterprise AI Brain | Accepted | Platform / AI Engineering | 2027-02-07 | [adr-016-phase-4-enterprise-ai-brain.md](./adr-016-phase-4-enterprise-ai-brain.md) |
+| ADR-017 | Phase 5 Enterprise AI Tools & Action Layer | Accepted | Platform / AI Engineering | 2027-02-07 | [adr-017-phase-5-ai-tools.md](./adr-017-phase-5-ai-tools.md) |
 
-**Total ADRs:** 14
+**Total ADRs:** 16
 
 ---
 

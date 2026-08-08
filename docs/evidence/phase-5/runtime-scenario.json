@@ -1,0 +1,21 @@
+{
+  "stages": [
+    "customer_actor",
+    "policy_eval",
+    "tool_execute",
+    "audit",
+    "metrics"
+  ],
+  "policyDecision": "ALLOW",
+  "executionStatus": "SUCCESS",
+  "executionId": "f12a6865-a074-4b66-a074-f04e23e1a168",
+  "auditSample": {
+    "executionId": "f12a6865-a074-4b66-a074-f04e23e1a168",
+    "toolId": "read.customer.getServices",
+    "status": "SUCCESS",
+    "traceId": "scenario-final",
+    "correlationId": "scenario-final-1",
+    "argumentsHash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "outboxNote": "Full Gateway→LLM→Tool auto loop DEFERRED_TO_PHASE_6; manual executeTool path verified"
+}

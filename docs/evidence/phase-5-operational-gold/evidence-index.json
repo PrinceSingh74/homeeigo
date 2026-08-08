@@ -1,0 +1,37 @@
+{
+  "generatedAt": "2026-08-07T14:35:28.376Z",
+  "phase": "5.2",
+  "verdict": "PASS_WITH_LIMITATION",
+  "reports": {
+    "operational": "operational-gold-summary.json",
+    "runtime": "runtime-report.json",
+    "prometheus": "prometheus-report.json",
+    "alertmanager": "alertmanager-report.json",
+    "notification": "notification-report.json",
+    "grafana": "grafana-report.json",
+    "memorySoak": "memory-soak-report.json",
+    "requiresApproval": "requires-approval-report.json"
+  },
+  "configurationChanges": [
+    "apps/backend/monitoring/_obsstack/prometheus.yml — scrape host.docker.internal:3010 + alertmanager",
+    "apps/backend/monitoring/_obsstack/rules/homigo-ai-tools-alerts.yml — AI tool alert rules",
+    "apps/backend/monitoring/_obsstack/alertmanager.yml — webhook receiver",
+    "apps/backend/monitoring/_obsstack/docker-compose.yml — alertmanager service",
+    "apps/backend/monitoring/_obsstack/dashboards/homigo-ai-tools.json — Grafana dashboard"
+  ],
+  "scripts": [
+    "apps/backend/scripts/phase-5-operational-gold-certification.ts"
+  ],
+  "gapsClosed": [
+    "Prometheus live scrape on backend :3010",
+    "homigo_ai_tools alert rules loaded",
+    "Grafana homigo-ai-tools dashboard provisioned",
+    "30-minute memory soak completed"
+  ],
+  "remainingLimitations": [
+    "Native Prometheus alert firing 2/5 (FailureSpike, Timeout, Abuse thresholds not sustained)",
+    "Alertmanager webhook delivery not captured (host.docker.internal connectivity)",
+    "Slack/Email not configured in local .env",
+    "homigo_ai_tool_requires_approval counter blocked by HIGH_RISK validation gate (no implementation change permitted)"
+  ]
+}

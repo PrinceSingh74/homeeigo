@@ -1,0 +1,32 @@
+[
+  {
+    "toolId": "read.partner.getPartnerProfile",
+    "status": "SUCCESS",
+    "durationMs": 72
+  },
+  {
+    "toolId": "read.partner.getPartnerJobs",
+    "status": "SUCCESS",
+    "durationMs": 283
+  },
+  {
+    "toolId": "read.partner.getPartnerPerformance",
+    "status": "SUCCESS",
+    "durationMs": 58
+  },
+  {
+    "toolId": "read.partner.getPartnerEarnings",
+    "status": "SUCCESS",
+    "durationMs": 35
+  },
+  {
+    "toolId": "read.partner.getPartnerDemand",
+    "status": "SUCCESS",
+    "durationMs": 1154
+  },
+  {
+    "toolId": "read.partner.getPartnerSchedule",
+    "status": "SUCCESS",
+    "durationMs": 62
+  }
+]

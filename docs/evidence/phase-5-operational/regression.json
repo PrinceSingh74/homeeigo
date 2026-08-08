@@ -1,0 +1,41 @@
+{
+  "verifiedAt": "2026-08-07T12:21:30.317Z",
+  "checks": [
+    {
+      "domain": "AI Tools",
+      "endpoint": "/api/ai/tools/health",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "domain": "AI Gateway",
+      "endpoint": "/api/ai/health",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "domain": "Bookings",
+      "endpoint": "/api/admin/bookings?page=1&limit=1",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "domain": "Finance",
+      "endpoint": "/api/admin/finance/dashboard",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "domain": "Fraud",
+      "endpoint": "/api/admin/fraud/overview",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "domain": "Analytics",
+      "endpoint": "/api/admin/analytics",
+      "status": 200,
+      "ok": true
+    }
+  ]
+}

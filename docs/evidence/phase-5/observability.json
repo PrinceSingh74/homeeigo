@@ -1,0 +1,49 @@
+{
+  "metrics": [
+    {
+      "metric": "homigo_ai_tool_requests_total",
+      "present": true
+    },
+    {
+      "metric": "homigo_ai_tool_success_total",
+      "present": true
+    },
+    {
+      "metric": "homigo_ai_tool_failure_total",
+      "present": true
+    },
+    {
+      "metric": "homigo_ai_tool_latency",
+      "present": true
+    },
+    {
+      "metric": "homigo_ai_tool_retry",
+      "present": true
+    },
+    {
+      "metric": "homigo_ai_tool_timeout",
+      "present": true
+    },
+    {
+      "metric": "homigo_ai_tool_denied",
+      "present": true
+    },
+    {
+      "metric": "homigo_ai_tool_requires_approval",
+      "present": true
+    },
+    {
+      "metric": "homigo_ai_tool_execution_time",
+      "present": true
+    },
+    {
+      "metric": "homigo_ai_tool_cost",
+      "present": true
+    }
+  ],
+  "grafanaDashboard": true,
+  "alertRulesDefined": true,
+  "alertFiringTested": false,
+  "alertRecoveryTested": false,
+  "scrapeSampleBytes": 78384
+}

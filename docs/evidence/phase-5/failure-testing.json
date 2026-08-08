@@ -1,0 +1,12 @@
+[
+  {
+    "test": "unknown_tool",
+    "status": "PASS",
+    "detail": "Unknown tool: nonexistent.tool.xyz"
+  },
+  {
+    "test": "timeout",
+    "status": "NOT_VERIFIED",
+    "detail": "may complete before 1ms"
+  }
+]

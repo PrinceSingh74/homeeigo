@@ -1,0 +1,176 @@
+[
+  {
+    "toolId": "read.customer.getBooking",
+    "status": "SUCCESS",
+    "durationMs": 140,
+    "traceId": "final-read-read.customer.getBooking"
+  },
+  {
+    "toolId": "read.customer.getBookingStatus",
+    "status": "SUCCESS",
+    "durationMs": 81,
+    "traceId": "final-read-read.customer.getBookingStatus"
+  },
+  {
+    "toolId": "read.customer.getBookings",
+    "status": "SUCCESS",
+    "durationMs": 79,
+    "traceId": "final-read-read.customer.getBookings"
+  },
+  {
+    "toolId": "read.customer.getWallet",
+    "status": "SUCCESS",
+    "durationMs": 59,
+    "traceId": "final-read-read.customer.getWallet"
+  },
+  {
+    "toolId": "read.customer.getWalletTransactions",
+    "status": "SUCCESS",
+    "durationMs": 62,
+    "traceId": "final-read-read.customer.getWalletTransactions"
+  },
+  {
+    "toolId": "read.customer.getSubscription",
+    "status": "SUCCESS",
+    "durationMs": 62,
+    "traceId": "final-read-read.customer.getSubscription"
+  },
+  {
+    "toolId": "read.customer.getServices",
+    "status": "SUCCESS",
+    "durationMs": 40,
+    "traceId": "final-read-read.customer.getServices"
+  },
+  {
+    "toolId": "read.customer.getOffers",
+    "status": "SUCCESS",
+    "durationMs": 41,
+    "traceId": "final-read-read.customer.getOffers"
+  },
+  {
+    "toolId": "read.partner.getPartnerProfile",
+    "status": "SUCCESS",
+    "durationMs": 57,
+    "traceId": "final-read-read.partner.getPartnerProfile"
+  },
+  {
+    "toolId": "read.partner.getPartnerJobs",
+    "status": "SUCCESS",
+    "durationMs": 237,
+    "traceId": "final-read-read.partner.getPartnerJobs"
+  },
+  {
+    "toolId": "read.partner.getPartnerPerformance",
+    "status": "SUCCESS",
+    "durationMs": 115,
+    "traceId": "final-read-read.partner.getPartnerPerformance"
+  },
+  {
+    "toolId": "read.partner.getPartnerEarnings",
+    "status": "SUCCESS",
+    "durationMs": 71,
+    "traceId": "final-read-read.partner.getPartnerEarnings"
+  },
+  {
+    "toolId": "read.partner.getPartnerDemand",
+    "status": "SUCCESS",
+    "durationMs": 1175,
+    "traceId": "final-read-read.partner.getPartnerDemand"
+  },
+  {
+    "toolId": "read.partner.getPartnerSchedule",
+    "status": "SUCCESS",
+    "durationMs": 76,
+    "traceId": "final-read-read.partner.getPartnerSchedule"
+  },
+  {
+    "toolId": "read.admin.getProviders",
+    "status": "SUCCESS",
+    "durationMs": 137,
+    "traceId": "final-read-read.admin.getProviders"
+  },
+  {
+    "toolId": "read.admin.getCustomers",
+    "status": "SUCCESS",
+    "durationMs": 67,
+    "traceId": "final-read-read.admin.getCustomers"
+  },
+  {
+    "toolId": "read.admin.getRevenue",
+    "status": "SUCCESS",
+    "durationMs": 88,
+    "traceId": "final-read-read.admin.getRevenue"
+  },
+  {
+    "toolId": "read.admin.getFinanceSummary",
+    "status": "SUCCESS",
+    "durationMs": 61,
+    "traceId": "final-read-read.admin.getFinanceSummary"
+  },
+  {
+    "toolId": "read.admin.getFraudSummary",
+    "status": "SUCCESS",
+    "durationMs": 43,
+    "traceId": "final-read-read.admin.getFraudSummary"
+  },
+  {
+    "toolId": "read.admin.getForecast",
+    "status": "SUCCESS",
+    "durationMs": 20,
+    "traceId": "final-read-read.admin.getForecast"
+  },
+  {
+    "toolId": "read.admin.getDemand",
+    "status": "SUCCESS",
+    "durationMs": 62,
+    "traceId": "final-read-read.admin.getDemand"
+  },
+  {
+    "toolId": "read.admin.getSupply",
+    "status": "SUCCESS",
+    "durationMs": 49,
+    "traceId": "final-read-read.admin.getSupply"
+  },
+  {
+    "toolId": "read.admin.getOperations",
+    "status": "SUCCESS",
+    "durationMs": 60,
+    "traceId": "final-read-read.admin.getOperations"
+  },
+  {
+    "toolId": "read.common.getWeather",
+    "status": "SUCCESS",
+    "durationMs": 259,
+    "traceId": "final-read-read.common.getWeather"
+  },
+  {
+    "toolId": "read.common.getTraffic",
+    "status": "SUCCESS",
+    "durationMs": 251,
+    "traceId": "final-read-read.common.getTraffic"
+  },
+  {
+    "toolId": "read.common.getETA",
+    "status": "SUCCESS",
+    "durationMs": 354,
+    "traceId": "final-read-read.common.getETA"
+  },
+  {
+    "toolId": "read.common.getLocation",
+    "status": "SUCCESS",
+    "durationMs": 34,
+    "traceId": "final-read-read.common.getLocation"
+  },
+  {
+    "toolId": "read.common.getNotifications",
+    "status": "SUCCESS",
+    "durationMs": 33,
+    "traceId": "final-read-read.common.getNotifications"
+  },
+  {
+    "toolId": "read.common.getSupportTickets",
+    "status": "SUCCESS",
+    "durationMs": 55,
+    "traceId": "final-read-read.common.getSupportTickets"
+  }
+]

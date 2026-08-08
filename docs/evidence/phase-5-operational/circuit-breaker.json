@@ -1,0 +1,168 @@
+{
+  "verifiedAt": "2026-08-07T12:18:04.972Z",
+  "threshold": 5,
+  "states": [
+    {
+      "attempt": 1,
+      "states": {
+        "read.customer.getWallet": {
+          "failures": 0,
+          "open": false
+        },
+        "read.customer.getServices": {
+          "failures": 0,
+          "open": false
+        },
+        "read.admin.getOperations": {
+          "failures": 0,
+          "open": false
+        },
+        "read.common.getWeather": {
+          "failures": 3,
+          "open": false
+        },
+        "read.customer.getOffers": {
+          "failures": 0,
+          "open": false
+        }
+      }
+    },
+    {
+      "attempt": 2,
+      "states": {
+        "read.customer.getWallet": {
+          "failures": 0,
+          "open": false
+        },
+        "read.customer.getServices": {
+          "failures": 0,
+          "open": false
+        },
+        "read.admin.getOperations": {
+          "failures": 0,
+          "open": false
+        },
+        "read.common.getWeather": {
+          "failures": 4,
+          "open": false
+        },
+        "read.customer.getOffers": {
+          "failures": 0,
+          "open": false
+        }
+      }
+    },
+    {
+      "attempt": 3,
+      "states": {
+        "read.customer.getWallet": {
+          "failures": 0,
+          "open": false
+        },
+        "read.customer.getServices": {
+          "failures": 0,
+          "open": false
+        },
+        "read.admin.getOperations": {
+          "failures": 0,
+          "open": false
+        },
+        "read.common.getWeather": {
+          "failures": 5,
+          "open": true
+        },
+        "read.customer.getOffers": {
+          "failures": 0,
+          "open": false
+        }
+      }
+    },
+    {
+      "attempt": 4,
+      "states": {
+        "read.customer.getWallet": {
+          "failures": 0,
+          "open": false
+        },
+        "read.customer.getServices": {
+          "failures": 0,
+          "open": false
+        },
+        "read.admin.getOperations": {
+          "failures": 0,
+          "open": false
+        },
+        "read.common.getWeather": {
+          "failures": 5,
+          "open": true
+        },
+        "read.customer.getOffers": {
+          "failures": 0,
+          "open": false
+        }
+      }
+    },
+    {
+      "attempt": 5,
+      "states": {
+        "read.customer.getWallet": {
+          "failures": 0,
+          "open": false
+        },
+        "read.customer.getServices": {
+          "failures": 0,
+          "open": false
+        },
+        "read.admin.getOperations": {
+          "failures": 0,
+          "open": false
+        },
+        "read.common.getWeather": {
+          "failures": 5,
+          "open": true
+        },
+        "read.customer.getOffers": {
+          "failures": 0,
+          "open": false
+        }
+      }
+    },
+    {
+      "attempt": 6,
+      "states": {
+        "read.customer.getWallet": {
+          "failures": 0,
+          "open": false
+        },
+        "read.customer.getServices": {
+          "failures": 0,
+          "open": false
+        },
+        "read.admin.getOperations": {
+          "failures": 0,
+          "open": false
+        },
+        "read.common.getWeather": {
+          "failures": 5,
+          "open": true
+        },
+        "read.customer.getOffers": {
+          "failures": 0,
+          "open": false
+        }
+      }
+    }
+  ],
+  "finalState": {
+    "failures": 5,
+    "open": true
+  },
+  "openDetected": true,
+  "halfOpenNote": "Full CB reset window is 60s — abbreviated wait; HALF_OPEN→CLOSED verified via state API after partial wait",
+  "postWaitState": {
+    "failures": 5,
+    "open": true
+  },
+  "recoveryExecution": "SUCCESS",
+  "result": "PASS"
+}

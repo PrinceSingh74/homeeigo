@@ -1,0 +1,26 @@
+{
+  "verifiedAt": "2026-08-07T12:17:54.571Z",
+  "grafanaUrl": "http://localhost:3004",
+  "health": {
+    "status": 200,
+    "body": {
+      "database": "ok",
+      "version": "13.0.2",
+      "commit": "3fcdbc5a"
+    }
+  },
+  "dashboardSearch": {
+    "status": 200,
+    "body": []
+  },
+  "dashboardDefinition": {
+    "exists": true,
+    "uid": "homigo-ai-tools",
+    "title": "20 — Enterprise AI Tools (Registry · Policy · Execution)",
+    "panelCount": 9,
+    "refresh": "10s",
+    "panelsValid": true
+  },
+  "runtimeDashboardLoad": "NOT_VERIFIED",
+  "note": "Dashboard JSON validated in repo; Grafana instance on :3004 did not provision homigo-ai-tools uid — use _obsstack or import dashboard for live panel verification"
+}

@@ -1,0 +1,7 @@
+{
+  "adr017": true,
+  "apiDoc": true,
+  "runbook": true,
+  "securityReview": true,
+  "toolCountMatchesRuntime": true
+}

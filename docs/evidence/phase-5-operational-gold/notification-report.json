@@ -1,0 +1,11 @@
+{
+  "verifiedAt": "2026-08-07T12:37:37.221Z",
+  "webhookCapturePort": 9876,
+  "webhookDeliveries": [],
+  "webhookDeliveryCount": 0,
+  "slackConfigured": false,
+  "emailConfigured": false,
+  "slackDelivery": "NOT_VERIFIED — SLACK_WEBHOOK_URL not configured",
+  "webhookVerified": false,
+  "samplePayload": null
+}

@@ -1,0 +1,118 @@
+[
+  {
+    "toolId": "read.customer.getBooking",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.customer.getBookingStatus",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.customer.getBookings",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.customer.getWallet",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.customer.getWalletTransactions",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.customer.getSubscription",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.customer.getServices",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.customer.getOffers",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.partner.getPartnerProfile",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.partner.getPartnerJobs",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.partner.getPartnerPerformance",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.partner.getPartnerEarnings",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.partner.getPartnerDemand",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.partner.getPartnerSchedule",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.admin.getProviders",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.admin.getCustomers",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.admin.getRevenue",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.admin.getFinanceSummary",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.admin.getFraudSummary",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.admin.getForecast",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.admin.getDemand",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.admin.getSupply",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.admin.getOperations",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.common.getWeather",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.common.getTraffic",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.common.getETA",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.common.getLocation",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.common.getNotifications",
+    "status": "SUCCESS"
+  },
+  {
+    "toolId": "read.common.getSupportTickets",
+    "status": "SUCCESS"
+  }
+]

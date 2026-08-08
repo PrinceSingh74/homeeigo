@@ -1,0 +1,82 @@
+{
+  "generatedAt": "2026-08-07T11:44:21.376Z",
+  "finalResult": "PHASE 5 CERTIFIED ✅",
+  "passed": 11,
+  "failed": 0,
+  "notVerified": 0,
+  "deferred": 1,
+  "checks": [
+    {
+      "section": "PartnerFixtures",
+      "id": "read_partner_tools",
+      "status": "PASS",
+      "detail": "6/6 partner read tools SUCCESS"
+    },
+    {
+      "section": "ReadTools",
+      "id": "all_29",
+      "status": "PASS",
+      "detail": "29/29 read tools SUCCESS"
+    },
+    {
+      "section": "WriteTools",
+      "id": "all_12",
+      "status": "PASS",
+      "detail": "12/12 write tools verified"
+    },
+    {
+      "section": "Performance",
+      "id": "1000_requests",
+      "status": "PASS",
+      "detail": "{\"totalMs\":35481,\"avgMs\":35,\"p95Ms\":60,\"p99Ms\":76,\"executionFailures\":0,\"rateLimited\":0,\"rssMbDelta\":5,\"cpuUserMs\":18812,\"cpuSystemMs\":7563}"
+    },
+    {
+      "section": "Health",
+      "id": "public_no_jwt",
+      "status": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "section": "Gateway",
+      "id": "manual_bridge",
+      "status": "PASS",
+      "detail": "Gateway→Brain→Tool manual bridge verified"
+    },
+    {
+      "section": "Gateway",
+      "id": "auto_orchestration",
+      "status": "DEFERRED_TO_PHASE_6",
+      "detail": "No executeTool in ai-gateway or ai-brain routes — Phase 6 Agents scope"
+    },
+    {
+      "section": "Observability",
+      "id": "prometheus_scrape",
+      "status": "PASS",
+      "detail": "9/9 metrics in /metrics"
+    },
+    {
+      "section": "Observability",
+      "id": "grafana_dashboard",
+      "status": "PASS",
+      "detail": "homigo-ai-tools.json"
+    },
+    {
+      "section": "Observability",
+      "id": "alert_rules",
+      "status": "PASS",
+      "detail": "homigo_ai_tools alert group"
+    },
+    {
+      "section": "AdminUI",
+      "id": "browser_verification",
+      "status": "PASS",
+      "detail": "Playwright ai-tools-center.spec.ts passed"
+    },
+    {
+      "section": "Regression",
+      "id": "core_routes",
+      "status": "PASS",
+      "detail": "/api/admin/dashboard=200, /api/admin/bookings?limit=1=200, /api/ai/health=200, /api/ai/tools/health=200"
+    }
+  ]
+}

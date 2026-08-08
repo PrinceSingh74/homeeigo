@@ -36,6 +36,7 @@ import { webhooksRoutes } from "./routes/webhooks";
 import { aiRoutes } from "./routes/ai";
 import { aiGatewayRoutes } from "./routes/ai-gateway.routes";
 import { aiBrainRoutes } from "./routes/ai-brain.routes";
+import { aiToolsRoutes } from "./routes/ai-tools.routes";
 import { trackingWs } from "./websocket/tracking.ws";
 import { notificationsWs } from "./websocket/notifications.ws";
 import { bookingWs } from "./websocket/booking.ws";
@@ -207,6 +208,7 @@ const app = new Elysia()
   .use(aiRoutes)
   .use(aiGatewayRoutes)
   .use(aiBrainRoutes)
+  .use(aiToolsRoutes)
   .use(adminApiRoutes)
   .use(subscriptionsRoutes)
   .use(supportRoutes)
@@ -305,8 +307,10 @@ app.onStart(() => {
   void import("./lib/eta-metrics").then((m) => { m.initEtaMetricsAtZero(); m.registerEtaMetricSamplers(); }).catch(() => undefined);
   void import("./lib/ai-metrics").then((m) => { m.initAiMetricsAtZero(); m.registerAiMetricSamplers(); }).catch(() => undefined);
   void import("./lib/ai-brain-metrics").then((m) => { m.initAiBrainMetricsAtZero(); m.registerAiBrainMetricSamplers(); }).catch(() => undefined);
+  void import("./lib/ai-tools-metrics").then((m) => { m.initAiToolsMetricsAtZero(); m.registerAiToolsMetricSamplers(); }).catch(() => undefined);
   void import("./ai/templates/prompt-templates").then((m) => m.seedPromptTemplates()).catch(() => undefined);
   void import("./ai-brain/prompts/prompt-registry").then((m) => m.seedPromptRegistry()).catch(() => undefined);
+  void import("./ai-tools/registry/tool-registry").then((m) => { m.initToolRegistry(); return m.seedToolRegistry(); }).catch(() => undefined);
   void redisClient.connect().then(() => {
     redisClient.startHealthChecking();
     // Cross-instance WebSocket fan-out (no-op when Redis is disabled).

@@ -1,0 +1,63 @@
+{
+  "verifiedAt": "2026-08-07T12:37:37.188Z",
+  "alertmanagerUrl": "http://localhost:9094",
+  "rulesLoaded": true,
+  "alertResults": [
+    {
+      "alert": "AiToolFailureSpike",
+      "fired": false,
+      "recovered": true,
+      "webhookReceived": false
+    },
+    {
+      "alert": "AiToolApprovalQueueGrowing",
+      "fired": true,
+      "recovered": true,
+      "webhookReceived": false
+    },
+    {
+      "alert": "AiToolExecutionTimeout",
+      "fired": false,
+      "recovered": true,
+      "webhookReceived": false
+    },
+    {
+      "alert": "AiToolUnauthorizedAccess",
+      "fired": true,
+      "recovered": true,
+      "webhookReceived": false
+    },
+    {
+      "alert": "AiToolAbuse",
+      "fired": false,
+      "recovered": true,
+      "webhookReceived": false
+    }
+  ],
+  "prometheusAlertsSample": {
+    "status": "success",
+    "data": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "DatabaseSaturation",
+            "domain": "technology",
+            "instance": "homigo-api-3010",
+            "job": "homigo-backend",
+            "severity": "critical"
+          },
+          "annotations": {
+            "description": "Active connections exceed 85% of the pool. Risk of connection exhaustion.",
+            "summary": "DB pool saturation — 300%"
+          },
+          "state": "firing",
+          "activeAt": "2026-08-07T12:27:39.632614073Z",
+          "value": "3e+00"
+        }
+      ]
+    }
+  },
+  "alertmanagerAlertsSample": {
+    "error": "Unable to connect. Is the computer able to access the url?"
+  }
+}

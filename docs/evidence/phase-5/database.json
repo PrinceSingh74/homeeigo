@@ -1,0 +1,96 @@
+{
+  "tables": {
+    "ai_tool_registry": true,
+    "ai_tool_executions": true,
+    "ai_tool_approvals": true,
+    "ai_tool_policy_logs": true
+  },
+  "indexCount": 18,
+  "fkCount": 3,
+  "migration": "20260807200000_phase5_ai_tools",
+  "indexes": [
+    {
+      "indexname": "ai_tool_approvals_approval_id_key",
+      "tablename": "ai_tool_approvals"
+    },
+    {
+      "indexname": "ai_tool_approvals_pkey",
+      "tablename": "ai_tool_approvals"
+    },
+    {
+      "indexname": "ai_tool_approvals_status_expires_at_idx",
+      "tablename": "ai_tool_approvals"
+    },
+    {
+      "indexname": "ai_tool_approvals_tool_id_status_idx",
+      "tablename": "ai_tool_approvals"
+    },
+    {
+      "indexname": "ai_tool_executions_actor_id_started_at_idx",
+      "tablename": "ai_tool_executions"
+    },
+    {
+      "indexname": "ai_tool_executions_execution_id_key",
+      "tablename": "ai_tool_executions"
+    },
+    {
+      "indexname": "ai_tool_executions_idempotency_key_key",
+      "tablename": "ai_tool_executions"
+    },
+    {
+      "indexname": "ai_tool_executions_pkey",
+      "tablename": "ai_tool_executions"
+    },
+    {
+      "indexname": "ai_tool_executions_status_started_at_idx",
+      "tablename": "ai_tool_executions"
+    },
+    {
+      "indexname": "ai_tool_executions_tool_id_started_at_idx",
+      "tablename": "ai_tool_executions"
+    },
+    {
+      "indexname": "ai_tool_executions_trace_id_idx",
+      "tablename": "ai_tool_executions"
+    },
+    {
+      "indexname": "ai_tool_policy_logs_decision_created_at_idx",
+      "tablename": "ai_tool_policy_logs"
+    },
+    {
+      "indexname": "ai_tool_policy_logs_pkey",
+      "tablename": "ai_tool_policy_logs"
+    },
+    {
+      "indexname": "ai_tool_policy_logs_tool_id_created_at_idx",
+      "tablename": "ai_tool_policy_logs"
+    },
+    {
+      "indexname": "ai_tool_registry_category_status_idx",
+      "tablename": "ai_tool_registry"
+    },
+    {
+      "indexname": "ai_tool_registry_pkey",
+      "tablename": "ai_tool_registry"
+    },
+    {
+      "indexname": "ai_tool_registry_risk_level_idx",
+      "tablename": "ai_tool_registry"
+    },
+    {
+      "indexname": "ai_tool_registry_tool_id_key",
+      "tablename": "ai_tool_registry"
+    }
+  ],
+  "foreignKeys": [
+    {
+      "conname": "ai_tool_approvals_tool_id_fkey"
+    },
+    {
+      "conname": "ai_tool_executions_tool_id_fkey"
+    },
+    {
+      "conname": "ai_tool_executions_approval_id_fkey"
+    }
+  ]
+}

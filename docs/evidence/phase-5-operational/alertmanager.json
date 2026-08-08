@@ -1,0 +1,58 @@
+{
+  "verifiedAt": "2026-08-07T12:17:54.405Z",
+  "alertmanagerUrl": "http://localhost:9093",
+  "repoAiToolRulesDefined": true,
+  "prometheusAiToolRulesLoaded": false,
+  "prometheusRulesNote": "_obsstack Prometheus rules omit homigo_ai_tools group — native rule evaluation NOT loaded locally",
+  "syntheticAlert": {
+    "fire": {
+      "ok": true,
+      "status": 200,
+      "body": ""
+    },
+    "firedVisibleInAm": true,
+    "resolve": {
+      "ok": true,
+      "status": 200,
+      "body": ""
+    },
+    "alertsAfterFire": [
+      {
+        "annotations": {
+          "description": "Injected test alert for routing verification",
+          "summary": "Phase 5.1 operational validation — synthetic AiToolFailureSpike"
+        },
+        "endsAt": "2026-08-07T12:22:50.821Z",
+        "fingerprint": "1a07400072df2a9d",
+        "receivers": [
+          {
+            "name": "homigo-staging-critical"
+          }
+        ],
+        "startsAt": "2026-08-07T12:17:50.803Z",
+        "status": {
+          "inhibitedBy": [],
+          "silencedBy": [],
+          "state": "active"
+        },
+        "updatedAt": "2026-08-07T12:17:50.821Z",
+        "generatorURL": "http://localhost/phase-5-operational-validation",
+        "labels": {
+          "alertname": "AiToolFailureSpike",
+          "environment": "operational-cert",
+          "severity": "critical",
+          "trace_id": "ops-cert-1786105070803"
+        }
+      }
+    ],
+    "alertsAfterResolve": []
+  },
+  "supportedAlertsInRepo": [
+    "AiToolFailureSpike",
+    "AiToolApprovalQueueGrowing",
+    "AiToolExecutionTimeout",
+    "AiToolUnauthorizedAccess",
+    "AiToolAbuse"
+  ],
+  "nativePrometheusFiring": "NOT_VERIFIED — rules require sustained `for: 3-15m` conditions; homigo_ai_tools group not loaded in local _obsstack Prometheus"
+}

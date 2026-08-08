@@ -1,0 +1,74 @@
+[
+  {
+    "route": "/api/ai/tools/health",
+    "method": "GET",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "route": "/api/ai/tools",
+    "method": "GET",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "route": "/api/ai/tools/registry",
+    "method": "GET",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "route": "/api/ai/tools/read.customer.getOffers",
+    "method": "GET",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "route": "/api/ai/tools/history",
+    "method": "GET",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "route": "/api/ai/tools/approvals",
+    "method": "GET",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "route": "/api/ai/tools/policies",
+    "method": "GET",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "route": "/api/ai/tools/denied",
+    "method": "GET",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "route": "/api/ai/tools/high-risk",
+    "method": "GET",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "route": "/api/ai/tools/metrics",
+    "method": "GET",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "route": "/api/ai/tools/execute",
+    "method": "POST",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "route": "/api/ai/tools (customer RBAC)",
+    "method": "GET",
+    "status": 403,
+    "ok": true
+  }
+]

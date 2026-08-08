@@ -1,0 +1,37 @@
+[
+  {
+    "attack": "privilege_escalation",
+    "blocked": true,
+    "detail": "blocked"
+  },
+  {
+    "attack": "tool_injection",
+    "blocked": true,
+    "detail": "blocked"
+  },
+  {
+    "attack": "sql_injection",
+    "blocked": true,
+    "detail": "blocked"
+  },
+  {
+    "attack": "parameter_tampering",
+    "blocked": true,
+    "detail": "blocked"
+  },
+  {
+    "attack": "cross_role_access",
+    "blocked": true,
+    "detail": "blocked"
+  },
+  {
+    "attack": "replay_idempotency",
+    "blocked": true,
+    "detail": "SUCCESS/SUCCESS"
+  },
+  {
+    "attack": "approval_bypass",
+    "blocked": true,
+    "detail": "High-risk tools cannot be executed directly by AI"
+  }
+]

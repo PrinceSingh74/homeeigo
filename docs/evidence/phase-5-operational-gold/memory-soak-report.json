@@ -1,0 +1,49 @@
+{
+  "verifiedAt": "2026-08-07T14:35:28.301Z",
+  "durationMs": 1800000,
+  "samples": 19,
+  "heapGrowthPct": 1.57,
+  "rssGrowthPct": 0.09,
+  "soakErrors": 0,
+  "start": {
+    "rss": 130277376,
+    "heapTotal": 13491200,
+    "heapUsed": 11570266,
+    "external": 2133098,
+    "arrayBuffers": 1929
+  },
+  "end": {
+    "rss": 130396160,
+    "heapTotal": 13539328,
+    "heapUsed": 11751698,
+    "external": 2208002,
+    "arrayBuffers": 1929
+  },
+  "stable": true,
+  "sampleSeries": [
+    {
+      "t": 1034,
+      "heapUsed": 11580854,
+      "rss": 130441216,
+      "latencyMs": 1034
+    },
+    {
+      "t": 64667,
+      "heapUsed": 11639759,
+      "rss": 130113536,
+      "latencyMs": 608
+    },
+    {
+      "t": 128864,
+      "heapUsed": 11693507,
+      "rss": 130158592,
+      "latencyMs": 542
+    },
+    {
+      "t": 191482,
+      "heapUsed": 11747087,
+      "rss": 130314240,
+      "latencyMs": 494
+    }
+  ]
+}

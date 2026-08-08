@@ -1,0 +1,12 @@
+{
+  "playwrightRun": true,
+  "sections": [
+    "Tool Registry",
+    "Execution History",
+    "Approval Queue",
+    "Policy Explorer",
+    "Denied Requests",
+    "High Risk Queue"
+  ],
+  "status": "PASS"
+}

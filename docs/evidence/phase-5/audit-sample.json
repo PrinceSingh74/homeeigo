@@ -1,0 +1,12 @@
+{
+  "sample": {
+    "executionId": "3f197217-fbcb-4cd9-9033-34dfe090aec2",
+    "argumentsHash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+    "resultHash": "2351157a908b26997b1abe2ac5fb770ef1f191e6b7b3947a737cff1e227d449b",
+    "traceId": "fail-timeout",
+    "correlationId": null,
+    "policyDecision": "ALLOW",
+    "status": "SUCCESS"
+  },
+  "rawPiiInHash": false
+}

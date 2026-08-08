@@ -1,0 +1,8 @@
+{
+  "verifiedAt": "2026-08-07T14:35:28.374Z",
+  "backendUrl": "http://localhost:3010",
+  "soakDurationMs": 1800000,
+  "promLiveDelta": 20,
+  "alertsFired": 2,
+  "webhooksCaptured": 0
+}

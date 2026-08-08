@@ -1,0 +1,145 @@
+{
+  "generatedAt": "2026-08-07T12:22:29.114Z",
+  "finalVerdict": "PHASE 5 OPERATIONAL PASS_WITH_LIMITATION",
+  "releaseIdentity": {
+    "gitCommitSha": "60a28100b993b775598bc78ef0b0fdeef372e103",
+    "branch": "cursor/stage-e-step-13-certification",
+    "verifiedAt": "2026-08-07T12:17:48.988Z",
+    "environment": "dev",
+    "backendPort": "3000",
+    "prometheusUrl": "http://localhost:9090",
+    "grafanaUrl": "http://localhost:3004",
+    "alertmanagerUrl": "http://localhost:9093"
+  },
+  "passed": 13,
+  "failed": 0,
+  "partial": 1,
+  "notVerified": 4,
+  "checks": [
+    {
+      "section": "Prometheus",
+      "id": "in_process_metrics",
+      "status": "PASS",
+      "detail": "requests+6 success+4 failure+1 missing=none"
+    },
+    {
+      "section": "Prometheus",
+      "id": "live_scrape",
+      "status": "NOT_VERIFIED",
+      "detail": "No homigo_ai_tool series in live Prometheus (scrape target mismatch on :3000 vs :3010)"
+    },
+    {
+      "section": "Alertmanager",
+      "id": "synthetic_route",
+      "status": "PASS",
+      "detail": "POST /api/v2/alerts status=200 visible=true"
+    },
+    {
+      "section": "Alertmanager",
+      "id": "recovery",
+      "status": "PASS",
+      "detail": "resolve POST status=200"
+    },
+    {
+      "section": "Alertmanager",
+      "id": "native_prometheus_fire",
+      "status": "NOT_VERIFIED",
+      "detail": "Sustained threshold alerts not exercised end-to-end in this session"
+    },
+    {
+      "section": "Notifications",
+      "id": "delivery",
+      "status": "NOT_VERIFIED",
+      "detail": "No confirmed Slack/email/webhook delivery in local environment"
+    },
+    {
+      "section": "Grafana",
+      "id": "dashboard_def",
+      "status": "PASS",
+      "detail": "9 panels in homigo-ai-tools.json"
+    },
+    {
+      "section": "Grafana",
+      "id": "live_panels",
+      "status": "NOT_VERIFIED",
+      "detail": "Grafana up but AI tools dashboard not provisioned on :3004"
+    },
+    {
+      "section": "RedisFailure",
+      "id": "recovery",
+      "status": "PASS",
+      "detail": "PASS"
+    },
+    {
+      "section": "PostgresFailure",
+      "id": "reconnect",
+      "status": "PASS",
+      "detail": "PASS"
+    },
+    {
+      "section": "Retry",
+      "id": "backoff",
+      "status": "PASS",
+      "detail": "retryDelta=2 maxRetries=2"
+    },
+    {
+      "section": "CircuitBreaker",
+      "id": "open_on_failures",
+      "status": "PASS",
+      "detail": "failures={\"failures\":5,\"open\":true}"
+    },
+    {
+      "section": "Chaos",
+      "id": "controlled",
+      "status": "PASS",
+      "detail": "5 scenarios"
+    },
+    {
+      "section": "MemorySoak",
+      "id": "stability",
+      "status": "PARTIAL",
+      "detail": "heap growth 1.17% over 0min"
+    },
+    {
+      "section": "LongRunStability",
+      "id": "mixed_workload",
+      "status": "PASS",
+      "detail": "54 executions successRate=100.0%"
+    },
+    {
+      "section": "Regression",
+      "id": "core_domains",
+      "status": "PASS",
+      "detail": "6/6 endpoints OK"
+    },
+    {
+      "section": "Security",
+      "id": "attacks",
+      "status": "PASS",
+      "detail": "7/7 blocked"
+    },
+    {
+      "section": "Performance",
+      "id": "1000_req",
+      "status": "PASS",
+      "detail": "p99=71ms execFailures=0"
+    }
+  ],
+  "evidenceIndex": [
+    "prometheus.json",
+    "alertmanager.json",
+    "notifications.json",
+    "grafana.json",
+    "redis-recovery.json",
+    "postgres-recovery.json",
+    "circuit-breaker.json",
+    "retry.json",
+    "chaos.json",
+    "memory-soak.json",
+    "performance.json",
+    "security.json",
+    "regression.json",
+    "runtime-summary.json",
+    "operational-summary.json"
+  ]
+}

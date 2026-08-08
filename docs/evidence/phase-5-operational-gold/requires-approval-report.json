@@ -1,0 +1,13 @@
+{
+  "verifiedAt": "2026-08-07T12:37:52.507Z",
+  "counterBefore": 0,
+  "counterAfter": 0,
+  "delta": 0,
+  "httpExecuteResult": {
+    "status": "HTTP_ERROR",
+    "error": "High-risk tools cannot be executed directly by AI"
+  },
+  "approvalCreated": "20e0a8be-467b-44e4-8d13-7fc516e76836",
+  "note": "HIGH_RISK validation gate blocks executeTool before recordToolRequiresApproval(); approval queue gauge increments via createApprovalRequest",
+  "metricIncrementViaExecuteTool": "NOT_VERIFIED"
+}

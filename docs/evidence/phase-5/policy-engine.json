@@ -1,0 +1,18 @@
+[
+  {
+    "name": "customer_read_allow",
+    "decision": "ALLOW"
+  },
+  {
+    "name": "customer_denied_admin",
+    "decision": "DENY"
+  },
+  {
+    "name": "maintenance_blocks_write",
+    "decision": "DENY"
+  },
+  {
+    "name": "high_risk_requires_approval",
+    "decision": "REQUIRES_APPROVAL"
+  }
+]

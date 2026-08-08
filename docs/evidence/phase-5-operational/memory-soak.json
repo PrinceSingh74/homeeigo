@@ -1,0 +1,37 @@
+{
+  "verifiedAt": "2026-08-07T12:18:21.600Z",
+  "durationMs": 10000,
+  "fullSoakTargetMs": 1800000,
+  "abbreviated": true,
+  "start": {
+    "rss": 239996928,
+    "heapTotal": 32772096,
+    "heapUsed": 37995067,
+    "external": 11541099,
+    "arrayBuffers": 332958
+  },
+  "end": {
+    "rss": 239370240,
+    "heapTotal": 32809984,
+    "heapUsed": 38438856,
+    "external": 11670776,
+    "arrayBuffers": 344700
+  },
+  "heapGrowthPct": 1.17,
+  "samples": [
+    {
+      "t": 349,
+      "heapUsed": 38237463,
+      "rss": 242642944,
+      "external": 11617895
+    },
+    {
+      "t": 5686,
+      "heapUsed": 38436123,
+      "rss": 243716096,
+      "external": 11670251
+    }
+  ],
+  "stable": true,
+  "note": "5-minute abbreviated soak; 30-60 minute soak NOT_VERIFIED in this session"
+}

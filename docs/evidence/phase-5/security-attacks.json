@@ -1,0 +1,22 @@
+[
+  {
+    "attack": "privilege_escalation",
+    "blocked": true,
+    "detail": "status=DENIED"
+  },
+  {
+    "attack": "sql_injection",
+    "blocked": true,
+    "detail": "extra param ignored or blocked"
+  },
+  {
+    "attack": "replay_idempotency",
+    "blocked": true,
+    "detail": "first=SUCCESS second={\"idempotent\":true,\"resultHash\":\"2351157a908b26997b1abe2ac5f"
+  },
+  {
+    "attack": "tool_injection",
+    "blocked": true,
+    "detail": "Unknown tool: ../../../etc/passwd"
+  }
+]

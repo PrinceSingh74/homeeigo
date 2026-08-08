@@ -1,0 +1,92 @@
+{
+  "generatedAt": "2026-08-07T14:35:28.376Z",
+  "verdict": "PASS_WITH_LIMITATION",
+  "passed": 7,
+  "partial": 1,
+  "notVerified": 3,
+  "failed": 1,
+  "checks": [
+    {
+      "section": "Setup",
+      "id": "webhook_capture",
+      "status": "PASS",
+      "detail": "listening on :9876"
+    },
+    {
+      "section": "Prometheus",
+      "id": "live_scrape",
+      "status": "PASS",
+      "detail": "target3010=true requestsDelta=20"
+    },
+    {
+      "section": "Alertmanager",
+      "id": "rules_loaded",
+      "status": "PASS",
+      "detail": "homigo_ai_tools group present"
+    },
+    {
+      "section": "Alertmanager",
+      "id": "fire_all",
+      "status": "PARTIAL",
+      "detail": "2/5 prometheus-fired"
+    },
+    {
+      "section": "Alertmanager",
+      "id": "recovery_all",
+      "status": "PASS",
+      "detail": "5/5 recovered"
+    },
+    {
+      "section": "Notifications",
+      "id": "webhook",
+      "status": "FAIL",
+      "detail": "0 webhook payloads captured"
+    },
+    {
+      "section": "Notifications",
+      "id": "slack",
+      "status": "NOT_VERIFIED",
+      "detail": "Slack not configured in local .env"
+    },
+    {
+      "section": "Notifications",
+      "id": "email",
+      "status": "NOT_VERIFIED",
+      "detail": "SMTP not configured for local cert capture"
+    },
+    {
+      "section": "Grafana",
+      "id": "dashboard",
+      "status": "PASS",
+      "detail": "panels=9 promDs=true"
+    },
+    {
+      "section": "Grafana",
+      "id": "queries",
+      "status": "PASS",
+      "detail": "Dashboard uid homigo-ai-tools provisioned"
+    },
+    {
+      "section": "RequiresApproval",
+      "id": "metric_increment",
+      "status": "NOT_VERIFIED",
+      "detail": "Counter blocked by HIGH_RISK validation gate — approval DB workflow verified separately"
+    },
+    {
+      "section": "MemorySoak",
+      "id": "30min",
+      "status": "PASS",
+      "detail": "heapGrowth=1.57% errors=0 samples=19"
+    }
+  ],
+  "evidenceIndex": [
+    "prometheus-report.json",
+    "alertmanager-report.json",
+    "notification-report.json",
+    "grafana-report.json",
+    "requires-approval-report.json",
+    "memory-soak-report.json",
+    "runtime-report.json",
+    "operational-gold-summary.json"
+  ]
+}

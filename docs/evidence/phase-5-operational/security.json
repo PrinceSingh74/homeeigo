@@ -1,0 +1,40 @@
+{
+  "verifiedAt": "2026-08-07T12:21:30.493Z",
+  "attacks": [
+    {
+      "attack": "prompt_injection",
+      "blocked": true,
+      "detail": "Suspicious content in parameter: category"
+    },
+    {
+      "attack": "tool_injection",
+      "blocked": true,
+      "detail": "Unknown tool: write.admin.deleteUser; DROP TABLE users;--"
+    },
+    {
+      "attack": "privilege_escalation",
+      "blocked": true,
+      "detail": "DENIED"
+    },
+    {
+      "attack": "approval_bypass",
+      "blocked": true,
+      "detail": "High-risk tools cannot be executed directly by AI"
+    },
+    {
+      "attack": "parameter_tampering",
+      "blocked": true,
+      "detail": "DENIED"
+    },
+    {
+      "attack": "cross_role_access",
+      "blocked": true,
+      "detail": "DENIED"
+    },
+    {
+      "attack": "replay_idempotency",
+      "blocked": true,
+      "detail": "SUCCESS/SUCCESS/true"
+    }
+  ]
+}

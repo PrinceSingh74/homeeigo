@@ -1,0 +1,14 @@
+[
+  {
+    "conname": "ai_tool_approvals_tool_id_fkey",
+    "table_name": "ai_tool_approvals"
+  },
+  {
+    "conname": "ai_tool_executions_tool_id_fkey",
+    "table_name": "ai_tool_executions"
+  },
+  {
+    "conname": "ai_tool_executions_approval_id_fkey",
+    "table_name": "ai_tool_executions"
+  }
+]

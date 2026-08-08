@@ -1,0 +1,21 @@
+{
+  "verifiedAt": "2026-08-07T12:17:54.407Z",
+  "slackEnvConfigured": false,
+  "smtpEnvConfigured": false,
+  "alertmanagerReceivers": "homigo-staging-default, homigo-staging-critical, homigo-staging-warning (Slack on staging AM)",
+  "deliveryVerification": {
+    "slack": "NOT_VERIFIED — SLACK_WEBHOOK_URL not set in local .env",
+    "email": "NOT_VERIFIED — SMTP not configured locally",
+    "webhook": "NOT_VERIFIED — backend webhook bridge requires docker network host `backend:3000`"
+  },
+  "syntheticAlertPosted": true,
+  "expectedPayloadFields": [
+    "alertname",
+    "severity",
+    "labels",
+    "annotations",
+    "startsAt",
+    "trace_id"
+  ],
+  "note": "Alertmanager accepted synthetic alert; actual Slack/email delivery not independently confirmed without webhook capture"
+}
