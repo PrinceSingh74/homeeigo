@@ -1,21 +1,56 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Clock, MapPin } from "lucide-react";
-import type { BookingRequest } from "@/lib/partner-data";
-import { formatInr } from "@/lib/partner-data";
-import { usePartnerStore } from "@/stores/partner-store";
-import { useRouter } from "next/navigation";
+import {
+  useAcceptBookingMutation,
+  useRejectBookingMutation,
+} from "@/hooks/use-partner-data";
+import type { PartnerBooking } from "@/types/partner";
+import { formatInr, relativeTime } from "@/lib/format";
+
 export function DashboardRequestCard({
   request,
   index,
 }: {
-  request: BookingRequest;
+  request: PartnerBooking;
   index: number;
 }) {
-  const acceptRequest = usePartnerStore((s) => s.acceptRequest);
-  const rejectRequest = usePartnerStore((s) => s.rejectRequest);
-  const router = useRouter();
+  const accept = useAcceptBookingMutation();
+  const reject = useRejectBookingMutation();
+  const [busy, setBusy] = useState<"accept" | "reject" | null>(null);
+
+  const customerName =
+    `${request.customer.firstName ?? ""} ${request.customer.lastName ?? ""}`.trim() ||
+    "Customer";
+  const address = request.address?.fullAddress ?? "Address pending";
+  const isNew = request.status === "pending";
+
+  async function handleAccept() {
+    setBusy("accept");
+    try {
+      await accept.mutateAsync({ bookingId: request.id });
+    } catch {
+      /* onError handler shows toast */
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleReject() {
+    setBusy("reject");
+    try {
+      await reject.mutateAsync({
+        bookingId: request.id,
+        reason: "Declined by partner from dashboard",
+      });
+    } catch {
+      /* onError handler shows toast */
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <motion.article
@@ -26,25 +61,25 @@ export function DashboardRequestCard({
     >
       <div className="flex min-w-0 items-center gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[10px] border-2 border-partner-primary bg-partner-primary/15 text-sm font-bold text-partner-primary">
-          {request.customerName.charAt(0)}
+          {customerName.charAt(0)}
         </div>
         <div className="min-w-0 space-y-0.5">
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-display text-sm font-bold tracking-tight text-partner-text">
-              {request.customerName}
+              {customerName}
             </p>
-            {request.isNew && (
+            {isNew && (
               <span className="rounded-md bg-partner-primary/25 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-partner-primary">
                 New
               </span>
             )}
           </div>
           <p className="text-xs leading-snug text-partner-text-secondary">
-            {request.serviceType}
+            {request.service.name}
           </p>
           <p className="flex items-center gap-1 text-[11px] text-partner-muted">
             <MapPin className="h-3 w-3 shrink-0" />
-            <span className="truncate">{request.address}</span>
+            <span className="truncate">{address}</span>
           </p>
         </div>
       </div>
@@ -52,10 +87,14 @@ export function DashboardRequestCard({
       <div className="grid grid-cols-3 gap-3 border-t border-partner-primary/10 pt-3 lg:border-0 lg:pt-0">
         <div className="text-center lg:text-left">
           <p className="text-[10px] font-medium uppercase tracking-wide text-partner-muted">
-            Distance
+            Scheduled
           </p>
           <p className="mt-0.5 text-xs font-semibold text-partner-text-secondary">
-            {request.distanceKm} km
+            {new Date(request.scheduledDate).toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+            })}
           </p>
         </div>
         <div className="text-center lg:text-left">
@@ -63,16 +102,16 @@ export function DashboardRequestCard({
             Earning
           </p>
           <p className="mt-0.5 font-display text-sm font-bold text-partner-accent">
-            {formatInr(request.earnings)}
+            {formatInr(request.finalAmount)}
           </p>
         </div>
         <div className="text-center lg:text-left">
           <p className="text-[10px] font-medium uppercase tracking-wide text-partner-muted">
-            ETA
+            Posted
           </p>
           <p className="mt-0.5 flex items-center justify-center gap-0.5 text-xs font-semibold text-partner-text-secondary lg:justify-start">
             <Clock className="h-3 w-3" />
-            {request.etaMin}m
+            {relativeTime(request.scheduledDate) || "—"}
           </p>
         </div>
       </div>
@@ -80,20 +119,19 @@ export function DashboardRequestCard({
       <div className="flex gap-2 lg:flex-col lg:gap-2">
         <button
           type="button"
-          onClick={() => {
-            acceptRequest(request.id);
-            router.push("/map");
-          }}
-          className="h-10 flex-1 rounded-lg bg-partner-success text-xs font-semibold text-white transition hover:brightness-110 active:scale-[0.97] lg:w-full"
+          onClick={handleAccept}
+          disabled={busy !== null}
+          className="h-10 flex-1 rounded-lg bg-partner-success text-xs font-semibold text-white transition hover:brightness-110 active:scale-[0.97] disabled:opacity-60 lg:w-full"
         >
-          Accept
+          {busy === "accept" ? "Accepting…" : "Accept"}
         </button>
         <button
           type="button"
-          onClick={() => rejectRequest(request.id)}
-          className="h-10 flex-1 rounded-lg border border-partner-danger text-xs font-semibold text-partner-danger transition hover:bg-partner-danger/10 active:scale-[0.97] lg:w-full"
+          onClick={handleReject}
+          disabled={busy !== null}
+          className="h-10 flex-1 rounded-lg border border-partner-danger text-xs font-semibold text-partner-danger transition hover:bg-partner-danger/10 active:scale-[0.97] disabled:opacity-60 lg:w-full"
         >
-          Reject
+          {busy === "reject" ? "Declining…" : "Reject"}
         </button>
       </div>
     </motion.article>

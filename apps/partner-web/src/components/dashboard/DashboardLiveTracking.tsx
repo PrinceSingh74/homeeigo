@@ -1,11 +1,117 @@
 "use client";
 
-import { MapPin, Navigation } from "lucide-react";
-import { DEMO_ACTIVE_JOB, formatInr } from "@/lib/partner-data";
+import { useMemo, useState } from "react";
+import {
+  MapPin,
+  MapPinCheck,
+  Navigation,
+  PlayCircle,
+  CheckCircle2,
+} from "lucide-react";
 import { DashboardPanel } from "@/components/ui/DashboardPanel";
+import {
+  useCompleteBookingMutation,
+  useMarkArrivedMutation,
+  useMarkEnRouteMutation,
+  usePartnerActiveBookingsQuery,
+  useStartBookingMutation,
+} from "@/hooks/use-partner-data";
+import { formatInr } from "@/lib/format";
+
+/** Presentation for each lifecycle stage — keeps the CTA a lookup, not a ternary chain. */
+const NEXT_ACTION = {
+  en_route: { label: "On my way", busyLabel: "Saving…", Icon: Navigation },
+  arrived: { label: "I've arrived", busyLabel: "Saving…", Icon: MapPinCheck },
+  start: { label: "Start job", busyLabel: "Starting…", Icon: PlayCircle },
+  complete: { label: "Mark complete", busyLabel: "Completing…", Icon: CheckCircle2 },
+} as const;
+
+async function getCurrentCoords(): Promise<{ latitude: number; longitude: number }> {
+  return new Promise((resolve) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      resolve({ latitude: 0, longitude: 0 });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
+        resolve({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        }),
+      () => resolve({ latitude: 0, longitude: 0 }),
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 30_000 },
+    );
+  });
+}
 
 export function DashboardLiveTracking() {
-  const job = DEMO_ACTIVE_JOB;
+  const { data, isLoading, isError } = usePartnerActiveBookingsQuery();
+
+  const startMutation = useStartBookingMutation();
+  const completeMutation = useCompleteBookingMutation();
+  const enRouteMutation = useMarkEnRouteMutation();
+  const arrivedMutation = useMarkArrivedMutation();
+  const [busy, setBusy] = useState<
+    "start" | "complete" | "en_route" | "arrived" | null
+  >(null);
+
+  const activeJob = useMemo(
+    () =>
+      (data?.bookings ?? []).find((b) =>
+        ["accepted", "assigned", "en_route", "in_progress"].includes(b.status),
+      ),
+    [data?.bookings],
+  );
+
+  const isInProgress = activeJob?.status === "in_progress";
+
+  /**
+   * The one legal next action for this job.
+   *
+   * Arrival does not change booking status, so the stage comes from the lifecycle
+   * timestamps. Offering a single staged CTA is what stops the dashboard from becoming
+   * the shortcut that skips `enRouteAt` — the anchor the ETA label is measured from,
+   * and the reason only 3 of 108 completed bookings ever recorded one.
+   */
+  const nextAction: "en_route" | "arrived" | "start" | "complete" | null = !activeJob
+    ? null
+    : isInProgress
+      ? "complete"
+      : !activeJob.enRouteAt && ["accepted", "assigned"].includes(activeJob.status)
+        ? "en_route"
+        : !activeJob.arrivedAt
+          ? "arrived"
+          : "start";
+
+  // GPS publishing happens app-wide via <GlobalTrackingPublisher/> in PartnerShell —
+  // the customer's live map updates from ANY partner screen, not just this one.
+
+  /** Runs the staged action. The server owns every timestamp; the client only reports position. */
+  async function runNextAction() {
+    if (!activeJob || !nextAction) return;
+    setBusy(nextAction);
+    try {
+      const coords = await getCurrentCoords();
+      const args = {
+        bookingId: activeJob.id,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      };
+      if (nextAction === "en_route") await enRouteMutation.mutateAsync(args);
+      else if (nextAction === "arrived") await arrivedMutation.mutateAsync(args);
+      else if (nextAction === "start") await startMutation.mutateAsync(args);
+      else await completeMutation.mutateAsync(args);
+    } catch {
+      /* mutation onError surfaces the toast — avoid an uncaught PartnerApiError */
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const customerName = activeJob
+    ? `${activeJob.customer.firstName ?? ""} ${activeJob.customer.lastName ?? ""}`.trim() ||
+      "Customer"
+    : "";
 
   return (
     <DashboardPanel
@@ -13,7 +119,7 @@ export function DashboardLiveTracking() {
       action={
         <span className="flex items-center gap-1.5 text-[11px] font-semibold text-partner-success">
           <span className="status-pulse h-2 w-2 rounded-full bg-partner-success" />
-          Live
+          {activeJob ? (isInProgress ? "In progress" : "Live") : "Idle"}
         </span>
       }
       bodyClassName="gap-4"
@@ -56,25 +162,69 @@ export function DashboardLiveTracking() {
         </div>
 
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-partner-card/90 px-3 py-1.5 text-xs font-medium text-partner-text backdrop-blur-sm">
-          {job.etaMin} mins to reach customer
+          {isLoading
+            ? "Loading active job…"
+            : activeJob
+              ? `${activeJob.eta ?? 12} min ETA`
+              : "No active job"}
         </div>
       </div>
 
       <div className="grid grid-cols-1 items-center gap-3 rounded-xl border border-partner-primary/20 bg-partner-primary/10 p-4 sm:grid-cols-[1fr_auto_auto] sm:gap-4">
         <div className="min-w-0 space-y-0.5">
-          <p className="text-sm font-semibold text-partner-text">{job.customerName}</p>
-          <p className="text-[11px] text-partner-muted">{job.service}</p>
+          {isLoading ? (
+            <p className="text-sm text-partner-muted">Loading…</p>
+          ) : isError ? (
+            <p className="text-sm text-partner-danger">Couldn&apos;t load active job.</p>
+          ) : activeJob ? (
+            <>
+              <p className="text-sm font-semibold text-partner-text">{customerName}</p>
+              <p className="text-[11px] text-partner-muted">{activeJob.service.name}</p>
+            </>
+          ) : (
+            <p className="text-sm text-partner-muted">
+              No active job — go online to start receiving requests.
+            </p>
+          )}
         </div>
-        <p className="font-display text-base font-bold tabular-nums text-partner-accent sm:text-right">
-          {formatInr(job.amount)}
-        </p>
-        <button
-          type="button"
-          className="partner-glow-btn flex h-10 items-center justify-center gap-1.5 rounded-lg bg-partner-primary px-4 text-xs font-semibold text-white sm:shrink-0"
-        >
-          <Navigation className="h-3.5 w-3.5" />
-          Start Navigation
-        </button>
+        {activeJob ? (
+          <p className="font-display text-base font-bold tabular-nums text-partner-accent sm:text-right">
+            {formatInr(activeJob.finalAmount)}
+          </p>
+        ) : (
+          <span />
+        )}
+        {activeJob && nextAction ? (
+          <button
+            type="button"
+            onClick={runNextAction}
+            disabled={busy !== null}
+            className={`partner-glow-btn flex h-10 items-center justify-center gap-1.5 rounded-lg px-4 text-xs font-semibold text-white disabled:opacity-60 sm:shrink-0 ${
+              nextAction === "complete" ? "bg-partner-success" : "bg-partner-primary"
+            }`}
+          >
+            {busy !== null ? (
+              <span>{NEXT_ACTION[busy].busyLabel}</span>
+            ) : (
+              <>
+                {(() => {
+                  const Icon = NEXT_ACTION[nextAction].Icon;
+                  return <Icon className="h-3.5 w-3.5" />;
+                })()}
+                {NEXT_ACTION[nextAction].label}
+              </>
+            )}
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled
+            className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-partner-card px-4 text-xs font-semibold text-partner-muted sm:shrink-0"
+          >
+            <Navigation className="h-3.5 w-3.5" />
+            No job
+          </button>
+        )}
       </div>
     </DashboardPanel>
   );

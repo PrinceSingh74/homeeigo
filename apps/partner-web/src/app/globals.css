@@ -3,20 +3,30 @@
 /* HOMIGO Pro — Partner / Vendor Design System */
 
 @theme {
-  --color-partner-bg: #071028;
-  --color-partner-bg-secondary: #0a1530;
-  --color-partner-card: #0f172a;
+  --color-partner-bg: #fcf9f0;
+  --color-partner-bg-secondary: #f6f1d6;
+  --color-partner-card: #ffffff;
+  /* Status colors use AA-passing shades so they stay legible as text on the
+     light canvas (the -500 shades failed WCAG contrast: success 2.27, primary
+     3.67, danger 3.76). The vivid -500s are pinned in html.dark below where the
+     dark background makes them pass. */
   --color-partner-primary: #2563eb;
-  --color-partner-accent: #06b6d4;
-  --color-partner-purple: #7c3aed;
-  --color-partner-success: #22c55e;
-  --color-partner-warning: #f59e0b;
-  --color-partner-danger: #ef4444;
-  --color-partner-text: #f8fafc;
-  --color-partner-text-secondary: #cbd5e1;
-  --color-partner-muted: #94a3b8;
-  --color-partner-muted-dim: #64748b;
-  --color-partner-line: rgb(37 99 235 / 0.1);
+  --color-partner-accent: #0f766e;
+  --color-partner-purple: #6366f1;
+  --color-partner-success: #15803d;
+  --color-partner-warning: #b45309;
+  --color-partner-danger: #dc2626;
+  --color-partner-text: #0f172a;
+  --color-partner-text-secondary: #334155;
+  --color-partner-muted: #64748b;
+  /* AA-legible on white (was #94a3b8 = 2.56 ratio, unreadable as body text). */
+  --color-partner-muted-dim: #6b7280;
+  --color-partner-line: rgb(59 130 246 / 0.14);
+  /* Form input surface + border (dark theme). Referenced by the registration
+     inputs/selects; previously undefined, which made the native city dropdown
+     render with a light/transparent background. */
+  --color-partner-surface: #f8fafc;
+  --color-partner-border: rgb(148 163 184 / 0.28);
   --sidebar-width: 280px;
   --header-height: 72px;
   --page-padding-x: 32px;
@@ -27,12 +37,12 @@
   --grid-gap-main: 24px;
 
   --font-sans: var(--font-inter), system-ui, sans-serif;
-  --font-display: var(--font-space), var(--font-inter), system-ui, sans-serif;
+  --font-display: var(--font-inter-tight), var(--font-space), var(--font-inter), system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, monospace;
 
   --shadow-partner-glow: 0 0 24px rgb(37 99 235 / 0.35);
-  --shadow-partner-card: 0 8px 32px rgb(0 0 0 / 0.45);
-  --shadow-partner-lift: 0 12px 40px rgb(0 0 0 / 0.55);
+  --shadow-partner-card: 0 12px 30px rgb(15 23 42 / 0.08);
+  --shadow-partner-lift: 0 16px 40px rgb(15 23 42 / 0.16);
 
   --animate-pulse-live: pulseLive 2s ease-in-out infinite;
   --animate-shimmer: partnerShimmer 1.8s linear infinite;
@@ -48,8 +58,30 @@
   100% { background-position: 200% 0; }
 }
 
-html {
-  color-scheme: dark;
+html { color-scheme: light; }
+html.dark { color-scheme: dark; }
+
+html.dark {
+  --color-partner-bg: #071028;
+  --color-partner-bg-secondary: #0a1530;
+  --color-partner-card: #0f172a;
+  --color-partner-primary: #60a5fa;
+  --color-partner-accent: #22d3ee;
+  --color-partner-purple: #8b5cf6;
+  /* Vivid status shades — legible on the dark navy canvas (pinned so the
+     light-theme darkening above does not leak into dark mode). */
+  --color-partner-success: #4ade80;
+  --color-partner-warning: #fbbf24;
+  --color-partner-danger: #f87171;
+  --color-partner-text: #f8fafc;
+  --color-partner-text-secondary: #cbd5e1;
+  --color-partner-muted: #94a3b8;
+  --color-partner-muted-dim: #64748b;
+  --color-partner-line: rgb(96 165 250 / 0.18);
+  --color-partner-surface: #0a1530;
+  --color-partner-border: rgb(148 163 184 / 0.2);
+  --shadow-partner-card: 0 8px 32px rgb(0 0 0 / 0.45);
+  --shadow-partner-lift: 0 12px 40px rgb(0 0 0 / 0.55);
 }
 
 body {
@@ -60,15 +92,27 @@ body {
 
 .partner-mesh {
   background:
+    radial-gradient(ellipse 85% 55% at 18% -10%, rgb(246 241 214 / 0.9), transparent),
+    radial-gradient(ellipse 80% 55% at 100% 0%, rgb(216 234 215 / 0.7), transparent),
+    radial-gradient(ellipse 70% 40% at 60% 30%, rgb(59 130 246 / 0.08), transparent),
+    var(--color-partner-bg);
+}
+
+html.dark .partner-mesh {
+  background:
     radial-gradient(ellipse 80% 50% at 50% -20%, rgb(37 99 235 / 0.18), transparent),
     radial-gradient(ellipse 60% 40% at 100% 50%, rgb(34 197 94 / 0.06), transparent),
     var(--color-partner-bg);
 }
 
 .partner-glass {
-  background: rgb(15 23 42 / 0.72);
+  background: rgb(255 255 255 / 0.62);
   backdrop-filter: blur(16px);
   border: 1px solid var(--color-partner-line);
+}
+
+html.dark .partner-glass {
+  background: rgb(15 23 42 / 0.72);
 }
 
 .partner-card {
@@ -79,7 +123,8 @@ body {
 }
 
 .partner-card-hover {
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+  will-change: transform;
 }
 .partner-card-hover:hover {
   transform: translateY(-2px);
@@ -127,6 +172,10 @@ body {
   width: var(--sidebar-width);
   background: var(--color-partner-card);
   border-right: 1px solid var(--color-partner-line);
+  box-shadow: 2px 0 16px rgb(15 23 42 / 0.06);
+}
+
+html.dark .partner-sidebar {
   box-shadow: 2px 0 12px rgb(0 0 0 / 0.5);
 }
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { PartnerBottomNav } from "./PartnerBottomNav";
 import { PartnerSidebar } from "./PartnerSidebar";
 import { PartnerTopBar } from "./PartnerTopBar";
+import { GlobalTrackingPublisher } from "@/components/tracking/GlobalTrackingPublisher";
 import { partnerLayout } from "@/lib/partner-layout";
 
 export function PartnerShell({ children }: { children: React.ReactNode }) {
@@ -11,6 +12,7 @@ export function PartnerShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="partner-mesh min-h-dvh">
+      <GlobalTrackingPublisher />
       <PartnerSidebar
         mobileOpen={mobileNav}
         onMobileClose={() => setMobileNav(false)}

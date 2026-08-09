@@ -1,44 +1,40 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { IndianRupee, Briefcase, Zap, Star } from "lucide-react";
+import { Briefcase, IndianRupee, Star, Zap } from "lucide-react";
 import { PartnerCard } from "@/components/ui/PartnerCard";
-import { DEMO_DASHBOARD } from "@/lib/partner-data";
-import { usePartnerStore } from "@/stores/partner-store";
-
-function formatInr(n: number) {
-  return `₹${n.toLocaleString("en-IN")}`;
-}
+import { usePartnerDashboardQuery, usePartnerMeQuery } from "@/hooks/use-partner-data";
+import { formatInr, formatNumber } from "@/lib/format";
 
 export function DashboardHero() {
-  const vendor = usePartnerStore((s) => s.vendor);
-  const pending = usePartnerStore((s) => s.requests.length);
+  const dashboard = usePartnerDashboardQuery();
+  const me = usePartnerMeQuery();
 
   const stats = [
     {
       label: "Today",
-      value: formatInr(DEMO_DASHBOARD.todayEarnings),
+      value: dashboard.isLoading ? "—" : formatInr(dashboard.data?.earnings.today ?? 0),
       sub: "earnings",
       icon: IndianRupee,
       accent: "text-partner-primary",
     },
     {
       label: "Jobs",
-      value: String(DEMO_DASHBOARD.completedToday),
-      sub: "completed",
+      value: dashboard.isLoading ? "—" : formatNumber(dashboard.data?.counts.completedToday ?? 0),
+      sub: "completed today",
       icon: Briefcase,
       accent: "text-partner-success",
     },
     {
       label: "Requests",
-      value: String(pending),
+      value: dashboard.isLoading ? "—" : formatNumber(dashboard.data?.counts.pendingRequests ?? 0),
       sub: "pending",
       icon: Zap,
       accent: "text-partner-warning",
     },
     {
       label: "Rating",
-      value: vendor.rating.toFixed(2),
+      value: me.isLoading ? "—" : (me.data?.rating ?? 0).toFixed(2),
       sub: "avg",
       icon: Star,
       accent: "text-amber-400",
@@ -64,15 +60,11 @@ export function DashboardHero() {
                 </p>
                 <p className="text-xs text-partner-muted">{s.sub}</p>
               </div>
-              <s.icon className={cnIcon(s.accent)} />
+              <s.icon className={`h-8 w-8 opacity-80 ${s.accent}`} />
             </div>
           </PartnerCard>
         </motion.div>
       ))}
     </section>
   );
-}
-
-function cnIcon(accent: string) {
-  return `h-8 w-8 opacity-80 ${accent}`;
 }

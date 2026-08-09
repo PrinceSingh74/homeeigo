@@ -1,45 +1,90 @@
 "use client";
 
 import { CircularProgress } from "@/components/ui/CircularProgress";
-import { DEMO_DASHBOARD } from "@/lib/partner-data";
+import { usePartnerDashboardQuery } from "@/hooks/use-partner-data";
 import { DashboardPanel } from "@/components/ui/DashboardPanel";
 import { partnerLayout } from "@/lib/partner-layout";
 import { cn } from "@/lib/cn";
 
-const metrics = [
-  { label: "Completion Rate", value: DEMO_DASHBOARD.completionRate, color: "bg-partner-success" },
-  { label: "Response Rate", value: DEMO_DASHBOARD.responseRate, color: "bg-partner-primary" },
-  { label: "On-time Rate", value: DEMO_DASHBOARD.onTimeRate, color: "bg-partner-accent" },
-  {
-    label: "Cancellation Rate",
-    value: DEMO_DASHBOARD.cancellationRate,
-    color: "bg-partner-danger",
-    invert: true,
-  },
-];
+function toPct(value: number, invert = false): number {
+  const v = Math.round(value * 100);
+  return invert ? Math.min(100, v * 4) : v;
+}
 
 export function DashboardPerformance() {
-  const score = DEMO_DASHBOARD.completionRate;
+  const { data, isLoading } = usePartnerDashboardQuery();
+  const rates = data?.rates;
+
+  const completion = Math.round((rates?.completionRate ?? 0) * 100);
+  const response = Math.round((rates?.responseRate ?? 0) * 100);
+  const onTime = Math.round((rates?.onTimeRate ?? 0) * 100);
+  const cancellation = Math.round((rates?.cancellationRate ?? 0) * 100);
+
+  const score = completion;
+  const scoreLabel =
+    score >= 90
+      ? "Excellent"
+      : score >= 75
+        ? "Good"
+        : score >= 50
+          ? "Needs work"
+          : "Critical";
+  const scoreClass =
+    score >= 90
+      ? "text-partner-success"
+      : score >= 75
+        ? "text-partner-primary"
+        : score >= 50
+          ? "text-partner-warning"
+          : "text-partner-danger";
+
+  const metrics = [
+    {
+      label: "Completion Rate",
+      value: completion,
+      pct: completion,
+      color: "bg-partner-success",
+    },
+    {
+      label: "Response Rate",
+      value: response,
+      pct: response,
+      color: "bg-partner-primary",
+    },
+    {
+      label: "On-time Rate",
+      value: onTime,
+      pct: onTime,
+      color: "bg-partner-accent",
+    },
+    {
+      label: "Cancellation Rate",
+      value: cancellation,
+      pct: toPct(rates?.cancellationRate ?? 0, true),
+      color: "bg-partner-danger",
+    },
+  ];
 
   return (
     <DashboardPanel
       title="Performance Overview"
       action={
-        <button
-          type="button"
-          className="rounded-lg border border-partner-line px-2.5 py-1 text-xs font-medium text-partner-text-secondary"
-        >
-          This Week ▾
-        </button>
+        <span className="rounded-lg border border-partner-line px-2.5 py-1 text-xs font-medium text-partner-text-secondary">
+          Lifetime
+        </span>
       }
       bodyClassName="gap-6"
     >
       <div className="flex justify-center py-2">
         <CircularProgress value={score} size={120} strokeWidth={8}>
-          <span className="font-display text-2xl font-bold leading-none text-partner-success">
-            {score}%
+          <span
+            className={cn("font-display text-2xl font-bold leading-none", scoreClass)}
+          >
+            {isLoading ? "…" : `${score}%`}
           </span>
-          <span className="mt-0.5 text-[11px] font-semibold text-partner-success">Excellent</span>
+          <span className={cn("mt-0.5 text-[11px] font-semibold", scoreClass)}>
+            {isLoading ? "Loading" : scoreLabel}
+          </span>
         </CircularProgress>
       </div>
 
@@ -48,14 +93,17 @@ export function DashboardPerformance() {
           <li key={m.label} className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">
               <span className="text-partner-text-secondary">{m.label}</span>
-              <span className="font-semibold tabular-nums text-partner-text">{m.value}%</span>
+              <span className="font-semibold tabular-nums text-partner-text">
+                {isLoading ? "—" : `${m.value}%`}
+              </span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-partner-bg">
               <div
-                className={cn("h-full rounded-full transition-all duration-700", m.color)}
-                style={{
-                  width: `${m.invert ? Math.min(m.value * 8, 100) : m.value}%`,
-                }}
+                className={cn(
+                  "h-full rounded-full transition-all duration-700",
+                  m.color,
+                )}
+                style={{ width: `${isLoading ? 0 : m.pct}%` }}
               />
             </div>
           </li>

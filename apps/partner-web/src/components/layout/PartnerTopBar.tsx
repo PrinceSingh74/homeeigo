@@ -1,16 +1,36 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { Search, Bell, ChevronDown, Sun, Menu } from "lucide-react";
-import { usePartnerStore } from "@/stores/partner-store";
-import { DEMO_DASHBOARD, getGreeting } from "@/lib/partner-data";
+import { Bell, ChevronDown, Loader2, LogOut, Menu, Search, Sun } from "lucide-react";
+import { AppearanceMenu } from "@/components/theme/AppearanceMenu";
+import { useRouter } from "next/navigation";
+import {
+  usePartnerDashboardQuery,
+  usePartnerMeQuery,
+  usePartnerNotificationsQuery,
+} from "@/hooks/use-partner-data";
+import { usePartnerStore, usePartnerUserName } from "@/stores/partner-store";
+import { getGreeting } from "@/lib/format";
 
 type PartnerTopBarProps = {
   onMenuOpen?: () => void;
 };
 
 export function PartnerTopBar({ onMenuOpen }: PartnerTopBarProps) {
-  const vendor = usePartnerStore((s) => s.vendor);
+  const router = useRouter();
+  const logout = usePartnerStore((s) => s.logout);
+  const me = usePartnerMeQuery();
+  const dashboard = usePartnerDashboardQuery();
+  const fullName = usePartnerUserName();
+  const firstName = fullName.split(" ")[0] || fullName;
+  const initials = fullName.charAt(0).toUpperCase();
+  const pendingRequests = dashboard.data?.counts.pendingRequests ?? 0;
+  const notifications = usePartnerNotificationsQuery({ limit: 1 });
+  const unreadNotifications = notifications.data?.unreadCount ?? 0;
+  const bellCount = unreadNotifications + pendingRequests;
+  const [signingOut, setSigningOut] = useState(false);
+
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-IN", {
     weekday: "long",
@@ -23,6 +43,15 @@ export function PartnerTopBar({ onMenuOpen }: PartnerTopBarProps) {
     minute: "2-digit",
     hour12: true,
   });
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    try {
+      await logout();
+    } finally {
+      router.replace("/login");
+    }
+  }
 
   return (
     <motion.header
@@ -43,11 +72,12 @@ export function PartnerTopBar({ onMenuOpen }: PartnerTopBarProps) {
           </button>
           <div className="min-w-0">
             <h1 className="truncate font-display text-lg font-bold tracking-[-0.03em] text-partner-text lg:text-xl">
-              {getGreeting()}, {vendor.name.split(" ")[0]} 👋
+              {getGreeting()}, {firstName} 👋
             </h1>
             <p className="mt-0.5 hidden truncate text-[13px] leading-snug text-partner-text-secondary sm:block">
-              You&apos;re doing great! {DEMO_DASHBOARD.bonusJobsRemaining} more jobs to
-              unlock bonus.
+              {pendingRequests > 0
+                ? `${pendingRequests} new request${pendingRequests === 1 ? "" : "s"} waiting for you.`
+                : "You're all caught up — stay online for new jobs."}
             </p>
           </div>
         </div>
@@ -57,7 +87,7 @@ export function PartnerTopBar({ onMenuOpen }: PartnerTopBarProps) {
             <Search className="h-4 w-4 shrink-0 text-partner-muted" />
             <input
               type="search"
-              placeholder="Search anything..."
+              placeholder="Search bookings, customers…"
               className="min-w-0 flex-1 bg-transparent text-sm leading-none text-partner-text outline-none placeholder:text-partner-muted"
             />
             <kbd className="hidden shrink-0 rounded border border-partner-line px-1.5 py-0.5 font-sans text-[11px] text-partner-muted lg:inline">
@@ -66,37 +96,58 @@ export function PartnerTopBar({ onMenuOpen }: PartnerTopBarProps) {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-4 lg:gap-6">
+        <div className="flex items-center justify-end gap-3 lg:gap-4">
+          <AppearanceMenu />
+
           <div className="hidden text-right xl:block">
             <p className="text-[11px] leading-tight text-partner-muted">{dateStr}</p>
             <p className="mt-0.5 flex items-center justify-end gap-2 text-[13px] text-partner-text-secondary">
               <span>{timeStr}</span>
               <span className="flex items-center gap-1">
                 <Sun className="h-4 w-4 text-amber-400" />
-                29°C {vendor.city ?? "Noida"}
+                {me.data?.city ?? "Online"}
               </span>
             </p>
           </div>
 
           <button
             type="button"
+            onClick={() => router.push("/notifications")}
             className="relative shrink-0 rounded-[10px] p-2.5 text-partner-text-secondary transition hover:bg-partner-primary/10"
             aria-label="Notifications"
+            title="Notifications"
           >
             <Bell className="h-5 w-5" />
-            <span className="badge-pulse absolute right-1 top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-partner-danger px-1 text-[9px] font-bold text-white">
-              5
-            </span>
+            {bellCount > 0 ? (
+              <span className="badge-pulse absolute right-1 top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-partner-danger px-1 text-[9px] font-bold text-white">
+                {bellCount > 9 ? "9+" : bellCount}
+              </span>
+            ) : null}
           </button>
 
           <button
             type="button"
+            onClick={() => router.push("/profile")}
             className="flex shrink-0 items-center gap-2 rounded-[10px] p-1 transition hover:bg-partner-primary/10"
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-[10px] border-2 border-partner-primary/30 bg-partner-primary/20 text-xs font-bold text-partner-primary">
-              {vendor.avatarInitials ?? "RS"}
+              {initials}
             </div>
             <ChevronDown className="hidden h-3.5 w-3.5 text-partner-muted sm:block" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            disabled={signingOut}
+            aria-label="Sign out"
+            className="shrink-0 rounded-[10px] p-2.5 text-partner-text-secondary transition hover:bg-partner-primary/10 disabled:opacity-60"
+          >
+            {signingOut ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <LogOut className="h-5 w-5" />
+            )}
           </button>
         </div>
       </div>
