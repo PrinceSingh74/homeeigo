@@ -5,12 +5,18 @@
 import type { EtaLabelStatus } from "@prisma/client";
 
 /** How the arrival timestamp was established — mirrors the partner.arrived event. */
-export type ArrivalProvenance = "gps_geofence" | "job_start";
+export type ArrivalProvenance = "explicit_partner_action" | "gps_geofence" | "job_start";
+
+/** How the travel-start timestamp was established — mirrors the partner.en_route event. */
+export type EnRouteProvenance = "explicit_partner_action" | "gps_geofence";
 
 export type LabelValidationInput = {
   bookingId: string;
   dispatchTimestamp: Date | null;
+  /** Travel start — the anchor `actualTravelDurationSec` is measured from. */
+  enRouteTimestamp?: Date | null;
   arrivalTimestamp: Date | null;
+  /** `arrivedAt - enRouteAt`. Null when no travel-start anchor exists. */
   actualTravelDurationSec: number | null;
   pickupLatitude: number | null;
   pickupLongitude: number | null;
@@ -18,8 +24,11 @@ export type LabelValidationInput = {
   partnerLngArrival: number | null;
   travelDistanceMeters: number | null;
   googleEtaSeconds: number | null;
-  /** Defaults to gps_geofence for labels created before provenance was tracked. */
-  arrivalSource?: ArrivalProvenance;
+  /**
+   * How the arrival was established. Absent or null means unresolvable, which blocks
+   * training — it is never assumed to be the precise GPS path.
+   */
+  arrivalSource?: ArrivalProvenance | null;
 };
 
 export type LabelValidationResult = {
@@ -54,6 +63,8 @@ const TRAINING_BLOCKING_REASONS = [
   "duration_below_min",
   "duration_outlier",
   "invalid_provenance",
+  "missing_travel_start",
+  "historical_provenance_unknown",
 ] as const;
 
 const CRITICAL_REASONS = [
@@ -63,7 +74,13 @@ const CRITICAL_REASONS = [
   "invalid_coordinates",
 ] as const;
 
-const VALID_ARRIVAL_SOURCES = ["gps_geofence", "job_start"] as const;
+/**
+ * Provenance the warehouse accepts. `explicit_partner_action` is the partner declaring
+ * the transition and is the most precise of the three — it must be listed here, or every
+ * explicitly-recorded arrival would trip `invalid_provenance` and be blocked from
+ * training, which is the opposite of the intent.
+ */
+const VALID_ARRIVAL_SOURCES = ["explicit_partner_action", "gps_geofence", "job_start"] as const;
 
 export function validateEtaLabel(input: LabelValidationInput): LabelValidationResult {
   const reasons: string[] = [];
@@ -72,6 +89,26 @@ export function validateEtaLabel(input: LabelValidationInput): LabelValidationRe
   if (!input.dispatchTimestamp || !input.arrivalTimestamp) {
     reasons.push("missing_timestamps");
     score -= 40;
+  }
+
+  // The supervised target is `arrivedAt - enRouteAt`. Without a travel-start anchor there
+  // is no duration to learn from, and substituting dispatch or assignment time would
+  // silently fold accept + idle time into a value compared against a pure-travel Google
+  // ETA. Such a label is retained and queryable but must never be TRAINING_READY.
+  if (input.actualTravelDurationSec == null) {
+    reasons.push("missing_travel_start");
+    score -= 20;
+  }
+
+  // An arrival cannot precede departure. Both present and inverted means the lifecycle
+  // was written out of order — the label is unusable, not merely imprecise.
+  if (
+    input.enRouteTimestamp &&
+    input.arrivalTimestamp &&
+    input.enRouteTimestamp.getTime() > input.arrivalTimestamp.getTime()
+  ) {
+    reasons.push("negative_duration");
+    score -= 50;
   }
 
   if (input.actualTravelDurationSec != null && input.actualTravelDurationSec < 0) {
@@ -150,12 +187,20 @@ export function validateEtaLabel(input: LabelValidationInput): LabelValidationRe
     score -= 15;
   }
 
-  // Provenance must be resolvable for a trainer to weight arrival precision. An absent
-  // value is tolerated for labels captured before provenance tracking existed; an
-  // explicitly wrong one is not.
+  // Provenance must be resolvable for a trainer to weight arrival precision.
   if (input.arrivalSource != null && !VALID_ARRIVAL_SOURCES.includes(input.arrivalSource)) {
     reasons.push("invalid_provenance");
     score -= 20;
+  }
+
+  // Absent provenance means the arrival cannot be attributed to any producer — the label
+  // predates provenance tracking, or its `partner.arrived` event has aged out of the
+  // outbox. Such a label was previously tolerated and scored as if GPS-precise, which
+  // silently promoted unverifiable arrivals to full training weight. It is retained and
+  // queryable but capped at VALIDATED: unknown is never treated as precise.
+  if (input.arrivalSource == null) {
+    reasons.push("historical_provenance_unknown");
+    score -= 10;
   }
 
   const critical = reasons.some((r) => (CRITICAL_REASONS as readonly string[]).includes(r));
@@ -185,6 +230,12 @@ export function validateEtaLabel(input: LabelValidationInput): LabelValidationRe
 
 /** The authoritative training window, exported so callers and docs cannot drift from it. */
 export const ETA_TRAINING_CONTRACT = {
+  /**
+   * The single definition of the supervised target. Every code path must measure from
+   * `enRouteAt`, never from dispatch or assignment — those include accept and idle time,
+   * which `google_eta_seconds` (pure travel) does not, making the two incomparable.
+   */
+  durationFormula: "arrivedAt - enRouteAt",
   minTravelSec: MIN_TRAVEL_SEC,
   maxTravelSec: MAX_TRAVEL_SEC,
   minQualityScore: 70,

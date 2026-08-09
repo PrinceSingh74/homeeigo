@@ -18,6 +18,10 @@ describe("ETA label validation", () => {
       partnerLngArrival: 77.21,
       travelDistanceMeters: 1500,
       googleEtaSeconds: 540,
+      // Both a travel-start anchor and resolvable provenance are now required for
+      // TRAINING_READY; a label lacking either is retained but not trainable.
+      enRouteTimestamp: new Date(Date.now() - 600_000),
+      arrivalSource: "gps_geofence",
     });
     expect(result.passed).toBe(true);
     expect(result.status).toBe("TRAINING_READY");

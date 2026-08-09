@@ -283,6 +283,74 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
     { body: t.Object({ reason: t.String() }) },
   )
   .post(
+    "/:id/en-route",
+    async ({ requireProvider, params: rawParams, body: raw, set }) => {
+      const { providerId } = requireProvider();
+      const params = validate(idParamSchema, rawParams);
+      const body = parseBody(geoPingSchema, raw);
+      const result = await bookingService.markEnRoute(
+        providerId!,
+        params.id,
+        body.latitude,
+        body.longitude,
+      );
+      if (!result.ok) {
+        set.status = result.error === "NOT_FOUND" ? 404 : 400;
+        return {
+          success: false,
+          error:
+            result.error === "NOT_FOUND"
+              ? "This booking is not assigned to you"
+              : "This booking can no longer be marked en route",
+          code: result.error,
+        };
+      }
+      return {
+        success: true,
+        message: result.newlyTransitioned ? "On your way" : "Already marked en route",
+        data: {
+          newlyTransitioned: result.newlyTransitioned,
+          booking: { status: "en_route", enRouteAt: result.enRouteAt },
+        },
+      };
+    },
+    { body: t.Object({ latitude: t.Number(), longitude: t.Number() }) },
+  )
+  .post(
+    "/:id/arrived",
+    async ({ requireProvider, params: rawParams, body: raw, set }) => {
+      const { providerId } = requireProvider();
+      const params = validate(idParamSchema, rawParams);
+      const body = parseBody(geoPingSchema, raw);
+      const result = await bookingService.markArrived(
+        providerId!,
+        params.id,
+        body.latitude,
+        body.longitude,
+      );
+      if (!result.ok) {
+        set.status = result.error === "NOT_FOUND" ? 404 : 400;
+        return {
+          success: false,
+          error:
+            result.error === "NOT_FOUND"
+              ? "This booking is not assigned to you"
+              : "This booking can no longer be marked as arrived",
+          code: result.error,
+        };
+      }
+      return {
+        success: true,
+        message: result.newlyTransitioned ? "Arrival recorded" : "Arrival already recorded",
+        data: {
+          newlyTransitioned: result.newlyTransitioned,
+          booking: { arrivedAt: result.arrivedAt },
+        },
+      };
+    },
+    { body: t.Object({ latitude: t.Number(), longitude: t.Number() }) },
+  )
+  .post(
     "/:id/start",
     async ({ requireProvider, params: rawParams, body: raw, set }) => {
       const { providerId } = requireProvider();

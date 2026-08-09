@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { validateEtaLabel } from "../../analytics/eta/validation";
-import { buildPartnerArrivedEvent } from "../events/catalog/partner.events";
+import {
+  buildPartnerArrivedEvent,
+  buildPartnerEnRouteEvent,
+} from "../events/catalog/partner.events";
 
 // Relative to now, so the fixture never drifts into the future and trips the
 // future_timestamp rule (which is critical and would reject the label outright).
@@ -51,6 +54,59 @@ describe("arrival provenance on the event", () => {
   });
 });
 
+describe("travel-start provenance on the en_route event", () => {
+  const base = {
+    providerId: "p1",
+    bookingId: "bk_1",
+    enRouteAt: new Date(),
+    distanceKm: 5,
+    googleEtaMin: 18,
+  };
+
+  test("defaults to gps_geofence — the only pre-existing producer", () => {
+    expect(buildPartnerEnRouteEvent(base).data.enRouteSource).toBe("gps_geofence");
+  });
+
+  test("carries explicit_partner_action when the partner declared departure", () => {
+    const ev = buildPartnerEnRouteEvent({ ...base, enRouteSource: "explicit_partner_action" });
+    expect(ev.data.enRouteSource).toBe("explicit_partner_action");
+  });
+
+  test("provenance survives PII sanitisation of the payload", () => {
+    const ev = buildPartnerEnRouteEvent({ ...base, enRouteSource: "explicit_partner_action" });
+    expect(JSON.parse(JSON.stringify(ev)).data.enRouteSource).toBe("explicit_partner_action");
+  });
+
+  test("the event stays on the canonical homigo namespace", () => {
+    // Legacy `eta.*` records are permanently FAILED in the outbox because the namespace
+    // validator rejects them. No current producer may reintroduce that prefix.
+    expect(buildPartnerEnRouteEvent(base).type.startsWith("homigo.")).toBe(true);
+  });
+});
+
+describe("an explicit arrival is the most precise provenance", () => {
+  test("the arrived event carries explicit_partner_action", () => {
+    const ev = buildPartnerArrivedEvent({
+      providerId: "p1", bookingId: "bk_1", arrivedAt: new Date(),
+      dispatchedAt: new Date(), enRouteAt: new Date(), travelDurationMin: 20,
+      city: "Delhi", serviceCategory: "cleaning", distanceKm: 5, googleEtaMin: 18,
+      arrivalSource: "explicit_partner_action",
+    });
+    expect(ev.data.arrivalSource).toBe("explicit_partner_action");
+  });
+
+  test("it is unpenalised — unlike job_start, nothing about it is inferred", () => {
+    const r = validateEtaLabel({
+      ...baseLabel,
+      enRouteTimestamp: new Date(ARRIVED.getTime() - 20 * 60_000),
+      arrivalSource: "explicit_partner_action",
+    });
+    expect(r.qualityScore).toBe(100);
+    expect(r.rejectionReasons).not.toContain("arrival_inferred_from_job_start");
+    expect(r.status).toBe("TRAINING_READY");
+  });
+});
+
 describe("validation scores arrival precision honestly", () => {
   test("a GPS-geofenced arrival is unpenalised", () => {
     const r = validateEtaLabel({ ...baseLabel, arrivalSource: "gps_geofence" });
@@ -59,9 +115,17 @@ describe("validation scores arrival precision honestly", () => {
     expect(r.status).toBe("TRAINING_READY");
   });
 
-  test("omitting provenance behaves like the precise path (back-compat)", () => {
+  test("unresolvable provenance is NOT treated as the precise path", () => {
+    // Previously an omitted value scored 100, silently promoting an arrival nobody could
+    // attribute to full training weight. Unknown must never read as GPS-precise.
     const r = validateEtaLabel(baseLabel);
-    expect(r.qualityScore).toBe(100);
+    expect(r.rejectionReasons).toContain("historical_provenance_unknown");
+    expect(r.qualityScore).toBeLessThan(100);
+    expect(r.status).not.toBe("TRAINING_READY");
+  });
+
+  test("unknown provenance is retained, not discarded as corrupt", () => {
+    expect(validateEtaLabel(baseLabel).status).toBe("VALIDATED");
   });
 
   test("a job_start arrival is penalised but still usable", () => {

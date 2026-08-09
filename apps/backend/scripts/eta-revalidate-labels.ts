@@ -32,22 +32,38 @@ type Change = {
   toStatus: string;
   fromQuality: number;
   toQuality: number;
+  fromDurationSec: number | null;
+  toDurationSec: number | null;
   reasons: string[];
 };
+
+const ARRIVAL_SOURCES = ["job_start", "gps_geofence", "explicit_partner_action"] as const;
+type StoredArrivalSource = (typeof ARRIVAL_SOURCES)[number];
 
 const changes: Change[] = [];
 const unchanged: string[] = [];
 
 for (const l of labels) {
   const f = (l.features ?? {}) as Record<string, unknown>;
-  const arrivalSource =
-    f.arrivalSource === "job_start" || f.arrivalSource === "gps_geofence" ? f.arrivalSource : undefined;
+  const arrivalSource = ARRIVAL_SOURCES.includes(f.arrivalSource as StoredArrivalSource)
+    ? (f.arrivalSource as StoredArrivalSource)
+    : undefined;
+
+  // Recompute against the authoritative anchor rather than trusting the stored value:
+  // labels written before the contract change measured arrival-minus-dispatch, which
+  // folded accept + idle time into the duration. Derived from timestamps already on the
+  // row — nothing is invented, and a row with no travel-start anchor yields null.
+  const durationSec =
+    l.enRouteTimestamp && l.arrivalTimestamp
+      ? Math.max(0, Math.round((l.arrivalTimestamp.getTime() - l.enRouteTimestamp.getTime()) / 1000))
+      : null;
 
   const result = validateEtaLabel({
     bookingId: l.bookingId,
     dispatchTimestamp: l.dispatchTimestamp,
+    enRouteTimestamp: l.enRouteTimestamp,
     arrivalTimestamp: l.arrivalTimestamp,
-    actualTravelDurationSec: l.actualTravelDurationSec,
+    actualTravelDurationSec: durationSec,
     pickupLatitude: l.pickupLatitude,
     pickupLongitude: l.pickupLongitude,
     partnerLatArrival: l.partnerLatArrival,
@@ -58,7 +74,11 @@ for (const l of labels) {
   });
 
   const bookingNumber = numberById.get(l.bookingId) ?? l.bookingId;
-  if (result.status !== l.status || result.qualityScore !== l.qualityScore) {
+  if (
+    result.status !== l.status ||
+    result.qualityScore !== l.qualityScore ||
+    durationSec !== l.actualTravelDurationSec
+  ) {
     changes.push({
       bookingId: l.bookingId,
       bookingNumber,
@@ -66,6 +86,8 @@ for (const l of labels) {
       toStatus: result.status,
       fromQuality: l.qualityScore,
       toQuality: result.qualityScore,
+      fromDurationSec: l.actualTravelDurationSec,
+      toDurationSec: durationSec,
       reasons: result.rejectionReasons,
     });
   } else {
@@ -79,6 +101,9 @@ console.log(`  would change    : ${changes.length}`);
 console.log(`  unchanged       : ${unchanged.length}\n`);
 for (const c of changes) {
   console.log(`  ${c.bookingNumber.padEnd(30)} ${c.fromStatus} (q=${c.fromQuality}) -> ${c.toStatus} (q=${c.toQuality})`);
+  if (c.fromDurationSec !== c.toDurationSec) {
+    console.log(`     duration: ${c.fromDurationSec ?? "null"}s -> ${c.toDurationSec ?? "null"}s  (anchor now arrivedAt - enRouteAt)`);
+  }
   console.log(`     reasons: ${c.reasons.join(", ") || "none"}`);
 }
 for (const u of unchanged) console.log(`  ${u.padEnd(30)} unchanged`);
@@ -96,6 +121,9 @@ for (const c of changes) {
       status: c.toStatus as never,
       qualityScore: c.toQuality,
       rejectionReason: c.reasons.length ? c.reasons.join(",") : null,
+      actualTravelDurationSec: c.toDurationSec,
+      actualTravelDurationMin:
+        c.toDurationSec != null ? Math.round((c.toDurationSec / 60) * 10) / 10 : null,
     },
   });
   console.log(`  ${c.bookingNumber}: ${c.fromStatus} -> ${c.toStatus}`);

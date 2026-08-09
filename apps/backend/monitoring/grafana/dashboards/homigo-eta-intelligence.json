@@ -1,5 +1,7 @@
 {
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -9,80 +11,345 @@
     {
       "title": "Trips Collected",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
-      "targets": [{ "expr": "sum(increase(homigo_eta_labels_total[24h]))", "legendFormat": "labels/24h" }],
-      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } } }
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(homigo_eta_labels_total[24h]))",
+          "legendFormat": "labels/24h"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          }
+        }
+      }
     },
     {
       "title": "Training Ready",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
-      "targets": [{ "expr": "homigo_eta_training_ready", "legendFormat": "ready" }],
-      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "steps": [{ "color": "red", "value": 0 }, { "color": "yellow", "value": 25 }, { "color": "green", "value": 50 }] } } }
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "homigo_eta_training_ready",
+          "legendFormat": "ready"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 25
+              },
+              {
+                "color": "green",
+                "value": 50
+              }
+            ]
+          }
+        }
+      }
     },
     {
       "title": "Label Quality Score",
       "type": "gauge",
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
-      "targets": [{ "expr": "homigo_eta_quality_score", "legendFormat": "quality" }],
-      "fieldConfig": { "defaults": { "min": 0, "max": 100, "unit": "percent" } }
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "homigo_eta_quality_score",
+          "legendFormat": "quality"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "unit": "percent"
+        }
+      }
     },
     {
       "title": "Missing / Rejected Labels",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
-      "targets": [{ "expr": "homigo_eta_missing_labels", "legendFormat": "rejected" }],
-      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "red", "value": 10 }] } } }
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "homigo_eta_missing_labels",
+          "legendFormat": "rejected"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        }
+      }
     },
     {
       "title": "Labels Created Rate",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
-      "targets": [{ "expr": "rate(homigo_eta_labels_total[5m])", "legendFormat": "{{city}}" }]
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "targets": [
+        {
+          "expr": "rate(homigo_eta_labels_total[5m])",
+          "legendFormat": "{{city}}"
+        }
+      ]
     },
     {
       "title": "Google ETA API Latency (p95)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
-      "targets": [{ "expr": "histogram_quantile(0.95, rate(homigo_eta_google_latency_bucket[5m]))", "legendFormat": "p95 {{status}}" }]
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(homigo_eta_google_latency_bucket[5m]))",
+          "legendFormat": "p95 {{status}}"
+        }
+      ]
     },
     {
       "title": "Label Failures",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
-      "targets": [{ "expr": "increase(homigo_eta_label_failures_total[1h])", "legendFormat": "{{reason}}" }]
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "targets": [
+        {
+          "expr": "increase(homigo_eta_label_failures_total[1h])",
+          "legendFormat": "{{reason}}"
+        }
+      ]
     },
     {
       "title": "Collection Latency (p95)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
-      "targets": [{ "expr": "histogram_quantile(0.95, rate(homigo_eta_collection_latency_bucket[5m]))", "legendFormat": "p95" }]
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(homigo_eta_collection_latency_bucket[5m]))",
+          "legendFormat": "p95"
+        }
+      ]
     },
     {
       "title": "Distance Bucket Distribution",
       "type": "piechart",
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 20 },
-      "targets": [{ "expr": "sum by (bucket) (homigo_eta_distance_bucket)", "legendFormat": "{{bucket}}" }]
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 28
+      },
+      "targets": [
+        {
+          "expr": "sum by (bucket) (homigo_eta_distance_bucket)",
+          "legendFormat": "{{bucket}}"
+        }
+      ]
     },
     {
       "title": "Training Readiness",
       "type": "gauge",
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 20 },
-      "targets": [{ "expr": "homigo_eta_training_ready / 50 * 100", "legendFormat": "readiness %" }],
-      "fieldConfig": { "defaults": { "min": 0, "max": 100, "unit": "percent" } }
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 28
+      },
+      "targets": [
+        {
+          "expr": "homigo_eta_training_ready / 50 * 100",
+          "legendFormat": "readiness %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "unit": "percent"
+        }
+      }
     },
     {
       "title": "GPS Quality (avg sampling Hz proxy)",
       "type": "stat",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 20 },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 28
+      },
       "description": "Derived from eta_gps_tracks avg_sampling_hz in PG",
-      "targets": [{ "expr": "homigo_eta_training_ready", "legendFormat": "tracks with GPS" }]
+      "targets": [
+        {
+          "expr": "homigo_eta_training_ready",
+          "legendFormat": "tracks with GPS"
+        }
+      ]
+    },
+    {
+      "title": "Lifecycle Funnel — dispatched -> en_route -> arrived",
+      "description": "The collapse this dashboard exists to expose. Before explicit lifecycle actions, 212 dispatches produced only 3 en_route and 4 arrived events, with no signal anywhere. A widening gap between these lines means telemetry is being lost again.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(homigo_outbox_publish_total{result=\"success\"}[1h]))",
+          "legendFormat": "published events/h"
+        },
+        {
+          "expr": "sum by (transition) (increase(homigo_eta_lifecycle_total{result=\"applied\"}[1h]))",
+          "legendFormat": "{{transition}} applied/h"
+        }
+      ]
+    },
+    {
+      "title": "Lifecycle Transitions by Source",
+      "description": "explicit_partner_action is the authoritative path. A rising share of gps_geofence or job_start means partners are not using the explicit actions, which degrades label precision.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "sum by (transition, source) (increase(homigo_eta_lifecycle_total{result=\"applied\"}[1h]))",
+          "legendFormat": "{{transition}} / {{source}}"
+        }
+      ]
+    },
+    {
+      "title": "Idempotency — duplicate lifecycle requests",
+      "description": "Duplicates are expected and safe: retries and double taps land here instead of creating a second timestamp. A duplicate count with no matching applied count means clients are retrying against an already-committed transition.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 36
+      },
+      "targets": [
+        {
+          "expr": "sum by (transition) (increase(homigo_eta_lifecycle_total{result=\"duplicate\"}[1h]))",
+          "legendFormat": "{{transition}} duplicate/h"
+        }
+      ]
+    },
+    {
+      "title": "Why labels are not training-eligible",
+      "description": "missing_travel_start means arrival was captured without a departure anchor, so no duration could be computed. Previously this was invisible: labels accumulated while eligibility stayed flat.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 36
+      },
+      "targets": [
+        {
+          "expr": "sum by (reason) (increase(homigo_eta_training_excluded_total[1h]))",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    },
+    {
+      "title": "Job-start arrival fallback",
+      "description": "Fires when a job is started without the geofence or an explicit action having recorded arrival. Errors here were previously swallowed by a bare .catch and left no trace.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 36
+      },
+      "targets": [
+        {
+          "expr": "sum by (result) (increase(homigo_eta_job_start_fallback_total[1h]))",
+          "legendFormat": "{{result}}"
+        }
+      ]
     }
   ],
   "schemaVersion": 39,
-  "tags": ["homigo", "eta", "phase-2"],
-  "templating": { "list": [] },
-  "time": { "from": "now-24h", "to": "now" },
+  "tags": [
+    "homigo",
+    "eta",
+    "phase-2"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
   "timepicker": {},
   "timezone": "Asia/Kolkata",
   "title": "HOMIGO ETA Intelligence",

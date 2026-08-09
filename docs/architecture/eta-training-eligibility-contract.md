@@ -25,9 +25,43 @@ An ETA label is **training-eligible** only when **all** of the following hold:
 | 7 | **Travel duration at or below the maximum** | **≤ 14 400 s (4 h)** | `validation.ts`, BigQuery views |
 | 8 | Quality score at or above threshold | ≥ 70 | `validation.ts`, `vw_eta_training_eligible` |
 | 9 | Validation status | `TRAINING_READY` | both layers |
-| 10 | Provenance resolvable | `gps_geofence` \| `job_start` | `validation.ts`, `vw_eta_training_eligible` |
+| 10 | Provenance resolvable | `explicit_partner_action` \| `gps_geofence` \| `job_start` | `validation.ts`, `vw_eta_training_eligible` |
 | 11 | Coordinates valid | lat ∈ [-90,90], lng ∈ [-180,180] | `validation.ts` (critical) |
 | 12 | One canonical record per booking | `booking_id` unique | Postgres `@unique`, BigQuery MERGE |
+| 13 | **Travel-start anchor present** | `enRouteAt` not null | `validation.ts` (`missing_travel_start`) |
+
+### The duration formula (ADR-018)
+
+```
+actualTravelDurationSec = arrivedAt − enRouteAt
+```
+
+Stated once, in `ETA_TRAINING_CONTRACT.durationFormula`, and asserted in the contract
+tests. **No anchor means no duration** — it is never substituted with dispatch or
+assignment time.
+
+This matters because the two measure different things. Dispatch-to-arrival includes
+accept latency and idle time; `google_eta_seconds` measures pure travel. Comparing a
+model trained on the former against the Google baseline compares two different
+quantities. Before ADR-018 the collector always used `arrived − dispatched` even when
+`enRouteAt` existed, and `enRouteTimestamp` was stored but never read.
+
+Every label records the anchor it was computed under in `features.durationAnchor`, so a
+later contract change cannot silently reinterpret older rows.
+
+### Timestamp provenance
+
+| Field | Values | Penalty |
+|---|---|---|
+| `enRouteSource` | `explicit_partner_action`, `gps_geofence`, `null` (no anchor) | none |
+| `arrivalSource` | `explicit_partner_action` | none |
+| | `gps_geofence` | none |
+| | `job_start` | −15 (100 → 85) |
+
+`explicit_partner_action` is the partner declaring the transition and is unpenalised —
+nothing about it is inferred. `job_start` stays penalised because it is later than true
+arrival by however long the partner idled before starting work. Both ride in the existing
+`features` JSON; no schema migration was needed.
 
 ### Where the numbers come from
 
@@ -65,7 +99,19 @@ Two distinct exclusion mechanisms exist, and the difference matters:
 `negative_duration`, `future_timestamp`, `invalid_coordinates`.
 
 **Training-blocking reasons → capped at `VALIDATED`.** The data is fine but falls outside
-the contract: `duration_below_min`, `duration_outlier`, `invalid_provenance`.
+the contract: `duration_below_min`, `duration_outlier`, `invalid_provenance`,
+`missing_travel_start`, `historical_provenance_unknown`.
+
+`missing_travel_start` fires when arrival was captured without a departure anchor — the
+job-start fallback case. The trip is real and the row is retained and queryable, but there
+is no travel time to learn from, so it can never be `TRAINING_READY`.
+
+`historical_provenance_unknown` fires when the arrival cannot be attributed to any
+producer: the label predates provenance tracking, or its `partner.arrived` event has aged
+out of the outbox. Such labels were previously tolerated and scored as if GPS-precise,
+which silently promoted unverifiable arrivals to full training weight. **Unknown is never
+treated as precise.** Provenance is resolved once at collection time — while the event is
+still fresh — and persisted onto the label, so outbox retention cannot later erase it.
 
 A training-blocking reason caps the status **regardless of quality score**. A 59-second
 trip can score 85 and is still not trainable. A score penalty alone would not be enough —

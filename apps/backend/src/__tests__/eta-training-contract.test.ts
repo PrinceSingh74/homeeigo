@@ -35,8 +35,71 @@ describe("contract constants come from the BigQuery views, not from thin air", (
     expect(ETA_TRAINING_CONTRACT.minQualityScore).toBe(70);
   });
 
-  test("valid provenance values are exactly the two the warehouse accepts", () => {
-    expect([...ETA_TRAINING_CONTRACT.validArrivalSources]).toEqual(["gps_geofence", "job_start"]);
+  test("valid provenance values are exactly the ones the warehouse accepts", () => {
+    expect([...ETA_TRAINING_CONTRACT.validArrivalSources]).toEqual([
+      "explicit_partner_action",
+      "gps_geofence",
+      "job_start",
+    ]);
+  });
+
+  test("the duration formula is stated once, here, and anchors on travel start", () => {
+    expect(ETA_TRAINING_CONTRACT.durationFormula).toBe("arrivedAt - enRouteAt");
+  });
+});
+
+describe("travel-start anchor — the label's duration must mean one thing", () => {
+  /** Arrival an hour ago so fixtures never trip the critical future_timestamp rule. */
+  const ARRIVED = new Date(Date.now() - 60 * 60_000);
+  const anchored = (overrides: Record<string, unknown>) => ({
+    bookingId: "bk_anchor",
+    dispatchTimestamp: new Date(ARRIVED.getTime() - 45 * 60_000),
+    enRouteTimestamp: new Date(ARRIVED.getTime() - 20 * 60_000),
+    arrivalTimestamp: ARRIVED,
+    actualTravelDurationSec: 1200,
+    pickupLatitude: 28.6139,
+    pickupLongitude: 77.209,
+    partnerLatArrival: 28.614,
+    partnerLngArrival: 77.2091,
+    travelDistanceMeters: 5000,
+    googleEtaSeconds: 1080,
+    arrivalSource: "explicit_partner_action" as const,
+    ...overrides,
+  });
+
+  test("a label with a travel-start anchor is training-ready", () => {
+    const r = validateEtaLabel(anchored({}));
+    expect(r.status).toBe("TRAINING_READY");
+    expect(r.rejectionReasons).not.toContain("missing_travel_start");
+  });
+
+  test("no anchor means no duration, and no duration means not training-ready", () => {
+    const r = validateEtaLabel(anchored({ enRouteTimestamp: null, actualTravelDurationSec: null }));
+    expect(r.rejectionReasons).toContain("missing_travel_start");
+    expect(r.status).toBe("VALIDATED");
+  });
+
+  test("a missing anchor caps the label even at an otherwise perfect score", () => {
+    // This is the job_start case: arrival is known, departure is not. Substituting
+    // dispatch time would have produced a plausible-looking but wrong duration.
+    const r = validateEtaLabel(
+      anchored({ enRouteTimestamp: null, actualTravelDurationSec: null, arrivalSource: "job_start" }),
+    );
+    expect(r.status).not.toBe("TRAINING_READY");
+  });
+
+  test("an arrival before departure is corrupt, not merely imprecise", () => {
+    const r = validateEtaLabel(
+      anchored({ enRouteTimestamp: new Date(ARRIVED.getTime() + 60_000) }),
+    );
+    expect(r.rejectionReasons).toContain("negative_duration");
+    expect(r.status).toBe("REJECTED");
+  });
+
+  test("explicit partner action is valid provenance and is not penalised", () => {
+    const r = validateEtaLabel(anchored({}));
+    expect(r.rejectionReasons).not.toContain("invalid_provenance");
+    expect(r.qualityScore).toBe(100);
   });
 });
 

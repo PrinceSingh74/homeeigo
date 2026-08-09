@@ -22,20 +22,34 @@ export type PartnerDispatchedPayload = {
   serviceId: string;
 };
 
+/**
+ * How the travel-start timestamp was established. `explicit_partner_action` is the
+ * partner tapping "I'm on my way"; `gps_geofence` is inferred from the GPS stream.
+ * The ETA label's duration anchors on this timestamp, so a trainer must be able to
+ * tell a declared departure from an inferred one.
+ */
+export type EnRouteSource = "explicit_partner_action" | "gps_geofence";
+
 export type PartnerEnRoutePayload = {
   providerId: string;
   bookingId: string;
   enRouteAt: string;
   distanceKm: number | null;
   googleEtaMin: number | null;
+  enRouteSource: EnRouteSource;
 };
 
 /**
  * How the arrival was established. ML training must be able to tell a GPS-geofenced
  * arrival (precise) from one inferred at job start (includes idle time before the
  * partner began work), so the provenance travels with the event.
+ *
+ * `explicit_partner_action` — the partner tapped "I've arrived". Authoritative.
+ * `gps_geofence`            — inferred from the GPS stream clearing the arrival radius.
+ * `job_start`               — inferred at job start; later than true arrival by however
+ *                             long the partner idled before beginning work.
  */
-export type ArrivalSource = "gps_geofence" | "job_start";
+export type ArrivalSource = "explicit_partner_action" | "gps_geofence" | "job_start";
 
 export type PartnerArrivedPayload = {
   providerId: string;
@@ -136,6 +150,7 @@ export function buildPartnerEnRouteEvent(input: {
   enRouteAt: Date;
   distanceKm: number | null;
   googleEtaMin: number | null;
+  enRouteSource?: EnRouteSource;
 }): HomigoEvent<PartnerEnRoutePayload> {
   return partnerEnvelope(
     EVENT_TYPES.PARTNER_EN_ROUTE,
@@ -147,6 +162,8 @@ export function buildPartnerEnRouteEvent(input: {
       enRouteAt: input.enRouteAt.toISOString(),
       distanceKm: input.distanceKm,
       googleEtaMin: input.googleEtaMin,
+      // Defaults to the GPS path: the only pre-existing producer is the geofence.
+      enRouteSource: input.enRouteSource ?? "gps_geofence",
     },
     input.bookingId,
   );

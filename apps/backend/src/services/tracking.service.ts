@@ -13,6 +13,7 @@ import {
   buildPartnerArrivedEvent,
   buildPartnerEnRouteEvent,
   type ArrivalSource,
+  type EnRouteSource,
 } from "../events/catalog/partner.events";
 
 // Phase 17.1 — throttling + presence constants.
@@ -279,32 +280,71 @@ export class TrackingService {
     distanceKm: number;
     googleEtaMin: number;
   }): Promise<void> {
-    if (
-      !eventPlatformConfig.outboxEnabled ||
-      !eventPlatformConfig.trackingEventsEnabled ||
-      input.enRouteAtExisting
-    ) {
-      return;
-    }
+    if (input.enRouteAtExisting) return;
     if (!["ACCEPTED", "ASSIGNED"].includes(input.bookingStatus)) return;
 
+    await this.commitEnRoute({
+      bookingId: input.bookingId,
+      providerId: input.providerId,
+      distanceKm: Math.round(input.distanceKm * 10) / 10,
+      googleEtaMin: input.googleEtaMin,
+      source: "gps_geofence",
+    });
+  }
+
+  /**
+   * Commits the EN_ROUTE transition and emits `homigo.partner.en_route`.
+   *
+   * Shared by the GPS geofence path and by the explicit partner action. Idempotent via
+   * `updateMany … where enRouteAt: null`, so whichever signal lands first wins and the
+   * other becomes a no-op — the two can race safely.
+   *
+   * The timestamp write is deliberately NOT gated on the event-platform flags. Turning
+   * event publishing off must not stop the booking from recording when travel began:
+   * `enRouteAt` is the anchor the ETA label's duration is measured from, and a lost
+   * anchor cannot be recovered later. Only the emission is flag-gated.
+   *
+   * @returns true when this call performed the transition, false when it was already done.
+   */
+  async commitEnRoute(input: {
+    bookingId: string;
+    providerId: string;
+    distanceKm: number | null;
+    googleEtaMin: number | null;
+    source: EnRouteSource;
+  }): Promise<boolean> {
     const enRouteAt = new Date();
-    await prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx) => {
       const updated = await tx.booking.updateMany({
-        where: { id: input.bookingId, enRouteAt: null, status: { in: ["ACCEPTED", "ASSIGNED"] } },
+        // `arrivedAt: null` is a correctness guard, not an optimisation. Arrival does not
+        // change booking status, so a booking can sit at ACCEPTED with arrivedAt already
+        // set (explicit "I've arrived" without an earlier "on my way", or the job-start
+        // fallback). Without this clause a later GPS ping would stamp enRouteAt = now,
+        // i.e. AFTER arrival, producing a negative travel duration.
+        where: {
+          id: input.bookingId,
+          enRouteAt: null,
+          arrivedAt: null,
+          status: { in: ["ACCEPTED", "ASSIGNED"] },
+        },
         data: { status: "EN_ROUTE", enRouteAt },
       });
-      if (updated.count === 0) return;
-      await emitInTransaction(
-        tx,
-        buildPartnerEnRouteEvent({
-          providerId: input.providerId,
-          bookingId: input.bookingId,
-          enRouteAt,
-          distanceKm: Math.round(input.distanceKm * 10) / 10,
-          googleEtaMin: input.googleEtaMin,
-        }),
-      );
+      if (updated.count === 0) return false;
+
+      if (eventPlatformConfig.outboxEnabled && eventPlatformConfig.trackingEventsEnabled) {
+        await emitInTransaction(
+          tx,
+          buildPartnerEnRouteEvent({
+            providerId: input.providerId,
+            bookingId: input.bookingId,
+            enRouteAt,
+            distanceKm: input.distanceKm,
+            googleEtaMin: input.googleEtaMin,
+            enRouteSource: input.source,
+          }),
+        );
+      }
+      return true;
     });
   }
 
@@ -326,13 +366,7 @@ export class TrackingService {
     speed?: number;
     prev: { lat: number; lng: number; t: number } | null;
   }): Promise<void> {
-    if (
-      !eventPlatformConfig.outboxEnabled ||
-      !eventPlatformConfig.trackingEventsEnabled ||
-      input.booking.arrivedAt
-    ) {
-      return;
-    }
+    if (input.booking.arrivedAt) return;
 
     const radiusM = eventPlatformConfig.arrivalRadiusM;
     const distM = input.distanceKm * 1000;
@@ -379,12 +413,14 @@ export class TrackingService {
     googleEtaMin: number | null;
     source: ArrivalSource;
   }): Promise<boolean> {
-    if (!eventPlatformConfig.outboxEnabled || !eventPlatformConfig.trackingEventsEnabled) return false;
-
     const arrivedAt = new Date();
-    const travelDurationMin = input.enRouteAt
-      ? Math.max(1, Math.round((arrivedAt.getTime() - input.enRouteAt.getTime()) / 60_000))
-      : null;
+    // Null rather than clamped when the anchor is missing or inverted. `Math.max(1, …)`
+    // would report a 1-minute trip for an arrival that precedes departure, hiding the
+    // corruption instead of surfacing it.
+    const travelDurationMin =
+      input.enRouteAt && input.enRouteAt.getTime() <= arrivedAt.getTime()
+        ? Math.max(1, Math.round((arrivedAt.getTime() - input.enRouteAt.getTime()) / 60_000))
+        : null;
 
     const attempt = await prisma.assignmentAttempt.findFirst({
       where: { providerId: input.providerId, job: { bookingId: input.bookingId } },
@@ -409,22 +445,26 @@ export class TrackingService {
         data: { hasArrived: true },
       });
 
-      await emitInTransaction(
-        tx,
-        buildPartnerArrivedEvent({
-          providerId: input.providerId,
-          bookingId: input.bookingId,
-          arrivedAt,
-          dispatchedAt: attempt?.dispatchedAt ?? input.assignedAt,
-          enRouteAt: input.enRouteAt,
-          travelDurationMin,
-          city: input.city,
-          serviceCategory: input.serviceCategory,
-          distanceKm: input.distanceKm != null ? Math.round(input.distanceKm * 10) / 10 : null,
-          googleEtaMin: input.googleEtaMin,
-          arrivalSource: input.source,
-        }),
-      );
+      // Only the emission is flag-gated — the arrival timestamp above is business state
+      // and must survive an event-platform outage. See commitEnRoute for the rationale.
+      if (eventPlatformConfig.outboxEnabled && eventPlatformConfig.trackingEventsEnabled) {
+        await emitInTransaction(
+          tx,
+          buildPartnerArrivedEvent({
+            providerId: input.providerId,
+            bookingId: input.bookingId,
+            arrivedAt,
+            dispatchedAt: attempt?.dispatchedAt ?? input.assignedAt,
+            enRouteAt: input.enRouteAt,
+            travelDurationMin,
+            city: input.city,
+            serviceCategory: input.serviceCategory,
+            distanceKm: input.distanceKm != null ? Math.round(input.distanceKm * 10) / 10 : null,
+            googleEtaMin: input.googleEtaMin,
+            arrivalSource: input.source,
+          }),
+        );
+      }
       return true;
     });
   }

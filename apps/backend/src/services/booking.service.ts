@@ -36,6 +36,11 @@ import { financialLedgerService } from "./financial-ledger.service";
 import { earningsLiveService } from "./earnings-live.service";
 import { userPiiService } from "./user-pii.service";
 import { trackingService } from "./tracking.service";
+import { logger } from "../lib/logger";
+import {
+  recordEtaJobStartFallback,
+  recordEtaLifecycleTransition,
+} from "../lib/eta-metrics";
 import { distanceKm as distanceBetweenKm } from "../lib/geo";
 import { fraudContextForUser } from "../lib/fraud-context";
 import { withTxRetry } from "../lib/db-retry";
@@ -390,6 +395,11 @@ export class BookingService {
       address: await addressPiiService.viewForFulfilment(b.address),
       status: bookingStatusApi(b.status),
       scheduledDate: b.scheduledDate,
+      // Lifecycle anchors — the partner UI needs these to decide whether to offer
+      // "On my way" or "I've arrived". Arrival does not change booking status, so
+      // status alone cannot distinguish the two states.
+      enRouteAt: b.enRouteAt,
+      arrivedAt: b.arrivedAt,
       startedAt: b.startedAt,
       completedAt: b.completedAt,
       baseAmount: b.baseAmount,
@@ -455,6 +465,11 @@ export class BookingService {
       service: { name: b.service.name, icon: b.service.icon },
       address: await addressPiiService.viewForFulfilment(b.address),
       scheduledDate: b.scheduledDate,
+      // Lifecycle anchors — the partner UI needs these to decide whether to offer
+      // "On my way" or "I've arrived". Arrival does not change booking status, so
+      // status alone cannot distinguish the two states.
+      enRouteAt: b.enRouteAt,
+      arrivedAt: b.arrivedAt,
       startedAt: b.startedAt,
       eta: b.eta,
       finalAmount: b.finalAmount,
@@ -985,6 +1000,139 @@ export class BookingService {
     return { ok: true as const };
   }
 
+  /**
+   * Explicit "I'm on my way" from the partner.
+   *
+   * This is the authoritative producer of `enRouteAt`. Before it existed the timestamp
+   * was written only as a side effect of a GPS stream that just one client emitted, so a
+   * partner who started a job without that stream lost the travel-start anchor forever —
+   * 3 of 108 completed bookings ever recorded one. GPS is now corroboration, not the
+   * sole source.
+   *
+   * Idempotent: repeat calls return `newlyTransitioned: false` and change nothing.
+   */
+  async markEnRoute(
+    providerId: string,
+    id: string,
+    lat: number,
+    lng: number,
+  ): Promise<
+    | { ok: true; newlyTransitioned: boolean; enRouteAt: Date | null }
+    | { ok: false; error: "NOT_FOUND" | "INVALID_STATUS" }
+  > {
+    const booking = await prisma.booking.findFirst({
+      where: { id, providerId },
+      select: {
+        status: true,
+        enRouteAt: true,
+        arrivedAt: true,
+        eta: true,
+        address: { select: { latitude: true, longitude: true } },
+      },
+    });
+    if (!booking) return { ok: false as const, error: "NOT_FOUND" };
+
+    // Already past the transition — report success without re-writing the timestamp.
+    if (booking.enRouteAt) {
+      recordEtaLifecycleTransition("en_route", "explicit_partner_action", "duplicate");
+      return { ok: true as const, newlyTransitioned: false, enRouteAt: booking.enRouteAt };
+    }
+    // Departure cannot be declared after arrival. The staged CTA prevents this in both
+    // clients, but the endpoint must be safe on its own — accepting it would stamp
+    // enRouteAt after arrivedAt and yield a negative travel duration.
+    if (booking.arrivedAt) {
+      return { ok: false as const, error: "INVALID_STATUS" };
+    }
+    if (!["ACCEPTED", "ASSIGNED"].includes(booking.status)) {
+      return { ok: false as const, error: "INVALID_STATUS" };
+    }
+
+    const distanceKm = booking.address
+      ? distanceBetweenKm(lat, lng, booking.address.latitude, booking.address.longitude)
+      : null;
+
+    const applied = await trackingService.commitEnRoute({
+      bookingId: id,
+      providerId,
+      distanceKm: distanceKm != null ? Math.round(distanceKm * 10) / 10 : null,
+      googleEtaMin: booking.eta ?? null,
+      source: "explicit_partner_action",
+    });
+
+    recordEtaLifecycleTransition(
+      "en_route",
+      "explicit_partner_action",
+      applied ? "applied" : "duplicate",
+    );
+
+    const fresh = await prisma.booking.findUnique({ where: { id }, select: { enRouteAt: true } });
+    return { ok: true as const, newlyTransitioned: applied, enRouteAt: fresh?.enRouteAt ?? null };
+  }
+
+  /**
+   * Explicit "I've arrived" from the partner — the authoritative producer of `arrivedAt`.
+   *
+   * Races safely with both the GPS geofence and the job-start fallback: all three funnel
+   * into `trackingService.recordArrival`, which is idempotent on `arrivedAt: null`.
+   */
+  async markArrived(
+    providerId: string,
+    id: string,
+    lat: number,
+    lng: number,
+  ): Promise<
+    | { ok: true; newlyTransitioned: boolean; arrivedAt: Date | null }
+    | { ok: false; error: "NOT_FOUND" | "INVALID_STATUS" }
+  > {
+    const booking = await prisma.booking.findFirst({
+      where: { id, providerId },
+      select: {
+        status: true,
+        arrivedAt: true,
+        enRouteAt: true,
+        assignedAt: true,
+        eta: true,
+        address: { select: { city: true, latitude: true, longitude: true } },
+        service: { select: { category: true } },
+      },
+    });
+    if (!booking) return { ok: false as const, error: "NOT_FOUND" };
+
+    if (booking.arrivedAt) {
+      recordEtaLifecycleTransition("arrived", "explicit_partner_action", "duplicate");
+      return { ok: true as const, newlyTransitioned: false, arrivedAt: booking.arrivedAt };
+    }
+    // A booking that is finished or cancelled can no longer be arrived at.
+    if (!["ACCEPTED", "ASSIGNED", "EN_ROUTE", "IN_PROGRESS"].includes(booking.status)) {
+      return { ok: false as const, error: "INVALID_STATUS" };
+    }
+
+    const distanceKm = booking.address
+      ? distanceBetweenKm(lat, lng, booking.address.latitude, booking.address.longitude)
+      : null;
+
+    const applied = await trackingService.recordArrival({
+      bookingId: id,
+      providerId,
+      enRouteAt: booking.enRouteAt,
+      assignedAt: booking.assignedAt,
+      city: booking.address?.city ?? null,
+      serviceCategory: booking.service?.category ?? null,
+      distanceKm,
+      googleEtaMin: booking.eta ?? null,
+      source: "explicit_partner_action",
+    });
+
+    recordEtaLifecycleTransition(
+      "arrived",
+      "explicit_partner_action",
+      applied ? "applied" : "duplicate",
+    );
+
+    const fresh = await prisma.booking.findUnique({ where: { id }, select: { arrivedAt: true } });
+    return { ok: true as const, newlyTransitioned: applied, arrivedAt: fresh?.arrivedAt ?? null };
+  }
+
   async start(providerId: string, id: string, lat: number, lng: number) {
     const startedAt = new Date();
     const started = await prisma.$transaction(async (tx) => {
@@ -1043,8 +1191,20 @@ export class BookingService {
     // A partner who is starting the service has demonstrably arrived. Without this,
     // any job that skips the GPS geofence (ACCEPTED -> IN_PROGRESS directly) never
     // records arrivedAt, and Phase 2 can never accumulate ETA training labels.
-    // Idempotent: a no-op if the geofence already recorded the arrival.
-    void this.backfillArrivalFromStart(id, providerId, lat, lng).catch(() => undefined);
+    // Idempotent: a no-op if the geofence or the explicit action already recorded it.
+    //
+    // Fire-and-forget so telemetry can never fail a job start — but the failure is now
+    // logged and counted instead of swallowed. The previous `.catch(() => undefined)`
+    // meant a broken fallback left no trace anywhere.
+    void this.backfillArrivalFromStart(id, providerId, lat, lng).catch((err: unknown) => {
+      recordEtaJobStartFallback("error");
+      logger.error("eta_job_start_fallback_failed", {
+        bookingId: id,
+        providerId,
+        source: "job_start",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
 
     return started;
   }
@@ -1079,7 +1239,7 @@ export class BookingService {
       ? distanceBetweenKm(lat, lng, booking.address.latitude, booking.address.longitude)
       : null;
 
-    await trackingService.recordArrival({
+    const applied = await trackingService.recordArrival({
       bookingId,
       providerId,
       enRouteAt: booking.enRouteAt,
@@ -1090,6 +1250,9 @@ export class BookingService {
       googleEtaMin: booking.eta ?? null,
       source: "job_start",
     });
+
+    recordEtaJobStartFallback(applied ? "applied" : "duplicate");
+    recordEtaLifecycleTransition("arrived", "job_start", applied ? "applied" : "duplicate");
   }
 
   async complete(

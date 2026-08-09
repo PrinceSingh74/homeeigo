@@ -442,13 +442,34 @@ groups:
         annotations:
           summary: Google ETA API p95 latency exceeds 3 seconds
 
-      - alert: EtaTrainingReadinessLow
-        expr: homigo_eta_training_ready < 50
+      # Being below the 50-label threshold is the expected steady state until enough real
+      # trips accumulate — alerting on it alone would fire permanently and train operators
+      # to ignore the ETA rules. What is actionable is collection STALLING: lifecycle
+      # transitions are happening, yet eligible labels are not growing. That means
+      # telemetry is being captured but discarded, which is the failure this phase exists
+      # to prevent.
+      - alert: EtaCollectionStalled
+        expr: >
+          increase(homigo_eta_lifecycle_total{transition="arrived",result="applied"}[6h]) > 5
+          and increase(homigo_eta_training_ready[6h]) == 0
         for: 1h
         labels:
-          severity: info
+          severity: warning
         annotations:
-          summary: ETA training label count below minimum threshold (50)
+          summary: ETA arrivals are being recorded but no new label became training-eligible
+          description: >
+            Arrivals in the last 6h did not produce any additional training-eligible label.
+            Check homigo_eta_training_excluded_total for the blocking reason — a spike in
+            missing_travel_start means arrivals are landing without a departure anchor.
+
+      # Retained as a pure progress signal, not a fault. Never page on this.
+      - alert: EtaTrainingThresholdNotMet
+        expr: homigo_eta_training_ready < 50
+        for: 24h
+        labels:
+          severity: none
+        annotations:
+          summary: ETA training label count below the 50-label threshold (expected until enough real trips accumulate)
 
       - alert: EtaLabelFailureSpike
         expr: increase(homigo_eta_label_failures_total[1h]) > 5

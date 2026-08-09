@@ -13,8 +13,9 @@ import {
   buildEtaLabelCreatedEvent,
   buildEtaTripCompletedEvent,
 } from "../events/catalog/eta.events";
-import { validateEtaLabel } from "../../analytics/eta/validation";
+import { validateEtaLabel, ETA_TRAINING_CONTRACT } from "../../analytics/eta/validation";
 import { engineerEtaFeatures } from "../../analytics/eta/feature-engineering";
+import { EVENT_TYPES } from "../events/catalog/event-types";
 import { weatherService } from "./weather.service";
 import { distanceKm } from "../lib/geo";
 import {
@@ -23,6 +24,7 @@ import {
   recordEtaGoogleLatency,
   recordEtaLabelCreated,
   recordEtaLabelFailure,
+  recordEtaTrainingExcluded,
   recordEtaTrainingReady,
 } from "../lib/eta-metrics";
 import type { EtaLabelStatus } from "@prisma/client";
@@ -97,10 +99,16 @@ class EtaIntelligenceService {
 
       const dispatchTimestamp = dispatchAttempt?.dispatchedAt ?? booking.assignedAt;
       const arrivalTimestamp = booking.arrivedAt;
+      const enRouteTimestamp = booking.enRouteAt;
 
+      // The supervised target is travel time: arrival minus the moment the partner
+      // actually set off. It is deliberately NOT measured from dispatch/assignment —
+      // that window also contains accept latency and idle time, so a model trained on it
+      // would be compared against a Google ETA that measures something else entirely.
+      // No travel-start anchor => no label duration. It is never substituted.
       const actualTravelDurationSec =
-        dispatchTimestamp && arrivalTimestamp
-          ? Math.max(0, Math.round((arrivalTimestamp.getTime() - dispatchTimestamp.getTime()) / 1000))
+        enRouteTimestamp && arrivalTimestamp
+          ? Math.max(0, Math.round((arrivalTimestamp.getTime() - enRouteTimestamp.getTime()) / 1000))
           : null;
 
       const googleEtaMinutes = booking.eta ?? null;
@@ -177,11 +185,13 @@ class EtaIntelligenceService {
 
       // Provenance rides on the partner.arrived event that triggered this collection.
       // Absent (e.g. direct invocation), assume the precise GPS path.
-      const arrivalSource = await this.resolveArrivalSource(eventId);
+      const arrivalSource = await this.resolveArrivalSource(bookingId, eventId);
+      const enRouteSource = await this.resolveEnRouteSource(bookingId, enRouteTimestamp);
 
       const validation = validateEtaLabel({
         bookingId,
         dispatchTimestamp,
+        enRouteTimestamp,
         arrivalTimestamp,
         actualTravelDurationSec,
         pickupLatitude: booking.address?.latitude ?? null,
@@ -271,9 +281,16 @@ class EtaIntelligenceService {
         status: validation.status,
         rejectionReason: validation.rejectionReasons.length ? validation.rejectionReasons.join(",") : null,
         eventId: eventId ?? null,
-        // arrivalSource lives in features so training queries can filter or weight by
-        // arrival precision without a schema migration.
-        features: { ...engineered, arrivalSource } as object,
+        // Provenance lives in features so training queries can filter or weight by
+        // timestamp precision without a schema migration. `durationAnchor` records the
+        // formula this row was computed with, so a future contract change cannot silently
+        // reinterpret labels written under the old one.
+        features: {
+          ...engineered,
+          arrivalSource,
+          enRouteSource,
+          durationAnchor: ETA_TRAINING_CONTRACT.durationFormula,
+        } as object,
       };
 
       const label = await prisma.etaTrainingLabel.upsert({
@@ -283,6 +300,12 @@ class EtaIntelligenceService {
       });
 
       if (engineered.distanceBucket) recordEtaDistanceBucket(engineered.distanceBucket);
+
+      // Surface why a collected label fell short of TRAINING_READY. Without this the
+      // funnel shows labels accumulating while eligibility stays flat, with no reason.
+      if (validation.status !== "TRAINING_READY") {
+        for (const reason of validation.rejectionReasons) recordEtaTrainingExcluded(reason);
+      }
 
       await this.compressGpsTrack(bookingId, hashPii(booking.providerId), pings);
       await this.syncToBigQuery(label, {
@@ -359,16 +382,91 @@ class EtaIntelligenceService {
    * invocation, or a label predating provenance — we assume the precise GPS path,
    * which matches how every historical label was produced.
    */
-  private async resolveArrivalSource(eventId?: string): Promise<"gps_geofence" | "job_start"> {
-    if (!eventId) return "gps_geofence";
+  private async resolveArrivalSource(
+    bookingId: string,
+    eventId?: string,
+  ): Promise<"explicit_partner_action" | "gps_geofence" | "job_start"> {
+    if (!eventId) return this.arrivalSourceForBooking(bookingId);
     try {
       const row = await prisma.eventOutbox.findUnique({
         where: { eventId },
         select: { payload: true },
       });
       const payload = row?.payload as { data?: { arrivalSource?: string } } | null;
-      return payload?.data?.arrivalSource === "job_start" ? "job_start" : "gps_geofence";
+      const source = payload?.data?.arrivalSource;
+      if (source === "job_start" || source === "explicit_partner_action" || source === "gps_geofence") {
+        return source;
+      }
+      // The triggering event carried no provenance — collection was driven by
+      // booking.completed rather than partner.arrived. Fall back to the booking's own
+      // arrival event rather than defaulting, which would silently relabel an explicit
+      // or job-start arrival as GPS-geofenced.
+      return this.arrivalSourceForBooking(bookingId);
     } catch {
+      return "gps_geofence";
+    }
+  }
+
+  /**
+   * Reads arrival provenance from the booking's own `homigo.partner.arrived` event.
+   *
+   * Returns `null` when no such event exists — the arrival predates provenance tracking,
+   * or its event has aged out of the outbox. Null means "unknown", never "GPS": asserting
+   * a precise geofenced arrival we cannot evidence would let an unverifiable label train
+   * a model at full weight. Callers persist the resolved value onto the label, so this
+   * lookup only ever runs while the event is still fresh.
+   */
+  private async arrivalSourceForBooking(
+    bookingId: string,
+  ): Promise<"explicit_partner_action" | "gps_geofence" | "job_start" | null> {
+    try {
+      const row = await prisma.eventOutbox.findFirst({
+        where: {
+          eventType: EVENT_TYPES.PARTNER_ARRIVED,
+          payload: { path: ["data", "bookingId"], equals: bookingId },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { payload: true },
+      });
+      const source = (row?.payload as { data?: { arrivalSource?: string } } | null)?.data
+        ?.arrivalSource;
+      return source === "job_start" ||
+        source === "explicit_partner_action" ||
+        source === "gps_geofence"
+        ? source
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Resolves how the travel-start anchor was established, from the booking's own
+   * `homigo.partner.en_route` event. A trainer weighting label precision needs to tell a
+   * partner-declared departure from one inferred by the GPS geofence, and the duration
+   * measures from this timestamp — so its provenance matters as much as the arrival's.
+   *
+   * Returns null when no anchor exists, which is exactly when the label carries no
+   * duration and is blocked from TRAINING_READY.
+   */
+  private async resolveEnRouteSource(
+    bookingId: string,
+    enRouteTimestamp: Date | null,
+  ): Promise<"explicit_partner_action" | "gps_geofence" | null> {
+    if (!enRouteTimestamp) return null;
+    try {
+      const row = await prisma.eventOutbox.findFirst({
+        where: { eventType: EVENT_TYPES.PARTNER_EN_ROUTE, payload: { path: ["data", "bookingId"], equals: bookingId } },
+        orderBy: { createdAt: "desc" },
+        select: { payload: true },
+      });
+      const payload = row?.payload as { data?: { enRouteSource?: string } } | null;
+      return payload?.data?.enRouteSource === "explicit_partner_action"
+        ? "explicit_partner_action"
+        : "gps_geofence";
+    } catch {
+      // The anchor exists; only its provenance is unresolvable. Assume the GPS path,
+      // which is the conservative (less precise) attribution.
       return "gps_geofence";
     }
   }
