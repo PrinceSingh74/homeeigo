@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import type { AiProviderType } from "@prisma/client";
 import { aiConfig } from "../config";
 import type { AiMessage, AiProviderResponse } from "../types";
@@ -14,6 +15,13 @@ export type ProviderCallInput = {
   systemPrompt: string;
   messages: AiMessage[];
   maxTokens?: number;
+  /**
+   * Function schemas the model may call this turn.
+   *
+   * Built server-side from the discovery filter, so the model can only ever see tools the
+   * actor was already permitted to use. Absent means no tools for this turn.
+   */
+  tools?: Array<Record<string, unknown>>;
   /**
    * Upper bound for this specific call, in ms.
    *
@@ -291,12 +299,27 @@ async function callOpenAiCompatible(
     return mockResponse(provider, cfg.model, input, t0);
   }
 
-  const messages = [
-    { role: "system" as const, content: input.systemPrompt },
-    ...input.messages.map((m) => ({
-      role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
-      content: m.content,
-    })),
+  // Tool and assistant turns must round-trip in the provider's own shape, or the model
+  // cannot pair a result with the call that produced it and will re-request the same tool.
+  const messages: Array<Record<string, unknown>> = [
+    { role: "system", content: input.systemPrompt },
+    ...input.messages.map((m) => {
+      if (m.role === "tool") {
+        return { role: "tool", content: m.content, tool_call_id: m.toolCallId };
+      }
+      if (m.role === "assistant" && m.toolCalls?.length) {
+        return {
+          role: "assistant",
+          content: m.content || null,
+          tool_calls: m.toolCalls.map((tc) => ({
+            id: tc.id,
+            type: "function",
+            function: { name: tc.name, arguments: tc.argumentsJson },
+          })),
+        };
+      }
+      return { role: m.role === "assistant" ? "assistant" : "user", content: m.content };
+    }),
   ];
 
   const controller = new AbortController();
@@ -313,6 +336,7 @@ async function callOpenAiCompatible(
         model: cfg.model,
         messages,
         max_tokens: input.maxTokens ?? 2048,
+        ...(input.tools?.length ? { tools: input.tools, tool_choice: "auto" } : {}),
       }),
       signal: controller.signal,
     });
@@ -320,14 +344,35 @@ async function callOpenAiCompatible(
     if (!res.ok) throw await httpFailure(res, provider);
 
     const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
+      choices?: Array<{
+        message?: {
+          content?: string;
+          tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>;
+        };
+        finish_reason?: string;
+      }>;
       usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
     };
 
-    const content = data.choices?.[0]?.message?.content ?? "";
-    assertNonEmptyCompletion(content, provider, data.choices?.[0]?.finish_reason);
+    const choice = data.choices?.[0];
+    const content = choice?.message?.content ?? "";
+    const toolCalls = (choice?.message?.tool_calls ?? [])
+      .filter((tc) => tc.function?.name)
+      .map((tc) => ({
+        id: tc.id ?? crypto.randomUUID(),
+        name: tc.function!.name!,
+        argumentsJson: tc.function?.arguments ?? "{}",
+      }));
+
+    // A turn that requests tools legitimately has no prose, so the empty-completion guard
+    // must not fire on it — the answer arrives after the tools have run.
+    if (toolCalls.length === 0) {
+      assertNonEmptyCompletion(content, provider, choice?.finish_reason);
+    }
+
     return {
       content,
+      ...(toolCalls.length > 0 ? { toolCalls } : {}),
       promptTokens: data.usage?.prompt_tokens ?? estimateTokens(input),
       completionTokens: data.usage?.completion_tokens ?? estimateTokens({ messages: [{ role: "assistant", content }] }),
       cachedTokens: data.usage?.prompt_tokens_details?.cached_tokens ?? 0,

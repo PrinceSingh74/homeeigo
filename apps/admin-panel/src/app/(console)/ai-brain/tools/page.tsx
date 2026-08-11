@@ -108,22 +108,22 @@ export default function EnterpriseToolCenterPage() {
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <KpiCard label="Total Tools" value={formatNumber(tools.length)} icon={Wrench} trend={null} />
-        <KpiCard label="Read Tools" value={formatNumber(Number(counts.READ ?? 0))} icon={Zap} trend={null} />
-        <KpiCard label="Write Tools" value={formatNumber(Number(counts.WRITE ?? 0))} icon={CheckCircle2} trend={null} />
-        <KpiCard label="High Risk" value={formatNumber(Number(counts.HIGH_RISK ?? 0))} icon={Shield} trend={null} />
-        <KpiCard label="Pending Approvals" value={formatNumber(Number(approvalStats.pending ?? 0))} icon={Clock} trend={null} />
+        <KpiCard label="Total Tools" value={formatNumber(tools.length)} icon={Wrench} />
+        <KpiCard label="Read Tools" value={formatNumber(Number(counts.READ ?? 0))} icon={Zap} />
+        <KpiCard label="Write Tools" value={formatNumber(Number(counts.WRITE ?? 0))} icon={CheckCircle2} />
+        <KpiCard label="High Risk" value={formatNumber(Number(counts.HIGH_RISK ?? 0))} icon={Shield} />
+        <KpiCard label="Pending Approvals" value={formatNumber(Number(approvalStats.pending ?? 0))} icon={Clock} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Executions (7d)" value={formatNumber(Number(summary.totalRequests ?? 0))} icon={Activity} trend={null} />
+        <KpiCard label="Executions (7d)" value={formatNumber(Number(summary.totalRequests ?? 0))} icon={Activity} />
         <KpiCard label="Success Rate" value={
           summary.totalRequests
             ? `${Math.round((Number(summary.successCount ?? 0) / Number(summary.totalRequests)) * 100)}%`
             : "—"
-        } icon={CheckCircle2} trend={null} />
-        <KpiCard label="Denied" value={formatNumber(Number(summary.deniedCount ?? 0))} icon={XCircle} trend={null} />
-        <KpiCard label="Avg Latency" value={`${Number(summary.avgLatencyMs ?? 0)}ms`} icon={Clock} trend={null} />
+        } icon={CheckCircle2} />
+        <KpiCard label="Denied" value={formatNumber(Number(summary.deniedCount ?? 0))} icon={XCircle} />
+        <KpiCard label="Avg Latency" value={`${Number(summary.avgLatencyMs ?? 0)}ms`} icon={Clock} />
       </div>
 
       <section className="rounded-xl border border-[var(--color-biz-line)] p-4">

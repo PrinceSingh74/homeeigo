@@ -1,10 +1,17 @@
 import type { AiGatewayRole } from "@prisma/client";
 import type { PolicyEvaluationInput, PolicyEvaluationResult } from "../types";
+import { verifyBookingAccess, resolveProviderId } from "../execution/actor-resolver";
 
 export type PolicyRule = {
   id: string;
   description: string;
-  evaluate: (input: PolicyEvaluationInput) => PolicyEvaluationResult | null;
+  /**
+   * Returns a decision, or null to defer to the next rule.
+   *
+   * Async because a real ownership check has to ask the database. Synchronous rules simply
+   * return a value; the engine awaits either shape.
+   */
+  evaluate: (input: PolicyEvaluationInput) => Promise<PolicyEvaluationResult | null> | PolicyEvaluationResult | null;
 };
 
 const ROLE_TOOL_PERMISSIONS: Record<AiGatewayRole, string[]> = {
@@ -79,13 +86,39 @@ export const POLICY_RULES: PolicyRule[] = [
     },
   },
   {
-    id: "customer.ownership",
-    description: "Customer must own the booking resource",
-    evaluate: (input) => {
-      if (input.tool.requiredPolicy !== "customer.ownership") return null;
+    id: "resource.ownership",
+    description: "Actor must own or be assigned to the resource named in the arguments",
+    evaluate: async (input) => {
+      const policy = input.tool.requiredPolicy;
+      if (policy !== "customer.ownership" && policy !== "partner.job.action") return null;
+
       const bookingId = input.arguments.bookingId as string | undefined;
       if (!bookingId) {
-        return { decision: "DENY", reason: "bookingId required for ownership check", ruleMatched: "customer.ownership" };
+        return { decision: "DENY", reason: "bookingId required for ownership check", ruleMatched: "resource.ownership" };
+      }
+
+      // Ownership is resolved from the AUTHENTICATED actor, never from anything the model
+      // or the caller supplied. Previously this rule only checked that a bookingId was
+      // present — any id, including another customer's, satisfied it. The handler layer
+      // caught that in practice, but a policy that advertises a check it does not perform
+      // is one forgotten handler away from becoming a real cross-user read.
+      // A partner's access runs through their provider record, so it has to be resolved
+      // from the authenticated user before the check can mean anything.
+      const providerId =
+        input.actor.actorRole === "PARTNER" ? await resolveProviderId(input.actor.actorId) : null;
+
+      const allowed = await verifyBookingAccess(
+        bookingId,
+        input.actor.actorId,
+        input.actor.actorRole,
+        providerId,
+      );
+      if (!allowed) {
+        return {
+          decision: "DENY",
+          reason: "Actor does not own or is not assigned to this resource",
+          ruleMatched: "resource.ownership",
+        };
       }
       return null;
     },
@@ -108,6 +141,28 @@ export const POLICY_RULES: PolicyRule[] = [
         return { decision: "DENY", reason: "Actor flagged by fraud policy", ruleMatched: "fraud.block_high_risk_actor" };
       }
       return null;
+    },
+  },
+  {
+    id: "write.confirmation_required",
+    description: "Medium-risk writes need the acting user's explicit confirmation",
+    evaluate: (input) => {
+      if (input.tool.category !== "WRITE") return null;
+      if (input.tool.riskLevel !== "MEDIUM" && input.tool.riskLevel !== "HIGH") return null;
+
+      // Consent is a property of the request, not something the model can assert. The
+      // caller must present `confirmed: true`, which the surface only sets after the user
+      // has been shown the price, time and any fee. Automation and system actors have no
+      // human to ask, so they are exempt and remain governed by the rules above.
+      if (input.actor.actorRole === "SYSTEM" || input.actor.actorRole === "AUTOMATION") return null;
+      if (input.confirmed === true) return null;
+
+      return {
+        decision: "REQUIRES_CONFIRMATION",
+        reason: "This action changes a booking or account and needs your confirmation",
+        ruleMatched: "write.confirmation_required",
+        riskScore: 0.4,
+      };
     },
   },
   {

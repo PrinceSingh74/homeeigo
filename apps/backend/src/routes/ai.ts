@@ -104,6 +104,15 @@ async function customerChatViaGateway(input: {
           metadata: { groundingContext: grounding.content, intent, contextSections: grounding.sections },
         },
       },
+      // Read tools only on this surface. Write tools stay off until the client can present
+      // a confirmation step and send it back — offering them here would mean the model
+      // proposing a booking the UI has no way to have the user agree to.
+      tools: {
+        enabled: true,
+        intent,
+        userRole: input.userRole,
+        allowWrites: false,
+      },
     });
     // Learn durable preferences from the turn. Deliberately not awaited into the response
     // path: a preference write must never delay or fail a customer's answer.

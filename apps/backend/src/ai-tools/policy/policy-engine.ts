@@ -5,7 +5,7 @@ import { recordToolPolicyDecision } from "../audit/tool-audit.service";
 
 export async function evaluatePolicy(input: PolicyEvaluationInput): Promise<PolicyEvaluationResult> {
   for (const rule of POLICY_RULES) {
-    const result = rule.evaluate(input);
+    const result = await rule.evaluate(input);
     if (result) {
       await recordToolPolicyDecision({
         toolId: input.tool.toolId,

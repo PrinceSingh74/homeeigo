@@ -17,6 +17,8 @@ import { aiBrainConfig } from "../../ai-brain/config";
 import { buildAiContext } from "../context/context-engine";
 import { getTemplate, renderUserPrompt } from "../templates/prompt-templates";
 import { routeModelRequest, RouterDeadlineError, RouterExhaustedError } from "../router/model-router";
+import { runToolConversation } from "../../ai-tools/bridge/tool-bridge";
+import type { AiProviderType as AiProviderResponseProvider } from "@prisma/client";
 import { recordAiAudit, recordAiRequest, hashResponse } from "../audit/ai-audit.service";
 import { computeTokenCostDetailed, recordDailyCost } from "../cost/ai-cost.service";
 import prisma from "../../lib/prisma";
@@ -34,6 +36,21 @@ export type GatewayInvokeOptions = {
   actor: AiActorContext;
   endpoint: "customer" | "partner" | "admin" | "chat";
   input: unknown;
+  /**
+   * Opt-in tool use for this request.
+   *
+   * Off by default: a surface must decide it can carry a confirmation step before write
+   * tools are offered, and callers that only want an answer should not pay for tool
+   * discovery or risk a tool round.
+   */
+  tools?: {
+    enabled: boolean;
+    intent?: import("../intent/intent-classifier").AiIntent;
+    /** Underlying application role, for tool handlers that resolve a provider record. */
+    userRole?: string;
+    /** Only true where the caller can present a confirmation to the user. */
+    allowWrites?: boolean;
+  };
 };
 
 export class AiGatewayError extends Error {
@@ -218,12 +235,53 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
   );
 
   try {
+    // Tool-enabled turns run the model↔tool conversation; everything else routes once.
+    //
+    // The bridge is driven from here rather than beside the gateway so that tool use stays
+    // behind the same single entry: the RBAC check, rate limit, prompt screening and audit
+    // above have already run, and the result below is validated and audited like any other.
+    const toolContext = options.tools;
     const routed = await Promise.race([
-      routeModelRequest({
-        systemPrompt,
-        messages: built.messages,
-        maxTokens: template.maxTokens,
-      }),
+      toolContext?.enabled
+        ? runToolConversation({
+            actor: {
+              actorId: actor.actorId,
+              actorRole: actor.actorRole,
+              userRole: toolContext.userRole ?? actor.actorRole,
+              ipAddress: actor.ipAddress,
+              traceId,
+              correlationId: requestId,
+            },
+            intent: toolContext.intent,
+            systemPrompt,
+            messages: built.messages,
+            maxTokens: template.maxTokens,
+            allowWrites: toolContext.allowWrites === true,
+            // The frozen router stays the only path to a provider — the bridge never
+            // reaches an adapter itself.
+            route: (req) => routeModelRequest(req),
+          }).then((r) => ({
+            content: r.content,
+            provider: r.provider as AiProviderResponseProvider,
+            model: r.model,
+            promptTokens: r.promptTokens,
+            completionTokens: r.completionTokens,
+            cachedTokens: 0,
+            latencyMs: 0,
+            fallbackUsed: false,
+            fallbackDepth: 0,
+            attempts: [],
+            // The bridge's final turn is prose by construction, so there is no provider
+            // stop reason to carry; the tool trace below is the meaningful outcome.
+            finishReason: undefined as string | undefined,
+            toolCalls: r.toolCalls,
+            loopLimitHit: r.loopLimitHit,
+          }))
+        : routeModelRequest({
+            systemPrompt,
+            messages: built.messages,
+            maxTokens: template.maxTokens,
+          }),
       // Outer bound only. The router enforces the shared per-request deadline; this race
       // is the backstop for anything that could hang outside the router's control.
       new Promise<never>((_, reject) =>

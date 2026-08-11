@@ -5,7 +5,7 @@ import { aiToolsConfig } from "../config";
 import type { ToolExecuteInput, ToolExecuteResult } from "../types";
 import { getTool } from "../registry/tool-registry";
 import { evaluatePolicy } from "../policy/policy-engine";
-import { createApprovalRequest, getApprovalById } from "../approval/approval-engine";
+import { createApprovalRequest, consumeApproval } from "../approval/approval-engine";
 import {
   hashArguments,
   hashResult,
@@ -23,9 +23,36 @@ import {
   recordToolCost,
   recordToolTimeout,
   recordToolRetry,
+  recordToolApprovalRejected,
+  recordToolIdempotencyReplay,
+  recordToolConfirmationRequired,
+  recordToolIndeterminate,
 } from "../../lib/ai-tools-metrics";
 import { recordTimelineEntry } from "../../ai-brain/timeline/activity-timeline";
 import { aiBrainConfig } from "../../ai-brain/config";
+
+/**
+ * Best-effort human-readable target for an approval.
+ *
+ * High-risk tools carry their real arguments one level down in `payload`, so a top-level
+ * lookup finds nothing and the approver sees "not resource-bound" for an action that is in
+ * fact bound to a specific booking. Both shapes are checked.
+ */
+function resolveResourceRef(args: Record<string, unknown>): string | undefined {
+  const candidates = ["bookingId", "userId", "ticketId", "providerId", "partnerId"];
+  const nested = (args.payload && typeof args.payload === "object" && !Array.isArray(args.payload))
+    ? (args.payload as Record<string, unknown>)
+    : undefined;
+
+  for (const source of [args, nested]) {
+    if (!source) continue;
+    for (const key of candidates) {
+      const value = source[key];
+      if (typeof value === "string" && value.length > 0) return value;
+    }
+  }
+  return undefined;
+}
 
 export class ToolExecutionError extends Error {
   constructor(
@@ -97,23 +124,124 @@ export async function executeTool(input: ToolExecuteInput): Promise<ToolExecuteR
 
   recordToolRequest(input.actor.actorRole, tool.category, tool.toolId);
 
-  // Idempotency check
+  // A high-risk request with no approval stops here and raises one for a human.
+  //
+  // Only this case. An earlier version returned unconditionally, which meant an action a
+  // human had genuinely approved still could not run: the approval was created, decided
+  // and even consumed, and execution was refused anyway. That is a dead end rather than a
+  // control, and it invites the dangerous "fix" of deleting the guard outright.
+  //
+  // When an approval id IS present the request continues to the approval gate below, which
+  // verifies tool, requester, expiry and argument hash and consumes the approval atomically.
+  // Reaching this point with an id is not authorisation — that gate decides.
+  if (tool.category === "HIGH_RISK" && !input.approvalId) {
+    recordToolRequiresApproval(tool.toolId);
+
+    const pending = await createApprovalRequest({
+          toolId: tool.toolId,
+          requestedBy: input.actor.actorId,
+          requestedRole: input.actor.actorRole,
+          argumentsHash: hashArguments(input.arguments),
+          argumentsPreview: input.arguments,
+          resourceRef: resolveResourceRef(input.arguments),
+          riskScore: tool.riskLevel === "CRITICAL" ? 1 : 0.8,
+          metadata: { executionId, correlationId: input.actor.correlationId },
+        });
+
+    await recordToolExecution({
+      executionId,
+      toolId: tool.toolId,
+      actorId: input.actor.actorId,
+      actorRole: input.actor.actorRole,
+      argumentsHash: hashArguments(input.arguments),
+      policyDecision: "REQUIRES_APPROVAL",
+      status: "DENIED",
+      errorCode: "APPROVAL_REQUIRED",
+      errorMessage: "High-risk action requires human approval; AI cannot execute it",
+      durationMs: Date.now() - t0,
+      traceId: input.actor.traceId,
+      correlationId: input.actor.correlationId,
+      approvalId: pending.id,
+      idempotencyKey: input.idempotencyKey,
+      ipAddress: input.actor.ipAddress,
+    });
+    return {
+      executionId,
+      status: "DENIED",
+      policyDecision: "REQUIRES_APPROVAL",
+      durationMs: Date.now() - t0,
+      errorCode: "APPROVAL_REQUIRED",
+      errorMessage: "This action requires human approval and was not performed",
+      requiresApproval: true,
+      approvalId: pending.approvalId,
+    };
+  }
+
+  // Idempotency: replay every non-retryable state, not only SUCCESS.
+  //
+  // Returning early only for SUCCESS left the dangerous states open. A retry arriving while
+  // the first attempt was still RUNNING fell through and executed a second time — two
+  // bookings, two cancellations, two tickets. A key sitting in PENDING_APPROVAL did the
+  // same, opening a second approval request for one intent.
+  //
+  // The key must also be bound to who is using it and what for: an idempotency key is
+  // client-supplied, so without this a caller could replay someone else's key and receive
+  // their result, or suppress a legitimate action by reusing a key across tools.
   if (input.idempotencyKey) {
     const existing = await prisma.aiToolExecution.findUnique({
       where: { idempotencyKey: input.idempotencyKey },
     });
-    if (existing && existing.status === "SUCCESS") {
-      return {
-        executionId: existing.executionId,
-        status: "SUCCESS",
-        policyDecision: existing.policyDecision,
-        durationMs: existing.durationMs ?? 0,
-        result: { idempotent: true, resultHash: existing.resultHash },
-      };
+
+    if (existing) {
+      const sameIdentity =
+        existing.toolId === tool.toolId &&
+        existing.actorId === input.actor.actorId &&
+        existing.argumentsHash === hashArguments(input.arguments);
+
+      if (!sameIdentity) {
+        recordToolDenied(tool.toolId, "IDEMPOTENCY_KEY_REUSED");
+        throw new ToolExecutionError(
+          "Idempotency key already used for a different request",
+          "IDEMPOTENCY_KEY_REUSED",
+        );
+      }
+
+      // SUCCESS replays the original outcome; RUNNING and PENDING_APPROVAL report the
+      // in-flight state without starting a second execution. Only FAILED falls through,
+      // so a genuine retry after a genuine failure still works.
+      //
+      // INDETERMINATE must never fall through. Its whole meaning is "the side effect may
+      // already have happened", so re-running it is precisely the double-refund path this
+      // state exists to prevent. It is replayed like a terminal outcome, and clearing it
+      // requires reconciling downstream — not another attempt through this door.
+      if (
+        existing.status === "SUCCESS" ||
+        existing.status === "RUNNING" ||
+        existing.status === "PENDING_APPROVAL" ||
+        existing.status === "INDETERMINATE"
+      ) {
+        recordToolIdempotencyReplay(tool.toolId, existing.status);
+        return {
+          executionId: existing.executionId,
+          status: existing.status,
+          policyDecision: existing.policyDecision,
+          durationMs: existing.durationMs ?? 0,
+          approvalId: existing.approvalId ?? undefined,
+          requiresApproval: existing.status === "PENDING_APPROVAL",
+          errorCode: existing.status === "INDETERMINATE" ? "OUTCOME_UNKNOWN" : undefined,
+          errorMessage:
+            existing.status === "INDETERMINATE"
+              ? "A previous attempt with this key ended with an unknown outcome. Reconcile downstream before trying again."
+              : undefined,
+          result: { idempotent: true, resultHash: existing.resultHash },
+        };
+      }
     }
   }
 
-  const argValidation = validateToolArguments(tool, input.arguments);
+  const argValidation = validateToolArguments(tool, input.arguments, {
+    approvalPresented: Boolean(input.approvalId),
+  });
   if (!argValidation.valid) {
     recordToolDenied(tool.toolId, "validation");
     await recordToolExecution({
@@ -145,7 +273,12 @@ export async function executeTool(input: ToolExecuteInput): Promise<ToolExecuteR
     throw new ToolExecutionError("Tool circuit breaker open", "CIRCUIT_OPEN");
   }
 
-  const policy = await evaluatePolicy({ tool, actor: input.actor, arguments: input.arguments });
+  const policy = await evaluatePolicy({
+    tool,
+    actor: input.actor,
+    arguments: input.arguments,
+    confirmed: input.confirmed,
+  });
 
   if (policy.decision === "DENY") {
     recordToolDenied(tool.toolId, policy.ruleMatched ?? "policy");
@@ -176,6 +309,37 @@ export async function executeTool(input: ToolExecuteInput): Promise<ToolExecuteR
     };
   }
 
+  // Confirmation is a stop, not a failure: the caller is told what to show the user and
+  // asked to come back with `confirmed: true`. Nothing is executed and nothing is reserved.
+  if (policy.decision === "REQUIRES_CONFIRMATION") {
+    recordToolConfirmationRequired(tool.toolId);
+    await recordToolExecution({
+      executionId,
+      toolId: tool.toolId,
+      actorId: input.actor.actorId,
+      actorRole: input.actor.actorRole,
+      argumentsHash: hashArguments(input.arguments),
+      policyDecision: "REQUIRES_CONFIRMATION",
+      status: "DENIED",
+      errorCode: "CONFIRMATION_REQUIRED",
+      errorMessage: policy.reason,
+      durationMs: Date.now() - t0,
+      traceId: input.actor.traceId,
+      correlationId: input.actor.correlationId,
+      idempotencyKey: input.idempotencyKey,
+      ipAddress: input.actor.ipAddress,
+    });
+    return {
+      executionId,
+      status: "DENIED",
+      policyDecision: "REQUIRES_CONFIRMATION",
+      durationMs: Date.now() - t0,
+      errorCode: "CONFIRMATION_REQUIRED",
+      requiresConfirmation: true,
+      confirmationPrompt: policy.reason,
+    };
+  }
+
   if (policy.decision === "REQUIRES_APPROVAL" && !input.approvalId) {
     recordToolRequiresApproval(tool.toolId);
     const approval = await createApprovalRequest({
@@ -183,6 +347,8 @@ export async function executeTool(input: ToolExecuteInput): Promise<ToolExecuteR
       requestedBy: input.actor.actorId,
       requestedRole: input.actor.actorRole,
       argumentsHash: hashArguments(input.arguments),
+      argumentsPreview: input.arguments,
+      resourceRef: resolveResourceRef(input.arguments),
       riskScore: policy.riskScore ?? 0.8,
       metadata: { executionId, correlationId: input.actor.correlationId },
     });
@@ -211,16 +377,48 @@ export async function executeTool(input: ToolExecuteInput): Promise<ToolExecuteR
     };
   }
 
+  // A tool that needs approval must have one, even if the caller omitted the id: without
+  // this an approval-gated tool executes freely whenever `approvalId` is simply left out.
+  const needsApproval = policy.decision === "REQUIRES_APPROVAL" || tool.approvalRequired;
+  if (needsApproval && !input.approvalId) {
+    throw new ToolExecutionError("Approval required for this tool", "APPROVAL_REQUIRED");
+  }
+
   if (input.approvalId) {
-    const approval = await getApprovalById(input.approvalId);
-    if (!approval || approval.status !== "APPROVED") {
-      throw new ToolExecutionError("Valid approval required for this tool", "APPROVAL_REQUIRED");
-    }
-    if (approval.argumentsHash !== hashArguments(input.arguments)) {
-      throw new ToolExecutionError("Arguments mismatch with approved request", "APPROVAL_TAMPER");
+    // One-time, and bound to this tool, this actor and these exact arguments. The claim is
+    // atomic, so two executions racing the same approval yield exactly one winner.
+    const consumed = await consumeApproval({
+      approvalId: input.approvalId,
+      toolId: tool.toolId,
+      actorId: input.actor.actorId,
+      argumentsHash: hashArguments(input.arguments),
+      executionId,
+    });
+    if (!consumed.ok) {
+      recordToolApprovalRejected(tool.toolId, consumed.failure);
+      throw new ToolExecutionError(
+        "Approval is not valid for this request",
+        consumed.failure,
+      );
     }
   }
 
+  /**
+   * The key the handler must hand to the business service.
+   *
+   * Anchored on the approval when there is one, because the approval — not the arguments —
+   * is the unit of authorisation: two separately approved refunds for the same booking and
+   * amount are two distinct operations and must not collapse into one. Falling back to the
+   * caller's key preserves existing write-tool behaviour, and to the execution id so the
+   * value is never absent.
+   */
+  const derivedIdempotencyKey = input.approvalId
+    ? `ai-approval:${input.approvalId}`
+    : input.idempotencyKey ?? `ai-exec:${executionId}`;
+
+  // Only reachable once the approval gate above has passed. An earlier revision checked
+  // this first, which short-circuited every high-risk request before its bindings were
+  // ever evaluated — the gate became unreachable code. Authorization decides first.
   if (!tool.handler) {
     throw new ToolExecutionError("Tool has no execution handler", "NO_HANDLER");
   }
@@ -246,7 +444,13 @@ export async function executeTool(input: ToolExecuteInput): Promise<ToolExecuteR
   while (retryCount <= tool.maxRetries) {
     try {
       const result = await withTimeout(
-        tool.handler({ actor: input.actor, arguments: input.arguments }),
+        tool.handler({
+          actor: input.actor,
+          arguments: input.arguments,
+          executionId,
+          approvalId: input.approvalId,
+          idempotencyKey: derivedIdempotencyKey,
+        }),
         tool.timeoutMs,
       );
       const durationMs = Date.now() - t0;
@@ -305,24 +509,48 @@ export async function executeTool(input: ToolExecuteInput): Promise<ToolExecuteR
   }
 
   const durationMs = Date.now() - t0;
-  const errorCode = lastError instanceof ToolExecutionError ? lastError.code : "EXECUTION_FAILED";
+  const rawErrorCode = lastError instanceof ToolExecutionError ? lastError.code : "EXECUTION_FAILED";
   recordCircuitFailure(tool.toolId);
+
+  /**
+   * A side-effecting call that timed out has an UNKNOWN outcome, not a failed one.
+   *
+   * The handler was already in flight when the clock ran out, so the downstream system may
+   * have applied the change and simply not answered in time. Recording that as FAILED is
+   * how double refunds happen: an operator reads "failed", approves again, and the second
+   * attempt lands next to a first one that also succeeded.
+   *
+   * Reads are exempt — re-reading is free, and a timed-out read genuinely returned nothing.
+   */
+  const outcomeUnknown = rawErrorCode === "TIMEOUT" && tool.category !== "READ";
+  const errorCode = outcomeUnknown ? "OUTCOME_UNKNOWN" : rawErrorCode;
+  const terminalStatus = outcomeUnknown
+    ? ("INDETERMINATE" as const)
+    : rawErrorCode === "TIMEOUT"
+      ? ("TIMEOUT" as const)
+      : ("FAILED" as const);
+
   recordToolFailure(tool.category, errorCode);
+  if (outcomeUnknown) recordToolIndeterminate(tool.toolId);
+
+  const errorMessage = outcomeUnknown
+    ? "The action timed out after it had started. It may or may not have taken effect — reconcile before retrying."
+    : lastError?.message;
 
   await updateToolExecution(executionId, {
-    status: errorCode === "TIMEOUT" ? "TIMEOUT" : "FAILED",
+    status: terminalStatus,
     errorCode,
-    errorMessage: lastError?.message,
+    errorMessage,
     durationMs,
     retryCount,
   });
 
   return {
     executionId,
-    status: errorCode === "TIMEOUT" ? "TIMEOUT" : "FAILED",
+    status: terminalStatus,
     policyDecision: policy.decision,
     errorCode,
-    errorMessage: lastError?.message,
+    errorMessage,
     durationMs,
   };
 }

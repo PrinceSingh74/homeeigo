@@ -55,6 +55,13 @@ export type ToolExecuteInput = {
   actor: ToolActorContext;
   idempotencyKey?: string;
   approvalId?: string;
+  /**
+   * The acting user has seen the consequences and agreed.
+   *
+   * Set by the surface after showing price, time and any fee — never by the model, and
+   * never inferred from conversational text like "yes". Absent means not confirmed.
+   */
+  confirmed?: boolean;
 };
 
 export type ToolExecuteResult = {
@@ -67,12 +74,18 @@ export type ToolExecuteResult = {
   durationMs: number;
   approvalId?: string;
   requiresApproval?: boolean;
+  /** Set when the action is understood but awaits the user's explicit consent. */
+  requiresConfirmation?: boolean;
+  /** What the user must be shown before confirming. Never model-authored. */
+  confirmationPrompt?: string;
 };
 
 export type PolicyEvaluationInput = {
   tool: ToolDefinition;
   actor: ToolActorContext;
   arguments: Record<string, unknown>;
+  /** Whether the acting user has already confirmed this exact action. */
+  confirmed?: boolean;
 };
 
 export type PolicyEvaluationResult = {
@@ -91,6 +104,10 @@ export type ApprovalRequestInput = {
   approvalMode?: AiToolApprovalMode;
   requiredApprovers?: number;
   metadata?: Record<string, unknown>;
+  /** Redacted arguments for human review. Never consulted when validating an approval. */
+  argumentsPreview?: Record<string, unknown>;
+  /** Human-readable target, e.g. a booking id, so the approver sees what is affected. */
+  resourceRef?: string;
 };
 
 export type ApprovalDecisionInput = {
@@ -103,6 +120,26 @@ export type ApprovalDecisionInput = {
 export type ToolHandlerContext = {
   actor: ToolActorContext;
   arguments: Record<string, unknown>;
+  /** This execution's id. Present on every call; joins the handler to the tool audit row. */
+  executionId: string;
+  /** The approval that authorised this call, when one was required. */
+  approvalId?: string;
+  /**
+   * Server-derived idempotency key the handler MUST pass to the business service.
+   *
+   * Derived, never taken from the caller, and never invented by the handler. Two problems
+   * it solves at once:
+   *
+   * 1. A handler left to build its own key from the arguments would collide across two
+   *    *separately approved* actions that happen to look identical — a second refund for
+   *    the same booking and amount would silently replay the first, so a human approval
+   *    would quietly do nothing.
+   * 2. The key embeds the approval or execution id, so the resulting financial record
+   *    (refundRequest, journal entry) can be joined back to the AI action that caused it.
+   *    Without that, "which approved action moved this money" is unanswerable after an
+   *    incident.
+   */
+  idempotencyKey: string;
 };
 
 export type ToolHandler = (ctx: ToolHandlerContext) => Promise<unknown>;

@@ -1,3 +1,4 @@
+import type { AiToolStatus } from "@prisma/client";
 import type { ToolRegistryEntry } from "../types";
 
 /** Built-in enterprise tool catalog — synced to ai_tool_registry on seed. */
@@ -1014,20 +1015,28 @@ export const TOOL_CATALOG: Omit<ToolRegistryEntry, "handler">[] = [
   // ── High Risk Tools (approval-only, AI never executes directly) ──
   ...([
     ["high_risk.finance.refund", "Refund", "Process payment refund", "finance.service.refund"],
-    ["high_risk.finance.walletAdjustment", "Wallet Adjustment", "Adjust customer wallet balance", "wallet.service.adjust"],
-    ["high_risk.finance.settlement", "Settlement", "Trigger settlement run", "settlement.service.sync"],
+    // Wallet adjustment already has its OWN maker-checker chain in
+    // financialAdjustmentService (create → approve → execute). A future handler must call
+    // `execute` and must not bypass that chain — the AI approval is a second gate, not a
+    // replacement for it.
+    ["high_risk.finance.walletAdjustment", "Wallet Adjustment", "Adjust customer wallet balance", "financialAdjustment.service.execute"],
+    ["high_risk.finance.settlement", "Settlement", "Trigger settlement run", "settlementSync.service.runSync"],
     ["high_risk.finance.payout", "Payout", "Process partner payout", "settlement.service.payout"],
     ["high_risk.finance.ledgerEntry", "Ledger Entry", "Manual ledger entry", "finance.service.ledger"],
     ["high_risk.finance.financeApproval", "Finance Approval", "Approve financial adjustment", "finance.service.approve"],
     ["high_risk.compliance.accountFreeze", "Account Freeze", "Freeze user account", "financialRisk.service.applyHold"],
-    ["high_risk.compliance.partnerSuspend", "Partner Suspend", "Suspend partner account", "admin.service.suspendProvider"],
+    // No such service exists. `admin.service` offers banUser and verifyProvider, but nothing
+    // that suspends a provider. Registered but INACTIVE so the capability stays visible and
+    // governed while being honest that it cannot run — rather than advertising a mapping a
+    // handler author would follow into a dead end.
+    ["high_risk.compliance.partnerSuspend", "Partner Suspend", "Suspend partner account", "admin.service.suspendProvider", "INACTIVE"],
     ["high_risk.compliance.customerBan", "Customer Ban", "Ban customer account", "admin.service.banUser"],
     ["high_risk.security.roleEscalation", "Role Escalation", "Escalate user role privileges", "rbac.service.escalate"],
     ["high_risk.platform.featureFlagChange", "Feature Flag Change", "Modify feature flag", "featureFlag.service.update"],
     ["high_risk.platform.secrets", "Secrets", "Access or rotate secrets", "secrets.service.rotate"],
     ["high_risk.platform.configuration", "Configuration", "Modify platform configuration", "financeConfig.service.update"],
     ["high_risk.platform.infrastructure", "Infrastructure", "Infrastructure change", "ops.service.infrastructure"],
-  ] as const).map(([toolId, name, description, serviceMapping]) => ({
+  ] as const).map(([toolId, name, description, serviceMapping, status]) => ({
     toolId,
     name,
     description,
@@ -1048,7 +1057,7 @@ export const TOOL_CATALOG: Omit<ToolRegistryEntry, "handler">[] = [
     metricsKey: toolId.split(".").pop(),
     costEstimateUsd: 0.01,
     owner: "platform-security",
-    status: "ACTIVE" as const,
+    status: (status ?? "ACTIVE") as AiToolStatus,
   })),
 ];
 

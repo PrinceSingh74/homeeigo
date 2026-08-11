@@ -91,25 +91,21 @@ export default function AiBrainConsolePage() {
               label="Total AI Requests (7d)"
               value={formatNumber(Number(stats?.total ?? 0))}
               icon={Activity}
-              trend={null}
             />
             <KpiCard
               label="Blocked Requests"
               value={formatNumber(Number(stats?.blocked ?? 0))}
               icon={Shield}
-              trend={null}
             />
             <KpiCard
               label="Avg Latency"
               value={`${formatNumber(Number(stats?.avgLatencyMs ?? 0))} ms`}
               icon={Clock}
-              trend={null}
             />
             <KpiCard
               label="Memory Records"
               value={formatNumber(Number(memStats?.total ?? 0))}
               icon={Database}
-              trend={null}
             />
           </div>
 

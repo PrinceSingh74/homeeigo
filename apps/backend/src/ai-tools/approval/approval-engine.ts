@@ -3,6 +3,7 @@ import prisma from "../../lib/prisma";
 import type { AiToolApprovalStatus } from "@prisma/client";
 import type { ApprovalDecisionInput, ApprovalRequestInput } from "../types";
 import { aiToolsConfig } from "../config";
+import { redactArguments } from "../security/tool-security";
 
 export async function createApprovalRequest(input: ApprovalRequestInput) {
   const approvalId = crypto.randomUUID();
@@ -15,6 +16,12 @@ export async function createApprovalRequest(input: ApprovalRequestInput) {
       requestedBy: input.requestedBy,
       requestedRole: input.requestedRole,
       argumentsHash: input.argumentsHash,
+      // Display-only, and redacted on the way in. The approver needs to see the amount and
+      // the target; they never need to see a token or a card number.
+      argumentsPreview: input.argumentsPreview
+        ? (redactArguments(input.argumentsPreview) as never)
+        : undefined,
+      resourceRef: input.resourceRef,
       riskScore: input.riskScore,
       approvalMode: input.approvalMode ?? "SINGLE",
       requiredApprovers: input.requiredApprovers ?? 1,
@@ -52,6 +59,78 @@ export async function decideApproval(input: ApprovalDecisionInput) {
       decidedAt: new Date(),
     },
   });
+}
+
+export type ApprovalConsumptionFailure =
+  | "APPROVAL_NOT_FOUND"
+  | "APPROVAL_NOT_APPROVED"
+  | "APPROVAL_EXPIRED"
+  | "APPROVAL_WRONG_TOOL"
+  | "APPROVAL_WRONG_ACTOR"
+  | "APPROVAL_TAMPER"
+  | "APPROVAL_ALREADY_CONSUMED";
+
+export type ApprovalConsumptionResult =
+  | { ok: true }
+  | { ok: false; failure: ApprovalConsumptionFailure };
+
+/**
+ * Spends an approval, once, for exactly the tool, actor and arguments it was granted for.
+ *
+ * Consumption previously checked only that the row said APPROVED and that the argument
+ * hash matched. That left an approval usable by a different actor, for a different tool,
+ * after it had expired, and an unlimited number of times. The hash was not a substitute
+ * binding either: every high-risk tool takes the same `{ payload }` shape, so identical
+ * arguments produce an identical hash across completely different actions.
+ *
+ * All bindings are re-derived here from the stored row and the authenticated actor —
+ * never from anything the caller supplied beyond the approval id itself.
+ *
+ * The final step is a conditional update on `status: "APPROVED"`. Postgres serialises the
+ * matching row, so two concurrent executions racing the same approval produce exactly one
+ * winner; the loser's update matches zero rows and is rejected.
+ */
+export async function consumeApproval(input: {
+  approvalId: string;
+  toolId: string;
+  actorId: string;
+  argumentsHash: string;
+  executionId: string;
+}): Promise<ApprovalConsumptionResult> {
+  const approval = await prisma.aiToolApproval.findUnique({
+    where: { approvalId: input.approvalId },
+  });
+
+  if (!approval) return { ok: false, failure: "APPROVAL_NOT_FOUND" };
+  if (approval.status === "CONSUMED") return { ok: false, failure: "APPROVAL_ALREADY_CONSUMED" };
+  if (approval.status !== "APPROVED") return { ok: false, failure: "APPROVAL_NOT_APPROVED" };
+
+  // Expiry is checked at the moment of use, not only when the decision was recorded — an
+  // approval granted an hour ago must not authorise an execution after it lapsed.
+  if (approval.expiresAt < new Date()) {
+    await prisma.aiToolApproval
+      .updateMany({ where: { id: approval.id, status: "APPROVED" }, data: { status: "EXPIRED" } })
+      .catch(() => undefined);
+    return { ok: false, failure: "APPROVAL_EXPIRED" };
+  }
+
+  if (approval.toolId !== input.toolId) return { ok: false, failure: "APPROVAL_WRONG_TOOL" };
+  if (approval.requestedBy !== input.actorId) return { ok: false, failure: "APPROVAL_WRONG_ACTOR" };
+  if (approval.argumentsHash !== input.argumentsHash) return { ok: false, failure: "APPROVAL_TAMPER" };
+
+  const claimed = await prisma.aiToolApproval.updateMany({
+    where: { id: approval.id, status: "APPROVED" },
+    data: {
+      status: "CONSUMED",
+      consumedAt: new Date(),
+      consumedBy: input.actorId,
+      consumedExecutionId: input.executionId,
+    },
+  });
+
+  // Zero rows means another execution won the race between the read above and this write.
+  if (claimed.count !== 1) return { ok: false, failure: "APPROVAL_ALREADY_CONSUMED" };
+  return { ok: true };
 }
 
 export async function listPendingApprovals(query: { toolId?: string; limit?: number } = {}) {

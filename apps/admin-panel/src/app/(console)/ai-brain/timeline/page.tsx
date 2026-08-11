@@ -33,10 +33,10 @@ export default function ActivityTimelinePage() {
       </header>
 
       <div className="grid gap-4 sm:grid-cols-4">
-        <KpiCard label="Total (30d)" value={formatNumber(Number(stats?.total ?? 0))} icon={Activity} trend={null} />
-        <KpiCard label="Blocked" value={formatNumber(Number(stats?.blocked ?? 0))} icon={Activity} trend={null} />
-        <KpiCard label="Fallbacks" value={formatNumber(Number(stats?.fallback ?? 0))} icon={Activity} trend={null} />
-        <KpiCard label="Cost USD" value={`$${Number(stats?.totalCostUsd ?? 0).toFixed(4)}`} icon={Activity} trend={null} />
+        <KpiCard label="Total (30d)" value={formatNumber(Number(stats?.total ?? 0))} icon={Activity} />
+        <KpiCard label="Blocked" value={formatNumber(Number(stats?.blocked ?? 0))} icon={Activity} />
+        <KpiCard label="Fallbacks" value={formatNumber(Number(stats?.fallback ?? 0))} icon={Activity} />
+        <KpiCard label="Cost USD" value={`$${Number(stats?.totalCostUsd ?? 0).toFixed(4)}`} icon={Activity} />
       </div>
 
       {timeline.isLoading ? (

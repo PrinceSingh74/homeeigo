@@ -206,6 +206,7 @@ export const HQ_SECTIONS: readonly HqSection[] = [
       { href: "/ai-brain/prompts", label: "Prompt Registry", icon: FileText },
       { href: "/ai-brain/timeline", label: "Activity Timeline", icon: Clock },
       { href: "/ai-brain/tools", label: "Enterprise Tool Center", icon: Wrench },
+      { href: "/ai-brain/approvals", label: "High-Risk Approvals", icon: ShieldAlert },
       { href: "/ai", label: "AI Systems", icon: Bot },
     ],
   },

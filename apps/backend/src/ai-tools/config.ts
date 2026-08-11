@@ -1,6 +1,16 @@
 /** Phase 5 Enterprise AI Tools configuration. */
 export const aiToolsConfig = {
   enabled: process.env.AI_TOOLS_ENABLED !== "false",
+  /**
+   * Bounds on the model↔tool conversation.
+   *
+   * Two separate caps, because they stop different failures. `maxToolRounds` stops a model
+   * that keeps asking for one more tool; `maxToolCallsPerRound` stops a single turn that
+   * requests dozens at once. Without both, a confused model burns tokens and money until a
+   * timeout, and the caller cannot tell a slow answer from a runaway one.
+   */
+  maxToolRounds: Number(process.env.AI_TOOL_MAX_ROUNDS ?? 4),
+  maxToolCallsPerRound: Number(process.env.AI_TOOL_MAX_CALLS_PER_ROUND ?? 3),
   /** When true, bypasses per-tool rate limits (certification/load testing only). */
   get certificationMode() {
     return process.env.AI_TOOL_CERTIFICATION_MODE === "true";

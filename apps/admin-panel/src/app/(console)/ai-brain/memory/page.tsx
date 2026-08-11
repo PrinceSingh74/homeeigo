@@ -29,9 +29,9 @@ export default function MemoryExplorerPage() {
       </header>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <KpiCard label="Active Memories" value={formatNumber(Number(memStats?.total ?? 0))} icon={Database} trend={null} />
-        <KpiCard label="Archived" value={formatNumber(Number(memStats?.archived ?? 0))} icon={Database} trend={null} />
-        <KpiCard label="Types" value={formatNumber(Object.keys((memStats?.byType as object) ?? {}).length)} icon={Database} trend={null} />
+        <KpiCard label="Active Memories" value={formatNumber(Number(memStats?.total ?? 0))} icon={Database} />
+        <KpiCard label="Archived" value={formatNumber(Number(memStats?.archived ?? 0))} icon={Database} />
+        <KpiCard label="Types" value={formatNumber(Object.keys((memStats?.byType as object) ?? {}).length)} icon={Database} />
       </div>
 
       {memories.isLoading ? (

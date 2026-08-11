@@ -16,6 +16,15 @@ const BLOCKED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 export function validateToolArguments(
   tool: ToolDefinition,
   args: Record<string, unknown>,
+  options?: {
+    /**
+     * The caller supplied an approval id for this request.
+     *
+     * Deliberately named "presented", not "approved" — nothing here verifies it. It only
+     * defers the blanket high-risk refusal to the approval gate, which does the real work.
+     */
+    approvalPresented?: boolean;
+  },
 ): { valid: true } | { valid: false; errors: string[] } {
   const errors: string[] = [];
 
@@ -45,7 +54,12 @@ export function validateToolArguments(
     }
   }
 
-  if (tool.category === "HIGH_RISK") {
+  // High-risk capabilities are refused outright unless the caller is presenting an
+  // approval. Presenting one is NOT authorisation — the approval is verified and atomically
+  // consumed further down the pipeline, and any failure there denies the request. This flag
+  // only decides whether the blanket refusal applies or whether the real gate gets to run;
+  // without it, an approved action could never execute no matter how it was authorised.
+  if (tool.category === "HIGH_RISK" && !options?.approvalPresented) {
     errors.push("High-risk tools cannot be executed directly by AI");
   }
 

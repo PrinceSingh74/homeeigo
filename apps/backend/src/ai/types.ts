@@ -1,6 +1,13 @@
 import type { AiGatewayRole, AiProviderType, AiRequestStatus } from "@prisma/client";
 
-export type AiMessage = { role: "user" | "assistant" | "system"; content: string };
+export type AiMessage = {
+  role: "user" | "assistant" | "system" | "tool";
+  content: string;
+  /** Set on tool messages so the provider can pair a result with its request. */
+  toolCallId?: string;
+  /** Set on assistant messages that carried tool calls, so the turn replays correctly. */
+  toolCalls?: ProviderToolCall[];
+};
 
 export type AiGatewayContext = {
   userId?: string;
@@ -21,8 +28,20 @@ export type AiGatewayInput = {
   stream?: boolean;
 };
 
+/** A tool the model asked to run. Never trusted — validated server-side before execution. */
+export type ProviderToolCall = {
+  /** Provider-assigned id, echoed back so the model can match result to request. */
+  id: string;
+  /** Provider-safe function name; maps back to a registry tool id. */
+  name: string;
+  /** Raw JSON string from the model. Parsed and schema-checked, never eval'd. */
+  argumentsJson: string;
+};
+
 export type AiProviderResponse = {
   content: string;
+  /** Present when the model requested tools instead of (or alongside) answering. */
+  toolCalls?: ProviderToolCall[];
   promptTokens: number;
   completionTokens: number;
   cachedTokens?: number;

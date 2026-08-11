@@ -4227,6 +4227,8 @@ enum AiToolStatus {
 enum AiToolPolicyDecision {
   ALLOW
   DENY
+  /// The acting user must see the consequences and agree. Not a second human.
+  REQUIRES_CONFIRMATION
   REQUIRES_APPROVAL
 }
 
@@ -4238,6 +4240,9 @@ enum AiToolExecutionStatus {
   FAILED
   DENIED
   TIMEOUT
+  /// The call may or may not have taken effect. Reconcile against the downstream system;
+  /// never retry and never re-approve on the assumption that nothing happened.
+  INDETERMINATE
   CANCELLED
 }
 
@@ -4247,6 +4252,8 @@ enum AiToolApprovalStatus {
   REJECTED
   EXPIRED
   CANCELLED
+  /// Terminal: this approval has authorised exactly one execution and cannot be reused.
+  CONSUMED
 }
 
 enum AiToolApprovalMode {
@@ -4338,6 +4345,15 @@ model AiToolApproval {
   decisionReason    String?              @map("decision_reason")
   expiresAt         DateTime             @map("expires_at")
   decidedAt         DateTime?            @map("decided_at")
+  /// Redacted copy of the arguments, for human review only. Never used for authorisation —
+  /// `argumentsHash` remains the sole binding, so altering this cannot widen an approval.
+  argumentsPreview  Json?                @map("arguments_preview")
+  /// Human-readable target (e.g. the booking id) so an approver sees what is affected.
+  resourceRef       String?              @map("resource_ref")
+  /// One-time consumption audit. Set atomically when an approval authorises an execution.
+  consumedAt        DateTime?            @map("consumed_at")
+  consumedBy        String?              @map("consumed_by")
+  consumedExecutionId String?            @map("consumed_execution_id")
   metadata          Json?
   createdAt         DateTime             @default(now()) @map("created_at")
   updatedAt         DateTime             @updatedAt @map("updated_at")

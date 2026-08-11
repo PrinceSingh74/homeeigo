@@ -1,0 +1,12 @@
+-- Phase 5 (R4) — a state for "we do not know whether the side effect happened".
+--
+-- Every terminal state so far asserts an outcome: SUCCESS says it happened, FAILED and
+-- TIMEOUT say it did not. For a side-effecting call that timed out mid-flight, neither is
+-- true — the gateway may well have moved the money and simply not answered in time.
+--
+-- Recording that as FAILED is how double refunds happen: an operator reads "failed",
+-- approves again, and the second attempt succeeds alongside a first one that also did.
+-- INDETERMINATE says the honest thing, and is the signal to reconcile rather than retry.
+--
+-- Additive: existing rows keep their status.
+ALTER TYPE "AiToolExecutionStatus" ADD VALUE IF NOT EXISTS 'INDETERMINATE';
