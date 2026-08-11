@@ -4,7 +4,9 @@ import {
   recordMemoryRead,
   recordMemoryWrite,
   recordMemoryArchive,
+  recordCrossOwnerMemoryRead,
 } from "../../lib/ai-brain-metrics";
+import { screenMemoryContent } from "./memory-safety";
 import type { MemorySearchQuery, MemoryStoreInput } from "../types";
 import { MEMORY_DEFAULTS } from "../types";
 
@@ -34,7 +36,25 @@ function resolveTtl(memoryType: AiMemoryType, ttlSeconds?: number): number {
   return map[memoryType] ?? MEMORY_DEFAULTS.sessionTtlSeconds;
 }
 
+/** Raised when memory content is refused. Callers decide whether to surface or swallow it. */
+export class MemoryRejectedError extends Error {
+  constructor(public readonly reason: string) {
+    super(`memory_rejected:${reason}`);
+    this.name = "MemoryRejectedError";
+  }
+}
+
 export async function storeMemory(input: MemoryStoreInput): Promise<MemoryRecord> {
+  // Screen before anything is persisted. Memory is replayed into every later prompt, so a
+  // payload that lands here outlives the request that carried it.
+  const verdict = screenMemoryContent({
+    summary: input.summary,
+    content: input.content,
+    stage: "write",
+    memoryType: input.memoryType,
+  });
+  if (!verdict.safe) throw new MemoryRejectedError(verdict.reason);
+
   const ttl = resolveTtl(input.memoryType, input.ttlSeconds);
   const expiresAt = new Date(Date.now() + ttl * 1000);
 
@@ -104,9 +124,19 @@ export async function retrieveMemory(
 }
 
 export async function retrieveMemories(query: MemorySearchQuery): Promise<MemoryRecord[]> {
+  // An absent owner used to drop the filter entirely, returning every user's memories.
+  // Scope is now mandatory in effect: no owner means the shared/global scope (`null`),
+  // never "all owners". Reading across users requires `allOwners`, which only an
+  // authorised admin surface may pass, and which is recorded.
+  const ownerScope = query.allOwners
+    ? {}
+    : { ownerId: query.ownerId ?? null };
+
+  if (query.allOwners) recordCrossOwnerMemoryRead(query.memoryType ?? "SEMANTIC");
+
   const records = await prisma.aiMemory.findMany({
     where: {
-      ...(query.ownerId ? { ownerId: query.ownerId } : {}),
+      ...ownerScope,
       ...(query.tenantId ? { tenantId: query.tenantId } : {}),
       ...(query.memoryType ? { memoryType: query.memoryType } : {}),
       ...(query.includeArchived ? {} : { isArchived: false }),

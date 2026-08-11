@@ -1,22 +1,11 @@
 import { Elysia, t } from "elysia";
 import { authPlugin } from "../plugins/auth.plugin";
-import { invokeAiGateway, getAiHealth, AiGatewayError } from "../ai";
+import { invokeAiGateway, getAiHealth, AiGatewayError, AI_ERROR_STATUS } from "../ai";
 import { mapUserRoleToAiRole } from "../ai/security/authorization";
 import { getUsageSummary } from "../ai/cost/ai-cost.service";
+import { clientIp, traceId } from "../lib/request-identity";
 import prisma from "../lib/prisma";
 import type { AiGatewayRole } from "@prisma/client";
-
-function clientIp(request: Request): string | undefined {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-    ?? request.headers.get("x-real-ip")
-    ?? undefined;
-}
-
-function traceId(request: Request): string | undefined {
-  return request.headers.get("traceparent")?.split("-")[1]
-    ?? request.headers.get("x-request-id")
-    ?? undefined;
-}
 
 async function handleGatewayRequest(
   request: Request,
@@ -46,14 +35,7 @@ async function handleGatewayRequest(
     return { success: true, data: result };
   } catch (err) {
     if (err instanceof AiGatewayError) {
-      const statusMap: Record<string, number> = {
-        FORBIDDEN: 403,
-        RATE_LIMITED: 429,
-        PROMPT_BLOCKED: 400,
-        VALIDATION_ERROR: 400,
-        TIMEOUT: 504,
-      };
-      set.status = statusMap[err.code] ?? 502;
+      set.status = AI_ERROR_STATUS[err.code] ?? 502;
       return { success: false, error: err.message, code: err.code };
     }
     set.status = 502;

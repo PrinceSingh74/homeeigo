@@ -3907,6 +3907,8 @@ enum AiGatewayRole {
 enum AiProviderType {
   GEMINI
   OPENAI
+  ANTHROPIC
+  GROQ
 }
 
 enum AiRequestStatus {
@@ -3923,6 +3925,8 @@ model AiGatewayRequest {
   actorId          String?         @map("actor_id")
   actorRole        AiGatewayRole   @map("actor_role")
   templateId       String?         @map("template_id")
+  /// Prompt-registry version that served this request. Null = unknown / pre-Phase-4.
+  promptVersion    Int?            @map("prompt_version")
   promptHash       String          @map("prompt_hash")
   responseHash     String?         @map("response_hash")
   provider         AiProviderType?

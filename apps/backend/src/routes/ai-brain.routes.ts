@@ -403,7 +403,7 @@ export const aiBrainRoutes = new Elysia({ prefix: "/api/ai" })
   })
 
   // ── Conversation Memory ──
-  .post("/conversations/:id/summarize", async ({ requireAuth, params, set }) => {
+  .post("/brain/conversations/:id/summarize", async ({ requireAuth, params, set }) => {
     const { role } = requireAuth();
     const denied = requireAdmin(role, set);
     if (denied) return denied;
@@ -412,7 +412,7 @@ export const aiBrainRoutes = new Elysia({ prefix: "/api/ai" })
     return { success: true, data: { summary } };
   })
 
-  .post("/conversations/:id/pin", async ({ requireAuth, params, body, set }) => {
+  .post("/brain/conversations/:id/pin", async ({ requireAuth, params, body, set }) => {
     const { role } = requireAuth();
     const denied = requireAdmin(role, set);
     if (denied) return denied;
@@ -423,7 +423,7 @@ export const aiBrainRoutes = new Elysia({ prefix: "/api/ai" })
     body: t.Object({ fact: t.String() }),
   })
 
-  .get("/conversations/recall", async ({ requireAuth, query, set }) => {
+  .get("/brain/conversations/recall", async ({ requireAuth, query, set }) => {
     const { userId, role } = requireAuth();
     const denied = requireAdmin(role, set);
     if (denied) return denied;
@@ -432,7 +432,7 @@ export const aiBrainRoutes = new Elysia({ prefix: "/api/ai" })
     return { success: true, data: results };
   })
 
-  .get("/conversations", async ({ requireAuth, query, set }) => {
+  .get("/brain/conversations", async ({ requireAuth, query, set }) => {
     const { userId, role } = requireAuth();
     const denied = requireAdmin(role, set);
     if (denied) return denied;
@@ -464,7 +464,7 @@ export const aiBrainRoutes = new Elysia({ prefix: "/api/ai" })
     };
   })
 
-  .get("/conversations/:id", async ({ requireAuth, params, set }) => {
+  .get("/brain/conversations/:id", async ({ requireAuth, params, set }) => {
     const { userId, role } = requireAuth();
     const denied = requireAdmin(role, set);
     if (denied) return denied;

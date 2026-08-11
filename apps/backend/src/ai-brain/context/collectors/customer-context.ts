@@ -55,7 +55,10 @@ export async function collectCustomerContext(customerId: string): Promise<Record
       prisma.address.findMany({
         where: { userId: customerId },
         take: 3,
-        select: { label: true, city: true, pincode: true },
+        // `zipCode` is the column that exists; `pincode` was never a field on Address, so
+        // this query threw and degraded every customer AI turn to the deterministic
+        // fallback. Street lines stay out — city and postcode are all the assistant needs.
+        select: { label: true, city: true, zipCode: true },
       }),
       prisma.supportTicket.count({
         where: { userId: customerId, status: { in: ["OPEN", "IN_PROGRESS"] } },

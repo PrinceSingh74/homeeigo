@@ -5,6 +5,7 @@ import type { AiMessage } from "../../ai/types";
 import { buildAiContext } from "../../ai/context/context-engine";
 import { buildBusinessObjectSection, buildPermissionsSection } from "./role-context";
 import { retrieveMemories, recallMemoriesForActor } from "../memory/memory-engine";
+import { screenMemoryContent, fenceMemoryForPrompt } from "../memory/memory-safety";
 import { loadConversationMemory } from "../memory/conversation-memory";
 import { getCachedContext, setCachedContext } from "./context-cache";
 import { saveContextSnapshot } from "./context-snapshot";
@@ -81,9 +82,24 @@ async function buildMemorySection(req: ContextBuildRequest): Promise<ContextSect
   const merged = [...recalled, ...memories.filter((m) => !recalled.some((r) => r.id === m.id))].slice(0, 12);
   if (merged.length === 0) return null;
 
-  const content = merged
-    .map((m) => `[${m.memoryType}] ${m.summary ?? JSON.stringify(m.content)}`)
-    .join("\n");
+  // Screen again on the way out. Rows written before screening existed — or by any future
+  // path that bypasses storeMemory — must not reach the prompt.
+  const safe = merged.filter(
+    (m) =>
+      screenMemoryContent({
+        summary: m.summary,
+        content: m.content,
+        stage: "read",
+        memoryType: m.memoryType,
+      }).safe,
+  );
+  if (safe.length === 0) return null;
+
+  // Fenced as reported data: recalled text is user-authored and must never read as an
+  // instruction sitting in the system context.
+  const content = fenceMemoryForPrompt(
+    safe.map((m) => `[${m.memoryType}] ${m.summary ?? JSON.stringify(m.content)}`),
+  );
   return { name: "memory", content, priority: 70, tokenEstimate: estimateTokens(content) };
 }
 

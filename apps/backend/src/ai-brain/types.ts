@@ -51,6 +51,13 @@ export type MemoryStoreInput = {
 
 export type MemorySearchQuery = {
   ownerId?: string;
+  /**
+   * Read across every owner. Admin surfaces only, and recorded when used.
+   *
+   * Without this flag an absent `ownerId` means the shared/global scope, not "everyone" —
+   * a forgotten owner must never widen a query into other users' memories.
+   */
+  allOwners?: boolean;
   tenantId?: string;
   memoryType?: AiMemoryType;
   query?: string;

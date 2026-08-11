@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import type { AiGatewayRole, AiRequestStatus } from "@prisma/client";
+import type { AiGatewayRole, AiProviderType, AiRequestStatus } from "@prisma/client";
 import { aiConfig } from "../config";
 import type { AiActorContext, AiGatewayInput, AiGatewayResult } from "../types";
 import { AI_TIMEOUT_MS } from "../types";
@@ -16,16 +16,18 @@ import { persistGatewayTurn } from "../../ai-brain/gateway/conversation-bridge";
 import { aiBrainConfig } from "../../ai-brain/config";
 import { buildAiContext } from "../context/context-engine";
 import { getTemplate, renderUserPrompt } from "../templates/prompt-templates";
-import { routeModelRequest } from "../router/model-router";
+import { routeModelRequest, RouterDeadlineError, RouterExhaustedError } from "../router/model-router";
 import { recordAiAudit, recordAiRequest, hashResponse } from "../audit/ai-audit.service";
-import { computeTokenCost, recordDailyCost } from "../cost/ai-cost.service";
+import { computeTokenCostDetailed, recordDailyCost } from "../cost/ai-cost.service";
 import prisma from "../../lib/prisma";
+import { logger } from "../../lib/logger";
 import {
   recordAiRequest as recordAiMetric,
   recordAiSuccess,
   recordAiFailure,
   recordAiLatency,
   recordAiCost,
+  recordAiTokens,
 } from "../../lib/ai-metrics";
 
 export type GatewayInvokeOptions = {
@@ -39,11 +41,29 @@ export class AiGatewayError extends Error {
     message: string,
     public code: string,
     public status: AiRequestStatus = "FAILED",
+    options?: { cause?: unknown },
   ) {
-    super(message);
+    super(message, options);
     this.name = "AiGatewayError";
   }
 }
+
+/**
+ * Gateway error code → HTTP status, defined once.
+ *
+ * Every route that fronts the gateway maps errors through this table so the same
+ * condition cannot surface as 429 on one entry point and 502 on another. Anything not
+ * listed is an upstream provider fault and becomes 502.
+ */
+export const AI_ERROR_STATUS: Record<string, number> = {
+  FORBIDDEN: 403,
+  RATE_LIMITED: 429,
+  PROMPT_BLOCKED: 400,
+  VALIDATION_ERROR: 400,
+  OUTPUT_VALIDATION_FAILED: 502,
+  TIMEOUT: 504,
+  GATEWAY_DISABLED: 503,
+};
 
 async function recordBlockedTimeline(params: {
   requestId: string;
@@ -204,8 +224,13 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
         messages: built.messages,
         maxTokens: template.maxTokens,
       }),
+      // Outer bound only. The router enforces the shared per-request deadline; this race
+      // is the backstop for anything that could hang outside the router's control.
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new AiGatewayError("Gateway timeout", "TIMEOUT", "TIMEOUT")), AI_TIMEOUT_MS.gateway),
+        setTimeout(
+          () => reject(new AiGatewayError("Gateway timeout", "TIMEOUT", "TIMEOUT")),
+          Math.max(AI_TIMEOUT_MS.gateway, aiConfig.totalDeadlineMs + 2_000),
+        ),
       ),
     ]);
 
@@ -224,15 +249,37 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
       throw new AiGatewayError(output.reason ?? "Output validation failed", "OUTPUT_VALIDATION_FAILED", "FAILED");
     }
 
-    const costUsd = computeTokenCost(
+    const { costUsd, costStatus } = computeTokenCostDetailed(
       routed.provider,
       routed.promptTokens,
       routed.completionTokens,
       routed.cachedTokens,
     );
+    recordAiTokens(routed.provider, routed.promptTokens, routed.completionTokens);
     const latencyMs = Date.now() - t0;
     const status: AiRequestStatus = routed.fallbackUsed ? "FALLBACK" : "SUCCESS";
     const responseHash = hashResponse(output.content);
+
+    // One line per provider attempt. Content never appears here — provider, outcome,
+    // taxonomy code and timing only — so the trail is safe to keep verbatim.
+    if (routed.attempts.length > 1) {
+      logger.info("ai_provider_failover", {
+        category: "APPLICATION",
+        requestId,
+        traceId,
+        fallbackDepth: routed.fallbackDepth,
+        selectedProvider: routed.provider,
+        attempts: routed.attempts.map((a) => ({
+          attemptId: a.attemptId,
+          provider: a.provider,
+          outcome: a.outcome,
+          errorCode: a.errorCode,
+          httpStatus: a.httpStatus,
+          latencyMs: a.latencyMs,
+          cooldownMs: a.cooldownMs,
+        })),
+      });
+    }
 
     let conversationId = input.conversationId;
     if (aiBrainConfig.enabled) {
@@ -251,6 +298,7 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
         actorId: actor.actorId,
         actorRole: actor.actorRole,
         templateId: template.templateId,
+        promptVersion: composed?.promptVersion,
         promptHash: security.promptHash,
         responseHash,
         provider: routed.provider,
@@ -325,15 +373,46 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
       completionTokens: routed.completionTokens,
       cachedTokens: routed.cachedTokens ?? 0,
       costUsd,
+      costStatus,
       fallbackUsed: routed.fallbackUsed,
+      fallbackDepth: routed.fallbackDepth,
+      finishReason: routed.finishReason,
       templateId: template.templateId,
       conversationId,
     };
   } catch (err) {
     const latencyMs = Date.now() - t0;
-    const code = err instanceof AiGatewayError ? err.code : "PROVIDER_ERROR";
+    // Router outcomes carry their own meaning: a spent deadline is a timeout, not a
+    // provider fault, and must not be reported as one.
+    const code = err instanceof AiGatewayError
+      ? err.code
+      : err instanceof RouterDeadlineError
+        ? "TIMEOUT"
+        : "PROVIDER_ERROR";
     const status: AiRequestStatus = code === "TIMEOUT" ? "TIMEOUT" : "FAILED";
     recordAiFailure(actor.actorRole, code);
+
+    // The per-attempt trail is the only record of what the chain actually tried before
+    // giving up. It carries no prompt content.
+    const routerAttempts =
+      err instanceof RouterExhaustedError || err instanceof RouterDeadlineError ? err.attempts : [];
+    if (routerAttempts.length > 0) {
+      logger.warn("ai_chain_exhausted", {
+        category: "APPLICATION",
+        requestId,
+        traceId,
+        code,
+        attempts: routerAttempts.map((a) => ({
+          attemptId: a.attemptId,
+          provider: a.provider,
+          outcome: a.outcome,
+          errorCode: a.errorCode,
+          httpStatus: a.httpStatus,
+          latencyMs: a.latencyMs,
+          cooldownMs: a.cooldownMs,
+        })),
+      });
+    }
 
     await Promise.all([
       recordAiRequest({
@@ -373,26 +452,77 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
         : Promise.resolve(),
     ]).catch(() => undefined);
 
-    throw err;
+    // Normalise before leaving the gateway. Rethrowing the raw error leaked the provider's
+    // own response body to callers and logs — for an OpenAI auth failure that body contains
+    // a partially-masked API key and provider URLs. Callers also branch on
+    // `instanceof AiGatewayError`, so an unwrapped error silently bypassed their handling.
+    // The original is kept as `cause` for server-side diagnostics only.
+    if (err instanceof AiGatewayError) throw err;
+    throw new AiGatewayError("Upstream AI provider failed", "PROVIDER_ERROR", status, {
+      cause: err,
+    });
   }
 }
 
+type ProviderHealth = {
+  configured: boolean;
+  enabled: boolean;
+  health: string;
+  circuit: string;
+  cooldownRemainingMs: number;
+};
+
+/**
+ * Reports configuration and health *status* only — never a credential, a prefix, or a
+ * length. `configured` is a presence boolean derived from the environment.
+ */
 export async function getAiHealth(): Promise<{
   status: "ok" | "degraded" | "down";
   gateway: boolean;
-  gemini: { configured: boolean; circuit: string };
-  openai: { configured: boolean; circuit: string };
+  primary: string;
+  providerOrder: string[];
+  /** Whole-request budget shared by every failover attempt. */
+  totalDeadlineMs: number;
+  providers: Record<string, ProviderHealth>;
+  anthropic: ProviderHealth;
+  gemini: ProviderHealth;
+  groq: ProviderHealth;
+  openai: ProviderHealth;
 }> {
-  const { getCircuitStates } = await import("../router/model-router");
-  const { isGeminiConfigured, isOpenAiConfigured } = await import("../config");
-  const circuits = getCircuitStates();
-  const geminiOk = isGeminiConfigured() && circuits.GEMINI !== "open";
-  const openaiOk = isOpenAiConfigured() || aiConfig.dryRun;
-  const status = geminiOk || openaiOk ? (geminiOk ? "ok" : "degraded") : "down";
+  const { describeProviderChain } = await import("../router/model-router");
+  const { providerHealth, isProviderEnabled, cooldownRemainingMs, providerBreaker } = await import(
+    "../router/provider-registry"
+  );
+  const { isProviderConfigured } = await import("../config");
+
+  const describe = (p: AiProviderType): ProviderHealth => ({
+    configured: isProviderConfigured(p),
+    enabled: isProviderEnabled(p),
+    health: providerHealth(p),
+    circuit: providerBreaker(p).getState(),
+    cooldownRemainingMs: cooldownRemainingMs(p),
+  });
+
+  const chain = describeProviderChain();
+  // Healthy only when the *preferred* provider can serve; if merely a fallback can, the
+  // gateway still answers but is running below its intended configuration.
+  const servable = (d: { health: string }) => d.health === "AVAILABLE" || d.health === "DEGRADED";
+  const primaryOk = chain.length > 0 && servable(chain[0]!);
+  const anyOk = chain.some(servable);
+
+  const providers: Record<string, ProviderHealth> = {};
+  for (const entry of chain) providers[entry.provider] = describe(entry.provider);
+
   return {
-    status,
+    status: primaryOk ? "ok" : anyOk ? "degraded" : "down",
     gateway: aiConfig.enabled,
-    gemini: { configured: isGeminiConfigured(), circuit: circuits.GEMINI },
-    openai: { configured: isOpenAiConfigured(), circuit: circuits.OPENAI },
+    primary: chain[0]?.provider ?? "none",
+    providerOrder: chain.map((c) => c.provider),
+    totalDeadlineMs: aiConfig.totalDeadlineMs,
+    providers,
+    anthropic: describe("ANTHROPIC"),
+    gemini: describe("GEMINI"),
+    groq: describe("GROQ"),
+    openai: describe("OPENAI"),
   };
 }

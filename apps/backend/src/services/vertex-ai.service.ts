@@ -101,34 +101,15 @@ export async function predictEta(f: {
   }
 }
 
-/**
- * Vertex AI Gemini geo-intelligence narrative. Given current demand/supply/fraud
- * signals, asks Gemini (asia-south1) for an actionable ops recommendation.
- * Uses the @google-cloud/aiplatform SDK with ADC. Returns null on any failure so it
- * never blocks an operational path.
- */
-export async function geoIntelligenceNarrative(context: string): Promise<string | null> {
-  try {
-    // Data + BQML stay in asia-south1 (residency); Gemini inference runs where the model is
-    // GA (default us-central1) — both env-overridable. No customer PII is sent, only aggregates.
-    const vertexLoc = process.env.VERTEX_LOCATION ?? "us-central1";
-    const modelId = process.env.VERTEX_MODEL ?? "gemini-2.0-flash";
-    const { v1beta1 } = await import("@google-cloud/aiplatform");
-    const client = new v1beta1.PredictionServiceClient({ apiEndpoint: `${vertexLoc}-aiplatform.googleapis.com` });
-    const model = `projects/${PROJECT_ID}/locations/${vertexLoc}/publishers/google/models/${modelId}`;
-    const prompt =
-      "You are HOMIGO's geo-operations strategist for India NCR. Given the live signals below, give 3 concise, " +
-      "actionable recommendations (provider rebalancing, surge, fraud action). Be specific.\n\n" + context;
-    // generateContent over the Vertex SDK.
-    const [resp] = await (client as unknown as {
-      generateContent: (req: unknown) => Promise<[{ candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }]>;
-    }).generateContent({
-      model,
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    });
-    return resp?.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
-  } catch (err) {
-    console.error("[vertex] geoIntelligenceNarrative failed:", (err as Error)?.message);
-    return null;
-  }
-}
+// `geoIntelligenceNarrative` was removed here (Phase 3, ADR-019).
+//
+// It called Vertex `generateContent` directly, so it was a second path to a model
+// provider sitting outside the AI Gateway — no auth, RBAC, prompt-injection screening,
+// rate limiting, audit or cost accounting. It had no callers anywhere in the repository,
+// verified before deletion, so nothing regressed.
+//
+// If an operations narrative is wanted again, route it through `invokeAiGateway` with an
+// ADMIN actor. Do not reintroduce a direct provider call: the single-entry rule is what
+// makes the platform's AI controls enforceable.
+//
+// Numeric prediction below (BigQuery ML) is NOT an LLM path and legitimately stays here.

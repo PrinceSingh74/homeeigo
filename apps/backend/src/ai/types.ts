@@ -29,9 +29,25 @@ export type AiProviderResponse = {
   provider: AiProviderType;
   model: string;
   latencyMs: number;
+  /** Provider's own stop reason, normalised to a string. Undefined when not reported. */
+  finishReason?: string;
+};
+
+/** One attempt against one provider — the unit the router audits and returns. */
+export type ProviderAttempt = {
+  attemptId: string;
+  provider: AiProviderType;
+  outcome: "SUCCESS" | "FAILURE";
+  errorCode?: string;
+  httpStatus?: number;
+  latencyMs: number;
+  cooldownMs?: number;
 };
 
 export type AiGatewayResult = {
+  fallbackDepth: number;
+  finishReason?: string;
+  costStatus: "COMPUTED" | "UNKNOWN";
   requestId: string;
   content: string;
   provider: AiProviderType;
@@ -60,7 +76,9 @@ export type AiAuthorizationResult =
   | { allowed: false; reason: string };
 
 export const AI_TIMEOUT_MS = {
+  anthropic: 20_000,
   gemini: 20_000,
+  groq: 20_000,
   openai: 20_000,
   gateway: 25_000,
 } as const;

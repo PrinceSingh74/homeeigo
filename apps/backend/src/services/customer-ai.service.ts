@@ -74,6 +74,15 @@ function buildReply(userText: string, firstName?: string): AiChatResponse {
 }
 
 export class CustomerAiService {
+  /**
+   * Deterministic keyword reply.
+   *
+   * This is NOT the primary assistant. `/api/ai/chat` routes through the AI Gateway
+   * first; this runs only in the documented degraded mode (gateway disabled, no provider
+   * credentials, or both providers exhausted after bounded retry + fallback). The route
+   * labels such responses `mode: "deterministic_fallback"` so a canned answer is never
+   * presented as model output.
+   */
   chat(input: { message: string; history?: AiChatMessageInput[]; firstName?: string }) {
     const trimmed = input.message.trim();
     if (!trimmed) {
@@ -83,6 +92,19 @@ export class CustomerAiService {
       } satisfies AiChatResponse;
     }
     return buildReply(trimmed, input.firstName);
+  }
+
+  /**
+   * Actionable affordances for a message, independent of who wrote the prose.
+   *
+   * The quick actions and the service deep-link are booking-critical and must stay
+   * deterministic — an LLM must not be able to invent a service that is not in the
+   * catalogue, or drop the booking CTA. So the model supplies the conversational text
+   * and this supplies the actions, in both modes.
+   */
+  affordances(message: string): Pick<AiChatResponse, "quickActions" | "suggestedServiceId"> {
+    const { quickActions, suggestedServiceId } = buildReply(message.trim());
+    return { quickActions, suggestedServiceId };
   }
 }
 

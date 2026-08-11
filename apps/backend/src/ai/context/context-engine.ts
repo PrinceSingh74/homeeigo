@@ -22,7 +22,10 @@ export async function buildBookingContext(bookingId?: string): Promise<string> {
       status: true,
       scheduledDate: true,
       service: { select: { name: true, category: true } },
-      address: { select: { city: true, pincode: true } },
+      // `pincode` is not a column on Address — selecting it made this query throw, so any
+      // turn carrying a bookingId degraded instead of getting its booking context. Only
+      // `city` is rendered below, so the postcode is not selected at all.
+      address: { select: { city: true } },
     },
   });
   if (!booking) return "";
@@ -100,6 +103,14 @@ export async function buildAiContext(
   if (partnerCtx) sections.push("--- Partner ---", partnerCtx);
   if (customerCtx) sections.push("--- Customer ---", customerCtx);
   sections.push(buildLocationContext(context?.location));
+
+  // Policy-scoped grounding assembled upstream (catalogue, serviceability, availability,
+  // pricing). It arrives already field-allowlisted and budget-bounded, and is placed last
+  // so it reads as the authoritative facts for the turn.
+  const grounding = context?.metadata?.groundingContext;
+  if (typeof grounding === "string" && grounding.length > 0) {
+    sections.push("--- HOMIGO Facts (authoritative) ---", grounding);
+  }
 
   const historyMessages = await buildConversationContext(history);
   const contextBlock = sections.filter(Boolean).join("\n");

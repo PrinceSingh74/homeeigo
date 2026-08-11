@@ -1,18 +1,57 @@
 import type { AiGatewayRole, AiProviderType } from "@prisma/client";
 import { aiConfig } from "../config";
 
+type Pricing = { input: number; output: number; cached: number };
+
+/**
+ * Pricing is per provider and hand-maintained. A provider with no entry has no price —
+ * it must not silently borrow another provider's rate, and it must not report 0, which
+ * would read as "this request was free" in every cost dashboard.
+ */
+function pricingFor(provider: AiProviderType): Pricing | undefined {
+  switch (provider) {
+    case "ANTHROPIC":
+      return aiConfig.pricing.anthropic;
+    case "GEMINI":
+      return aiConfig.pricing.gemini;
+    case "GROQ":
+      return aiConfig.pricing.groq;
+    case "OPENAI":
+      return aiConfig.pricing.openai;
+    default:
+      return undefined;
+  }
+}
+
+export type CostResult = { costUsd: number; costStatus: "COMPUTED" | "UNKNOWN" };
+
+/** Cost with an explicit status, so "unknown" is never indistinguishable from "free". */
+export function computeTokenCostDetailed(
+  provider: AiProviderType,
+  promptTokens: number,
+  completionTokens: number,
+  cachedTokens = 0,
+): CostResult {
+  const pricing = pricingFor(provider);
+  if (!pricing) return { costUsd: 0, costStatus: "UNKNOWN" };
+
+  const billablePrompt = Math.max(0, promptTokens - cachedTokens);
+  const inputCost = (billablePrompt / 1_000_000) * pricing.input;
+  const cachedCost = (cachedTokens / 1_000_000) * pricing.cached;
+  const outputCost = (completionTokens / 1_000_000) * pricing.output;
+  return {
+    costUsd: Number((inputCost + cachedCost + outputCost).toFixed(8)),
+    costStatus: "COMPUTED",
+  };
+}
+
 export function computeTokenCost(
   provider: AiProviderType,
   promptTokens: number,
   completionTokens: number,
   cachedTokens = 0,
 ): number {
-  const pricing = provider === "GEMINI" ? aiConfig.pricing.gemini : aiConfig.pricing.openai;
-  const billablePrompt = Math.max(0, promptTokens - cachedTokens);
-  const inputCost = (billablePrompt / 1_000_000) * pricing.input;
-  const cachedCost = (cachedTokens / 1_000_000) * pricing.cached;
-  const outputCost = (completionTokens / 1_000_000) * pricing.output;
-  return Number((inputCost + cachedCost + outputCost).toFixed(8));
+  return computeTokenCostDetailed(provider, promptTokens, completionTokens, cachedTokens).costUsd;
 }
 
 export async function recordDailyCost(

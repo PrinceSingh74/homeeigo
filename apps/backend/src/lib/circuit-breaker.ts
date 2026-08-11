@@ -90,6 +90,19 @@ export class CircuitBreaker {
     }
   }
 
+  /**
+   * Forces the breaker back to CLOSED.
+   *
+   * For tests and deliberate operator intervention only — normal recovery goes through
+   * HALF_OPEN so a still-broken dependency cannot be declared healthy by assertion.
+   */
+  reset(): void {
+    this.failures = 0;
+    this.openedAt = 0;
+    this.halfOpenInFlight = 0;
+    this.transition("CLOSED");
+  }
+
   private onSuccess(): void {
     this.failures = 0;
     if (this.state !== "CLOSED") this.transition("CLOSED");

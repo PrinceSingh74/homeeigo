@@ -47,6 +47,8 @@ export async function recordAiRequest(input: {
   actorId?: string;
   actorRole: AiGatewayRole;
   templateId?: string;
+  /** Prompt-registry version that served the request, when one was resolved. */
+  promptVersion?: number;
   promptHash: string;
   responseHash?: string;
   provider?: AiProviderType;
@@ -67,6 +69,7 @@ export async function recordAiRequest(input: {
       actorId: input.actorId,
       actorRole: input.actorRole,
       templateId: input.templateId,
+      promptVersion: input.promptVersion,
       promptHash: input.promptHash,
       responseHash: input.responseHash,
       provider: input.provider,

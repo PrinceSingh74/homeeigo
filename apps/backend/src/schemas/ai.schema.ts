@@ -3,6 +3,8 @@ import { z } from "zod";
 export const aiChatSchema = z.object({
   message: z.string().trim().min(1).max(2000),
   conversationId: z.string().trim().max(64).optional(),
+  /** Drives serviceability and provider-availability grounding. Bounded — it reaches a query. */
+  city: z.string().trim().max(64).optional(),
   history: z
     .array(
       z.object({

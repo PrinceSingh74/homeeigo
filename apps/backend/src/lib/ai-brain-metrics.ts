@@ -27,6 +27,42 @@ export function recordMemoryHit(cacheType: string): void {
   incCounter("homigo_memory_hits", { cache_type: cacheType });
 }
 
+/**
+ * A cached context was rejected because it did not belong to the requesting actor.
+ *
+ * This should sit at zero. Any non-zero value means a cache key collided across actors —
+ * i.e. the isolation convention broke — and is worth alerting on.
+ */
+export function recordContextCacheDenied(reason: string): void {
+  incCounter("homigo_ai_context_cache_denied_total", { reason });
+}
+
+/**
+ * A memory was rejected for carrying a prompt-injection payload.
+ *
+ * `stage` distinguishes a blocked write (the payload never landed) from a blocked read
+ * (a row that predates screening, or was written by a path that bypassed it) — the second
+ * is the one worth investigating.
+ */
+export function recordMemoryInjectionBlocked(stage: string, memoryType: string): void {
+  incCounter("homigo_ai_memory_injection_blocked_total", { stage, memory_type: memoryType });
+}
+
+/**
+ * A durable preference or operational fact was learned.
+ *
+ * Both labels come from closed vocabularies (roles, and the fixed preference kinds), so
+ * cardinality cannot grow from user input.
+ */
+export function recordPreferenceLearned(actorRole: string, kind: string): void {
+  incCounter("homigo_ai_preference_learned_total", { actor_role: actorRole, kind });
+}
+
+/** An admin surface read memory across owners. Expected to be rare and reviewable. */
+export function recordCrossOwnerMemoryRead(memoryType: string): void {
+  incCounter("homigo_ai_memory_cross_owner_read_total", { memory_type: memoryType });
+}
+
 export function recordMemoryMiss(cacheType: string): void {
   incCounter("homigo_memory_misses", { cache_type: cacheType });
 }
