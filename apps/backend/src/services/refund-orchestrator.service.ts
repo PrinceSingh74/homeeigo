@@ -11,7 +11,12 @@ import { financialRiskService } from "./financial-risk.service";
 
 export type RefundResult =
   | { refundId: string; status: string; amount: number; idempotencyKey: string }
-  | { error: string; blocked?: boolean };
+  /**
+   * `indeterminate` marks the one failure that is not a failure: the gateway outcome is unknown
+   * and the refund may already exist. Callers must not treat it as "nothing happened" — no
+   * automatic retry, no compensation, reconcile first.
+   */
+  | { error: string; blocked?: boolean; indeterminate?: boolean; idempotencyKey?: string };
 
 export class RefundOrchestratorService {
   buildIdempotencyKey(paymentId: string, amount: number, source: string, actorUserId: string): string {
@@ -50,6 +55,16 @@ export class RefundOrchestratorService {
       if (existing.status === RefundRequestStatus.REFUNDING || existing.status === RefundRequestStatus.PROCESSING) {
         recordFinancialMetric("refund_race_blocked_total", 1);
         return { error: "REFUND_IN_PROGRESS", blocked: true };
+      }
+      /**
+       * An unknown outcome is terminal for automatic purposes. Replaying it returns the same
+       * unknown state and never reaches the gateway a second time — re-calling is exactly the
+       * double-refund path this status exists to prevent. FAILED still falls through below, so a
+       * genuine retry after a genuine, definite failure continues to work.
+       */
+      if (existing.status === RefundRequestStatus.INDETERMINATE) {
+        recordFinancialMetric("refund_indeterminate_replay_total", 1);
+        return { error: "REFUND_OUTCOME_UNKNOWN", indeterminate: true, idempotencyKey };
       }
     }
 
@@ -93,6 +108,14 @@ export class RefundOrchestratorService {
           recordFinancialMetric("refund_race_blocked_total", 1);
           return { proceed: false, result: { error: "REFUND_IN_PROGRESS", blocked: true } };
         }
+        // Same guard as the pre-lock check, repeated inside the lock so a racing caller that
+        // slipped past it cannot re-enter the gateway either.
+        if (dup.status === RefundRequestStatus.INDETERMINATE) {
+          return {
+            proceed: false,
+            result: { error: "REFUND_OUTCOME_UNKNOWN", indeterminate: true, idempotencyKey },
+          };
+        }
       }
 
       const refundRequest = await tx.refundRequest.upsert({
@@ -129,14 +152,40 @@ export class RefundOrchestratorService {
 
     const { payment, refundRequestId } = lockResult;
 
-    let gatewayRefund: { refundId: string; status: string };
-    try {
-      gatewayRefund = await razorpayService.createRefund(payment.razorpayPaymentId!, opts.amount);
-    } catch (err) {
-      await this.markRefundFailed(refundRequestId, payment.id, opts.actorUserId, err);
+    const outcome = await razorpayService.executeGatewayRefund({
+      paymentId: payment.razorpayPaymentId!,
+      amountInr: opts.amount,
+      // The operation identity, not the payment: two separately authorised refunds of the same
+      // amount are two operations and must reach the gateway as two distinct idempotency keys.
+      operationKey: idempotencyKey,
+    });
+
+    if (outcome.kind === "REJECTED") {
+      await this.markRefundFailed(refundRequestId, payment.id, opts.actorUserId, new Error(outcome.detail));
       recordFinancialMetric("refund_failure_total", 1);
       return { error: "GATEWAY_REFUND_FAILED" };
     }
+
+    if (outcome.kind === "INDETERMINATE" || outcome.kind === "ALREADY_SUBMITTED") {
+      /**
+       * The refund may exist at Razorpay. Everything from here is shaped to stop a second one.
+       *
+       * The payment is deliberately left in REFUNDING rather than reverted to SUCCESS. That is
+       * not an oversight — it makes the existing race guard do the work: any further refund of
+       * this payment, from any caller, is refused with REFUND_IN_PROGRESS until reconciliation
+       * settles what actually happened. Uncertainty should block, and blocking through a control
+       * that already exists is better than inventing a second one.
+       */
+      await this.markRefundIndeterminate(refundRequestId, opts.actorUserId, outcome);
+      recordFinancialMetric("refund_indeterminate_total", 1);
+      return {
+        error: "REFUND_OUTCOME_UNKNOWN",
+        indeterminate: true,
+        idempotencyKey,
+      };
+    }
+
+    const gatewayRefund = { refundId: outcome.refundId, status: outcome.status };
 
     const newRefundedTotal = (payment.refundedAmount ?? 0) + opts.amount;
     const fullyRefunded = newRefundedTotal >= (payment.amountPaid || payment.amount);
@@ -204,6 +253,34 @@ export class RefundOrchestratorService {
       amount: opts.amount,
       idempotencyKey,
     };
+  }
+
+  /**
+   * Records an unknown outcome without asserting one.
+   *
+   * Deliberately unlike {@link markRefundFailed}: the payment is NOT returned to SUCCESS. It stays
+   * REFUNDING so the existing guard blocks any further refund of it until a human or the
+   * reconciler establishes what the gateway actually did. The audit keeps the original reason, so
+   * a later RECONCILED_* entry sits next to it rather than overwriting it.
+   */
+  private async markRefundIndeterminate(
+    refundRequestId: string,
+    actorUserId: string,
+    outcome: { kind: string; reason?: string; detail?: string },
+  ): Promise<void> {
+    await prisma.refundRequest.update({
+      where: { id: refundRequestId },
+      data: {
+        status: RefundRequestStatus.INDETERMINATE,
+        audits: {
+          create: {
+            action: "OUTCOME_UNKNOWN",
+            actorId: actorUserId,
+            details: `${outcome.kind}${outcome.reason ? `:${outcome.reason}` : ""} — reconciliation required`,
+          },
+        },
+      },
+    });
   }
 
   private async markRefundFailed(

@@ -14,8 +14,10 @@ import { trackingService } from "../../../services/tracking.service";
 import { notificationService } from "../../../services/notification.service";
 import { supportTicketService } from "../../../services/support-ticket.service";
 import { campaignService } from "../../../services/campaign.service";
+import { refundOrchestratorService } from "../../../services/refund-orchestrator.service";
 import type { ToolHandler, ToolRegistryEntry } from "../../types";
 import { resolveProviderId, verifyBookingAccess, verifyBookingOwnership } from "../actor-resolver";
+import { financialSandboxVerdict, isSandboxExecutableHighRiskTool } from "../financial-sandbox";
 
 type CatalogEntry = Omit<ToolRegistryEntry, "handler">;
 
@@ -244,6 +246,87 @@ function handlerMap(): Record<string, ToolHandler> {
       if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
       return providerService.setOnline(providerId, Boolean(args.online));
     },
+
+    /**
+     * Phase 5A — the first high-risk handler, and the template for the ones that follow.
+     *
+     * It contains no refund logic. Every rule about what may be refunded, how much, whether the
+     * payment is in a refundable state, how the ledger is written and how a race is resolved
+     * lives in `refundOrchestratorService` and stays there. Reimplementing any of it here would
+     * create a second, quieter refund path that diverges from the audited one — which is the
+     * failure this handler is shaped to avoid. What this function adds is the four things the
+     * AI layer is responsible for: the sandbox gate, the approval requirement, the correlation
+     * identity, and the translation of a rejection into a recorded failure.
+     *
+     * Correlation works through the idempotency key rather than a new column. The execution
+     * engine derives `ai-approval:<approvalId>` and hands it here; passing it straight through
+     * means `refund_requests.idempotency_key` carries the approval id, so a refund row resolves
+     * to its approval, and the approval's `consumed_execution_id` resolves to the tool execution
+     * that spent it. The chain is queryable in both directions without touching the financial
+     * schema.
+     *
+     * That same key is what makes the call safe to repeat. The orchestrator looks it up first
+     * and replays a COMPLETED refund instead of issuing a second one, so an approval that is
+     * somehow presented twice cannot move money twice — the guarantee holds in the financial
+     * service, not merely in the AI layer above it.
+     */
+    "high_risk.finance.refund": async ({ actor, arguments: args, executionId, approvalId, idempotencyKey }) => {
+      const verdict = financialSandboxVerdict();
+      if (!verdict.allowed) throw new Error(`SANDBOX_REFUSED:${verdict.reason}`);
+
+      // Belt and braces. The engine will not reach a high-risk handler without consuming an
+      // approval, but a handler that moves money should not depend on a caller upstream of it
+      // having done that correctly.
+      if (!approvalId) throw new Error("REFUND_REQUIRES_APPROVAL");
+      if (actor.actorRole !== "ADMIN") throw new Error("REFUND_REQUIRES_ADMIN");
+
+      const payload = (args.payload ?? args) as Record<string, unknown>;
+      const paymentId = typeof payload.paymentId === "string" ? payload.paymentId.trim() : "";
+      const amount = Number(payload.amount);
+      const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+
+      if (!paymentId) throw new Error("REFUND_INVALID_PAYMENT_ID");
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error("REFUND_INVALID_AMOUNT");
+      if (!reason) throw new Error("REFUND_REASON_REQUIRED");
+
+      const result = await refundOrchestratorService.executeRefund({
+        paymentId,
+        amount,
+        reason,
+        actorUserId: actor.actorId,
+        // Derived, not asserted. The service performs its own admin check, and that check stays
+        // meaningful only if it is given the real value.
+        isAdmin: actor.actorRole === "ADMIN",
+        // "admin" is accurate — a human admin approved this — and it keeps the orchestrator's
+        // own admin amount validation in force. Introducing an "ai" source would have meant
+        // editing an authoritative financial service to add a path with no validation history.
+        source: "admin",
+        idempotencyKey,
+        bookingId: typeof payload.bookingId === "string" ? payload.bookingId : undefined,
+      });
+
+      // The orchestrator reports business rejections by return value, not by throwing. Left
+      // as-is they would surface as a successful tool call that quietly refunded nothing, so
+      // they are raised here and recorded as failures.
+      if ("error" in result) {
+        // An unknown gateway outcome is not a failure and must not be recorded as one. The flag
+        // is what lifts this execution to INDETERMINATE / OUTCOME_UNKNOWN, so the tool audit
+        // agrees with the refund record instead of claiming nothing happened.
+        if (result.indeterminate) {
+          throw Object.assign(new Error("REFUND_OUTCOME_UNKNOWN"), { outcomeUnknown: true });
+        }
+        throw new Error(`REFUND_REJECTED:${result.error}`);
+      }
+
+      return {
+        refundId: result.refundId,
+        status: result.status,
+        amount: result.amount,
+        idempotencyKey: result.idempotencyKey,
+        approvalId,
+        executionId,
+      };
+    },
   };
 }
 
@@ -251,6 +334,21 @@ export function registerToolHandlers(catalog: CatalogEntry[]): ToolRegistryEntry
   const handlers = handlerMap();
   return catalog.map((tool) => ({
     ...tool,
-    handler: tool.category === "HIGH_RISK" ? undefined : handlers[tool.toolId],
+    /**
+     * High-risk stays unbound by default, and both gates must agree before it binds: the tool
+     * has to be on the sandbox allowlist *and* the environment has to permit financial
+     * execution right now. Outside a sandbox nothing binds, so production behaves exactly as
+     * the Phase-5 freeze left it — every high-risk request terminates at NO_HANDLER.
+     *
+     * Binding is still not permission to run. The verdict is re-read inside the handler on
+     * every call, because this runs once at registry construction and an environment can drift
+     * underneath a long-lived process.
+     */
+    handler:
+      tool.category === "HIGH_RISK"
+        ? isSandboxExecutableHighRiskTool(tool.toolId) && financialSandboxVerdict().allowed
+          ? handlers[tool.toolId]
+          : undefined
+        : handlers[tool.toolId],
   }));
 }

@@ -2765,6 +2765,9 @@ enum RefundRequestStatus {
   COMPLETED
   FAILED
   REFUNDING
+  /// The gateway call ended without a definite answer. The refund may or may not exist at
+  /// Razorpay. Never retried automatically; resolved by webhook or gateway reconciliation.
+  INDETERMINATE
 }
 
 enum PayoutBatchStatus {

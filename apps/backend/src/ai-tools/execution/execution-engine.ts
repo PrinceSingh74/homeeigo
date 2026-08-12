@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import prisma from "../../lib/prisma";
+import { logger } from "../../lib/logger";
 import { consumeRateLimitSmart } from "../../middleware/rate-limit.middleware";
 import { aiToolsConfig } from "../config";
 import type { ToolExecuteInput, ToolExecuteResult } from "../types";
@@ -396,6 +397,51 @@ export async function executeTool(input: ToolExecuteInput): Promise<ToolExecuteR
     });
     if (!consumed.ok) {
       recordToolApprovalRejected(tool.toolId, consumed.failure);
+
+      /**
+       * A rejected approval is an audit event, not just a counter.
+       *
+       * Until this row was written the refusal existed only as a metric, so presenting a
+       * tampered argument set against a valid approval — or replaying one already spent —
+       * left nothing queryable behind. Those are the two attempts most worth being able to
+       * reconstruct afterwards, and on a financial tool an aggregate counter cannot answer
+       * who tried what, against which approval, or when.
+       */
+      // The column is a foreign key onto the approval's internal id, while the id travelling
+      // through this request is the public one. Resolve it, and tolerate a miss — an approval
+      // that was never found has no row to point at.
+      const approvalRow = await prisma.aiToolApproval
+        .findUnique({ where: { approvalId: input.approvalId }, select: { id: true } })
+        .catch(() => null);
+
+      // Audit is best-effort *here specifically*. A refusal that a human must be able to read
+      // back is still, first and foremost, a refusal: if writing the record fails, the caller
+      // must receive APPROVAL_TAMPER rather than a database error that hides why the request
+      // was stopped.
+      await recordToolExecution({
+        executionId,
+        toolId: tool.toolId,
+        actorId: input.actor.actorId,
+        actorRole: input.actor.actorRole,
+        argumentsHash: hashArguments(input.arguments),
+        policyDecision: policy.decision,
+        status: "DENIED",
+        errorCode: consumed.failure,
+        errorMessage: "Approval is not valid for this request",
+        durationMs: Date.now() - t0,
+        traceId: input.actor.traceId,
+        correlationId: input.actor.correlationId,
+        approvalId: approvalRow?.id,
+        idempotencyKey: input.idempotencyKey,
+        ipAddress: input.actor.ipAddress,
+      }).catch((auditErr) => {
+        logger.error("ai-tools: failed to audit rejected approval", {
+          toolId: tool.toolId,
+          failure: consumed.failure,
+          error: auditErr instanceof Error ? auditErr.message : "unknown",
+        });
+      });
+
       throw new ToolExecutionError(
         "Approval is not valid for this request",
         consumed.failure,
@@ -499,7 +545,18 @@ export async function executeTool(input: ToolExecuteInput): Promise<ToolExecuteR
         recordToolTimeout(tool.toolId);
         break;
       }
-      if (retryCount < tool.maxRetries) {
+      /**
+       * A high-risk tool is never retried, whatever its catalog entry says.
+       *
+       * Every high-risk tool is currently configured `maxRetries: 0`, so this changes no
+       * behaviour today — it removes the possibility that a later edit to a catalog row
+       * silently turns a failed refund into two attempted ones. A retry is only safe when the
+       * first attempt is known not to have landed, and at this point that is exactly what is
+       * not known: the handler threw, but the money-moving call inside it may still have
+       * reached the gateway. Retrying is the caller's decision to make with the audit row in
+       * front of them, not a loop's.
+       */
+      if (tool.category !== "HIGH_RISK" && retryCount < tool.maxRetries) {
         retryCount++;
         recordToolRetry(tool.toolId);
         continue;
@@ -522,7 +579,16 @@ export async function executeTool(input: ToolExecuteInput): Promise<ToolExecuteR
    *
    * Reads are exempt — re-reading is free, and a timed-out read genuinely returned nothing.
    */
-  const outcomeUnknown = rawErrorCode === "TIMEOUT" && tool.category !== "READ";
+  /**
+   * A handler may also declare the outcome unknown itself.
+   *
+   * A tool-level timeout is not the only way to lose certainty — the refund handler learns it
+   * from the payment gateway, which can leave a request unanswered long before this engine's own
+   * clock runs out. Without this flag such a call would land in FAILED, and the tool audit would
+   * contradict the refund record that already says the outcome is unknown.
+   */
+  const handlerFlaggedUnknown = Boolean((lastError as { outcomeUnknown?: boolean } | null)?.outcomeUnknown);
+  const outcomeUnknown = (rawErrorCode === "TIMEOUT" || handlerFlaggedUnknown) && tool.category !== "READ";
   const errorCode = outcomeUnknown ? "OUTCOME_UNKNOWN" : rawErrorCode;
   const terminalStatus = outcomeUnknown
     ? ("INDETERMINATE" as const)
