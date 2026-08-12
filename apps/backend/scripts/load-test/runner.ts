@@ -1,12 +1,14 @@
 /**
- * HOMIGO load test runner — concurrent HTTP benchmark without external deps.
+ * HOMIGO load test runner — concurrent HTTP benchmark with optional auth.
  *
  * Usage:
  *   bun run scripts/load-test/runner.ts --scenario booking --concurrency 100
- *   bun run scripts/load-test/runner.ts --scenario all --concurrency 500
+ *   LOGIN_EMAIL=customer@homigo.demo LOGIN_PASSWORD=Homigo@123 bun run scripts/load-test/runner.ts --scenario all --concurrency 100
  */
 
 const BASE = process.env.LOAD_TEST_BASE_URL || "http://localhost:3000";
+const LOGIN_EMAIL = process.env.LOGIN_EMAIL || "customer@homigo.demo";
+const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || "Homigo@123";
 
 type Scenario = "health" | "ready" | "metrics" | "booking" | "payment" | "wallet" | "websocket" | "provider" | "finance" | "all";
 
@@ -21,6 +23,7 @@ type Result = {
   p95: number;
   p99: number;
   errors: number;
+  authenticated: boolean;
 };
 
 function parseArgs() {
@@ -42,10 +45,28 @@ function percentile(sorted: number[], p: number): number {
   return sorted[Math.max(0, idx)]!;
 }
 
-async function hit(path: string): Promise<{ ok: boolean; ms: number }> {
+async function login(): Promise<string | null> {
+  try {
+    const res = await fetch(`${BASE}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: LOGIN_EMAIL, password: LOGIN_PASSWORD, setAuthCookies: false }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data?: { accessToken?: string } };
+    return json.data?.accessToken ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function hit(path: string, token?: string | null): Promise<{ ok: boolean; ms: number }> {
   const start = Date.now();
   try {
-    const res = await fetch(`${BASE}${path}`, { signal: AbortSignal.timeout(10000) });
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${BASE}${path}`, { headers, signal: AbortSignal.timeout(10000) });
     return { ok: res.ok, ms: Date.now() - start };
   } catch {
     return { ok: false, ms: Date.now() - start };
@@ -56,22 +77,37 @@ const SCENARIO_PATHS: Record<Exclude<Scenario, "all">, string> = {
   health: "/health",
   ready: "/ready",
   metrics: "/metrics",
-  booking: "/api/v1/status",
-  payment: "/api/v1/status",
-  wallet: "/api/v1/status",
+  booking: "/api/bookings/upcoming",
+  payment: "/api/payments/history?limit=10",
+  wallet: "/api/wallet/balance",
   websocket: "/api/v1/ws/stats",
-  provider: "/api/v1/status",
-  finance: "/api/v1/status",
+  provider: "/api/services?limit=10",
+  finance: "/api/wallet/transactions?limit=10",
 };
 
-async function runScenario(name: string, path: string, concurrency: number, requestsPerWorker: number): Promise<Result> {
+const AUTH_SCENARIOS = new Set<Exclude<Scenario, "all">>([
+  "booking",
+  "payment",
+  "wallet",
+  "finance",
+]);
+
+async function runScenario(
+  name: string,
+  path: string,
+  concurrency: number,
+  requestsPerWorker: number,
+  token: string | null,
+): Promise<Result> {
   const latencies: number[] = [];
   let errors = 0;
   const started = Date.now();
+  const useAuth = AUTH_SCENARIOS.has(name as Exclude<Scenario, "all">);
+  const authToken = useAuth ? token : null;
 
   const workers = Array.from({ length: concurrency }, async () => {
     for (let i = 0; i < requestsPerWorker; i++) {
-      const r = await hit(path);
+      const r = await hit(path, authToken);
       latencies.push(r.ms);
       if (!r.ok) errors += 1;
     }
@@ -93,6 +129,7 @@ async function runScenario(name: string, path: string, concurrency: number, requ
     p95: percentile(sorted, 95),
     p99: percentile(sorted, 99),
     errors,
+    authenticated: Boolean(authToken),
   };
 }
 
@@ -102,15 +139,17 @@ function round2(n: number): number {
 
 async function main() {
   const { scenario, concurrency, requestsPerWorker } = parseArgs();
+  const token = await login();
+  console.log(`\nHOMIGO Load Test — base=${BASE} concurrency=${concurrency} auth=${token ? "yes" : "no"}\n`);
+
   const scenarios: Array<[string, string]> =
     scenario === "all"
       ? Object.entries(SCENARIO_PATHS)
       : [[scenario, SCENARIO_PATHS[scenario as Exclude<Scenario, "all">]]];
 
-  console.log(`\nHOMIGO Load Test — base=${BASE} concurrency=${concurrency}\n`);
   const results: Result[] = [];
   for (const [name, path] of scenarios) {
-    const result = await runScenario(name, path, concurrency, requestsPerWorker);
+    const result = await runScenario(name, path, concurrency, requestsPerWorker, token);
     results.push(result);
     console.log(JSON.stringify(result));
   }
@@ -119,6 +158,7 @@ async function main() {
     timestamp: new Date().toISOString(),
     base: BASE,
     concurrency,
+    authenticated: Boolean(token),
     results,
     avgP95: round2(results.reduce((s, r) => s + r.p95, 0) / results.length),
     maxErrorRate: Math.max(...results.map((r) => r.errorRate)),

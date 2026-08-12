@@ -1,0 +1,249 @@
+{
+  "datasetName": "HOMIGO_ETA_Training_Dataset",
+  "version": "1.1.0",
+  "sourceFile": "raw/ETA_Training_Data.csv",
+  "sha256": "455b946bfdc77e06ba25b5cff9f28f2f7811c3ec85a6975c066e3f6ccafadae4",
+  "rowCount": 50000,
+  "columnCount": 31,
+  "createdAt": "2026-08-08T11:06:15.469Z",
+  "synthetic": true,
+  "trainingPurpose": "ETA candidate model training",
+  "sourceOfTruth": true,
+  "canonicalFormat": "csv",
+  "changeLog": [
+    {
+      "version": "1.0.0",
+      "change": "Initial landing — xlsx only (5,000-row sample) treated as source."
+    },
+    {
+      "version": "1.1.0",
+      "change": "Full 50,000-row CSV landed and promoted to canonical; xlsx demoted to sample. Resolves ROWCOUNT_MISMATCH. Vendor docs captured under raw/source-docs/."
+    }
+  ],
+  "files": [
+    {
+      "role": "canonical",
+      "path": "raw/ETA_Training_Data.csv",
+      "sha256": "455b946bfdc77e06ba25b5cff9f28f2f7811c3ec85a6975c066e3f6ccafadae4",
+      "bytes": 13877723,
+      "dataRowCount": 50000,
+      "columnCount": 31
+    },
+    {
+      "role": "sample",
+      "path": "raw/HOMIGO_ETA_Training_Dataset.xlsx",
+      "sha256": "97381e6cbb014889c0ee44fba3e845494c1f22bdd2e2f068f38aff15b4ff9b24",
+      "bytes": 836900,
+      "dataRowCount": 5000,
+      "columnCount": 31,
+      "sheets": [
+        {
+          "name": "ETA_Training_Data",
+          "dataRowCount": 5000,
+          "columnCount": 31
+        },
+        {
+          "name": "Data_Dictionary",
+          "dataRowCount": 31,
+          "columnCount": 3
+        },
+        {
+          "name": "Distribution_Report",
+          "dataRowCount": 43,
+          "columnCount": 3
+        },
+        {
+          "name": "Statistics_Summary",
+          "dataRowCount": 30,
+          "columnCount": 2
+        },
+        {
+          "name": "Data_Quality",
+          "dataRowCount": 9,
+          "columnCount": 3
+        }
+      ],
+      "note": "A 10% sample of the canonical CSV. Its Data_Quality / Distribution_Report / Statistics_Summary sheets describe the full 50,000-record set, not this sheet."
+    },
+    {
+      "role": "vendor-doc",
+      "path": "raw/source-docs/README.txt",
+      "sha256": "6ba4123b62d065d2967f3837bb11e422148cc092e6bcf476a6962767e2f99e0c",
+      "bytes": 19897
+    },
+    {
+      "role": "vendor-doc",
+      "path": "raw/source-docs/Feature_Definitions.txt",
+      "sha256": "f79d9053ff01267cb7942a1f6886ef788715f3fc3682c0219b5a81d1474843e5",
+      "bytes": 3650
+    },
+    {
+      "role": "vendor-doc",
+      "path": "raw/source-docs/FINAL_SUMMARY.txt",
+      "sha256": "7b8cee4183b6272fc3707f51ab3a871e0c43f5b755b553e9017eb875584d7ee5",
+      "bytes": 22858
+    },
+    {
+      "role": "vendor-doc",
+      "path": "raw/source-docs/HOMIGO_ETA_Dataset_Sample.json",
+      "sha256": "e19e06e80a5be823eb593372e6e3809a4047a74cef172ba68b52115803c84ced",
+      "bytes": 2509
+    }
+  ],
+  "provenance": {
+    "originDirectory": "C:/Users/Kapiissh Green/Downloads/machine_learning_homigo/",
+    "copiedVerbatim": true,
+    "generationSeed": "20260808",
+    "generatorVersion": "Realistic Synthetic Data v1.0",
+    "dateRangeCovered": "2024-01-01/2024-06-30",
+    "geography": "India NCR — Delhi, Gurugram, Noida"
+  },
+  "columns": [
+    "trip_id",
+    "dispatched_at",
+    "en_route_at",
+    "arrived_at",
+    "actual_travel_duration_sec",
+    "arrival_source",
+    "distance_km",
+    "google_eta_sec",
+    "google_eta_captured_at",
+    "city",
+    "locality",
+    "sector",
+    "service_area",
+    "service_category",
+    "hour",
+    "day_of_week",
+    "is_weekend",
+    "weather_condition",
+    "temperature_c",
+    "rain_mm",
+    "visibility_km",
+    "traffic_level",
+    "provider_availability_count",
+    "demand_level",
+    "surge_multiplier",
+    "estimated_wait_before_dispatch_sec",
+    "quality_score",
+    "validation_status",
+    "validation_flags",
+    "is_synthetic",
+    "is_training_eligible"
+  ],
+  "targetColumn": "actual_travel_duration_sec",
+  "targetDefinition": "arrived_at - en_route_at  (VERIFIED against all 50,000 rows: 0 mismatches)",
+  "syntheticFlagColumn": "is_synthetic",
+  "trainingEligibilityColumn": "is_training_eligible",
+  "leakageExcludedColumns": [
+    "arrived_at",
+    "actual_travel_duration_sec",
+    "arrival_source",
+    "quality_score",
+    "validation_status",
+    "validation_flags",
+    "trip_id",
+    "is_synthetic",
+    "is_training_eligible"
+  ],
+  "integrity": {
+    "dataRowCount": 50000,
+    "raggedRows": 0,
+    "nullCells": 0,
+    "duplicateTripIds": 0,
+    "duplicateRows": 0,
+    "timestampOrderingViolations": 0,
+    "zeroDispatchWaitRows": 169,
+    "labelMatchesArrivedMinusEnRoute": 50000,
+    "labelMatchesArrivedMinusDispatched": 3768,
+    "isSyntheticDistinctValues": [
+      "True"
+    ],
+    "isTrainingEligibleDistinctValues": [
+      "False"
+    ],
+    "allRowsQuarantined": true
+  },
+  "statistics": {
+    "actual_travel_duration_sec": {
+      "min": 60,
+      "max": 9889.9,
+      "mean": 1189.05,
+      "p50": 1010.2,
+      "p90": 2212.9,
+      "p99": 3928.5
+    },
+    "distance_km": {
+      "min": 0.3,
+      "max": 15.57,
+      "mean": 4.36,
+      "p50": 4.25,
+      "p90": 6.85,
+      "p99": 9.39
+    },
+    "google_eta_sec": {
+      "min": 24.4,
+      "max": 5010.2,
+      "mean": 843.16,
+      "p50": 750.7,
+      "p90": 1488.3,
+      "p99": 2448.3
+    },
+    "etaUnderpredictionRatePct": 99,
+    "etaMeanUnderpredictionSec": 345.9
+  },
+  "discrepancies": [
+    {
+      "id": "TARGET_DEFINITION_WRONG_IN_VENDOR_DOCS",
+      "severity": "HIGH",
+      "status": "OPEN",
+      "detail": "raw/source-docs/README.txt and Feature_Definitions.txt both define the label as 'actual_travel_duration_sec = arrived_at - dispatched_at'. That is wrong for 46,232 of 50,000 rows (92.5%), worst delta 288.9s. The column actually equals arrived_at - en_route_at on 50,000/50,000 rows exactly. Anyone reconstructing the label from the documented formula will build a different target that includes the dispatch-to-en-route wait.",
+      "action": "Use arrived_at - en_route_at. Do not follow the vendor formula."
+    },
+    {
+      "id": "DURATION_MAX_CLAIM_WRONG",
+      "severity": "HIGH",
+      "status": "OPEN",
+      "detail": "README.txt and the xlsx Data_Quality sheet claim durations range '60s to 4,560s' and mark the check '✓ PASS'. Measured max is 9,889.9s (2h 45m) — 2.2x the stated ceiling. The vendor's own quality-check block is therefore not trustworthy as written."
+    },
+    {
+      "id": "DISTANCE_MAX_CLAIM_WRONG",
+      "severity": "MEDIUM",
+      "status": "OPEN",
+      "detail": "FINAL_SUMMARY.txt claims distance 'Range: 0.3 - 24.98 km'; the xlsx Data_Quality sheet claims '0.3-25km'. Measured max is 15.57 km. The stated upper bound overstates the data by ~60%."
+    },
+    {
+      "id": "ROWCOUNT_MISMATCH",
+      "severity": "HIGH",
+      "status": "RESOLVED",
+      "detail": "The xlsx sheet holds 5,000 rows while its metadata sheets describe 50,000 records.",
+      "resolution": "Resolved in v1.1.0 — the full 50,000-row CSV is now the canonical source and the xlsx is explicitly labelled a sample."
+    },
+    {
+      "id": "ORDERING_CLAIM_IMPRECISE",
+      "severity": "LOW",
+      "status": "OPEN",
+      "detail": "Vendor claims strict ordering 'dispatched_at < en_route_at ≤ arrived_at'. 169 rows have dispatched_at == en_route_at (zero dispatch wait). Under the correct relation (dispatched <= en_route <= arrived) there are 0 violations. Data is fine; the claim is imprecise."
+    }
+  ],
+  "verifiedVendorClaims": [
+    "row count 50,000",
+    "column count 31",
+    "zero null cells across all 31 columns",
+    "zero duplicate trip_ids",
+    "is_synthetic = True on 50,000/50,000",
+    "is_training_eligible = False on 50,000/50,000",
+    "duration mean 1,189s / P50 1,010s / P90 2,213s / P99 3,928s",
+    "distance mean 4.36 km / P50 4.25 km / P90 6.85 km",
+    "google_eta mean 843s / P90 1,488s / P99 2,448s",
+    "ETA underprediction rate 99.0%, mean underprediction +346s",
+    "no post-arrival features present among the documented input features"
+  ],
+  "policy": {
+    "rawImmutable": true,
+    "mlInferenceEnabled": false,
+    "customerFacingEtaSource": "Google Maps (unchanged)",
+    "promotionRequires": "offline evaluation + explicit promotion approval"
+  },
+  "manifestSchemaVersion": 2
+}

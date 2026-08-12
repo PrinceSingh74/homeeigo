@@ -1,0 +1,93 @@
+{
+  "uid": "homigo-real-user-experience",
+  "title": "HOMIGO — Real User Experience (RUM field data)",
+  "tags": ["homigo", "rum", "field", "customer-experience"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      { "name": "device", "type": "query", "datasource": null, "query": "label_values(web_vitals_reports_total, device)", "includeAll": true, "multi": true, "current": { "text": "All", "value": "$__all" } },
+      { "name": "network", "type": "query", "datasource": null, "query": "label_values(web_vitals_reports_total, network)", "includeAll": true, "multi": true, "current": { "text": "All", "value": "$__all" } }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "title": "Route change p75 — by DEVICE (target <150ms)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 6 }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.15 }] } } },
+      "targets": [{ "expr": "histogram_quantile(0.75, sum(rate(web_vitals_route_change_seconds_bucket{network=~\"$network\"}[5m])) by (le, device))", "legendFormat": "{{device}}" }]
+    },
+    {
+      "id": 2, "title": "Route change p75 — by NETWORK (4G/3G/2G)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 6 } } },
+      "targets": [{ "expr": "histogram_quantile(0.75, sum(rate(web_vitals_route_change_seconds_bucket{device=~\"$device\"}[5m])) by (le, network))", "legendFormat": "{{network}}" }]
+    },
+    {
+      "id": 3, "title": "Route change percentiles (p50/p75/p95/p99)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineWidth": 2 } } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(web_vitals_route_change_seconds_bucket{device=~\"$device\",network=~\"$network\"}[5m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_route_change_seconds_bucket{device=~\"$device\",network=~\"$network\"}[5m])) by (le))", "legendFormat": "p75" },
+        { "expr": "histogram_quantile(0.95, sum(rate(web_vitals_route_change_seconds_bucket{device=~\"$device\",network=~\"$network\"}[5m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(web_vitals_route_change_seconds_bucket{device=~\"$device\",network=~\"$network\"}[5m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 4, "title": "Route change p75 — by ROUTE", "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.15 }, { "color": "red", "value": 0.3 }] } } },
+      "options": { "orientation": "horizontal", "displayMode": "gradient", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "histogram_quantile(0.75, sum(rate(web_vitals_route_change_seconds_bucket{device=~\"$device\",network=~\"$network\"}[5m])) by (le, route))", "legendFormat": "{{route}}" }]
+    },
+    {
+      "id": 5, "title": "INP p75 by device (responsiveness, <100ms)", "type": "timeseries",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineWidth": 2 } } },
+      "targets": [{ "expr": "histogram_quantile(0.75, sum(rate(web_vitals_inp_seconds_bucket{network=~\"$network\"}[5m])) by (le, device))", "legendFormat": "{{device}}" }]
+    },
+    {
+      "id": 6, "title": "Scroll FPS — p25 (worst-case smoothness, ≥55)", "type": "stat",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 45 }, { "color": "green", "value": 55 }] } } },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "histogram_quantile(0.25, sum(rate(ux_scroll_fps_bucket{device=~\"$device\",network=~\"$network\"}[5m])) by (le))", "legendFormat": "p25 fps" }]
+    },
+    {
+      "id": 7, "title": "Navigation success rate", "type": "stat",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 3, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.97 }, { "color": "green", "value": 0.995 }] } } },
+      "options": { "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "sum(rate(ux_signal_total{signal=\"nav_success\"}[30m])) / clamp_min(sum(rate(ux_signal_total{signal=~\"nav_success|exit_during_loading\"}[30m])), 0.0001)", "legendFormat": "success" }]
+    },
+    {
+      "id": 8, "title": "Satisfaction friction signals (events/min)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "cpm", "custom": { "drawStyle": "bars", "fillOpacity": 50, "stacking": { "mode": "normal" } } } },
+      "targets": [
+        { "expr": "sum(rate(ux_signal_total{signal=\"rapid_reclick\"}[5m])) * 60", "legendFormat": "rapid re-click" },
+        { "expr": "sum(rate(ux_signal_total{signal=\"back_button\"}[5m])) * 60", "legendFormat": "back button" },
+        { "expr": "sum(rate(ux_signal_total{signal=\"exit_during_loading\"}[5m])) * 60", "legendFormat": "exit during loading" }
+      ]
+    },
+    {
+      "id": 9, "title": "Core Web Vitals p75 by device (LCP / CLS / INP)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineWidth": 2 } } },
+      "targets": [
+        { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_lcp_seconds_bucket{network=~\"$network\"}[5m])) by (le, device))", "legendFormat": "LCP {{device}}" },
+        { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_inp_seconds_bucket{network=~\"$network\"}[5m])) by (le, device))", "legendFormat": "INP {{device}}" }
+      ]
+    },
+    {
+      "id": 10, "title": "Field volume (reports/min by device)", "type": "timeseries",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 31 },
+      "fieldConfig": { "defaults": { "unit": "cpm", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10 } } },
+      "targets": [{ "expr": "sum(rate(web_vitals_reports_total{network=~\"$network\"}[5m])) by (device) * 60", "legendFormat": "{{device}}" }]
+    }
+  ]
+}

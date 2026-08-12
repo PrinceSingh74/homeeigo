@@ -1,0 +1,82 @@
+{
+  "method": "permutation importance on the sealed test slice, 1 repeat, seed fixed",
+  "baseline_mae_sec": 98.3,
+  "importances": [
+    {
+      "feature": "google_eta_sec",
+      "mae_increase_sec": 512.726
+    },
+    {
+      "feature": "traffic_level",
+      "mae_increase_sec": 168.822
+    },
+    {
+      "feature": "distance_km",
+      "mae_increase_sec": 134.602
+    },
+    {
+      "feature": "weather_condition",
+      "mae_increase_sec": 25.167
+    },
+    {
+      "feature": "visibility_km",
+      "mae_increase_sec": 3.739
+    },
+    {
+      "feature": "hour",
+      "mae_increase_sec": 0.078
+    },
+    {
+      "feature": "service_category",
+      "mae_increase_sec": 0.058
+    },
+    {
+      "feature": "temperature_c",
+      "mae_increase_sec": 0.04
+    },
+    {
+      "feature": "estimated_wait_before_dispatch_sec",
+      "mae_increase_sec": 0.038
+    },
+    {
+      "feature": "day_of_week",
+      "mae_increase_sec": 0.016
+    },
+    {
+      "feature": "rain_mm",
+      "mae_increase_sec": 0.015
+    },
+    {
+      "feature": "surge_multiplier",
+      "mae_increase_sec": -0.001
+    },
+    {
+      "feature": "is_weekend",
+      "mae_increase_sec": -0.002
+    },
+    {
+      "feature": "provider_availability_count",
+      "mae_increase_sec": -0.005
+    },
+    {
+      "feature": "city",
+      "mae_increase_sec": -0.011
+    },
+    {
+      "feature": "demand_level",
+      "mae_increase_sec": -0.062
+    },
+    {
+      "feature": "sector",
+      "mae_increase_sec": -0.07
+    },
+    {
+      "feature": "service_area",
+      "mae_increase_sec": -0.284
+    },
+    {
+      "feature": "locality",
+      "mae_increase_sec": -0.309
+    }
+  ]
+}

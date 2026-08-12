@@ -1,0 +1,91 @@
+{
+  "prediction_time_contract": "Prediction is made at dispatch/en-route time, before travel begins. A feature is admissible only if its value is knowable at that instant.",
+  "allowed_features": [
+    "distance_km",
+    "google_eta_sec",
+    "hour",
+    "day_of_week",
+    "is_weekend",
+    "city",
+    "locality",
+    "sector",
+    "service_area",
+    "service_category",
+    "traffic_level",
+    "weather_condition",
+    "temperature_c",
+    "rain_mm",
+    "visibility_km",
+    "demand_level",
+    "provider_availability_count",
+    "surge_multiplier",
+    "estimated_wait_before_dispatch_sec"
+  ],
+  "allowed_feature_count": 19,
+  "excluded_features": {
+    "actual_travel_duration_sec": {
+      "class": "target",
+      "reason": "THE TARGET"
+    },
+    "arrived_at": {
+      "class": "outcome",
+      "reason": "target component \u2014 arrival time"
+    },
+    "en_route_at": {
+      "class": "anchor",
+      "reason": "target component; used only to build the label and the temporal split"
+    },
+    "arrival_source": {
+      "class": "outcome",
+      "reason": "how arrival was detected \u2014 post-arrival"
+    },
+    "quality_score": {
+      "class": "post_hoc",
+      "reason": "assessed after trip completion"
+    },
+    "validation_status": {
+      "class": "post_hoc",
+      "reason": "assigned after validation"
+    },
+    "validation_flags": {
+      "class": "post_hoc",
+      "reason": "assigned after validation"
+    },
+    "trip_id": {
+      "class": "id",
+      "reason": "identifier \u2014 memorisation risk"
+    },
+    "dispatched_at": {
+      "class": "anchor",
+      "reason": "raw timestamp; used for the temporal split, not as a feature"
+    },
+    "google_eta_captured_at": {
+      "class": "anchor",
+      "reason": "raw timestamp, redundant with dispatched_at"
+    },
+    "is_synthetic": {
+      "class": "meta",
+      "reason": "dataset flag \u2014 filter, never a feature"
+    },
+    "is_training_eligible": {
+      "class": "meta",
+      "reason": "eligibility flag \u2014 filter, never a feature"
+    }
+  },
+  "unmapped_columns": [],
+  "unavailable_production_features": {
+    "bearing": "requires partner/pickup coordinates \u2014 absent from this dataset",
+    "route_efficiency": "requires straight-line vs travelled distance \u2014 coordinates absent",
+    "average_speed": "derivable but leaks the target (distance / duration)",
+    "partner_familiarity": "requires partner history \u2014 absent",
+    "historical_avg_delay": "requires partner history \u2014 absent",
+    "partner_rating": "absent from this dataset"
+  },
+  "leakage_controls": [
+    "target and its components never enter the feature matrix",
+    "post-arrival quality/validation fields excluded",
+    "identifier excluded to prevent memorisation",
+    "temporal split so no future row informs a past fold",
+    "no target-derived aggregate (e.g. average speed) constructed"
+  ]
+}

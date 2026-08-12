@@ -1,0 +1,34 @@
+# HOMIGO Artillery load profile — ramp 1k→5k→10k arrivals against the booking read path.
+# Run: artillery run -e prod artillery/booking-load.yml
+# (Companion to the k6 suite in ./k6 and the bun runner in ../runner.ts.)
+config:
+  target: "{{ $processEnvironment.LOAD_TEST_BASE_URL }}"
+  defaults:
+    headers:
+      authorization: "Bearer {{ $processEnvironment.LOAD_TEST_TOKEN }}"
+  phases:
+    - name: warmup
+      duration: 30
+      arrivalRate: 50
+    - name: ramp-1k
+      duration: 60
+      arrivalRate: 100
+      rampTo: 1000
+    - name: hold-5k
+      duration: 60
+      arrivalRate: 5000
+    - name: spike-10k
+      duration: 60
+      arrivalRate: 10000
+  ensure:
+    p95: 1500     # SLO gate — fails the run if p95 > 1.5s
+    maxErrorRate: 1
+scenarios:
+  - name: booking-read
+    flow:
+      - get:
+          url: "/api/bookings/upcoming"
+      - get:
+          url: "/api/services?limit=5"
+      - get:
+          url: "/api/wallet/balance"

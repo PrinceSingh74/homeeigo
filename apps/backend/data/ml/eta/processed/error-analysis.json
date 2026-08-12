@@ -1,0 +1,265 @@
+{
+  "error_distribution": {
+    "50": 64.15,
+    "75": 131.75,
+    "90": 229.25,
+    "95": 309.37,
+    "99": 517.72,
+    "100": 1322.58
+  },
+  "underprediction_pct": 52.32,
+  "overprediction_pct": 47.68,
+  "worst_25_cases": [
+    {
+      "trip_id": "SYN-ETA-012574",
+      "actual_sec": 7363.6,
+      "predicted_sec": 6041.0,
+      "abs_error_sec": 1322.6,
+      "distance_km": 11.93,
+      "traffic": "SEVERE",
+      "weather": "heavy_rain",
+      "google_eta_sec": 4153.3
+    },
+    {
+      "trip_id": "SYN-ETA-049710",
+      "actual_sec": 4287.8,
+      "predicted_sec": 5353.9,
+      "abs_error_sec": 1066.1,
+      "distance_km": 9.67,
+      "traffic": "SEVERE",
+      "weather": "rain",
+      "google_eta_sec": 2983.9
+    },
+    {
+      "trip_id": "SYN-ETA-005980",
+      "actual_sec": 3793.8,
+      "predicted_sec": 2792.1,
+      "abs_error_sec": 1001.7,
+      "distance_km": 6.04,
+      "traffic": "SEVERE",
+      "weather": "rain",
+      "google_eta_sec": 1687.4
+    },
+    {
+      "trip_id": "SYN-ETA-014282",
+      "actual_sec": 5657.8,
+      "predicted_sec": 4739.3,
+      "abs_error_sec": 918.5,
+      "distance_km": 8.87,
+      "traffic": "SEVERE",
+      "weather": "rain",
+      "google_eta_sec": 3071.6
+    },
+    {
+      "trip_id": "SYN-ETA-042624",
+      "actual_sec": 2142.4,
+      "predicted_sec": 3060.8,
+      "abs_error_sec": 918.4,
+      "distance_km": 9.74,
+      "traffic": "HIGH",
+      "weather": "rain",
+      "google_eta_sec": 2082.7
+    },
+    {
+      "trip_id": "SYN-ETA-038444",
+      "actual_sec": 4475.8,
+      "predicted_sec": 3598.8,
+      "abs_error_sec": 877.0,
+      "distance_km": 6.3,
+      "traffic": "SEVERE",
+      "weather": "heavy_rain",
+      "google_eta_sec": 2202.0
+    },
+    {
+      "trip_id": "SYN-ETA-008854",
+      "actual_sec": 4905.8,
+      "predicted_sec": 4037.9,
+      "abs_error_sec": 867.9,
+      "distance_km": 7.62,
+      "traffic": "SEVERE",
+      "weather": "rain",
+      "google_eta_sec": 2524.9
+    },
+    {
+      "trip_id": "SYN-ETA-048462",
+      "actual_sec": 6767.6,
+      "predicted_sec": 5922.4,
+      "abs_error_sec": 845.2,
+      "distance_km": 12.46,
+      "traffic": "SEVERE",
+      "weather": "heavy_rain",
+      "google_eta_sec": 3834.4
+    },
+    {
+      "trip_id": "SYN-ETA-028723",
+      "actual_sec": 4413.0,
+      "predicted_sec": 3574.3,
+      "abs_error_sec": 838.7,
+      "distance_km": 6.59,
+      "traffic": "SEVERE",
+      "weather": "heavy_rain",
+      "google_eta_sec": 2219.4
+    },
+    {
+      "trip_id": "SYN-ETA-025820",
+      "actual_sec": 4734.7,
+      "predicted_sec": 3909.3,
+      "abs_error_sec": 825.4,
+      "distance_km": 7.76,
+      "traffic": "SEVERE",
+      "weather": "rain",
+      "google_eta_sec": 2418.8
+    },
+    {
+      "trip_id": "SYN-ETA-003677",
+      "actual_sec": 3343.6,
+      "predicted_sec": 4129.3,
+      "abs_error_sec": 785.7,
+      "distance_km": 7.89,
+      "traffic": "SEVERE",
+      "weather": "cloudy",
+      "google_eta_sec": 2529.2
+    },
+    {
+      "trip_id": "SYN-ETA-030275",
+      "actual_sec": 6086.5,
+      "predicted_sec": 5303.5,
+      "abs_error_sec": 783.0,
+      "distance_km": 12.08,
+      "traffic": "SEVERE",
+      "weather": "rain",
+      "google_eta_sec": 4101.3
+    },
+    {
+      "trip_id": "SYN-ETA-020811",
+      "actual_sec": 2224.9,
+      "predicted_sec": 2997.8,
+      "abs_error_sec": 772.9,
+      "distance_km": 5.56,
+      "traffic": "SEVERE",
+      "weather": "rain",
+      "google_eta_sec": 1937.1
+    },
+    {
+      "trip_id": "SYN-ETA-017812",
+      "actual_sec": 3286.8,
+      "predicted_sec": 4054.0,
+      "abs_error_sec": 767.2,
+      "distance_km": 7.48,
+      "traffic": "SEVERE",
+      "weather": "rain",
+      "google_eta_sec": 2564.8
+    },
+    {
+      "trip_id": "SYN-ETA-007302",
+      "actual_sec": 3358.2,
+      "predicted_sec": 2628.0,
+      "abs_error_sec": 730.2,
+      "distance_km": 5.19,
+      "traffic": "SEVERE",
+      "weather": "rain",
+      "google_eta_sec": 1620.5
+    },
+    {
+      "trip_id": "SYN-ETA-028719",
+      "actual_sec": 4971.5,
+      "predicted_sec": 4241.9,
+      "abs_error_sec": 729.6,
+      "distance_km": 7.73,
+      "traffic": "SEVERE",
+      "weather": "heavy_rain",
+      "google_eta_sec": 2635.1
+    },
+    {
+      "trip_id": "SYN-ETA-020100",
+      "actual_sec": 4896.5,
+      "predicted_sec": 4172.9,
+      "abs_error_sec": 723.6,
+      "distance_km": 7.17,
+      "traffic": "SEVERE",
+      "weather": "heavy_rain",
+      "google_eta_sec": 2586.9
+    },
+    {
+      "trip_id": "SYN-ETA-000285",
+      "actual_sec": 3114.4,
+      "predicted_sec": 3834.8,
+      "abs_error_sec": 720.4,
+      "distance_km": 6.95,
+      "traffic": "SEVERE",
+      "weather": "rain",
+      "google_eta_sec": 2413.2
+    },
+    {
+      "trip_id": "SYN-ETA-011729",
+      "actual_sec": 3622.4,
+      "predicted_sec": 2911.7,
+      "abs_error_sec": 710.7,
+      "distance_km": 7.11,
+      "traffic": "SEVERE",
+      "weather": "clear",
+      "google_eta_sec": 1912.4
+    },
+    {
+      "trip_id": "SYN-ETA-017099",
+      "actual_sec": 4451.5,
+      "predicted_sec": 3741.0,
+      "abs_error_sec": 710.5,
+      "distance_km": 7.76,
+      "traffic": "SEVERE",
+      "weather": "rain",
+      "google_eta_sec": 2326.1
+    },
+    {
+      "trip_id": "SYN-ETA-007543",
+      "actual_sec": 4569.4,
+      "predicted_sec": 3870.0,
+      "abs_error_sec": 699.4,
+      "distance_km": 8.01,
+      "traffic": "SEVERE",
+      "weather": "rain",
+      "google_eta_sec": 2445.0
+    },
+    {
+      "trip_id": "SYN-ETA-042639",
+      "actual_sec": 2339.0,
+      "predicted_sec": 3026.4,
+      "abs_error_sec": 687.4,
+      "distance_km": 9.3,
+      "traffic": "HIGH",
+      "weather": "heavy_rain",
+      "google_eta_sec": 1983.3
+    },
+    {
+      "trip_id": "SYN-ETA-041614",
+      "actual_sec": 2664.6,
+      "predicted_sec": 3351.7,
+      "abs_error_sec": 687.1,
+      "distance_km": 6.63,
+      "traffic": "SEVERE",
+      "weather": "cloudy",
+      "google_eta_sec": 2107.0
+    },
+    {
+      "trip_id": "SYN-ETA-001586",
+      "actual_sec": 3632.4,
+      "predicted_sec": 2955.6,
+      "abs_error_sec": 676.8,
+      "distance_km": 6.71,
+      "traffic": "SEVERE",
+      "weather": "partly_cloudy",
+      "google_eta_sec": 1864.7
+    },
+    {
+      "trip_id": "SYN-ETA-017636",
+      "actual_sec": 3422.5,
+      "predicted_sec": 4095.3,
+      "abs_error_sec": 672.8,
+      "distance_km": 9.03,
+      "traffic": "SEVERE",
+      "weather": "partly_cloudy",
+      "google_eta_sec": 2658.2
+    }
+  ],
+  "outlier_policy": "no rows deleted; the contract window [60,14400]s already bounds the target and every row falls inside it, so long trips are treated as valid extremes rather than corruption"
+}

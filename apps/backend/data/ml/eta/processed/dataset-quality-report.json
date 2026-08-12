@@ -1,0 +1,494 @@
+{
+  "source_file": "raw/ETA_Training_Data.csv",
+  "sha256": "455b946bfdc77e06ba25b5cff9f28f2f7811c3ec85a6975c066e3f6ccafadae4",
+  "size_bytes": 13877723,
+  "rows": 50000,
+  "columns": 31,
+  "duplicate_trip_ids": 0,
+  "duplicate_full_rows": 0,
+  "total_null_cells": 0,
+  "timestamp_ordering_violations": 0,
+  "timestamp_range": {
+    "min": "2024-01-01T06:00:42",
+    "max": "2024-06-28T22:22:07"
+  },
+  "is_synthetic_values": [
+    "True"
+  ],
+  "is_training_eligible_values": [
+    "False"
+  ],
+  "target": {
+    "column": "actual_travel_duration_sec",
+    "verified_formula": "arrived_at - en_route_at",
+    "matches_arrived_minus_en_route": 50000,
+    "mismatches_arrived_minus_en_route": 0,
+    "worst_deviation_sec": 0.0,
+    "matches_arrived_minus_dispatched": 169,
+    "documented_formula_in_vendor_docs": "arrived_at - dispatched_at",
+    "vendor_docs_correct": false,
+    "dispatch_wait_folded_in_if_wrong_anchor_sec": {
+      "mean": 17.42,
+      "max": 288.9
+    },
+    "min": 60.0,
+    "max": 9889.9,
+    "mean": 1189.05,
+    "median": 1010.2,
+    "p90": 2212.9,
+    "p95": 2739.7,
+    "p99": 3928.5,
+    "contract_window_sec": [
+      60,
+      14400
+    ],
+    "below_min": 0,
+    "above_max": 0,
+    "in_contract_window": 50000,
+    "clamping_applied": false
+  },
+  "columns_profile": {
+    "trip_id": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 50000,
+      "distinct_pct": 100.0,
+      "dtype": "categorical",
+      "cardinality": 50000
+    },
+    "dispatched_at": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 49823,
+      "distinct_pct": 99.646,
+      "dtype": "categorical",
+      "cardinality": 49823
+    },
+    "en_route_at": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 49977,
+      "distinct_pct": 99.954,
+      "dtype": "categorical",
+      "cardinality": 49977
+    },
+    "arrived_at": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 49985,
+      "distinct_pct": 99.97,
+      "dtype": "categorical",
+      "cardinality": 49985
+    },
+    "actual_travel_duration_sec": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 21778,
+      "distinct_pct": 43.556,
+      "dtype": "numeric",
+      "min": 60.0,
+      "max": 9889.9,
+      "mean": 1189.0517,
+      "median": 1010.2,
+      "stdev": 795.8596
+    },
+    "arrival_source": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 2,
+      "distinct_pct": 0.004,
+      "dtype": "categorical",
+      "cardinality": 2,
+      "values": {
+        "gps_geofence": 37619,
+        "job_start": 12381
+      }
+    },
+    "distance_km": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 1125,
+      "distinct_pct": 2.25,
+      "dtype": "numeric",
+      "min": 0.3,
+      "max": 15.57,
+      "mean": 4.3635,
+      "median": 4.25,
+      "stdev": 1.9022
+    },
+    "google_eta_sec": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 16991,
+      "distinct_pct": 33.982,
+      "dtype": "numeric",
+      "min": 24.4,
+      "max": 5010.2,
+      "mean": 843.1609,
+      "median": 750.7,
+      "stdev": 495.2765
+    },
+    "google_eta_captured_at": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 49823,
+      "distinct_pct": 99.646,
+      "dtype": "categorical",
+      "cardinality": 49823
+    },
+    "city": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 3,
+      "distinct_pct": 0.006,
+      "dtype": "categorical",
+      "cardinality": 3,
+      "values": {
+        "Gurugram": 20032,
+        "Delhi": 17433,
+        "Noida": 12535
+      }
+    },
+    "locality": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 33,
+      "distinct_pct": 0.066,
+      "dtype": "categorical",
+      "cardinality": 33,
+      "values": {
+        "Sector 44": 3048,
+        "Sushant Lok": 2116,
+        "DLF The Camellias": 1998,
+        "South Delhi": 1998,
+        "Greater Kailash": 1968,
+        "Golf Course Road": 1842,
+        "Sector 50": 1837,
+        "Sector 52": 1808,
+        "Greater Noida West": 1808,
+        "DLF The Aralias": 1793,
+        "Vasant Kunj": 1748,
+        "Vasant Vihar": 1658,
+        "Saket": 1653,
+        "DLF Park Place": 1594,
+        "Cyber City": 1551,
+        "Sector 42": 1541,
+        "DLF The Magnolias": 1537,
+        "Sector 104": 1369,
+        "Sector 93A": 1360,
+        "Malviya Nagar": 1351,
+        "Defence Colony": 1343,
+        "Hauz Khas": 1332,
+        "Sector 62": 1315,
+        "Sector 100": 1259,
+        "Sector 43": 1255,
+        "DLF The Belaire": 1255,
+        "DLF The Crest": 1243,
+        "Sector 45": 1038,
+        "Golf Links": 1036,
+        "New Friends Colony": 989,
+        "Chanakyapuri": 987,
+        "Sunder Nagar": 713,
+        "Jor Bagh": 657
+      }
+    },
+    "sector": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 11,
+      "distinct_pct": 0.022,
+      "dtype": "categorical",
+      "cardinality": 11,
+      "values": {
+        "Sector 44": 4637,
+        "Sector 51": 4612,
+        "Sector 50": 4611,
+        "Sector 55": 4590,
+        "Sector 75": 4578,
+        "Sector 43": 4558,
+        "Sector 42": 4547,
+        "Sector 45": 4537,
+        "Sector 62": 4480,
+        "Sector 93": 4434,
+        "Sector 52": 4416
+      }
+    },
+    "service_area": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 34,
+      "distinct_pct": 0.068,
+      "dtype": "categorical",
+      "cardinality": 34,
+      "values": {
+        "Gurugram-Sushant Lok": 2116,
+        "Gurugram-DLF The Camellias": 1998,
+        "Delhi-South Delhi": 1998,
+        "Delhi-Greater Kailash": 1968,
+        "Gurugram-Golf Course Road": 1842,
+        "Noida-Sector 50": 1837,
+        "Noida-Sector 52": 1808,
+        "Noida-Greater Noida West": 1808,
+        "Gurugram-DLF The Aralias": 1793,
+        "Noida-Sector 44": 1779,
+        "Delhi-Vasant Kunj": 1748,
+        "Delhi-Vasant Vihar": 1658,
+        "Delhi-Saket": 1653,
+        "Gurugram-DLF Park Place": 1594,
+        "Gurugram-Cyber City": 1551,
+        "Gurugram-Sector 42": 1541,
+        "Gurugram-DLF The Magnolias": 1537,
+        "Noida-Sector 104": 1369,
+        "Noida-Sector 93A": 1360,
+        "Delhi-Malviya Nagar": 1351,
+        "Delhi-Defence Colony": 1343,
+        "Delhi-Hauz Khas": 1332,
+        "Noida-Sector 62": 1315,
+        "Gurugram-Sector 44": 1269,
+        "Noida-Sector 100": 1259,
+        "Gurugram-Sector 43": 1255,
+        "Gurugram-DLF The Belaire": 1255,
+        "Gurugram-DLF The Crest": 1243,
+        "Gurugram-Sector 45": 1038,
+        "Delhi-Golf Links": 1036,
+        "Delhi-New Friends Colony": 989,
+        "Delhi-Chanakyapuri": 987,
+        "Delhi-Sunder Nagar": 713,
+        "Delhi-Jor Bagh": 657
+      }
+    },
+    "service_category": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 10,
+      "distinct_pct": 0.02,
+      "dtype": "categorical",
+      "cardinality": 10,
+      "values": {
+        "Cleaning": 10048,
+        "Deep Cleaning": 7317,
+        "Plumbing": 6109,
+        "Electrical": 4995,
+        "AC Service": 4977,
+        "Appliance Repair": 4012,
+        "Carpentry": 3597,
+        "General Handyman": 3507,
+        "Pest Control": 3009,
+        "Beauty/Salon": 2429
+      }
+    },
+    "hour": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 18,
+      "distinct_pct": 0.036,
+      "dtype": "numeric",
+      "min": 6.0,
+      "max": 23.0,
+      "mean": 13.8464,
+      "median": 14.0,
+      "stdev": 4.8717
+    },
+    "day_of_week": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 7,
+      "distinct_pct": 0.014,
+      "dtype": "numeric",
+      "min": 0.0,
+      "max": 6.0,
+      "mean": 2.9689,
+      "median": 3.0,
+      "stdev": 1.9877
+    },
+    "is_weekend": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 2,
+      "distinct_pct": 0.004,
+      "dtype": "numeric",
+      "min": 0.0,
+      "max": 1.0,
+      "mean": 0.2753,
+      "median": 0.0,
+      "stdev": 0.4467
+    },
+    "weather_condition": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 7,
+      "distinct_pct": 0.014,
+      "dtype": "categorical",
+      "cardinality": 7,
+      "values": {
+        "clear": 15503,
+        "partly_cloudy": 13312,
+        "dust": 9395,
+        "cloudy": 4531,
+        "fog": 3307,
+        "rain": 2777,
+        "heavy_rain": 1175
+      }
+    },
+    "temperature_c": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 431,
+      "distinct_pct": 0.862,
+      "dtype": "numeric",
+      "min": 5.0,
+      "max": 48.0,
+      "mean": 28.8834,
+      "median": 31.8,
+      "stdev": 11.0789
+    },
+    "rain_mm": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 451,
+      "distinct_pct": 0.902,
+      "dtype": "numeric",
+      "min": 0.0,
+      "max": 93.9,
+      "mean": 0.7965,
+      "median": 0.0,
+      "stdev": 4.1278
+    },
+    "visibility_km": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 3,
+      "distinct_pct": 0.006,
+      "dtype": "numeric",
+      "min": 2.5,
+      "max": 10.0,
+      "mean": 6.7882,
+      "median": 8.0,
+      "stdev": 3.1381
+    },
+    "traffic_level": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 4,
+      "distinct_pct": 0.008,
+      "dtype": "categorical",
+      "cardinality": 4,
+      "values": {
+        "HIGH": 26570,
+        "MODERATE": 10151,
+        "SEVERE": 9158,
+        "LOW": 4121
+      }
+    },
+    "provider_availability_count": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 19,
+      "distinct_pct": 0.038,
+      "dtype": "numeric",
+      "min": 1.0,
+      "max": 19.0,
+      "mean": 6.5762,
+      "median": 6.0,
+      "stdev": 2.4286
+    },
+    "demand_level": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 4,
+      "distinct_pct": 0.008,
+      "dtype": "categorical",
+      "cardinality": 4,
+      "values": {
+        "NORMAL": 20444,
+        "HIGH": 11461,
+        "LOW": 11336,
+        "VERY_HIGH": 6759
+      }
+    },
+    "surge_multiplier": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 3,
+      "distinct_pct": 0.006,
+      "dtype": "numeric",
+      "min": 1.0,
+      "max": 1.5,
+      "mean": 1.1134,
+      "median": 1.0,
+      "stdev": 0.1735
+    },
+    "estimated_wait_before_dispatch_sec": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 1428,
+      "distinct_pct": 2.856,
+      "dtype": "numeric",
+      "min": 0.0,
+      "max": 288.9,
+      "mean": 17.4171,
+      "median": 9.9,
+      "stdev": 22.1869
+    },
+    "quality_score": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 697,
+      "distinct_pct": 1.394,
+      "dtype": "numeric",
+      "min": 0.145,
+      "max": 1.0,
+      "mean": 0.7999,
+      "median": 0.82,
+      "stdev": 0.1207
+    },
+    "validation_status": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 2,
+      "distinct_pct": 0.004,
+      "dtype": "categorical",
+      "cardinality": 2,
+      "values": {
+        "PASS": 48867,
+        "REVIEW": 1133
+      }
+    },
+    "validation_flags": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 4,
+      "distinct_pct": 0.008,
+      "dtype": "categorical",
+      "cardinality": 4,
+      "values": {
+        "none": 48867,
+        "long_trip": 688,
+        "extreme_conditions": 359,
+        "long_trip;extreme_conditions": 86
+      }
+    },
+    "is_synthetic": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 1,
+      "distinct_pct": 0.002,
+      "dtype": "categorical",
+      "cardinality": 1,
+      "values": {
+        "True": 50000
+      }
+    },
+    "is_training_eligible": {
+      "null_count": 0,
+      "null_pct": 0.0,
+      "distinct": 1,
+      "distinct_pct": 0.002,
+      "dtype": "categorical",
+      "cardinality": 1,
+      "values": {
+        "False": 50000
+      }
+    }
+  }
+}

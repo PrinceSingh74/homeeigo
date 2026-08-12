@@ -1,4 +1,9 @@
+import { redisClient } from "../src/lib/redis";
 import { productionValidationService } from "../src/services/production-validation.service";
+
+if (redisClient.isEnabled) {
+  await redisClient.connect();
+}
 
 const report = await productionValidationService.runFullValidation();
 

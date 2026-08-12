@@ -1,0 +1,124 @@
+# HOMIGO real-time alert rules (P9) — proactive operations.
+# Evaluated by Prometheus every 15s; routes to Alertmanager / Grafana alerting.
+# Thresholds are tuned for the live single-region deployment; adjust per environment.
+groups:
+  # ── OPERATIONS ──
+  - name: homigo-operations
+    rules:
+      - alert: ProviderShortage
+        expr: partner_providers_online < 3 and biz_active_customers > 0
+        for: 2m
+        labels: { severity: warning, domain: operations }
+        annotations:
+          summary: "Provider shortage — only {{ $value }} online"
+          description: "Online providers below the supply floor while demand is active. Trigger acquisition push / surge."
+      - alert: BookingSpike
+        expr: sum(rate(booking_created_total[5m])) > 0.5
+        for: 3m
+        labels: { severity: info, domain: operations }
+        annotations:
+          summary: "Booking spike — {{ $value | humanize }}/s sustained"
+          description: "Booking creation rate is elevated. Confirm dispatch capacity and provider availability."
+      - alert: DispatchBacklog
+        expr: assignment_queue_backlog > 20
+        for: 2m
+        labels: { severity: warning, domain: operations }
+        annotations:
+          summary: "Dispatch backlog — {{ $value }} unassigned"
+          description: "Assignment queue is backing up; matching may be starved or providers offline."
+      - alert: LowBookingCompletion
+        expr: ops_booking_completion_rate < 50 and ops_booking_completion_rate > 0
+        for: 10m
+        labels: { severity: warning, domain: operations }
+        annotations:
+          summary: "Completion rate low — {{ $value }}%"
+          description: "More than half of finished bookings are cancellations. Investigate cancellation drivers."
+
+  # ── TECHNOLOGY ──
+  - name: homigo-technology
+    rules:
+      - alert: HighApiLatency
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 1
+        for: 5m
+        labels: { severity: warning, domain: technology }
+        annotations:
+          summary: "API p95 latency high — {{ $value | humanizeDuration }}"
+          description: "p95 request latency above the 1s SLO for 5m."
+      - alert: DatabaseSaturation
+        expr: db_connections_active / clamp_min(db_pool_max_connections, 1) > 0.85
+        for: 3m
+        labels: { severity: critical, domain: technology }
+        annotations:
+          summary: "DB pool saturation — {{ $value | humanizePercentage }}"
+          description: "Active connections exceed 85% of the pool. Risk of connection exhaustion."
+      - alert: RedisDown
+        expr: redis_up == 0 or absent(redis_up)
+        for: 1m
+        labels: { severity: critical, domain: technology }
+        annotations:
+          summary: "Redis unreachable"
+          description: "Redis health check failing; cache + WS fan-out degraded to in-memory."
+      - alert: BackendTargetDown
+        expr: up{job="homigo-backend"} == 0
+        for: 1m
+        labels: { severity: critical, domain: technology }
+        annotations:
+          summary: "Backend /metrics target down"
+          description: "Prometheus cannot scrape the backend — service may be down."
+
+  # ── SECURITY ──
+  - name: homigo-security
+    rules:
+      - alert: BruteForceAttack
+        expr: sum(rate(failed_login_total[5m])) > 0.5 or sum(increase(brute_force_attempts_total[5m])) > 5
+        for: 2m
+        labels: { severity: critical, domain: security }
+        annotations:
+          summary: "Possible brute-force — {{ $value | humanize }} failed logins/s"
+          description: "Elevated failed-login / brute-force signal. Check source IPs and consider throttling."
+      - alert: WebhookVerificationFailures
+        expr: sum(increase(webhook_verification_failed_total[10m])) > 3
+        for: 1m
+        labels: { severity: critical, domain: security }
+        annotations:
+          summary: "Webhook signature failures — {{ $value }} in 10m"
+          description: "Multiple webhook signature verifications failed. Possible spoofing or key rotation issue."
+      - alert: JwtAbuse
+        expr: sum(rate(jwt_failures_total[5m])) > 1
+        for: 3m
+        labels: { severity: warning, domain: security }
+        annotations:
+          summary: "JWT failure rate elevated — {{ $value | humanize }}/s"
+          description: "High rate of invalid/expired/tampered tokens. Possible token replay or abuse."
+      - alert: RateLimitFlood
+        expr: sum(rate(rate_limit_triggered_total[5m])) > 2
+        for: 3m
+        labels: { severity: warning, domain: security }
+        annotations:
+          summary: "Rate-limit triggers flooding — {{ $value | humanize }}/s"
+          description: "Sustained 429s; possible scraping/DoS or a misbehaving client."
+
+  # ── WEATHER ──
+  - name: homigo-weather
+    rules:
+      - alert: StormConditions
+        expr: weather_wind_speed_kmh > 50
+        for: 5m
+        labels: { severity: warning, domain: weather }
+        annotations:
+          summary: "Storm-level wind in {{ $labels.city }} — {{ $value }} km/h"
+          description: "High winds may disrupt provider travel; ETA buffers + surge engaged."
+      - alert: FloodRiskHeavyRain
+        expr: weather_surge_multiplier > 1.5
+        for: 5m
+        labels: { severity: warning, domain: weather }
+        annotations:
+          summary: "Severe-weather surge in {{ $labels.city }} — ×{{ $value }}"
+          description: "Weather surge multiplier high (heavy rain/flood risk). Monitor cancellations + supply."
+      - alert: Heatwave
+        expr: weather_temperature_celsius > 45
+        for: 10m
+        labels: { severity: info, domain: weather }
+        annotations:
+          summary: "Heatwave in {{ $labels.city }} — {{ $value }}°C"
+          description: "Extreme heat; expect demand shifts and provider fatigue. Hydration advisory for field staff."

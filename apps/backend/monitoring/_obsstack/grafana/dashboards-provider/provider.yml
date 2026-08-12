@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: homigo-enterprise
+    folder: HOMIGO Enterprise
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

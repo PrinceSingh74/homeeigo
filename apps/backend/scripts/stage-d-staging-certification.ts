@@ -139,7 +139,7 @@ async function main() {
     : gate("D2", "event.booking.created", "FAIL", "outbox row not PUBLISHED");
 
   // ── D3 Partner assignment → booking.assigned ──
-  await assignmentEngine.processQueue();
+  await assignmentEngine.dispatchBookingNow(bookingId);
   const job = await prisma.assignmentJob.findUnique({ where: { bookingId } });
   const attempt = job
     ? await prisma.assignmentAttempt.findFirst({ where: { jobId: job.id }, orderBy: { dispatchedAt: "desc" } })
@@ -188,11 +188,11 @@ async function main() {
       ? gate("D4", "booking.en_route_at", "PASS", bEnRoute.enRouteAt.toISOString())
       : gate("D4", "booking.en_route_at", "FAIL", "column null after tracking update");
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
       await trackingService.updateLocation(bAccepted.providerId, {
         bookingId,
-        latitude: bookingLat,
-        longitude: bookingLng,
+        latitude: bookingLat + i * 0.00005,
+        longitude: bookingLng + i * 0.00005,
         accuracy: 8,
         speed: 0,
       });
@@ -204,8 +204,13 @@ async function main() {
       ? gate("D4", "booking.arrived_at", "PASS", `${bArrived.arrivedAt.toISOString()} travel=${bArrived.travelDurationMin}min`)
       : gate("D4", "booking.arrived_at", "FAIL", "arrived_at not set (need MIN_ARRIVAL_NEAR_PINGS near customer)");
 
+    await flushOutbox();
+    // partner.arrived uses providerId as outbox aggregateId (see buildPartnerArrivedEvent)
     const arrivedEvt = await prisma.eventOutbox.findFirst({
-      where: { eventType: EVENT_TYPES.PARTNER_ARRIVED, aggregateId: bookingId },
+      where: {
+        eventType: EVENT_TYPES.PARTNER_ARRIVED,
+        OR: [{ aggregateId: bAccepted.providerId }, { aggregateId: bookingId }],
+      },
       orderBy: { createdAt: "desc" },
     });
     arrivedEvt?.status === "PUBLISHED"

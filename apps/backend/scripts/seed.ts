@@ -17,12 +17,10 @@ import {
   WalletTxnStatus,
   WalletTxnType,
 } from "@prisma/client";
+import { PasswordService } from "../src/services/password.service";
+import { rbacService } from "../src/services/rbac.service";
 
 const prisma = new PrismaClient();
-
-async function hashPassword(plain: string) {
-  return Bun.password.hash(plain, { algorithm: "bcrypt", cost: 10 });
-}
 
 function bookingNumber(seq: number) {
   const d = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -54,9 +52,12 @@ async function main() {
   await prisma.address.deleteMany();
   await prisma.provider.deleteMany();
   await prisma.service.deleteMany();
+  await prisma.adminPermission.deleteMany();
+  await prisma.adminUser.deleteMany();
+  await prisma.adminRole.deleteMany();
   await prisma.user.deleteMany();
 
-  const passwordHash = await hashPassword("Homigo@123");
+  const passwordHash = await PasswordService.hashPassword("Homigo@123");
 
   const [deepCleaning, acService, plumbing] = await Promise.all([
     prisma.service.create({
@@ -223,6 +224,7 @@ async function main() {
   await prisma.payment.create({
     data: {
       bookingId: booking.id,
+      idempotencyKey: `booking_order:${booking.id}`,
       userId: customer.id,
       amount: 899,
       amountPaid: 899,
@@ -283,6 +285,8 @@ async function main() {
       totalAmount: 599,
     },
   });
+
+  await rbacService.bootstrap();
 
   console.log("✅ Seed complete");
   console.log({

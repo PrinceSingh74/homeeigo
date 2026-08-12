@@ -1,0 +1,47 @@
+{
+  "uid": "homigo-command-center",
+  "title": "HOMIGO — Enterprise Command Center",
+  "tags": ["homigo", "executive", "ops", "finance", "security"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    { "type": "row", "title": "1 · CEO Dashboard", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false },
+    {
+      "id": 1, "title": "Revenue Today (₹, success payments)", "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 }, "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "currencyINR" } },
+      "targets": [{ "expr": "sum(increase(wallet_deduction_total[24h])) * 0 + sum(increase(payment_success_total[24h]))", "legendFormat": "payments today" }]
+    },
+    { "id": 2, "title": "Active Bookings", "type": "stat", "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "sum(increase(booking_created_total[24h])) - sum(increase(booking_completed_total[24h])) - sum(increase(booking_cancelled_total[24h]))", "legendFormat": "active" }] },
+    { "id": 3, "title": "Payment Success Rate", "type": "gauge", "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "steps": [{ "color": "red", "value": 0 }, { "color": "yellow", "value": 95 }, { "color": "green", "value": 99 }] } } }, "targets": [{ "expr": "100 * sum(increase(payment_success_total[1h])) / clamp_min(sum(increase(payment_success_total[1h])) + sum(increase(payment_failed_total[1h])), 1)", "legendFormat": "success %" }] },
+    { "id": 4, "title": "Provider Acceptance Rate", "type": "gauge", "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "steps": [{ "color": "red", "value": 0 }, { "color": "yellow", "value": 60 }, { "color": "green", "value": 80 }] } } }, "targets": [{ "expr": "provider_acceptance_rate", "legendFormat": "accept %" }] },
+    { "id": 5, "title": "Bookings created / completed / cancelled (rate)", "type": "timeseries", "gridPos": { "h": 7, "w": 24, "x": 0, "y": 6 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "sum(rate(booking_created_total[5m]))", "legendFormat": "created/s" }, { "expr": "sum(rate(booking_completed_total[5m]))", "legendFormat": "completed/s" }, { "expr": "sum(rate(booking_cancelled_total[5m]))", "legendFormat": "cancelled/s" }] },
+
+    { "type": "row", "title": "2 · Operations Command Center", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 }, "collapsed": false },
+    { "id": 10, "title": "Dispatch — attempts / success / timeout (rate)", "type": "timeseries", "gridPos": { "h": 7, "w": 12, "x": 0, "y": 14 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "sum(rate(dispatch_attempts_total[5m]))", "legendFormat": "attempts/s" }, { "expr": "sum(rate(dispatch_success_total[5m]))", "legendFormat": "success/s" }, { "expr": "sum(rate(dispatch_timeout_total[5m]))", "legendFormat": "timeout/s" }] },
+    { "id": 11, "title": "Dispatch Failure %", "type": "stat", "gridPos": { "h": 7, "w": 6, "x": 12, "y": 14 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 10 }] } } }, "targets": [{ "expr": "100 * sum(increase(dispatch_timeout_total[1h])) / clamp_min(sum(increase(dispatch_attempts_total[1h])),1)", "legendFormat": "fail %" }] },
+    { "id": 12, "title": "Tracking updates/sec (vs throttled)", "type": "timeseries", "gridPos": { "h": 7, "w": 6, "x": 18, "y": 14 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "sum(rate(homigo_feature_events_total{feature=\"tracking\",result=\"update\"}[5m]))", "legendFormat": "updates/s" }, { "expr": "sum(rate(homigo_feature_events_total{feature=\"tracking\",result=\"throttled\"}[5m]))", "legendFormat": "throttled/s" }] },
+
+    { "type": "row", "title": "3 · Financial Dashboard", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 }, "collapsed": false },
+    { "id": 20, "title": "Financial Integrity Score", "type": "gauge", "gridPos": { "h": 6, "w": 6, "x": 0, "y": 22 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "fieldConfig": { "defaults": { "min": 0, "max": 100, "thresholds": { "steps": [{ "color": "red", "value": 0 }, { "color": "yellow", "value": 95 }, { "color": "green", "value": 100 }] } } }, "targets": [{ "expr": "financial_integrity_score", "legendFormat": "integrity" }] },
+    { "id": 21, "title": "Payment success / failed / refund (rate)", "type": "timeseries", "gridPos": { "h": 6, "w": 12, "x": 6, "y": 22 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "sum(rate(payment_success_total[5m]))", "legendFormat": "success/s" }, { "expr": "sum(rate(payment_failed_total[5m]))", "legendFormat": "failed/s" }, { "expr": "sum(rate(payment_refund_total[5m]))", "legendFormat": "refund/s" }] },
+    { "id": 22, "title": "Wallet deductions / refunds (rate)", "type": "timeseries", "gridPos": { "h": 6, "w": 6, "x": 18, "y": 22 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "sum(rate(wallet_deduction_total[5m]))", "legendFormat": "deduction/s" }, { "expr": "sum(rate(wallet_refund_total[5m]))", "legendFormat": "refund/s" }] },
+
+    { "type": "row", "title": "4 · Technology Dashboard", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 }, "collapsed": false },
+    { "id": 30, "title": "API latency p95 / p99 (s)", "type": "timeseries", "gridPos": { "h": 7, "w": 8, "x": 0, "y": 29 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "fieldConfig": { "defaults": { "unit": "s" } }, "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" }, { "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99" }] },
+    { "id": 31, "title": "API error rate %", "type": "stat", "gridPos": { "h": 7, "w": 4, "x": 8, "y": 29 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 2 }, { "color": "red", "value": 5 }] } } }, "targets": [{ "expr": "100 * sum(rate(http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total[5m])),1)", "legendFormat": "error %" }] },
+    { "id": 32, "title": "DB connections (active / idle)", "type": "timeseries", "gridPos": { "h": 7, "w": 6, "x": 12, "y": 29 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "db_connections_active", "legendFormat": "active" }, { "expr": "db_connections_idle", "legendFormat": "idle" }] },
+    { "id": 33, "title": "Redis up · hit rate", "type": "timeseries", "gridPos": { "h": 7, "w": 6, "x": 18, "y": 29 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "redis_up", "legendFormat": "up" }, { "expr": "redis_hit_rate", "legendFormat": "hit rate" }] },
+    { "id": 34, "title": "Google Maps calls vs failures (rate)", "type": "timeseries", "gridPos": { "h": 6, "w": 12, "x": 0, "y": 36 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "sum(rate(google_api_calls_total[5m])) by (endpoint)", "legendFormat": "calls {{endpoint}}" }, { "expr": "sum(rate(google_api_failures_total[5m]))", "legendFormat": "failures" }] },
+    { "id": 35, "title": "Platform — RSS / heap", "type": "timeseries", "gridPos": { "h": 6, "w": 12, "x": 12, "y": 36 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "fieldConfig": { "defaults": { "unit": "bytes" } }, "targets": [{ "expr": "process_resident_memory_bytes", "legendFormat": "RSS" }, { "expr": "nodejs_heap_used_bytes", "legendFormat": "heap" }] },
+
+    { "type": "row", "title": "5 · Security Dashboard", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 }, "collapsed": false },
+    { "id": 40, "title": "Auth failures (login 401/403) rate", "type": "timeseries", "gridPos": { "h": 7, "w": 8, "x": 0, "y": 43 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "sum(rate(http_requests_total{route=\"/api/auth/login\",status=\"401\"}[5m]))", "legendFormat": "failed logins/s" }] },
+    { "id": 41, "title": "RBAC denials (admin 403) rate", "type": "timeseries", "gridPos": { "h": 7, "w": 8, "x": 8, "y": 43 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "sum(rate(http_requests_total{route=~\"/api/admin/.*\",status=\"403\"}[5m]))", "legendFormat": "rbac denials/s" }] },
+    { "id": 42, "title": "Rate-limit violations (429) rate", "type": "timeseries", "gridPos": { "h": 7, "w": 8, "x": 16, "y": 43 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "sum(rate(http_requests_total{status=\"429\"}[5m]))", "legendFormat": "429/s" }] }
+  ]
+}

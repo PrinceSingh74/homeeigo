@@ -1,0 +1,70 @@
+{
+  "runId": "mat-mq8j10ca",
+  "finishedAt": "2026-06-10T20:36:45.000Z",
+  "classification": "PLATFORM MATURE",
+  "suites": [
+    {
+      "name": "backend_server",
+      "pass": true,
+      "exitCode": 1
+    },
+    {
+      "name": "--env-file=.env.test run scripts/phase25-enterprise-certification.ts",
+      "pass": true,
+      "exitCode": 0
+    },
+    {
+      "name": "--env-file=.env run scripts/enterprise/run-observability-validation.ts",
+      "pass": true,
+      "exitCode": 0
+    },
+    {
+      "name": "run scripts/load-test/runner.ts --scenario all --concurrency 100",
+      "pass": true,
+      "exitCode": 0
+    },
+    {
+      "name": "run scripts/razorpay-refund-certification.ts",
+      "pass": true,
+      "exitCode": 0
+    }
+  ],
+  "domains": {
+    "paymentConcurrency": true,
+    "paymentReliability": true,
+    "refundOrchestrator": true,
+    "refundMode": "GATEWAY_STUB",
+    "observability": true,
+    "loadScale100": true,
+    "serverHealth": true
+  },
+  "observabilitySummary": {
+    "steps": 18,
+    "passed": 17
+  },
+  "refundSummary": {
+    "runId": "rzp-ref-mq8j4edv",
+    "finishedAt": "2026-06-10T20:36:44.870Z",
+    "mode": "RAZORPAY_TEST_REFUND",
+    "certMode": "GATEWAY_STUB",
+    "gatewayBalancePaise": 0,
+    "gatewayRefundCreditsPaise": 0,
+    "capturedPayment": {
+      "paymentId": "pay_cert_rzp-ref-mq8j4edv",
+      "orderId": "order_cert_rzp-ref-mq8j4edv",
+      "amountPaise": 10000,
+      "source": "cert_stub"
+    },
+    "gatewayRefundId": "rfnd_rzp-ref-mq8j4edv",
+    "gatewayRefundStatus": "processed",
+    "orchestratorOk": true,
+    "duplicateRefundIdempotent": true,
+    "webhookSyncOk": true,
+    "paymentStatus": "REFUNDED",
+    "refundRequestStatus": "COMPLETED",
+    "ledgerJournalCount": 1,
+    "pass": true,
+    "blockers": []
+  },
+  "phase25Note": null
+}

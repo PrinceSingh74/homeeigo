@@ -1,0 +1,209 @@
+{
+  "generated_at": "2026-08-09T22:32:30.219740",
+  "stages": [
+    {
+      "n": 1,
+      "stage": "50K Synthetic Dataset",
+      "verdict": "PASS",
+      "evidence": [
+        "sha256 455b946bfdc77e06ba25b5cf\u2026 recomputed now, matches recorded manifest",
+        "50,000 rows x 31 cols \u00b7 nulls 0 \u00b7 dup ids 0 \u00b7 ordering violations 0",
+        "target formula verified 50,000/50,000 (vendor docs matched only 169)"
+      ]
+    },
+    {
+      "n": 2,
+      "stage": "Offline Candidate",
+      "verdict": "PASS",
+      "evidence": [
+        "20/20 artifacts present",
+        "model_id eta-candidate-50k-v1-455b946bfdc7 \u00b7 HistGradientBoostingRegressor(loss=absolute_error)",
+        "seed 20260809 \u00b7 refit delta 0.0e+00s (reproducible)"
+      ]
+    },
+    {
+      "n": 3,
+      "stage": "98.3s MAE",
+      "verdict": "PASS",
+      "evidence": [
+        "sealed test n=7,500 (= split-manifest test slice, evaluated once after selection)",
+        "MAE 98.3s \u00b7 RMSE 146.18s \u00b7 P95 309.37s \u00b7 bias -9.1s \u00b7 R2 0.9738",
+        "vs best baseline 147.52s -> 33.36% better"
+      ]
+    },
+    {
+      "n": 4,
+      "stage": "MODEL CANDIDATE ONLY",
+      "verdict": "PASS",
+      "evidence": [
+        "registry status = CANDIDATE \u00b7 promotion = BLOCKED \u2014 synthetic data, human approv\u2026",
+        "model call on booking/tracking path: none",
+        "synthetic rows leaked into bookings: 0 \u00b7 synthetic counted eligible: 0"
+      ]
+    },
+    {
+      "n": 5,
+      "stage": "Real HOMIGO Telemetry",
+      "verdict": "PASS",
+      "evidence": [
+        "Postgres reachable \u00b7 bookings 297 \u00b7 completed 110 \u00b7 production-numbered 290"
+      ]
+    },
+    {
+      "n": 6,
+      "stage": "Fix / verify lifecycle capture",
+      "verdict": "PASS",
+      "evidence": [
+        "explicit endpoints present: True \u00b7 ordering guards in tracking.service: True",
+        "bookings with enRouteAt 12 (was 3) \u00b7 arrivedAt 12 (was 4) \u00b7 inverted 0",
+        "canonical events emitted: en_route 11 \u00b7 arrived 11",
+        "NOTE: code path proven; PRODUCTION partner traffic through these actions is NOT VERIFIED"
+      ]
+    },
+    {
+      "n": 7,
+      "stage": "Real eligible ETA labels",
+      "verdict": "BLOCKED",
+      "evidence": [
+        "labels stored 6 \u00b7 REAL training-eligible 0",
+        "why each label is blocked:",
+        "  - duration_below_min | n=3",
+        "  - duration_below_min,invalid_google_eta | n=2",
+        "  - missing_travel_start,arrival_inferred_from_job_start | n=1",
+        "durations: 0s, 4s, 1s, NULLs, 2s, 2s"
+      ]
+    },
+    {
+      "n": 8,
+      "stage": ">=50 REAL",
+      "verdict": "BLOCKED",
+      "evidence": [
+        "0/50 real eligible labels",
+        "gate enforced in train-models.ts: True (`etaRows >= 50 ? trainable : BLOCKED`)",
+        "PROOF THE GATE FAILS CLOSED: with 0 eligible the trainer reports BLOCKED, not 'trainable'"
+      ]
+    },
+    {
+      "n": 9,
+      "stage": "Same feature contract",
+      "verdict": "BLOCKED",
+      "evidence": [
+        "offline set 19 features \u00b7 real telemetry supplies 15 \u00b7 absent 4",
+        "absent in real schema: demand_level, estimated_wait_before_dispatch_sec, provider_availability_count, visibility_km",
+        "available ONLY in real telemetry: bearing, route_efficiency, average_speed, partner_rating, partner_familiarity, historical_avg_duration",
+        "-> contracts overlap but are not identical; written to real-feature-contract-gap.json"
+      ]
+    },
+    {
+      "n": 10,
+      "stage": "Same evaluation framework",
+      "verdict": "BLOCKED",
+      "evidence": [
+        "framework is reusable and reproducible (seed 20260809, refit delta 0.0e+00s)",
+        "offline run kept 46 segments at n>=100 from a 7,500-row test slice",
+        "at 0 eligible labels a 70/15/15 split yields 0/0/0 rows",
+        "minimum for segment-level runs: ~500 test rows -> ~3,333 labels total"
+      ]
+    },
+    {
+      "n": 11,
+      "stage": "Google+recal VS HOMIGO candidate",
+      "verdict": "BLOCKED",
+      "evidence": [
+        "comparison harness proven on synthetic: candidate 98.3s vs baseline 147.52s",
+        "on REAL data: requires >=50 eligible labels AND a google_eta_seconds value per label",
+        "real labels carrying google_eta_seconds: 4"
+      ]
+    },
+    {
+      "n": 12,
+      "stage": "Temporal validation",
+      "verdict": "BLOCKED",
+      "evidence": [
+        "requires >=3 folds x >=100 rows; currently 0 eligible labels"
+      ]
+    },
+    {
+      "n": 13,
+      "stage": "Segment validation",
+      "verdict": "BLOCKED",
+      "evidence": [
+        "requires >=100 rows per segment; currently 0 eligible labels"
+      ]
+    },
+    {
+      "n": 14,
+      "stage": "Long-trip validation",
+      "verdict": "BLOCKED",
+      "evidence": [
+        "requires >=100 trips above P95 duration; currently 0 eligible labels"
+      ]
+    },
+    {
+      "n": 15,
+      "stage": "Severe-traffic validation",
+      "verdict": "BLOCKED",
+      "evidence": [
+        "requires >=100 trips at traffic=SEVERE; currently 0 eligible labels"
+      ]
+    },
+    {
+      "n": 16,
+      "stage": "Human review",
+      "verdict": "NOT VERIFIED",
+      "evidence": [
+        "external to this environment \u2014 a person must review the model card"
+      ]
+    },
+    {
+      "n": 17,
+      "stage": "Promotion decision",
+      "verdict": "NOT VERIFIED",
+      "evidence": [
+        "external \u2014 no automatic promotion exists in code"
+      ]
+    }
+  ],
+  "invariants": [
+    {
+      "invariant": "Google Maps is customer-facing ETA",
+      "holds": true
+    },
+    {
+      "invariant": "ETA ML inference OFF on booking path",
+      "holds": true
+    },
+    {
+      "invariant": "Synthetic never counted eligible",
+      "holds": true
+    },
+    {
+      "invariant": "No SYN-* rows in bookings",
+      "holds": true
+    },
+    {
+      "invariant": "Raw dataset immutable",
+      "holds": true
+    },
+    {
+      "invariant": "Training threshold unchanged (50)",
+      "holds": true
+    },
+    {
+      "invariant": "enRouteAt <= arrivedAt across all bookings",
+      "holds": true
+    },
+    {
+      "invariant": "No production writes by the ML program",
+      "holds": true
+    }
+  ],
+  "summary": {
+    "proven": 6,
+    "blocked": 9,
+    "not_verified": 2,
+    "first_blocking_stage": "Real eligible ETA labels",
+    "real_eligible_labels": 0,
+    "threshold": 50
+  }
+}

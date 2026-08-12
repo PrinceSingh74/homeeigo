@@ -1,0 +1,200 @@
+{
+  "version": "eta-50k-fs-v1",
+  "prediction_time": "dispatch",
+  "features": [
+    {
+      "name": "distance_km",
+      "class": "route",
+      "available_at_prediction": true,
+      "note": "route distance estimated at dispatch"
+    },
+    {
+      "name": "google_eta_sec",
+      "class": "route",
+      "available_at_prediction": true,
+      "note": "captured at dispatch (google_eta_captured_at == dispatched_at)"
+    },
+    {
+      "name": "hour",
+      "class": "temporal",
+      "available_at_prediction": true,
+      "note": "derived from dispatch timestamp"
+    },
+    {
+      "name": "day_of_week",
+      "class": "temporal",
+      "available_at_prediction": true,
+      "note": "derived from dispatch timestamp"
+    },
+    {
+      "name": "is_weekend",
+      "class": "temporal",
+      "available_at_prediction": true,
+      "note": "derived from dispatch timestamp"
+    },
+    {
+      "name": "city",
+      "class": "geo",
+      "available_at_prediction": true,
+      "note": "booking address, known at creation"
+    },
+    {
+      "name": "locality",
+      "class": "geo",
+      "available_at_prediction": true,
+      "note": "booking address, known at creation"
+    },
+    {
+      "name": "sector",
+      "class": "geo",
+      "available_at_prediction": true,
+      "note": "booking address, known at creation"
+    },
+    {
+      "name": "service_area",
+      "class": "geo",
+      "available_at_prediction": true,
+      "note": "city-locality composite"
+    },
+    {
+      "name": "service_category",
+      "class": "service",
+      "available_at_prediction": true,
+      "note": "chosen by the customer at booking"
+    },
+    {
+      "name": "traffic_level",
+      "class": "traffic",
+      "available_at_prediction": true,
+      "note": "observed at dispatch"
+    },
+    {
+      "name": "weather_condition",
+      "class": "weather",
+      "available_at_prediction": true,
+      "note": "observed at dispatch"
+    },
+    {
+      "name": "temperature_c",
+      "class": "weather",
+      "available_at_prediction": true,
+      "note": "observed at dispatch"
+    },
+    {
+      "name": "rain_mm",
+      "class": "weather",
+      "available_at_prediction": true,
+      "note": "observed at dispatch"
+    },
+    {
+      "name": "visibility_km",
+      "class": "weather",
+      "available_at_prediction": true,
+      "note": "observed at dispatch"
+    },
+    {
+      "name": "demand_level",
+      "class": "demand",
+      "available_at_prediction": true,
+      "note": "platform state at dispatch"
+    },
+    {
+      "name": "provider_availability_count",
+      "class": "availability",
+      "available_at_prediction": true,
+      "note": "platform state at dispatch"
+    },
+    {
+      "name": "surge_multiplier",
+      "class": "demand",
+      "available_at_prediction": true,
+      "note": "priced at booking"
+    },
+    {
+      "name": "estimated_wait_before_dispatch_sec",
+      "class": "operational",
+      "available_at_prediction": true,
+      "note": "elapsed before dispatch, known at dispatch"
+    },
+    {
+      "name": "actual_travel_duration_sec",
+      "class": "target",
+      "available_at_prediction": false,
+      "note": "THE TARGET"
+    },
+    {
+      "name": "arrived_at",
+      "class": "outcome",
+      "available_at_prediction": false,
+      "note": "target component \u2014 arrival time"
+    },
+    {
+      "name": "en_route_at",
+      "class": "anchor",
+      "available_at_prediction": false,
+      "note": "target component; used only to build the label and the temporal split"
+    },
+    {
+      "name": "arrival_source",
+      "class": "outcome",
+      "available_at_prediction": false,
+      "note": "how arrival was detected \u2014 post-arrival"
+    },
+    {
+      "name": "quality_score",
+      "class": "post_hoc",
+      "available_at_prediction": false,
+      "note": "assessed after trip completion"
+    },
+    {
+      "name": "validation_status",
+      "class": "post_hoc",
+      "available_at_prediction": false,
+      "note": "assigned after validation"
+    },
+    {
+      "name": "validation_flags",
+      "class": "post_hoc",
+      "available_at_prediction": false,
+      "note": "assigned after validation"
+    },
+    {
+      "name": "trip_id",
+      "class": "id",
+      "available_at_prediction": false,
+      "note": "identifier \u2014 memorisation risk"
+    },
+    {
+      "name": "dispatched_at",
+      "class": "anchor",
+      "available_at_prediction": false,
+      "note": "raw timestamp; used for the temporal split, not as a feature"
+    },
+    {
+      "name": "google_eta_captured_at",
+      "class": "anchor",
+      "available_at_prediction": false,
+      "note": "raw timestamp, redundant with dispatched_at"
+    },
+    {
+      "name": "is_synthetic",
+      "class": "meta",
+      "available_at_prediction": false,
+      "note": "dataset flag \u2014 filter, never a feature"
+    },
+    {
+      "name": "is_training_eligible",
+      "class": "meta",
+      "available_at_prediction": false,
+      "note": "eligibility flag \u2014 filter, never a feature"
+    }
+  ],
+  "unavailable_in_this_dataset": {
+    "bearing": "requires partner/pickup coordinates \u2014 absent from this dataset",
+    "route_efficiency": "requires straight-line vs travelled distance \u2014 coordinates absent",
+    "average_speed": "derivable but leaks the target (distance / duration)",
+    "partner_familiarity": "requires partner history \u2014 absent",
+    "historical_avg_delay": "requires partner history \u2014 absent",
+    "partner_rating": "absent from this dataset"
+  }
+}

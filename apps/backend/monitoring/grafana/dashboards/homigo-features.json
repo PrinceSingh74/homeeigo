@@ -1,0 +1,68 @@
+{
+  "uid": "homigo-features",
+  "title": "HOMIGO — Feature Observability (Maps / Tracking / Finance / Geofence)",
+  "tags": ["homigo", "phase16-18"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1, "title": "Maps ETA latency (p95)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(homigo_feature_latency_seconds_bucket{feature=\"maps_eta\"}[5m])) by (le))", "legendFormat": "maps_eta p95" }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 2, "title": "Route optimise latency (p95)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(homigo_feature_latency_seconds_bucket{feature=\"route_optimize\"}[5m])) by (le))", "legendFormat": "route_optimize p95" }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 3, "title": "Tracking updates/sec (vs throttled)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(homigo_feature_events_total{feature=\"tracking\",result=\"update\"}[5m]))", "legendFormat": "updates/s" },
+        { "expr": "sum(rate(homigo_feature_events_total{feature=\"tracking\",result=\"throttled\"}[5m]))", "legendFormat": "throttled/s" }
+      ]
+    },
+    {
+      "id": 4, "title": "Maps Google vs fallback ratio", "type": "piechart",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(homigo_feature_events_total{feature=\"maps_eta\"}) by (result)", "legendFormat": "{{result}}" }]
+    },
+    {
+      "id": 5, "title": "Checkout / Geofence events (rate)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(homigo_feature_events_total{feature=\"checkout\"}[5m])) by (result)", "legendFormat": "checkout {{result}}" },
+        { "expr": "sum(rate(homigo_feature_events_total{feature=\"geofence\"}[5m])) by (result)", "legendFormat": "geofence {{result}}" }
+      ]
+    },
+    {
+      "id": 6, "title": "API latency p95 (all routes)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "API p95" }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 7, "title": "Platform — RSS / heap", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "process_resident_memory_bytes", "legendFormat": "RSS" },
+        { "expr": "nodejs_heap_used_bytes", "legendFormat": "heap used" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    }
+  ]
+}

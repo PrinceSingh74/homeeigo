@@ -1,0 +1,111 @@
+FEATURE DEFINITIONS & LEAKAGE PREVENTION
+
+================================================================================
+FEATURES AVAILABLE AT DISPATCH (Safe for Training)
+================================================================================
+
+TEMPORAL FEATURES:
+✓ hour (0-23) - Time of day
+✓ day_of_week (0-6) - Weekday indicator  
+✓ is_weekend (0/1) - Weekend flag
+
+LOCATION FEATURES:
+✓ city - City (Gurugram, Delhi, Noida)
+✓ locality - Neighborhood
+✓ sector - Sector code
+✓ service_area - City-locality combination
+
+DISTANCE:
+✓ distance_km - Trip distance (estimated)
+
+TRAFFIC & CONGESTION:
+✓ traffic_level - Current traffic (LOW, MODERATE, HIGH, SEVERE)
+
+WEATHER CONDITIONS:
+✓ weather_condition - Weather type
+✓ temperature_c - Temperature
+✓ rain_mm - Rainfall amount
+✓ visibility_km - Visibility
+
+DEMAND & SUPPLY:
+✓ demand_level - Current demand (LOW, NORMAL, HIGH, VERY_HIGH)
+✓ provider_availability_count - Available providers
+✓ surge_multiplier - Pricing surge
+
+BASELINE ETA:
+✓ google_eta_sec - Google Maps ETA (captured at dispatch)
+
+SERVICE INFO:
+✓ service_category - Service type
+
+ESTIMATED WAIT:
+✓ estimated_wait_before_dispatch_sec - Queue wait time
+
+================================================================================
+POST-ARRIVAL FEATURES (DO NOT USE - LEAKAGE RISK!)
+================================================================================
+
+LABELS & OUTCOMES (These are TARGETS, not features):
+✗ arrived_at - LABEL (arrival timestamp)
+✗ actual_travel_duration_sec - TARGET VARIABLE (what we predict)
+✗ arrival_source - OUTCOME (how arrival was detected)
+
+QUALITY ASSESSMENTS (Post-arrival only):
+✗ quality_score - Assessed after trip completion
+✗ validation_status - Status after validation
+✗ validation_flags - Issues found post-validation
+
+================================================================================
+IDENTIFIERS (Exclude to prevent overfitting):
+✗ trip_id - Synthetic ID only (prevent exact matching)
+
+METADATA (Not for training):
+✗ is_synthetic - Dataset flag (filter, don't use as feature)
+✗ is_training_eligible - Eligibility flag (filter value)
+
+================================================================================
+RECOMMENDED FEATURE ENGINEERING
+================================================================================
+
+FROM TEMPORAL:
+→ Peak hour indicator (8-11, 17-21)
+→ Is working hour (6-22)
+→ Hour cluster (early, morning, noon, evening, night)
+
+FROM LOCATION:
+→ Is premium locality
+→ City pair (for cross-city trips)
+
+FROM TRAFFIC & WEATHER:
+→ Extreme weather indicator
+→ Traffic-weather interaction
+→ Visibility-rain correlation
+
+FROM DEMAND:
+→ Is high demand period
+→ Demand-supply ratio
+→ Wait time percentile
+
+FROM ETA:
+→ ETA prediction error (if available)
+→ ETA vs actual baseline
+
+================================================================================
+TRAINING DATASET SCHEMA (Safe)
+================================================================================
+
+INPUT FEATURES (at dispatch):
+hour, day_of_week, is_weekend, city, locality, sector, 
+distance_km, traffic_level, weather_condition, temperature_c, 
+rain_mm, visibility_km, demand_level, provider_availability_count,
+surge_multiplier, google_eta_sec, service_category, 
+estimated_wait_before_dispatch_sec
+
+TARGET LABEL (calculated post-arrival):
+actual_travel_duration_sec = arrived_at - dispatched_at
+
+FILTER CONDITION:
+is_synthetic = TRUE
+is_training_eligible = FALSE  # Mark synthetic data clearly!
+
+================================================================================

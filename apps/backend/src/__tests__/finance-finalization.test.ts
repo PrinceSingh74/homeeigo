@@ -32,6 +32,29 @@ describe("Finance 10/10 Finalization — Phase 1 Ledger Atomicity", () => {
     expect(debit).toBe(credit);
   });
 
+  test("journalForProviderEarning balances with rating bonus", () => {
+    const j = financialLedgerService.journalForProviderEarning("bk_1", 449, 89.8, 409.2, 50, 0);
+    const debit = j.lines.reduce((s, l) => s + l.debit, 0);
+    const credit = j.lines.reduce((s, l) => s + l.credit, 0);
+    expect(debit).toBe(credit);
+    expect(j.lines.some((l) => l.accountCode === "PROMO_EXPENSE" && l.debit === 50)).toBe(true);
+  });
+
+  test("journalForProviderEarning infers bonus from stored amounts", () => {
+    const j = financialLedgerService.journalForProviderEarning("bk_2", 449, 89.8, 409.2);
+    const debit = j.lines.reduce((s, l) => s + l.debit, 0);
+    const credit = j.lines.reduce((s, l) => s + l.credit, 0);
+    expect(debit).toBe(credit);
+  });
+
+  test("journalForWalletBookingRefund balances", () => {
+    const j = financialLedgerService.journalForWalletBookingRefund("bk_w1", 350);
+    const debit = j.lines.reduce((s, l) => s + l.debit, 0);
+    const credit = j.lines.reduce((s, l) => s + l.credit, 0);
+    expect(debit).toBe(credit);
+    expect(debit).toBe(350);
+  });
+
   test("recordWalletDebit journal type is WALLET_DEBIT", async () => {
     const lines = [
       { accountCode: "CUSTOMER_WALLET", debit: 50, credit: 0 },

@@ -1,0 +1,108 @@
+{
+  "uid": "homigo-customer-experience",
+  "title": "HOMIGO — Customer Experience (RUM / Web Vitals)",
+  "tags": ["homigo", "rum", "web-vitals", "performance"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "LCP p75 (target < 2.0s)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 2, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 2.0 }, { "color": "red", "value": 4.0 } ] } } },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_lcp_seconds_bucket[5m])) by (le))", "legendFormat": "LCP p75" } ]
+    },
+    {
+      "id": 2,
+      "title": "INP p75 (target < 100ms)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 0.1 }, { "color": "red", "value": 0.2 } ] } } },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_inp_seconds_bucket[5m])) by (le))", "legendFormat": "INP p75" } ]
+    },
+    {
+      "id": 3,
+      "title": "CLS p75 (target < 0.05)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 3, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 0.05 }, { "color": "red", "value": 0.1 } ] } } },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_cls_bucket[5m])) by (le))", "legendFormat": "CLS p75" } ]
+    },
+    {
+      "id": 4,
+      "title": "TTFB p75 (target < 500ms)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "red", "value": 1.0 } ] } } },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_ttfb_seconds_bucket[5m])) by (le))", "legendFormat": "TTFB p75" } ]
+    },
+    {
+      "id": 5,
+      "title": "Route Change p75 (target < 300ms)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 0.3 }, { "color": "red", "value": 1.0 } ] } } },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_route_change_seconds_bucket[5m])) by (le))", "legendFormat": "Route change p75" } ]
+    },
+    {
+      "id": 6,
+      "title": "Page Load p75",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 2, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 2.5 }, { "color": "red", "value": 5.0 } ] } } },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_page_load_seconds_bucket[5m])) by (le))", "legendFormat": "Page load p75" } ]
+    },
+    {
+      "id": 7,
+      "title": "FCP p75 (target < 1.8s)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 2, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1.8 }, { "color": "red", "value": 3.0 } ] } } },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_fcp_seconds_bucket[5m])) by (le))", "legendFormat": "FCP p75" } ]
+    },
+    {
+      "id": 8,
+      "title": "Reports / min (ingestion volume)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "ops", "decimals": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } } },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [ { "expr": "sum(rate(web_vitals_reports_total[5m])) * 60", "legendFormat": "reports/min" } ]
+    },
+    {
+      "id": 9,
+      "title": "Core Web Vitals — p75 trend",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 8 } } },
+      "targets": [
+        { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_lcp_seconds_bucket[5m])) by (le))", "legendFormat": "LCP p75" },
+        { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_fcp_seconds_bucket[5m])) by (le))", "legendFormat": "FCP p75" },
+        { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_inp_seconds_bucket[5m])) by (le))", "legendFormat": "INP p75" },
+        { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_ttfb_seconds_bucket[5m])) by (le))", "legendFormat": "TTFB p75" },
+        { "expr": "histogram_quantile(0.75, sum(rate(web_vitals_route_change_seconds_bucket[5m])) by (le))", "legendFormat": "Route change p75" }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Vitals rating mix (good / needs-improvement / poor)",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" }, "fillOpacity": 60 } } },
+      "targets": [
+        { "expr": "sum by (rating) (rate(web_vitals_reports_total[5m]))", "legendFormat": "{{rating}}" }
+      ]
+    }
+  ]
+}

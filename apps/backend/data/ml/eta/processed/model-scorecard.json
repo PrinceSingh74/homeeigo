@@ -1,0 +1,39 @@
+{
+  "model_id": "eta-candidate-50k-v1-455b946bfdc7",
+  "candidate": {
+    "mae_sec": 98.3,
+    "rmse_sec": 146.18,
+    "p95_ae_sec": 309.37,
+    "bias_sec": -9.1,
+    "r2": 0.9738
+  },
+  "best_baseline_cv": {
+    "name": "b5_google_eta_linear_recalibrated",
+    "cv_mae_sec": 115.34
+  },
+  "baselines_on_test": {
+    "b0_global_median": {
+      "mae_sec": 689.4,
+      "bias_sec": -418.91
+    },
+    "b4_google_eta_raw": {
+      "mae_sec": 454.75,
+      "bias_sec": -454.59
+    },
+    "b5_google_eta_linear_recalibrated": {
+      "mae_sec": 147.52,
+      "bias_sec": -64.66
+    }
+  },
+  "worst_segment": {
+    "segment": "duration_bucket:60-70min",
+    "mae_sec": 306.53
+  },
+  "temporal_stability_cv_mae_stdev_sec": 0.38,
+  "reproducible": true,
+  "invalid_predictions": {
+    "negative": 0,
+    "nan": 0,
+    "above_max_contract": 0
+  }
+}

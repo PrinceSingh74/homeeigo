@@ -1,0 +1,177 @@
+{
+  "mean_residual_sec": -9.1,
+  "median_residual_sec": -4.46,
+  "by_predicted_bucket": [
+    {
+      "pred_range_sec": [
+        52.5,
+        675.1
+      ],
+      "n": 1500,
+      "mean_residual_sec": -0.47,
+      "median_residual_sec": -0.72
+    },
+    {
+      "pred_range_sec": [
+        675.1,
+        1023.6
+      ],
+      "n": 1500,
+      "mean_residual_sec": -9.34,
+      "median_residual_sec": -6.77
+    },
+    {
+      "pred_range_sec": [
+        1023.6,
+        1397.8
+      ],
+      "n": 1500,
+      "mean_residual_sec": -7.83,
+      "median_residual_sec": -7.36
+    },
+    {
+      "pred_range_sec": [
+        1397.8,
+        1984.6
+      ],
+      "n": 1500,
+      "mean_residual_sec": -5.81,
+      "median_residual_sec": -5.66
+    },
+    {
+      "pred_range_sec": [
+        1984.6,
+        6041.0
+      ],
+      "n": 1500,
+      "mean_residual_sec": -22.05,
+      "median_residual_sec": -11.87
+    }
+  ],
+  "by_distance_bucket": {
+    "0": {
+      "bias_sec": 1.04,
+      "n": 244
+    },
+    "1": {
+      "bias_sec": -1.77,
+      "n": 510
+    },
+    "2": {
+      "bias_sec": -1.4,
+      "n": 1058
+    },
+    "3": {
+      "bias_sec": -6.54,
+      "n": 1517
+    },
+    "4": {
+      "bias_sec": -3.68,
+      "n": 1565
+    },
+    "5": {
+      "bias_sec": -13.14,
+      "n": 1216
+    },
+    "6": {
+      "bias_sec": -23.1,
+      "n": 1099
+    },
+    "7": {
+      "bias_sec": -8.96,
+      "n": 238
+    },
+    "8": {
+      "bias_sec": -94.21,
+      "n": 49
+    },
+    "9": {
+      "bias_sec": -576.98,
+      "n": 4
+    }
+  },
+  "by_traffic": {
+    "HIGH": {
+      "bias_sec": -6.44,
+      "n": 4337
+    },
+    "LOW": {
+      "bias_sec": -2.93,
+      "n": 316
+    },
+    "MODERATE": {
+      "bias_sec": 3.05,
+      "n": 795
+    },
+    "SEVERE": {
+      "bias_sec": -20.36,
+      "n": 2052
+    }
+  },
+  "by_service_category": {
+    "AC Service": {
+      "bias_sec": -10.72,
+      "n": 752
+    },
+    "Appliance Repair": {
+      "bias_sec": -19.33,
+      "n": 576
+    },
+    "Beauty/Salon": {
+      "bias_sec": -4.87,
+      "n": 360
+    },
+    "Carpentry": {
+      "bias_sec": -18.41,
+      "n": 526
+    },
+    "Cleaning": {
+      "bias_sec": -4.37,
+      "n": 1463
+    },
+    "Deep Cleaning": {
+      "bias_sec": -12.06,
+      "n": 1095
+    },
+    "Electrical": {
+      "bias_sec": -14.52,
+      "n": 805
+    },
+    "General Handyman": {
+      "bias_sec": -0.57,
+      "n": 551
+    },
+    "Pest Control": {
+      "bias_sec": -5.11,
+      "n": 461
+    },
+    "Plumbing": {
+      "bias_sec": -4.0,
+      "n": 911
+    }
+  },
+  "linear_recalibration_candidate": {
+    "coef": [
+      1.00597816806502,
+      -5.291352276907414
+    ],
+    "test_metrics": {
+      "n": 7500,
+      "mae_sec": 98.19,
+      "rmse_sec": 145.73,
+      "median_ae_sec": 63.61,
+      "p90_ae_sec": 228.92,
+      "p95_ae_sec": 306.06,
+      "p99_ae_sec": 508.86,
+      "bias_sec": -6.1,
+      "median_bias_sec": -4.41,
+      "r2": 0.9739,
+      "within_1min_pct": 48.05,
+      "within_2min_pct": 71.93,
+      "within_5min_pct": 94.64,
+      "within_10min_pct": 99.45
+    },
+    "adopted": false,
+    "note": "reported for transparency; not applied to the champion"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "strategy": "temporal, ordered by dispatched_at \u2014 no future row may inform a past fold",
+  "train": {
+    "n": 35000,
+    "from": "2024-01-01T06:00:42",
+    "to": "2024-05-06T09:41:52"
+  },
+  "validation": {
+    "n": 7500,
+    "from": "2024-05-06T09:42:41",
+    "to": "2024-06-02T08:05:38"
+  },
+  "test": {
+    "n": 7500,
+    "from": "2024-06-02T08:05:45",
+    "to": "2024-06-28T22:22:07"
+  },
+  "holdout_policy": "test evaluated exactly once, after model selection is complete"
+}

@@ -25,12 +25,48 @@ services:
     image: redis:7-alpine
     container_name: homigo-redis
     restart: unless-stopped
+    # Scale-safety: cap memory + evict LRU so the cache can never OOM Redis or fail writes
+    # under load (default was maxmemory 0 / noeviction). Tune the cap to the instance size.
+    command: ["redis-server", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
       - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
+      retries: 5
+
+  # Enterprise connection pooler — transaction pooling lets thousands of client
+  # connections (many backend instances) share a small Postgres server-connection budget.
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: homigo-pgbouncer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: homigo_dev
+      DB_NAME: homigo_db
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "20"
+      MIN_POOL_SIZE: "5"
+      RESERVE_POOL_SIZE: "5"
+      AUTH_TYPE: scram-sha-256
+      ADMIN_USERS: postgres
+      # Prisma uses prepared statements; transaction pooling requires they be disabled
+      # client-side (Prisma `pgbouncer=true`), and server-side we keep them off:
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    ports:
+      - "6432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres || exit 1"]
+      interval: 10s
+      timeout: 5s
       retries: 5
 
 volumes:

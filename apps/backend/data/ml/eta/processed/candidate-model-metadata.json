@@ -1,0 +1,72 @@
+{
+  "model_id": "eta-candidate-50k-v1-455b946bfdc7",
+  "status": "CANDIDATE",
+  "never": [
+    "CHAMPION",
+    "ACTIVE",
+    "PRODUCTION"
+  ],
+  "architecture": "HistGradientBoostingRegressor(loss=absolute_error)",
+  "architecture_family": "boosted regression trees \u2014 same family as production BOOSTED_TREE_REGRESSOR",
+  "dataset": {
+    "path": "raw/ETA_Training_Data.csv",
+    "sha256": "455b946bfdc77e06ba25b5cff9f28f2f7811c3ec85a6975c066e3f6ccafadae4",
+    "rows": 50000,
+    "synthetic": true
+  },
+  "feature_set_version": "eta-50k-fs-v1",
+  "features": [
+    "distance_km",
+    "google_eta_sec",
+    "hour",
+    "day_of_week",
+    "is_weekend",
+    "city",
+    "locality",
+    "sector",
+    "service_area",
+    "service_category",
+    "traffic_level",
+    "weather_condition",
+    "temperature_c",
+    "rain_mm",
+    "visibility_km",
+    "demand_level",
+    "provider_availability_count",
+    "surge_multiplier",
+    "estimated_wait_before_dispatch_sec"
+  ],
+  "hyperparameters": {
+    "learning_rate": 0.1,
+    "max_depth": 6,
+    "min_samples_leaf": 50,
+    "l2_regularization": 0.0,
+    "max_iter": 400,
+    "max_features": 1.0
+  },
+  "seed": 20260809,
+  "split": {
+    "train_val": 42500,
+    "test": 7500,
+    "strategy": "temporal"
+  },
+  "test_metrics": {
+    "n": 7500,
+    "mae_sec": 98.3,
+    "rmse_sec": 146.18,
+    "median_ae_sec": 64.15,
+    "p90_ae_sec": 229.25,
+    "p95_ae_sec": 309.37,
+    "p99_ae_sec": 517.72,
+    "bias_sec": -9.1,
+    "median_bias_sec": -4.46,
+    "r2": 0.9738,
+    "within_1min_pct": 48.07,
+    "within_2min_pct": 72.04,
+    "within_5min_pct": 94.61,
+    "within_10min_pct": 99.41
+  },
+  "reproducibility_max_delta_sec": 0.0,
+  "trained_at": "2026-08-09T16:49:08.175193+00:00",
+  "production_promotion": "BLOCKED \u2014 synthetic data, human approval required"
+}

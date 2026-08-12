@@ -1,0 +1,24 @@
+{
+  "runId": "rzp-ref-mq8j4edv",
+  "finishedAt": "2026-06-10T20:36:44.870Z",
+  "mode": "RAZORPAY_TEST_REFUND",
+  "certMode": "GATEWAY_STUB",
+  "gatewayBalancePaise": 0,
+  "gatewayRefundCreditsPaise": 0,
+  "capturedPayment": {
+    "paymentId": "pay_cert_rzp-ref-mq8j4edv",
+    "orderId": "order_cert_rzp-ref-mq8j4edv",
+    "amountPaise": 10000,
+    "source": "cert_stub"
+  },
+  "gatewayRefundId": "rfnd_rzp-ref-mq8j4edv",
+  "gatewayRefundStatus": "processed",
+  "orchestratorOk": true,
+  "duplicateRefundIdempotent": true,
+  "webhookSyncOk": true,
+  "paymentStatus": "REFUNDED",
+  "refundRequestStatus": "COMPLETED",
+  "ledgerJournalCount": 1,
+  "pass": true,
+  "blockers": []
+}

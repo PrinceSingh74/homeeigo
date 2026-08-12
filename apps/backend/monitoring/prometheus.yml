@@ -4,6 +4,7 @@ global:
 
 rule_files:
   - /etc/prometheus/rules/homigo-alerts.yml
+  - /etc/prometheus/rules/homigo-enterprise-alerts.yml
 
 scrape_configs:
   - job_name: homigo-backend
@@ -20,6 +21,13 @@ scrape_configs:
     scrape_interval: 30s
     static_configs:
       - targets: ["backend:3000"]
+
+  # Host-level metrics (disk / CPU / memory pressure alerts). Deploy a
+  # node_exporter sidecar/daemonset; rules DiskPressure/CpuPressure/MemoryPressureNode
+  # depend on this job. Safe to leave: if absent, those alerts simply never fire.
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
 
 alerting:
   alertmanagers:

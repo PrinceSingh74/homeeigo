@@ -71,17 +71,66 @@ export function sanitizeToolId(toolId: string): string | null {
   return toolId;
 }
 
+/**
+ * Key names whose values must never be stored in an approval preview.
+ *
+ * Deliberately broader than card data. An approval preview is written to
+ * `ai_tool_approvals.arguments_preview` and rendered in the admin approval queue, so anything
+ * matched here would otherwise sit at rest in the database and on a reviewer's screen. Indian
+ * payment rails contribute most of the additions — a UPI VPA, a bank account with its IFSC, or an
+ * Aadhaar number identifies a person as precisely as a card number does.
+ */
+const SENSITIVE_KEY =
+  /password|secret|token|ssn|pan\b|card|cvv|cvc|pin\b|upi|vpa|aadhaar|aadhar|account|ifsc|iban|swift|routing|otp|api[_-]?key|apikey|authorization|auth[_-]?token|credential|passphrase|private[_-]?key/i;
+
+/** 13–19 digits, optionally spaced or hyphenated — the shape of a payment card. */
+const CARD_SHAPED = /\b(?:\d[ -]?){12,18}\d\b/g;
+
+/**
+ * Luhn check, so a free-text scrub does not mangle ordinary long numbers.
+ *
+ * Without it, any 13–19 digit run — an order reference, a timestamp in micros — would be
+ * redacted, and a preview full of `[REDACTED]` teaches reviewers to ignore the redaction.
+ */
+function looksLikeCardNumber(digits: string): boolean {
+  if (digits.length < 13 || digits.length > 19) return false;
+  let sum = 0;
+  let double = false;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = digits.charCodeAt(i) - 48;
+    if (double) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+    double = !double;
+  }
+  return sum % 10 === 0;
+}
+
+/** Scrubs card-shaped values out of free text, where no key name gives the contents away. */
+function redactFreeText(value: string): string {
+  return value.replace(CARD_SHAPED, (match) => {
+    const digits = match.replace(/[ -]/g, "");
+    return looksLikeCardNumber(digits) ? "[REDACTED]" : match;
+  });
+}
+
+function redactValue(value: unknown): unknown {
+  if (typeof value === "string") return redactFreeText(value);
+  // Arrays were previously copied verbatim, so a sensitive key nested inside one survived
+  // redaction entirely — `instruments: [{ cvv }]` reached the database in full.
+  if (Array.isArray(value)) return value.map(redactValue);
+  if (typeof value === "object" && value !== null) {
+    return redactArguments(value as Record<string, unknown>);
+  }
+  return value;
+}
+
 export function redactArguments(args: Record<string, unknown>): Record<string, unknown> {
-  const sensitive = /password|secret|token|ssn|pan|card|cvv|pin/i;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(args)) {
-    if (sensitive.test(k)) {
-      out[k] = "[REDACTED]";
-    } else if (typeof v === "object" && v !== null && !Array.isArray(v)) {
-      out[k] = redactArguments(v as Record<string, unknown>);
-    } else {
-      out[k] = v;
-    }
+    out[k] = SENSITIVE_KEY.test(k) ? "[REDACTED]" : redactValue(v);
   }
   return out;
 }

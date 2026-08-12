@@ -1,0 +1,25 @@
+# systemd unit — HOMIGO backend (alternative to PM2 for bare-metal/VM).
+# Install: sudo cp deploy/homigo-backend.service /etc/systemd/system/ && sudo systemctl daemon-reload
+#          sudo systemctl enable --now homigo-backend
+[Unit]
+Description=HOMIGO Backend (Bun/Elysia)
+After=network.target postgresql.service redis.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=homigo
+WorkingDirectory=/opt/homigo/apps/backend
+EnvironmentFile=/opt/homigo/apps/backend/.env
+ExecStart=/usr/local/bin/bun run src/index.ts
+Restart=always
+RestartSec=3
+# Graceful: systemd sends SIGTERM -> app gracefulShutdown drains Prisma/Redis. 10s grace.
+KillSignal=SIGTERM
+TimeoutStopSec=10
+# Single instance: systemd guarantees one unit instance; duplicate ExecStart is refused.
+LimitNOFILE=65536
+MemoryMax=1500M
+
+[Install]
+WantedBy=multi-user.target

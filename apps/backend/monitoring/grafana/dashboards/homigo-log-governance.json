@@ -1,0 +1,86 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "title": "HOMIGO — Log Governance & Health",
+  "uid": "homigo-log-governance",
+  "tags": ["homigo", "logs", "governance", "self-healing"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "DB Log Size (MB)",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "decmbytes", "thresholds": { "mode": "absolute", "steps": [
+        { "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "orange", "value": 250 }, { "color": "red", "value": 500 } ] } } },
+      "targets": [ { "expr": "log_table_size_mb", "refId": "A" } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Growth MB/day (alert > 2)",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "decmbytes", "decimals": 2, "thresholds": { "mode": "absolute", "steps": [
+        { "color": "green", "value": null }, { "color": "red", "value": 2 } ] } } },
+      "targets": [ { "expr": "log_mb_per_day", "refId": "A" } ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Rows / day",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "targets": [ { "expr": "log_rows_per_day", "refId": "A" } ]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Self-Heal Level (0 ok → 4 critical)",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [
+        { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "orange", "value": 2 }, { "color": "red", "value": 3 } ] },
+        "mappings": [ { "type": "value", "options": { "0": { "text": "OK" }, "1": { "text": "WARN" }, "2": { "text": "ARCHIVE" }, "3": { "text": "EMERGENCY" }, "4": { "text": "CRITICAL" } } } ] } },
+      "targets": [ { "expr": "log_self_heal_level", "refId": "A" } ]
+    },
+    {
+      "id": 5, "type": "stat", "title": "Projected 365d (MB, with retention)",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "decmbytes", "thresholds": { "mode": "absolute", "steps": [
+        { "color": "green", "value": null }, { "color": "orange", "value": 250 }, { "color": "red", "value": 500 } ] } } },
+      "targets": [ { "expr": "log_projected_mb{horizon=\"365d\"}", "refId": "A" } ]
+    },
+    {
+      "id": 6, "type": "stat", "title": "Total log rows",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "targets": [ { "expr": "log_rows_total", "refId": "A" } ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Log table size over time (MB) + self-heal thresholds",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "decmbytes", "custom": { "thresholdsStyle": { "mode": "line+area" } },
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "orange", "value": 250 }, { "color": "red", "value": 500 } ] } } },
+      "targets": [ { "expr": "log_table_size_mb", "legendFormat": "size MB", "refId": "A" } ]
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Capacity forecast (30/90/180/365d, bounded)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "decmbytes" } },
+      "targets": [
+        { "expr": "log_projected_mb{horizon=\"30d\"}", "legendFormat": "30d", "refId": "A" },
+        { "expr": "log_projected_mb{horizon=\"90d\"}", "legendFormat": "90d", "refId": "B" },
+        { "expr": "log_projected_mb{horizon=\"180d\"}", "legendFormat": "180d", "refId": "C" },
+        { "expr": "log_projected_mb{horizon=\"365d\"}", "legendFormat": "365d", "refId": "D" },
+        { "expr": "log_projected_unbounded_mb{horizon=\"365d\"}", "legendFormat": "365d (no retention)", "refId": "E" }
+      ]
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "Growth rate MB/day (alert line at 2)",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "decmbytes",
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 2 } ] } } },
+      "targets": [ { "expr": "log_mb_per_day", "legendFormat": "MB/day", "refId": "A" } ]
+    },
+    {
+      "id": 10, "type": "table", "title": "Retention runs (audit trail — last 20)",
+      "description": "Source: retention_job_runs table (jobName, status, recordsProcessed, started/completed). Wire as a Postgres datasource panel.",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 12 },
+      "targets": [ { "rawSql": "SELECT job_name, status, records_processed, started_at, completed_at FROM retention_job_runs ORDER BY started_at DESC LIMIT 20", "format": "table", "refId": "A" } ]
+    }
+  ]
+}
