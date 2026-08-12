@@ -53,3 +53,13 @@ temp/
 
 # Expo local cache
 .expo/
+
+# Scratch directories written by audit/validation runs. `.step8-tmp` alone holds ~33k files;
+# none of it is source, and letting it reach the index buries every real change under it.
+.step8-tmp/
+measurements/
+.validation-tmp/
+.rzp-checkout-tmp/
+
+# Incremental TypeScript build state — machine-specific, regenerated on every build.
+*.tsbuildinfo
