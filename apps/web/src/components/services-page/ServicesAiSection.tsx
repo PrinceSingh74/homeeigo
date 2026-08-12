@@ -1,17 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { Brain, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { ServicesSectionHeader } from "@/components/services-page/ServicesSectionHeader";
 import { useServicesNavigation } from "@/hooks/use-services-navigation";
+import { useServicesDiscovery } from "@/hooks/use-services-discovery";
 import {
   servicesSection,
   svcCardPremium,
   svcSplitAside,
   svcSplitMain,
 } from "@/components/services-page/services-page-layout";
-import { AI_RECOMMENDATIONS } from "@/lib/services-page-data";
 import { bookUrl } from "@/lib/booking-url";
 import { cn } from "@/lib/utils";
 
@@ -40,7 +41,7 @@ function AiInsightPanel({ onOpenAi }: { onOpenAi: () => void }) {
         </span>
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted sm:text-xs">
-            HOMIGO AI
+            HOMEEIGO AI
           </p>
           <p className="font-display text-base font-bold text-content sm:text-lg">
             Smart matching
@@ -70,6 +71,12 @@ function AiInsightPanel({ onOpenAi }: { onOpenAi: () => void }) {
 
 export function ServicesAiSection() {
   const nav = useServicesNavigation();
+  const { aiRecommendations, isLoading } = useServicesDiscovery();
+
+  // Hydration-safe: match server + first client paint (see ServicesCategoriesSection).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const showSkeleton = !mounted || isLoading;
 
   return (
     <section className={servicesSection()}>
@@ -84,7 +91,12 @@ export function ServicesAiSection() {
             icon={Sparkles}
           />
           <div className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 sm:gap-5">
-            {AI_RECOMMENDATIONS.map((rec, i) => {
+            {showSkeleton
+              ? Array.from({ length: 4 }).map((_, i) => (
+                  <div key={`ai-skeleton-${i}`} className="h-44 animate-pulse rounded-[20px] bg-surface/70 ring-1 ring-line" />
+                ))
+              : null}
+            {(showSkeleton ? [] : aiRecommendations).map((rec, i) => {
               const Icon = rec.icon;
               return (
                 <motion.article
@@ -131,6 +143,11 @@ export function ServicesAiSection() {
                 </motion.article>
               );
             })}
+            {!showSkeleton && aiRecommendations.length === 0 ? (
+              <div className="col-span-full rounded-2xl border border-dashed border-line bg-surface/60 p-6 text-center text-sm text-muted">
+                AI recommendations will appear after service activity.
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="order-1 lg:order-2">

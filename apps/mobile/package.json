@@ -1,11 +1,11 @@
 {
-  "name": "homigo-mobile",
+  "name": "homigo-partner-mobile-stub",
   "version": "1.0.0",
   "private": true,
-  "description": "HOMIGO Mobile - React Native (Phase 5)",
+  "description": "Pointer — run the partner app from ../../homigo-partner-mobile",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios"
+    "start": "node -e \"console.error('\\nRun the partner mobile app from the repo root:\\n\\n  cd homigo-partner-mobile\\n  npm install\\n  npm start\\n'); process.exit(1)\"",
+    "android": "npm run start",
+    "ios": "npm run start"
   }
 }

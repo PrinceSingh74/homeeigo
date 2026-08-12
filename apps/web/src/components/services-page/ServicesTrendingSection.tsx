@@ -1,17 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { BadgeCheck, Clock, Crown, Star } from "lucide-react";
 import { ServicesSectionHeader } from "@/components/services-page/ServicesSectionHeader";
+import { useServicesDiscovery } from "@/hooks/use-services-discovery";
 import {
   SERVICES_IMAGE_QUALITY,
   servicesSection,
   svcSplitAside,
   svcTrendCard,
 } from "@/components/services-page/services-page-layout";
-import { TRENDING_SERVICES } from "@/lib/services-page-data";
 import { bookUrl } from "@/lib/booking-url";
 import { useServicesNavigation } from "@/hooks/use-services-navigation";
 import { cn } from "@/lib/utils";
@@ -35,7 +36,7 @@ function PremiumAside({ onUpgrade }: { onUpgrade: () => void }) {
         </span>
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-white/80 sm:text-xs">
-            HOMIGO
+            HOMEEIGO
           </p>
           <p className="font-display text-lg font-bold sm:text-xl">Premium</p>
         </div>
@@ -66,6 +67,12 @@ function PremiumAside({ onUpgrade }: { onUpgrade: () => void }) {
 
 export function ServicesTrendingSection() {
   const nav = useServicesNavigation();
+  const { trending, isLoading, isError, retry } = useServicesDiscovery();
+
+  // Hydration-safe: match server + first client paint (see ServicesCategoriesSection).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const showSkeleton = !mounted || isLoading;
 
   return (
     <section className={servicesSection()}>
@@ -78,7 +85,22 @@ export function ServicesTrendingSection() {
 
       <div className="grid gap-6 sm:gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(240px,280px)] lg:items-start">
         <div className="order-2 grid min-w-0 grid-cols-1 gap-4 min-[480px]:grid-cols-2 sm:gap-5 md:grid-cols-2 lg:order-1 xl:grid-cols-3 2xl:grid-cols-4">
-          {TRENDING_SERVICES.map((svc, i) => (
+          {showSkeleton
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <div key={`trend-skeleton-${i}`} className="min-w-0">
+                  <div className="h-[320px] animate-pulse rounded-[22px] bg-surface/70 ring-1 ring-line" />
+                </div>
+              ))
+            : null}
+          {isError && !showSkeleton ? (
+            <div className="col-span-full rounded-2xl border border-line bg-surface/60 p-5 text-center">
+              <p className="text-sm text-muted">Could not load trending services.</p>
+              <button type="button" onClick={retry} className="mt-3 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white">
+                Retry
+              </button>
+            </div>
+          ) : null}
+          {(showSkeleton ? [] : trending).map((svc, i) => (
             <motion.div
               key={svc.id}
               initial={{ opacity: 0, y: 20 }}
@@ -131,12 +153,18 @@ export function ServicesTrendingSection() {
                       •
                     </span>
                     <span className="inline-flex items-center gap-0.5">
-                      <Star
-                        size={12}
-                        className="fill-[#F59E0B] text-[#F59E0B]"
-                        aria-hidden
-                      />
-                      {svc.rating} ({svc.reviews})
+                      {svc.rating != null ? (
+                        <>
+                          <Star
+                            size={12}
+                            className="fill-[#F59E0B] text-[#F59E0B]"
+                            aria-hidden
+                          />
+                          {svc.rating} ({svc.reviews})
+                        </>
+                      ) : (
+                        "New Service"
+                      )}
                     </span>
                   </p>
                   <div className="flex flex-wrap gap-2 text-[11px] text-[#9CA3AF]">
@@ -161,6 +189,11 @@ export function ServicesTrendingSection() {
               </Link>
             </motion.div>
           ))}
+          {!showSkeleton && !isError && trending.length === 0 ? (
+            <div className="col-span-full rounded-2xl border border-dashed border-line bg-surface/60 p-6 text-center text-sm text-muted">
+              No trending services available right now.
+            </div>
+          ) : null}
         </div>
 
         <div className="order-1 min-w-0 lg:order-2">

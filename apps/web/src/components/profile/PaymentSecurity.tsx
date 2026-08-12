@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import {
   Check,
   ChevronRight,
@@ -45,7 +45,7 @@ export function PaymentSecurity() {
         <button
           type="button"
           onClick={() => openOverlay("wallet")}
-          className="text-xs font-semibold text-primary hover:underline"
+          className="text-xs font-semibold text-emerald-600 hover:underline"
         >
           Manage
         </button>
@@ -67,7 +67,7 @@ export function PaymentSecurity() {
                   "flex min-h-11 w-full min-w-0 items-center gap-3 rounded-[10px] p-3 sm:gap-4 sm:p-4",
                 )}
               >
-                <span className="grid size-10 place-items-center rounded-lg bg-[#EFF6FF] text-primary dark:bg-primary/15">
+                <span className="grid size-10 place-items-center rounded-lg bg-[#ECFDF5] text-emerald-600 dark:bg-emerald-600/15">
                   <Icon size={20} />
                 </span>
                 <span className="min-w-0 flex-1 text-left">
@@ -89,7 +89,7 @@ export function PaymentSecurity() {
       <ul className="flex flex-col gap-2">
         {PROFILE_SECURITY_ITEMS.map((item) => (
           <li key={item.title}>
-            <div className="flex gap-3 rounded-lg px-1 py-2 transition hover:bg-primary/5 dark:hover:bg-white/[0.06]">
+            <div className="flex gap-3 rounded-lg px-1 py-2 transition hover:bg-emerald-600/5 dark:hover:bg-white/[0.06]">
               <Check size={16} className="mt-0.5 shrink-0 text-success" strokeWidth={2.5} />
               <span>
                 <span className="block font-display text-[13px] font-bold text-content">

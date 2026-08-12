@@ -10,7 +10,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("[HOMIGO]", error);
+    console.error("[HOMEEIGO]", error);
   }, [error]);
 
   return (
@@ -30,7 +30,7 @@ export default function GlobalError({
           textAlign: "center",
         }}
       >
-        <p style={{ fontSize: "1.5rem", fontWeight: 700 }}>HOMIGO</p>
+        <p style={{ fontSize: "1.5rem", fontWeight: 700 }}>HOMEEIGO</p>
         <p style={{ marginTop: "0.75rem", maxWidth: "24rem", color: "#64748b" }}>
           Something went wrong loading the app. This is usually fixed by
           restarting the dev server with a clean cache.

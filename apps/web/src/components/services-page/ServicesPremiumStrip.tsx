@@ -1,20 +1,41 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { Shield, Sparkles, Star, Zap } from "lucide-react";
 import { servicesShell, servicesPadX } from "@/components/services-page/services-page-layout";
 import { useServicesNavigation } from "@/hooks/use-services-navigation";
+import { useStatsOverview } from "@/hooks/use-core-data";
 import { cn } from "@/lib/utils";
 
-const STATS = [
-  { icon: Star, label: "4.9/5", sub: "Avg. rating", action: "reviews" as const },
-  { icon: Shield, label: "100%", sub: "Verified pros", action: "how" as const },
-  { icon: Zap, label: "60 min", sub: "Avg. arrival", action: "tracking" as const },
-  { icon: Sparkles, label: "50K+", sub: "Happy homes", action: "premium" as const },
-] as const;
+const nf = (n: number) => n.toLocaleString("en-IN");
 
 export function ServicesPremiumStrip() {
   const nav = useServicesNavigation();
+  const { data: stats } = useStatsOverview();
+
+  // Real numbers from the backend stats endpoint; "Avg. arrival" is a service
+  // promise (no live metric exists for it) and stays as a target, not fake data.
+  const STATS = [
+    {
+      icon: Star,
+      label: stats?.averageRating != null ? `${stats.averageRating}/5` : "New",
+      sub: "Avg. rating",
+      action: "reviews" as const,
+    },
+    {
+      icon: Shield,
+      label: stats ? nf(stats.activeProviders) : "—",
+      sub: "Verified pros",
+      action: "how" as const,
+    },
+    { icon: Zap, label: "~60 min", sub: "Avg. arrival", action: "tracking" as const },
+    {
+      icon: Sparkles,
+      label: stats ? nf(stats.completedBookings) : "—",
+      sub: "Jobs completed",
+      action: "premium" as const,
+    },
+  ];
 
   const onStat = (action: (typeof STATS)[number]["action"]) => {
     switch (action) {

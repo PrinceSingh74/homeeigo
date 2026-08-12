@@ -41,14 +41,14 @@ export function AiAssistantSheet({ open }: { open: boolean }) {
       response =
         "Great choice! AC Service with code COOL100 — ₹100 off. Opening booking…";
     } else if (q.includes("clean")) {
-      href = bookUrl({ service: "cleaning" });
+      href = bookUrl({ service: "deep-cleaning" });
       response =
         "Home Cleaning from ₹199. I recommend the Standard package for 2BHK homes.";
     } else if (q.includes("plumb")) {
       href = bookUrl({ service: "plumbing" });
       response = "Plumbing from ₹249 with verified pros in your area.";
     } else if (q.includes("2bhk") || q.includes("package")) {
-      href = bookUrl({ service: "cleaning", package: 1 });
+      href = bookUrl({ service: "deep-cleaning", package: 1 });
       response =
         "For 2BHK, Standard Deep Cleaning (₹299) is our most popular pick.";
     } else {
@@ -80,7 +80,7 @@ export function AiAssistantSheet({ open }: { open: boolean }) {
   }
 
   return (
-    <Modal open={open} onClose={closeOverlay} title="HOMIGO AI" size="md">
+    <Modal open={open} onClose={closeOverlay} title="HOMEEIGO AI" size="md">
       <div className="mb-4 flex items-center gap-2 rounded-2xl bg-aurora/10 px-4 py-3 text-sm text-content">
         <Sparkles size={18} className="text-primary" />
         Powered by AI — instant answers, smart booking
@@ -127,7 +127,7 @@ export function AiAssistantSheet({ open }: { open: boolean }) {
           showClear={false}
           className="min-w-0 flex-1"
           containerClassName="rounded-2xl bg-surface/60"
-          aria-label="Message to HOMIGO AI"
+          aria-label="Message to HOMEEIGO AI"
         />
         <button
           type="button"

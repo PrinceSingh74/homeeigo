@@ -7,7 +7,7 @@ import {
   useState,
   type TextareaHTMLAttributes,
 } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { shake } from "@/lib/animations";
 import { FormLabel, FormMessage, useFieldIds } from "@/components/ui/form-field";

@@ -3,10 +3,12 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { m as motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Sparkles, Plus, ArrowLeft } from "lucide-react";
+import { StaticSkeleton } from "@/components/ui/StaticSkeleton";
 import { BookingCard } from "@/components/booking/BookingCard";
 import { BookingDetailModal } from "@/components/booking/BookingDetailModal";
+import { useBookingsQuery } from "@/hooks/use-core-data";
 import { useAppStore } from "@/stores/app-store";
 import type { SavedBooking } from "@/lib/bookings";
 import {
@@ -18,6 +20,7 @@ import { bookUrl } from "@/lib/booking-url";
 import { PageShell } from "@/components/layout/PageShell";
 import { pageLead, pageTitle } from "@/lib/page-layout";
 import { cn } from "@/lib/utils";
+import { useOnlineStatus } from "@/hooks/use-online-status";
 
 const FILTERS: { key: BookingFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -30,8 +33,10 @@ export default function BookingsPage() {
   const router = useRouter();
   const reduce = useReducedMotion();
   const bookings = useAppStore((s) => s.bookings);
+  const { isLoading, isFetching } = useBookingsQuery();
   const [filter, setFilter] = useState<BookingFilter>("all");
   const [selected, setSelected] = useState<SavedBooking | null>(null);
+  const online = useOnlineStatus();
 
   const counts = useMemo(() => countByFilter(bookings), [bookings]);
   const filtered = useMemo(
@@ -124,8 +129,19 @@ export default function BookingsPage() {
             );
           })}
         </motion.div>
+        {!online ? (
+          <div className="mb-4 rounded-xl border border-line bg-surface/70 px-3 py-2 text-xs text-muted">
+            You are offline. Showing cached bookings; realtime sync resumes when online.
+          </div>
+        ) : null}
 
-        {bookings.length === 0 ? (
+        {isLoading ? (
+          <motion.ul layout className="flex flex-col gap-5">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <li key={i}><StaticSkeleton className="h-40 rounded-[28px] bg-surface/70 ring-1 ring-line" /></li>
+            ))}
+          </motion.ul>
+        ) : bookings.length === 0 ? (
           <EmptyState
             title="No bookings yet"
             subtitle="Book verified pros in under 60 seconds. Track live, cancel anytime, and see your full history here."
@@ -152,6 +168,9 @@ export default function BookingsPage() {
             </AnimatePresence>
           </motion.ul>
         )}
+        {isFetching && !isLoading ? (
+          <p className="mt-4 text-center text-xs text-muted">Refreshing bookings…</p>
+        ) : null}
       </PageShell>
 
       <BookingDetailModal

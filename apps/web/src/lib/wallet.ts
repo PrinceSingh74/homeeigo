@@ -9,50 +9,56 @@ export type WalletTransaction = {
   category?: "booking" | "cashback" | "topup" | "refund";
 };
 
-export const WALLET_BALANCE = 2450;
+const MOCK_BUSINESS_DATA_ENABLED =
+  process.env.NODE_ENV !== "production" ||
+  process.env.NEXT_PUBLIC_ENABLE_MOCK_BUSINESS_DATA === "true";
 
-export const WALLET_TRANSACTIONS: WalletTransaction[] = [
-  {
-    id: "1",
-    label: "AC Service · Rahul K.",
-    amount: -499,
-    type: "debit",
-    time: "Today",
-    category: "booking",
-  },
-  {
-    id: "2",
-    label: "Cashback · Premium",
-    amount: 50,
-    type: "credit",
-    time: "Yesterday",
-    category: "cashback",
-  },
-  {
-    id: "3",
-    label: "Wallet top-up",
-    amount: 2000,
-    type: "credit",
-    time: "3 days ago",
-    category: "topup",
-  },
-  {
-    id: "4",
-    label: "Deep cleaning · Priya M.",
-    amount: -899,
-    type: "debit",
-    time: "5 days ago",
-    category: "booking",
-  },
-  {
-    id: "5",
-    label: "Referral bonus",
-    amount: 100,
-    type: "credit",
-    time: "1 week ago",
-    category: "cashback",
-  },
-];
+export const WALLET_BALANCE = MOCK_BUSINESS_DATA_ENABLED ? 2450 : 0;
+
+export const WALLET_TRANSACTIONS: WalletTransaction[] = MOCK_BUSINESS_DATA_ENABLED
+  ? [
+      {
+        id: "1",
+        label: "AC Service · Rahul K.",
+        amount: -499,
+        type: "debit",
+        time: "Today",
+        category: "booking",
+      },
+      {
+        id: "2",
+        label: "Cashback · Premium",
+        amount: 50,
+        type: "credit",
+        time: "Yesterday",
+        category: "cashback",
+      },
+      {
+        id: "3",
+        label: "Wallet top-up",
+        amount: 2000,
+        type: "credit",
+        time: "3 days ago",
+        category: "topup",
+      },
+      {
+        id: "4",
+        label: "Deep cleaning · Priya M.",
+        amount: -899,
+        type: "debit",
+        time: "5 days ago",
+        category: "booking",
+      },
+      {
+        id: "5",
+        label: "Referral bonus",
+        amount: 100,
+        type: "credit",
+        time: "1 week ago",
+        category: "cashback",
+      },
+    ]
+  : [];
 
 export type WalletTxnFilter = "all" | "credit" | "debit";
 

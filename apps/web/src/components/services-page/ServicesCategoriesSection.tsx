@@ -1,11 +1,14 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { ChevronRight, MapPin } from "lucide-react";
 import { ServicesSectionHeader } from "@/components/services-page/ServicesSectionHeader";
 import { useServicesNavigation } from "@/hooks/use-services-navigation";
+import { useServicesDiscovery } from "@/hooks/use-services-discovery";
+import { useActiveTracking } from "@/hooks/use-active-tracking";
 import {
   SERVICES_IMAGE_QUALITY,
   servicesSection,
@@ -17,13 +20,23 @@ import {
 } from "@/components/services-page/services-page-layout";
 import {
   LIVE_TRACKING_MAP_IMAGE,
-  SERVICE_CATEGORIES,
 } from "@/lib/services-page-data";
 import { bookUrl } from "@/lib/booking-url";
 import { cn } from "@/lib/utils";
 
 export function ServicesCategoriesSection() {
   const nav = useServicesNavigation();
+  const { categories, isLoading } = useServicesDiscovery();
+  const { tracking } = useActiveTracking();
+  const eta = tracking?.eta ?? 12;
+
+  // Avoid a hydration mismatch: the discovery hook can resolve to different data
+  // on the server (no query cache) vs the first client render (React Query cache
+  // rehydrated synchronously). Render the skeleton until mounted so the server
+  // and first client paint are identical, then swap to live data.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const showSkeleton = !mounted || isLoading;
 
   return (
     <section className={servicesSection()}>
@@ -37,7 +50,14 @@ export function ServicesCategoriesSection() {
             linkLabelShort="View All"
           />
           <div className={svcCatScroll}>
-            {SERVICE_CATEGORIES.map((cat, i) => {
+            {showSkeleton
+              ? Array.from({ length: 6 }).map((_, i) => (
+                  <div key={`svc-skeleton-${i}`} className="snap-start">
+                    <div className={cn(svcCatCard, svcCatCardSize, "h-[148px] animate-pulse bg-surface/70 ring-1 ring-line")} />
+                  </div>
+                ))
+              : null}
+            {(showSkeleton ? [] : categories).map((cat, i) => {
               const Icon = cat.icon;
               return (
                 <motion.div
@@ -174,7 +194,7 @@ export function ServicesCategoriesSection() {
             className="font-display font-bold leading-none tracking-[-0.02em]"
             style={{ fontSize: "clamp(1.75rem, 6vw, 2rem)" }}
           >
-            12 mins
+            {eta} mins
           </p>
 
           <button

@@ -1,15 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
-import { ensureDemoTrackingBooking } from "@/lib/demo-tracking-booking";
-import { useAppStore } from "@/stores/app-store";
+import { useBookingsQuery } from "@/hooks/use-core-data";
 
-/** Ensures demo live-tracking booking exists for the AI page. */
+/** Ensures live bookings are synced for AI live tracking cards. */
 export function useEnsureDemoTracking() {
-  const bookings = useAppStore((s) => s.bookings);
-  const addBooking = useAppStore((s) => s.addBooking);
-
-  useEffect(() => {
-    ensureDemoTrackingBooking(bookings, addBooking);
-  }, [bookings, addBooking]);
+  useBookingsQuery();
 }

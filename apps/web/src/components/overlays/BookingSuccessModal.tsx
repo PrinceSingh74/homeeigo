@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Calendar, MapPin, ArrowRight } from "lucide-react";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { Modal } from "@/components/ui/Modal";
 import Link from "next/link";
 import type { SavedBooking } from "@/lib/bookings";
@@ -39,7 +39,7 @@ export function BookingSuccessModal({
         <div className="mt-4">
           <BookingStatusBadge status={booking.status} />
         </div>
-        <p className="mt-3 font-mono text-sm font-bold text-primary">{booking.id}</p>
+        <p className="mt-3 font-mono text-sm font-bold text-emerald-600">{booking.id}</p>
         <p className="mt-2 font-display text-xl font-bold text-content">
           {booking.serviceTitle}
         </p>
@@ -50,14 +50,14 @@ export function BookingSuccessModal({
 
       <div className="mt-6 flex flex-col gap-3 rounded-2xl glass-card p-4 text-sm">
         <span className="flex items-center gap-2 text-content">
-          <Calendar size={16} className="text-primary" />
+          <Calendar size={16} className="text-emerald-600" />
           {booking.dateLabel} · {booking.timeLabel}
         </span>
         <span className="flex items-start gap-2 text-content">
-          <MapPin size={16} className="mt-0.5 shrink-0 text-primary" />
+          <MapPin size={16} className="mt-0.5 shrink-0 text-emerald-600" />
           {booking.address}
         </span>
-        <span className="border-t border-line pt-3 font-display text-lg font-bold text-aurora">
+        <span className="border-t border-line pt-3 font-display text-lg font-bold bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">
           ₹{booking.total} payable at service
         </span>
       </div>
@@ -71,7 +71,7 @@ export function BookingSuccessModal({
           <button
             type="button"
             onClick={onViewBookings}
-            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-aurora text-sm font-bold text-white shadow-glow-blue"
+            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-sm font-bold text-white shadow-[0_10px_28px_-8px_rgb(16_185_129/0.55)]"
           >
             View My Bookings
             <ArrowRight size={16} />
@@ -80,7 +80,7 @@ export function BookingSuccessModal({
           <Link
             href="/bookings"
             onClick={onClose}
-            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-aurora text-sm font-bold text-white shadow-glow-blue"
+            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-sm font-bold text-white shadow-[0_10px_28px_-8px_rgb(16_185_129/0.55)]"
           >
             View My Bookings
             <ArrowRight size={16} />
@@ -89,7 +89,7 @@ export function BookingSuccessModal({
         <button
           type="button"
           onClick={onClose}
-          className="h-11 text-sm font-semibold text-primary hover:underline"
+          className="h-11 text-sm font-semibold text-emerald-600 hover:underline"
         >
           Book another service
         </button>

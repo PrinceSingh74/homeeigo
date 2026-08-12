@@ -1,0 +1,98 @@
+{
+  "certifiedAt": "2026-08-07T07:09:09.524Z",
+  "phase": "2.0",
+  "scope": "ETA Intelligence Label Collection",
+  "mlInference": false,
+  "checks": [
+    {
+      "name": "eta_event_types",
+      "passed": true,
+      "detail": "eta.label.created"
+    },
+    {
+      "name": "eta_trip_completed_event",
+      "passed": true,
+      "detail": "eta.trip.completed"
+    },
+    {
+      "name": "eta_feature_updated_event",
+      "passed": true,
+      "detail": "eta.feature.updated"
+    },
+    {
+      "name": "eta_training_labels_table",
+      "passed": true,
+      "detail": "accessible"
+    },
+    {
+      "name": "eta_google_snapshots_table",
+      "passed": true,
+      "detail": "accessible"
+    },
+    {
+      "name": "eta_gps_tracks_table",
+      "passed": true,
+      "detail": "accessible"
+    },
+    {
+      "name": "validation_passes_valid_label",
+      "passed": true,
+      "detail": "score=100"
+    },
+    {
+      "name": "validation_rejects_invalid_label",
+      "passed": true,
+      "detail": "missing_timestamps,negative_duration,null_island_coordinates"
+    },
+    {
+      "name": "feature_engineering_bearing",
+      "passed": true,
+      "detail": "bearing=41"
+    },
+    {
+      "name": "feature_engineering_distance_bucket",
+      "passed": true,
+      "detail": "medium"
+    },
+    {
+      "name": "feature_engineering_rush_hour",
+      "passed": true,
+      "detail": "false"
+    },
+    {
+      "name": "etl_eta_job_defined",
+      "passed": true,
+      "detail": "eta_training"
+    },
+    {
+      "name": "etl_eta_handler_registered",
+      "passed": true,
+      "detail": "etl.eta handler"
+    },
+    {
+      "name": "eta_dq_rules",
+      "passed": true,
+      "detail": "4 ETA DQ rules"
+    },
+    {
+      "name": "eta_feature_store_group",
+      "passed": true,
+      "detail": "eta group in feature store"
+    },
+    {
+      "name": "eta_dashboard_stats",
+      "passed": true,
+      "detail": "3 trips"
+    },
+    {
+      "name": "eta_readiness_report",
+      "passed": true,
+      "detail": "6% ready"
+    }
+  ],
+  "summary": {
+    "passed": 17,
+    "total": 17,
+    "success": true
+  }
+}

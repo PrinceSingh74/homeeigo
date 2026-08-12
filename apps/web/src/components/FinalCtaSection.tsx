@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { bookUrl } from "@/lib/booking-url";
@@ -17,12 +17,17 @@ export function FinalCtaSection() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.3 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="relative flex flex-col items-start gap-6 overflow-hidden rounded-[24px] p-6 shadow-e4 sm:flex-row sm:items-center sm:justify-between sm:gap-8 sm:rounded-[32px] sm:p-10 lg:rounded-[40px] lg:p-16"
+        className="relative flex flex-col items-start gap-6 overflow-hidden rounded-[24px] card-sheen p-6 shadow-e4 ring-1 ring-white/60 sm:flex-row sm:items-center sm:justify-between sm:gap-8 sm:rounded-[32px] sm:p-10 lg:rounded-[40px] lg:p-16"
         style={{
           background:
-            "linear-gradient(135deg, #EDE9FE 0%, #F5F3FF 50%, #FCE7F3 100%)",
+            "linear-gradient(135deg, #ECFDF5 0%, #F0FDFA 50%, #F0FDF4 100%)",
         }}
       >
+        <span aria-hidden className="pointer-events-none absolute inset-0 hero-grid opacity-60" />
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -left-16 -top-16 size-64 rounded-full bg-emerald-400/18 blur-3xl"
+        />
         <div className="relative z-10 max-w-2xl">
           <h2
             className="font-display font-bold text-ink"
@@ -35,7 +40,7 @@ export function FinalCtaSection() {
           </p>
           <Link
             href={bookUrl()}
-            className="mt-8 inline-flex h-14 items-center gap-2 rounded-2xl bg-aurora px-9 text-base font-bold text-white shadow-glow-blue outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-primary/60 sm:text-lg"
+            className="mt-8 inline-flex h-14 items-center gap-2 rounded-2xl bg-[linear-gradient(120deg,#10b981_0%,#0d9488_100%)] px-9 text-base font-bold text-white shadow-[0_18px_44px_-14px_rgb(16_185_129/0.55)] outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-emerald-500/60 sm:text-lg"
           >
             Get Started
             <ArrowRight size={18} />
@@ -53,16 +58,16 @@ export function FinalCtaSection() {
             transition={{ duration: 14, repeat: Infinity, ease: "linear" }}
             className="absolute inset-0 grid place-items-center"
           >
-            <span className="size-72 rounded-full border-2 border-dashed border-violet/35" />
+            <span className="size-72 rounded-full border-2 border-dashed border-emerald-400/40" />
           </motion.div>
           <MotionImage
             src="/robot-3d.png"
-            alt="HOMIGO AI assistant"
+            alt="HOMEEIGO AI assistant"
             sizes="(min-width: 1024px) 256px, 224px"
             wrapperClassName="size-56 lg:size-64"
             animate={reduce ? undefined : { y: [0, -14, 0] }}
             transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-            className="drop-shadow-[0_24px_48px_rgb(124_58_237/0.4)]"
+            className="drop-shadow-[0_24px_48px_rgb(16_185_129/0.4)]"
           />
         </div>
       </motion.div>

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { ServicesPage } from "@/components/services-page/ServicesPage";
 
 export const metadata: Metadata = {
-  title: "Services — HOMIGO",
+  title: "Professional Home Services",
   description:
-    "Discover premium home services — cleaning, AC, plumbing, and more. AI recommendations and instant booking.",
+    "Book trusted home cleaning, maintenance, laundry services in 11+ Indian cities. Background-verified experts, on-time guarantee, 4.9★ rated.",
 };
 
 export default function ServicesRoute() {

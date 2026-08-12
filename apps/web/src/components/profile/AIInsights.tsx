@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import {
   ChevronRight,
   Lightbulb,
@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { profilePanelPad, profilePanelShell } from "@/components/profile/profile-page-layout";
 import { cn } from "@/lib/utils";
-import { PROFILE_INSIGHTS } from "@/lib/profile-dashboard";
+import { useProfileDerived } from "@/hooks/use-derived-selectors";
 import { useAppStore } from "@/stores/app-store";
 
 const INSIGHT_ICONS = {
@@ -22,6 +22,7 @@ const INSIGHT_ICONS = {
 export function AIInsights() {
   const reduce = useReducedMotion();
   const showToast = useAppStore((s) => s.showToast);
+  const { insights } = useProfileDerived();
 
   return (
     <motion.section
@@ -33,20 +34,20 @@ export function AIInsights() {
     >
       <div className="mb-5 flex items-center justify-between">
         <h2 className="flex min-w-0 items-center gap-2 font-display text-base font-bold text-content sm:text-lg">
-          <Lightbulb size={15} className="shrink-0 text-primary sm:size-4" />
+          <Lightbulb size={15} className="shrink-0 text-emerald-600 sm:size-4" />
           <span className="truncate">AI Home Insights</span>
         </h2>
         <button
           type="button"
           onClick={() => showToast("More insights coming soon", "info")}
-          className="text-[13px] font-semibold text-primary hover:underline"
+          className="text-[13px] font-semibold text-emerald-600 hover:underline"
         >
           View All
         </button>
       </div>
 
       <ul className="flex flex-col gap-3">
-        {PROFILE_INSIGHTS.map((insight, i) => {
+        {insights.map((insight, i) => {
           const Icon = INSIGHT_ICONS[insight.icon as keyof typeof INSIGHT_ICONS];
           return (
             <motion.li

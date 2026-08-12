@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { Bot, Trash2 } from "lucide-react";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useAiPageActions } from "@/hooks/use-ai-page-actions";
 import { useAiStore } from "@/stores/ai-store";
@@ -12,14 +12,21 @@ import { fadeUp } from "@/components/ai/ai-motion";
 
 export function AiChatSection() {
   const messages = useAiStore((s) => s.messages);
+  const isThinking = useAiStore((s) => s.isThinking);
   const clearChat = useAiStore((s) => s.clearChat);
+  const loadHistory = useAiStore((s) => s.loadHistory);
   const { runChatQuickAction } = useAiPageActions();
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Reload the saved conversation from the backend on first open.
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [messages, isThinking]);
 
   return (
     <section id={AI_SECTION_IDS.chat} className="flex min-h-0 scroll-mt-24 flex-col">
@@ -28,7 +35,7 @@ export function AiChatSection() {
         <button
           type="button"
           onClick={clearChat}
-          className="flex shrink-0 items-center gap-1 text-xs font-semibold text-primary transition hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200 sm:text-[13px]"
+          className="flex shrink-0 items-center gap-1 text-xs font-semibold text-emerald-600 transition hover:text-emerald-700 dark:text-emerald-300 dark:hover:text-emerald-200 sm:text-[13px]"
         >
           <Trash2 size={14} />
           <span className="hidden min-[380px]:inline">Clear Chat</span>
@@ -58,7 +65,7 @@ export function AiChatSection() {
             )}
           >
             {msg.role === "assistant" && (
-              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-violet to-pink text-white">
+              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 text-white">
                 <Bot size={16} />
               </span>
             )}
@@ -71,13 +78,15 @@ export function AiChatSection() {
                 className={cn(
                   "rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-[0_2px_8px_rgb(0_0_0/0.04)]",
                   msg.role === "user"
-                    ? "bg-gradient-to-br from-primary to-violet text-white shadow-[0_4px_12px_rgb(37_99_235/0.2)]"
+                    ? "bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-[0_4px_12px_rgb(16_185_129/0.25)]"
                     : "ai-chat-assistant-bubble border border-[#E5E7EB] bg-[#F9FAFB] text-ink",
                 )}
               >
                 {msg.content}
               </div>
-              <p className="mt-1 text-[10px] text-slate">{msg.time}</p>
+              <p className="mt-1 text-[10px] text-slate" suppressHydrationWarning>
+                {msg.time}
+              </p>
 
               {msg.quickActions && msg.role === "assistant" && (
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -86,7 +95,7 @@ export function AiChatSection() {
                       key={label}
                       type="button"
                       onClick={() => runChatQuickAction(label)}
-                      className="ai-chat-quick-btn rounded-lg border border-[#DBEAFE] bg-[#EFF6FF] px-3 py-1.5 text-[11px] font-semibold text-primary transition hover:bg-[#DBEAFE]"
+                      className="ai-chat-quick-btn rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
                     >
                       {label}
                     </button>
@@ -96,6 +105,19 @@ export function AiChatSection() {
             </div>
           </motion.div>
         ))}
+
+        {isThinking && (
+          <div className="flex items-start gap-2 sm:gap-3">
+            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 text-white">
+              <Bot size={16} />
+            </span>
+            <div className="ai-chat-assistant-bubble flex items-center gap-1 rounded-2xl border px-4 py-3">
+              <span className="size-1.5 animate-bounce rounded-full bg-slate [animation-delay:-0.3s]" />
+              <span className="size-1.5 animate-bounce rounded-full bg-slate [animation-delay:-0.15s]" />
+              <span className="size-1.5 animate-bounce rounded-full bg-slate" />
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

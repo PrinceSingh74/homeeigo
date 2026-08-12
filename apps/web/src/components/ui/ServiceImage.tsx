@@ -2,7 +2,7 @@ import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 type ServiceImageProps = {
-  src: string;
+  src?: string | null;
   alt: string;
   className?: string;
   /** Used when not in fill mode */
@@ -24,12 +24,31 @@ export function ServiceImage({
   priority,
   objectFit = "contain",
 }: ServiceImageProps) {
+  const resolved = src?.trim();
   const fitClass = objectFit === "cover" ? "object-cover" : "object-contain";
+
+  if (!resolved) {
+    if (fill) {
+      return (
+        <span
+          aria-hidden={!alt}
+          className={cn("absolute inset-0 bg-surface/60", className)}
+        />
+      );
+    }
+    return (
+      <span
+        aria-hidden={!alt}
+        className={cn("inline-block bg-surface/60", className)}
+        style={{ width: size, height: size }}
+      />
+    );
+  }
 
   if (fill) {
     return (
       <Image
-        src={src}
+        src={resolved}
         alt={alt}
         fill
         sizes={sizes ?? "100vw"}
@@ -41,7 +60,7 @@ export function ServiceImage({
 
   return (
     <Image
-      src={src}
+      src={resolved}
       alt={alt}
       width={size}
       height={size}

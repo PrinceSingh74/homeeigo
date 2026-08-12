@@ -7,8 +7,9 @@ import { Bell, Plus, Sparkles, User } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Input } from "@/components/ui/Input";
 import { cn } from "@/lib/utils";
-import { PROFILE_USER } from "@/lib/profile-dashboard";
+import { useProfileDerived } from "@/hooks/use-derived-selectors";
 import { bookUrl } from "@/lib/booking-url";
+import { NotificationBadge } from "@/components/ui/NotificationBadge";
 import { useAppStore } from "@/stores/app-store";
 
 /** Mobile/tablet only — desktop uses site Navbar. */
@@ -16,7 +17,7 @@ export function ProfileTopBar() {
   const router = useRouter();
   const openOverlay = useAppStore((s) => s.openOverlay);
   const showToast = useAppStore((s) => s.showToast);
-  const unread = useAppStore((s) => s.unreadNotifications);
+  const { profileUser } = useProfileDerived();
 
   return (
     <header
@@ -29,17 +30,17 @@ export function ProfileTopBar() {
     >
       <Link
         href="/"
-        className="flex min-w-0 shrink-0 items-center gap-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-        aria-label="HOMIGO home"
+        className="flex min-w-0 shrink-0 items-center gap-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+        aria-label="HOMEEIGO home"
       >
-        <span className="grid size-8 place-items-center rounded-lg bg-aurora text-white shadow-glow-blue">
+        <span className="grid size-8 place-items-center rounded-lg bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-white shadow-[0_8px_24px_-6px_rgb(16_185_129/0.5)]">
           <Sparkles size={16} />
         </span>
         <span className="flex min-w-0 flex-col leading-none">
           <span className="truncate font-display text-sm font-bold tracking-tight text-content">
-            HOMIGO
+            HOMEEIGO
           </span>
-          <span className="mt-0.5 flex items-center gap-1 text-[10px] font-semibold text-violet">
+          <span className="mt-0.5 flex items-center gap-1 text-[10px] font-semibold text-emerald-700">
             <User size={10} />
             Profile
           </span>
@@ -68,7 +69,7 @@ export function ProfileTopBar() {
         <button
           type="button"
           onClick={() => router.push(bookUrl())}
-          className="hidden h-9 items-center gap-1.5 rounded-full bg-primary px-3 text-xs font-semibold text-white shadow-glow-blue min-[420px]:flex"
+          className="hidden h-9 items-center gap-1.5 rounded-full bg-emerald-600 px-3 text-xs font-semibold text-white shadow-[0_8px_24px_-6px_rgb(16_185_129/0.5)] min-[420px]:flex"
         >
           <Plus size={14} strokeWidth={2.5} />
           Book
@@ -78,22 +79,20 @@ export function ProfileTopBar() {
           type="button"
           aria-label="Notifications"
           onClick={() => openOverlay("notifications")}
-          className="relative grid size-9 place-items-center rounded-full text-content transition hover:bg-primary/5 sm:size-10"
+          className="relative grid size-9 place-items-center rounded-full text-content transition hover:bg-emerald-600/5 sm:size-10"
         >
           <Bell size={18} />
-          {unread > 0 && (
-            <span className="absolute right-1.5 top-1.5 size-2 rounded-full border-2 border-surface bg-pink" />
-          )}
+          <NotificationBadge size="sm" />
         </button>
 
         <button
           type="button"
           onClick={() => openOverlay("profile")}
-          aria-label={PROFILE_USER.name}
-          className="rounded-full p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          aria-label={profileUser.name}
+          className="rounded-full p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
         >
           <Image
-            src={PROFILE_USER.avatar}
+            src={profileUser.avatar}
             alt=""
             width={40}
             height={40}

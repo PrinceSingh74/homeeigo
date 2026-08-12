@@ -6,13 +6,17 @@ import { useAppStore } from "@/stores/app-store";
 import { bookUrl } from "@/lib/booking-url";
 import { cn } from "@/lib/utils";
 
+// Slugs match the live backend catalog (services table), so each filter
+// deep-links to a real bookable service.
 const FILTERS = [
-  { label: "Under ₹300", href: bookUrl({ service: "cleaning" }) },
-  { label: "Most Popular", href: bookUrl({ service: "cleaning", package: 1 }) },
+  { label: "Under ₹300", href: bookUrl({ service: "bathroom-cleaning" }) },
+  { label: "Most Popular", href: bookUrl({ service: "deep-cleaning", package: 1 }) },
   { label: "AC & Cooling", href: bookUrl({ service: "ac-service" }) },
-  { label: "Home Cleaning", href: bookUrl({ service: "cleaning" }) },
+  { label: "Home Cleaning", href: bookUrl({ service: "deep-cleaning" }) },
   { label: "Plumbing & Repairs", href: bookUrl({ service: "plumbing" }) },
-  { label: "Salon at Home", href: bookUrl({ service: "salon" }) },
+  { label: "Salon at Home", href: bookUrl({ service: "salon-at-home" }) },
+  { label: "Express Party Clean", href: bookUrl({ service: "pre-party-express-clean" }) },
+  { label: "Sofa & Carpet", href: bookUrl({ service: "sofa-deep-cleaning" }) },
 ];
 
 export function QuickFiltersPanel({ open }: { open: boolean }) {

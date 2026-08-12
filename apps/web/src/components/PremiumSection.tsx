@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import {
   Star,
   Users,
@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { useAppStore } from "@/stores/app-store";
 import { PageSection } from "@/components/layout/PageSection";
-import { cn } from "@/lib/utils";
 
 type Benefit = { icon: LucideIcon; l1: string; l2: string };
 
@@ -36,7 +35,7 @@ export function PremiumSection() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.3 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="relative overflow-hidden rounded-[24px] bg-premium p-6 shadow-glow-violet sm:rounded-[32px] sm:p-10 lg:rounded-[40px] lg:p-16"
+        className="relative overflow-hidden rounded-[24px] bg-[linear-gradient(135deg,#064e3b_0%,#0f766e_55%,#115e59_100%)] p-6 shadow-[0_24px_60px_-18px_rgb(6_78_59/0.55)] sm:rounded-[32px] sm:p-10 lg:rounded-[40px] lg:p-16"
       >
         {/* sheen */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent" />
@@ -75,7 +74,7 @@ export function PremiumSection() {
             className="font-display font-bold tracking-wide text-white"
             style={{ fontSize: "clamp(1.75rem, 5vw, 3rem)" }}
           >
-            HOMIGO PREMIUM 👑
+            HOMEEIGO PREMIUM 👑
           </h2>
           <p className="mt-3 text-lg text-white/80">
             Unlock the elite home-care experience
@@ -111,7 +110,7 @@ export function PremiumSection() {
             onClick={() => openOverlay("premium")}
             whileHover={{ y: -3 }}
             whileTap={{ scale: 0.98 }}
-            className="mt-10 inline-flex h-14 items-center gap-2 rounded-2xl bg-white px-9 text-base font-bold text-violet shadow-e3 outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            className="mt-10 inline-flex h-14 items-center gap-2 rounded-2xl bg-white px-9 text-base font-bold text-emerald-800 shadow-e3 outline-none focus-visible:ring-2 focus-visible:ring-white/70"
           >
             Upgrade Now
             <ArrowRight size={18} />

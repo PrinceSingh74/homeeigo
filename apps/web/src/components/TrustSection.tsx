@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import {
   ShieldCheck,
   UserCheck,
@@ -34,7 +34,7 @@ export function TrustSection() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.5 }}
-        className="relative grid grid-cols-2 gap-4 overflow-hidden rounded-[24px] glass-card p-5 sm:grid-cols-3 sm:gap-6 sm:rounded-[32px] sm:p-8 lg:grid-cols-6 lg:gap-8 lg:rounded-[36px] lg:p-12"
+        className="relative grid grid-cols-2 gap-4 overflow-hidden rounded-[24px] glass-card card-sheen p-5 sm:grid-cols-3 sm:gap-6 sm:rounded-[32px] sm:p-8 lg:grid-cols-6 lg:gap-8 lg:rounded-[36px] lg:p-12"
       >
         <span
           aria-hidden
@@ -52,17 +52,17 @@ export function TrustSection() {
               className="group relative flex flex-col items-center text-center"
             >
               <span
-                className="grid size-14 place-items-center rounded-2xl text-primary ring-1 ring-white/50 transition-transform duration-300 group-hover:scale-110 sm:size-20 sm:rounded-3xl"
+                className="grid size-14 place-items-center rounded-2xl text-emerald-600 ring-1 ring-white/50 transition-transform duration-300 group-hover:scale-110 sm:size-20 sm:rounded-3xl dark:text-emerald-400"
                 style={{
                   background:
-                    "linear-gradient(135deg, rgb(37 99 235 / 0.16) 0%, rgb(124 58 237 / 0.08) 100%)",
+                    "linear-gradient(135deg, rgb(16 185 129 / 0.16) 0%, rgb(20 184 166 / 0.08) 100%)",
                   boxShadow:
-                    "inset 0 2px 4px rgb(255 255 255 / 0.6), 0 10px 20px -8px rgb(37 99 235 / 0.35)",
+                    "inset 0 2px 4px rgb(255 255 255 / 0.6), 0 10px 20px -8px rgb(16 185 129 / 0.35)",
                 }}
               >
                 <Icon size={28} strokeWidth={2} className="sm:size-9" />
               </span>
-              <p className="mt-4 text-sm font-semibold leading-tight text-muted">
+              <p className="mt-4 text-sm font-semibold leading-tight text-muted transition-colors duration-300 group-hover:text-content">
                 {t.l1}
                 <br />
                 {t.l2}

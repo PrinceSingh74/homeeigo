@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { Cloud, Loader2 } from "lucide-react";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/app-store";
 import { AI_SECTION_IDS } from "@/lib/ai-page-actions";
@@ -68,23 +68,22 @@ export function AiImageDiagnosis() {
         className={cn(
           "ai-diagnosis-zone mt-3 flex h-[min(44vw,200px)] min-h-[168px] w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed transition sm:mt-4 sm:h-[220px] sm:gap-3 lg:h-[240px]",
           aiGlassPanel,
-          "bg-gradient-to-br from-[#F0F9FF]/80 to-[#F0FDF4]/80",
-          dragging && "is-dragging scale-[1.02] border-violet bg-[#EFF6FF]",
+          dragging && "is-dragging scale-[1.02] border-emerald-400",
           !dragging &&
-            "border-[#DBEAFE] hover:border-primary hover:shadow-[0_8px_20px_rgb(37_99_235/0.1)]",
-          scanning && "animate-pulse border-primary",
+            "border-emerald-400/30 hover:border-emerald-400/60 hover:shadow-[0_8px_24px_rgb(16_185_129/0.25)]",
+          scanning && "animate-pulse border-emerald-400",
         )}
       >
         {scanning ? (
-          <Loader2 size={48} className="animate-spin text-primary" />
+          <Loader2 size={48} className="animate-spin text-emerald-400" />
         ) : (
-          <Cloud size={48} className="text-primary opacity-80" />
+          <Cloud size={48} className="text-emerald-400 opacity-80" />
         )}
         <span className="font-display text-base font-bold tracking-tight text-ink">
           Upload image of the issue
         </span>
         <span className="text-[13px] text-slate">Drag & drop or click to upload</span>
-        <span className="text-[11px] text-[#9CA3AF] dark:text-slate-500">JPG, PNG up to 10MB</span>
+        <span className="text-[11px] text-emerald-200/40">JPG, PNG up to 10MB</span>
       </motion.button>
     </section>
   );

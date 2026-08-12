@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m as motion, AnimatePresence } from "framer-motion";
 import { Sun, Moon } from "lucide-react";
 import { IconButton } from "@/components/buttons/IconButton";
 import { cn } from "@/lib/utils";

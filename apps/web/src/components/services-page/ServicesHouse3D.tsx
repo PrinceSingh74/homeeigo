@@ -4,7 +4,7 @@ import { useRef, useCallback } from "react";
 import Image from "next/image";
 import { useServicesNavigation } from "@/hooks/use-services-navigation";
 import {
-  motion,
+  m as motion,
   useMotionValue,
   useSpring,
   useTransform,

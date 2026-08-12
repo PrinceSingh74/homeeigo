@@ -18,7 +18,10 @@ export function SectionHeader({
 }: SectionHeaderProps) {
   const heading =
     typeof title === "string" ? (
-      <h2 className={cn(sectionTitle, titleClassName)}>{title}</h2>
+      <div className="min-w-0">
+        <span aria-hidden className="mb-3 block h-1 w-10 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500" />
+        <h2 className={cn(sectionTitle, titleClassName)}>{title}</h2>
+      </div>
     ) : (
       <div className={cn("min-w-0", titleClassName)}>{title}</div>
     );

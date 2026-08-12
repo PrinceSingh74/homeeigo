@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import { ChevronRight } from "lucide-react";
 import { useServicesNavigation } from "@/hooks/use-services-navigation";
 import {

@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { ArrowRight, Headphones } from "lucide-react";
 import { useAppStore } from "@/stores/app-store";
@@ -44,7 +44,7 @@ export function FeatureBanner() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.3 }}
           transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-          className="relative flex min-h-[280px] flex-col justify-center overflow-hidden rounded-[24px] bg-darkviolet p-6 shadow-e5 ring-1 ring-white/10 sm:min-h-96 sm:rounded-[32px] sm:p-10 lg:rounded-[36px] lg:p-16"
+          className="relative flex min-h-[280px] flex-col justify-center overflow-hidden rounded-[24px] bg-[linear-gradient(135deg,#065f46_0%,#0f766e_55%,#134e4a_100%)] p-6 shadow-e5 ring-1 ring-white/10 sm:min-h-96 sm:rounded-[32px] sm:p-10 lg:rounded-[36px] lg:p-16"
         >
           <span
             aria-hidden
@@ -52,7 +52,7 @@ export function FeatureBanner() {
           />
           <span
             aria-hidden
-            className="pointer-events-none absolute -left-20 -top-20 size-72 rounded-full bg-cyan/20 blur-3xl"
+            className="pointer-events-none absolute -left-20 -top-20 size-72 rounded-full bg-emerald-300/25 blur-3xl"
           />
           <p className="relative text-sm font-medium uppercase tracking-[0.18em] text-white/55">
             Home services at
@@ -62,7 +62,7 @@ export function FeatureBanner() {
             style={{ fontSize: "clamp(2rem, 8vw, 4.5rem)" }}
           >
             Light{" "}
-            <span className="bg-gradient-to-r from-cyan to-white bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-emerald-300 to-white bg-clip-text text-transparent">
               Speed.
             </span>
           </h2>
@@ -73,7 +73,7 @@ export function FeatureBanner() {
 
           <Link
             href={bookUrl()}
-            className="relative mt-8 inline-flex h-14 w-fit items-center gap-2 rounded-2xl bg-white px-8 text-base font-semibold text-[#1E1B4B] shadow-e3 outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-white/70"
+            className="relative mt-8 inline-flex h-14 w-fit items-center gap-2 rounded-2xl bg-white px-8 text-base font-semibold text-[#065f46] shadow-e3 outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-white/70"
           >
             Book Now
             <ArrowRight size={18} />
@@ -88,7 +88,7 @@ export function FeatureBanner() {
               {[0, 1, 2].map((i) => (
                 <motion.span
                   key={i}
-                  className="absolute top-1/2 h-1 rounded-full bg-gradient-to-r from-cyan to-pink"
+                  className="absolute top-1/2 h-1 rounded-full bg-gradient-to-r from-emerald-300 to-teal-400"
                   style={{ width: 40 + i * 16, right: 70, top: 14 + i * 12 }}
                   animate={
                     reduce ? undefined : { opacity: [0, 0.8, 0], x: [10, -16, 10] }
@@ -124,7 +124,7 @@ export function FeatureBanner() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="flex min-h-44 w-full flex-col justify-between rounded-3xl bg-aurora p-6 text-left text-white shadow-glow-blue outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+            className="card-sheen flex min-h-44 w-full flex-col justify-between rounded-3xl bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] p-6 text-left text-white shadow-[0_18px_44px_-14px_rgb(16_185_129/0.5)] transition-transform duration-300 hover:-translate-y-1 outline-none focus-visible:ring-2 focus-visible:ring-white/60"
           >
             <div>
               <p className="text-lg font-bold">Need help?</p>
@@ -150,13 +150,13 @@ export function FeatureBanner() {
           >
           <Link
             href="/wallet"
-            className="relative flex min-h-44 w-full flex-col justify-between overflow-hidden rounded-3xl glass-card p-6 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            className="relative flex min-h-44 w-full flex-col justify-between overflow-hidden rounded-3xl glass-card card-sheen p-6 text-left transition-transform duration-300 hover:-translate-y-1 outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
           >
             <span
               aria-hidden
               className="pointer-events-none absolute inset-x-0 top-0 h-1/3 sheen"
             />
-            <p className="relative text-sm font-bold text-muted">HOMIGO Wallet</p>
+            <p className="relative text-sm font-bold text-muted">HOMEEIGO Wallet</p>
             <div>
               <p className="font-display text-3xl font-bold text-content">
                 ₹2,450.00

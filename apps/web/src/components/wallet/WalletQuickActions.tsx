@@ -1,11 +1,13 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { useState } from "react";
+import { m as motion, useReducedMotion } from "framer-motion";
 import {
   walletQuickActionItem,
   walletQuickActionsRail,
 } from "@/components/wallet/wallet-page-layout";
 import { WALLET_QUICK_ACTIONS } from "@/lib/wallet-dashboard";
+import { AddMoneyModal } from "@/components/wallet/AddMoneyModal";
 import { useAppStore } from "@/stores/app-store";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +18,7 @@ type WalletQuickActionsProps = {
 export function WalletQuickActions({ onTabChange }: WalletQuickActionsProps) {
   const reduce = useReducedMotion();
   const showToast = useAppStore((s) => s.showToast);
+  const [addOpen, setAddOpen] = useState(false);
 
   return (
     <section className="min-w-0">
@@ -35,8 +38,7 @@ export function WalletQuickActions({ onTabChange }: WalletQuickActionsProps) {
               onClick={() => {
                 if (action.id === "txns") onTabChange?.("transactions");
                 else if (action.id === "invoices") onTabChange?.("invoices");
-                else if (action.id === "add")
-                  showToast("Add money — UPI & cards coming soon", "info");
+                else if (action.id === "add") setAddOpen(true);
                 else showToast(`${action.label} — coming soon`, "info");
               }}
               className={cn(walletQuickActionItem, "text-center transition active:scale-[0.96]")}
@@ -55,6 +57,7 @@ export function WalletQuickActions({ onTabChange }: WalletQuickActionsProps) {
           );
         })}
       </div>
+      <AddMoneyModal open={addOpen} onClose={() => setAddOpen(false)} />
     </section>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { MapPin, ChevronDown } from "lucide-react";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { useAppStore } from "@/stores/app-store";
 import { getLocation } from "@/lib/services";
 import { cn } from "@/lib/utils";

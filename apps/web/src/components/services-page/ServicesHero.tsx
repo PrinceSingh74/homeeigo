@@ -1,181 +1,259 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { Award, Check, CheckCircle } from "lucide-react";
-import { ServiceSearchInput } from "@/components/ServiceSearchInput";
-import { ServicesHouse3D } from "@/components/services-page/ServicesHouse3D";
+import { useEffect, useState } from "react";
+import Image from "next/image";
+import { m as motion, useReducedMotion } from "framer-motion";
+import { ArrowRight, Zap } from "lucide-react";
 import {
   servicesHeroOuter,
   svcHeroInner,
-  svcHeroTitle,
+  SERVICES_IMAGE_QUALITY,
+  servicesShell,
 } from "@/components/services-page/services-page-layout";
 import { useServicesNavigation } from "@/hooks/use-services-navigation";
+import { useLiveMetrics } from "@/hooks/use-live-metrics";
 import {
-  HERO_TRUST_BADGES,
-  POPULAR_SEARCHES,
-} from "@/lib/services-page-data";
+  HERO_IMAGE,
+  HERO_TRUST_PILLS,
+} from "@/lib/services-marketplace-data";
 import { cn } from "@/lib/utils";
 
 const fadeUp = {
-  hidden: { opacity: 0, y: 24 },
+  hidden: { opacity: 0.001, y: 16 },
   show: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: 0.1 * i, duration: 0.55, ease: [0.22, 1, 0.36, 1] },
+    transition: {
+      delay: Math.min(0.05 * i, 0.25),
+      duration: 0.5,
+      ease: [0.22, 1, 0.36, 1],
+    },
   }),
 };
 
 export function ServicesHero() {
   const nav = useServicesNavigation();
+  const metrics = useLiveMetrics();
+  const reduceMotion = useReducedMotion();
+  const [loaded, setLoaded] = useState(false);
 
-  const onBadge = (label: string) => {
-    switch (label) {
-      case "Verified Experts":
-        nav.openProfile();
-        break;
-      case "Background Checked":
-        nav.openHowItWorks();
-        break;
-      case "Secure Payments":
-        nav.openWallet();
-        break;
-      case "On-time Service":
-        nav.openBookingsWithTracking();
-        break;
-      default:
-        nav.openHowItWorks();
-    }
+  useEffect(() => setLoaded(true), []);
+
+  const scrollToHomeCare = () => {
+    document.getElementById("home-care")?.scrollIntoView({ behavior: "smooth" });
   };
 
   return (
     <section
       className={cn(
         servicesHeroOuter,
-        "svc-hero-shell relative overflow-hidden ring-1 ring-white/60 dark:ring-white/10",
+        "svc-hero-premium relative overflow-hidden",
       )}
     >
-      <div className="svc-hero-grid" aria-hidden />
-      <div className="svc-hero-beam" aria-hidden />
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <div className="absolute top-0 right-0 size-96 rounded-full bg-emerald-100/30 blur-3xl" />
+        <div className="absolute bottom-0 left-0 size-96 rounded-full bg-teal-100/20 blur-3xl" />
+      </div>
 
       <div className={svcHeroInner}>
-        <div className="relative grid min-w-0 items-center gap-8 sm:gap-10 lg:grid-cols-2 lg:gap-12 xl:gap-[60px]">
-          <div className="z-10 flex min-w-0 max-w-[550px] flex-col gap-4 sm:gap-5 lg:gap-6">
-            <motion.button
-              type="button"
+        <div className="relative grid min-w-0 items-center gap-10 lg:grid-cols-2 lg:gap-16">
+          {/* Left content */}
+          <div className="z-10 space-y-6 sm:space-y-8">
+            <motion.div
               custom={0}
               initial="hidden"
-              animate="show"
+              animate={loaded ? "show" : "hidden"}
               variants={fadeUp}
-              onClick={() => nav.openPremium()}
-              className="svc-badge-glass inline-flex w-fit max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-wide text-primary transition hover:scale-[1.02] sm:px-4 sm:py-2 sm:text-xs"
+              className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2"
             >
-              <span className="grid size-5 shrink-0 place-items-center rounded-full bg-primary/15">
-                <Check size={12} aria-hidden />
+              <span className="size-2 rounded-full bg-emerald-500" aria-hidden />
+              <span className="text-xs font-semibold text-emerald-800 sm:text-sm">
+                India&apos;s Most Trusted Home Services Platform
               </span>
-              <span className="truncate">100+ Premium Services</span>
-              <span className="hidden shrink-0 rounded-full bg-violet-600/10 px-2 py-0.5 text-[10px] font-bold text-violet-700 dark:text-violet-300 sm:inline">
-                AI-POWERED
-              </span>
-            </motion.button>
+            </motion.div>
 
             <motion.h1
               custom={1}
               initial="hidden"
-              animate="show"
+              animate={loaded ? "show" : "hidden"}
               variants={fadeUp}
-              className={svcHeroTitle}
+              className="font-display text-[clamp(2rem,5.5vw,3.75rem)] font-bold leading-[1.1] tracking-[-0.03em] text-gray-900"
             >
-              Premium Home Services,{" "}
-              <span className="relative inline-block">
-                <span className="bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#EC4899] bg-clip-text text-transparent">
-                  Simplified.
-                </span>
-              </span>
+              All your home needs,{" "}
+              <span className="text-emerald-600">Handled with Care.</span>
             </motion.h1>
 
             <motion.p
               custom={2}
               initial="hidden"
-              animate="show"
+              animate={loaded ? "show" : "hidden"}
               variants={fadeUp}
-              className="max-w-md text-sm leading-[1.65] text-[#64748B] dark:text-muted sm:text-base md:text-lg"
+              className="max-w-xl text-base leading-relaxed text-gray-600 sm:text-lg"
             >
-              Fast, reliable & AI-powered solutions for your beautiful home.
+              Professional. Reliable. Background-verified partners for a cleaner,
+              happier home.
             </motion.p>
 
-            <motion.ul
+            <motion.div
               custom={3}
               initial="hidden"
-              animate="show"
+              animate={loaded ? "show" : "hidden"}
               variants={fadeUp}
-              className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2 sm:flex sm:flex-wrap sm:gap-x-5 sm:gap-y-3"
+              className="flex flex-col gap-3 pt-2 sm:flex-row sm:gap-4"
             >
-              {HERO_TRUST_BADGES.map((label) => (
-                <li key={label}>
-                  <button
-                    type="button"
-                    onClick={() => onBadge(label)}
-                    className="flex w-full items-center gap-2 text-left text-xs font-medium text-[#0F172A] transition hover:text-primary dark:text-content sm:text-[13px]"
-                  >
-                    <CheckCircle
-                      size={16}
-                      className="shrink-0 text-[#2563EB] sm:size-[18px]"
-                      strokeWidth={2}
-                      aria-hidden
-                    />
-                    {label}
-                  </button>
-                </li>
-              ))}
-            </motion.ul>
+              <button
+                type="button"
+                onClick={() => nav.book()}
+                className="group inline-flex items-center justify-center gap-2 rounded-xl bg-[#1B5E4F] px-8 py-4 font-semibold text-white shadow-lg transition-all duration-300 hover:bg-[#164a3f] hover:shadow-xl"
+              >
+                Book a Service
+                <ArrowRight className="size-5 transition-transform group-hover:translate-x-1" aria-hidden />
+              </button>
+              <button
+                type="button"
+                onClick={scrollToHomeCare}
+                className="rounded-xl border-2 border-[#1B5E4F] bg-white px-8 py-4 font-semibold text-[#1B5E4F] transition-all duration-300 hover:bg-emerald-50"
+              >
+                Explore Services
+              </button>
+            </motion.div>
 
             <motion.div
               custom={4}
               initial="hidden"
-              animate="show"
+              animate={loaded ? "show" : "hidden"}
               variants={fadeUp}
-              className="min-w-0"
+              className="grid grid-cols-2 gap-4 border-t border-gray-200 pt-6 sm:gap-6 sm:pt-8"
             >
-              <div className="svc-search-wrap rounded-2xl bg-white/50 p-1 dark:bg-slate-900/40 sm:rounded-[20px]">
-                <ServiceSearchInput variant="hero" className="w-full min-w-0" />
-              </div>
-              <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-[#64748B] dark:text-muted sm:mt-4 sm:text-xs">
-                Popular Searches
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1.5 sm:mt-2.5 sm:gap-2">
-                {POPULAR_SEARCHES.map((tag) => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => nav.bookFromSearch(tag)}
-                    className="rounded-lg border border-[#DBEAFE] bg-[#F0F9FF] px-2.5 py-1.5 text-[11px] font-semibold text-[#2563EB] transition-all hover:-translate-y-0.5 hover:border-[#2563EB] hover:bg-[#DBEAFE] hover:shadow-md dark:border-sky-800/50 dark:bg-sky-950/50 sm:px-3.5 sm:py-2 sm:text-xs"
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
+              {HERO_TRUST_PILLS.map((pill) => {
+                const Icon = pill.icon;
+                return (
+                  <div key={pill.label} className="flex items-center gap-2.5">
+                    <Icon className="size-5 shrink-0 text-emerald-600" aria-hidden />
+                    <span className="text-xs font-medium text-gray-600 sm:text-sm">
+                      {pill.label}
+                    </span>
+                  </div>
+                );
+              })}
             </motion.div>
+          </div>
 
-            <motion.div
-              custom={5}
-              initial="hidden"
-              animate="show"
-              variants={fadeUp}
-              className="flex items-start gap-2 text-[11px] text-muted sm:text-xs"
-            >
-              <Award
-                size={14}
-                className="mt-0.5 shrink-0 text-amber-500"
-                aria-hidden
+          {/* Right — brand welcome portrait in a layered premium frame */}
+          <motion.div
+            initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
+            animate={loaded ? { opacity: 1, scale: 1 } : {}}
+            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            className="relative mx-auto w-full max-w-md lg:max-w-lg"
+          >
+            {/* Ambient brand glow + offset depth card behind the portrait */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -inset-6 rounded-[40px] bg-[radial-gradient(closest-side,rgb(16_185_129/0.22),transparent)] blur-2xl"
+            />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 translate-x-4 translate-y-4 rounded-[32px] bg-gradient-to-br from-emerald-200/70 via-emerald-100/40 to-teal-100/30 sm:translate-x-6 sm:translate-y-6"
+            />
+
+            <div className="relative aspect-[4/5] overflow-hidden rounded-[28px] shadow-[0_32px_70px_-24px_rgb(6_78_59/0.45)] ring-1 ring-emerald-900/10 sm:aspect-[3/4] lg:aspect-[4/5]">
+              <Image
+                src={HERO_IMAGE}
+                alt="HOMEEIGO professional welcoming you with a namaste"
+                fill
+                priority
+                quality={SERVICES_IMAGE_QUALITY}
+                sizes="(max-width: 1024px) 100vw, 40vw"
+                className="object-cover object-[50%_18%] transition-transform duration-700 will-change-transform hover:scale-[1.03]"
               />
-              <span>India&apos;s most trusted premium home services platform</span>
-            </motion.div>
-          </div>
+              {/* Glass shell: inner ring + top sheen + soft base scrim for the caption */}
+              <span aria-hidden className="pointer-events-none absolute inset-0 rounded-[28px] ring-1 ring-inset ring-white/40" />
+              <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-white/25 to-transparent" />
+              <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-emerald-950/70 via-emerald-950/25 to-transparent" />
 
-          <div className="relative flex min-w-0 items-center justify-center lg:justify-end">
-            <ServicesHouse3D />
-          </div>
+              {/* Instant booking — kept clear of the face & in-image signage */}
+              <motion.div
+                initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+                animate={loaded ? { opacity: 1, y: 0 } : {}}
+                transition={{ delay: 0.5, duration: 0.5 }}
+                className="svc-glass absolute left-4 top-4 max-w-[190px] rounded-xl px-4 py-3 shadow-lg sm:left-5 sm:top-5"
+              >
+                <div className="flex items-center gap-2">
+                  <Zap className="size-4 text-amber-500" aria-hidden />
+                  <span className="text-xs font-bold text-gray-900 sm:text-sm">
+                    Instant Booking
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-gray-600 sm:text-xs">
+                  Hassle-free in 60 secs
+                </p>
+              </motion.div>
+
+              {/* Welcome caption on the scrim */}
+              <motion.div
+                initial={reduceMotion ? false : { opacity: 0, y: 14 }}
+                animate={loaded ? { opacity: 1, y: 0 } : {}}
+                transition={{ delay: 0.65, duration: 0.5 }}
+                className="absolute inset-x-4 bottom-4 flex items-center justify-between gap-3 sm:inset-x-5 sm:bottom-5"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-white drop-shadow sm:text-base">
+                    Namaste, welcome home
+                  </p>
+                  <p className="mt-0.5 text-[11px] font-medium text-emerald-100/90 sm:text-xs">
+                    Background-verified · Uniformed · ID-carded professionals
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-bold text-white ring-1 ring-white/30 backdrop-blur-md sm:text-xs">
+                  ★ 4.9 rated
+                </span>
+              </motion.div>
+            </div>
+
+            {/* Floating service chips — outside the frame edge for 3D depth */}
+            {[
+              { label: "Cleaning", top: "16%" },
+              { label: "Maintenance", top: "38%" },
+              { label: "Organization", top: "60%" },
+            ].map((pill, idx) => (
+              <motion.button
+                key={pill.label}
+                type="button"
+                onClick={() => nav.bookFromSearch(pill.label)}
+                initial={reduceMotion ? false : { opacity: 0, x: 14 }}
+                animate={loaded ? { opacity: 1, x: 0 } : {}}
+                transition={{ delay: 0.6 + idx * 0.15 }}
+                className="svc-glass absolute -right-3 z-10 hidden rounded-xl px-3.5 py-2 text-xs font-semibold text-gray-800 shadow-lg ring-1 ring-white/50 transition-transform hover:scale-105 sm:block lg:-right-6"
+                style={{ top: pill.top }}
+              >
+                {pill.label}
+              </motion.button>
+            ))}
+          </motion.div>
         </div>
+
+        {/* Metrics row */}
+        <motion.div
+          initial={reduceMotion ? false : { opacity: 0, y: 24 }}
+          animate={loaded ? { opacity: 1, y: 0 } : {}}
+          transition={{ delay: 0.7, duration: 0.5 }}
+          className={cn(
+            servicesShell,
+            "mt-12 grid grid-cols-2 gap-6 border-t border-gray-200 pt-10 sm:mt-16 sm:grid-cols-4 sm:gap-8 sm:pt-14",
+          )}
+        >
+          {metrics.map((metric) => (
+            <div key={metric.label} className="text-center">
+              <span className="text-2xl sm:text-3xl" aria-hidden>
+                {metric.icon}
+              </span>
+              <p className="svc-num mt-2 text-2xl font-bold text-gray-900 sm:text-3xl">
+                {metric.number}
+              </p>
+              <p className="mt-1 text-xs text-gray-500 sm:text-sm">{metric.label}</p>
+            </div>
+          ))}
+        </motion.div>
       </div>
     </section>
   );

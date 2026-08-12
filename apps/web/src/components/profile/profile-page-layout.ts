@@ -4,7 +4,8 @@ import { pageMax, pagePadX } from "@/lib/page-layout";
 export const profileBleedX = "w-full min-w-0 max-w-full overflow-x-clip";
 
 export const profilePageRoot = cn(
-  "profile-page relative flex w-full max-w-[100vw] flex-col bg-canvas",
+  "profile-page relative flex w-full max-w-[100vw] flex-col",
+  "bg-[linear-gradient(135deg,#ffffff_0%,#f0fdf4_35%,#ffffff_100%)] dark:bg-canvas",
   "min-h-[100dvh]",
   "lg:min-h-[calc(100dvh-var(--site-nav-offset,4rem))]",
 );
@@ -77,7 +78,7 @@ export const profilePremiumFeaturesRail = cn(
 
 /** Clickable rows/cards — light hover uses luxe; dark keeps contrast with content text */
 export const profileInteractiveSurface = cn(
-  "border border-line bg-canvas transition hover:border-primary",
-  "hover:bg-luxe hover:shadow-[0_4px_12px_rgb(37_99_235/0.08)]",
-  "dark:bg-charcoal/40 dark:hover:bg-primary/12 dark:hover:shadow-[0_4px_16px_rgb(37_99_235/0.18)]",
+  "border border-line bg-canvas transition hover:border-emerald-500",
+  "hover:bg-luxe hover:shadow-[0_4px_12px_rgb(16_185_129/0.08)]",
+  "dark:bg-charcoal/40 dark:hover:bg-emerald-600/12 dark:hover:shadow-[0_4px_16px_rgb(16_185_129/0.18)]",
 );

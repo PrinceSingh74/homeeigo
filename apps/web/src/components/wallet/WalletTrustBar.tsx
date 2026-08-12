@@ -1,15 +1,16 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
-import { WALLET_TRUST_CARDS } from "@/lib/wallet-dashboard";
+import { m as motion, useReducedMotion } from "framer-motion";
+import { useWalletDerived } from "@/hooks/use-derived-selectors";
 
 export function WalletTrustBar() {
   const reduce = useReducedMotion();
+  const { trustCards } = useWalletDerived();
 
   return (
     <section className="rounded-xl bg-luxe p-4 dark:bg-charcoal/40 sm:rounded-2xl sm:p-6 lg:p-8">
       <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4">
-        {WALLET_TRUST_CARDS.map((card, i) => {
+        {trustCards.map((card, i) => {
           const Icon = card.icon;
           return (
             <motion.div

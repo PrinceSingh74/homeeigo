@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import { ChevronRight, CheckCircle, Gift, MapPin, Wallet } from "lucide-react";
 import { profilePanelShell, profileStatsGrid } from "@/components/profile/profile-page-layout";
 import { cn } from "@/lib/utils";
-import { PROFILE_QUICK_STATS } from "@/lib/profile-dashboard";
+import { useProfileDerived } from "@/hooks/use-derived-selectors";
 import { useAppStore } from "@/stores/app-store";
 
 const ICONS = {
@@ -19,10 +19,11 @@ export function StatsCards() {
   const reduce = useReducedMotion();
   const openOverlay = useAppStore((s) => s.openOverlay);
   const showToast = useAppStore((s) => s.showToast);
+  const { quickStats } = useProfileDerived();
 
   return (
     <div className={profileStatsGrid}>
-      {PROFILE_QUICK_STATS.map((card, i) => {
+      {quickStats.map((card, i) => {
         const Icon = ICONS[card.id as keyof typeof ICONS];
         const inner = (
           <>
@@ -36,7 +37,7 @@ export function StatsCards() {
                 <Icon size={20} />
               </span>
               {card.notify && (
-                <span className="size-2 rounded-full bg-pink shadow-[0_0_8px_rgb(236_72_153/0.4)]" />
+                <span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgb(16_185_129/0.4)]" />
               )}
             </div>
             <p className="text-xs font-medium text-muted">{card.label}</p>
@@ -46,7 +47,7 @@ export function StatsCards() {
             >
               {card.value}
             </p>
-            <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-primary">
+            <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-emerald-600">
               {card.link}
               <ChevronRight size={14} />
             </span>
@@ -55,7 +56,7 @@ export function StatsCards() {
 
         const className = cn(
           profilePanelShell,
-          "group flex min-w-0 flex-col gap-2.5 p-4 transition duration-250 hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(37_99_235/0.12)] sm:gap-3 sm:p-5",
+          "group flex min-w-0 flex-col gap-2.5 p-4 transition duration-250 hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(16_185_129/0.12)] sm:gap-3 sm:p-5",
         );
 
         return (

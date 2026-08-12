@@ -37,16 +37,16 @@ type AppState = {
   toasts: Toast[];
   bookings: SavedBooking[];
   isPremium: boolean;
-  unreadNotifications: number;
   supportCallbackQueued: boolean;
   setLocationId: (id: LocationId) => void;
   openOverlay: (o: Overlay) => void;
   closeOverlay: () => void;
   setActivePromo: (code: string | null) => void;
   setPremium: (value: boolean) => void;
-  markNotificationsRead: () => void;
   requestSupportCallback: () => void;
   addBooking: (booking: SavedBooking) => void;
+  /** Reconcile the local store with the authoritative server list (prunes stale bookings). */
+  syncServerBookings: (serverBookings: SavedBooking[]) => void;
   updateBookingStatus: (id: string, status: BookingStatus) => void;
   getBookingById: (id: string) => SavedBooking | undefined;
   showToast: (message: string, type?: Toast["type"]) => void;
@@ -62,7 +62,6 @@ export const useAppStore = create<AppState>()(
       toasts: [],
       bookings: [],
       isPremium: false,
-      unreadNotifications: 3,
       supportCallbackQueued: false,
 
       setLocationId: (id) => {
@@ -76,14 +75,12 @@ export const useAppStore = create<AppState>()(
 
       setPremium: (value) => {
         set({ isPremium: value });
-        if (value) get().showToast("Welcome to HOMIGO Premium! 🎉", "success");
+        if (value) get().showToast("Welcome to HOMEEIGO Premium! 🎉", "success");
       },
-
-      markNotificationsRead: () => set({ unreadNotifications: 0 }),
 
       requestSupportCallback: () => {
         set({ supportCallbackQueued: true });
-        get().showToast("A HOMIGO specialist will call you within 5 minutes", "success");
+        get().showToast("A HOMEEIGO specialist will call you within 5 minutes", "success");
       },
 
       addBooking: (booking) =>
@@ -91,6 +88,12 @@ export const useAppStore = create<AppState>()(
           const rest = s.bookings.filter((b) => b.id !== booking.id);
           return { bookings: dedupeBookingsById([booking, ...rest]) };
         }),
+
+      // The backend is the source of truth: keep exactly what it returns so
+      // stale bookings persisted from a previous session/reseed are dropped
+      // (prevents "Booking not found" when opening a dead local booking).
+      syncServerBookings: (serverBookings) =>
+        set(() => ({ bookings: dedupeBookingsById(serverBookings) })),
 
       updateBookingStatus: (id, status) => {
         const now = new Date().toISOString();
@@ -113,11 +116,23 @@ export const useAppStore = create<AppState>()(
 
       showToast: (message, type = "info") => {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-        set((s) => ({ toasts: [...s.toasts, { id, message, type }] }));
-        setTimeout(() => get().dismissToast(id), 3200);
+        let added = false;
+        set((s) => {
+          const duplicate = s.toasts.some(
+            (t) => t.message === message && t.type === type,
+          );
+          if (duplicate) return s;
+          added = true;
+          const next = [...s.toasts, { id, message, type }];
+          return { toasts: next.length > 5 ? next.slice(-5) : next };
+        });
+        if (added) setTimeout(() => get().dismissToast(id), 3200);
       },
       dismissToast: (id) =>
-        set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+        set((s) => {
+          if (!s.toasts.some((t) => t.id === id)) return s;
+          return { toasts: s.toasts.filter((t) => t.id !== id) };
+        }),
     }),
     {
       name: "homigo-web-v1",
@@ -134,7 +149,6 @@ export const useAppStore = create<AppState>()(
         activePromo: s.activePromo,
         bookings: dedupeBookingsById(s.bookings),
         isPremium: s.isPremium,
-        unreadNotifications: s.unreadNotifications,
         supportCallbackQueued: s.supportCallbackQueued,
       }),
     },

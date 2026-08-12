@@ -5,18 +5,18 @@ import {
   RefreshCw,
   Receipt,
   Gift,
-  Lock,
-  Headphones,
   type LucideIcon,
 } from "lucide-react";
 
-export const WALLET_TOTAL_BALANCE = 4250.75;
-export const WALLET_ADDED_THIS_MONTH = 850;
-export const WALLET_H_COINS = 320;
-export const WALLET_GIFT_CARD_VALUE = 850;
-export const WALLET_GIFT_CARD_COUNT = 2;
-export const WALLET_MONTHLY_SPEND = 2849;
-export const WALLET_SPEND_CHANGE_PCT = 18;
+const MOCK_BUSINESS_DATA_ENABLED =
+  process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ENABLE_MOCK_BUSINESS_DATA === "true";
+
+export const WALLET_TOTAL_BALANCE = MOCK_BUSINESS_DATA_ENABLED ? 4250.75 : 0;
+export const WALLET_ADDED_THIS_MONTH = MOCK_BUSINESS_DATA_ENABLED ? 850 : 0;
+export const WALLET_H_COINS = MOCK_BUSINESS_DATA_ENABLED ? 320 : 0;
+export const WALLET_GIFT_CARD_VALUE = MOCK_BUSINESS_DATA_ENABLED ? 850 : 0;
+export const WALLET_GIFT_CARD_COUNT = MOCK_BUSINESS_DATA_ENABLED ? 2 : 0;
+export const WALLET_SPEND_CHANGE_PCT = MOCK_BUSINESS_DATA_ENABLED ? 18 : 0;
 
 export type WalletQuickAction = {
   id: string;
@@ -26,15 +26,15 @@ export type WalletQuickAction = {
   bg: string;
 };
 
-export const WALLET_QUICK_ACTIONS: WalletQuickAction[] = [
-  { id: "add", label: "Add Money", icon: Plus, color: "#2563EB", bg: "#EFF6FF" },
-  { id: "upi", label: "UPI", icon: Smartphone, color: "#06B6D4", bg: "#ECFEFF" },
-  { id: "cards", label: "Cards", icon: CreditCard, color: "#7C3AED", bg: "#F5F3FF" },
+export const WALLET_QUICK_ACTIONS: WalletQuickAction[] = MOCK_BUSINESS_DATA_ENABLED ? [
+  { id: "add", label: "Add Money", icon: Plus, color: "#059669", bg: "#ECFDF5" },
+  { id: "upi", label: "UPI", icon: Smartphone, color: "#14b8a6", bg: "#F0FDFA" },
+  { id: "cards", label: "Cards", icon: CreditCard, color: "#0d9488", bg: "#F0FDFA" },
   { id: "autopay", label: "Auto Pay", icon: RefreshCw, color: "#F59E0B", bg: "#FFFBEB" },
   { id: "txns", label: "Transactions", icon: Receipt, color: "#10B981", bg: "#ECFDF5" },
-  { id: "invoices", label: "Invoices", icon: Receipt, color: "#EC4899", bg: "#FDF2F8" },
+  { id: "invoices", label: "Invoices", icon: Receipt, color: "#10b981", bg: "#ECFDF5" },
   { id: "offers", label: "Offers", icon: Gift, color: "#D4AF37", bg: "#FFFBEB" },
-];
+] : [];
 
 export type WalletTabId = "overview" | "transactions" | "invoices" | "payment-methods";
 
@@ -56,7 +56,7 @@ export type WalletRecentTxn = {
   iconColor: string;
 };
 
-export const WALLET_RECENT_TXNS: WalletRecentTxn[] = [
+export const WALLET_RECENT_TXNS: WalletRecentTxn[] = MOCK_BUSINESS_DATA_ENABLED ? [
   {
     id: "1",
     title: "Money added to wallet",
@@ -64,8 +64,8 @@ export const WALLET_RECENT_TXNS: WalletRecentTxn[] = [
     amount: 1000,
     type: "credit",
     status: "success",
-    iconBg: "#EFF6FF",
-    iconColor: "#2563EB",
+    iconBg: "#ECFDF5",
+    iconColor: "#059669",
   },
   {
     id: "2",
@@ -84,8 +84,8 @@ export const WALLET_RECENT_TXNS: WalletRecentTxn[] = [
     amount: 50,
     type: "credit",
     status: "success",
-    iconBg: "#F5F3FF",
-    iconColor: "#7C3AED",
+    iconBg: "#F0FDFA",
+    iconColor: "#0d9488",
   },
   {
     id: "4",
@@ -97,13 +97,7 @@ export const WALLET_RECENT_TXNS: WalletRecentTxn[] = [
     iconBg: "#FFFBEB",
     iconColor: "#D4AF37",
   },
-];
-
-export const WALLET_BREAKDOWN = [
-  { label: "Wallet Balance", value: 2450.75, color: "#7C3AED", pct: 58 },
-  { label: "H-Coins Value", value: 850, color: "#F59E0B", pct: 20 },
-  { label: "Gift Cards", value: 950, color: "#06B6D4", pct: 22 },
-];
+] : [];
 
 export type WalletOffer = {
   id: string;
@@ -113,7 +107,7 @@ export type WalletOffer = {
   code: string;
 };
 
-export const WALLET_OFFERS: WalletOffer[] = [
+export const WALLET_OFFERS: WalletOffer[] = MOCK_BUSINESS_DATA_ENABLED ? [
   {
     id: "1",
     badge: "15% OFF",
@@ -128,65 +122,6 @@ export const WALLET_OFFERS: WalletOffer[] = [
     description: "Verified pros · Same-day",
     code: "AC100",
   },
-];
+] : [];
 
-export type WalletInvoice = {
-  id: string;
-  amount: number;
-  date: string;
-  status: "paid" | "pending";
-};
-
-export const WALLET_INVOICES: WalletInvoice[] = [
-  { id: "INV-2841", amount: 849, date: "May 18, 2026", status: "paid" },
-  { id: "INV-2799", amount: 499, date: "May 12, 2026", status: "paid" },
-  { id: "INV-2750", amount: 1200, date: "May 5, 2026", status: "paid" },
-];
-
-export type WalletPaymentMethod = {
-  id: string;
-  type: "card" | "upi" | "bank";
-  label: string;
-  detail: string;
-  primary?: boolean;
-};
-
-export const WALLET_PAYMENT_METHODS: WalletPaymentMethod[] = [
-  { id: "1", type: "card", label: "HDFC Debit", detail: "•••• 4821", primary: true },
-  { id: "2", type: "upi", label: "UPI", detail: "arjun@okaxis" },
-  { id: "3", type: "bank", label: "Bank Account", detail: "HDFC · •••• 9024" },
-];
-
-export const WALLET_SPARKLINE = [42, 58, 45, 72, 68, 85, 78, 92, 88, 95, 82, 100];
-
-export const WALLET_TRUST_CARDS = [
-  { icon: Lock, title: "Safe & Secure", text: "Bank level security", bg: "#ECFDF5", color: "#10B981" },
-  {
-    icon: RefreshCw,
-    title: "Instant Refunds",
-    text: "Hassle free refunds",
-    bg: "#EFF6FF",
-    color: "#2563EB",
-  },
-  {
-    icon: CreditCard,
-    title: "Multiple Payment Options",
-    text: "UPI, Cards, Netbanking & more",
-    bg: "#F5F3FF",
-    color: "#7C3AED",
-  },
-  {
-    icon: Headphones,
-    title: "24/7 Support",
-    text: "We are here to help",
-    bg: "#FFF7ED",
-    color: "#F59E0B",
-  },
-];
-
-export const WALLET_USER = {
-  name: "Arjun Kumar",
-  status: "Premium Member",
-  avatar:
-    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&h=120&fit=crop&q=80",
-};
+export const WALLET_SPARKLINE = MOCK_BUSINESS_DATA_ENABLED ? [42, 58, 45, 72, 68, 85, 78, 92, 88, 95, 82, 100] : [];

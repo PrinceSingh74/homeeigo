@@ -26,9 +26,9 @@ export const pageLead =
 export const sectionTitle =
   "font-display text-2xl font-bold tracking-tight text-content sm:text-3xl md:text-4xl lg:text-[2.75rem]";
 
-/** Section header row (title + action) */
+/** Section header row (title + action) — editorial, no box */
 export const sectionHeaderRow =
-  "mb-8 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/55 bg-white/45 px-4 py-3 shadow-[0_8px_24px_-14px_rgb(15_23_42/0.25)] backdrop-blur-xl sm:mb-10 sm:px-5 sm:py-3.5 dark:border-white/10 dark:bg-white/[0.03]";
+  "mb-8 flex flex-wrap items-end justify-between gap-x-4 gap-y-3 sm:mb-10";
 
 /** Section / hero lead copy */
 export const sectionSubtitle =

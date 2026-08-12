@@ -2,14 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { memo } from "react";
-import { motion } from "framer-motion";
+import { memo, useEffect, useState } from "react";
+import { m as motion } from "framer-motion";
 import { MAIN_NAV_ITEMS, isMainNavActive } from "@/lib/main-nav";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 
 function BottomNavInner() {
   const pathname = usePathname();
+  // Optimistic active target: highlight the tapped item the instant it's pressed, before the route
+  // commits (Phase 11 — instant feedback). Cleared once the real pathname catches up.
+  const [pending, setPending] = useState<string | null>(null);
+  useEffect(() => {
+    setPending(null);
+  }, [pathname]);
 
   return (
     <nav
@@ -24,7 +30,8 @@ function BottomNavInner() {
             icon={item.icon}
             label={item.shortLabel ?? item.label}
             href={item.href}
-            active={isMainNavActive(pathname, item.href)}
+            active={pending ? pending === item.href : isMainNavActive(pathname, item.href)}
+            onPress={() => setPending(item.href)}
           />
         ))}
       </div>
@@ -39,16 +46,19 @@ const NavItem = memo(function NavItem({
   label,
   href,
   active,
+  onPress,
 }: {
   icon: LucideIcon;
   label: string;
   href: string;
   active: boolean;
+  onPress: () => void;
 }) {
   return (
     <Link
       href={href}
       prefetch
+      onPointerDown={onPress}
       aria-current={active ? "page" : undefined}
       className={cn(
         "flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg py-1 outline-none",

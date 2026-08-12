@@ -97,7 +97,7 @@ export function BookingScheduleSection({
     <div className={className}>
       <div className="mb-4 flex items-start gap-2.5 sm:mb-6 sm:gap-3">
         {step != null && (
-          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-aurora text-xs font-bold text-white shadow-glow-blue sm:size-8 sm:text-sm">
+          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-xs font-bold text-white shadow-[0_6px_18px_-6px_rgb(16_185_129/0.55)] sm:size-8 sm:text-sm">
             {step}
           </span>
         )}
@@ -139,7 +139,7 @@ export function BookingScheduleSection({
           onClick={openDatePicker}
           className="flex min-w-0 items-center justify-center gap-2 rounded-xl border border-line glass-card px-3 py-3 text-xs font-bold text-content transition hover:-translate-y-0.5 sm:rounded-2xl sm:px-4 sm:py-3.5 sm:text-sm"
         >
-          <Calendar size={16} className="shrink-0 text-primary sm:size-[18px]" />
+          <Calendar size={16} className="shrink-0 text-emerald-600 sm:size-[18px]" />
           <span className="truncate">{formatDateLabel(scheduledAt)}</span>
         </button>
         <button
@@ -147,7 +147,7 @@ export function BookingScheduleSection({
           onClick={openTimePicker}
           className="flex min-w-0 items-center justify-center gap-2 rounded-xl border border-line glass-card px-3 py-3 text-xs font-bold text-content transition hover:-translate-y-0.5 sm:rounded-2xl sm:px-4 sm:py-3.5 sm:text-sm"
         >
-          <Clock size={16} className="shrink-0 text-primary sm:size-[18px]" />
+          <Clock size={16} className="shrink-0 text-emerald-600 sm:size-[18px]" />
           <span className="truncate">{formatTimeLabel(scheduledAt)}</span>
         </button>
       </div>
@@ -190,7 +190,7 @@ export function BookingScheduleSection({
               className={cn(
                 "flex min-w-[4.5rem] shrink-0 snap-start flex-col items-center rounded-xl py-3 text-xs transition sm:min-w-0 sm:rounded-2xl sm:py-4 sm:text-sm",
                 active
-                  ? "bg-aurora text-white shadow-glow-blue"
+                  ? "bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-white shadow-[0_10px_26px_-8px_rgb(16_185_129/0.55)]"
                   : "glass-card text-content hover:-translate-y-0.5",
               )}
             >
@@ -226,7 +226,7 @@ export function BookingScheduleSection({
               className={cn(
                 "min-w-[4.25rem] shrink-0 snap-start rounded-xl px-2 py-3 text-xs font-semibold transition sm:min-w-0 sm:rounded-2xl sm:py-4 sm:text-sm",
                 active
-                  ? "bg-aurora text-white shadow-glow-blue"
+                  ? "bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-white shadow-[0_10px_26px_-8px_rgb(16_185_129/0.55)]"
                   : "glass-card text-content hover:-translate-y-0.5",
               )}
             >

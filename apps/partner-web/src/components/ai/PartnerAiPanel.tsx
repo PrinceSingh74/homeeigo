@@ -9,6 +9,7 @@ import {
   usePartnerDashboardQuery,
   usePartnerMeQuery,
 } from "@/hooks/use-partner-data";
+import { partnerApi } from "@/services/partner-api";
 import { formatInr } from "@/lib/format";
 
 const suggestions = [
@@ -17,7 +18,8 @@ const suggestions = [
   "How can I improve my acceptance rate?",
 ];
 
-type ChatMessage = { role: "user" | "ai"; text: string };
+/** `mode` distinguishes a gateway answer from the offline heuristic, so neither is mistaken for the other. */
+type ChatMessage = { role: "user" | "ai"; text: string; mode?: "llm" | "offline" };
 
 export function PartnerAiPanel() {
   const dashboard = usePartnerDashboardQuery();
@@ -84,19 +86,36 @@ export function PartnerAiPanel() {
 
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [pending, setPending] = useState(false);
 
-  function send(text: string) {
+  /**
+   * Sends through the backend AI Gateway (`/api/ai/partner`).
+   *
+   * The local `aiReply` heuristic is the degraded fallback, not the product — it runs only
+   * when the gateway is unreachable or the providers are unconfigured, and the turn is
+   * labelled so a partner can tell a model answer from a canned one.
+   */
+  async function send(text: string) {
     const trimmed = text.trim();
-    if (!trimmed) return;
-    setMessages((m) => [
-      ...m,
-      { role: "user", text: trimmed },
-      {
-        role: "ai",
-        text: aiReply(trimmed, dashboard.data, me.data?.rating ?? 0),
-      },
-    ]);
+    if (!trimmed || pending) return;
+    setMessages((m) => [...m, { role: "user", text: trimmed }]);
     setInput("");
+    setPending(true);
+    try {
+      const res = await partnerApi.aiChat(trimmed);
+      setMessages((m) => [...m, { role: "ai", text: res.content, mode: "llm" }]);
+    } catch {
+      setMessages((m) => [
+        ...m,
+        {
+          role: "ai",
+          text: aiReply(trimmed, dashboard.data, me.data?.rating ?? 0),
+          mode: "offline",
+        },
+      ]);
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -146,9 +165,19 @@ export function PartnerAiPanel() {
                 }
               >
                 {msg.text}
+                {msg.mode === "offline" ? (
+                  <span className="mt-1.5 block text-[10px] uppercase tracking-wide text-partner-warning">
+                    Offline answer — assistant unavailable
+                  </span>
+                ) : null}
               </motion.div>
             ))
           )}
+          {pending ? (
+            <p className="text-sm text-partner-muted" aria-live="polite">
+              Thinking…
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2 border-t border-partner-line pt-3">
           {suggestions.map((s) => (
@@ -172,10 +201,11 @@ export function PartnerAiPanel() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            disabled={pending}
             placeholder="Ask about routes, earnings, scheduling…"
-            className="flex-1 rounded-xl border border-partner-line bg-partner-bg/60 px-3 py-2.5 text-sm outline-none focus:border-partner-primary"
+            className="flex-1 rounded-xl border border-partner-line bg-partner-bg/60 px-3 py-2.5 text-sm outline-none focus:border-partner-primary disabled:opacity-60"
           />
-          <PartnerButton type="submit" variant="primary">
+          <PartnerButton type="submit" variant="primary" disabled={pending}>
             <Send className="h-4 w-4" />
           </PartnerButton>
         </form>

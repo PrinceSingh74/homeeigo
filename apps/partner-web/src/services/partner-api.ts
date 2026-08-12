@@ -137,6 +137,26 @@ export const partnerApi = {
       query: { ...query },
     }).then((r) => r.data!),
 
+  /**
+   * Partner AI assistant. Goes through the backend AI Gateway (`/api/ai/partner`), which
+   * owns authentication, RBAC, prompt-injection screening, rate limiting, audit and cost
+   * accounting. The browser never talks to a model provider and holds no provider key.
+   */
+  aiChat: (message: string, history?: Array<{ role: "user" | "assistant"; content: string }>) =>
+    apiRequest<
+      ApiResponse<{
+        content: string;
+        provider: string;
+        model: string;
+        fallbackUsed: boolean;
+        requestId: string;
+      }>
+    >("/api/ai/partner", {
+      method: "POST",
+      auth: true,
+      body: { message, history },
+    }).then((r) => r.data!),
+
   /* ----------------- Booking lifecycle actions ------------------------ */
   acceptBooking: (bookingId: string, eta?: number) =>
     apiRequest<

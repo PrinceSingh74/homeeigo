@@ -1,11 +1,15 @@
 "use client";
 
-import { WALLET_BREAKDOWN, WALLET_TOTAL_BALANCE } from "@/lib/wallet-dashboard";
+import { useWalletDerived } from "@/hooks/use-derived-selectors";
 
 const R = 72;
 const C = 2 * Math.PI * R;
 
 export function WalletDonutChart() {
+  const { walletBreakdown, totalBalance } = useWalletDerived();
+  const chartData = walletBreakdown.length
+    ? walletBreakdown
+    : [{ label: "Wallet Balance", value: totalBalance, color: "#059669", pct: 100 }];
   let offset = 0;
 
   return (
@@ -20,7 +24,7 @@ export function WalletDonutChart() {
             className="stroke-line"
             strokeWidth="12"
           />
-          {WALLET_BREAKDOWN.map((seg, i) => {
+          {chartData.map((seg, i) => {
             const dash = (seg.pct / 100) * C;
             const el = (
               <circle
@@ -45,13 +49,13 @@ export function WalletDonutChart() {
         <div className="absolute inset-0 flex flex-col items-center justify-center px-2 text-center">
           <span className="text-[10px] text-muted sm:text-xs">Total</span>
           <span className="font-display text-lg font-bold text-content sm:text-xl">
-            ₹{WALLET_TOTAL_BALANCE.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            ₹{totalBalance.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
           </span>
         </div>
       </div>
 
       <ul className="mt-4 w-full min-w-0 space-y-2.5 sm:mt-6 sm:space-y-3">
-        {WALLET_BREAKDOWN.map((seg) => (
+        {chartData.map((seg) => (
           <li
             key={seg.label}
             className="flex min-w-0 items-center justify-between gap-2 text-[12px] sm:text-sm"

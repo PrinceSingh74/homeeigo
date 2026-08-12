@@ -1,6 +1,7 @@
 "use client";
 
-import { Headphones, Phone } from "lucide-react";
+import Link from "next/link";
+import { Headphones, LifeBuoy, Phone } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { useAppStore } from "@/stores/app-store";
 
@@ -52,6 +53,21 @@ export function SupportModal({ open }: { open: boolean }) {
               <span className="block text-xs text-muted">1800-123-456 · 24/7</span>
             </span>
           </a>
+        </li>
+        <li>
+          <Link
+            href="/support"
+            onClick={closeOverlay}
+            className="flex w-full items-center gap-3 rounded-2xl glass-card px-4 py-4 text-left transition hover:bg-primary/5"
+          >
+            <span className="grid size-11 place-items-center rounded-xl bg-primary/10 text-primary">
+              <LifeBuoy size={20} />
+            </span>
+            <span className="flex-1">
+              <span className="block text-sm font-bold text-content">Help center</span>
+              <span className="block text-xs text-muted">FAQs & support tickets</span>
+            </span>
+          </Link>
         </li>
       </ul>
     </Modal>

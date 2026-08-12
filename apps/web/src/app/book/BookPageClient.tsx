@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import {
   ArrowRight,
   Check,
@@ -18,7 +18,17 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AuroraBackground } from "@/components/AuroraBackground";
+import { StaticSkeleton } from "@/components/ui/StaticSkeleton";
+/** Services-page style ambient canvas — soft emerald/teal orbs on the mint gradient. */
+function BookAmbientBackground() {
+  return (
+    <div className="mesh-bg" aria-hidden>
+      <div className="absolute -right-24 -top-24 size-[38rem] rounded-full bg-emerald-100/40 blur-3xl dark:bg-emerald-500/10" />
+      <div className="absolute -left-28 top-1/3 size-[34rem] rounded-full bg-teal-100/30 blur-3xl dark:bg-teal-500/10" />
+      <div className="absolute bottom-[-10%] right-1/4 size-[30rem] rounded-full bg-emerald-100/25 blur-3xl dark:bg-emerald-500/8" />
+    </div>
+  );
+}
 import { ServiceSearchInput } from "@/components/ServiceSearchInput";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
@@ -27,8 +37,10 @@ import { ServiceImage } from "@/components/ui/ServiceImage";
 import { MotionImage } from "@/components/ui/MotionImage";
 import { BookingSuccessModal } from "@/components/overlays/BookingSuccessModal";
 import { BookingScheduleSection } from "@/components/booking/BookingScheduleSection";
+import { ProviderETA } from "@/components/geo/ProviderETA";
 import { BookPageHeader } from "@/components/booking/BookPageHeader";
 import { BookStickyCheckout } from "@/components/booking/BookStickyCheckout";
+import { CancellationPolicyCard } from "@/components/booking/CancellationPolicyCard";
 import {
   bookHeroTitle,
   bookMain,
@@ -40,12 +52,12 @@ import {
   bookServiceRail,
   bookSplitGrid,
 } from "@/components/booking/book-page-layout";
+import { buildAddressCreatePayload } from "@/lib/addresses";
 import {
   SERVICES,
   popularPackageIndex,
-  getServiceIndex,
-  searchServices,
   getLocation,
+  type Service,
 } from "@/lib/services";
 import {
   bookUrl,
@@ -59,10 +71,19 @@ import {
 } from "@/lib/bookings";
 import { useAppStore } from "@/stores/app-store";
 import {
+  useAddressesQuery,
+  useBookingPriceQuoteQuery,
+  useCreateAddressMutation,
+  useCreateBookingMutation,
+  useServicesQuery,
+} from "@/hooks/use-core-data";
+import { useBookingPayment } from "@/hooks/use-booking-payment";
+import {
   defaultScheduledSlot,
   formatDateLabel,
   formatTimeLabel,
 } from "@/lib/booking-datetime";
+import type { BackendService } from "@/types/backend";
 
 /* ----------------------------- data ----------------------------- */
 
@@ -74,10 +95,10 @@ const HERO_FEATURES: { icon: LucideIcon; label: string }[] = [
 ];
 
 const ADDONS = [
-  { name: "Fridge Cleaning", desc: "Deep cleaning & sanitization", price: 99 },
-  { name: "Sofa Cleaning", desc: "Vacuum & stain removal", price: 149 },
-  { name: "Microwave Cleaning", desc: "Interior cleaning", price: 79 },
-];
+  { id: "fridge", name: "Fridge Cleaning", desc: "Deep cleaning & sanitization", price: 99 },
+  { id: "sofa", name: "Sofa Cleaning", desc: "Vacuum & stain removal", price: 149 },
+  { id: "microwave", name: "Microwave Cleaning", desc: "Interior cleaning", price: 79 },
+] as const;
 
 const TRUST = [
   { icon: ShieldCheck, label: "Verified\nProfessionals" },
@@ -86,6 +107,69 @@ const TRUST = [
   { icon: BadgeCheck, label: "Satisfaction\nGuarantee" },
   { icon: CreditCard, label: "Secure\nPayments" },
 ];
+
+const FALLBACK_SERVICE: Service = {
+  id: "service-unavailable",
+  name: "Service",
+  price: "₹0",
+  priceFrom: 0,
+  color: "#7C3AED",
+  title: "Service",
+  tagline: "Live catalog is syncing. Please retry shortly.",
+  rating: "0",
+  reviews: "0",
+  homes: "",
+  packages: [{ name: "Standard", tag: "Default", price: 0, items: ["Live pricing unavailable"] }],
+  keywords: [],
+};
+
+function packagesFromApi(api: BackendService): Service["packages"] {
+  const base = api.basePrice ?? api.minPrice ?? 199;
+  const min = api.minPrice ?? base;
+  const max = api.maxPrice ?? Math.round(base * 1.35);
+  const mid = base;
+  return [
+    {
+      name: "Basic",
+      tag: "Essentials",
+      price: min,
+      items: ["Core service scope", "Standard products"],
+    },
+    {
+      name: "Standard",
+      tag: "Most popular",
+      price: mid,
+      popular: true,
+      items: ["Extended coverage", "Premium products", "Quality check"],
+    },
+    {
+      name: "Premium",
+      tag: "Full service",
+      price: max,
+      items: ["Maximum coverage", "Deep treatment", "Priority support"],
+    },
+  ];
+}
+
+function toUiService(api: BackendService, fallbackIndex = 0): Service {
+  const fallback = SERVICES.length ? SERVICES[fallbackIndex % SERVICES.length]! : FALLBACK_SERVICE;
+  const priceFrom = api.basePrice ?? api.minPrice ?? fallback.priceFrom;
+  return {
+    ...fallback,
+    id: api.id,
+    slug: api.slug,
+    name: api.name || fallback.name,
+    title: api.name || fallback.title,
+    tagline: api.description || fallback.tagline,
+    priceFrom,
+    price: `₹${priceFrom}`,
+    packages: packagesFromApi(api),
+    rating: String(api.rating ?? fallback.rating),
+    reviews: api.reviewCount ? `${api.reviewCount}` : fallback.reviews,
+    featured: api.isFeatured ?? fallback.featured,
+    img: api.thumbnail ?? api.icon ?? fallback.img,
+  };
+}
 
 /* ----------------------------- helpers ----------------------------- */
 
@@ -120,7 +204,7 @@ export default function BookPageClient() {
 function BookPageFallback() {
   return (
     <div className={bookPageRoot}>
-      <AuroraBackground />
+      <BookAmbientBackground />
       <main className={cn(bookMain, "py-24 text-center text-muted")}>
         Loading booking…
       </main>
@@ -132,23 +216,41 @@ function BookPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const locationId = useAppStore((s) => s.locationId);
-  const activePromo = useAppStore((s) => s.activePromo);
-  const openOverlay = useAppStore((s) => s.openOverlay);
   const showToast = useAppStore((s) => s.showToast);
   const addBooking = useAppStore((s) => s.addBooking);
+  const {
+    data: servicesData,
+    isLoading: servicesLoading,
+    isError: servicesError,
+    refetch: refetchServices,
+  } = useServicesQuery();
+  const createBookingMutation = useCreateBookingMutation();
+  const { data: addressesData, isLoading: addressesLoading } = useAddressesQuery();
+  const createAddressMutation = useCreateAddressMutation();
+  const { payForBooking } = useBookingPayment();
+  const services: Service[] = useMemo(() => {
+    const incoming = servicesData?.services ?? [];
+    if (!incoming.length) return SERVICES.length ? SERVICES : [FALLBACK_SERVICE];
+    return incoming.map((service, index) => toUiService(service, index));
+  }, [servicesData]);
 
   const parsed = parseBookParams(searchParams);
   const initialService = parsed.serviceId
-    ? getServiceIndex(parsed.serviceId)
+    ? Math.max(
+        0,
+        services.findIndex((s) => s.id === parsed.serviceId || s.slug === parsed.serviceId),
+      )
     : 0;
   const initialPkg =
-    parsed.packageIndex ?? popularPackageIndex(SERVICES[initialService]);
+    parsed.packageIndex ?? popularPackageIndex(services[initialService] ?? services[0]!);
 
   const [service, setService] = useState(initialService);
   const [pkg, setPkg] = useState(initialPkg);
   const [searchQuery, setSearchQuery] = useState(parsed.query);
   const [scheduledAt, setScheduledAt] = useState(() => defaultScheduledSlot());
-  const [addons, setAddons] = useState<Set<number>>(new Set());
+  const [addons, setAddons] = useState<Set<string>>(new Set());
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState("");
   const [instructions, setInstructions] = useState("");
   const [address, setAddress] = useState({
     line1: "",
@@ -156,9 +258,18 @@ function BookPageContent() {
   });
 
   useEffect(() => {
+    const list = addressesData?.addresses ?? [];
+    const def = list.find((a) => a.isDefault) ?? list[0];
+    if (def) {
+      setAddress({
+        line1: def.line1 ?? "",
+        line2: [def.line2, def.city, def.pincode].filter(Boolean).join(", "),
+      });
+      return;
+    }
     const l = getLocation(locationId);
     setAddress({ line1: l.label, line2: `${l.city}, ${l.pin}` });
-  }, [locationId]);
+  }, [addressesData?.addresses, locationId]);
   const [editingAddr, setEditingAddr] = useState(false);
   const [bookingDone, setBookingDone] = useState<SavedBooking | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -166,40 +277,49 @@ function BookPageContent() {
   const dateRef = useRef<HTMLDivElement>(null);
   const instrRef = useRef<HTMLTextAreaElement>(null);
 
-  const svc = SERVICES[service];
+  const svc = services[service] ?? services[0]!;
   const SvcIcon = svc.icon;
 
   useEffect(() => {
     const sid = parsed.serviceId;
     if (sid) {
-      const idx = getServiceIndex(sid);
+      const idx = Math.max(
+        0,
+        services.findIndex((s) => s.id === sid || s.slug === sid),
+      );
       setService(idx);
-      setPkg(parsed.packageIndex ?? popularPackageIndex(SERVICES[idx]));
+      setPkg(parsed.packageIndex ?? popularPackageIndex(services[idx] ?? services[0]!));
     }
     if (parsed.query) setSearchQuery(parsed.query);
     if (parsed.promo) {
-      useAppStore.getState().setActivePromo(parsed.promo);
-      showToast(`Promo ${parsed.promo} applied`, "success");
+      const code = parsed.promo.trim();
+      useAppStore.getState().setActivePromo(code);
+      setCouponInput(code);
+      setAppliedCoupon(code);
+      showToast(`Coupon ${code} applied automatically`, "success");
     }
-  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchParams, services]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredServices = useMemo(() => {
-    if (!searchQuery.trim()) return SERVICES.map((s, i) => ({ s, i }));
-    return searchServices(searchQuery)
-      .map((s) => ({
-        s,
-        i: SERVICES.findIndex((x) => x.id === s.id),
-      }))
-      .filter(({ i }) => i >= 0);
-  }, [searchQuery]);
+    if (!searchQuery.trim()) return services.map((s, i) => ({ s, i }));
+    const q = searchQuery.trim().toLowerCase();
+    return services
+      .map((s, i) => ({ s, i }))
+      .filter(({ s }) =>
+        `${s.name} ${s.title} ${s.tagline}`.toLowerCase().includes(q),
+      );
+  }, [searchQuery, services]);
 
   const handleSearchSelect = (serviceId: string, q: string) => {
-    const idx = getServiceIndex(serviceId);
+    const idx = Math.max(
+      0,
+      services.findIndex((s) => s.id === serviceId),
+    );
     setSearchQuery(q);
     setService(idx);
-    setPkg(popularPackageIndex(SERVICES[idx]));
+    setPkg(popularPackageIndex(services[idx] ?? services[0]!));
     setAddons(new Set());
-    showToast(`${SERVICES[idx].title} selected`, "info");
+    showToast(`${(services[idx] ?? services[0]!).title} selected`, "info");
     router.replace(
       bookUrl({ service: serviceId, q: q || undefined }),
       { scroll: false },
@@ -214,16 +334,16 @@ function BookPageContent() {
 
   const selectService = (i: number) => {
     setService(i);
-    setPkg(popularPackageIndex(SERVICES[i]));
+    setPkg(popularPackageIndex(services[i] ?? services[0]!));
     setAddons(new Set());
-    showToast(`${SERVICES[i].title} selected`, "info");
+    showToast(`${(services[i] ?? services[0]!).title} selected`, "info");
   };
 
-  const toggleAddon = (i: number) =>
+  const toggleAddon = (id: string) =>
     setAddons((prev) => {
       const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
 
@@ -232,61 +352,115 @@ function BookPageContent() {
   };
 
   const selected = svc.packages[pkg] ?? svc.packages[0];
-  const addonTotal = useMemo(
-    () => [...addons].reduce((s, i) => s + ADDONS[i].price, 0),
-    [addons],
+  const addonIds = Array.from(addons);
+  const priceQuoteQuery = useBookingPriceQuoteQuery(
+    svc.id && svc.id !== "service-unavailable" && !servicesLoading
+      ? {
+          serviceId: svc.id,
+          packagePrice: selected.price,
+          addonIds,
+          couponCode: appliedCoupon || undefined,
+        }
+      : null,
   );
-  const promoDiscount =
-    activePromo === "COOL100"
-      ? 100
-      : activePromo === "FIX150"
-        ? 150
-        : activePromo === "FRESH25"
-          ? Math.round(selected.price * 0.25)
-          : 0;
+  const quote = priceQuoteQuery.data?.quote;
+  const subtotal = quote?.baseAmount ?? selected.price;
+  const taxes = quote?.taxes ?? Math.round(subtotal * 0.1);
+  const discount = quote?.discount ?? 0;
+  const total = quote?.finalAmount ?? subtotal + taxes;
+  const couponError = quote?.couponError;
 
-  const subtotal = selected.price + addonTotal;
-  const platformFee = 20;
-  const gst = +(
-    (Math.max(0, subtotal - promoDiscount) + platformFee) *
-    0.18
-  ).toFixed(2);
-  const total = +(
-    Math.max(0, subtotal - promoDiscount) +
-    platformFee +
-    gst
-  ).toFixed(2);
-  const saved = promoDiscount + 120;
+  async function resolveAddressId(): Promise<string | null> {
+    const list = addressesData?.addresses ?? [];
+    const def = list.find((a) => a.isDefault) ?? list[0];
+    if (def?.id) return def.id;
+    if (!address.line1.trim()) {
+      showToast("Please add an address to continue", "error");
+      return null;
+    }
+    try {
+      const loc = getLocation(locationId);
+      const created = await createAddressMutation.mutateAsync(
+        buildAddressCreatePayload({
+          line1: address.line1,
+          line2: address.line2,
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+        }),
+      );
+      return created.address?.id ?? null;
+    } catch {
+      return null;
+    }
+  }
 
   async function confirmBooking() {
     if (confirming) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      showToast("You are offline. Reconnect and try again.", "error");
+      return;
+    }
+    if (addressesLoading) {
+      showToast("Loading your addresses…", "info");
+      return;
+    }
     setConfirming(true);
-    await new Promise((r) => setTimeout(r, 800));
-    const now = new Date().toISOString();
-    const pros = ["Rajesh Kumar", "Amit Sharma", "Priya Singh", "Vikram Patel"];
-    const booking: SavedBooking = {
-      id: generateBookingId(),
-      serviceId: svc.id,
-      serviceTitle: svc.title,
-      serviceName: svc.name,
-      packageName: selected.name,
-      dateLabel: `${formatDateLabel(scheduledAt)}, ${scheduledAt.getFullYear()}`,
-      timeLabel: formatTimeLabel(scheduledAt),
-      address: `${address.line1}, ${address.line2}`,
-      total,
-      status: "confirmed",
-      createdAt: now,
-      updatedAt: now,
-      imagePath: SERVICE_IMAGES[svc.id] ?? svc.img,
-      serviceColor: svc.color,
-      proName: pros[Math.floor(Math.random() * pros.length)]!,
-      instructions: instructions.trim() || undefined,
-      timeline: createInitialTimeline(now),
-    };
-    addBooking(booking);
-    setBookingDone(booking);
-    setConfirming(false);
-    showToast("Booking confirmed securely", "success");
+    try {
+      const addressId = await resolveAddressId();
+      if (!addressId) {
+        setConfirming(false);
+        return;
+      }
+      const created = await createBookingMutation.mutateAsync({
+        serviceId: svc.id,
+        scheduledDate: scheduledAt.toISOString(),
+        addressId,
+        description: instructions.trim() || undefined,
+        paymentMethod: "razorpay",
+        packagePrice: selected.price,
+        addonIds,
+        couponCode: appliedCoupon || undefined,
+      });
+      const now = new Date().toISOString();
+      const booking: SavedBooking = {
+        id: created.booking?.id ?? generateBookingId(),
+        serviceId: svc.id,
+        serviceTitle: svc.title,
+        serviceName: svc.name,
+        packageName: selected.name,
+        dateLabel: `${formatDateLabel(scheduledAt)}, ${scheduledAt.getFullYear()}`,
+        timeLabel: formatTimeLabel(scheduledAt),
+        address: `${address.line1}, ${address.line2}`,
+        total: created.booking?.finalAmount ?? total,
+        addons:
+          created.booking?.addons ??
+          ADDONS.filter((a) => addons.has(a.id)).map((a) => ({ id: a.id, name: a.name, price: a.price })),
+        status: "confirmed",
+        createdAt: now,
+        updatedAt: now,
+        imagePath: SERVICE_IMAGES[svc.id] ?? svc.img,
+        serviceColor: svc.color,
+        proName: created.booking?.providerName ?? "Assigned Pro",
+        instructions: instructions.trim() || undefined,
+        timeline: createInitialTimeline(now),
+      };
+      addBooking(booking);
+      setBookingDone(booking);
+      if (created.booking?.id) {
+        await payForBooking({
+          bookingId: created.booking.id,
+          description: `${svc.title} booking payment`,
+          onVerified: () => {
+            showToast("Payment completed and verified", "success");
+          },
+        });
+      }
+      showToast("Booking confirmed securely", "success");
+    } catch {
+      // mutation handles user-facing error toast
+    } finally {
+      setConfirming(false);
+    }
   }
 
   function applyAiRecommendation() {
@@ -298,7 +472,7 @@ function BookPageContent() {
 
   return (
     <div className={bookPageRoot}>
-      <AuroraBackground />
+      <BookAmbientBackground />
 
       <BookPageHeader currentStep={currentStep} />
 
@@ -318,13 +492,30 @@ function BookPageContent() {
 
         {/* ---------- Service strip (premium glass 3D cards) ---------- */}
         <div className={cn("mt-5 sm:mt-8", bookServiceRail)}>
+          {servicesLoading
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <StaticSkeleton key={`book-service-skeleton-${i}`} className="h-[190px] rounded-[24px] bg-surface/70 ring-1 ring-line" />
+              ))
+            : null}
+          {!servicesLoading && servicesError ? (
+            <div className="col-span-full rounded-2xl border border-line bg-surface/60 px-4 py-8 text-center text-sm text-muted">
+              Could not load services.
+              <button
+                type="button"
+                onClick={() => void refetchServices()}
+                className="ml-2 font-semibold text-emerald-600 underline"
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
           {searchQuery.trim() && filteredServices.length === 0 ? (
             <p className="col-span-full rounded-2xl border border-dashed border-line bg-surface/60 px-4 py-8 text-center text-sm text-muted">
               No services match &ldquo;{searchQuery.trim()}&rdquo;. Try
               cleaning, AC, plumbing, or electrical.
             </p>
           ) : null}
-          {filteredServices.map(({ s, i }) => {
+          {(servicesLoading || servicesError ? [] : filteredServices).map(({ s, i }) => {
             const active = i === service;
             const Icon = s.icon;
             return (
@@ -337,7 +528,7 @@ function BookPageContent() {
                 className={cn(
                   bookServiceCard,
                   active
-                    ? "bg-premium text-white shadow-glow-violet"
+                    ? "bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-white shadow-[0_14px_34px_-10px_rgb(16_185_129/0.55)]"
                     : "glass-card text-content hover:shadow-[0_22px_50px_-14px_rgb(15_23_42/0.28)]",
                 )}
               >
@@ -348,10 +539,10 @@ function BookPageContent() {
                 <span
                   aria-hidden
                   className="pointer-events-none absolute -bottom-14 left-1/2 size-40 -translate-x-1/2 rounded-full opacity-25 blur-3xl transition-opacity duration-500 group-hover:opacity-60"
-                  style={{ background: active ? "#a855f7" : s.color }}
+                  style={{ background: active ? "#10b981" : s.color }}
                 />
                 {active && (
-                  <span className="absolute right-2 top-2 z-10 rounded-full bg-white/95 px-2 py-0.5 text-[9px] font-bold text-violet shadow-e2 backdrop-blur sm:right-3 sm:top-3 sm:px-3 sm:py-1 sm:text-[11px]">
+                  <span className="absolute right-2 top-2 z-10 rounded-full bg-white/95 px-2 py-0.5 text-[9px] font-bold text-emerald-700 shadow-e2 backdrop-blur sm:right-3 sm:top-3 sm:px-3 sm:py-1 sm:text-[11px]">
                     Featured
                   </span>
                 )}
@@ -423,10 +614,10 @@ function BookPageContent() {
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-              className="relative overflow-hidden rounded-[24px] p-5 text-white shadow-[0_32px_80px_-20px_rgb(76_29_149/0.6)] ring-1 ring-white/15 sm:rounded-[32px] sm:p-8 lg:rounded-[36px] lg:p-12"
+              className="relative overflow-hidden rounded-[24px] p-5 text-white shadow-[0_32px_80px_-20px_rgb(6_78_59/0.6)] ring-1 ring-emerald-300/20 sm:rounded-[32px] sm:p-8 lg:rounded-[36px] lg:p-12"
               style={{
                 background:
-                  "linear-gradient(135deg, #1E1B4B 0%, #312E81 55%, #4C1D95 100%)",
+                  "linear-gradient(135deg, #064e3b 0%, #0f766e 55%, #115e59 100%)",
               }}
             >
               <span
@@ -435,11 +626,11 @@ function BookPageContent() {
               />
               <span
                 aria-hidden
-                className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-cyan/20 blur-3xl"
+                className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-emerald-300/25 blur-3xl"
               />
               <span
                 aria-hidden
-                className="pointer-events-none absolute -bottom-24 right-1/3 size-72 rounded-full bg-pink/15 blur-3xl"
+                className="pointer-events-none absolute -bottom-24 right-1/3 size-72 rounded-full bg-teal-300/20 blur-3xl"
               />
               <div className="relative flex flex-col items-center gap-6 sm:flex-row sm:gap-8">
                 {/* 3D image + halo */}
@@ -458,7 +649,7 @@ function BookPageContent() {
                         repeat: Infinity,
                         ease: "easeInOut",
                       }}
-                      className="drop-shadow-[0_28px_52px_rgb(124_58_237/0.55)]"
+                      className="drop-shadow-[0_28px_52px_rgb(16_185_129/0.55)]"
                     />
                   ) : SvcIcon ? (
                     <motion.div
@@ -483,7 +674,7 @@ function BookPageContent() {
                 </div>
 
                 <div className="min-w-0 flex-1 text-center sm:text-left">
-                  <span className="inline-block rounded-full bg-violet px-3 py-1 text-[10px] font-bold uppercase tracking-wider shadow-lg sm:px-4 sm:py-1.5 sm:text-xs">
+                  <span className="inline-block rounded-full bg-emerald-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider shadow-lg sm:px-4 sm:py-1.5 sm:text-xs">
                     Best Seller
                   </span>
                   <h2
@@ -508,7 +699,7 @@ function BookPageContent() {
                         {[0, 1, 2].map((a) => (
                           <span
                             key={a}
-                            className="size-6 rounded-full bg-aurora ring-2 ring-[#312E81]"
+                            className="size-6 rounded-full bg-[linear-gradient(135deg,#10b981_0%,#14b8a6_100%)] ring-2 ring-emerald-900"
                           />
                         ))}
                       </span>
@@ -527,7 +718,7 @@ function BookPageContent() {
                       key={f.label}
                       className="flex flex-col items-center gap-1 text-center sm:gap-1.5"
                     >
-                      <Icon size={18} className="text-cyan sm:size-5" />
+                      <Icon size={18} className="text-emerald-300 sm:size-5" />
                       <span className="whitespace-pre-line text-[10px] font-medium text-white/80 sm:text-xs">
                         {f.label}
                       </span>
@@ -557,7 +748,7 @@ function BookPageContent() {
                       className={cn(
                         "group relative flex min-w-0 flex-col overflow-hidden rounded-[20px] p-5 text-left transition-shadow duration-300 sm:rounded-[28px] sm:p-7",
                         active
-                          ? "glass-card ring-2 ring-primary shadow-[0_24px_56px_-12px_rgb(37_99_235/0.4)]"
+                          ? "glass-card ring-2 ring-emerald-500 shadow-[0_24px_56px_-12px_rgb(16_185_129/0.4)]"
                           : "glass-card hover:shadow-[0_24px_56px_-16px_rgb(15_23_42/0.28)]",
                       )}
                     >
@@ -566,7 +757,7 @@ function BookPageContent() {
                         className="pointer-events-none absolute inset-x-0 top-0 h-20 sheen"
                       />
                       {p.popular && (
-                        <span className="absolute right-3 top-3 rounded-full bg-premium px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-lg sm:right-4 sm:top-4 sm:px-3 sm:py-1 sm:text-[10px]">
+                        <span className="absolute right-3 top-3 rounded-full bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-lg sm:right-4 sm:top-4 sm:px-3 sm:py-1 sm:text-[10px]">
                           Most Popular
                         </span>
                       )}
@@ -601,8 +792,8 @@ function BookPageContent() {
                         className={cn(
                           "relative mt-7 inline-flex h-12 items-center justify-center gap-2 rounded-2xl text-sm font-bold transition",
                           active
-                            ? "bg-aurora text-white shadow-glow-blue"
-                            : "border border-primary/40 text-primary group-hover:bg-primary/5",
+                            ? "bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-white shadow-[0_10px_26px_-8px_rgb(16_185_129/0.55)]"
+                            : "border border-emerald-500/40 text-emerald-600 group-hover:bg-emerald-500/5",
                         )}
                       >
                         {active ? (
@@ -631,6 +822,18 @@ function BookPageContent() {
             </SectionCard>
             </div>
 
+            {/* Phase 16 — live pros near you (reuses the certified matching engine). */}
+            {svc.id && svc.id !== "service-unavailable" && (
+              <SectionCard>
+                <h3 className="mb-3 font-display text-lg font-bold text-content">Pros near you</h3>
+                <ProviderETA
+                  serviceId={svc.id}
+                  latitude={getLocation(locationId).latitude}
+                  longitude={getLocation(locationId).longitude}
+                />
+              </SectionCard>
+            )}
+
             {/* Add-ons + instructions */}
             <div className="grid gap-6 sm:gap-8 lg:grid-cols-2">
               <SectionCard>
@@ -641,20 +844,20 @@ function BookPageContent() {
                   </span>
                 </h3>
                 <div className="flex flex-col gap-3">
-                  {ADDONS.map((a, i) => {
-                    const on = addons.has(i);
+                  {ADDONS.map((a) => {
+                    const on = addons.has(a.id);
                     return (
                       <button
-                        key={a.name}
+                        key={a.id}
                         type="button"
-                        onClick={() => toggleAddon(i)}
-                        className="flex items-center gap-3 rounded-2xl p-3 text-left transition hover:bg-primary/5"
+                        onClick={() => toggleAddon(a.id)}
+                        className="flex items-center gap-3 rounded-2xl p-3 text-left transition hover:bg-emerald-500/5"
                       >
                         <span
                           className={cn(
                             "grid size-6 shrink-0 place-items-center rounded-md border-2 transition",
                             on
-                              ? "border-primary bg-primary text-white"
+                              ? "border-emerald-500 bg-emerald-500 text-white"
                               : "border-line",
                           )}
                         >
@@ -668,7 +871,7 @@ function BookPageContent() {
                             {a.desc}
                           </span>
                         </span>
-                        <span className="text-sm font-bold text-primary">
+                        <span className="text-sm font-bold text-emerald-600">
                           + ₹{a.price}
                         </span>
                       </button>
@@ -719,18 +922,18 @@ function BookPageContent() {
           {/* ================= RIGHT (sidebar) ================= */}
           <div className="flex min-w-0 flex-col gap-6 sm:gap-8 lg:sticky lg:top-28 lg:self-start">
             {/* AI recommendation */}
-            <div className="relative overflow-hidden rounded-[20px] p-5 ring-1 ring-violet/25 shadow-[0_20px_48px_-16px_rgb(124_58_237/0.35)] sm:rounded-[28px] sm:p-7"
+            <div className="relative overflow-hidden rounded-[20px] p-5 ring-1 ring-emerald-500/25 shadow-[0_20px_48px_-16px_rgb(16_185_129/0.3)] sm:rounded-[28px] sm:p-7"
               style={{
                 background:
-                  "linear-gradient(135deg, rgb(124 58 237 / 0.14) 0%, rgb(236 72 153 / 0.1) 100%)",
+                  "linear-gradient(135deg, rgb(16 185 129 / 0.14) 0%, rgb(20 184 166 / 0.1) 100%)",
               }}
             >
               <span
                 aria-hidden
-                className="pointer-events-none absolute -right-12 -top-12 size-40 rounded-full bg-premium opacity-20 blur-3xl"
+                className="pointer-events-none absolute -right-12 -top-12 size-40 rounded-full bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] opacity-20 blur-3xl"
               />
               <div className="relative flex items-center gap-2.5">
-                <span className="grid size-9 place-items-center rounded-xl bg-premium text-white shadow-glow-violet">
+                <span className="grid size-9 place-items-center rounded-xl bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-white shadow-[0_14px_34px_-10px_rgb(16_185_129/0.55)]">
                   <Sparkles size={18} />
                 </span>
                 <span className="font-display text-lg font-bold text-content sm:text-xl">
@@ -742,7 +945,7 @@ function BookPageContent() {
               </p>
               <div className="relative mt-4 rounded-2xl glass-card p-4">
                 <p className="text-sm text-muted">We recommend</p>
-                <p className="font-display text-xl font-bold text-aurora">
+                <p className="font-display text-xl font-bold bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">
                   Standard Package
                 </p>
               </div>
@@ -822,7 +1025,7 @@ function BookPageContent() {
                 <button
                   type="button"
                   onClick={() => scrollTo(dateRef.current)}
-                  className="text-xs font-bold text-primary hover:underline"
+                  className="text-xs font-bold text-emerald-600 hover:underline"
                 >
                   Edit
                 </button>
@@ -835,7 +1038,7 @@ function BookPageContent() {
                   <button
                     type="button"
                     onClick={() => setEditingAddr((v) => !v)}
-                    className="text-xs font-bold text-primary hover:underline"
+                    className="text-xs font-bold text-emerald-600 hover:underline"
                   >
                     {editingAddr ? "Save" : "Edit"}
                   </button>
@@ -888,28 +1091,54 @@ function BookPageContent() {
                     scrollTo(instrRef.current);
                     setTimeout(() => instrRef.current?.focus(), 400);
                   }}
-                  className="shrink-0 text-xs font-bold text-primary hover:underline"
+                  className="shrink-0 text-xs font-bold text-emerald-600 hover:underline"
                 >
                   Edit
                 </button>
               </div>
 
-              <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4 text-sm">
-                <Row label="Package Price" value={`₹${subtotal}.00`} />
-                {promoDiscount > 0 && (
-                  <Row
-                    label={`Promo (${activePromo})`}
-                    value={`- ₹${promoDiscount}`}
-                    className="text-success"
+              <div className="mt-4 border-t border-line pt-4">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
+                  Promo code
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    size="sm"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                    placeholder="Enter code"
+                    showClear={false}
+                    containerClassName="flex-1 rounded-xl"
                   />
-                )}
-                <Row label="Platform Fee" value={`₹${platformFee}.00`} />
-                <Row label="GST (18%)" value={`₹${gst}`} />
-                <Row
-                  label="You Saved"
-                  value={`- ₹${saved}.00`}
-                  className="text-success"
-                />
+                  <button
+                    type="button"
+                    onClick={() => setAppliedCoupon(couponInput.trim())}
+                    className="shrink-0 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white"
+                  >
+                    Apply
+                  </button>
+                </div>
+                {couponError && appliedCoupon ? (
+                  <p className="mt-1 text-xs text-warning">{couponError.replace(/_/g, " ")}</p>
+                ) : null}
+                {appliedCoupon && !couponError && (quote?.campaignDiscount ?? 0) + (quote?.membershipDiscount ?? 0) > 0 ? (
+                  <p className="mt-1 text-xs text-success">
+                    {appliedCoupon} applied — ₹{(quote?.campaignDiscount ?? 0) + (quote?.membershipDiscount ?? 0)} off
+                  </p>
+                ) : appliedCoupon && !couponError && !priceQuoteQuery.isFetching ? (
+                  <p className="mt-1 text-xs text-success">{appliedCoupon} applied</p>
+                ) : null}
+              </div>
+
+              <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4 text-sm">
+                <Row label="Package + add-ons" value={`₹${subtotal}`} />
+                {discount > 0 ? (
+                  <Row label="Discounts" value={`-₹${discount}`} />
+                ) : null}
+                <Row label="Taxes (10%)" value={`₹${taxes}`} />
+                {priceQuoteQuery.isFetching ? (
+                  <p className="text-xs text-muted">Updating price…</p>
+                ) : null}
               </div>
 
               <div className="mt-5 flex items-center justify-between border-t border-line pt-5">
@@ -917,12 +1146,14 @@ function BookPageContent() {
                   Total Payable
                 </span>
                 <span
-                  className="font-display font-bold text-aurora"
+                  className="font-display font-bold bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent"
                   style={{ fontSize: "clamp(1.5rem, 5vw, 1.875rem)" }}
                 >
                   ₹{total}
                 </span>
               </div>
+
+              <CancellationPolicyCard />
 
               <div className="mt-4 hidden items-center gap-2 rounded-2xl bg-success/10 px-4 py-3 text-xs ring-1 ring-success/20 lg:flex">
                 <Lock size={16} className="text-success" />
@@ -942,7 +1173,7 @@ function BookPageContent() {
                 onClick={confirmBooking}
                 whileHover={{ y: confirming ? 0 : -3 }}
                 whileTap={{ scale: confirming ? 1 : 0.98 }}
-                className="mt-5 hidden h-16 w-full items-center justify-center gap-2.5 rounded-2xl bg-premium text-base font-bold text-white shadow-[0_18px_40px_-10px_rgb(124_58_237/0.55)] disabled:opacity-70 lg:flex"
+                className="mt-5 hidden h-16 w-full items-center justify-center gap-2.5 rounded-2xl bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-base font-bold text-white shadow-[0_18px_40px_-10px_rgb(16_185_129/0.55)] disabled:opacity-70 lg:flex"
               >
                 <Lock size={18} />
                 {confirming ? "Securing your slot…" : "Confirm Booking Securely"}
@@ -965,7 +1196,7 @@ function BookPageContent() {
                   key={t.label}
                   className="flex flex-col items-center gap-1.5 text-center"
                 >
-                  <Icon size={22} className="text-primary" />
+                  <Icon size={22} className="text-emerald-600" />
                   <span className="whitespace-pre-line text-xs font-semibold text-muted">
                     {t.label}
                   </span>
@@ -981,11 +1212,11 @@ function BookPageContent() {
               {[0, 1, 2, 3, 4].map((a) => (
                 <span
                   key={a}
-                  className="size-7 rounded-full bg-aurora ring-2 ring-surface"
+                  className="size-7 rounded-full bg-[linear-gradient(135deg,#10b981_0%,#14b8a6_100%)] ring-2 ring-surface"
                 />
               ))}
             </span>
-            <span className="flex items-center gap-1 rounded-full bg-premium px-3 py-1 text-sm font-bold text-white">
+            <span className="flex items-center gap-1 rounded-full bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] px-3 py-1 text-sm font-bold text-white">
               4.9 <Star size={13} className="fill-white" />
             </span>
           </div>

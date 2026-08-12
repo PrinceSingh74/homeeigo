@@ -12,7 +12,7 @@ import {
   Thermometer,
   Zap,
 } from "lucide-react";
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import {
   AI_INSIGHTS,
   AI_PREDICTIONS,
@@ -48,7 +48,7 @@ function RightBrandHeader() {
         </span>
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-widest text-white/80">
-            HOMIGO Intelligence
+            HOMEEIGO Intelligence
           </p>
           <p className="font-display text-base font-bold tracking-tight">AI Insights Hub</p>
         </div>
@@ -130,7 +130,7 @@ export function AiRightPanel() {
                     <p className="text-xs font-bold leading-tight text-ink">{item.title}</p>
                     <p className="mt-1 text-[11px] leading-[1.4] text-slate">{item.description}</p>
                     {"cta" in item && item.cta && (
-                      <span className="mt-2 inline-flex items-center gap-0.5 rounded-lg bg-white/80 px-2.5 py-1 text-[10px] font-bold text-primary ring-1 ring-primary/20 dark:bg-indigo-500/20 dark:text-blue-300 dark:ring-indigo-400/30">
+                      <span className="mt-2 inline-flex items-center gap-0.5 rounded-lg bg-emerald-500/20 px-2.5 py-1 text-[10px] font-bold text-emerald-300 ring-1 ring-emerald-400/30">
                         {item.cta}
                         <ArrowRight size={10} />
                       </span>
@@ -155,9 +155,9 @@ export function AiRightPanel() {
             whileInView="show"
             viewport={{ once: true }}
             whileHover={reduce ? undefined : { y: -2 }}
-            className="ai-card-3d overflow-hidden rounded-2xl border border-white/55 transition hover:border-primary/30 dark:border-white/10 dark:hover:border-indigo-400/30"
+            className="ai-card-3d overflow-hidden rounded-2xl border border-emerald-400/15 transition hover:border-emerald-400/35"
           >
-            <div className="relative h-36 w-full bg-[#F3F4F6] dark:bg-slate-800">
+            <div className="relative h-36 w-full bg-emerald-950/60">
               <Image
                 src={AI_RECOMMENDED.image}
                 alt={AI_RECOMMENDED.title}
@@ -190,7 +190,7 @@ export function AiRightPanel() {
               </div>
               <Link
                 href={AI_RECOMMENDED.href}
-                className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-violet text-sm font-semibold text-white shadow-[0_4px_14px_rgb(37_99_235/0.35)] transition hover:opacity-95"
+                className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-sm font-semibold text-white shadow-[0_4px_14px_rgb(16_185_129/0.4)] transition hover:opacity-95"
               >
                 Book Instantly
                 <ArrowRight size={16} />

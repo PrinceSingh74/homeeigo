@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { m as motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
   AirVent,
@@ -19,6 +19,10 @@ import { PageSection } from "@/components/layout/PageSection";
 import { SectionHeader } from "@/components/layout/SectionHeader";
 import { sectionAction } from "@/lib/page-layout";
 import { cn } from "@/lib/utils";
+import {
+  CLIPBOARD_UNAVAILABLE_TOAST,
+  copyToClipboard,
+} from "@/lib/clipboard";
 
 interface Offer {
   icon: LucideIcon;
@@ -57,29 +61,15 @@ export function OffersSection() {
   const reduce = useReducedMotion();
   const setActivePromo = useAppStore((s) => s.setActivePromo);
   const [copied, setCopied] = useState<string | null>(null);
-  const [toast, setToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   async function copy(code: string) {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(code);
-      } else {
-        // Fallback for non-secure contexts (e.g. http:// over LAN)
-        const ta = document.createElement("textarea");
-        ta.value = code;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-      }
-    } catch {
-      /* clipboard blocked — still show feedback */
-    }
-    setCopied(code);
-    setToast(true);
-    setTimeout(() => setToast(false), 2500);
+    const ok = await copyToClipboard(code);
+    if (ok) setCopied(code);
+    setToastMessage(
+      ok ? "✓ Promo code copied to clipboard" : CLIPBOARD_UNAVAILABLE_TOAST,
+    );
+    setTimeout(() => setToastMessage(null), 2500);
     setTimeout(() => setCopied(null), 2500);
   }
 
@@ -171,7 +161,7 @@ export function OffersSection() {
 
       {/* Toast */}
       <AnimatePresence>
-        {toast && (
+        {toastMessage && (
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
@@ -180,7 +170,7 @@ export function OffersSection() {
             role="status"
             className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-white shadow-e5 lg:bottom-8"
           >
-            ✓ Promo code copied to clipboard
+            {toastMessage}
           </motion.div>
         )}
       </AnimatePresence>

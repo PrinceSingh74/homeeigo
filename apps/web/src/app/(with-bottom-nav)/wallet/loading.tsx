@@ -1,5 +1,6 @@
 import { pageMax, pagePadX } from "@/lib/page-layout";
 import { cn } from "@/lib/utils";
+import { StaticShimmerCard, StaticSkeleton } from "@/components/ui/StaticSkeleton";
 
 export default function WalletLoading() {
   return (
@@ -8,7 +9,7 @@ export default function WalletLoading() {
       aria-busy="true"
       aria-label="Loading wallet"
     >
-      <div className="h-12 shrink-0 animate-pulse border-b border-line bg-surface/80 pt-[env(safe-area-inset-top,0px)] sm:h-14 lg:hidden" />
+      <StaticSkeleton className="h-12 shrink-0 border-b border-line bg-surface/80 pt-[env(safe-area-inset-top,0px)] sm:h-14 lg:hidden" />
       <div
         className={cn(
           pageMax,
@@ -16,14 +17,14 @@ export default function WalletLoading() {
           "min-h-0 w-full flex-1 space-y-4 overflow-y-auto py-4 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] sm:space-y-6 sm:py-6 lg:pb-8",
         )}
       >
-        <div className="h-20 animate-pulse rounded-xl bg-line/30 sm:h-24" />
-        <div className="h-44 animate-pulse rounded-2xl bg-gradient-to-br from-violet/20 to-pink/20 sm:h-52" />
+        <StaticSkeleton className="h-20 rounded-xl sm:h-24" />
+        <StaticShimmerCard className="h-44 sm:h-52" />
         <div className="flex gap-3 overflow-hidden">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-24 w-24 shrink-0 animate-pulse rounded-2xl bg-line/25" />
+            <StaticSkeleton key={i} className="h-24 w-24 shrink-0 rounded-2xl" />
           ))}
         </div>
-        <div className="h-64 animate-pulse rounded-2xl bg-line/20" />
+        <StaticSkeleton className="h-64 rounded-2xl" />
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ const PREFETCH_ROUTES = [
   "/profile",
   "/ai",
   "/book",
+  "/membership",
 ] as const;
 
 /** Warm route JS on idle so tab navigation feels instant. */

@@ -12,16 +12,9 @@ const CATALOG_MODES = [
 
 export function ServicesOverlays() {
   const overlay = useAppStore((s) => s.overlay);
-
-  return (
-    <>
-      {CATALOG_MODES.map((m) => (
-        <ServicesCatalogModal
-          key={m}
-          open={overlay === m}
-          mode={m}
-        />
-      ))}
-    </>
-  );
+  // Mount only the ACTIVE catalog modal — rendering all four just to pass
+  // open={false} forces their chunks to load on every page.
+  const active = CATALOG_MODES.find((m) => m === overlay);
+  if (!active) return null;
+  return <ServicesCatalogModal open mode={active} />;
 }

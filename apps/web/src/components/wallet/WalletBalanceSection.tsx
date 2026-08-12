@@ -1,30 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import { Coins, Crown, Eye, EyeOff, Gift, Plus, Send, TrendingUp } from "lucide-react";
 import {
   walletBalanceGrid,
   walletBalanceHero,
   walletSummaryCard,
 } from "@/components/wallet/wallet-page-layout";
-import {
-  WALLET_ADDED_THIS_MONTH,
-  WALLET_GIFT_CARD_COUNT,
-  WALLET_GIFT_CARD_VALUE,
-  WALLET_H_COINS,
-  WALLET_TOTAL_BALANCE,
-} from "@/lib/wallet-dashboard";
+import { useWalletBalanceQuery, useWalletTransactionsQuery } from "@/hooks/use-core-data";
+import { AddMoneyModal } from "@/components/wallet/AddMoneyModal";
+import { SendMoneyModal } from "@/components/wallet/SendMoneyModal";
+import { HCoinsModal } from "@/components/wallet/HCoinsModal";
+import { GiftCardsModal } from "@/components/wallet/GiftCardsModal";
+import { useHCoinSummary } from "@/hooks/use-hcoins";
 import { useAppStore } from "@/stores/app-store";
+import { useEntitlements, useCashbackHistory } from "@/hooks/use-entitlements";
 import { cn } from "@/lib/utils";
 
 export function WalletBalanceSection() {
   const reduce = useReducedMotion();
-  const showToast = useAppStore((s) => s.showToast);
   const openOverlay = useAppStore((s) => s.openOverlay);
-  const isPremium = useAppStore((s) => s.isPremium);
+  const { data: entitlements } = useEntitlements();
+  const { data: cashback } = useCashbackHistory();
+  const isPremium = entitlements?.hasMembership ?? false;
+  const { data: hcoins } = useHCoinSummary();
   const [hidden, setHidden] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [hcoinsOpen, setHcoinsOpen] = useState(false);
+  const [giftOpen, setGiftOpen] = useState(false);
+  const { data: walletBalance, isLoading } = useWalletBalanceQuery();
+  const { data: txData } = useWalletTransactionsQuery();
+  // Backend is the source of truth for the balance — never fall back to a demo value.
+  const balance = walletBalance?.balance ?? 0;
+
+  // Real "added this month": sum of credit transactions in the current month.
+  const addedThisMonth = useMemo(() => {
+    const now = new Date();
+    return (txData?.transactions ?? [])
+      .filter((t) => {
+        const d = new Date(t.createdAt);
+        return t.type === "credit" && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      })
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  }, [txData?.transactions]);
 
   return (
     <div className={walletBalanceGrid}>
@@ -34,13 +55,12 @@ export function WalletBalanceSection() {
         transition={{ duration: 0.6, delay: 0.1, ease: [0.34, 1.56, 0.64, 1] }}
         className={cn(
           walletBalanceHero,
-          "bg-gradient-to-br from-violet via-[#C026D3] to-pink text-white shadow-[0_12px_40px_rgb(124_58_237/0.28)] sm:shadow-[0_16px_48px_rgb(124_58_237/0.3)] xl:min-h-[280px]",
+          "bg-gradient-to-br from-emerald-500 via-teal-600 to-emerald-700 text-white shadow-[0_12px_40px_rgb(16_185_129/0.28)] sm:shadow-[0_16px_48px_rgb(16_185_129/0.3)] xl:min-h-[280px]",
         )}
       >
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 animate-pulse bg-gradient-to-br from-white/5 to-transparent opacity-60"
-          style={{ animationDuration: "6s" }}
+          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-60"
         />
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
           <div className="flex min-w-0 flex-1 flex-col justify-between gap-4">
@@ -62,27 +82,29 @@ export function WalletBalanceSection() {
                 className="mt-1.5 font-display font-bold leading-none tracking-tight"
                 style={{ fontSize: "clamp(1.5rem, 7vw, 3.25rem)" }}
               >
-                {hidden
+                {isLoading
+                  ? "₹ …"
+                  : hidden
                   ? "₹ ••••••"
-                  : `₹${WALLET_TOTAL_BALANCE.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`}
+                  : `₹${balance.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`}
               </p>
               <p className="mt-1.5 flex flex-wrap items-center gap-1 text-[11px] text-white/80 sm:text-sm">
                 <TrendingUp size={13} className="shrink-0 text-success" strokeWidth={2.5} />
-                <span>₹{WALLET_ADDED_THIS_MONTH.toLocaleString("en-IN")} added this month</span>
+                <span>₹{addedThisMonth.toLocaleString("en-IN")} added this month</span>
               </p>
             </div>
             <div className="flex flex-col gap-2 min-[400px]:flex-row min-[400px]:flex-wrap sm:gap-3">
               <button
                 type="button"
-                onClick={() => showToast("Add money — UPI & cards coming soon", "info")}
-                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-4 text-[13px] font-semibold text-violet shadow-[0_4px_12px_rgb(0_0_0/0.15)] transition hover:-translate-y-0.5 active:scale-[0.98] min-[400px]:w-auto sm:px-5 sm:text-sm"
+                onClick={() => setAddOpen(true)}
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-4 text-[13px] font-semibold text-emerald-700 shadow-[0_4px_12px_rgb(0_0_0/0.15)] transition hover:-translate-y-0.5 active:scale-[0.98] min-[400px]:w-auto sm:px-5 sm:text-sm"
               >
                 <Plus size={16} />
                 Add Money
               </button>
               <button
                 type="button"
-                onClick={() => showToast("Send money — coming soon", "info")}
+                onClick={() => setSendOpen(true)}
                 className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border-[1.5px] border-white/40 bg-white/20 px-4 text-[13px] font-semibold text-white backdrop-blur-md transition hover:bg-white/30 min-[400px]:w-auto sm:px-5 sm:text-sm"
               >
                 <Send size={16} />
@@ -110,30 +132,42 @@ export function WalletBalanceSection() {
       <SummaryMiniCard
         icon={Coins}
         label="H-Coins"
-        value={String(WALLET_H_COINS)}
+        value={(hcoins?.balance ?? 0).toLocaleString("en-IN")}
+        sub={`≈ ₹${(hcoins?.redeemableValue ?? 0).toLocaleString("en-IN")} · tap to redeem`}
         iconBg="#FFFBEB"
         iconColor="#D4AF37"
         delay={0.15}
+        onClick={() => setHcoinsOpen(true)}
       />
       <SummaryMiniCard
         icon={Gift}
         label="Gift Cards"
-        value={`₹${WALLET_GIFT_CARD_VALUE.toLocaleString("en-IN")}`}
-        sub={`${WALLET_GIFT_CARD_COUNT} Gift Cards available`}
-        iconBg="#F5F3FF"
-        iconColor="#7C3AED"
+        value="Buy & redeem"
+        sub="Send a HOMEEIGO gift card"
+        iconBg="#ECFDF5"
+        iconColor="#059669"
         delay={0.2}
+        onClick={() => setGiftOpen(true)}
       />
       <SummaryMiniCard
         icon={Crown}
-        label="HOMIGO Premium"
-        value={isPremium ? "Active" : "Trial"}
-        sub={isPremium ? "Renews Jun 2026" : "Upgrade for cashback"}
-        iconBg="#EFF6FF"
-        iconColor="#2563EB"
+        label="HOMEEIGO Premium"
+        value={isPremium ? "Active" : "Upgrade"}
+        sub={
+          isPremium
+            ? `${entitlements?.cashbackPct ?? 0}% cashback · ${(cashback?.summary.totalCredited ?? 0).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })} earned`
+            : "Unlock cashback & priority support"
+        }
+        iconBg="#F0FDFA"
+        iconColor="#0D9488"
         delay={0.25}
         onClick={() => openOverlay("premium")}
       />
+
+      <AddMoneyModal open={addOpen} onClose={() => setAddOpen(false)} />
+      <SendMoneyModal open={sendOpen} onClose={() => setSendOpen(false)} />
+      <HCoinsModal open={hcoinsOpen} onClose={() => setHcoinsOpen(false)} />
+      <GiftCardsModal open={giftOpen} onClose={() => setGiftOpen(false)} />
     </div>
   );
 }
@@ -160,7 +194,7 @@ function SummaryMiniCard({
   const reduce = useReducedMotion();
   const className = cn(
     "wallet-panel flex h-full min-h-[100px] w-full min-w-0 flex-col justify-between gap-3 p-4 text-left transition sm:min-h-[120px] sm:p-5",
-    "hover:border-primary/30 hover:shadow-[0_8px_20px_rgb(37_99_235/0.08)] dark:hover:shadow-[0_8px_20px_rgb(37_99_235/0.2)]",
+    "hover:border-emerald-500/30 hover:shadow-[0_8px_20px_rgb(16_185_129/0.08)] dark:hover:shadow-[0_8px_20px_rgb(16_185_129/0.2)]",
   );
 
   const body = (

@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { AI_DEMO_MESSAGES } from "@/lib/ai-dashboard";
+import { coreApi } from "@/services/core/api";
 
 export type ChatMessage = {
   id: string;
@@ -13,14 +13,18 @@ export type ChatMessage = {
 
 type AiState = {
   messages: ChatMessage[];
+  conversationId?: string;
+  historyLoaded: boolean;
   draft: string;
   voiceMode: boolean;
   isRecording: boolean;
+  isThinking: boolean;
   setDraft: (v: string) => void;
   toggleVoiceMode: () => void;
   setRecording: (v: boolean) => void;
   clearChat: () => void;
   sendMessage: (text: string) => void;
+  loadHistory: () => void;
   resetDemo: () => void;
 };
 
@@ -32,85 +36,117 @@ function nowTime() {
   });
 }
 
-function demoReply(userText: string): ChatMessage {
-  const lower = userText.toLowerCase();
-  let content =
-    "I can help with that. Would you like me to book a verified expert or run an instant AI diagnosis?";
-  if (lower.includes("ac") || lower.includes("cooling")) {
-    content =
-      "I've analyzed your AC performance and found possible airflow blockage. Would you like me to book an expert for inspection?";
-  } else if (lower.includes("leak") || lower.includes("water")) {
-    content =
-      "Water sensors show normal flow, but I recommend a quick inspection. Upload a photo or book a plumber?";
-  } else if (lower.includes("clean")) {
-    content =
-      "I can schedule deep cleaning with a top-rated crew. Standard slots start at ₹199. Shall I book for you?";
-  } else if (lower.includes("pest")) {
-    content =
-      "Pest activity looks low, but a preventive scan is recommended. I can book pest control this week.";
-  } else if (lower.includes("schedule") || lower.includes("book")) {
-    content =
-      "I found open slots tomorrow morning and evening. Pick a service and I'll confirm instantly.";
-  } else if (lower.includes("diagnosis") || lower.includes("upload") || lower.includes("image")) {
-    content =
-      "Upload a clear photo of the issue — I'll run AI vision diagnosis in under 30 seconds.";
-  } else if (lower.includes("optim") || lower.includes("bill") || lower.includes("energy")) {
-    content =
-      "You can save up to ₹450 this month. I recommend AC filter service and smart thermostat scheduling.";
-  } else if (lower.includes("safety") || lower.includes("secure")) {
-    content = "All safety systems are active. Smoke, gas, and entry sensors report normal status.";
-  }
+const QUICK_ACTIONS = ["Book Expert", "Browse Services", "Track Booking"];
+
+function welcome(): ChatMessage {
   return {
-    id: `ai-${Date.now()}`,
+    id: "ai-welcome",
     role: "assistant",
-    content,
+    content:
+      "Hi! I can help with bookings, diagnostics, your wallet and service recommendations. What do you need today?",
     time: nowTime(),
-    quickActions: ["Instant AI Diagnosis", "Book Expert", "Upload Photo"],
+    quickActions: QUICK_ACTIONS,
   };
 }
 
-export const useAiStore = create<AiState>((set) => ({
-  messages: [...AI_DEMO_MESSAGES],
+export const useAiStore = create<AiState>((set, get) => ({
+  messages: [welcome()],
+  conversationId: undefined,
+  historyLoaded: false,
   draft: "",
   voiceMode: false,
   isRecording: false,
+  isThinking: false,
 
   setDraft: (draft) => set({ draft }),
   toggleVoiceMode: () => set((s) => ({ voiceMode: !s.voiceMode })),
   setRecording: (isRecording) => set({ isRecording }),
 
-  clearChat: () =>
-    set({
-      messages: [
-        {
-          id: "ai-welcome",
-          role: "assistant",
-          content: "Hello Arjun! 👋 How can I help you with your home today?",
-          time: nowTime(),
-          quickActions: ["Instant AI Diagnosis", "Book Expert", "Upload Photo"],
-        },
-      ],
-    }),
+  // Reload the most recent conversation from PostgreSQL on first open.
+  loadHistory: () => {
+    if (get().historyLoaded) return;
+    set({ historyLoaded: true });
+    void coreApi.ai
+      .latestConversation()
+      .then((conv) => {
+        if (!conv || conv.messages.length === 0) return;
+        set({
+          conversationId: conv.id,
+          messages: conv.messages.map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            time: new Date(m.createdAt).toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+            }),
+          })),
+        });
+      })
+      .catch(() => {
+        /* keep the welcome message on failure */
+      });
+  },
 
-  resetDemo: () => set({ messages: [...AI_DEMO_MESSAGES] }),
+  clearChat: () => {
+    const id = get().conversationId;
+    if (id) void coreApi.ai.deleteConversation(id).catch(() => {});
+    set({ messages: [welcome()], conversationId: undefined, isThinking: false });
+  },
+  resetDemo: () => set({ messages: [welcome()], conversationId: undefined, isThinking: false }),
 
+  // Every reply comes from the backend (/api/ai/chat) — no client-side AI logic.
   sendMessage: (text) => {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed || get().isThinking) return;
+
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
       content: trimmed,
       time: nowTime(),
     };
-    set((s) => ({
-      messages: [...s.messages, userMsg],
-      draft: "",
-    }));
-    window.setTimeout(() => {
-      set((s) => ({
-        messages: [...s.messages, demoReply(trimmed)],
-      }));
-    }, 600);
+
+    // History is the prior conversation (excludes the message we're about to send).
+    const history = get()
+      .messages.slice(-10)
+      .map((m) => ({ role: m.role, content: m.content }));
+
+    set((s) => ({ messages: [...s.messages, userMsg], draft: "", isThinking: true }));
+
+    void coreApi.ai
+      .chat({ message: trimmed, conversationId: get().conversationId, history })
+      .then((data) => {
+        set((s) => ({
+          conversationId: data.conversationId,
+          messages: [
+            ...s.messages,
+            {
+              id: `ai-${Date.now()}`,
+              role: "assistant",
+              content: data.reply,
+              time: nowTime(),
+              quickActions: data.quickActions,
+            },
+          ],
+          isThinking: false,
+        }));
+      })
+      .catch(() => {
+        set((s) => ({
+          messages: [
+            ...s.messages,
+            {
+              id: `ai-${Date.now()}`,
+              role: "assistant",
+              content: "Sorry, I couldn't reach the assistant just now. Please try again.",
+              time: nowTime(),
+              quickActions: QUICK_ACTIONS,
+            },
+          ],
+          isThinking: false,
+        }));
+      });
   },
 }));

@@ -1,12 +1,14 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion } from "framer-motion";
-import { Bell, Sparkles } from "lucide-react";
+import { m as motion } from "framer-motion";
+import { Bell } from "lucide-react";
 import { IconButton } from "@/components/buttons/IconButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LocationButton } from "@/components/LocationButton";
+import { NotificationBadge } from "@/components/ui/NotificationBadge";
 import { useAppStore } from "@/stores/app-store";
 import { MAIN_NAV_ITEMS, isMainNavActive } from "@/lib/main-nav";
 import { cn } from "@/lib/utils";
@@ -46,14 +48,25 @@ export function Navbar() {
         <Link
           href="/"
           className="flex min-w-0 shrink-0 items-center gap-1.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary/60 sm:gap-2"
-          aria-label="HOMIGO home"
+          aria-label="HOMEEIGO home"
         >
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-aurora text-white shadow-glow-blue sm:size-7">
-            <Sparkles size={15} className="sm:size-4" />
-          </span>
-          <span className="truncate font-display text-base font-bold tracking-tight text-aurora sm:text-lg md:text-xl">
-            HOMIGO
-          </span>
+          {/* Light artwork on light UI; light-wordmark variant in night mode. */}
+          <Image
+            src="/brand/logo-full.png"
+            alt="Homeeigo"
+            width={560}
+            height={386}
+            priority
+            className="h-10 w-[58px] shrink-0 object-contain sm:h-11 sm:w-16 dark:hidden"
+          />
+          <Image
+            src="/brand/logo-full-dark.png"
+            alt="Homeeigo"
+            width={560}
+            height={386}
+            priority
+            className="hidden h-10 w-[58px] shrink-0 object-contain sm:h-11 sm:w-16 dark:block"
+          />
         </Link>
 
         {/* Desktop main links */}
@@ -102,9 +115,7 @@ export function Navbar() {
             onClick={() => openOverlay("notifications")}
           >
             <Bell size={18} />
-            <span className="absolute right-1 top-1 grid size-3.5 place-items-center rounded-full bg-pink text-[9px] font-bold text-white ring-2 ring-surface">
-              3
-            </span>
+            <NotificationBadge size="sm" />
           </IconButton>
 
           <IconButton
@@ -114,9 +125,7 @@ export function Navbar() {
             onClick={() => openOverlay("notifications")}
           >
             <Bell size={20} />
-            <span className="absolute right-1.5 top-1.5 grid size-4 place-items-center rounded-full bg-pink text-[10px] font-bold text-white ring-2 ring-surface">
-              3
-            </span>
+            <NotificationBadge />
           </IconButton>
 
           <Link
@@ -138,6 +147,6 @@ export function Navbar() {
   );
 }
 
-/** Total fixed header offset including safe area (for layout padding). */
-export const NAVBAR_OFFSET =
-  "calc(3.5rem + env(safe-area-inset-top, 0px))";
+// Re-export for backwards compatibility; canonical home is `navbar-constants.ts`
+// (importing the constant must not drag the full Navbar module into first-load bundles).
+export { NAVBAR_OFFSET } from "@/components/navbar-constants";

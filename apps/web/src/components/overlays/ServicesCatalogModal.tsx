@@ -12,6 +12,8 @@ import {
   TRENDING_SERVICES,
 } from "@/lib/services-page-data";
 import { SERVICES_IMAGE_QUALITY } from "@/components/services-page/services-page-layout";
+import { useFeaturedServicesQuery, useServicesQuery } from "@/hooks/use-core-data";
+import { useServicesDiscovery } from "@/hooks/use-services-discovery";
 
 type CatalogMode = "services-categories" | "services-trending" | "services-ai" | "services-reviews";
 
@@ -29,11 +31,11 @@ const META: Record<
   },
   "services-ai": {
     title: "AI recommendations",
-    description: "Personalized for your home — powered by HOMIGO AI.",
+    description: "Personalized for your home — powered by HOMEEIGO AI.",
   },
   "services-reviews": {
     title: "Customer reviews",
-    description: "What homeowners say about HOMIGO.",
+    description: "What homeowners say about HOMEEIGO.",
   },
 };
 
@@ -46,72 +48,152 @@ export function ServicesCatalogModal({
 }) {
   const closeOverlay = useAppStore((s) => s.closeOverlay);
   const { book } = useServicesNavigation();
+  const servicesQuery = useServicesQuery();
+  const featuredQuery = useFeaturedServicesQuery();
+  const { aiRecommendations } = useServicesDiscovery();
 
   if (!mode) return null;
 
   const meta = META[mode];
+  const liveServices = servicesQuery.data?.services ?? [];
+  const liveFeatured = featuredQuery.data?.services ?? [];
+  // Live AI recommendations from the catalog; static showcase if the API is empty.
+  const aiRecs = aiRecommendations.length > 0 ? aiRecommendations : AI_RECOMMENDATIONS;
 
   return (
     <Modal open={open} onClose={closeOverlay} title={meta.title} size="lg">
       <p className="mb-4 text-sm text-muted">{meta.description}</p>
 
       <div className="max-h-[min(60vh,520px)] space-y-2 overflow-y-auto pr-1">
-        {mode === "services-categories" &&
-          SERVICE_CATEGORIES.map((cat) => {
-            const Icon = cat.icon;
-            return (
+        {mode === "services-categories" && (
+          servicesQuery.isLoading ? (
+            <p className="text-sm text-muted">Loading categories…</p>
+          ) : liveServices.length > 0 ? (
+            liveServices.map((svc) => (
               <button
-                key={cat.id}
+                key={svc.id}
                 type="button"
-                onClick={() => book({ service: cat.serviceId })}
+                onClick={() => book({ service: svc.id })}
                 className="flex w-full items-center gap-4 rounded-xl border border-line p-3 text-left transition hover:border-primary hover:bg-primary/5"
               >
-                <span
-                  className="grid size-12 shrink-0 place-items-center rounded-xl"
-                  style={{ backgroundColor: cat.iconBg }}
-                >
-                  <Icon size={22} style={{ color: cat.iconColor }} aria-hidden />
+                <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                  {svc.thumbnail || svc.icon ? (
+                    <Image
+                      src={svc.thumbnail ?? svc.icon!}
+                      alt=""
+                      width={32}
+                      height={32}
+                      quality={SERVICES_IMAGE_QUALITY}
+                      className="size-8 object-contain"
+                    />
+                  ) : (
+                    <span className="text-base font-bold">{svc.name.slice(0, 2).toUpperCase()}</span>
+                  )}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block font-semibold text-content">{cat.name}</span>
-                  <span className="text-xs text-muted">{cat.count} services</span>
+                  <span className="block font-semibold text-content">{svc.name}</span>
+                  <span className="text-xs text-muted">
+                    From ₹{(svc.basePrice ?? svc.minPrice ?? 0).toLocaleString("en-IN")} ·{" "}
+                    {svc.bookingCount ?? 0} bookings
+                  </span>
                 </span>
                 <span className="text-sm font-semibold text-primary">Book</span>
               </button>
-            );
-          })}
+            ))
+          ) : (
+            SERVICE_CATEGORIES.map((cat) => {
+              const Icon = cat.icon;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => book({ service: cat.serviceId })}
+                  className="flex w-full items-center gap-4 rounded-xl border border-line p-3 text-left transition hover:border-primary hover:bg-primary/5"
+                >
+                  <span
+                    className="grid size-12 shrink-0 place-items-center rounded-xl"
+                    style={{ backgroundColor: cat.iconBg }}
+                  >
+                    <Icon size={22} style={{ color: cat.iconColor }} aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold text-content">{cat.name}</span>
+                    <span className="text-xs text-muted">{cat.count} services</span>
+                  </span>
+                  <span className="text-sm font-semibold text-primary">Book</span>
+                </button>
+              );
+            })
+          )
+        )}
 
-        {mode === "services-trending" &&
-          TRENDING_SERVICES.map((svc) => (
-            <button
-              key={svc.id}
-              type="button"
-              onClick={() => book({ service: svc.serviceId })}
-              className="flex w-full items-center gap-3 rounded-xl border border-line p-3 text-left transition hover:border-primary hover:bg-primary/5"
-            >
-              <div className="relative size-16 shrink-0 overflow-hidden rounded-lg">
-                <Image
-                  src={svc.image}
-                  alt=""
-                  fill
-                  quality={SERVICES_IMAGE_QUALITY}
-                  className="object-cover"
-                  sizes="64px"
-                />
-              </div>
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold text-content">{svc.title}</span>
-                <span className="flex items-center gap-1 text-xs text-muted">
-                  <Star size={12} className="fill-amber-400 text-amber-400" />
-                  {svc.rating} · ₹{svc.price.toLocaleString("en-IN")}
+        {mode === "services-trending" && (
+          featuredQuery.isLoading ? (
+            <p className="text-sm text-muted">Loading trending services…</p>
+          ) : liveFeatured.length > 0 ? (
+            liveFeatured.map((svc) => (
+              <button
+                key={svc.id}
+                type="button"
+                onClick={() => book({ service: svc.id })}
+                className="flex w-full items-center gap-3 rounded-xl border border-line p-3 text-left transition hover:border-primary hover:bg-primary/5"
+              >
+                <div className="relative size-16 shrink-0 overflow-hidden rounded-lg bg-primary/10">
+                  {svc.thumbnail ? (
+                    <Image
+                      src={svc.thumbnail}
+                      alt=""
+                      fill
+                      quality={SERVICES_IMAGE_QUALITY}
+                      className="object-cover"
+                      sizes="64px"
+                    />
+                  ) : null}
+                </div>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold text-content">{svc.name}</span>
+                  <span className="flex items-center gap-1 text-xs text-muted">
+                    <Star size={12} className="fill-amber-400 text-amber-400" />
+                    {(svc.rating ?? 4.8).toFixed(1)} · ₹
+                    {(svc.basePrice ?? svc.minPrice ?? 0).toLocaleString("en-IN")}
+                  </span>
                 </span>
-              </span>
-              <ArrowRight size={18} className="shrink-0 text-primary" />
-            </button>
-          ))}
+                <ArrowRight size={18} className="shrink-0 text-primary" />
+              </button>
+            ))
+          ) : (
+            TRENDING_SERVICES.map((svc) => (
+              <button
+                key={svc.id}
+                type="button"
+                onClick={() => book({ service: svc.serviceId })}
+                className="flex w-full items-center gap-3 rounded-xl border border-line p-3 text-left transition hover:border-primary hover:bg-primary/5"
+              >
+                <div className="relative size-16 shrink-0 overflow-hidden rounded-lg">
+                  <Image
+                    src={svc.image}
+                    alt=""
+                    fill
+                    quality={SERVICES_IMAGE_QUALITY}
+                    className="object-cover"
+                    sizes="64px"
+                  />
+                </div>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold text-content">{svc.title}</span>
+                  <span className="flex items-center gap-1 text-xs text-muted">
+                    <Star size={12} className="fill-amber-400 text-amber-400" />
+                    {svc.rating} · ₹{svc.price.toLocaleString("en-IN")}
+                  </span>
+                </span>
+                <ArrowRight size={18} className="shrink-0 text-primary" />
+              </button>
+            ))
+          )
+        )}
 
         {mode === "services-ai" &&
-          AI_RECOMMENDATIONS.map((rec) => {
+          aiRecs.map((rec) => {
             const Icon = rec.icon;
             return (
               <button
@@ -158,7 +240,7 @@ export function ServicesCatalogModal({
               <p className="mt-3 text-sm leading-relaxed text-content">{review.review}</p>
               <button
                 type="button"
-                onClick={() => book({ service: "cleaning" })}
+                onClick={() => book({ service: "deep-cleaning" })}
                 className="mt-3 text-xs font-semibold text-primary hover:underline"
               >
                 Book a similar service →
@@ -170,7 +252,7 @@ export function ServicesCatalogModal({
       {mode === "services-reviews" && (
         <button
           type="button"
-          onClick={() => book({ service: "cleaning", promo: "HOME150" })}
+          onClick={() => book({ service: "deep-cleaning", promo: "HOME150" })}
           className="mt-4 w-full rounded-xl border border-primary py-3 text-sm font-semibold text-primary transition hover:bg-primary/5"
         >
           Book with ₹150 off

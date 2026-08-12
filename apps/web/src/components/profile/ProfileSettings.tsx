@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import {
   Bell,
   ChevronRight,
@@ -15,8 +15,10 @@ import {
   profilePanelShell,
 } from "@/components/profile/profile-page-layout";
 import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 import { PROFILE_SETTINGS } from "@/lib/profile-dashboard";
 import { useAppStore } from "@/stores/app-store";
+import { useAuthStore } from "@/stores/auth-store";
 
 const SETTING_ICONS = {
   bell: Bell,
@@ -28,14 +30,23 @@ const SETTING_ICONS = {
 
 export function ProfileSettings() {
   const reduce = useReducedMotion();
+  const router = useRouter();
   const openOverlay = useAppStore((s) => s.openOverlay);
   const showToast = useAppStore((s) => s.showToast);
+  const logout = useAuthStore((s) => s.logout);
 
-  const handle = (action: string) => {
+  const handle = async (action: string) => {
     if (action === "settings") openOverlay("settings");
     else if (action === "support") openOverlay("support");
-    else if (action === "logout") showToast("Signed out successfully", "success");
-    else showToast("Preference saved", "success");
+    else if (action === "logout") {
+      try {
+        await logout();
+        showToast("Signed out successfully", "success");
+        router.replace("/login");
+      } catch {
+        showToast("Sign out failed. Please try again.", "error");
+      }
+    } else showToast("Preference saved", "success");
   };
 
   return (
@@ -57,11 +68,11 @@ export function ProfileSettings() {
             <li key={item.id}>
               <button
                 type="button"
-                onClick={() => handle(item.action)}
+                onClick={() => void handle(item.action)}
                 className={cn(
                   "flex min-h-11 w-full items-center gap-3 rounded-xl p-3.5 text-left sm:p-4",
                   danger
-                    ? "border border-[#FECACA] bg-[#FEE2E2] transition hover:border-primary hover:bg-[#FCA5A5]/30 dark:border-error/30 dark:bg-error/10 dark:hover:bg-error/20"
+                    ? "border border-[#FECACA] bg-[#FEE2E2] transition hover:border-emerald-500 hover:bg-[#FCA5A5]/30 dark:border-error/30 dark:bg-error/10 dark:hover:bg-error/20"
                     : profileInteractiveSurface,
                 )}
               >

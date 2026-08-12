@@ -2,18 +2,18 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import { Calendar, ChevronRight, Star, User } from "lucide-react";
 import {
   profileInteractiveSurface,
   profilePanelPad,
   profilePanelShell,
 } from "@/components/profile/profile-page-layout";
-import { PROFILE_DEMO_BOOKINGS } from "@/lib/profile-dashboard";
 import { STATUS_CONFIG } from "@/lib/booking-status";
 import type { SavedBooking } from "@/lib/bookings";
 import { BookingDetailModal } from "@/components/booking/BookingDetailModal";
 import { useAppStore } from "@/stores/app-store";
+import { useUserRatingsQuery } from "@/hooks/use-core-data";
 import { ServiceImage } from "@/components/ui/ServiceImage";
 import { cn } from "@/lib/utils";
 
@@ -25,13 +25,22 @@ const EXTRA: Record<string, { rating: number; eta?: string }> = {
 export function ProfileBookings() {
   const reduce = useReducedMotion();
   const storeBookings = useAppStore((s) => s.bookings);
+  // Bookings synced via useProfileDerived / layout — avoid duplicate subscription
+  const { data: ratingsData } = useUserRatingsQuery();
   const [selected, setSelected] = useState<SavedBooking | null>(null);
 
   const bookings = useMemo(() => {
-    const ids = new Set(PROFILE_DEMO_BOOKINGS.map((b) => b.id));
-    const fromStore = storeBookings.filter((b) => !ids.has(b.id)).slice(0, 2);
-    return [...PROFILE_DEMO_BOOKINGS, ...fromStore].slice(0, 2);
+    return [...storeBookings].slice(0, 2);
   }, [storeBookings]);
+  const ratingsByBookingId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of ratingsData?.ratings ?? []) {
+      const bookingId = (r.bookingId as string | undefined) ?? (r.id as string | undefined);
+      const rating = (r.rating as number | undefined) ?? (r.stars as number | undefined);
+      if (bookingId && typeof rating === "number") map.set(bookingId, rating);
+    }
+    return map;
+  }, [ratingsData?.ratings]);
 
   return (
     <>
@@ -46,7 +55,7 @@ export function ProfileBookings() {
           <h2 className="font-display text-base font-bold text-content sm:text-lg">My Bookings</h2>
           <Link
             href="/bookings"
-            className="inline-flex shrink-0 items-center gap-0.5 text-[12px] font-semibold text-primary hover:underline sm:text-[13px]"
+            className="inline-flex shrink-0 items-center gap-0.5 text-[12px] font-semibold text-emerald-600 hover:underline sm:text-[13px]"
           >
             View All
             <ChevronRight size={15} className="sm:hidden" />
@@ -57,7 +66,10 @@ export function ProfileBookings() {
         <ul className="flex flex-col gap-3 sm:gap-4">
           {bookings.map((booking, i) => {
             const cfg = STATUS_CONFIG[booking.status];
-            const extra = EXTRA[booking.id];
+            const extra = {
+              ...EXTRA[booking.id],
+              rating: ratingsByBookingId.get(booking.id) ?? EXTRA[booking.id]?.rating,
+            };
             const live = booking.status === "in_progress";
 
             return (
@@ -129,7 +141,7 @@ export function ProfileBookings() {
                       )}
                     </div>
                     <span
-                      className="rounded-md border border-[#DBEAFE] bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-semibold text-primary dark:border-primary/30 dark:bg-primary/10 sm:px-3 sm:py-1.5 sm:text-xs"
+                      className="rounded-md border border-[#DBEAFE] bg-[#ECFDF5] px-2.5 py-1 text-[11px] font-semibold text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-600/10 sm:px-3 sm:py-1.5 sm:text-xs"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {live ? "Track" : "Rebook"}

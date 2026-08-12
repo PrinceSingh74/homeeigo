@@ -21,6 +21,8 @@ export type SavedBooking = {
   timeLabel: string;
   address: string;
   total: number;
+  /** Catalog snapshot of purchased add-ons ({id,name,price}) from the backend. */
+  addons?: { id: string; name: string; price: number }[];
   status: BookingStatus;
   createdAt: string;
   updatedAt: string;
@@ -30,6 +32,11 @@ export type SavedBooking = {
   serviceColor: string;
   proName: string;
   instructions?: string;
+  paymentStatus?: string;
+  /** Raw backend status (pending/accepted/assigned/en_route/in_progress/…) — the
+   *  UI status above collapses several of these, but live-tracking selection
+   *  needs the real one to pick the booking a partner is actually riding for. */
+  backendStatus?: string;
   timeline: TimelineEvent[];
 };
 

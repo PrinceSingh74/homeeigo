@@ -3,9 +3,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Mic } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m as motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { searchServices } from "@/lib/services";
+import { useServicesQuery } from "@/hooks/use-core-data";
 import { bookUrl } from "@/lib/booking-url";
 import { useAppStore } from "@/stores/app-store";
 import { Input } from "@/components/ui/Input";
@@ -40,8 +40,22 @@ export function ServiceSearchInput({
   const router = useRouter();
   const showToast = useAppStore((s) => s.showToast);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const { data } = useServicesQuery();
 
-  const results = searchServices(query).slice(0, 6);
+  // Search the real backend catalog only (no demo/static fallback). The full
+  // services list is already loaded, so filtering it gives an instant dropdown
+  // backed entirely by PostgreSQL data; the booking flow handles full search.
+  const q = query.trim().toLowerCase();
+  const results =
+    data?.services
+      ?.filter((s) => !q || `${s.name} ${s.description ?? ""}`.toLowerCase().includes(q))
+      .slice(0, 6)
+      .map((s) => ({
+        id: s.id,
+        title: s.name,
+        price: `₹${s.basePrice ?? s.minPrice ?? 0}`,
+        img: s.thumbnail ?? s.icon ?? undefined,
+      })) ?? [];
 
   useEffect(() => {
     setQuery(initialQuery);
@@ -73,7 +87,7 @@ export function ServiceSearchInput({
       return;
     }
     onQueryChange?.(q);
-    const match = searchServices(q)[0];
+    const match = results[0];
     if (match) {
       goToService(match.id);
       return;
@@ -148,6 +162,7 @@ export function ServiceSearchInput({
             : "Search for a service…"
         }
         aria-label="Search for a service"
+        role="combobox"
         aria-expanded={open && results.length > 0}
         aria-autocomplete="list"
         iconRight={micButton}

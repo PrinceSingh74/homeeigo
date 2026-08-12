@@ -23,7 +23,7 @@ function BookingStepper({ currentStep }: { currentStep: number }) {
             <div
               className={cn(
                 "flex min-w-0 flex-1 flex-col items-center gap-1.5 sm:flex-none sm:flex-row sm:gap-2",
-                active && "sm:rounded-full sm:bg-primary/8 sm:px-3 sm:py-1.5",
+                active && "sm:rounded-full sm:bg-emerald-500/10 sm:px-3 sm:py-1.5",
               )}
             >
               <span
@@ -31,7 +31,7 @@ function BookingStepper({ currentStep }: { currentStep: number }) {
                   "grid size-7 shrink-0 place-items-center rounded-full text-[11px] font-bold transition-all duration-300 sm:size-8 sm:text-xs",
                   done && "bg-success text-white shadow-[0_4px_12px_rgb(16_185_129/0.35)]",
                   active &&
-                    "bg-aurora text-white shadow-[0_4px_16px_rgb(37_99_235/0.4)] ring-2 ring-primary/20 ring-offset-2 ring-offset-canvas",
+                    "bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-white shadow-[0_4px_16px_rgb(16_185_129/0.45)] ring-2 ring-emerald-500/25 ring-offset-2 ring-offset-canvas",
                   upcoming && "border border-line bg-surface text-muted",
                 )}
               >
@@ -40,7 +40,7 @@ function BookingStepper({ currentStep }: { currentStep: number }) {
               <span
                 className={cn(
                   "max-w-[4.5rem] truncate text-center text-[10px] font-semibold leading-tight sm:max-w-none sm:text-xs",
-                  active ? "text-primary" : done ? "text-success" : "text-muted",
+                  active ? "text-emerald-600" : done ? "text-success" : "text-muted",
                 )}
               >
                 {label}
@@ -51,7 +51,7 @@ function BookingStepper({ currentStep }: { currentStep: number }) {
                 aria-hidden
                 className={cn(
                   "mx-0.5 h-0.5 min-w-[0.75rem] flex-1 rounded-full sm:mx-2 sm:h-px sm:w-8 sm:flex-none md:w-12 lg:w-16",
-                  i < currentStep ? "bg-gradient-to-r from-success to-primary" : "bg-line",
+                  i < currentStep ? "bg-gradient-to-r from-emerald-400 to-teal-500" : "bg-line",
                 )}
               />
             ) : null}
@@ -83,7 +83,7 @@ export function BookPageHeader({ currentStep }: { currentStep: number }) {
             className={cn(
               "grid size-10 shrink-0 place-items-center rounded-xl",
               "border border-line/80 bg-surface/90 text-content shadow-e1",
-              "transition hover:border-primary/30 hover:shadow-[0_4px_16px_rgb(37_99_235/0.12)]",
+              "transition hover:border-emerald-500/30 hover:shadow-[0_4px_16px_rgb(16_185_129/0.15)]",
               "sm:size-11 sm:rounded-2xl",
             )}
           >
@@ -96,7 +96,10 @@ export function BookPageHeader({ currentStep }: { currentStep: number }) {
               Secure booking
             </p>
             <h1 className="font-display text-base font-bold tracking-tight text-content sm:text-xl lg:text-2xl">
-              Book a <span className="text-aurora">Service</span>
+              Book a{" "}
+              <span className="bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">
+                Service
+              </span>
             </h1>
           </div>
 
@@ -104,7 +107,7 @@ export function BookPageHeader({ currentStep }: { currentStep: number }) {
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
               Step {currentStep + 1} of {STEPS.length}
             </p>
-            <p className="font-display text-sm font-bold text-primary">{stepLabel}</p>
+            <p className="font-display text-sm font-bold text-emerald-600">{stepLabel}</p>
           </div>
         </div>
 
@@ -118,7 +121,7 @@ export function BookPageHeader({ currentStep }: { currentStep: number }) {
             aria-label={`Booking step ${currentStep + 1} of ${STEPS.length}: ${stepLabel}`}
           >
             <div
-              className="h-full rounded-full bg-aurora transition-[width] duration-500 ease-out"
+              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-[width] duration-500 ease-out"
               style={{ width: `${progress}%` }}
             />
           </div>

@@ -1,5 +1,8 @@
 import { Scissors, type LucideIcon } from "lucide-react";
 
+export const MOCK_BUSINESS_DATA_ENABLED =
+  process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ENABLE_MOCK_BUSINESS_DATA === "true";
+
 export type ServicePackage = {
   name: string;
   tag: string;
@@ -10,6 +13,8 @@ export type ServicePackage = {
 
 export type Service = {
   id: string;
+  /** Backend catalog slug — allows /book?service=<slug> deep links to resolve. */
+  slug?: string;
   name: string;
   img?: string;
   icon?: LucideIcon;
@@ -27,17 +32,48 @@ export type Service = {
 };
 
 export const LOCATIONS = [
-  { id: "gurugram-49", label: "Gurugram, Sector 49", city: "Gurugram", pin: "122018" },
-  { id: "gurugram-56", label: "Gurugram, Sector 56", city: "Gurugram", pin: "122011" },
-  { id: "delhi-saket", label: "Delhi, Saket", city: "New Delhi", pin: "110017" },
-  { id: "noida-62", label: "Noida, Sector 62", city: "Noida", pin: "201309" },
+  {
+    id: "gurugram-49",
+    label: "Gurugram, Sector 49",
+    city: "Gurugram",
+    pin: "122018",
+    latitude: 28.4139,
+    longitude: 77.043,
+  },
+  {
+    id: "gurugram-56",
+    label: "Gurugram, Sector 56",
+    city: "Gurugram",
+    pin: "122011",
+    latitude: 28.4258,
+    longitude: 77.0912,
+  },
+  {
+    id: "delhi-saket",
+    label: "Delhi, Saket",
+    city: "New Delhi",
+    pin: "110017",
+    latitude: 28.5244,
+    longitude: 77.2066,
+  },
+  {
+    id: "noida-62",
+    label: "Noida, Sector 62",
+    city: "Noida",
+    pin: "201309",
+    latitude: 28.627,
+    longitude: 77.371,
+  },
 ] as const;
 
 export type LocationId = (typeof LOCATIONS)[number]["id"];
 
-export const SERVICES: Service[] = [
+// `slug` values match the real backend catalog (apps/backend seed-services.ts),
+// so fallback deep links (/book?service=<slug>) resolve to live services.
+const DEMO_SERVICES: Service[] = [
   {
     id: "cleaning",
+    slug: "deep-cleaning",
     name: "Cleaning",
     img: "/svc-cleaning.png",
     price: "₹199",
@@ -58,6 +94,7 @@ export const SERVICES: Service[] = [
   },
   {
     id: "ac-service",
+    slug: "ac-service",
     name: "AC Service",
     img: "/svc-ac.png",
     price: "₹299",
@@ -77,6 +114,7 @@ export const SERVICES: Service[] = [
   },
   {
     id: "plumbing",
+    slug: "plumbing",
     name: "Plumbing",
     img: "/svc-plumbing.png",
     price: "₹249",
@@ -96,6 +134,7 @@ export const SERVICES: Service[] = [
   },
   {
     id: "electrician",
+    slug: "electrician",
     name: "Electrician",
     img: "/svc-electrician.png",
     price: "₹199",
@@ -115,6 +154,7 @@ export const SERVICES: Service[] = [
   },
   {
     id: "pest-control",
+    slug: "pest-control",
     name: "Pest Control",
     img: "/svc-pest.png",
     price: "₹299",
@@ -134,6 +174,7 @@ export const SERVICES: Service[] = [
   },
   {
     id: "salon",
+    slug: "salon-at-home",
     name: "Salon",
     icon: Scissors,
     price: "₹199",
@@ -152,12 +193,14 @@ export const SERVICES: Service[] = [
     ],
   },
 ];
+export const SERVICES: Service[] = MOCK_BUSINESS_DATA_ENABLED ? DEMO_SERVICES : [];
 
-export const PROMO_OFFERS = [
+const DEMO_PROMO_OFFERS = [
   { code: "COOL100", serviceId: "ac-service", discount: "Flat ₹100 OFF", desc: "On AC Service" },
-  { code: "FRESH25", serviceId: "cleaning", discount: "25% OFF", desc: "On Deep Cleaning" },
+  { code: "FRESH25", serviceId: "deep-cleaning", discount: "25% OFF", desc: "On Deep Cleaning" },
   { code: "FIX150", serviceId: "plumbing", discount: "Flat ₹150 OFF", desc: "On Plumbing" },
 ] as const;
+export const PROMO_OFFERS = MOCK_BUSINESS_DATA_ENABLED ? DEMO_PROMO_OFFERS : [];
 
 /** Quick time slots on book screen (matches mobile app). */
 export const BOOKING_TIMES = [
@@ -169,12 +212,13 @@ export const BOOKING_TIMES = [
   "07:00 PM",
 ] as const;
 
-export const RECOMMENDED = [
-  { title: "Sofa Deep Clean", price: "₹699", rating: "4.9", serviceId: "cleaning", packageIndex: 2, img: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=600&q=75" },
+const DEMO_RECOMMENDED = [
+  { title: "Sofa Deep Clean", price: "₹499", rating: "4.9", serviceId: "sofa-deep-cleaning", packageIndex: 2, img: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=600&q=75" },
   { title: "AC Gas Refill", price: "₹1,299", rating: "4.8", serviceId: "ac-service", packageIndex: 2, img: "https://images.unsplash.com/photo-1635048424329-a9bfb146d7aa?w=600&q=75" },
-  { title: "Kitchen Cleaning", price: "₹499", rating: "4.7", serviceId: "cleaning", packageIndex: 1, img: "https://images.unsplash.com/photo-1556911220-bff31c812dba?w=600&q=75" },
-  { title: "Bathroom Cleaning", price: "₹599", rating: "4.8", serviceId: "cleaning", packageIndex: 0, img: "https://images.unsplash.com/photo-1620626011761-996317b8d101?w=600&q=75" },
+  { title: "Kitchen Cleaning", price: "₹249", rating: "4.7", serviceId: "kitchen-cleaning", packageIndex: 1, img: "https://images.unsplash.com/photo-1556911220-bff31c812dba?w=600&q=75" },
+  { title: "Bathroom Cleaning", price: "₹399", rating: "4.8", serviceId: "bathroom-cleaning", packageIndex: 0, img: "https://images.unsplash.com/photo-1620626011761-996317b8d101?w=600&q=75" },
 ] as const;
+export const RECOMMENDED = MOCK_BUSINESS_DATA_ENABLED ? DEMO_RECOMMENDED : [];
 
 export function getServiceById(id: string): Service | undefined {
   return SERVICES.find((s) => s.id === id);

@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { Calendar, MapPin, ChevronRight } from "lucide-react";
 import { ServiceImage } from "@/components/ui/ServiceImage";
 import { cn } from "@/lib/utils";

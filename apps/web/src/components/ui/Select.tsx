@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { m as motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { ChevronDown, Check, X, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dropdownVariants } from "@/lib/animations";

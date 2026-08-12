@@ -37,7 +37,7 @@ export function WalletOverviewTab({ onViewAllTransactions }: WalletOverviewTabPr
           <button
             type="button"
             onClick={onViewAllTransactions}
-            className="shrink-0 text-[12px] font-semibold text-primary transition hover:opacity-80 sm:text-[13px]"
+            className="shrink-0 text-[12px] font-semibold text-emerald-600 transition hover:opacity-80 sm:text-[13px]"
           >
             View All
           </button>

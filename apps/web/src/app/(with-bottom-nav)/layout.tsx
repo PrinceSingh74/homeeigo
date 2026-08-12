@@ -1,3 +1,4 @@
+import { ProtectedAppShell } from "@/components/layout/ProtectedAppShell";
 import { WithBottomNavLayout } from "@/components/layout/WithBottomNavLayout";
 
 export default function Layout({
@@ -5,5 +6,9 @@ export default function Layout({
 }: {
   children: React.ReactNode;
 }) {
-  return <WithBottomNavLayout>{children}</WithBottomNavLayout>;
+  return (
+    <ProtectedAppShell>
+      <WithBottomNavLayout>{children}</WithBottomNavLayout>
+    </ProtectedAppShell>
+  );
 }

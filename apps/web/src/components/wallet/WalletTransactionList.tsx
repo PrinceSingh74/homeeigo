@@ -1,9 +1,11 @@
 "use client";
 
 import { ArrowUpRight, Coins, Sparkles, Wallet } from "lucide-react";
+import { StaticSkeleton } from "@/components/ui/StaticSkeleton";
 import { cn } from "@/lib/utils";
 import type { WalletRecentTxn } from "@/lib/wallet-dashboard";
 import { WALLET_RECENT_TXNS } from "@/lib/wallet-dashboard";
+import { useWalletTransactionsQuery } from "@/hooks/use-core-data";
 
 function TxnIcon({ title }: { title: string }) {
   if (title.includes("added")) return <Wallet size={18} />;
@@ -57,10 +59,31 @@ export function WalletTransactionList({
 }
 
 export function WalletTransactionsTab() {
+  const { data, isLoading } = useWalletTransactionsQuery();
+  const txns: WalletRecentTxn[] =
+    data?.transactions?.map((t) => ({
+      id: t.id,
+      title: t.description || t.reason || "Wallet transaction",
+      subtitle: new Date(t.createdAt).toLocaleString(),
+      amount: t.type === "debit" ? -Math.abs(t.amount) : Math.abs(t.amount),
+      type: t.type,
+      status: "success",
+      iconBg: t.type === "credit" ? "#F0FDFA" : "#FFF7ED",
+      iconColor: t.type === "credit" ? "#0D9488" : "#F59E0B",
+    })) ?? WALLET_RECENT_TXNS;
+
   return (
     <div className="wallet-panel min-w-0 p-0">
       <div className="p-1 sm:p-2">
-        <WalletTransactionList items={WALLET_RECENT_TXNS} />
+        {isLoading ? (
+          <div className="space-y-2 p-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <StaticSkeleton key={i} className="h-14 rounded-xl bg-surface/70 ring-1 ring-line" />
+            ))}
+          </div>
+        ) : (
+          <WalletTransactionList items={txns} />
+        )}
       </div>
     </div>
   );

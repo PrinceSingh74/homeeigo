@@ -44,7 +44,7 @@ export const WithHelperText: Story = {
         options={[
           { value: "upi", label: "UPI", helperText: "Instant transfer" },
           { value: "card", label: "Card", helperText: "Credit/Debit" },
-          { value: "wallet", label: "Wallet", helperText: "HOMIGO balance" },
+          { value: "wallet", label: "Wallet", helperText: "HOMEEIGO balance" },
         ]}
       />
     );

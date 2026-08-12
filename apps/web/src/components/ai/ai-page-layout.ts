@@ -60,27 +60,27 @@ export const aiMobileLiveShell = cn(
 
 export const aiRightShell = cn(
   "ai-right-rail-glass flex w-full min-w-0 flex-col gap-3 overflow-hidden rounded-[20px]",
-  "border border-white/60 p-3.5 dark:border-indigo-500/20",
+  "border border-emerald-400/15 bg-[linear-gradient(150deg,rgb(8_38_29/0.7),rgb(3_17_12/0.85))] p-3.5 backdrop-blur-xl dark:border-emerald-400/15",
   "sm:gap-4 sm:rounded-[24px] sm:p-4",
   "lg:gap-5 lg:rounded-[28px] lg:p-5",
   aiGlassPanel,
 );
 
 export const aiRightBrandStrip = cn(
-  "relative overflow-hidden rounded-xl bg-gradient-to-br from-primary via-violet to-cyan p-3.5 text-white sm:rounded-2xl sm:p-4",
-  "shadow-[0_12px_40px_rgb(37_99_235/0.35)]",
-  "ring-1 ring-white/20",
+  "relative overflow-hidden rounded-xl bg-[linear-gradient(150deg,#0e4a38_0%,#062b20_55%,#04190f_100%)] p-3.5 text-white sm:rounded-2xl sm:p-4",
+  "shadow-[0_16px_44px_-14px_rgb(4_60_45/0.75)]",
+  "ring-1 ring-emerald-400/25",
 );
 
 export const aiRightBlock = cn(
-  "ai-card-3d w-full min-w-0 rounded-xl border border-white/50 p-3 dark:border-white/10 sm:rounded-2xl sm:p-4 lg:p-[18px]",
+  "ai-card-3d w-full min-w-0 rounded-xl border border-emerald-400/15 bg-emerald-950/30 p-3 sm:rounded-2xl sm:p-4 lg:p-[18px]",
 );
 
 export const aiRightBlockTitle =
   "font-display text-sm font-bold tracking-tight text-ink dark:text-slate-100";
 
 export const aiRightBlockAction =
-  "shrink-0 text-[11px] font-semibold text-primary transition hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200";
+  "shrink-0 text-[11px] font-semibold text-emerald-600 transition hover:text-emerald-700 dark:text-emerald-300 dark:hover:text-emerald-200";
 
 export const aiRightInsightCard = cn(
   "ai-card-3d group flex w-full min-w-0 gap-3 rounded-xl border p-3",
@@ -135,7 +135,7 @@ export const aiStatusSummaryGrid = cn(
 );
 
 export const aiStatusSummaryCell = cn(
-  "ai-card-3d flex min-w-0 flex-col gap-0.5 rounded-xl border border-white/60 px-2 py-2 dark:border-white/10 sm:rounded-2xl sm:px-4 sm:py-3",
+  "ai-card-3d flex min-w-0 flex-col gap-0.5 rounded-xl border border-emerald-400/15 bg-emerald-950/30 px-2 py-2 sm:rounded-2xl sm:px-4 sm:py-3",
 );
 
 export const aiStatusGrid = cn(
@@ -152,5 +152,5 @@ export const aiStatusCardWrap = cn(
 
 export const aiStatusCard = cn(
   "ai-card-3d group relative flex h-full min-h-[168px] w-full flex-col overflow-hidden rounded-2xl",
-  "border border-white/55 p-3 dark:border-white/10 sm:min-h-[184px] sm:rounded-[18px] sm:p-4",
+  "border border-emerald-400/15 bg-emerald-950/30 p-3 sm:min-h-[184px] sm:rounded-[18px] sm:p-4",
 );

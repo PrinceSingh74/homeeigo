@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import type { WalletTabId } from "@/lib/wallet-dashboard";
 import { WALLET_TABS } from "@/lib/wallet-dashboard";
@@ -37,8 +37,8 @@ export function WalletTabbedContent({ activeTab, onTabChange }: WalletTabbedCont
                 walletTabBtn,
                 "transition-colors duration-200",
                 active
-                  ? "border-primary font-semibold text-primary"
-                  : "border-transparent text-muted hover:text-primary",
+                  ? "border-emerald-500 font-semibold text-emerald-600"
+                  : "border-transparent text-muted hover:text-emerald-600",
               )}
             >
               {tab.label}

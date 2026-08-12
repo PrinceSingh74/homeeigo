@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import { BadgeCheck, Calendar, Lock, Shield } from "lucide-react";
 import { profilePanelShell } from "@/components/profile/profile-page-layout";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,7 @@ export function InfoCards() {
               transition={{ delay: i * 0.05, duration: 0.4 }}
               className={cn(
                 profilePanelShell,
-                "flex flex-col items-center gap-2 rounded-xl p-3 text-center transition hover:shadow-[0_8px_20px_rgb(37_99_235/0.1)] sm:gap-3 sm:p-5",
+                "flex flex-col items-center gap-2 rounded-xl p-3 text-center transition hover:shadow-[0_8px_20px_rgb(16_185_129/0.1)] sm:gap-3 sm:p-5",
               )}
             >
               <span

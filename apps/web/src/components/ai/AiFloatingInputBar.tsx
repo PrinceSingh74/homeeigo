@@ -2,7 +2,7 @@
 
 import { FormEvent, useRef } from "react";
 import { Home, ImageIcon, Mic, Paperclip } from "lucide-react";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/Input";
 import { useAiPageActions } from "@/hooks/use-ai-page-actions";
@@ -32,7 +32,7 @@ export function AiFloatingInputBar() {
       type="button"
       aria-label="Attach file"
       onClick={onAttachFile}
-      className="grid size-8 shrink-0 place-items-center text-[#9CA3AF] transition hover:text-primary dark:text-slate-400 dark:hover:text-blue-300"
+      className="grid size-8 shrink-0 place-items-center text-[#9CA3AF] transition hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-300"
     >
       <Paperclip size={16} />
     </button>
@@ -44,7 +44,7 @@ export function AiFloatingInputBar() {
         type="button"
         aria-label="Upload image"
         onClick={() => fileRef.current?.click()}
-        className="grid size-8 shrink-0 place-items-center text-[#9CA3AF] transition hover:text-primary dark:text-slate-400 dark:hover:text-blue-300"
+        className="grid size-8 shrink-0 place-items-center text-[#9CA3AF] transition hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-300"
       >
         <ImageIcon size={17} className="sm:hidden" />
         <ImageIcon size={18} className="hidden sm:block" />
@@ -65,7 +65,7 @@ export function AiFloatingInputBar() {
       <Link
         href="/"
         aria-label="Home"
-        className="hidden shrink-0 p-1 text-[#9CA3AF] transition hover:text-primary dark:text-slate-400 dark:hover:text-blue-300 sm:block"
+        className="hidden shrink-0 p-1 text-[#9CA3AF] transition hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-300 sm:block"
       >
         <Home size={18} />
       </Link>
@@ -104,7 +104,7 @@ export function AiFloatingInputBar() {
             "dark:border-slate-600 dark:bg-slate-900/80 dark:focus-within:bg-slate-900",
           )}
           inputClassName="text-sm text-ink placeholder:text-[#9CA3AF] dark:text-slate-100 dark:placeholder:text-slate-500"
-          aria-label="Message to HOMIGO AI"
+          aria-label="Message to HOMEEIGO AI"
         />
 
         <motion.button
@@ -114,8 +114,8 @@ export function AiFloatingInputBar() {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           className={cn(
-            "grid size-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-violet text-white shadow-[0_4px_12px_rgb(37_99_235/0.3)] sm:size-12",
-            isRecording && "animate-pulse ring-2 ring-cyan/50",
+            "grid size-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-[0_4px_12px_rgb(16_185_129/0.35)] sm:size-12",
+            isRecording && "animate-pulse ring-2 ring-emerald-400/50",
           )}
         >
           <Mic size={20} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { Search, Cpu, MapPin, Star, ArrowRight } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { ButtonLink } from "@/components/buttons/ButtonLink";
@@ -34,7 +34,7 @@ export function HowItWorksModal({ open }: { open: boolean }) {
   const closeOverlay = useAppStore((s) => s.closeOverlay);
 
   return (
-    <Modal open={open} onClose={closeOverlay} title="How HOMIGO works" size="lg">
+    <Modal open={open} onClose={closeOverlay} title="How HOMEEIGO works" size="lg">
       <p className="mb-6 text-sm text-muted">
         Book premium home services in under 60 seconds — smart, fast, and
         reliable.

@@ -7,7 +7,7 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
 } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { m as motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Search, Loader2, CheckCircle2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { shake } from "@/lib/animations";

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { Star } from "lucide-react";
 import { ServicesSectionHeader } from "@/components/services-page/ServicesSectionHeader";
 import { useServicesNavigation } from "@/hooks/use-services-navigation";
@@ -65,6 +65,7 @@ export function ServicesReviewsSection() {
                 </p>
                 <div
                   className="mt-1 flex gap-0.5"
+                  role="img"
                   aria-label={`${review.rating} stars`}
                 >
                   {Array.from({ length: 5 }).map((_, j) => (

@@ -11,17 +11,17 @@ export function AiDesktopToolbar() {
   return (
     <div
       className={cn(
-        "mb-4 hidden w-full min-w-0 shrink-0 items-center justify-between gap-4 rounded-2xl border border-white/60 p-4 dark:border-indigo-500/20 lg:flex",
+        "mb-4 hidden w-full min-w-0 shrink-0 items-center justify-between gap-4 rounded-2xl border border-emerald-400/15 p-4 lg:flex",
         "ai-glass-panel",
       )}
     >
       <div className="flex min-w-0 items-center gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-violet via-primary to-cyan text-white shadow-[0_4px_16px_rgb(37_99_235/0.35)]">
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 via-teal-500 to-emerald-600 text-white shadow-[0_4px_16px_rgb(16_185_129/0.35)]">
           <Sparkles size={18} />
         </span>
         <div className="min-w-0">
           <p className="font-display text-lg font-bold tracking-tight text-ink dark:text-slate-100">
-            HOMIGO AI
+            HOMEEIGO AI
           </p>
           <p className="text-sm text-slate dark:text-slate-400">
             Your Home. Your Intelligence. Perfect Together.
@@ -33,10 +33,10 @@ export function AiDesktopToolbar() {
         type="button"
         onClick={toggleVoiceModeWithFeedback}
         className={cn(
-          "inline-flex shrink-0 items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_14px_rgb(124_58_237/0.35)] transition hover:scale-[1.02]",
+          "inline-flex shrink-0 items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_14px_rgb(16_185_129/0.4)] transition hover:scale-[1.02]",
           voiceMode
-            ? "bg-ink ring-2 ring-violet/40"
-            : "bg-gradient-to-r from-violet to-pink",
+            ? "bg-ink ring-2 ring-emerald-500/40"
+            : "bg-gradient-to-r from-emerald-500 to-teal-500",
         )}
       >
         <Mic size={18} />

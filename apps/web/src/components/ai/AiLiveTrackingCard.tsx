@@ -3,8 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Bike, Home, MapPin, Navigation, Star } from "lucide-react";
-import { motion, useReducedMotion } from "framer-motion";
-import { DEMO_TRACKING, HOMIGO_RIDER_IMAGE } from "@/lib/demo-tracking-booking";
+import { m as motion, useReducedMotion } from "framer-motion";
+import { HOMIGO_RIDER_IMAGE } from "@/lib/demo-tracking-booking";
+import { useActiveTracking } from "@/hooks/use-active-tracking";
 import { AI_SECTION_IDS } from "@/lib/ai-page-actions";
 import { cn } from "@/lib/utils";
 
@@ -15,14 +16,19 @@ type AiLiveTrackingCardProps = {
 
 export function AiLiveTrackingCard({ embedded, className }: AiLiveTrackingCardProps) {
   const reduce = useReducedMotion();
+  const { activeBooking, tracking } = useActiveTracking();
+  const eta = tracking?.eta ?? 0;
+  const proName = activeBooking?.proName ?? "Assigned Pro";
+  const serviceTitle = activeBooking?.serviceTitle ?? "Service";
+  const rating = "4.8";
 
   return (
     <div
       id={AI_SECTION_IDS.liveTracking}
       className={cn(!embedded && "w-full min-w-0 scroll-mt-24", className)}
     >
-      {/* HOMIGO Rider — hero strip */}
-      <div className="relative mb-3 overflow-hidden rounded-xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 shadow-[0_12px_32px_-12px_rgb(37_99_235/0.35)] ring-1 ring-indigo-500/25 dark:ring-indigo-400/20">
+      {/* HOMEEIGO Rider — hero strip */}
+      <div className="relative mb-3 overflow-hidden rounded-xl bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 shadow-[0_12px_32px_-12px_rgb(16_185_129/0.4)] ring-1 ring-emerald-500/25 dark:ring-emerald-400/20">
         <div
           className="pointer-events-none absolute inset-0 opacity-40"
           style={{
@@ -37,7 +43,7 @@ export function AiLiveTrackingCard({ embedded, className }: AiLiveTrackingCardPr
           aria-hidden
         />
         <div
-          className="pointer-events-none absolute -bottom-6 -left-6 size-28 rounded-full bg-violet-500/25 blur-3xl"
+          className="pointer-events-none absolute -bottom-6 -left-6 size-28 rounded-full bg-teal-500/25 blur-3xl"
           aria-hidden
         />
 
@@ -53,13 +59,13 @@ export function AiLiveTrackingCard({ embedded, className }: AiLiveTrackingCardPr
               Live · On the way
             </span>
             <p className="mt-2 font-display text-sm font-bold tracking-tight text-white sm:text-base">
-              HOMIGO Rider
+              HOMEEIGO Rider
             </p>
             <p className="text-[11px] text-white/70">Heading to your home now</p>
           </div>
           <span className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-2 py-1 text-[10px] font-bold text-cyan-200 backdrop-blur-sm">
             <Bike size={12} />
-            {DEMO_TRACKING.etaMins} min
+              {eta} min
           </span>
         </div>
 
@@ -79,7 +85,7 @@ export function AiLiveTrackingCard({ embedded, className }: AiLiveTrackingCardPr
           >
             <Image
               src={HOMIGO_RIDER_IMAGE}
-              alt="HOMIGO delivery rider"
+              alt="HOMEEIGO delivery rider"
               width={260}
               height={200}
               className="h-full w-full object-contain object-bottom drop-shadow-[0_12px_28px_rgb(0_0_0/0.45)]"
@@ -97,14 +103,14 @@ export function AiLiveTrackingCard({ embedded, className }: AiLiveTrackingCardPr
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold text-ink dark:text-slate-100">
-            {DEMO_TRACKING.proName}
+            {proName}
           </p>
           <p className="truncate text-[11px] text-slate">
-            AC Technician · {DEMO_TRACKING.serviceTitle}
+            AC Technician · {serviceTitle}
           </p>
           <p className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
             <Star size={11} className="fill-amber-400 text-amber-400" />
-            {DEMO_TRACKING.proRating}
+            {rating}
             <span className="text-slate">· Assigned expert</span>
           </p>
         </div>
@@ -187,7 +193,7 @@ export function AiLiveTrackingCard({ embedded, className }: AiLiveTrackingCardPr
           <div className="flex items-center justify-between gap-2">
             <span className="flex min-w-0 items-center gap-1 text-[11px] font-semibold text-white">
               <Navigation size={12} className="shrink-0 text-cyan-300" />
-              <span className="truncate">Arriving in {DEMO_TRACKING.etaMins} mins</span>
+              <span className="truncate">Arriving in {eta} mins</span>
             </span>
             <Link
               href="/bookings"

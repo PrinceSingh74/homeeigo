@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { pageSection } from "@/lib/page-layout";
@@ -27,9 +27,9 @@ export function SearchBar() {
           whileHover={{ y: -2 }}
           whileTap={{ scale: 0.97 }}
           className={cn(
-            "flex h-16 items-center justify-center gap-2 rounded-2xl glass-card px-7",
+            "flex h-16 items-center justify-center gap-2 rounded-2xl ring-aurora card-sheen px-7",
             "text-base font-semibold text-primary sm:w-auto",
-            "transition-shadow hover:shadow-[0_16px_40px_-12px_rgb(15_23_42/0.25)]",
+            "shadow-e2 transition-shadow hover:shadow-[0_16px_40px_-12px_rgb(37_99_235/0.3)]",
             "outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
           )}
         >

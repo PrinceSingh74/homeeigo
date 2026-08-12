@@ -4,7 +4,9 @@ import { pageMax, pagePadX } from "@/lib/page-layout";
 export const walletBleedX = "w-full min-w-0 max-w-full overflow-x-clip";
 
 export const walletPageRoot = cn(
-  "wallet-page relative flex w-full max-w-[100vw] flex-col overflow-hidden bg-canvas",
+  // EXACT Services-page hero canvas in light mode; app canvas in dark.
+  "wallet-page relative flex w-full max-w-[100vw] flex-col overflow-hidden",
+  "bg-[linear-gradient(135deg,#ffffff_0%,#f0fdf4_35%,#ffffff_100%)] dark:bg-canvas",
   "min-h-[100dvh] max-h-[100dvh]",
   "lg:min-h-[calc(100dvh-var(--site-nav-offset,4rem))] lg:max-h-[calc(100dvh-var(--site-nav-offset,4rem))]",
 );

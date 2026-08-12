@@ -66,9 +66,11 @@ export type CustomerReview = {
   id: string;
   name: string;
   location: string;
+  serviceUsed?: string;
   rating: number;
   review: string;
   avatar: string;
+  verified?: boolean;
 };
 
 export const POPULAR_SEARCHES = [
@@ -87,7 +89,7 @@ export const HERO_TRUST_BADGES = [
 ] as const;
 
 export const FLOATING_SERVICES = [
-  { label: "Painting", icon: Paintbrush, color: "#7C3AED", delay: 0, serviceId: "cleaning" as const },
+  { label: "Painting", icon: Paintbrush, color: "#7C3AED", delay: 0, serviceId: "home-painting" as const },
   { label: "Electrician", icon: Zap, color: "#F59E0B", delay: 0.4, serviceId: "electrician" as const },
   { label: "AC Service", icon: AirVent, color: "#2563EB", delay: 0.8, serviceId: "ac-service" as const },
   { label: "Plumbing", icon: Droplets, color: "#06B6D4", delay: 1.2, serviceId: "plumbing" as const },
@@ -98,7 +100,7 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
     id: "cleaning",
     name: "Cleaning",
     count: 18,
-    serviceId: "cleaning",
+    serviceId: "deep-cleaning",
     icon: SprayCan,
     iconColor: "#7C3AED",
     iconBg: "#EDE9FE",
@@ -148,7 +150,7 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
     id: "salon",
     name: "Salon & Spa",
     count: 20,
-    serviceId: "salon",
+    serviceId: "salon-at-home",
     icon: Scissors,
     iconColor: "#9333EA",
     iconBg: "#F3E8FF",
@@ -158,7 +160,7 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
     id: "painting",
     name: "Painting",
     count: 20,
-    serviceId: "cleaning",
+    serviceId: "home-painting",
     icon: Paintbrush,
     iconColor: "#EA580C",
     iconBg: "#FFF7ED",
@@ -202,7 +204,7 @@ export const AI_RECOMMENDATIONS: AiRecommendation[] = [
     title: "Deep Cleaning Recommended",
     description: "It's been 45 days. Keep your home fresh and healthy.",
     badge: "Popular",
-    serviceId: "cleaning",
+    serviceId: "deep-cleaning",
     gradient: "from-orange-500/15 to-rose-500/10",
     icon: SprayCan,
   },
@@ -230,7 +232,7 @@ export const TRENDING_SERVICES: TrendingServiceItem[] = [
   {
     id: "t1",
     title: "Deep Home Cleaning",
-    provider: "HOMIGO Pro",
+    provider: "HOMEEIGO Pro",
     providerAvatar: U("photo-1573496359142-b8d87734a5a2", 96),
     rating: 4.8,
     reviews: 54,
@@ -238,7 +240,7 @@ export const TRENDING_SERVICES: TrendingServiceItem[] = [
     duration: "3.5 hrs",
     type: "Premium",
     image: U("photo-1581578731548-c64695cc6952"),
-    serviceId: "cleaning",
+    serviceId: "deep-cleaning",
   },
   {
     id: "t2",
@@ -339,33 +341,99 @@ export const TRUST_ITEMS: TrustItem[] = [
 export const CUSTOMER_REVIEWS: CustomerReview[] = [
   {
     id: "r1",
+    name: "Priya Sharma",
+    location: "Gurgaon",
+    serviceUsed: "Bathroom Cleaning",
+    rating: 5,
+    review:
+      "The professional arrived on time and left the bathroom spotless.",
+    avatar:
+      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&q=90&auto=format&fit=crop",
+    verified: true,
+  },
+  {
+    id: "r2",
     name: "Rahul Verma",
-    location: "Gurugram",
+    location: "Bangalore",
+    serviceUsed: "Kitchen Cleaning",
     rating: 5,
     review:
       "Amazing service! The cleaner was on time and did a fantastic job. My home feels brand new!",
     avatar:
       "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=90&auto=format&fit=crop",
-  },
-  {
-    id: "r2",
-    name: "Priya Mehta",
-    location: "Gurugram",
-    rating: 5,
-    review:
-      "Booked AC service and the technician was very professional and quick. Highly recommended!",
-    avatar:
-      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&q=90&auto=format&fit=crop",
+    verified: true,
   },
   {
     id: "r3",
-    name: "Vikram Singh",
-    location: "Gurugram",
+    name: "Ananya Patel",
+    location: "Mumbai",
+    serviceUsed: "Sofa Cleaning",
     rating: 5,
     review:
-      "HOMIGO is the go-to app for all home services. Super reliable and easy to use.",
+      "Our sofa looks brand new. Transparent pricing with no surprises at checkout.",
+    avatar:
+      "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&q=90&auto=format&fit=crop",
+    verified: true,
+  },
+  {
+    id: "r4",
+    name: "Vikram Singh",
+    location: "Delhi",
+    serviceUsed: "Laundry",
+    rating: 5,
+    review:
+      "HOMEEIGO is the go-to app for all home services. Super reliable and easy to use.",
     avatar:
       "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&q=90&auto=format&fit=crop",
+    verified: true,
+  },
+  {
+    id: "r5",
+    name: "Meera Iyer",
+    location: "Hyderabad",
+    serviceUsed: "Balcony Cleaning",
+    rating: 5,
+    review:
+      "Quick booking, verified professional, and the balcony was sparkling clean within 30 minutes.",
+    avatar:
+      "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400&q=90&auto=format&fit=crop",
+    verified: true,
+  },
+  {
+    id: "r6",
+    name: "Arjun Kapoor",
+    location: "Pune",
+    serviceUsed: "Wardrobe Cleaning",
+    rating: 5,
+    review:
+      "Premium care at a fair price. The team was courteous and left everything organized.",
+    avatar:
+      "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400&q=90&auto=format&fit=crop",
+    verified: true,
+  },
+  {
+    id: "r7",
+    name: "Sneha Reddy",
+    location: "Noida",
+    serviceUsed: "Deep Cleaning",
+    rating: 5,
+    review:
+      "Booked on a Sunday morning and they showed up exactly on time. Highly recommended!",
+    avatar:
+      "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&q=90&auto=format&fit=crop",
+    verified: true,
+  },
+  {
+    id: "r8",
+    name: "Karan Malhotra",
+    location: "Gurgaon",
+    serviceUsed: "Express Cleaning",
+    rating: 5,
+    review:
+      "Needed a last-minute pre-party clean. HOMEEIGO delivered beyond expectations.",
+    avatar:
+      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&q=90&auto=format&fit=crop",
+    verified: true,
   },
 ];
 

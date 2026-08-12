@@ -32,7 +32,7 @@ export const STATUS_CONFIG: Record<BookingStatus, StatusConfig> = {
   completed: {
     label: "Completed",
     shortLabel: "Done",
-    description: "Service finished — thank you for choosing HOMIGO",
+    description: "Service finished — thank you for choosing HOMEEIGO",
     gradient: "linear-gradient(135deg, #059669 0%, #10B981 50%, #34D399 100%)",
     accent: "#10B981",
     bg: "rgb(16 185 129 / 0.14)",

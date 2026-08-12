@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import { Sparkles, ArrowRight, Play, ShieldCheck, Star } from "lucide-react";
 import { ButtonLink } from "@/components/buttons/ButtonLink";
 import { Badge } from "@/components/Badge";
@@ -9,6 +9,7 @@ import { bookUrl } from "@/lib/booking-url";
 import { fadeUpShow } from "@/lib/animations";
 import { heroTitle, pageMax, pagePadX, sectionSubtitle } from "@/lib/page-layout";
 import { useAppStore } from "@/stores/app-store";
+import { useStatsOverview } from "@/hooks/use-core-data";
 import { cn } from "@/lib/utils";
 
 const PARTICLES = [
@@ -24,6 +25,8 @@ const PARTICLES = [
 export function HeroSection() {
   const reduce = useReducedMotion();
   const openOverlay = useAppStore((s) => s.openOverlay);
+  const { data: stats } = useStatsOverview();
+  const nf = (n: number) => n.toLocaleString("en-IN");
 
   return (
     <section
@@ -117,8 +120,18 @@ export function HeroSection() {
             </span>
             <span className="inline-flex items-center gap-2">
               <Star size={18} className="text-gold" />
-              4.9 average rating
+              {stats?.averageRating != null
+                ? `${stats.averageRating} average rating`
+                : stats
+                  ? `${nf(stats.activeProviders)} verified pros`
+                  : "Top-rated pros"}
             </span>
+            {stats && stats.completedBookings > 0 ? (
+              <span className="inline-flex items-center gap-2">
+                <Sparkles size={18} className="text-primary" />
+                {nf(stats.completedBookings)} jobs completed
+              </span>
+            ) : null}
           </motion.div>
         </div>
 
@@ -130,7 +143,7 @@ export function HeroSection() {
         >
           <Image
             src="/hero-villa.webp"
-            alt="HOMIGO AI-connected smart home"
+            alt="HOMEEIGO AI-connected smart home"
             width={768}
             height={512}
             sizes="(max-width: 1023px) 90vw, 0px"
@@ -153,7 +166,7 @@ export function HeroSection() {
             >
               <Image
                 src="/hero-villa.webp"
-                alt="HOMIGO AI-connected smart home"
+                alt="HOMEEIGO AI-connected smart home"
                 width={1536}
                 height={1024}
                 sizes="(min-width: 1280px) 768px, (min-width: 1024px) 640px, 0px"

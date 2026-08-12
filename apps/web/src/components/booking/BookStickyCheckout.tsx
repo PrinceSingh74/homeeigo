@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowRight, Lock } from "lucide-react";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { pageMax, pagePadX } from "@/lib/page-layout";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +25,7 @@ export function BookStickyCheckout({
             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
               Total payable
             </p>
-            <p className="font-display text-xl font-bold text-aurora sm:text-2xl">
+            <p className="font-display text-xl font-bold bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent sm:text-2xl">
               ₹{total}
             </p>
           </div>
@@ -34,7 +34,7 @@ export function BookStickyCheckout({
             disabled={confirming}
             onClick={onConfirm}
             whileTap={{ scale: confirming ? 1 : 0.98 }}
-            className="inline-flex h-12 min-w-[9.5rem] shrink-0 items-center justify-center gap-2 rounded-xl bg-premium px-4 text-sm font-bold text-white shadow-[0_12px_32px_-8px_rgb(124_58_237/0.55)] disabled:opacity-70 sm:h-14 sm:min-w-[11rem] sm:rounded-2xl sm:px-5"
+            className="inline-flex h-12 min-w-[9.5rem] shrink-0 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] px-4 text-sm font-bold text-white shadow-[0_12px_32px_-8px_rgb(16_185_129/0.55)] disabled:opacity-70 sm:h-14 sm:min-w-[11rem] sm:rounded-2xl sm:px-5"
           >
             <Lock size={16} className="shrink-0" />
             <span className="truncate">

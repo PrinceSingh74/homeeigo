@@ -1,9 +1,46 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { AuthProvider } from "@/providers/AuthProvider";
+import { QueryProvider } from "@/providers/QueryProvider";
+import { MotionProvider } from "./MotionProvider";
 import { useAppStore } from "@/stores/app-store";
 import { cn } from "@/lib/utils";
+import { getPendingPaymentBookingId } from "@/hooks/use-booking-payment";
+import { CookieConsentBanner } from "@/components/legal/CookieConsentBanner";
+
+const RealtimeBridge = dynamic(
+  () => import("@/components/realtime/RealtimeBridge").then((m) => ({ default: m.RealtimeBridge })),
+  { ssr: false },
+);
+const ActiveBookingChannel = dynamic(
+  () =>
+    import("@/components/realtime/ActiveBookingChannel").then((m) => ({
+      default: m.ActiveBookingChannel,
+    })),
+  { ssr: false },
+);
+
+function DeferredRealtime() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const run = () => setReady(true);
+    if (typeof requestIdleCallback === "function") {
+      const id = requestIdleCallback(run, { timeout: 3000 });
+      return () => cancelIdleCallback(id);
+    }
+    const t = window.setTimeout(run, 1500);
+    return () => window.clearTimeout(t);
+  }, []);
+  if (!ready) return null;
+  return (
+    <>
+      <RealtimeBridge />
+      <ActiveBookingChannel />
+    </>
+  );
+}
 
 const LocationPicker = dynamic(
   () =>
@@ -86,45 +123,55 @@ const ServicesOverlays = dynamic(
 export function AppProviders({ children }: { children: React.ReactNode }) {
   const overlay = useAppStore((s) => s.overlay);
   const toasts = useAppStore((s) => s.toasts);
+  const showToast = useAppStore((s) => s.showToast);
+  useEffect(() => {
+    const pending = getPendingPaymentBookingId();
+    if (pending) {
+      showToast("Pending payment found. Open booking details to retry payment.", "info");
+    }
+  }, [showToast]);
   return (
-    <>
-      {children}
-      <LocationPicker open={overlay === "location"} />
-      <NotificationsPanel open={overlay === "notifications"} />
-      <ProfileMenu open={overlay === "profile"} />
-      <AiAssistantSheet open={overlay === "ai"} />
-      <HowItWorksModal open={overlay === "how-it-works"} />
-      <QuickFiltersPanel open={overlay === "quick-filters"} />
-      <PremiumModal open={overlay === "premium"} />
-      <WalletModal open={overlay === "wallet"} />
-      <SupportModal open={overlay === "support"} />
-      <SettingsModal open={overlay === "settings"} />
-      <ServicesOverlays />
+    <QueryProvider>
+      <AuthProvider>
+        <MotionProvider>
+        {children}
+        {/* Mount ONLY the active overlay. Rendering all of them with
+            open={false} forced every dynamic() chunk to download+compile on
+            every page load (12 chunks) — measured as a top dev-nav cost. */}
+        {overlay === "location" && <LocationPicker open />}
+        {overlay === "notifications" && <NotificationsPanel open />}
+        {overlay === "profile" && <ProfileMenu open />}
+        {overlay === "ai" && <AiAssistantSheet open />}
+        {overlay === "how-it-works" && <HowItWorksModal open />}
+        {overlay === "quick-filters" && <QuickFiltersPanel open />}
+        {overlay === "premium" && <PremiumModal open />}
+        {overlay === "wallet" && <WalletModal open />}
+        {overlay === "support" && <SupportModal open />}
+        {overlay === "settings" && <SettingsModal open />}
+        <ServicesOverlays />
+        <DeferredRealtime />
+        <CookieConsentBanner />
 
-      <motion.div
-        aria-live="polite"
-        className="pointer-events-none fixed bottom-24 left-1/2 z-[110] flex w-full max-w-sm -translate-x-1/2 flex-col gap-2 px-4 lg:bottom-8"
-      >
-        <AnimatePresence mode="popLayout">
+        <div
+          aria-live="polite"
+          className="pointer-events-none fixed bottom-24 left-1/2 z-[110] flex w-full max-w-sm -translate-x-1/2 flex-col gap-2 px-4 lg:bottom-8"
+        >
           {toasts.map((t) => (
-            <motion.div
+            <div
               key={t.id}
-              layout
-              initial={{ opacity: 0, y: 16, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 8, scale: 0.96 }}
               className={cn(
-                "pointer-events-auto rounded-2xl px-5 py-3 text-sm font-semibold shadow-e5",
+                "pointer-events-auto animate-[fadeInUp_0.25s_ease-out] rounded-2xl px-5 py-3 text-sm font-semibold shadow-e5",
                 t.type === "success" && "bg-success text-white",
                 t.type === "error" && "bg-error text-white",
                 (!t.type || t.type === "info") && "bg-ink text-white",
               )}
             >
               {t.message}
-            </motion.div>
+            </div>
           ))}
-        </AnimatePresence>
-      </motion.div>
-    </>
+        </div>
+        </MotionProvider>
+      </AuthProvider>
+    </QueryProvider>
   );
 }

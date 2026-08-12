@@ -14,7 +14,7 @@ export default function Error({
   const chunk = isChunkLoadError(error);
 
   useEffect(() => {
-    console.error("[HOMIGO]", error);
+    console.error("[HOMEEIGO]", error);
   }, [error]);
 
   return (

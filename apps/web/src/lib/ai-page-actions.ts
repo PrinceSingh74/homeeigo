@@ -41,7 +41,7 @@ export const AI_INSIGHT_ACTIONS: Record<
   },
   cleaning: {
     type: "book",
-    serviceId: "cleaning",
+    serviceId: "deep-cleaning",
     toast: "Opening deep cleaning booking…",
   },
 };
@@ -50,7 +50,7 @@ export const AI_PREDICTION_ACTIONS: Record<
   string,
   { serviceId: string; toast: string }
 > = {
-  deep: { serviceId: "cleaning", toast: "Deep cleaning slot suggested for you" },
+  deep: { serviceId: "deep-cleaning", toast: "Deep cleaning slot suggested for you" },
   filter: { serviceId: "plumbing", toast: "Water filter service recommended" },
   ac: { serviceId: "ac-service", toast: "AC service due — book now" },
   pest: { serviceId: "pest-control", toast: "Pest control inspection suggested" },

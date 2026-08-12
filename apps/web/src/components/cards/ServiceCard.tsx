@@ -1,11 +1,13 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import { ServiceImage } from "@/components/ui/ServiceImage";
 import { cn } from "@/lib/utils";
 import { bookUrl } from "@/lib/booking-url";
+import { PremiumLockBadge } from "@/components/membership/PremiumLockBadge";
+import { PremiumRibbon } from "@/components/membership/PremiumRibbon";
 
 export interface ServiceCardProps {
   serviceId: string;
@@ -15,6 +17,7 @@ export interface ServiceCardProps {
   price: string;
   color: string;
   featured?: boolean;
+  premiumOnly?: boolean;
   index?: number;
 }
 
@@ -26,6 +29,7 @@ export function ServiceCard({
   price,
   color,
   featured = false,
+  premiumOnly = false,
   index = 0,
 }: ServiceCardProps) {
   const router = useRouter();
@@ -61,9 +65,15 @@ export function ServiceCard({
         style={{ background: featured ? "#a855f7" : color }}
       />
 
+      {premiumOnly && <PremiumRibbon />}
       {featured && (
         <span className="absolute right-4 top-4 z-10 rounded-full bg-white/95 px-3 py-1 text-[11px] font-bold text-violet shadow-e2 backdrop-blur">
           Featured
+        </span>
+      )}
+      {premiumOnly && (
+        <span className="absolute left-4 top-4 z-10">
+          <PremiumLockBadge premiumOnly showUpgradeCta={false} />
         </span>
       )}
 

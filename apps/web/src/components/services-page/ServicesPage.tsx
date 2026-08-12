@@ -1,12 +1,6 @@
 import { ServicesHero } from "@/components/services-page/ServicesHero";
-import { ServicesCategoriesSection } from "@/components/services-page/ServicesCategoriesSection";
-import { ServicesAiSection } from "@/components/services-page/ServicesAiSection";
-import { ServicesTrendingSection } from "@/components/services-page/ServicesTrendingSection";
-import { ServicesTrustSection } from "@/components/services-page/ServicesTrustSection";
-import { ServicesReviewsSection } from "@/components/services-page/ServicesReviewsSection";
-import { ServicesCtaSection } from "@/components/services-page/ServicesCtaSection";
-import { ServicesPageBackdrop } from "@/components/services-page/ServicesPageBackdrop";
-import { ServicesPremiumStrip } from "@/components/services-page/ServicesPremiumStrip";
+import { ServicesBelowFold } from "@/components/services-page/ServicesBelowFold";
+import { SectionErrorBoundary } from "@/components/errors/SectionErrorBoundary";
 import {
   servicesPadX,
   servicesPageRoot,
@@ -19,33 +13,29 @@ export function ServicesPage() {
     <main
       className={cn(
         servicesPageRoot,
-        "relative overflow-x-hidden bg-transparent",
+        "relative overflow-x-hidden bg-white",
         "pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-20",
       )}
     >
-        <ServicesPageBackdrop />
+      <SectionErrorBoundary fallbackTitle="Unable to render hero section.">
         <ServicesHero />
-        <ServicesPremiumStrip />
-        <ServicesCategoriesSection />
-        <ServicesAiSection />
-        <ServicesTrendingSection />
-        <ServicesTrustSection />
-        <ServicesReviewsSection />
-        <ServicesCtaSection />
+      </SectionErrorBoundary>
 
-        <footer
-          className={cn(
-            servicesShell,
-            servicesPadX,
-            "border-t border-line/60 py-10 text-center sm:py-12",
-          )}
-        >
-          <p className="font-display text-base font-bold text-aurora sm:text-lg">
-            HOMIGO
-          </p>
-          <p className="mt-2 text-xs text-muted sm:text-sm">
-            Premium home services · Made with 💜 in India
-          </p>
+      <ServicesBelowFold />
+
+      <footer
+        className={cn(
+          servicesShell,
+          servicesPadX,
+          "border-t border-gray-200 bg-white py-10 text-center sm:py-12",
+        )}
+      >
+        <p className="font-display text-base font-bold text-[#1B5E4F] sm:text-lg">
+          HOMEEIGO
+        </p>
+        <p className="mt-2 text-xs text-gray-500 sm:text-sm">
+          Premium home services · Made with care in India
+        </p>
       </footer>
     </main>
   );

@@ -13,7 +13,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { motion, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import { AI_HOME_STATUS, type AiHomeStatusItem, type AiStatusTone } from "@/lib/ai-dashboard";
 import { useAiPageActions } from "@/hooks/use-ai-page-actions";
 import { AI_SECTION_IDS } from "@/lib/ai-page-actions";
@@ -43,42 +43,39 @@ const STATUS_SUMMARY = [
     id: "health",
     label: "Overall health",
     value: "95%",
-    tone: "text-primary dark:text-blue-300",
+    tone: "text-emerald-300",
   },
   {
     id: "systems",
     label: "Systems online",
     value: "6/6",
-    tone: "text-emerald-600 dark:text-emerald-300",
+    tone: "text-emerald-300",
   },
   { id: "alerts", label: "Active alerts", value: "0", tone: "text-slate dark:text-slate-300" },
 ] as const;
 
 const TONE_CHIP: Record<AiStatusTone, string> = {
-  success:
-    "bg-emerald-50 text-emerald-700 ring-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30",
-  info: "bg-[#EFF6FF] text-primary ring-blue-200/80 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-500/30",
-  warning:
-    "bg-amber-50 text-amber-700 ring-amber-200/80 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30",
-  cyan: "bg-cyan-50 text-cyan-700 ring-cyan-200/80 dark:bg-cyan-500/15 dark:text-cyan-300 dark:ring-cyan-500/30",
-  violet:
-    "bg-violet-50 text-violet-700 ring-violet-200/80 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30",
+  success: "bg-emerald-400/15 text-emerald-300 ring-emerald-400/30",
+  info: "bg-emerald-400/15 text-emerald-300 ring-emerald-400/30",
+  warning: "bg-amber-400/15 text-amber-300 ring-amber-400/30",
+  cyan: "bg-teal-400/15 text-teal-300 ring-teal-400/30",
+  violet: "bg-teal-400/15 text-teal-300 ring-teal-400/30",
 };
 
 const TONE_BAR: Record<AiStatusTone, string> = {
   success: "from-emerald-400 to-teal-500",
-  info: "from-primary to-blue-500",
+  info: "from-emerald-500 to-teal-500",
   warning: "from-amber-400 to-orange-500",
-  cyan: "from-cyan-400 to-teal-500",
-  violet: "from-violet to-pink",
+  cyan: "from-teal-400 to-teal-600",
+  violet: "from-teal-500 to-emerald-500",
 };
 
 const TONE_RING: Record<AiStatusTone, string> = {
   success: "#10b981",
-  info: "#2563eb",
+  info: "#34d399",
   warning: "#f59e0b",
-  cyan: "#06b6d4",
-  violet: "#7c3aed",
+  cyan: "#14b8a6",
+  violet: "#2dd4bf",
 };
 
 /** Reserved ring column keeps value row aligned on every card */
@@ -86,7 +83,7 @@ const RING_SLOT = "size-9 shrink-0 sm:size-10";
 
 function LiveBadge() {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-400/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-300 ring-1 ring-emerald-400/30">
       <span className="relative flex size-1.5">
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
         <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
@@ -118,7 +115,7 @@ function StatusRing({
           r={r}
           fill="none"
           stroke="currentColor"
-          className="text-slate-200 dark:text-slate-700"
+          className="text-emerald-900/70"
           strokeWidth="2.5"
         />
         <motion.circle
@@ -242,7 +239,7 @@ function StatusCard({
                   trendUp
                     ? "text-emerald-600 dark:text-emerald-300"
                     : card.tone === "violet"
-                      ? "text-violet dark:text-violet-300"
+                      ? "text-teal-600 dark:text-teal-300"
                       : "text-slate dark:text-slate-400",
                 )}
               >
@@ -296,7 +293,7 @@ export function AiHomeStatusSection() {
       <div className={aiStatusShell}>
         <AiSectionHeader
           title="Home Status Overview"
-          subtitle="Real-time health across cleaning, climate, energy & safety — powered by HOMIGO AI."
+          subtitle="Real-time health across cleaning, climate, energy & safety — powered by HOMEEIGO AI."
           meta="Updated just now"
           badge={<LiveBadge />}
         />
@@ -309,12 +306,12 @@ export function AiHomeStatusSection() {
               onClick={() => onSummaryStatClick(item.id)}
               className={cn(
                 aiStatusSummaryCell,
-                "cursor-pointer text-left transition hover:border-primary/20 hover:shadow-[0_4px_12px_rgb(37_99_235/0.08)] dark:hover:border-indigo-400/25 dark:hover:shadow-[0_4px_16px_rgb(99_102_241/0.15)]",
+                "cursor-pointer text-left transition hover:border-emerald-400/35 hover:shadow-[0_4px_16px_rgb(16_185_129/0.2)]",
               )}
             >
               <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-slate">
-                {item.id === "health" && <Home size={12} className="text-primary" />}
-                {item.id === "systems" && <Activity size={12} className="text-emerald-500" />}
+                {item.id === "health" && <Home size={12} className="text-emerald-400" />}
+                {item.id === "systems" && <Activity size={12} className="text-emerald-400" />}
                 {item.id === "alerts" && <Shield size={12} className="text-slate" />}
                 {item.label}
               </span>

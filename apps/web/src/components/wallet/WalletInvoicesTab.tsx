@@ -1,12 +1,39 @@
 "use client";
 
 import { Download } from "lucide-react";
-import { WALLET_INVOICES } from "@/lib/wallet-dashboard";
+import { useWalletDerived } from "@/hooks/use-derived-selectors";
 import { useAppStore } from "@/stores/app-store";
+import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
+import { resolveApiBase } from "@/lib/api-base";
 
 export function WalletInvoicesTab() {
   const showToast = useAppStore((s) => s.showToast);
+  const { invoices } = useWalletDerived();
+  const hasInvoices = invoices.length > 0;
+
+  // Open the backend-generated invoice (auth-gated) in a new tab → browser
+  // "Save as PDF". Only completed (paid) payments have an invoice.
+  const downloadInvoice = async (inv: { id: string; status: string }) => {
+    if (inv.status !== "paid") {
+      showToast("Invoice is available once payment is completed", "info");
+      return;
+    }
+    try {
+      const token = useAuthStore.getState().accessToken;
+      const apiBase = resolveApiBase().replace(/\/$/, "");
+      const res = await fetch(`${apiBase}/api/payments/${inv.id}/invoice`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new Error("not available");
+      const html = await res.text();
+      const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+      window.open(url, "_blank", "noopener");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      showToast("Could not open invoice. Please try again.", "error");
+    }
+  };
 
   return (
     <div className="wallet-panel w-full min-w-0 overflow-hidden">
@@ -16,8 +43,13 @@ export function WalletInvoicesTab() {
         <span>Date</span>
         <span className="text-right">Action</span>
       </div>
+      {!hasInvoices ? (
+        <div className="px-6 py-8 text-center text-sm text-muted">
+          No invoices yet. Completed payments will appear here.
+        </div>
+      ) : (
       <ul>
-        {WALLET_INVOICES.map((inv) => (
+        {invoices.map((inv) => (
           <li
             key={inv.id}
             className="border-b border-line px-3 py-3.5 last:border-0 sm:px-6 sm:py-4 lg:grid lg:grid-cols-[1fr_120px_140px_100px] lg:items-center"
@@ -72,9 +104,9 @@ export function WalletInvoicesTab() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => showToast(`Downloading ${inv.id}…`, "info")}
-                    className="grid size-10 place-items-center rounded-lg border border-line text-primary transition hover:bg-primary/5 sm:size-9"
-                    aria-label={`Download ${inv.id}`}
+                    onClick={() => void downloadInvoice(inv)}
+                    className="grid size-10 place-items-center rounded-lg border border-line text-emerald-600 transition hover:bg-emerald-600/5 sm:size-9"
+                    aria-label={`Download invoice ${inv.id}`}
                   >
                     <Download size={16} />
                   </button>
@@ -84,6 +116,7 @@ export function WalletInvoicesTab() {
           </li>
         ))}
       </ul>
+      )}
     </div>
   );
 }

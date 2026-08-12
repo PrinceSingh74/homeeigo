@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { Shield } from "lucide-react";
 import { ServicesSectionHeader } from "@/components/services-page/ServicesSectionHeader";
 import { useServicesNavigation } from "@/hooks/use-services-navigation";
@@ -39,7 +39,7 @@ export function ServicesTrustSection() {
   return (
     <section className={servicesSection()}>
       <ServicesSectionHeader
-        title="Why Choose HOMIGO"
+        title="Why Choose HOMEEIGO"
         subtitle="Built for trust — every booking is secure, verified, and backed by our promise."
         onViewAll={nav.openHowItWorks}
         linkLabel="Learn More"

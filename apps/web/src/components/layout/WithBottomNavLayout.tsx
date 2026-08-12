@@ -1,9 +1,27 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import { Navbar, NAVBAR_OFFSET } from "@/components/Navbar";
-import { BottomNavShell } from "@/components/layout/BottomNavShell";
+import { NAVBAR_OFFSET } from "@/components/navbar-constants";
 import { cn } from "@/lib/utils";
+
+const Navbar = dynamic(
+  () => import("@/components/Navbar").then((m) => ({ default: m.Navbar })),
+  {
+    ssr: false,
+    loading: () => (
+      <header
+        className="fixed inset-x-0 top-0 z-50 h-14 border-b border-line/40 bg-canvas/80 backdrop-blur-md"
+        aria-hidden
+      />
+    ),
+  },
+);
+
+const BottomNav = dynamic(
+  () => import("@/components/BottomNav").then((m) => ({ default: m.BottomNav })),
+  { ssr: false },
+);
 
 function isImmersiveRoute(pathname: string) {
   return (
@@ -39,7 +57,8 @@ export function WithBottomNavLayout({
         )}
         style={{ ["--navbar-offset" as string]: NAVBAR_OFFSET }}
       >
-        <BottomNavShell>{children}</BottomNavShell>
+        {children}
+        <BottomNav />
       </div>
     </>
   );
