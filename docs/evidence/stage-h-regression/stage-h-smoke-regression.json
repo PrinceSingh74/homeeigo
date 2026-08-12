@@ -1,0 +1,26 @@
+{
+  "STEP_H_RUN_ID": "stageH-20260806182900",
+  "smokeRunId": "stageG-smoke-20260807000015",
+  "executedAtUtc": "2026-08-06T18:30:49Z",
+  "harness": "deploy/scripts/stage-g-smoke-test.ps1",
+  "bookingsAttempted": 2,
+  "bookingsSucceeded": 2,
+  "executions": [
+    {
+      "seq": 1,
+      "name": "homigo-stage-g-booking-smoke-2dmzn",
+      "completionTime": "2026-08-06T18:30:49.740020Z",
+      "succeededCount": 1,
+      "result": "PASS"
+    },
+    {
+      "seq": 2,
+      "name": "homigo-stage-g-booking-smoke-5csnp",
+      "completionTime": "2026-08-06T18:31:33.351609Z",
+      "succeededCount": 1,
+      "result": "PASS"
+    }
+  ],
+  "overallResult": "SMOKE_TEST_PASS",
+  "regressionNote": "Live booking lifecycle replay against unchanged RC c31f154 revision 00029-pbn"
+}

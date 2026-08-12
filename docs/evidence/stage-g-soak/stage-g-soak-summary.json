@@ -1,0 +1,30 @@
+{
+    "PAYMENT_SUCCEEDED":  true,
+    "PAYMENT_EXECUTED":  true,
+    "BOOKINGS_ATTEMPTED":  9,
+    "STAGE_G_RESULT":  "PASS",
+    "LOST_EVENTS":  0,
+    "PRODUCTION_TOUCHED":  "NO",
+    "OUTBOX_FINAL":  0,
+    "BOOKINGS_SUCCEEDED":  9,
+    "DLQ_FINAL":  0,
+    "PII_SCAN":  "PASS",
+    "gates":  {
+                  "LOST_EVENTS":  true,
+                  "OUTBOX":  true,
+                  "MEMORY":  true,
+                  "STRANDED_EVENTS":  true,
+                  "IDENTITY":  true,
+                  "BOOKINGS":  true,
+                  "DLQ":  true,
+                  "SOAK_DURATION":  true,
+                  "PAYMENTS":  true
+              },
+    "SAFE_TO_PROCEED_BEYOND_STAGING":  "YES",
+    "STEP_G_RUN_ID":  "stageG-20260806215554",
+    "MEMORY_GROWTH_PCT":  2.5,
+    "STRANDED_EVENTS":  0,
+    "SOAK_DURATION_MINUTES":  62.3,
+    "MEMORY_TREND":  "STABLE",
+    "SECRET_SCAN":  "PASS"
+}

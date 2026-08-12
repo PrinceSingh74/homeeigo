@@ -1,0 +1,775 @@
+{
+  "startedAt": "2026-06-26T17:44:38.096Z",
+  "phases": {
+    "1": [
+      {
+        "phase": 1,
+        "name": "100 consecutive launches",
+        "status": "PASS",
+        "evidence": {
+          "launches": 100,
+          "successes": 100,
+          "successRate": "100.0%",
+          "avgStartupMs": 250.12,
+          "worstStartupMs": 25008.86,
+          "timeoutCount": 1
+        },
+        "at": "2026-06-26T17:45:03.120Z"
+      }
+    ],
+    "2": [
+      {
+        "phase": 2,
+        "name": "kill + reopen recovery (4 injection points)",
+        "status": "PASS",
+        "evidence": [
+          {
+            "killAt": "securestore",
+            "recovered": true,
+            "finalStatus": "unauthenticated"
+          },
+          {
+            "killAt": "bootstrap",
+            "recovered": true,
+            "finalStatus": "unauthenticated"
+          },
+          {
+            "killAt": "refresh-token",
+            "recovered": true,
+            "finalStatus": "unauthenticated"
+          },
+          {
+            "killAt": "user-fetch",
+            "recovered": true,
+            "finalStatus": "unauthenticated"
+          }
+        ],
+        "at": "2026-06-26T17:45:03.211Z"
+      }
+    ],
+    "3": [
+      {
+        "phase": 3,
+        "name": "network chaos — no splash lock",
+        "status": "PASS",
+        "evidence": [
+          {
+            "scenario": "offline",
+            "splashHidden": true,
+            "splashHideMs": 77,
+            "authStatus": "unauthenticated",
+            "splashLocked": false
+          },
+          {
+            "scenario": "online",
+            "splashHidden": true,
+            "splashHideMs": 79,
+            "authStatus": "authenticated",
+            "splashLocked": false
+          },
+          {
+            "scenario": "slow-2g",
+            "splashHidden": true,
+            "splashHideMs": 219,
+            "authStatus": "unauthenticated",
+            "splashLocked": false
+          },
+          {
+            "scenario": "packet-loss",
+            "splashHidden": true,
+            "splashHideMs": 78,
+            "authStatus": "unauthenticated",
+            "splashLocked": false
+          },
+          {
+            "scenario": "high-latency",
+            "splashHidden": true,
+            "splashHideMs": 125,
+            "authStatus": "unauthenticated",
+            "splashLocked": false
+          }
+        ],
+        "at": "2026-06-26T17:45:07.295Z"
+      }
+    ],
+    "4": [
+      {
+        "phase": 4,
+        "name": "backend failures — UI still reached",
+        "status": "PASS",
+        "evidence": [
+          {
+            "httpStatus": 500,
+            "reachesUI": true,
+            "authStatus": "unauthenticated",
+            "splashHidden": true
+          },
+          {
+            "httpStatus": 401,
+            "reachesUI": true,
+            "authStatus": "unauthenticated",
+            "splashHidden": true
+          },
+          {
+            "httpStatus": 403,
+            "reachesUI": true,
+            "authStatus": "unauthenticated",
+            "splashHidden": true
+          },
+          {
+            "httpStatus": 404,
+            "reachesUI": true,
+            "authStatus": "unauthenticated",
+            "splashHidden": true
+          },
+          {
+            "httpStatus": 429,
+            "reachesUI": true,
+            "authStatus": "unauthenticated",
+            "splashHidden": true
+          },
+          {
+            "httpStatus": 503,
+            "reachesUI": true,
+            "authStatus": "unauthenticated",
+            "splashHidden": true
+          },
+          {
+            "httpStatus": "timeout",
+            "reachesUI": true,
+            "authStatus": "authenticated"
+          },
+          {
+            "httpStatus": "live-dead-port",
+            "deadMs": 38,
+            "error": "fetch failed"
+          }
+        ],
+        "at": "2026-06-26T17:45:28.317Z"
+      }
+    ],
+    "5": [
+      {
+        "phase": 5,
+        "name": "SecureStore failures — recovery",
+        "status": "PASS",
+        "evidence": [
+          {
+            "case": "throw-exception",
+            "recovered": true,
+            "status": "unauthenticated"
+          },
+          {
+            "case": "return-null",
+            "recovered": true,
+            "status": "unauthenticated"
+          },
+          {
+            "case": "corrupt-value",
+            "recovered": true,
+            "status": "unauthenticated"
+          },
+          {
+            "case": "empty-string",
+            "recovered": true,
+            "status": "unauthenticated"
+          },
+          {
+            "case": "oversized-value",
+            "recovered": true,
+            "status": "unauthenticated"
+          }
+        ],
+        "at": "2026-06-26T17:45:28.319Z"
+      }
+    ],
+    "6": [
+      {
+        "phase": 6,
+        "name": "AsyncStorage corruption — migration safe",
+        "status": "PASS",
+        "evidence": [
+          {
+            "case": "invalid-json",
+            "migrated": false,
+            "status": "unauthenticated",
+            "ok": true
+          },
+          {
+            "case": "partial-blob",
+            "migrated": false,
+            "status": "unauthenticated",
+            "ok": true
+          },
+          {
+            "case": "oversized-blob",
+            "migrated": true,
+            "status": "unauthenticated",
+            "ok": true
+          },
+          {
+            "case": "null",
+            "migrated": false,
+            "status": "unauthenticated",
+            "ok": true
+          },
+          {
+            "case": "empty",
+            "migrated": false,
+            "status": "unauthenticated",
+            "ok": true
+          },
+          {
+            "case": "empty-object",
+            "migrated": false,
+            "status": "unauthenticated",
+            "ok": true
+          }
+        ],
+        "at": "2026-06-26T17:45:28.321Z"
+      }
+    ],
+    "7": [
+      {
+        "phase": 7,
+        "name": "async flame timeline — no pending steps",
+        "status": "PASS",
+        "evidence": {
+          "totalAsyncSteps": 19,
+          "exceeding500": 5,
+          "exceeding1000": 5,
+          "exceeding3000": 0,
+          "pendingSteps": 0,
+          "slowest": [
+            "slow-hydration:hydration=2500ms",
+            "slow-securestore:bootstrap=2007ms",
+            "slow-securestore:securestore=2007ms",
+            "slow-refresh:bootstrap=1511ms",
+            "slow-fonts:fonts=1200ms"
+          ],
+          "flameTimeline": [
+            "2500ms  slow-hydration:hydration [resolved]",
+            "2007ms  slow-securestore:bootstrap [resolved]",
+            "2007ms  slow-securestore:securestore [resolved]",
+            "1511ms  slow-refresh:bootstrap [resolved]",
+            "1200ms  slow-fonts:fonts [resolved]",
+            "10ms  normal:hydration [resolved]",
+            "10ms  slow-securestore:hydration [resolved]",
+            "10ms  slow-refresh:hydration [resolved]",
+            "10ms  slow-fonts:hydration [resolved]",
+            "1ms  slow-fonts:bootstrap [resolved]",
+            "1ms  slow-fonts:securestore [resolved]",
+            "0ms  normal:fonts [resolved]",
+            "0ms  normal:bootstrap [resolved]",
+            "0ms  normal:securestore [resolved]",
+            "0ms  slow-securestore:fonts [resolved]",
+            "0ms  slow-refresh:fonts [resolved]",
+            "0ms  slow-hydration:fonts [resolved]",
+            "0ms  slow-hydration:bootstrap [resolved]",
+            "0ms  slow-hydration:securestore [resolved]"
+          ]
+        },
+        "at": "2026-06-26T17:45:35.753Z"
+      }
+    ],
+    "8": [
+      {
+        "phase": 8,
+        "name": "promise safety — finally/catch/in-flight",
+        "status": "PASS",
+        "evidence": {
+          "staticChecks": [
+            {
+              "file": "src\\stores\\auth-store.ts",
+              "hasTry": true,
+              "hasCatch": true,
+              "hasFinally": true,
+              "hasInFlight": true
+            },
+            {
+              "file": "src\\providers\\AuthProvider.tsx",
+              "bootstrapCatch": true
+            },
+            {
+              "file": "src\\lib\\startup-guards.ts",
+              "withStartupTimeoutFinally": true
+            },
+            {
+              "file": "src\\lib\\startup-trace.ts",
+              "traceAsyncRethrows": true
+            }
+          ],
+          "issues": [],
+          "pendingAsyncAtEnd": 0
+        },
+        "at": "2026-06-26T17:45:35.754Z"
+      }
+    ],
+    "9": [
+      {
+        "phase": 9,
+        "name": "100 launches — no startup memory/time growth",
+        "status": "PASS",
+        "evidence": {
+          "launches": 100,
+          "avgHeapDeltaFirst10": 9489,
+          "avgHeapDeltaLast10": 9121,
+          "heapDriftBytes": -368,
+          "avgTimeFirst10Ms": 0.02,
+          "avgTimeLast10Ms": 0.02,
+          "timeDriftMs": 0,
+          "gcAvailable": false
+        },
+        "at": "2026-06-26T17:45:35.758Z"
+      }
+    ],
+    "10": [
+      {
+        "phase": 10,
+        "name": "splash lifecycle — preventAutoHide×1, single hide per launch",
+        "status": "PASS",
+        "evidence": {
+          "preventAutoHideAsync": {
+            "totalCalls": 1,
+            "sites": [
+              {
+                "file": "src\\providers\\AuthProvider.tsx",
+                "count": 1
+              }
+            ]
+          },
+          "hideAsync": {
+            "totalCallSites": 5,
+            "sites": [
+              {
+                "file": "src\\components\\app\\ErrorBoundary.tsx",
+                "count": 1
+              },
+              {
+                "file": "src\\lib\\startup-guards.ts",
+                "count": 2
+              },
+              {
+                "file": "src\\providers\\AuthProvider.tsx",
+                "count": 1
+              },
+              {
+                "file": "app\\_layout.tsx",
+                "count": 1
+              }
+            ]
+          },
+          "hasHideOnceGuard": true,
+          "designNote": "hideAsync has 5 call sites (primary+4 failsafes); hideSplashOnce ensures single SPLASH_HIDE marker per launch",
+          "runtimeSplashChecks": {
+            "launches": 100,
+            "duplicateHide": 0,
+            "missingHide": 0
+          }
+        },
+        "at": "2026-06-26T17:45:42.410Z"
+      }
+    ],
+    "11": [
+      {
+        "phase": 11,
+        "name": "rendering timing — splash within caps",
+        "status": "PASS",
+        "evidence": {
+          "samples": 20,
+          "navigationReadyAvgMs": 0,
+          "homeRenderAvgMs": 71.4,
+          "interactiveAvgMs": 71.4,
+          "splashHideAvgMs": 71.4,
+          "authReadyAvgMs": 46.65,
+          "fontsReadyAvgMs": 46.65,
+          "worstTotalMs": 95,
+          "splashHideMaxMs": 95,
+          "caps": {
+            "splashUiReadyMs": 1500,
+            "splashFailsafeMs": 3000,
+            "hydrationTimeoutMs": 3000
+          }
+        },
+        "at": "2026-06-26T17:45:43.842Z"
+      }
+    ],
+    "12": []
+  },
+  "failures": [],
+  "passes": [
+    {
+      "phase": 1,
+      "name": "100 consecutive launches",
+      "status": "PASS",
+      "evidence": {
+        "launches": 100,
+        "successes": 100,
+        "successRate": "100.0%",
+        "avgStartupMs": 250.12,
+        "worstStartupMs": 25008.86,
+        "timeoutCount": 1
+      },
+      "at": "2026-06-26T17:45:03.120Z"
+    },
+    {
+      "phase": 2,
+      "name": "kill + reopen recovery (4 injection points)",
+      "status": "PASS",
+      "evidence": [
+        {
+          "killAt": "securestore",
+          "recovered": true,
+          "finalStatus": "unauthenticated"
+        },
+        {
+          "killAt": "bootstrap",
+          "recovered": true,
+          "finalStatus": "unauthenticated"
+        },
+        {
+          "killAt": "refresh-token",
+          "recovered": true,
+          "finalStatus": "unauthenticated"
+        },
+        {
+          "killAt": "user-fetch",
+          "recovered": true,
+          "finalStatus": "unauthenticated"
+        }
+      ],
+      "at": "2026-06-26T17:45:03.211Z"
+    },
+    {
+      "phase": 3,
+      "name": "network chaos — no splash lock",
+      "status": "PASS",
+      "evidence": [
+        {
+          "scenario": "offline",
+          "splashHidden": true,
+          "splashHideMs": 77,
+          "authStatus": "unauthenticated",
+          "splashLocked": false
+        },
+        {
+          "scenario": "online",
+          "splashHidden": true,
+          "splashHideMs": 79,
+          "authStatus": "authenticated",
+          "splashLocked": false
+        },
+        {
+          "scenario": "slow-2g",
+          "splashHidden": true,
+          "splashHideMs": 219,
+          "authStatus": "unauthenticated",
+          "splashLocked": false
+        },
+        {
+          "scenario": "packet-loss",
+          "splashHidden": true,
+          "splashHideMs": 78,
+          "authStatus": "unauthenticated",
+          "splashLocked": false
+        },
+        {
+          "scenario": "high-latency",
+          "splashHidden": true,
+          "splashHideMs": 125,
+          "authStatus": "unauthenticated",
+          "splashLocked": false
+        }
+      ],
+      "at": "2026-06-26T17:45:07.295Z"
+    },
+    {
+      "phase": 4,
+      "name": "backend failures — UI still reached",
+      "status": "PASS",
+      "evidence": [
+        {
+          "httpStatus": 500,
+          "reachesUI": true,
+          "authStatus": "unauthenticated",
+          "splashHidden": true
+        },
+        {
+          "httpStatus": 401,
+          "reachesUI": true,
+          "authStatus": "unauthenticated",
+          "splashHidden": true
+        },
+        {
+          "httpStatus": 403,
+          "reachesUI": true,
+          "authStatus": "unauthenticated",
+          "splashHidden": true
+        },
+        {
+          "httpStatus": 404,
+          "reachesUI": true,
+          "authStatus": "unauthenticated",
+          "splashHidden": true
+        },
+        {
+          "httpStatus": 429,
+          "reachesUI": true,
+          "authStatus": "unauthenticated",
+          "splashHidden": true
+        },
+        {
+          "httpStatus": 503,
+          "reachesUI": true,
+          "authStatus": "unauthenticated",
+          "splashHidden": true
+        },
+        {
+          "httpStatus": "timeout",
+          "reachesUI": true,
+          "authStatus": "authenticated"
+        },
+        {
+          "httpStatus": "live-dead-port",
+          "deadMs": 38,
+          "error": "fetch failed"
+        }
+      ],
+      "at": "2026-06-26T17:45:28.317Z"
+    },
+    {
+      "phase": 5,
+      "name": "SecureStore failures — recovery",
+      "status": "PASS",
+      "evidence": [
+        {
+          "case": "throw-exception",
+          "recovered": true,
+          "status": "unauthenticated"
+        },
+        {
+          "case": "return-null",
+          "recovered": true,
+          "status": "unauthenticated"
+        },
+        {
+          "case": "corrupt-value",
+          "recovered": true,
+          "status": "unauthenticated"
+        },
+        {
+          "case": "empty-string",
+          "recovered": true,
+          "status": "unauthenticated"
+        },
+        {
+          "case": "oversized-value",
+          "recovered": true,
+          "status": "unauthenticated"
+        }
+      ],
+      "at": "2026-06-26T17:45:28.319Z"
+    },
+    {
+      "phase": 6,
+      "name": "AsyncStorage corruption — migration safe",
+      "status": "PASS",
+      "evidence": [
+        {
+          "case": "invalid-json",
+          "migrated": false,
+          "status": "unauthenticated",
+          "ok": true
+        },
+        {
+          "case": "partial-blob",
+          "migrated": false,
+          "status": "unauthenticated",
+          "ok": true
+        },
+        {
+          "case": "oversized-blob",
+          "migrated": true,
+          "status": "unauthenticated",
+          "ok": true
+        },
+        {
+          "case": "null",
+          "migrated": false,
+          "status": "unauthenticated",
+          "ok": true
+        },
+        {
+          "case": "empty",
+          "migrated": false,
+          "status": "unauthenticated",
+          "ok": true
+        },
+        {
+          "case": "empty-object",
+          "migrated": false,
+          "status": "unauthenticated",
+          "ok": true
+        }
+      ],
+      "at": "2026-06-26T17:45:28.321Z"
+    },
+    {
+      "phase": 7,
+      "name": "async flame timeline — no pending steps",
+      "status": "PASS",
+      "evidence": {
+        "totalAsyncSteps": 19,
+        "exceeding500": 5,
+        "exceeding1000": 5,
+        "exceeding3000": 0,
+        "pendingSteps": 0,
+        "slowest": [
+          "slow-hydration:hydration=2500ms",
+          "slow-securestore:bootstrap=2007ms",
+          "slow-securestore:securestore=2007ms",
+          "slow-refresh:bootstrap=1511ms",
+          "slow-fonts:fonts=1200ms"
+        ],
+        "flameTimeline": [
+          "2500ms  slow-hydration:hydration [resolved]",
+          "2007ms  slow-securestore:bootstrap [resolved]",
+          "2007ms  slow-securestore:securestore [resolved]",
+          "1511ms  slow-refresh:bootstrap [resolved]",
+          "1200ms  slow-fonts:fonts [resolved]",
+          "10ms  normal:hydration [resolved]",
+          "10ms  slow-securestore:hydration [resolved]",
+          "10ms  slow-refresh:hydration [resolved]",
+          "10ms  slow-fonts:hydration [resolved]",
+          "1ms  slow-fonts:bootstrap [resolved]",
+          "1ms  slow-fonts:securestore [resolved]",
+          "0ms  normal:fonts [resolved]",
+          "0ms  normal:bootstrap [resolved]",
+          "0ms  normal:securestore [resolved]",
+          "0ms  slow-securestore:fonts [resolved]",
+          "0ms  slow-refresh:fonts [resolved]",
+          "0ms  slow-hydration:fonts [resolved]",
+          "0ms  slow-hydration:bootstrap [resolved]",
+          "0ms  slow-hydration:securestore [resolved]"
+        ]
+      },
+      "at": "2026-06-26T17:45:35.753Z"
+    },
+    {
+      "phase": 8,
+      "name": "promise safety — finally/catch/in-flight",
+      "status": "PASS",
+      "evidence": {
+        "staticChecks": [
+          {
+            "file": "src\\stores\\auth-store.ts",
+            "hasTry": true,
+            "hasCatch": true,
+            "hasFinally": true,
+            "hasInFlight": true
+          },
+          {
+            "file": "src\\providers\\AuthProvider.tsx",
+            "bootstrapCatch": true
+          },
+          {
+            "file": "src\\lib\\startup-guards.ts",
+            "withStartupTimeoutFinally": true
+          },
+          {
+            "file": "src\\lib\\startup-trace.ts",
+            "traceAsyncRethrows": true
+          }
+        ],
+        "issues": [],
+        "pendingAsyncAtEnd": 0
+      },
+      "at": "2026-06-26T17:45:35.754Z"
+    },
+    {
+      "phase": 9,
+      "name": "100 launches — no startup memory/time growth",
+      "status": "PASS",
+      "evidence": {
+        "launches": 100,
+        "avgHeapDeltaFirst10": 9489,
+        "avgHeapDeltaLast10": 9121,
+        "heapDriftBytes": -368,
+        "avgTimeFirst10Ms": 0.02,
+        "avgTimeLast10Ms": 0.02,
+        "timeDriftMs": 0,
+        "gcAvailable": false
+      },
+      "at": "2026-06-26T17:45:35.758Z"
+    },
+    {
+      "phase": 10,
+      "name": "splash lifecycle — preventAutoHide×1, single hide per launch",
+      "status": "PASS",
+      "evidence": {
+        "preventAutoHideAsync": {
+          "totalCalls": 1,
+          "sites": [
+            {
+              "file": "src\\providers\\AuthProvider.tsx",
+              "count": 1
+            }
+          ]
+        },
+        "hideAsync": {
+          "totalCallSites": 5,
+          "sites": [
+            {
+              "file": "src\\components\\app\\ErrorBoundary.tsx",
+              "count": 1
+            },
+            {
+              "file": "src\\lib\\startup-guards.ts",
+              "count": 2
+            },
+            {
+              "file": "src\\providers\\AuthProvider.tsx",
+              "count": 1
+            },
+            {
+              "file": "app\\_layout.tsx",
+              "count": 1
+            }
+          ]
+        },
+        "hasHideOnceGuard": true,
+        "designNote": "hideAsync has 5 call sites (primary+4 failsafes); hideSplashOnce ensures single SPLASH_HIDE marker per launch",
+        "runtimeSplashChecks": {
+          "launches": 100,
+          "duplicateHide": 0,
+          "missingHide": 0
+        }
+      },
+      "at": "2026-06-26T17:45:42.410Z"
+    },
+    {
+      "phase": 11,
+      "name": "rendering timing — splash within caps",
+      "status": "PASS",
+      "evidence": {
+        "samples": 20,
+        "navigationReadyAvgMs": 0,
+        "homeRenderAvgMs": 71.4,
+        "interactiveAvgMs": 71.4,
+        "splashHideAvgMs": 71.4,
+        "authReadyAvgMs": 46.65,
+        "fontsReadyAvgMs": 46.65,
+        "worstTotalMs": 95,
+        "splashHideMaxMs": 95,
+        "caps": {
+          "splashUiReadyMs": 1500,
+          "splashFailsafeMs": 3000,
+          "hydrationTimeoutMs": 3000
+        }
+      },
+      "at": "2026-06-26T17:45:43.842Z"
+    }
+  ],
+  "verdict": "PASS",
+  "completedAt": "2026-06-26T17:45:43.842Z"
+}

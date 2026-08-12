@@ -1,0 +1,352 @@
+{
+  "generatedAt": "2026-07-03T10:36:40.616Z",
+  "health": {
+    "ok": true,
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "message": "HOMIGO Backend is running!",
+      "timestamp": "2026-07-03T10:36:40.712Z",
+      "environment": "development",
+      "services": {
+        "database": "ok",
+        "redis": "ok"
+      }
+    }
+  },
+  "ready": {
+    "ok": true,
+    "status": 200,
+    "body": {
+      "status": "ready",
+      "timestamp": "2026-07-03T10:36:40.686Z",
+      "environment": "development",
+      "checks": {
+        "database": {
+          "status": "healthy",
+          "latencyMs": 7
+        },
+        "redis": {
+          "status": "healthy",
+          "latencyMs": 4,
+          "topology": "standalone"
+        },
+        "memory": {
+          "status": "healthy",
+          "rssMb": 260,
+          "heapUsedMb": 55
+        },
+        "integrations": {
+          "razorpay": {
+            "configured": true
+          },
+          "razorpayWebhook": {
+            "configured": true
+          },
+          "email": {
+            "configured": false
+          },
+          "sms": {
+            "configured": true
+          },
+          "jwt": {
+            "configured": true,
+            "accessExpiry": "1h",
+            "refreshExpiry": "30d"
+          }
+        }
+      }
+    }
+  },
+  "emailConfigured": false,
+  "integrityScore": 100,
+  "emailHealth": {
+    "timestamp": "2026-07-03T10:36:41.101Z",
+    "configured": false,
+    "provider": "console",
+    "circuitBreaker": {
+      "state": "CLOSED",
+      "open": false
+    },
+    "delivery": {
+      "queue": "async in-process (non-blocking)",
+      "retryPolicy": "3 attempts, exponential backoff",
+      "bounceHandling": true,
+      "total": 63,
+      "sent": 3,
+      "failed": 0,
+      "queued": 0,
+      "bounced": 0,
+      "last24h": 3
+    },
+    "templates": {
+      "wired": [
+        "password_reset",
+        "email_verification",
+        "welcome",
+        "booking_confirmation",
+        "booking_assigned",
+        "booking_completed",
+        "payment_receipt",
+        "partner_approval",
+        "partner_rejection",
+        "admin_alert",
+        "fraud_alert"
+      ],
+      "partial": [
+        "invoice",
+        "membership_purchase",
+        "referral_reward",
+        "gift_card"
+      ],
+      "smsOnly": [
+        "otp"
+      ]
+    },
+    "byType": [
+      {
+        "type": "approval",
+        "status": "logged",
+        "count": 38
+      },
+      {
+        "type": "booking_confirmation",
+        "status": "sent",
+        "count": 1
+      },
+      {
+        "type": "registration_otp",
+        "status": "logged",
+        "count": 19
+      },
+      {
+        "type": "booking_completed",
+        "status": "sent",
+        "count": 1
+      },
+      {
+        "type": "booking_assigned",
+        "status": "sent",
+        "count": 1
+      },
+      {
+        "type": "new_partner_registration",
+        "status": "logged",
+        "count": 3
+      }
+    ],
+    "recent": [
+      {
+        "id": "cmr4sqfoz00attzs0w31vz17t",
+        "to": "ec***@homigo.test",
+        "emailType": "booking_completed",
+        "status": "sent",
+        "createdAt": "2026-07-03T10:34:20.531Z"
+      },
+      {
+        "id": "cmr4sqewh00a0tzs0g7gg2sdt",
+        "to": "ec***@homigo.test",
+        "emailType": "booking_assigned",
+        "status": "sent",
+        "createdAt": "2026-07-03T10:34:19.506Z"
+      },
+      {
+        "id": "cmr4sqe5x009vtzs0kv5hdkfx",
+        "to": "ec***@homigo.test",
+        "emailType": "booking_confirmation",
+        "status": "sent",
+        "createdAt": "2026-07-03T10:34:18.550Z"
+      },
+      {
+        "id": "cmqukropj017atztkiihzo4de",
+        "to": "st***@homigo.test",
+        "emailType": "registration_otp",
+        "status": "logged",
+        "createdAt": "2026-06-26T06:53:40.183Z"
+      },
+      {
+        "id": "cmqukkcmc008etz3c7t9o4oer",
+        "to": "st***@homigo.test",
+        "emailType": "registration_otp",
+        "status": "logged",
+        "createdAt": "2026-06-26T06:47:57.924Z"
+      },
+      {
+        "id": "cmqukg76x00ahtzkozw8zhize",
+        "to": "st***@homigo.test",
+        "emailType": "registration_otp",
+        "status": "logged",
+        "createdAt": "2026-06-26T06:44:44.265Z"
+      },
+      {
+        "id": "cmqtzhmpe006otztcxtb9o3np",
+        "to": "st***@homigo.test",
+        "emailType": "registration_otp",
+        "status": "logged",
+        "createdAt": "2026-06-25T20:57:59.091Z"
+      },
+      {
+        "id": "cmqteltx800y2tzn4r0ndd6ly",
+        "to": "st***@homigo.test",
+        "emailType": "registration_otp",
+        "status": "logged",
+        "createdAt": "2026-06-25T11:13:23.127Z"
+      },
+      {
+        "id": "cmq92nify03mptzcckxvjtjue",
+        "to": "st***@homigo.test",
+        "emailType": "approval",
+        "status": "logged",
+        "createdAt": "2026-06-11T05:43:22.655Z"
+      },
+      {
+        "id": "cmq91t6ew023ztzccakiklf9v",
+        "to": "st***@homigo.test",
+        "emailType": "approval",
+        "status": "logged",
+        "createdAt": "2026-06-11T05:19:47.384Z"
+      },
+      {
+        "id": "cmq7v8x331y2btz7glnwfwu8z",
+        "to": "st***@homigo.test",
+        "emailType": "approval",
+        "status": "logged",
+        "createdAt": "2026-06-10T09:28:18.300Z"
+      },
+      {
+        "id": "cmq7p97tk0a1ltzhk8phrjmqx",
+        "to": "st***@homigo.test",
+        "emailType": "approval",
+        "status": "logged",
+        "createdAt": "2026-06-10T06:40:34.520Z"
+      },
+      {
+        "id": "cmq7p7gpk09zdtzhk747qn0e7",
+        "to": "st***@homigo.test",
+        "emailType": "registration_otp",
+        "status": "logged",
+        "createdAt": "2026-06-10T06:39:12.728Z"
+      },
+      {
+        "id": "cmq7muirh00bitzhksj4x7r4l",
+        "to": "st***@homigo.test",
+        "emailType": "registration_otp",
+        "status": "logged",
+        "createdAt": "2026-06-10T05:33:09.629Z"
+      },
+      {
+        "id": "cmq7msrgf004utzhkqkc6a7f5",
+        "to": "ad***@adv.test",
+        "emailType": "approval",
+        "status": "logged",
+        "createdAt": "2026-06-10T05:31:47.583Z"
+      },
+      {
+        "id": "cmq6b34dk03hztzy4ju8oo3tr",
+        "to": "st***@homigo.test",
+        "emailType": "registration_otp",
+        "status": "logged",
+        "createdAt": "2026-06-09T07:16:09.320Z"
+      },
+      {
+        "id": "cmq6b29gs03gwtzy495pnkrz8",
+        "to": "st***@homigo.test",
+        "emailType": "registration_otp",
+        "status": "logged",
+        "createdAt": "2026-06-09T07:15:29.261Z"
+      },
+      {
+        "id": "cmq6b1j1203g1tzy4pltxd7kg",
+        "to": "pa***@homigo.demo",
+        "emailType": "approval",
+        "status": "logged",
+        "createdAt": "2026-06-09T07:14:54.998Z"
+      },
+      {
+        "id": "cmq5edxnj00fgtz9893jiqomg",
+        "to": "st***@homigo.test",
+        "emailType": "registration_otp",
+        "status": "logged",
+        "createdAt": "2026-06-08T16:00:46.496Z"
+      },
+      {
+        "id": "cmq5ecb3n00c2tz982k40fehu",
+        "to": "st***@homigo.test",
+        "emailType": "registration_otp",
+        "status": "logged",
+        "createdAt": "2026-06-08T15:59:30.611Z"
+      }
+    ],
+    "rateLimits": {
+      "forgotPassword": "5/hour per IP",
+      "emailVerify": "3/15min per user",
+      "register": "10/hour per IP"
+    }
+  },
+  "security": {
+    "pass": true,
+    "checks": "15/15"
+  },
+  "load": {
+    "load100Health": {
+      "scenario": "health",
+      "concurrency": 100,
+      "totalRequests": 300,
+      "durationMs": 766,
+      "throughput": 391.64,
+      "errorRate": 0,
+      "p50": 209,
+      "p95": 422,
+      "p99": 422,
+      "errors": 0,
+      "authenticated": false
+    },
+    "load100Booking": {
+      "scenario": "booking",
+      "concurrency": 100,
+      "totalRequests": 300,
+      "durationMs": 3385,
+      "throughput": 88.63,
+      "errorRate": 0,
+      "p50": 988,
+      "p95": 1624,
+      "p99": 1959,
+      "errors": 0,
+      "authenticated": true
+    },
+    "load1000Health": {
+      "scenario": "health",
+      "concurrency": 1000,
+      "totalRequests": 3000,
+      "durationMs": 6633,
+      "throughput": 452.28,
+      "errorRate": 0,
+      "p50": 1905,
+      "p95": 2940,
+      "p99": 3182,
+      "errors": 0,
+      "authenticated": false
+    }
+  },
+  "redis": {
+    "status": "healthy",
+    "latencyMs": 10
+  },
+  "dbPool": {
+    "total": 16,
+    "idle": 15,
+    "active": 1,
+    "longIdleTxn": 0
+  },
+  "promOk": true,
+  "grafanaOk": true,
+  "gaps": 1,
+  "scores": {
+    "productionReadiness": 88,
+    "securityReadiness": 100,
+    "scalabilityReadiness": 75,
+    "mobileReadiness": 88,
+    "enterpriseGrade": 88,
+    "certification": "PASS"
+  }
+}

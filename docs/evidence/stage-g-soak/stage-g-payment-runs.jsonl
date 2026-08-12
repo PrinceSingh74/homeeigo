@@ -1,0 +1,19 @@
+{
+    "payment":  {
+                    "succeeded":  false,
+                    "execution":  "Creating execution... failed Executing job failed ERROR: gcloud crashed (ConnectionError): HTTPSConnectionPool(host=\u0027asia-south1-run.googleapis.com\u0027, port=443): Max retries exceeded with url: /apis/run.googleapis.com/v1/namespaces/homigo-497619/jobs/homigo-stage-g-payment:run?alt=json (Caused by NameResolutionError(\"HTTPSConnection(host=\u0027asia-south1-run.googleapis.com\u0027, port=443): Failed to resolve \u0027asia-south1-run.googleapis.com\u0027 ([Errno 11001] getaddrinfo failed)\")) System.Management.Automation.RemoteException If you would like to report this issue, please run the following command:   gcloud feedback System.Management.Automation.RemoteException To check gcloud for common problems, please run the following command:   gcloud info --run-diagnostics",
+                    "job":  "homigo-stage-g-payment"
+                },
+    "runId":  "stageG-20260806173408",
+    "ts":  "2026-08-06T12:47:00.9383357Z"
+}
+{
+    "payment":  {
+                    "succeeded":  true,
+                    "note":  "Remediation execution - payment window off-by-one fixed in orchestrator",
+                    "execution":  "homigo-stage-g-payment-tqsld",
+                    "job":  "homigo-stage-g-payment"
+                },
+    "runId":  "stageG-20260806215554",
+    "ts":  "2026-08-06T17:49:08.0278800Z"
+}

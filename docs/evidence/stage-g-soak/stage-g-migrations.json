@@ -1,0 +1,11 @@
+{
+    "execution":  "homigo-stage-g-migrate-check-slpcg",
+    "migrations":  "31/31",
+    "logExcerpt":  [
+                       "Datasource \"db\": PostgreSQL database \"homigo_staging_db\", schema \"public\" at \"localhost\"",
+                       "",
+                       "",
+                       "",
+                       "Container called exit(0)."
+                   ]
+}

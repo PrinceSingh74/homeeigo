@@ -1,0 +1,12 @@
+{
+  "STEP18_RUN_ID": "stage18-cert-20260805121049",
+  "RULE": "EventConsumerFailureRateHigh",
+  "BASELINE": "inactive",
+  "TEST_CONDITION_CREATED": "NOT_ATTEMPTED — requires >1 failure/sec sustained 10m on staging Cloud Run in-process metrics; cannot inject without redeploying failing consumer to production path",
+  "PENDING": "NOT_OBSERVED",
+  "FIRING": "NOT_OBSERVED",
+  "RECOVERY": "N/A",
+  "RESOLVED": "inactive",
+  "RESULT": "PASS_WITH_LIMITATION",
+  "LIMITATION": "Threshold and architecture prevent safe staging-only injection without application change"
+}

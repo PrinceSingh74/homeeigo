@@ -1,0 +1,11 @@
+{
+  "queriedAtUtc": "2026-08-05T06:52:00Z",
+  "source": "http://localhost:9091/api/v1/rules",
+  "rules": [
+    {"ALERT_NAME": "EventOutboxBacklogHigh", "RULE_LOADED": true, "GROUP": "homigo_events", "HEALTH": "ok", "LAST_EVALUATION": "2026-08-05T06:51:42Z", "CURRENT_STATE": "firing"},
+    {"ALERT_NAME": "EventOutboxOldestPendingStale", "RULE_LOADED": true, "GROUP": "homigo_events", "HEALTH": "ok", "LAST_EVALUATION": "2026-08-05T06:51:42Z", "CURRENT_STATE": "firing"},
+    {"ALERT_NAME": "EventConsumerFailureRateHigh", "RULE_LOADED": true, "GROUP": "homigo_events", "HEALTH": "ok", "LAST_EVALUATION": "2026-08-05T06:51:42Z", "CURRENT_STATE": "inactive"},
+    {"ALERT_NAME": "EventDlqGrowing", "RULE_LOADED": true, "GROUP": "homigo_events", "HEALTH": "ok", "LAST_EVALUATION": "2026-08-05T06:51:42Z", "CURRENT_STATE": "pending"},
+    {"ALERT_NAME": "ScheduledJobLagHigh", "RULE_LOADED": true, "GROUP": "homigo_events", "HEALTH": "ok", "LAST_EVALUATION": "2026-08-05T06:51:42Z", "CURRENT_STATE": "firing"}
+  ]
+}

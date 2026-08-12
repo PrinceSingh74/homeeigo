@@ -1,0 +1,74 @@
+{
+    "timeSeries":  [
+                       {
+                           "label":  "T0",
+                           "ts":  "2026-08-06T16:27:37Z",
+                           "outbox_pending":  0,
+                           "oldest_age":  0
+                       },
+                       {
+                           "label":  "T+5",
+                           "ts":  "2026-08-06T16:35:32Z",
+                           "outbox_pending":  0,
+                           "oldest_age":  0
+                       },
+                       {
+                           "label":  "T+10",
+                           "ts":  "2026-08-06T16:43:37Z",
+                           "outbox_pending":  0,
+                           "oldest_age":  0
+                       },
+                       {
+                           "label":  "T+15",
+                           "ts":  "2026-08-06T16:52:28Z",
+                           "outbox_pending":  0,
+                           "oldest_age":  0
+                       },
+                       {
+                           "label":  "T+20",
+                           "ts":  "2026-08-06T16:59:36Z",
+                           "outbox_pending":  0,
+                           "oldest_age":  0
+                       },
+                       {
+                           "label":  "T+25",
+                           "ts":  "2026-08-06T17:06:38Z",
+                           "outbox_pending":  0,
+                           "oldest_age":  0
+                       },
+                       {
+                           "label":  "T+30",
+                           "ts":  "2026-08-06T17:13:48Z",
+                           "outbox_pending":  0,
+                           "oldest_age":  0
+                       },
+                       {
+                           "label":  "T+35",
+                           "ts":  "2026-08-06T17:20:52Z",
+                           "outbox_pending":  0,
+                           "oldest_age":  0
+                       },
+                       {
+                           "label":  "T+40",
+                           "ts":  "2026-08-06T17:27:54Z",
+                           "outbox_pending":  0,
+                           "oldest_age":  0
+                       },
+                       {
+                           "label":  "T+45",
+                           "ts":  "2026-08-06T08:42:46Z",
+                           "outbox_pending":  0,
+                           "oldest_age":  0
+                       },
+                       {
+                           "label":  "T_FINAL",
+                           "ts":  "2026-08-06T17:44:56Z",
+                           "outbox_pending":  0,
+                           "oldest_age":  0
+                       }
+                   ],
+    "OUTBOX_GATE":  "PASS",
+    "pending_peak":  0,
+    "pending_final":  0,
+    "pending_start":  0
+}

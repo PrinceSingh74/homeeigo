@@ -1,0 +1,15 @@
+{
+  "dashboardUid": "homigo-observability",
+  "grafanaUrl": "http://localhost:3005/d/homigo-observability/homigo-observability",
+  "datasource": "Prometheus (uid=prometheus, STAGING scrape)",
+  "timeRangeUsed": "Last 15 minutes",
+  "SCREENSHOT_CAPTURE": "UNAVAILABLE",
+  "panels": [
+    {"PANEL_TITLE": "Domain Event Throughput", "PANEL_ID": 12, "PROMQL": "sum(rate(homigo_domain_event_total[5m])) by (event_type)", "DATASOURCE": "prometheus", "PANEL_RENDERED": true, "NO_DATA": false, "QUERY_ERROR": false, "CURRENT_VALUE": "booking.created rate ~4.67/s during cert window", "UNIT": "ops/s"},
+    {"PANEL_TITLE": "Outbox Pending / Oldest Age", "PANEL_ID": 13, "PROMQL": "homigo_outbox_pending", "DATASOURCE": "prometheus", "PANEL_RENDERED": true, "NO_DATA": false, "QUERY_ERROR": false, "CURRENT_VALUE": 0, "UNIT": "rows"},
+    {"PANEL_TITLE": "Outbox Publish Results", "PANEL_ID": 14, "PROMQL": "sum(rate(homigo_outbox_publish_total[5m])) by (result)", "DATASOURCE": "prometheus", "PANEL_RENDERED": true, "NO_DATA": false, "QUERY_ERROR": false, "CURRENT_VALUE": "success rate ~4.78/s", "UNIT": "ops/s"},
+    {"PANEL_TITLE": "Consumer Success vs Failures", "PANEL_ID": 15, "PROMQL": "sum(rate(homigo_consumer_processed_total[5m]))", "DATASOURCE": "prometheus", "PANEL_RENDERED": true, "NO_DATA": false, "QUERY_ERROR": false, "CURRENT_VALUE": "~14 ops/s processed", "UNIT": "ops/s"},
+    {"PANEL_TITLE": "DLQ / Scheduled Jobs", "PANEL_ID": 16, "PROMQL": "homigo_dlq_unresolved", "DATASOURCE": "prometheus", "PANEL_RENDERED": true, "NO_DATA": false, "QUERY_ERROR": false, "CURRENT_VALUE": 0, "UNIT": "count"},
+    {"PANEL_TITLE": "Event Processing Latency (p95)", "PANEL_ID": 17, "PROMQL": "histogram_quantile(0.95, sum(rate(homigo_outbox_processing_duration_seconds_bucket[5m])) by (le))", "DATASOURCE": "prometheus", "PANEL_RENDERED": true, "NO_DATA": false, "QUERY_ERROR": false, "CURRENT_VALUE": 0.02425, "UNIT": "seconds"}
+  ]
+}

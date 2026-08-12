@@ -1,0 +1,20 @@
+{
+  "STEP_H_RUN_ID": "stageH-20260806182900",
+  "verifiedAtUtc": "2026-08-06T18:29:55Z",
+  "APPLICATION_RC_SHA": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+  "EXPECTED_RC_SHA": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+  "IMAGE_DIGEST": "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+  "EXPECTED_DIGEST": "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+  "REVISION": "homigo-backend-staging-00029-pbn",
+  "EXPECTED_REVISION": "homigo-backend-staging-00029-pbn",
+  "TRAFFIC_PERCENT": 100,
+  "IDENTITY_MATCH": true,
+  "GCP_PROJECT": "homigo-497619",
+  "REGION": "asia-south1",
+  "SERVICE": "homigo-backend-staging",
+  "stagingUrl": "https://homigo-backend-staging-144968192234.asia-south1.run.app",
+  "APP_ENV": "staging",
+  "MIN_INSTANCES": "2",
+  "MAX_INSTANCES": "4",
+  "PRODUCTION_TOUCHED": "NO"
+}

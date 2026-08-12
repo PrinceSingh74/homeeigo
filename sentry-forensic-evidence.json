@@ -1,0 +1,265 @@
+{
+  "generatedAt": "2026-06-21T06:48:06.277Z",
+  "window": {
+    "since30d": "2026-05-22T06:48:00.837Z",
+    "since7d": "2026-06-14T06:48:00.837Z"
+  },
+  "sentry": {
+    "dsn": "configured",
+    "api": "ok_200"
+  },
+  "logLevels": [
+    {
+      "level": "warn",
+      "count": 1062494
+    },
+    {
+      "level": "info",
+      "count": 191894
+    },
+    {
+      "level": "error",
+      "count": 11430
+    }
+  ],
+  "prismaErrors": [],
+  "unhandledErrorCount30d": 218,
+  "validationLogCount30d": 0,
+  "badRequestLogCount30d": 517,
+  "httpStatusBreakdown7d": [
+    {
+      "status": "200",
+      "count": 42166
+    },
+    {
+      "status": "404",
+      "count": 167
+    },
+    {
+      "status": "401",
+      "count": 137
+    },
+    {
+      "status": "201",
+      "count": 123
+    },
+    {
+      "status": "429",
+      "count": 117
+    },
+    {
+      "status": "400",
+      "count": 69
+    },
+    {
+      "status": "409",
+      "count": 55
+    },
+    {
+      "status": "403",
+      "count": 3
+    }
+  ],
+  "activityFailures": [
+    {
+      "action": "UNAUTHORIZED_ACCESS",
+      "count": 19038
+    },
+    {
+      "action": "WEBSOCKET_CONNECTED",
+      "count": 18079
+    },
+    {
+      "action": "REVOKED_TOKEN_USED",
+      "count": 4661
+    },
+    {
+      "action": "FORBIDDEN_ACCESS",
+      "count": 746
+    },
+    {
+      "action": "LOGIN",
+      "count": 640
+    },
+    {
+      "action": "TOKEN_REFRESH",
+      "count": 574
+    },
+    {
+      "action": "ADMIN_ACTION",
+      "count": 329
+    },
+    {
+      "action": "FAILED_LOGIN",
+      "count": 217
+    },
+    {
+      "action": "REFRESH_TOKEN_REUSE_ATTACK",
+      "count": 157
+    },
+    {
+      "action": "REGISTER",
+      "count": 47
+    },
+    {
+      "action": "ADMIN_ACCESS_DENIED",
+      "count": 40
+    },
+    {
+      "action": "LEDGER_BACKFILL_RUN",
+      "count": 37
+    },
+    {
+      "action": "HCOIN_EARNED",
+      "count": 37
+    },
+    {
+      "action": "GIFT_CARD_REDEEMED",
+      "count": 23
+    },
+    {
+      "action": "PASSWORD_RESET_REQUEST",
+      "count": 20
+    }
+  ],
+  "opsAlerts": [
+    {
+      "alertType": "database_slow_query",
+      "severity": "WARNING",
+      "count": 263,
+      "sample": "Database probe latency 1002ms exceeds 500ms"
+    },
+    {
+      "alertType": "redis_failure",
+      "severity": "CRITICAL",
+      "count": 254,
+      "sample": "Redis health check failed"
+    },
+    {
+      "alertType": "settlement_mismatch",
+      "severity": "CRITICAL",
+      "count": 225,
+      "sample": "Settlement sync found 1 discrepancies"
+    },
+    {
+      "alertType": "otp_failure",
+      "severity": "INFO",
+      "count": 15,
+      "sample": "50 failed login/OTP attempts in last hour"
+    },
+    {
+      "alertType": "refund_failure_spike",
+      "severity": "WARNING",
+      "count": 10,
+      "sample": "10 refund failures in last hour"
+    },
+    {
+      "alertType": "database_slow_query",
+      "severity": "CRITICAL",
+      "count": 2,
+      "sample": "Database probe failed: \nInvalid `prisma.$queryRaw()` invocation:\n\n\nCan't reach database server at `localhost:5433`\n\nPlease make sure your database server is running at `localhost:5433`."
+    }
+  ],
+  "topErrorMessages": [
+    {
+      "message": "payments.webhook: RAZORPAY_WEBHOOK_SECRET not configured — rejecting as unauthorized",
+      "count": 10734
+    },
+    {
+      "message": "enterprise_audit_persist_failed",
+      "count": 311
+    },
+    {
+      "message": "unhandled error",
+      "count": 218
+    },
+    {
+      "message": "audit-log persistence failed",
+      "count": 110
+    },
+    {
+      "message": "scheduled_job_failed",
+      "count": 35
+    },
+    {
+      "message": "encryption_failed",
+      "count": 19
+    },
+    {
+      "message": "request.completed",
+      "count": 3
+    }
+  ],
+  "recentUnhandled": [
+    {
+      "id": "cmqktp9vt025ntzm0rg0aihdo",
+      "message": "unhandled error",
+      "requestId": "req_ffe81f89413647ec",
+      "metadata": "{\"requestId\":\"req_ffe81f89413647ec\",\"path\":\"/api/tracking/location\",\"code\":\"PARSE\",\"error\":\"Bad Request\",\"stack\":\"Error: Bad Request\\n    at handle (file:///C:/Users/Kapiissh%20Green/OneDrive/Desktop/homigo/apps/backend/node_modules/elysia/dist/compose.mjs:75:36)\\n    at processTicksAndRejections (native:7:39)\"}",
+      "createdAt": "2026-06-19T11:06:02.441Z"
+    },
+    {
+      "id": "cmqktp9on025mtzm06afufzs3",
+      "message": "unhandled error",
+      "requestId": "req_bd47abe41ce03a7e",
+      "metadata": "{\"requestId\":\"req_bd47abe41ce03a7e\",\"path\":\"/api/tracking/location\",\"code\":\"PARSE\",\"error\":\"Bad Request\",\"stack\":\"Error: Bad Request\\n    at handle (file:///C:/Users/Kapiissh%20Green/OneDrive/Desktop/homigo/apps/backend/node_modules/elysia/dist/compose.mjs:75:36)\\n    at processTicksAndRejections (native:7:39)\"}",
+      "createdAt": "2026-06-19T11:06:02.183Z"
+    },
+    {
+      "id": "cmqktp9go025ltzm08jub0yu3",
+      "message": "unhandled error",
+      "requestId": "req_2aa51a5c87147058",
+      "metadata": "{\"requestId\":\"req_2aa51a5c87147058\",\"path\":\"/api/tracking/location\",\"code\":\"PARSE\",\"error\":\"Bad Request\",\"stack\":\"Error: Bad Request\\n    at handle (file:///C:/Users/Kapiissh%20Green/OneDrive/Desktop/homigo/apps/backend/node_modules/elysia/dist/compose.mjs:75:36)\\n    at processTicksAndRejections (native:7:39)\"}",
+      "createdAt": "2026-06-19T11:06:01.896Z"
+    },
+    {
+      "id": "cmqktp99d025ktzm0154pxzt6",
+      "message": "unhandled error",
+      "requestId": "req_d4859d316890e79c",
+      "metadata": "{\"requestId\":\"req_d4859d316890e79c\",\"path\":\"/api/tracking/location\",\"code\":\"PARSE\",\"error\":\"Bad Request\",\"stack\":\"Error: Bad Request\\n    at handle (file:///C:/Users/Kapiissh%20Green/OneDrive/Desktop/homigo/apps/backend/node_modules/elysia/dist/compose.mjs:75:36)\\n    at processTicksAndRejections (native:7:39)\"}",
+      "createdAt": "2026-06-19T11:06:01.634Z"
+    },
+    {
+      "id": "cmqktp91g025jtzm071l4ext6",
+      "message": "unhandled error",
+      "requestId": "req_a88e86de7f319ce7",
+      "metadata": "{\"requestId\":\"req_a88e86de7f319ce7\",\"path\":\"/api/tracking/location\",\"code\":\"PARSE\",\"error\":\"Bad Request\",\"stack\":\"Error: Bad Request\\n    at handle (file:///C:/Users/Kapiissh%20Green/OneDrive/Desktop/homigo/apps/backend/node_modules/elysia/dist/compose.mjs:75:36)\\n    at processTicksAndRejections (native:7:39)\"}",
+      "createdAt": "2026-06-19T11:06:01.349Z"
+    },
+    {
+      "id": "cmqktp8td025itzm0ivcicf4w",
+      "message": "unhandled error",
+      "requestId": "req_f36be915108ae2b0",
+      "metadata": "{\"requestId\":\"req_f36be915108ae2b0\",\"path\":\"/api/tracking/location\",\"code\":\"PARSE\",\"error\":\"Bad Request\",\"stack\":\"Error: Bad Request\\n    at handle (file:///C:/Users/Kapiissh%20Green/OneDrive/Desktop/homigo/apps/backend/node_modules/elysia/dist/compose.mjs:75:36)\\n    at processTicksAndRejections (native:7:39)\"}",
+      "createdAt": "2026-06-19T11:06:01.057Z"
+    },
+    {
+      "id": "cmqktp8li025htzm0amngw2ji",
+      "message": "unhandled error",
+      "requestId": "req_f721827ee5cd0294",
+      "metadata": "{\"requestId\":\"req_f721827ee5cd0294\",\"path\":\"/api/tracking/location\",\"code\":\"PARSE\",\"error\":\"Bad Request\",\"stack\":\"Error: Bad Request\\n    at handle (file:///C:/Users/Kapiissh%20Green/OneDrive/Desktop/homigo/apps/backend/node_modules/elysia/dist/compose.mjs:75:36)\\n    at processTicksAndRejections (native:7:39)\"}",
+      "createdAt": "2026-06-19T11:06:00.774Z"
+    },
+    {
+      "id": "cmqktp8e1025gtzm0qzptqhad",
+      "message": "unhandled error",
+      "requestId": "req_cc38da02aaddd824",
+      "metadata": "{\"requestId\":\"req_cc38da02aaddd824\",\"path\":\"/api/tracking/location\",\"code\":\"PARSE\",\"error\":\"Bad Request\",\"stack\":\"Error: Bad Request\\n    at handle (file:///C:/Users/Kapiissh%20Green/OneDrive/Desktop/homigo/apps/backend/node_modules/elysia/dist/compose.mjs:75:36)\\n    at processTicksAndRejections (native:7:39)\"}",
+      "createdAt": "2026-06-19T11:06:00.506Z"
+    },
+    {
+      "id": "cmqktp85l025ftzm0qp9o994g",
+      "message": "unhandled error",
+      "requestId": "req_41c8bdfb4db76824",
+      "metadata": "{\"requestId\":\"req_41c8bdfb4db76824\",\"path\":\"/api/tracking/location\",\"code\":\"PARSE\",\"error\":\"Bad Request\",\"stack\":\"Error: Bad Request\\n    at handle (file:///C:/Users/Kapiissh%20Green/OneDrive/Desktop/homigo/apps/backend/node_modules/elysia/dist/compose.mjs:75:36)\\n    at processTicksAndRejections (native:7:39)\"}",
+      "createdAt": "2026-06-19T11:06:00.201Z"
+    },
+    {
+      "id": "cmqktp7vc025etzm0expd2aic",
+      "message": "unhandled error",
+      "requestId": "req_356bacf6a730be28",
+      "metadata": "{\"requestId\":\"req_356bacf6a730be28\",\"path\":\"/api/tracking/location\",\"code\":\"PARSE\",\"error\":\"Bad Request\",\"stack\":\"Error: Bad Request\\n    at handle (file:///C:/Users/Kapiissh%20Green/OneDrive/Desktop/homigo/apps/backend/node_modules/elysia/dist/compose.mjs:75:36)\\n    at processTicksAndRejections (native:7:39)\"}",
+      "createdAt": "2026-06-19T11:05:59.833Z"
+    }
+  ]
+}

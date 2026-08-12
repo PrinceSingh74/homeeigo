@@ -1,0 +1,25 @@
+{
+    "label":  "drain-1843",
+    "prometheus":  {
+                       "dlq_unresolved":  null,
+                       "redis_memory":  null,
+                       "redis_clients":  null,
+                       "memory_rss":  null,
+                       "outbox_pending":  null,
+                       "booking_created_rate":  null,
+                       "scheduled_job_lag":  null,
+                       "db_idle":  null,
+                       "redis_up":  null,
+                       "outbox_oldest_age":  null,
+                       "event_latency_p50":  null,
+                       "event_latency_p95":  null,
+                       "consumer_failed_rate":  null,
+                       "up":  null,
+                       "db_active":  null,
+                       "consumer_processed_rate":  null,
+                       "redis_evicted":  null,
+                       "event_latency_p99":  null
+                   },
+    "metrics_scrape_error":  "You cannot call a method on a null-valued expression.",
+    "ts":  "2026-08-06T13:13:46Z"
+}

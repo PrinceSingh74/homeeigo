@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-06-26T07:25:08.315Z",
+  "results": [
+    {
+      "app": "web",
+      "exitCode": 1,
+      "durationMs": 279472,
+      "passed": 0,
+      "failed": 1
+    },
+    {
+      "app": "admin-panel",
+      "exitCode": 1,
+      "durationMs": 285292,
+      "passed": 2,
+      "failed": 1
+    },
+    {
+      "app": "partner-web",
+      "exitCode": 1,
+      "durationMs": 191060,
+      "passed": 0,
+      "failed": 0
+    }
+  ]
+}

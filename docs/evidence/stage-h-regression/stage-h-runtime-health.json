@@ -1,0 +1,57 @@
+{
+  "STEP_H_RUN_ID": "stageH-20260806182900",
+  "verifiedAtUtc": "2026-08-06T18:32:17Z",
+  "health": {
+    "endpoint": "/health",
+    "httpStatus": 200,
+    "status": "ok",
+    "database": "ok",
+    "redis": "ok",
+    "environment": "staging",
+    "result": "PASS"
+  },
+  "ready": {
+    "endpoint": "/ready",
+    "httpStatus": 200,
+    "status": "ready",
+    "databaseLatencyMs": 4,
+    "redisLatencyMs": 2,
+    "redisTopology": "standalone",
+    "memoryRssMb": 320,
+    "memoryHeapUsedMb": 43,
+    "integrations": {
+      "razorpay": "configured",
+      "razorpayWebhook": "configured",
+      "email": "configured",
+      "sms": "not_configured",
+      "jwt": "configured"
+    },
+    "result": "PASS"
+  },
+  "metricsAuth": {
+    "endpoint": "/metrics",
+    "httpStatus": 200,
+    "result": "PASS"
+  },
+  "recentErrorLogs": {
+    "query": "severity>=ERROR last 5",
+    "count": 0,
+    "result": "PASS"
+  },
+  "observability": {
+    "vm": "homigo-obs-staging",
+    "prometheusReady": true,
+    "grafanaHealthy": true,
+    "alertmanagerHealthy": true,
+    "up_homigo_backend_staging": true,
+    "source": "docs/evidence/stage-g-soak/stage-g-observability-health.json",
+    "result": "PASS"
+  },
+  "productionSafety": {
+    "PRODUCTION_DEPLOYMENT": "NO",
+    "PRODUCTION_DB_MODIFIED": "NO",
+    "PRODUCTION_REDIS_MODIFIED": "NO",
+    "RAZORPAY_LIVE_USED": "NO",
+    "result": "PASS"
+  }
+}

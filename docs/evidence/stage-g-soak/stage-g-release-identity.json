@@ -1,0 +1,19 @@
+{
+    "TRAFFIC_PERCENT":  100,
+    "GCP_PROJECT":  "homigo-497619",
+    "IMAGE_DIGEST":  "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+    "STEP_G_RUN_ID":  "stageG-20260806215554",
+    "EXPECTED_DIGEST":  "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+    "IDENTITY_MATCH":  true,
+    "SERVICE":  "homigo-backend-staging",
+    "APPLICATION_RC_SHA":  "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+    "IMAGE":  "asia-south1-docker.pkg.dev/homigo-497619/homigo/backend:c31f154",
+    "REGION":  "asia-south1",
+    "APP_ENV":  "staging",
+    "stagingUrl":  "https://homigo-backend-staging-144968192234.asia-south1.run.app",
+    "EXPECTED_REVISION":  "homigo-backend-staging-00029-pbn",
+    "MAX_INSTANCES":  "4",
+    "REVISION":  "homigo-backend-staging-00029-pbn",
+    "MIN_INSTANCES":  "2",
+    "verifiedAtUtc":  "2026-08-06T16:26:13Z"
+}

@@ -1,0 +1,73 @@
+{
+    "final_active":  2,
+    "timeSeries":  [
+                       {
+                           "label":  "T0",
+                           "ts":  "2026-08-06T16:27:37Z",
+                           "db_active":  2,
+                           "db_idle":  28
+                       },
+                       {
+                           "label":  "T+5",
+                           "ts":  "2026-08-06T16:35:32Z",
+                           "db_active":  2,
+                           "db_idle":  28
+                       },
+                       {
+                           "label":  "T+10",
+                           "ts":  "2026-08-06T16:43:37Z",
+                           "db_active":  0,
+                           "db_idle":  29
+                       },
+                       {
+                           "label":  "T+15",
+                           "ts":  "2026-08-06T16:52:28Z",
+                           "db_active":  2,
+                           "db_idle":  28
+                       },
+                       {
+                           "label":  "T+20",
+                           "ts":  "2026-08-06T16:59:36Z",
+                           "db_active":  2,
+                           "db_idle":  29
+                       },
+                       {
+                           "label":  "T+25",
+                           "ts":  "2026-08-06T17:06:38Z",
+                           "db_active":  1,
+                           "db_idle":  29
+                       },
+                       {
+                           "label":  "T+30",
+                           "ts":  "2026-08-06T17:13:48Z",
+                           "db_active":  2,
+                           "db_idle":  29
+                       },
+                       {
+                           "label":  "T+35",
+                           "ts":  "2026-08-06T17:20:52Z",
+                           "db_active":  2,
+                           "db_idle":  29
+                       },
+                       {
+                           "label":  "T+40",
+                           "ts":  "2026-08-06T17:27:54Z",
+                           "db_active":  1,
+                           "db_idle":  28
+                       },
+                       {
+                           "label":  "T+45",
+                           "ts":  "2026-08-06T08:42:46Z",
+                           "db_active":  4,
+                           "db_idle":  28
+                       },
+                       {
+                           "label":  "T_FINAL",
+                           "ts":  "2026-08-06T17:44:56Z",
+                           "db_active":  2,
+                           "db_idle":  25
+                       }
+                   ],
+    "peak_active":  4,
+    "POSTGRESQL_STABILITY":  "PASS"
+}

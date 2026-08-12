@@ -1,0 +1,4 @@
+{
+    "keyPrefix":  "rzp_test_*",
+    "PAYMENT_TEST_MODE":  true
+}

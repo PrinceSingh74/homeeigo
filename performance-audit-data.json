@@ -1,0 +1,697 @@
+{
+  "generatedAt": "2026-06-14T20:31:32.509Z",
+  "targets": {
+    "homepageMs": 1000,
+    "routeTransitionMs": 300,
+    "apiP95Ms": 200,
+    "lcpMs": 2500
+  },
+  "routes": [
+    {
+      "app": "web",
+      "route": "/",
+      "ttfbMs": 20277,
+      "htmlBytes": 1136,
+      "status": 500
+    },
+    {
+      "app": "web",
+      "route": "/services",
+      "ttfbMs": 43910,
+      "htmlBytes": 276171,
+      "status": 200
+    },
+    {
+      "app": "web",
+      "route": "/bookings",
+      "ttfbMs": 4175,
+      "htmlBytes": 21,
+      "status": 500
+    },
+    {
+      "app": "web",
+      "route": "/providers",
+      "ttfbMs": 32437,
+      "htmlBytes": 197043,
+      "status": 200
+    },
+    {
+      "app": "web",
+      "route": "/book",
+      "ttfbMs": 4197,
+      "htmlBytes": 21,
+      "status": 500
+    },
+    {
+      "app": "web",
+      "route": "/profile",
+      "ttfbMs": 2255,
+      "htmlBytes": 21,
+      "status": 500
+    },
+    {
+      "app": "web",
+      "route": "/wallet",
+      "ttfbMs": 2260,
+      "htmlBytes": 21,
+      "status": 500
+    },
+    {
+      "app": "web",
+      "route": "/ai",
+      "ttfbMs": 18097,
+      "htmlBytes": 285671,
+      "status": 200
+    },
+    {
+      "app": "web",
+      "route": "/login",
+      "ttfbMs": 753,
+      "htmlBytes": 21,
+      "status": 500
+    },
+    {
+      "app": "web",
+      "route": "/legal/privacy",
+      "ttfbMs": 7555,
+      "htmlBytes": 176646,
+      "status": 200
+    },
+    {
+      "app": "admin",
+      "route": "/",
+      "ttfbMs": 30,
+      "htmlBytes": 11491,
+      "status": 200
+    },
+    {
+      "app": "admin",
+      "route": "/bookings",
+      "ttfbMs": 12,
+      "htmlBytes": 12114,
+      "status": 200
+    },
+    {
+      "app": "admin",
+      "route": "/customers",
+      "ttfbMs": 9,
+      "htmlBytes": 12067,
+      "status": 200
+    },
+    {
+      "app": "admin",
+      "route": "/vendors",
+      "ttfbMs": 20,
+      "htmlBytes": 12057,
+      "status": 200
+    },
+    {
+      "app": "admin",
+      "route": "/operations",
+      "ttfbMs": 20,
+      "htmlBytes": 11942,
+      "status": 200
+    },
+    {
+      "app": "admin",
+      "route": "/finance/dashboard",
+      "ttfbMs": 24,
+      "htmlBytes": 12429,
+      "status": 200
+    },
+    {
+      "app": "admin",
+      "route": "/fraud",
+      "ttfbMs": 24,
+      "htmlBytes": 11917,
+      "status": 200
+    },
+    {
+      "app": "admin",
+      "route": "/support",
+      "ttfbMs": 26,
+      "htmlBytes": 11927,
+      "status": 200
+    },
+    {
+      "app": "partner",
+      "route": "/",
+      "ttfbMs": 27735,
+      "htmlBytes": 19787,
+      "status": 200
+    },
+    {
+      "app": "partner",
+      "route": "/requests",
+      "ttfbMs": 59357,
+      "htmlBytes": 20877,
+      "status": 200
+    },
+    {
+      "app": "partner",
+      "route": "/earnings",
+      "ttfbMs": 19636,
+      "htmlBytes": 21798,
+      "status": 200
+    },
+    {
+      "app": "partner",
+      "route": "/wallet",
+      "ttfbMs": 5075,
+      "htmlBytes": 21745,
+      "status": 200
+    },
+    {
+      "app": "partner",
+      "route": "/analytics",
+      "ttfbMs": 3848,
+      "htmlBytes": 21824,
+      "status": 200
+    },
+    {
+      "app": "partner",
+      "route": "/map",
+      "ttfbMs": 3269,
+      "htmlBytes": 21679,
+      "status": 200
+    },
+    {
+      "app": "partner",
+      "route": "/support",
+      "ttfbMs": 11218,
+      "htmlBytes": 20867,
+      "status": 200
+    }
+  ],
+  "apis": [
+    {
+      "endpoint": "http://localhost:3000/api/stats/overview",
+      "p50Ms": 49,
+      "p95Ms": 231,
+      "samples": 5,
+      "status": "FAIL"
+    },
+    {
+      "endpoint": "http://localhost:3000/api/services",
+      "p50Ms": 20,
+      "p95Ms": 195,
+      "samples": 5,
+      "status": "PASS"
+    },
+    {
+      "endpoint": "http://localhost:3000/api/services/featured",
+      "p50Ms": 20,
+      "p95Ms": 250,
+      "samples": 5,
+      "status": "FAIL"
+    }
+  ],
+  "bundles": {
+    "web": [
+      {
+        "route": "/(with-bottom-nav)/ai/page",
+        "firstLoadJsKb": 4329,
+        "sharedKb": 0
+      },
+      {
+        "route": "/layout",
+        "firstLoadJsKb": 3365,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/(aurora-nav)/providers/page",
+        "firstLoadJsKb": 3361,
+        "sharedKb": 0
+      },
+      {
+        "route": "/legal/privacy/page",
+        "firstLoadJsKb": 292,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/(aurora-nav)/providers/error",
+        "firstLoadJsKb": 182,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/(aurora-nav)/providers/layout",
+        "firstLoadJsKb": 138,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/(aurora-nav)/providers/loading",
+        "firstLoadJsKb": 138,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/ai/loading",
+        "firstLoadJsKb": 138,
+        "sharedKb": 0
+      },
+      {
+        "route": "/global-error",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/error",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/loading",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/not-found",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/layout",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/(aurora-nav)/layout",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/(aurora-nav)/support/layout",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/(aurora-nav)/support/page",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/(aurora-nav)/page",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/(aurora-nav)/services/page",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/login/loading",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/login/page",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/auth/google/callback/loading",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/auth/google/callback/page",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/wallet/loading",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/wallet/page",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/profile/loading",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/profile/page",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/(aurora-nav)/notifications/layout",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/(aurora-nav)/notifications/page",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/(aurora-nav)/bookings/layout",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/(aurora-nav)/bookings/page",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(with-bottom-nav)/(aurora-nav)/loading",
+        "firstLoadJsKb": 137,
+        "sharedKb": 0
+      }
+    ],
+    "admin": [
+      {
+        "route": "/(console)/layout",
+        "firstLoadJsKb": 453,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/page",
+        "firstLoadJsKb": 445,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/services/page",
+        "firstLoadJsKb": 444,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/bookings/page",
+        "firstLoadJsKb": 443,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/bookings/[id]/page",
+        "firstLoadJsKb": 442,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/chargebacks/[id]/page",
+        "firstLoadJsKb": 441,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/invoices/page",
+        "firstLoadJsKb": 439,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/customers/page",
+        "firstLoadJsKb": 438,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/vendors/page",
+        "firstLoadJsKb": 438,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/compliance/page",
+        "firstLoadJsKb": 436,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/membership/page",
+        "firstLoadJsKb": 436,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/analytics/page",
+        "firstLoadJsKb": 433,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/chargebacks/page",
+        "firstLoadJsKb": 433,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/gift-cards/page",
+        "firstLoadJsKb": 432,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/observability/page",
+        "firstLoadJsKb": 432,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/payments/page",
+        "firstLoadJsKb": 431,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/transfers/page",
+        "firstLoadJsKb": 431,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/support/page",
+        "firstLoadJsKb": 431,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/payouts/page",
+        "firstLoadJsKb": 430,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/membership/coupons/page",
+        "firstLoadJsKb": 430,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/referrals/page",
+        "firstLoadJsKb": 430,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/settlement-sync/page",
+        "firstLoadJsKb": 429,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/loyalty/page",
+        "firstLoadJsKb": 428,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/observability/logs/page",
+        "firstLoadJsKb": 428,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/ai/page",
+        "firstLoadJsKb": 427,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/fraud/page",
+        "firstLoadJsKb": 427,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/operations/page",
+        "firstLoadJsKb": 427,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/campaigns/page",
+        "firstLoadJsKb": 426,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/reconciliation/page",
+        "firstLoadJsKb": 425,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/refunds/page",
+        "firstLoadJsKb": 424,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/migrations/page",
+        "firstLoadJsKb": 423,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/risk/page",
+        "firstLoadJsKb": 423,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/backfill/page",
+        "firstLoadJsKb": 422,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/observability/alerts/page",
+        "firstLoadJsKb": 422,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/hcoin-expiry/page",
+        "firstLoadJsKb": 421,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/reports/page",
+        "firstLoadJsKb": 421,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/integrity/page",
+        "firstLoadJsKb": 419,
+        "sharedKb": 0
+      },
+      {
+        "route": "/layout",
+        "firstLoadJsKb": 418,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/settlements/page",
+        "firstLoadJsKb": 418,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/account-deletions/page",
+        "firstLoadJsKb": 417,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/chargebacks/page",
+        "firstLoadJsKb": 417,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/liabilities/page",
+        "firstLoadJsKb": 417,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/heatmap/page",
+        "firstLoadJsKb": 417,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/membership/queue/page",
+        "firstLoadJsKb": 417,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/membership/analytics/page",
+        "firstLoadJsKb": 417,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/dashboard/page",
+        "firstLoadJsKb": 416,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/membership/cashback/page",
+        "firstLoadJsKb": 413,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/alerts/page",
+        "firstLoadJsKb": 407,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/geofences/page",
+        "firstLoadJsKb": 404,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/adjustments/page",
+        "firstLoadJsKb": 403,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/finance/validation/page",
+        "firstLoadJsKb": 383,
+        "sharedKb": 0
+      },
+      {
+        "route": "/login/page",
+        "firstLoadJsKb": 357,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/settings/page",
+        "firstLoadJsKb": 357,
+        "sharedKb": 0
+      },
+      {
+        "route": "/_not-found/page",
+        "firstLoadJsKb": 345,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(console)/loading",
+        "firstLoadJsKb": 342,
+        "sharedKb": 0
+      }
+    ],
+    "partner": [
+      {
+        "route": "/(partner)/earnings/page",
+        "firstLoadJsKb": 13499,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(partner)/analytics/page",
+        "firstLoadJsKb": 13485,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(partner)/page",
+        "firstLoadJsKb": 10930,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(partner)/layout",
+        "firstLoadJsKb": 10671,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(partner)/wallet/page",
+        "firstLoadJsKb": 10601,
+        "sharedKb": 0
+      },
+      {
+        "route": "/layout",
+        "firstLoadJsKb": 10478,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(partner)/requests/page",
+        "firstLoadJsKb": 10458,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(partner)/map/page",
+        "firstLoadJsKb": 8473,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(partner)/support/page",
+        "firstLoadJsKb": 8361,
+        "sharedKb": 0
+      },
+      {
+        "route": "/(partner)/loading",
+        "firstLoadJsKb": 7573,
+        "sharedKb": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "STEP_H_RUN_ID": "stageH-20260806182900",
+  "capturedAtUtc": "2026-08-06T18:32:00Z",
+  "outbox": {
+    "homigo_outbox_pending": 0,
+    "homigo_outbox_oldest_pending_age_seconds": 0,
+    "homigo_outbox_publish_total_success": 361,
+    "homigo_outbox_publish_total_retry": 0,
+    "homigo_outbox_publish_total_failed_terminal": 0,
+    "result": "PASS"
+  },
+  "dlq": {
+    "homigo_dlq_unresolved": 0,
+    "homigo_dlq_total": 0,
+    "result": "PASS"
+  },
+  "consumers": {
+    "homigo_consumer_failed_total": 0,
+    "homigo_consumer_retry_total": 0,
+    "homigo_consumer_skipped_total_idempotent": 0,
+    "consumer_failed_rate_max": 0,
+    "result": "PASS"
+  },
+  "domainEvents": {
+    "booking_created": 303,
+    "partner_dispatched": 58,
+    "result": "PASS"
+  },
+  "memory": {
+    "process_resident_memory_bytes": 335511552,
+    "nodejs_heap_used_bytes": 44032502,
+    "stageG_baseline_growth_pct": 2.5,
+    "progressive_growth_detected": false,
+    "result": "PASS"
+  },
+  "websocket": {
+    "websocket_connection_count": 0,
+    "websocket_heartbeat_failures": 0,
+    "websocket_reconnect_total": 0,
+    "note": "Zero active connections expected without clients; infrastructure metrics healthy",
+    "result": "PASS"
+  },
+  "latencyReference": {
+    "source": "docs/evidence/stage-g-soak/stage-g-latency.json",
+    "event_p50_seconds": 0.018,
+    "LATENCY_GATE": "PASS"
+  }
+}

@@ -1,0 +1,9 @@
+{
+    "zone":  "asia-south1-b",
+    "grafanaHealthy":  true,
+    "prometheusReady":  true,
+    "alertmanagerHealthy":  true,
+    "OBSERVABILITY_PASS":  true,
+    "vm":  "homigo-obs-staging",
+    "up_homigo_backend_staging":  true
+}

@@ -1,0 +1,38 @@
+{
+    "metrics_outbox_pending":  0,
+    "prometheus":  {
+                       "dlq_unresolved":  0,
+                       "redis_memory":  4196760,
+                       "redis_clients":  9,
+                       "memory_rss":  337358848,
+                       "outbox_pending":  0,
+                       "booking_created_rate":  5.6666666666666661,
+                       "scheduled_job_lag":  192908.509,
+                       "db_idle":  24,
+                       "redis_up":  1,
+                       "outbox_oldest_age":  0,
+                       "event_latency_p50":  0.018982300884955755,
+                       "event_latency_p95":  0.045893928035982,
+                       "consumer_failed_rate":  0,
+                       "up":  1,
+                       "db_active":  2,
+                       "consumer_processed_rate":  25.010526315789473,
+                       "redis_evicted":  0,
+                       "event_latency_p99":  0.04920935582822087
+                   },
+    "metrics_oldest_age":  0,
+    "ts":  "2026-08-06T17:33:18Z",
+    "label":  "drain-2303",
+    "api_health":  {
+                       "status":  "ok",
+                       "message":  "HOMIGO Backend is running!",
+                       "timestamp":  "2026-08-06T17:34:42.420Z",
+                       "environment":  "staging",
+                       "services":  {
+                                        "database":  "ok",
+                                        "redis":  "ok"
+                                    }
+                   },
+    "metrics_dlq":  0,
+    "metrics_memory_rss":  338202624
+}

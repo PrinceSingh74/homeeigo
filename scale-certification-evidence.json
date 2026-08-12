@@ -1,0 +1,275 @@
+{
+  "generatedAt": "2026-07-03T11:05:44.318Z",
+  "health": {
+    "ok": true,
+    "status": 200
+  },
+  "ready": {
+    "ok": true,
+    "email": false
+  },
+  "integrity": 100,
+  "emailProbe": {
+    "configured": false,
+    "from": "HOMIGO <noreply@homigo.com>",
+    "dns": {
+      "domain": "homigo.com",
+      "spf": [
+        "homigo.com\ttext =",
+        "\"v=spf1 mx include:spf.autopilothq.com include:sendgrid.net include:_spf.google.com include:spf.mtasv.net ~all\""
+      ],
+      "dmarc": [],
+      "dkimResend": []
+    },
+    "resendApiOk": null,
+    "resendDomains": null,
+    "deliveryTest": null
+  },
+  "loadResults": [
+    {
+      "users": 100,
+      "status": "PASS",
+      "health": {
+        "scenario": "health",
+        "concurrency": 100,
+        "totalRequests": 300,
+        "durationMs": 819,
+        "throughput": 366.3,
+        "errorRate": 0,
+        "p50": 237,
+        "p95": 353,
+        "p99": 523,
+        "errors": 0,
+        "authenticated": false
+      },
+      "booking": {
+        "scenario": "booking",
+        "concurrency": 100,
+        "totalRequests": 300,
+        "durationMs": 3453,
+        "throughput": 86.88,
+        "errorRate": 0,
+        "p50": 1008,
+        "p95": 1596,
+        "p99": 1964,
+        "errors": 0,
+        "authenticated": true
+      },
+      "ws": {
+        "scenario": "websocket",
+        "concurrency": 100,
+        "totalRequests": 300,
+        "durationMs": 1587,
+        "throughput": 189.04,
+        "errorRate": 100,
+        "p50": 313,
+        "p95": 569,
+        "p99": 826,
+        "errors": 300,
+        "authenticated": false
+      },
+      "redisLatencyMs": 21,
+      "dbConnections": 16,
+      "note": "ws/stats HTTP-only (not real fanout)"
+    },
+    {
+      "users": 1000,
+      "status": "PASS",
+      "health": {
+        "scenario": "health",
+        "concurrency": 1000,
+        "totalRequests": 3000,
+        "durationMs": 5003,
+        "throughput": 599.64,
+        "errorRate": 0,
+        "p50": 1483,
+        "p95": 1844,
+        "p99": 1886,
+        "errors": 0,
+        "authenticated": false
+      },
+      "redisLatencyMs": 11,
+      "dbConnections": 16
+    },
+    {
+      "users": 5000,
+      "status": "PARTIAL",
+      "health": {
+        "scenario": "health",
+        "concurrency": 5000,
+        "totalRequests": 10000,
+        "durationMs": 14680,
+        "throughput": 681.2,
+        "errorRate": 0,
+        "p50": 7068,
+        "p95": 7475,
+        "p99": 7592,
+        "errors": 0,
+        "authenticated": false
+      },
+      "redisLatencyMs": 3,
+      "dbConnections": 16
+    },
+    {
+      "users": 10000,
+      "status": "FAIL",
+      "health": {
+        "scenario": "health",
+        "concurrency": 10000,
+        "totalRequests": 10000,
+        "durationMs": 10177,
+        "throughput": 982.61,
+        "errorRate": 36.19,
+        "p50": 8290,
+        "p95": 10078,
+        "p99": 10082,
+        "errors": 3619,
+        "authenticated": false
+      },
+      "redisLatencyMs": 29,
+      "dbConnections": 16
+    },
+    {
+      "users": 50000,
+      "status": "FAIL",
+      "health": {
+        "scenario": "health",
+        "concurrency": 50000,
+        "totalRequests": 50000,
+        "durationMs": 10633,
+        "throughput": 4702.34,
+        "errorRate": 92.07,
+        "p50": 10186,
+        "p95": 10262,
+        "p99": 10277,
+        "errors": 46036,
+        "authenticated": false
+      },
+      "redisLatencyMs": 5,
+      "dbConnections": 16
+    },
+    {
+      "users": 100000,
+      "status": "FAIL",
+      "health": {
+        "scenario": "health",
+        "concurrency": 100000,
+        "totalRequests": 100000,
+        "durationMs": 11611,
+        "throughput": 8612.52,
+        "errorRate": 95.87,
+        "p50": 10338,
+        "p95": 10690,
+        "p99": 10720,
+        "errors": 95865,
+        "authenticated": false
+      },
+      "redisLatencyMs": 4,
+      "dbConnections": 16
+    }
+  ],
+  "k8s": {
+    "checks": {
+      "hpa": true,
+      "ingress": true,
+      "redis": true,
+      "postgres": true,
+      "pgbouncer": true,
+      "secrets": true,
+      "rollingDeploy": true,
+      "queueWorkers": true
+    },
+    "details": {
+      "hpa": [
+        "backend-deployment.yaml",
+        "backend-hpa.yaml"
+      ],
+      "secrets": [
+        "backend-deployment.yaml"
+      ],
+      "rollingDeploy": [
+        "backend-deployment.yaml"
+      ],
+      "ingress": [
+        "ingress-loadbalancer.yaml"
+      ],
+      "pgbouncer": [
+        "pgbouncer-deployment.yaml"
+      ],
+      "postgres": [
+        "postgres-primary.yaml",
+        "postgres-replica.yaml",
+        "postgresql-ha.yaml"
+      ],
+      "queueWorkers": [
+        "queue-workers.yaml"
+      ],
+      "redis": [
+        "redis-cluster.yaml"
+      ]
+    },
+    "manifestCount": 11,
+    "score": 100
+  },
+  "mobile": {
+    "verdict": "PASS",
+    "coldMs": 0,
+    "warmMs": 0
+  },
+  "gaps": [
+    {
+      "id": "V8-EMAIL-001",
+      "priority": "P1",
+      "title": "RESEND_API_KEY not configured — cannot verify production email delivery",
+      "rootCause": "RESEND_API_KEY unset in .env",
+      "impact": "Production Readiness capped below 95%; no real delivery/DKIM verification",
+      "fixPlan": "Set RESEND_API_KEY, verify domain in Resend, set CERTIFICATION_EMAIL_TO for delivery probe",
+      "filesAffected": [
+        "apps/backend/.env"
+      ]
+    },
+    {
+      "id": "V8-LOAD-10000",
+      "priority": "P1",
+      "title": "10000 VU load test FAIL (error rate or latency)",
+      "rootCause": "Connection saturation on single dev instance",
+      "impact": "Cannot certify 10000 concurrent users on current topology",
+      "fixPlan": "Deploy multi-replica K8s + PgBouncer; re-run on staging cluster",
+      "filesAffected": [
+        "deploy/k8s/backend-hpa.yaml",
+        "deploy/k8s/pgbouncer-deployment.yaml"
+      ]
+    },
+    {
+      "id": "V8-LOAD-50000",
+      "priority": "P1",
+      "title": "50000 VU load test FAIL (error rate or latency)",
+      "rootCause": "Connection saturation on single dev instance",
+      "impact": "Cannot certify 50000 concurrent users on current topology",
+      "fixPlan": "Deploy multi-replica K8s + PgBouncer; re-run on staging cluster",
+      "filesAffected": [
+        "deploy/k8s/backend-hpa.yaml",
+        "deploy/k8s/pgbouncer-deployment.yaml"
+      ]
+    },
+    {
+      "id": "V8-LOAD-100000",
+      "priority": "P1",
+      "title": "100000 VU load test FAIL (error rate or latency)",
+      "rootCause": "Connection saturation on single dev instance",
+      "impact": "Cannot certify 100000 concurrent users on current topology",
+      "fixPlan": "Deploy multi-replica K8s + PgBouncer; re-run on staging cluster",
+      "filesAffected": [
+        "deploy/k8s/backend-hpa.yaml",
+        "deploy/k8s/pgbouncer-deployment.yaml"
+      ]
+    }
+  ],
+  "scores": {
+    "productionReadiness": 81,
+    "scalabilityReadiness": 65,
+    "securityReadiness": 100,
+    "mobileReadiness": 92,
+    "certification": "FAIL"
+  }
+}

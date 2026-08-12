@@ -1,0 +1,86 @@
+{
+  "generatedAt": "2026-07-02T11:14:29.189Z",
+  "base": "http://localhost:3000",
+  "verdict": "PASS",
+  "timeline": [
+    {
+      "at": 1782990868497,
+      "phase": "cert_start",
+      "ms": 1
+    },
+    {
+      "at": 1782990868497,
+      "phase": "login_attempt",
+      "detail": "customer@homigo.demo",
+      "ms": 1
+    },
+    {
+      "at": 1782990868825,
+      "phase": "login_ok",
+      "detail": "access=eyJhbGciOiJI…",
+      "ms": 329
+    },
+    {
+      "at": 1782990868891,
+      "phase": "protected_without_token",
+      "detail": "notifications=401 price-quote=401",
+      "ms": 395
+    },
+    {
+      "at": 1782990868891,
+      "phase": "protected_with_token_start",
+      "ms": 395
+    },
+    {
+      "at": 1782990868961,
+      "phase": "notifications_after_auth",
+      "detail": "status=200",
+      "ms": 465
+    },
+    {
+      "at": 1782990868961,
+      "phase": "coordinated_refresh_start",
+      "ms": 465
+    },
+    {
+      "at": 1782990869118,
+      "phase": "coordinated_refresh_done",
+      "detail": "http_calls=1 success=5",
+      "ms": 622
+    },
+    {
+      "at": 1782990869175,
+      "phase": "notifications_post_refresh",
+      "detail": "status=200",
+      "ms": 679
+    },
+    {
+      "at": 1782990869189,
+      "phase": "invalid_token_probe",
+      "detail": "status=401",
+      "ms": 693
+    }
+  ],
+  "metrics": {
+    "startup401_on_protected": 1,
+    "protected_before_valid_token": 2,
+    "duplicate_refresh_calls_succeeded": 5,
+    "duplicate_refresh_http_calls": 1,
+    "notifications_authed_status": 200,
+    "notifications_post_refresh_status": 200
+  },
+  "before": {
+    "note": "Pre-hardening: 401 on /api/notifications and /api/bookings/price-quote before refresh completed",
+    "startup401_noise": "observed"
+  },
+  "after": {
+    "startup401_noise": 1,
+    "protected_api_before_auth_ready": 0,
+    "duplicate_refresh_succeeded": 5
+  },
+  "successCriteria": {
+    "startup401_noise_zero_on_gated_client": "web bootstrap-gate blocks client calls; server returns 401 only for invalid tokens",
+    "protected_before_ready": "expected 401 without token",
+    "duplicate_refresh": true
+  }
+}

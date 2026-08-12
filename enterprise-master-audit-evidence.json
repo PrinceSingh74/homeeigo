@@ -1,0 +1,152 @@
+{
+  "generatedAt": "2026-07-03T09:56:49.523Z",
+  "base": "http://localhost:3000",
+  "health": {
+    "ok": true,
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "message": "HOMIGO Backend is running!",
+      "timestamp": "2026-07-03T09:56:50.221Z",
+      "environment": "development",
+      "services": {
+        "database": "ok",
+        "redis": "ok"
+      }
+    }
+  },
+  "ready": {
+    "ok": true,
+    "status": 200,
+    "body": {
+      "status": "ready",
+      "timestamp": "2026-07-03T09:56:50.233Z",
+      "environment": "development",
+      "checks": {
+        "database": {
+          "status": "healthy",
+          "latencyMs": 6
+        },
+        "redis": {
+          "status": "healthy",
+          "latencyMs": 7,
+          "topology": "standalone"
+        },
+        "memory": {
+          "status": "healthy",
+          "rssMb": 174,
+          "heapUsedMb": 53
+        },
+        "integrations": {
+          "razorpay": {
+            "configured": true
+          },
+          "razorpayWebhook": {
+            "configured": true
+          },
+          "email": {
+            "configured": false
+          },
+          "sms": {
+            "configured": true
+          },
+          "jwt": {
+            "configured": true,
+            "accessExpiry": "1h",
+            "refreshExpiry": "30d"
+          }
+        }
+      }
+    }
+  },
+  "metricsCount": 615,
+  "metricsOk": true,
+  "integrityScore": 100,
+  "frontendApiPathCount": 317,
+  "connectedApiCount": 244,
+  "probeResults": [
+    {
+      "path": "/health",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "path": "/api/v1/status",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "path": "/api/services",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "path": "/api/stats/overview",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "path": "/api/subscriptions/plans",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "path": "/api/bookings/cancellation-policy",
+      "status": 200,
+      "ok": true
+    }
+  ],
+  "authProbes": [
+    {
+      "path": "/api/admin/dashboard",
+      "status": 401,
+      "expect401": true
+    },
+    {
+      "path": "/api/users/me",
+      "status": 401,
+      "expect401": true
+    },
+    {
+      "path": "/api/bookings/upcoming",
+      "status": 401,
+      "expect401": true
+    },
+    {
+      "path": "/api/wallet/balance",
+      "status": 401,
+      "expect401": true
+    },
+    {
+      "path": "/api/providers/me",
+      "status": 401,
+      "expect401": true
+    }
+  ],
+  "promOk": true,
+  "grafanaOk": true,
+  "counts": {
+    "totalRoutes": 133,
+    "totalApis": 287,
+    "totalWs": 5,
+    "totalModels": 125,
+    "connectedPages": 66,
+    "mockPages": 0,
+    "frontendApiPaths": 317,
+    "connectedApiCount": 244,
+    "referencedEndpoints": 244,
+    "unusedEndpoints": 41,
+    "systemEndpoints": 7,
+    "unreferencedModels": 4
+  },
+  "gaps": 4,
+  "scores": {
+    "operationalCoverage": 100,
+    "integrationCoverage": 86,
+    "securityCoverage": 100,
+    "performanceCoverage": 75,
+    "observabilityCoverage": 100,
+    "enterpriseReadiness": 92,
+    "certification": "PASS"
+  }
+}

@@ -1,0 +1,83 @@
+{
+    "REDIS_ERRORS":  0,
+    "timeSeries":  [
+                       {
+                           "label":  "T0",
+                           "ts":  "2026-08-06T16:27:37Z",
+                           "redis_up":  1,
+                           "redis_memory":  4217232,
+                           "redis_evicted":  0
+                       },
+                       {
+                           "label":  "T+5",
+                           "ts":  "2026-08-06T16:35:32Z",
+                           "redis_up":  1,
+                           "redis_memory":  4241800,
+                           "redis_evicted":  0
+                       },
+                       {
+                           "label":  "T+10",
+                           "ts":  "2026-08-06T16:43:37Z",
+                           "redis_up":  1,
+                           "redis_memory":  4240776,
+                           "redis_evicted":  0
+                       },
+                       {
+                           "label":  "T+15",
+                           "ts":  "2026-08-06T16:52:28Z",
+                           "redis_up":  1,
+                           "redis_memory":  4217232,
+                           "redis_evicted":  0
+                       },
+                       {
+                           "label":  "T+20",
+                           "ts":  "2026-08-06T16:59:36Z",
+                           "redis_up":  1,
+                           "redis_memory":  4238728,
+                           "redis_evicted":  0
+                       },
+                       {
+                           "label":  "T+25",
+                           "ts":  "2026-08-06T17:06:38Z",
+                           "redis_up":  1,
+                           "redis_memory":  4241800,
+                           "redis_evicted":  0
+                       },
+                       {
+                           "label":  "T+30",
+                           "ts":  "2026-08-06T17:13:48Z",
+                           "redis_up":  1,
+                           "redis_memory":  4196760,
+                           "redis_evicted":  0
+                       },
+                       {
+                           "label":  "T+35",
+                           "ts":  "2026-08-06T17:20:52Z",
+                           "redis_up":  1,
+                           "redis_memory":  4196760,
+                           "redis_evicted":  0
+                       },
+                       {
+                           "label":  "T+40",
+                           "ts":  "2026-08-06T17:27:54Z",
+                           "redis_up":  1,
+                           "redis_memory":  4196760,
+                           "redis_evicted":  0
+                       },
+                       {
+                           "label":  "T+45",
+                           "ts":  "2026-08-06T08:42:46Z",
+                           "redis_up":  1,
+                           "redis_memory":  4238576,
+                           "redis_evicted":  0
+                       },
+                       {
+                           "label":  "T_FINAL",
+                           "ts":  "2026-08-06T17:44:56Z",
+                           "redis_up":  1,
+                           "redis_memory":  4217232,
+                           "redis_evicted":  0
+                       }
+                   ],
+    "REDIS_STABILITY":  "PASS"
+}

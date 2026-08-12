@@ -1,0 +1,44 @@
+{
+    "timestampUtc":  "2026-08-05T06:31:28.5755838Z",
+    "source":  "staging_cloud_run_metrics",
+    "homigo_outbox_publish_total":  {
+                                        "retry":  0,
+                                        "failed_terminal":  0,
+                                        "success":  0
+                                    },
+    "homigo_consumer_failed_total_sum":  0,
+    "outbox_processing_duration_count":  {
+
+                                         },
+    "homigo_consumer_processed_total_sum":  989,
+    "prometheusValid":  [
+
+                        ],
+    "homigo_domain_event_total_samples":  [
+                                              {
+                                                  "val":  0,
+                                                  "type":  "bootstrap"
+                                              },
+                                              {
+                                                  "val":  1,
+                                                  "type":  "booking.completed"
+                                              },
+                                              {
+                                                  "val":  1,
+                                                  "type":  "partner.arrived"
+                                              },
+                                              {
+                                                  "val":  4,
+                                                  "type":  "partner.dispatched"
+                                              },
+                                              {
+                                                  "val":  323,
+                                                  "type":  "booking.created"
+                                              }
+                                          ],
+    "gauges":  {
+
+               },
+    "stagingUrl":  "https://homigo-backend-staging-144968192234.asia-south1.run.app",
+    "contentTypeOk":  true
+}

@@ -1,0 +1,187 @@
+﻿{
+  "STAGE_G_RUN_ID": "stageG-20260806215554",
+  "BOOKINGS_FOUND": 34,
+  "BOOKINGS_COMPLETED": 34,
+  "BOOKINGS": [
+    {
+      "id": "cmsh7q18w0001s60bnwt1ph7k",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00001"
+    },
+    {
+      "id": "cmshgukub0001s60b0hyh9kft",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00002"
+    },
+    {
+      "id": "cmshgvwgc0001s60bdpkg723a",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00003"
+    },
+    {
+      "id": "cmshh378z0001s60czwax47ey",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00004"
+    },
+    {
+      "id": "cmshhcq9w0001s60bjsn4koev",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00005"
+    },
+    {
+      "id": "cmsho5yxw0001s60b9c2bpd42",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00006"
+    },
+    {
+      "id": "cmsho6zjh0001s60ce9r6r7nq",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00007"
+    },
+    {
+      "id": "cmshode2l0001s609eftqjiq1",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00011"
+    },
+    {
+      "id": "cmshodytu0001s60ahccof59v",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00012"
+    },
+    {
+      "id": "cmshoek6v0001s6096a2vi86k",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00013"
+    },
+    {
+      "id": "cmshofg020001s609f3tpq3z8",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00014"
+    },
+    {
+      "id": "cmshogwsu0001s609lugg5dxu",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00015"
+    },
+    {
+      "id": "cmshohwe60001s60a39du0o2r",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00016"
+    },
+    {
+      "id": "cmshoiinr0001s609g5iyv559",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00017"
+    },
+    {
+      "id": "cmshop48p0001s609o3wr2uek",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00018"
+    },
+    {
+      "id": "cmshozl5f0001s6098cj9rych",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00019"
+    },
+    {
+      "id": "cmshp9t310001s6099qutm4da",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00020"
+    },
+    {
+      "id": "cmshpjlf90001s609q6twuviw",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00021"
+    },
+    {
+      "id": "cmshq42jt0001s60am4cu20gf",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00022"
+    },
+    {
+      "id": "cmshq6yvm0001s6092zx75roj",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00023"
+    },
+    {
+      "id": "cmshq7uv00001s609ck085w8b",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00024"
+    },
+    {
+      "id": "cmshq8p240001s609hjtoebw8",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00025"
+    },
+    {
+      "id": "cmshqe50f0001s609d45xb0b9",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00026"
+    },
+    {
+      "id": "cmshqeyui0001s609f1motdbq",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00027"
+    },
+    {
+      "id": "cmshqod5e0001s60938htaf4q",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00028"
+    },
+    {
+      "id": "cmshqp5v10001s60a5arxi14z",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00029"
+    },
+    {
+      "id": "cmshqwri40001s60apr819rn0",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00030"
+    },
+    {
+      "id": "cmshr0qcc0001s6095gwy09ng",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00031"
+    },
+    {
+      "id": "cmshr9wwv0001s6097akgup46",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00032"
+    },
+    {
+      "id": "cmshriyiw0001s609snbn702u",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00033"
+    },
+    {
+      "id": "cmshrs13t0001s609cluyj9f0",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00034"
+    },
+    {
+      "id": "cmshs19fw0001s609d3nh8ayt",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00035"
+    },
+    {
+      "id": "cmshsabwq0001s60af877h7py",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00036"
+    },
+    {
+      "id": "cmshsjc2z0001s609mn7ftyia",
+      "status": "COMPLETED",
+      "number": "HOMIGO-20260806-00037"
+    }
+  ],
+  "EVENTS_GENERATED": 136,
+  "EVENTS_PUBLISHED": 136,
+  "EVENTS_STRANDED": 0,
+  "EVENTS_FAILED": 0,
+  "LOST": 0,
+  "STRANDED": 0,
+  "DLQ_UNRESOLVED": 0,
+  "DLQ_ENTRIES": [],
+  "PAYMENTS": [],
+  "MIGRATION_CHECK": "external"
+}

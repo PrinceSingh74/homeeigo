@@ -1,0 +1,16 @@
+{
+  "certifiedAtUtc": "2026-08-05T06:55:00Z",
+  "APPLICATION_RC_SHA": "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+  "LOCAL_HEAD_SHA": "ea98c7602bd795ba35a85d2efe19799239742d08",
+  "WORKTREE_CLEAN": false,
+  "UNRELATED_LOCAL_CHANGES_PRESERVED": true,
+  "IMAGE_TAG": "c31f154",
+  "IMAGE_DIGEST": "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32",
+  "CLOUD_RUN_REVISION": "homigo-backend-staging-00029-pbn",
+  "TRAFFIC_PERCENT": 100,
+  "IMAGE_REBUILT": false,
+  "REDEPLOYED": false,
+  "RELEASE_IDENTITY": "VERIFIED",
+  "verificationSource": "gcloud run services describe + artifacts docker images describe",
+  "stagingUrl": "https://homigo-backend-staging-144968192234.asia-south1.run.app"
+}

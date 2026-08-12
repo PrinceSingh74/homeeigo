@@ -1,0 +1,32 @@
+{
+  "verdict": "PARTIAL (emitted; delivery unconfirmed)",
+  "emitted": [
+    {
+      "category": "database",
+      "ok": true
+    },
+    {
+      "category": "payment",
+      "ok": true
+    },
+    {
+      "category": "integration",
+      "ok": true
+    },
+    {
+      "category": "auth",
+      "ok": true
+    },
+    {
+      "category": "security",
+      "ok": true
+    }
+  ],
+  "delivery": {
+    "verified": false,
+    "detail": "0 issue group(s) found for marker (grouping ✅ if >0)"
+  },
+  "marker": "p2-sentry-drill-1782024486593",
+  "release": "homigo-backend@1.0.0",
+  "generatedAt": "2026-06-21T06:48:16.229Z"
+}

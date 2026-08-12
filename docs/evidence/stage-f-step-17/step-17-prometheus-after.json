@@ -1,0 +1,13 @@
+{
+  "capturedAtUtc": "2026-08-05T06:38:00Z",
+  "source": "http://localhost:9091/api/v1/query",
+  "metrics": [
+    {"METRIC": "homigo_outbox_publish_total{result=success}", "T0": 301, "T1": 329, "DELTA": 28, "EXPECTED_DELTA": ">0", "RESULT": "PASS"},
+    {"METRIC": "homigo_domain_event_total{event_type=booking.created}", "T0": 301, "T1": 323, "DELTA": 22, "EXPECTED_DELTA": ">0", "RESULT": "PASS"},
+    {"METRIC": "rate(homigo_domain_event_total[5m])", "T0": 0, "T1": 4.67, "DELTA": 4.67, "EXPECTED_DELTA": ">0", "RESULT": "PASS"},
+    {"METRIC": "homigo_outbox_pending", "T0": 0, "T1": 0, "DELTA": 0, "EXPECTED_DELTA": "transient optional", "RESULT": "PASS"},
+    {"METRIC": "homigo_dlq_unresolved", "T0": 0, "T1": 0, "DELTA": 0, "EXPECTED_DELTA": 0, "RESULT": "PASS"}
+  ],
+  "SCRAPE_VISIBLE": true,
+  "up{job=homigo-backend-staging}": 1
+}

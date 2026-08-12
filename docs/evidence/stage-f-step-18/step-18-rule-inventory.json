@@ -1,0 +1,10 @@
+{
+  "inventoryAtUtc": "2026-08-05T06:35:00Z",
+  "rules": [
+    {"ALERT_NAME": "EventOutboxBacklogHigh", "RULE_FILE": "apps/backend/monitoring/rules/homigo-alerts.yml", "EXPRESSION": "homigo_outbox_pending > 500", "FOR_DURATION": "10m", "LABELS": {"severity": "warning"}, "SEVERITY": "warning", "EVALUATION_INTERVAL": "15s", "DEPLOYED": true},
+    {"ALERT_NAME": "EventOutboxOldestPendingStale", "RULE_FILE": "apps/backend/monitoring/rules/homigo-alerts.yml", "EXPRESSION": "homigo_outbox_oldest_pending_age_seconds > 900", "FOR_DURATION": "5m", "LABELS": {"severity": "critical"}, "SEVERITY": "critical", "EVALUATION_INTERVAL": "15s", "DEPLOYED": true},
+    {"ALERT_NAME": "EventConsumerFailureRateHigh", "RULE_FILE": "apps/backend/monitoring/rules/homigo-alerts.yml", "EXPRESSION": "sum(rate(homigo_consumer_failed_total[10m])) > 1", "FOR_DURATION": "10m", "LABELS": {"severity": "warning"}, "SEVERITY": "warning", "EVALUATION_INTERVAL": "15s", "DEPLOYED": true},
+    {"ALERT_NAME": "EventDlqGrowing", "RULE_FILE": "apps/backend/monitoring/rules/homigo-alerts.yml", "EXPRESSION": "homigo_dlq_unresolved > 25", "FOR_DURATION": "15m", "LABELS": {"severity": "critical"}, "SEVERITY": "critical", "EVALUATION_INTERVAL": "15s", "DEPLOYED": true},
+    {"ALERT_NAME": "ScheduledJobLagHigh", "RULE_FILE": "apps/backend/monitoring/rules/homigo-alerts.yml", "EXPRESSION": "homigo_scheduled_job_lag_seconds > 3600", "FOR_DURATION": "10m", "LABELS": {"severity": "warning"}, "SEVERITY": "warning", "EVALUATION_INTERVAL": "15s", "DEPLOYED": true}
+  ]
+}

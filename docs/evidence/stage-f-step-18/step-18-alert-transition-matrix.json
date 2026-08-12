@@ -1,0 +1,10 @@
+{
+  "STEP18_RUN_ID": "stage18-cert-20260805121049",
+  "matrix": [
+    {"Alert": "EventOutboxBacklogHigh", "Inactive": "2026-08-05T06:34:12Z", "ConditionCreated": "2026-08-05T06:41:00Z", "Pending": "2026-08-05T06:41:42Z", "Firing": "2026-08-05T06:51:42Z", "ConditionFixed": "2026-08-05T06:57:00Z", "Resolved": "2026-08-05T06:58:30Z", "Final": "inactive"},
+    {"Alert": "EventOutboxOldestPendingStale", "Inactive": "2026-08-05T06:34:12Z", "ConditionCreated": "2026-08-05T06:41:00Z", "Pending": "2026-08-05T06:41:42Z", "Firing": "2026-08-05T06:47:20Z", "ConditionFixed": "2026-08-05T06:57:00Z", "Resolved": "2026-08-05T06:58:30Z", "Final": "inactive"},
+    {"Alert": "EventConsumerFailureRateHigh", "Inactive": "throughout", "ConditionCreated": "N/A", "Pending": "N/A", "Firing": "N/A", "ConditionFixed": "N/A", "Resolved": "N/A", "Final": "inactive"},
+    {"Alert": "EventDlqGrowing", "Inactive": "2026-08-05T06:34:12Z", "ConditionCreated": "2026-08-05T06:41:00Z", "Pending": "2026-08-05T06:41:42Z", "Firing": "NOT_OBSERVED", "ConditionFixed": "2026-08-05T06:57:00Z", "Resolved": "2026-08-05T06:58:30Z", "Final": "inactive"},
+    {"Alert": "ScheduledJobLagHigh", "Inactive": "pre-existing debt", "ConditionCreated": "pre-existing + synthetic", "Pending": "2026-08-05T06:34:12Z", "Firing": "2026-08-05T06:44:12Z", "ConditionFixed": "partial — synthetic removed", "Resolved": "NOT_OBSERVED", "Final": "firing"}
+  ]
+}

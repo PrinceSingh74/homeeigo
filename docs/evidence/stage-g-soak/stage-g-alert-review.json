@@ -1,0 +1,30 @@
+{
+    "alerts":  [
+                   {
+                       "classification":  "MONITOR",
+                       "name":  "EventOutboxBacklogHigh",
+                       "state":  "inactive"
+                   },
+                   {
+                       "classification":  "MONITOR",
+                       "name":  "EventOutboxOldestPendingStale",
+                       "state":  "inactive"
+                   },
+                   {
+                       "classification":  "MONITOR",
+                       "name":  "EventConsumerFailureRateHigh",
+                       "state":  "inactive"
+                   },
+                   {
+                       "classification":  "MONITOR",
+                       "name":  "EventDlqGrowing",
+                       "state":  "inactive"
+                   },
+                   {
+                       "classification":  "KNOWN_PREEXISTING_ARCHITECTURAL_DEBT",
+                       "name":  "ScheduledJobLagHigh",
+                       "state":  "firing"
+                   }
+               ],
+    "ts":  "2026-08-06T17:44:56Z"
+}

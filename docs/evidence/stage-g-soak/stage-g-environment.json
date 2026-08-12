@@ -1,0 +1,11 @@
+{
+    "databaseVersion":  "POSTGRES_16",
+    "redisTarget":  "STAGING_REDIS_URL (secret, not exposed)",
+    "productionTouched":  false,
+    "backupEnabled":  true,
+    "databaseInstance":  "homigo-staging-step6a-pitr-20260803",
+    "state":  "RUNNABLE",
+    "pitrEnabled":  true,
+    "postgresTarget":  "homigo_staging_db via Cloud SQL",
+    "deletionProtection":  true
+}

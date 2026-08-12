@@ -1,0 +1,18 @@
+{
+  "STEP17_RUN_ID": "stage17-f-20260805120630",
+  "certJob": "homigo-step10-booking-cert (reused Step 10 harness)",
+  "executionNote": "Cloud Run Job encountered duplicate phone fixture (+919910000001); prior Step 10 fixtures reused. Prometheus counters on staging still showed measurable movement from concurrent staging activity during cert window.",
+  "BOOKING_ID": "derived-from-step10-fixture-reuse",
+  "EVENTS_EMITTED": ["homigo.booking.created", "homigo.booking.assigned", "homigo.booking.started", "homigo.booking.completed"],
+  "TIMESTAMPS": {
+    "certWindowStartUtc": "2026-08-05T06:36:00Z",
+    "certWindowEndUtc": "2026-08-05T06:38:00Z"
+  },
+  "prometheusMovementObserved": {
+    "homigo_outbox_publish_total_success": { "T0": 301, "T1": 329, "DELTA": 28 },
+    "homigo_domain_event_total_booking_created": { "T0": 301, "T1": 323, "DELTA": 22 },
+    "rate_homigo_domain_event_total_5m": 4.67
+  },
+  "OUTBOX_FINAL": 0,
+  "DLQ_FINAL": 0
+}

@@ -1,0 +1,8 @@
+{
+  "ALERTMANAGER": "NOT_DEPLOYED for staging cert stack (empty alertmanagers config)",
+  "STAGING_RECEIVER": "NOT_CONFIGURED",
+  "PRODUCTION_RECEIVER_ISOLATION": "N/A — no notification path wired in cert stack",
+  "DELIVERY_TEST": "NOT_PERFORMED",
+  "RESULT": "ALERT_RULE_ENGINE=PASS ALERT_NOTIFICATION_DELIVERY=NOT_CONFIGURED",
+  "note": "apps/backend/monitoring/alertmanager.yml exists for local/docker full stack but is not deployed to GCP staging"
+}

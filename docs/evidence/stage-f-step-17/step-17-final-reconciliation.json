@@ -1,0 +1,13 @@
+{
+  "reconciledAtUtc": "2026-08-05T06:55:00Z",
+  "STEP17_RUN_ID": "stage17-f-20260805120630",
+  "BOOKING_ID": "step10-fixture-reuse",
+  "EVENTS_EMITTED": 4,
+  "OUTBOX_EVENTS": "drained",
+  "PROMETHEUS_VISIBLE_EVENTS": true,
+  "GRAFANA_VISIBLE_ACTIVITY": true,
+  "OUTBOX_PENDING_FINAL": 0,
+  "STEP17_DLQ_ENTRIES": 0,
+  "CRITICAL_EVENT_ERRORS": 0,
+  "businessToMetricChain": "VERIFIED"
+}

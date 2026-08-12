@@ -1,0 +1,11 @@
+{
+  "rig": "single Windows box, 12 cores, load-gen + backend + Postgres + Redis + PgBouncer co-located",
+  "stack": "PgBouncer transaction pooling, PRISMA_CONNECTION_LIMIT=25",
+  "scenario": "booking read (GET /api/bookings/upcoming)",
+  "results": [
+    { "concurrency": 1000, "p50_ms": 5409, "p95_ms": 5972, "p99_ms": 6215, "errorRate_pct": 0, "throughput_rps": 173.34, "peak_db_conns": 6 },
+    { "concurrency": 5000, "p50_ms": 10015, "p95_ms": 10227, "p99_ms": 10229, "errorRate_pct": 64.76, "throughput_rps": 484.36, "peak_db_conns": 8, "note": "client 10s timeouts; backend survived" },
+    { "concurrency": 10000, "p50_ms": 10046, "p95_ms": 10081, "p99_ms": 10085, "errorRate_pct": 82.42, "throughput_rps": 978, "peak_db_conns": 17, "note": "client 10s timeouts; backend survived, RSS 367MB, integrity 100" }
+  ],
+  "verdict": "1k = 0% errors single-instance; 5k/10k timeout-limited on one box (CPU-bound) → require horizontal scale (deploy/k8s). Backend crash-resilient, financial_integrity=100 throughout."
+}

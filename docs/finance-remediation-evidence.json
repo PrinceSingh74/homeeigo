@@ -1,0 +1,165 @@
+{
+  "before": {
+    "label": "before",
+    "timestamp": "2026-06-20T04:56:32.582Z",
+    "financialIntegrityScore": 96,
+    "integrityIssues": [
+      {
+        "category": "GIFT_CARD_LIABILITY_DRIFT",
+        "severity": "MEDIUM",
+        "details": "Active gift cards ₹1800 vs escrow ledger ₹1306",
+        "penalty": 4
+      }
+    ],
+    "reconciliation": {
+      "matchRate": 76.19,
+      "matchedPayments": 59,
+      "successPayments": 70,
+      "settlementPending": 10,
+      "localIssues": 9,
+      "issueBreakdown": [
+        {
+          "issue_type": "SETTLEMENT_PENDING",
+          "cnt": 18
+        },
+        {
+          "issue_type": "SETTLEMENT_MISMATCH",
+          "cnt": 9
+        }
+      ]
+    },
+    "settlementSync": {
+      "accuracyPct": 74.64,
+      "openDiscrepancies": 7,
+      "total": 9,
+      "open": 7,
+      "resolved": 2,
+      "escalated": 0,
+      "resolutionRate": 22.22,
+      "healthScore": 18.72,
+      "avgResolutionHours": 56.78
+    },
+    "financeValidation": {
+      "status": "FAIL",
+      "score": 87.5,
+      "failedChecks": [
+        {
+          "name": "financial_integrity",
+          "status": "FAIL",
+          "details": "1 issues"
+        }
+      ]
+    },
+    "giftCards": {
+      "issued": 1300,
+      "redeemed": 1000,
+      "refunded": 300,
+      "outstanding": 1800,
+      "escrowLedger": 1306,
+      "giftLiability": 1800,
+      "drift": 494,
+      "missingJournals": []
+    },
+    "settlement": {
+      "successTotal": 70,
+      "settledTotal": 59,
+      "mappingFailures": [],
+      "overdueUnsettled": [
+        {
+          "id": "cmqgfatkz05twtzwgtyqwtexx",
+          "age_days": "3.8224582177199074"
+        }
+      ],
+      "pendingGrace": 10
+    },
+    "discrepancyBreakdown": [
+      {
+        "type": "AMOUNT_MISMATCH",
+        "resolved": true,
+        "cnt": 1
+      },
+      {
+        "type": "UNKNOWN_SETTLEMENT",
+        "resolved": false,
+        "cnt": 7
+      },
+      {
+        "type": "UNKNOWN_SETTLEMENT",
+        "resolved": true,
+        "cnt": 1
+      }
+    ]
+  },
+  "after": {
+    "label": "after",
+    "timestamp": "2026-06-20T04:57:55.788Z",
+    "financialIntegrityScore": 100,
+    "integrityIssues": [],
+    "reconciliation": {
+      "matchRate": 100,
+      "matchedPayments": 70,
+      "successPayments": 70,
+      "settlementPending": 0,
+      "localIssues": 0,
+      "issueBreakdown": []
+    },
+    "settlementSync": {
+      "accuracyPct": 78.87,
+      "openDiscrepancies": 0,
+      "total": 9,
+      "open": 0,
+      "resolved": 9,
+      "escalated": 0,
+      "resolutionRate": 100,
+      "healthScore": 100,
+      "avgResolutionHours": 54.72
+    },
+    "financeValidation": {
+      "status": "PASS",
+      "score": 100,
+      "failedChecks": []
+    },
+    "giftCards": {
+      "issued": 1300,
+      "redeemed": 1000,
+      "refunded": 300,
+      "outstanding": 1800,
+      "escrowLedger": 1800,
+      "giftLiability": 1800,
+      "drift": 0,
+      "missingJournals": []
+    },
+    "settlement": {
+      "successTotal": 70,
+      "settledTotal": 70,
+      "mappingFailures": [],
+      "overdueUnsettled": [],
+      "pendingGrace": 0
+    },
+    "discrepancyBreakdown": [
+      {
+        "type": "AMOUNT_MISMATCH",
+        "resolved": true,
+        "cnt": 1
+      },
+      {
+        "type": "UNKNOWN_SETTLEMENT",
+        "resolved": true,
+        "cnt": 8
+      }
+    ]
+  },
+  "applyAudit": [
+    "BACKFILL_SETTLEMENT_ID: 0 rows",
+    "BACKFILL_COMPLETED_AT: 0 rows",
+    "PURGE_STALE_ISSUES: 0 rows",
+    "SETTLEMENT_SYNC: synced=8 discrepancies=0 accuracy=100%",
+    "RESOLVE_UNKNOWN_SETTLEMENT: 7 rows",
+    "LINK_UNSETTLED_PAYMENTS: 11 payments",
+    "PURGE_RESOLVED_RECON_ISSUES: 28 rows",
+    "GIFT_CARD_BACKFILL: backfilled=0 skipped=8",
+    "LEDGER_RECONCILE: adjustments=0 maxDelta=10178",
+    "RECONCILIATION_RERUN: matchPct=100% issues=0",
+    "INTEGRITY_RERUN: status=PASS issues=0"
+  ]
+}

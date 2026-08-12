@@ -1,0 +1,6 @@
+[
+  {"ts":"2026-08-05T06:45:50Z","EventOutboxBacklogHigh":"pending","EventOutboxOldestPendingStale":"pending","EventConsumerFailureRateHigh":"inactive","EventDlqGrowing":"pending","ScheduledJobLagHigh":"firing"},
+  {"ts":"2026-08-05T06:47:20Z","EventOutboxBacklogHigh":"pending","EventOutboxOldestPendingStale":"firing","EventConsumerFailureRateHigh":"inactive","EventDlqGrowing":"pending","ScheduledJobLagHigh":"firing"},
+  {"ts":"2026-08-05T06:51:42Z","EventOutboxBacklogHigh":"firing","EventOutboxOldestPendingStale":"firing","EventConsumerFailureRateHigh":"inactive","EventDlqGrowing":"pending","ScheduledJobLagHigh":"firing"},
+  {"ts":"2026-08-05T06:58:30Z","EventOutboxBacklogHigh":"inactive","EventOutboxOldestPendingStale":"inactive","EventConsumerFailureRateHigh":"inactive","EventDlqGrowing":"inactive","ScheduledJobLagHigh":"firing"}
+]

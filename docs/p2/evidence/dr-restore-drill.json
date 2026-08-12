@@ -1,0 +1,49 @@
+{
+  "now": "2026-06-25T11:12:18.411Z",
+  "steps": [
+    {
+      "name": "recreate_scratch_db",
+      "ok": true,
+      "ms": 663,
+      "detail": "created homigo_dr_scratch"
+    },
+    {
+      "name": "pg_restore",
+      "ok": true,
+      "ms": 9907,
+      "detail": "restored homigo_2026-06-25T11-10-42-927Z.dump"
+    },
+    {
+      "name": "prisma_migrate_status",
+      "ok": true,
+      "ms": 5720,
+      "detail": "Datasource \"db\": PostgreSQL database \"homigo_dr_scratch\", schema \"public\" at \"localhost:5433\""
+    },
+    {
+      "name": "integrity_verification",
+      "ok": true,
+      "ms": 1387,
+      "detail": "{\"bookings\":\"181\",\"payments\":\"104\",\"wallets\":\"10\",\"hcoin_txns\":\"54\",\"memberships\":\"28\",\"negative_hcoin_wallets\":\"0\",\"ledger_table_present\":\"t\"}"
+    }
+  ],
+  "abort": "",
+  "dump": "backups\\homigo_2026-06-25T11-10-42-927Z.dump",
+  "rpoMin": 1.2152690348307291,
+  "rtoMin": 0.2947,
+  "drillMs": 17682,
+  "results": {
+    "bookings": "181",
+    "payments": "104",
+    "wallets": "10",
+    "hcoin_txns": "54",
+    "memberships": "28",
+    "negative_hcoin_wallets": "0",
+    "ledger_table_present": "t"
+  },
+  "rtoPass": true,
+  "rpoPass": true,
+  "targets": {
+    "RTO_TARGET_MIN": 30,
+    "RPO_TARGET_MIN": 15
+  }
+}

@@ -1,0 +1,12 @@
+{
+    "trends":  {
+                   "DB_connections":  "STABLE",
+                   "Outbox_backlog":  "STABLE",
+                   "Redis":  "STABLE",
+                   "CPU":  "INCONCLUSIVE - Cloud Run CPU not in app /metrics; no saturation alerts fired",
+                   "Event_latency":  "STABLE",
+                   "Oldest_pending_age":  "STABLE",
+                   "API_latency":  "STABLE",
+                   "Memory":  "STABLE"
+               }
+}

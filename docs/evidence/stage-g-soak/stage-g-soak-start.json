@@ -1,0 +1,42 @@
+{
+    "STEP_G_RUN_ID":  "stageG-20260806215554",
+    "T0":  {
+               "metrics_outbox_pending":  0,
+               "prometheus":  {
+                                  "dlq_unresolved":  0,
+                                  "redis_memory":  4217232,
+                                  "redis_clients":  9,
+                                  "memory_rss":  334848000,
+                                  "outbox_pending":  0,
+                                  "booking_created_rate":  6.7999999999999989,
+                                  "scheduled_job_lag":  188997.592,
+                                  "db_idle":  28,
+                                  "redis_up":  1,
+                                  "outbox_oldest_age":  0,
+                                  "event_latency_p50":  0.017811203319502075,
+                                  "event_latency_p95":  0.024495557350565429,
+                                  "consumer_failed_rate":  0,
+                                  "up":  1,
+                                  "db_active":  2,
+                                  "consumer_processed_rate":  26.677972709551653,
+                                  "redis_evicted":  0,
+                                  "event_latency_p99":  0.049241071428571433
+                              },
+               "metrics_oldest_age":  0,
+               "ts":  "2026-08-06T16:27:37Z",
+               "label":  "T0",
+               "api_health":  {
+                                  "status":  "ok",
+                                  "message":  "HOMIGO Backend is running!",
+                                  "timestamp":  "2026-08-06T16:29:29.844Z",
+                                  "environment":  "staging",
+                                  "services":  {
+                                                   "database":  "ok",
+                                                   "redis":  "ok"
+                                               }
+                              },
+               "metrics_dlq":  0,
+               "metrics_memory_rss":  332767232
+           },
+    "SOAK_START_UTC":  "2026-08-06T16:27:37Z"
+}

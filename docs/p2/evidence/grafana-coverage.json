@@ -1,0 +1,191 @@
+{
+  "summary": {
+    "generatedAt": "2026-06-25T11:12:31.208Z",
+    "dashboardsScanned": 6,
+    "emittedMetricCount": 60,
+    "dashboardedMetricCount": 48,
+    "coveragePct": 100,
+    "domains": {
+      "total": 9,
+      "covered": 9,
+      "partial": 0,
+      "missing": 0
+    },
+    "domainStatus": {
+      "API latency": "COVERED",
+      "Database metrics": "COVERED",
+      "Wallet metrics": "COVERED",
+      "Payment metrics": "COVERED",
+      "Provider metrics": "COVERED",
+      "Booking metrics": "COVERED",
+      "WebSocket metrics": "COVERED",
+      "Finance metrics": "COVERED",
+      "Integrity metrics": "COVERED"
+    },
+    "missingMetrics": [],
+    "dashboardGaps": []
+  },
+  "rows": [
+    {
+      "domain": "API latency",
+      "metric": "http_request_duration_seconds",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": true
+    },
+    {
+      "domain": "API latency",
+      "metric": "http_requests_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": true
+    },
+    {
+      "domain": "Database metrics",
+      "metric": "http_request_duration_seconds",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": true
+    },
+    {
+      "domain": "Database metrics",
+      "metric": "process_resident_memory_bytes",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": true
+    },
+    {
+      "domain": "Wallet metrics",
+      "metric": "wallet_transfer_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": false
+    },
+    {
+      "domain": "Wallet metrics",
+      "metric": "wallet_debit_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": false
+    },
+    {
+      "domain": "Wallet metrics",
+      "metric": "hcoin_earned_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": false
+    },
+    {
+      "domain": "Wallet metrics",
+      "metric": "hcoin_redeemed_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": false
+    },
+    {
+      "domain": "Payment metrics",
+      "metric": "payment_success_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": false
+    },
+    {
+      "domain": "Payment metrics",
+      "metric": "payment_failed_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": true
+    },
+    {
+      "domain": "Payment metrics",
+      "metric": "refund_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": false
+    },
+    {
+      "domain": "Provider metrics",
+      "metric": "provider_payout_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": false
+    },
+    {
+      "domain": "Provider metrics",
+      "metric": "assignment_queue_backlog",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": true
+    },
+    {
+      "domain": "Booking metrics",
+      "metric": "http_requests_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": true
+    },
+    {
+      "domain": "Booking metrics",
+      "metric": "assignment_queue_backlog",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": true
+    },
+    {
+      "domain": "WebSocket metrics",
+      "metric": "ws_connections_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": true
+    },
+    {
+      "domain": "Finance metrics",
+      "metric": "settlement_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": false
+    },
+    {
+      "domain": "Finance metrics",
+      "metric": "payout_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": false
+    },
+    {
+      "domain": "Finance metrics",
+      "metric": "chargeback_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": true
+    },
+    {
+      "domain": "Finance metrics",
+      "metric": "reconciliation_mismatch_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": true
+    },
+    {
+      "domain": "Integrity metrics",
+      "metric": "finance_integrity_failures_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": true
+    },
+    {
+      "domain": "Integrity metrics",
+      "metric": "settlement_mismatch_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": true
+    },
+    {
+      "domain": "Integrity metrics",
+      "metric": "reconciliation_mismatch_total",
+      "emitted": true,
+      "dashboarded": true,
+      "alerted": true
+    }
+  ]
+}

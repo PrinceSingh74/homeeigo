@@ -1,0 +1,12 @@
+{
+  "STEP18_RUN_ID": "stage18-cert-20260805121049",
+  "RULE": "EventOutboxBacklogHigh",
+  "BASELINE": "inactive @ 2026-08-05T06:34:12Z",
+  "TEST_CONDITION_CREATED": "550 PENDING outbox rows (available_at future) @ 2026-08-05T06:41:00Z",
+  "PENDING": "2026-08-05T06:41:42Z",
+  "FIRING": "2026-08-05T06:51:42Z",
+  "RECOVERY": "cleanup deleted step18_* rows @ 2026-08-05T06:57:00Z",
+  "RESOLVED": "inactive @ 2026-08-05T06:58:30Z",
+  "FINAL_PENDING": 0,
+  "RESULT": "PASS"
+}

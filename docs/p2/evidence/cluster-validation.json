@@ -1,0 +1,41 @@
+{
+  "verdict": "COMPLETE",
+  "results": [
+    {
+      "check": "redis_shared_state",
+      "ok": true,
+      "detail": "Redis reachable — shared coordination active"
+    },
+    {
+      "check": "scheduler coordination (5 rounds × 3 nodes)",
+      "ok": true,
+      "detail": "5/5 rounds elected exactly one leader — no duplicate job execution"
+    },
+    {
+      "check": "2-node leader election",
+      "ok": true,
+      "detail": "winners=1 (expected 1) — no duplicate execution / no split-brain"
+    },
+    {
+      "check": "3-node leader election",
+      "ok": true,
+      "detail": "winners=1 (expected 1) — no duplicate execution / no split-brain"
+    },
+    {
+      "check": "shared rate limit across 2 nodes",
+      "ok": true,
+      "detail": "allowed=10 of 20 attempts (expected exactly 10) — atomic shared counter"
+    },
+    {
+      "check": "shared rate limit across 3 nodes",
+      "ok": true,
+      "detail": "allowed=10 of 30 attempts (expected exactly 10) — atomic shared counter"
+    },
+    {
+      "check": "WebSocket cross-instance fan-out",
+      "ok": true,
+      "detail": "subscribed=true delivered=1 (expected 1; own echo ignored)"
+    }
+  ],
+  "generatedAt": "2026-06-25T11:12:30.820Z"
+}

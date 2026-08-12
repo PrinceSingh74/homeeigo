@@ -1,0 +1,13 @@
+{
+  "STEP18_RUN_ID": "stage18-cert-20260805121049",
+  "RULE": "EventDlqGrowing",
+  "BASELINE": "inactive",
+  "TEST_CONDITION_CREATED": "26 synthetic unresolved DLQ rows (consumer step18.cert.v1) @ 2026-08-05T06:41:00Z",
+  "PENDING": "2026-08-05T06:41:42Z",
+  "FIRING": "NOT_OBSERVED — 15m for: window; cleanup executed before firing timestamp",
+  "RECOVERY": "cleanup @ 2026-08-05T06:57:00Z",
+  "RESOLVED": "inactive @ 2026-08-05T06:58:30Z",
+  "DLQ_ID_SAMPLE": "cmsfpy6nd0000s60bv1fl8jqb",
+  "RESULT": "PASS_WITH_LIMITATION",
+  "LIMITATION": "Pending transition verified; firing not awaited due to 15m for: duration vs cleanup safety window"
+}

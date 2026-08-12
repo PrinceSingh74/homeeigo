@@ -1,0 +1,17 @@
+{
+    "paymentRun":  {
+                       "payment":  {
+                                       "succeeded":  true,
+                                       "note":  "Remediation execution - payment window off-by-one fixed in orchestrator",
+                                       "execution":  "homigo-stage-g-payment-tqsld",
+                                       "job":  "homigo-stage-g-payment"
+                                   },
+                       "runId":  "stageG-20260806215554",
+                       "ts":  "2026-08-06T17:49:08.0278800Z"
+                   },
+    "PAYMENT_SUCCEEDED":  true,
+    "DUPLICATE_PAYMENT_EFFECTS":  0,
+    "PAYMENT_EXECUTED":  true,
+    "PAYMENT_TEST_MODE":  true,
+    "PAYMENT_GATE":  "PASS"
+}

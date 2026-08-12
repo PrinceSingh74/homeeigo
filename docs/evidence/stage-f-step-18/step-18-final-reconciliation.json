@@ -1,0 +1,20 @@
+{
+  "reconciledAtUtc": "2026-08-05T07:00:00Z",
+  "STEP18_RUN_ID": "stage18-cert-20260805121049",
+  "OUTBOX_PENDING_FINAL": 0,
+  "DLQ_UNRESOLVED_FINAL": 0,
+  "STALE_PENDING_FINAL": 0,
+  "SCHEDULED_JOB_LAG_FINAL": 68559,
+  "CONTROLLED_FAILURES_REMOVED": true,
+  "ALERTS_FINAL_STATE": {
+    "EventOutboxBacklogHigh": "inactive",
+    "EventOutboxOldestPendingStale": "inactive",
+    "EventConsumerFailureRateHigh": "inactive",
+    "EventDlqGrowing": "inactive",
+    "ScheduledJobLagHigh": "firing (pre-existing staging debt)"
+  },
+  "MIGRATIONS": "31/31",
+  "NEW_MIGRATION_EXECUTED": false,
+  "SCHEMA_MODIFIED": false,
+  "grafanaPrometheusConsistency": "PASS — panel PromQL matches alert expressions for event platform metrics"
+}

@@ -1,0 +1,16 @@
+{
+  "inventoryAtUtc": "2026-08-05T06:35:00Z",
+  "metrics": [
+    {"METRIC_NAME": "homigo_domain_event_total", "TYPE": "counter", "LABELS": ["event_type"], "SOURCE_FILE": "apps/backend/src/events/consumers/metrics.consumer.ts", "LIVE_PRESENT": true, "USED_BY_GRAFANA": true, "USED_BY_ALERTS": false},
+    {"METRIC_NAME": "homigo_outbox_pending", "TYPE": "gauge", "LABELS": [], "SOURCE_FILE": "apps/backend/src/events/core/retention.ts", "LIVE_PRESENT": true, "USED_BY_GRAFANA": true, "USED_BY_ALERTS": true},
+    {"METRIC_NAME": "homigo_outbox_oldest_pending_age_seconds", "TYPE": "gauge", "LABELS": [], "SOURCE_FILE": "apps/backend/src/events/core/retention.ts", "LIVE_PRESENT": true, "USED_BY_GRAFANA": true, "USED_BY_ALERTS": true},
+    {"METRIC_NAME": "homigo_outbox_publish_total", "TYPE": "counter", "LABELS": ["result"], "SOURCE_FILE": "apps/backend/src/events/core/outbox-processor.ts", "LIVE_PRESENT": true, "USED_BY_GRAFANA": true, "USED_BY_ALERTS": false},
+    {"METRIC_NAME": "homigo_outbox_processing_duration_seconds", "TYPE": "histogram", "LABELS": [], "SOURCE_FILE": "apps/backend/src/events/core/outbox-processor.ts", "LIVE_PRESENT": true, "USED_BY_GRAFANA": true, "USED_BY_ALERTS": false},
+    {"METRIC_NAME": "homigo_consumer_processed_total", "TYPE": "counter", "LABELS": ["consumer", "event_type"], "SOURCE_FILE": "apps/backend/src/events/core/event-bus.ts", "LIVE_PRESENT": true, "USED_BY_GRAFANA": true, "USED_BY_ALERTS": false},
+    {"METRIC_NAME": "homigo_consumer_failed_total", "TYPE": "counter", "LABELS": ["consumer", "event_type"], "SOURCE_FILE": "apps/backend/src/events/core/event-bus.ts", "LIVE_PRESENT": true, "USED_BY_GRAFANA": true, "USED_BY_ALERTS": true},
+    {"METRIC_NAME": "homigo_consumer_skipped_total", "TYPE": "counter", "LABELS": ["consumer", "reason"], "SOURCE_FILE": "apps/backend/src/events/core/event-bus.ts", "LIVE_PRESENT": true, "USED_BY_GRAFANA": false, "USED_BY_ALERTS": false},
+    {"METRIC_NAME": "homigo_dlq_unresolved", "TYPE": "gauge", "LABELS": [], "SOURCE_FILE": "apps/backend/src/events/core/retention.ts", "LIVE_PRESENT": true, "USED_BY_GRAFANA": true, "USED_BY_ALERTS": true},
+    {"METRIC_NAME": "homigo_scheduled_job_lag_seconds", "TYPE": "gauge", "LABELS": [], "SOURCE_FILE": "apps/backend/src/events/core/retention.ts", "LIVE_PRESENT": true, "USED_BY_GRAFANA": true, "USED_BY_ALERTS": true},
+    {"METRIC_NAME": "homigo_scheduled_jobs_pending", "TYPE": "gauge", "LABELS": [], "SOURCE_FILE": "apps/backend/src/events/core/retention.ts", "LIVE_PRESENT": true, "USED_BY_GRAFANA": true, "USED_BY_ALERTS": false}
+  ]
+}

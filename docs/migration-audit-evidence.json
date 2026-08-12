@@ -1,0 +1,625 @@
+{
+  "timestamp": "2026-06-20T05:11:47.472Z",
+  "disk": {
+    "count": 42,
+    "migrations": [
+      "20260527105812_init",
+      "20260527160000_refresh_token_last_activity",
+      "20260527184532_auth_system_updatesauth_system_updates",
+      "20260528180000_add_provider_badges",
+      "20260529114745_part_6a_realtime_tracking",
+      "20260529120000_add_partner_registration",
+      "20260529140000_sensitive_field_lookup_hashes",
+      "20260530120000_user_devices_push_tokens",
+      "20260608120000_membership_premium_engine",
+      "20260608140000_referral_fraud_engine",
+      "20260608160000_prelaunch_compliance",
+      "20260608180000_membership_enterprise_10",
+      "20260608200000_membership_finalization",
+      "20260608210000_financial_ledger",
+      "20260608220000_financial_core",
+      "20260608230000_finance_ops_finalization",
+      "20260608240000_finance_ops_10_finalization",
+      "20260608250000_enterprise_observability",
+      "20260608250000_p0_security_financial_atomicity",
+      "20260608260000_p1_webhook_dedup_state_machine",
+      "20260608270000_finance_integrity_10_finalization",
+      "20260608280000_finance_integrity_10_phase2",
+      "20260609120000_p3_admin_rbac",
+      "20260609140000_p3_token_security",
+      "20260609160000_p3_gift_card_campaign_security",
+      "20260609180000_p4_encryption_audit",
+      "20260609200000_p4_retention_compliance",
+      "20260609220000_p0_p1_concurrency_rbac",
+      "20260609230000_legacy_admin_rbac_hardening",
+      "20260609240000_booking_slot_exclusion_wallet_atomic",
+      "20260609250000_wallet_pending_hardening",
+      "20260609260000_money_paise_dual_write",
+      "20260609280000_money_paise_full_dual_write",
+      "20260609300000_journal_entry_number_sequence",
+      "20260610000000_saved_payment_methods",
+      "20260610120000_enterprise_db_hardening",
+      "20260610140000_address_pii_encryption",
+      "20260612000000_assignment_one_sent_per_job",
+      "20260612140000_support_ticket_messages",
+      "20260612160000_enterprise_operations",
+      "20260616120000_assignment_broadcast_dispatch",
+      "20260617100000_settlement_pending_status"
+    ],
+    "duplicateFolders": [],
+    "sameSecondMigrations": [
+      [
+        "20260608250000",
+        [
+          "20260608250000_enterprise_observability",
+          "20260608250000_p0_security_financial_atomicity"
+        ]
+      ]
+    ]
+  },
+  "database": {
+    "totalRows": 42,
+    "appliedCount": 42,
+    "rows": [
+      {
+        "name": "20260527105812_init",
+        "finished_at": "2026-05-29T09:49:47.213Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260527160000_refresh_token_last_activity",
+        "finished_at": "2026-05-29T09:49:47.226Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260527184532_auth_system_updatesauth_system_updates",
+        "finished_at": "2026-05-29T09:49:47.305Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260528180000_add_provider_badges",
+        "finished_at": "2026-05-29T09:49:47.331Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260529120000_add_partner_registration",
+        "finished_at": "2026-05-29T09:49:47.413Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260529140000_sensitive_field_lookup_hashes",
+        "finished_at": "2026-05-29T09:49:47.452Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260529114745_part_6a_realtime_tracking",
+        "finished_at": "2026-05-29T11:47:45.260Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260530120000_user_devices_push_tokens",
+        "finished_at": "2026-05-30T11:23:02.800Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260608120000_membership_premium_engine",
+        "finished_at": "2026-06-08T10:56:54.936Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 0,
+        "log_snip": ""
+      },
+      {
+        "name": "20260608140000_referral_fraud_engine",
+        "finished_at": "2026-06-08T10:58:01.844Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 0,
+        "log_snip": ""
+      },
+      {
+        "name": "20260608160000_prelaunch_compliance",
+        "finished_at": "2026-06-08T10:58:03.377Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 0,
+        "log_snip": ""
+      },
+      {
+        "name": "20260608180000_membership_enterprise_10",
+        "finished_at": "2026-06-08T10:58:04.887Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 0,
+        "log_snip": ""
+      },
+      {
+        "name": "20260608200000_membership_finalization",
+        "finished_at": "2026-06-08T10:58:06.241Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 0,
+        "log_snip": ""
+      },
+      {
+        "name": "20260608210000_financial_ledger",
+        "finished_at": "2026-06-08T10:58:07.734Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 0,
+        "log_snip": ""
+      },
+      {
+        "name": "20260608220000_financial_core",
+        "finished_at": "2026-06-08T10:58:09.226Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 0,
+        "log_snip": ""
+      },
+      {
+        "name": "20260608230000_finance_ops_finalization",
+        "finished_at": "2026-06-08T10:58:10.681Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 0,
+        "log_snip": ""
+      },
+      {
+        "name": "20260608240000_finance_ops_10_finalization",
+        "finished_at": "2026-06-08T12:34:59.772Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260608250000_enterprise_observability",
+        "finished_at": "2026-06-08T14:45:11.196Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260608250000_p0_security_financial_atomicity",
+        "finished_at": "2026-06-08T14:45:11.383Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260608260000_p1_webhook_dedup_state_machine",
+        "finished_at": "2026-06-08T15:44:23.469Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260608270000_finance_integrity_10_finalization",
+        "finished_at": "2026-06-08T15:44:23.505Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260608280000_finance_integrity_10_phase2",
+        "finished_at": "2026-06-08T15:44:23.595Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260609120000_p3_admin_rbac",
+        "finished_at": "2026-06-09T09:24:33.407Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260609140000_p3_token_security",
+        "finished_at": "2026-06-09T09:24:33.466Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260609160000_p3_gift_card_campaign_security",
+        "finished_at": "2026-06-09T09:24:33.506Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260609180000_p4_encryption_audit",
+        "finished_at": "2026-06-09T15:25:32.402Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260609200000_p4_retention_compliance",
+        "finished_at": "2026-06-09T15:25:32.801Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260609220000_p0_p1_concurrency_rbac",
+        "finished_at": "2026-06-09T15:25:32.938Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260609230000_legacy_admin_rbac_hardening",
+        "finished_at": "2026-06-09T16:03:42.269Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260609240000_booking_slot_exclusion_wallet_atomic",
+        "finished_at": "2026-06-09T16:28:38.014Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260609250000_wallet_pending_hardening",
+        "finished_at": "2026-06-09T16:53:03.715Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260609260000_money_paise_dual_write",
+        "finished_at": "2026-06-09T17:14:07.411Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260609280000_money_paise_full_dual_write",
+        "finished_at": "2026-06-09T17:55:08.054Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260609300000_journal_entry_number_sequence",
+        "finished_at": "2026-06-09T19:24:59.177Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260610000000_saved_payment_methods",
+        "finished_at": "2026-06-09T19:54:00.263Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260610120000_enterprise_db_hardening",
+        "finished_at": "2026-06-10T06:24:27.031Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260610140000_address_pii_encryption",
+        "finished_at": "2026-06-10T06:33:07.297Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260612000000_assignment_one_sent_per_job",
+        "finished_at": "2026-06-12T10:11:22.511Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260612140000_support_ticket_messages",
+        "finished_at": "2026-06-12T10:11:22.631Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260612160000_enterprise_operations",
+        "finished_at": "2026-06-12T16:31:48.505Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260616120000_assignment_broadcast_dispatch",
+        "finished_at": "2026-06-16T11:50:31.450Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      },
+      {
+        "name": "20260617100000_settlement_pending_status",
+        "finished_at": "2026-06-17T09:39:58.659Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1,
+        "log_snip": null
+      }
+    ]
+  },
+  "analysis": {
+    "trulyPending": 0,
+    "supersededFailed": [],
+    "activeFailures": [],
+    "pendingOnDisk": [],
+    "inDbNotOnDisk": [],
+    "outOfOrderRisk": false
+  },
+  "schemaProof": {
+    "membership_cashbacks": true,
+    "campaigns": true,
+    "coupon_usages": true,
+    "booking_cols": [
+      {
+        "column_name": "premium_matched"
+      },
+      {
+        "column_name": "queue_priority"
+      },
+      {
+        "column_name": "campaign_id"
+      }
+    ],
+    "enums": [
+      {
+        "typname": "CampaignType"
+      },
+      {
+        "typname": "CashbackStatus"
+      },
+      {
+        "typname": "QueuePriority"
+      }
+    ]
+  },
+  "migrateStatus": "Prisma schema loaded from prisma\\schema.prisma\nDatasource \"db\": PostgreSQL database \"homigo_db\", schema \"public\" at \"localhost:5433\"\n\n42 migrations found in prisma/migrations\n\nDatabase schema is up to date!\n",
+  "migrateDiffEmpty": false,
+  "migrateDiff": "-- DropIndex\nDROP INDEX \"public\".\"addresses_address_payload_hash_idx\";\n\n-- DropIndex\nDROP INDEX \"public\".\"wallet_transactions_idempotency_key_key\";\n\n-- DropIndex\nDROP INDEX \"public\".\"enterprise_audit_log_archives_original_log_id_idx\";\n\n-- AlterTable\nALTER TABLE \"public\".\"bookings\" ADD COLUMN     \"provider_slot_end\" TIMESTAMPTZ(6),\nADD COLUMN     \"provider_slot_start\" TIMESTAMPTZ(6),\nADD COLUMN     \"user_slot_end\" TIMESTAMPTZ(6),\nADD COLUMN     \"user_slot_start\" TIMESTAMPTZ(6);\n\n-- AlterTable\nALTER TABLE \"public\".\"compliance_requests\" ALTER COLUMN \"target_categories\" SET DEFAULT ARRAY[]::TEXT[];\n\n-- AlterTable\nALTER TABLE \"public\".\"deletion_requests\" ALTER COLUMN \"selective_categories\" SET DEFAULT ARRAY[]::TEXT[];\n\n-- AlterTable\nALTER TABLE \"public\".\"geofences\" ALTER COLUMN \"updated_at\" SET DEFAULT CURRENT_TIMESTAMP;\n\n-- CreateTable\nCREATE TABLE \"public\".\"forensic_recovery_log\" (\n    \"id\" BIGSERIAL NOT NULL,\n    \"run_at\" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"operation\" TEXT NOT NULL,\n    \"booking_id\" TEXT NOT NULL,\n    \"booking_number\" TEXT,\n    \"field\" TEXT NOT NULL,\n    \"old_value\" TEXT,\n    \"new_value\" TEXT,\n    \"reason\" TEXT,\n\n    CONSTRAINT \"forensic_recovery_log_pkey\" PRIMARY KEY (\"id\")\n);\n\n-- CreateIndex\nCREATE UNIQUE INDEX \"users_email_key\" ON \"public\".\"users\"(\"email\" ASC);\n\n-- CreateIndex\nCREATE INDEX \"users_phone_number_idx\" ON \"public\".\"users\"(\"phone_number\" ASC);\n\n-- CreateIndex\nCREATE UNIQUE INDEX \"users_phone_number_key\" ON \"public\".\"users\"(\"phone_number\" ASC);\n\n-- CreateIndex\nCREATE INDEX \"idx_bookings_status_created\" ON \"public\".\"bookings\"(\"status\" ASC, \"created_at\" DESC);\n\n-- CreateIndex\nCREATE INDEX \"idx_bookings_user_scheduled\" ON \"public\".\"bookings\"(\"user_id\" ASC, \"scheduled_date\" DESC);\n\n-- CreateIndex\nCREATE INDEX \"idx_payments_user_status_created\" ON \"public\".\"payments\"(\"user_id\" ASC, \"status\" ASC, \"created_at\" DESC);\n\n",
+  "verificationBefore": {
+    "status": "PASS",
+    "appliedCount": 42,
+    "pendingCount": 0,
+    "failedCount": 0,
+    "staleRolledBackCount": 0,
+    "driftDetected": false,
+    "rollbackRisk": false,
+    "schemaChecksum": "321e24561e0fa74780c1c0ab988292e8bd08b29f272c5dfee9a10e232060406d",
+    "pending": [],
+    "failed": [],
+    "staleRolledBack": [],
+    "dependencyGraph": [
+      {
+        "migration": "20260527105812_init",
+        "dependsOn": null,
+        "applied": true
+      },
+      {
+        "migration": "20260527160000_refresh_token_last_activity",
+        "dependsOn": "20260527105812_init",
+        "applied": true
+      },
+      {
+        "migration": "20260527184532_auth_system_updatesauth_system_updates",
+        "dependsOn": "20260527160000_refresh_token_last_activity",
+        "applied": true
+      },
+      {
+        "migration": "20260528180000_add_provider_badges",
+        "dependsOn": "20260527184532_auth_system_updatesauth_system_updates",
+        "applied": true
+      },
+      {
+        "migration": "20260529114745_part_6a_realtime_tracking",
+        "dependsOn": "20260528180000_add_provider_badges",
+        "applied": true
+      },
+      {
+        "migration": "20260529120000_add_partner_registration",
+        "dependsOn": "20260529114745_part_6a_realtime_tracking",
+        "applied": true
+      },
+      {
+        "migration": "20260529140000_sensitive_field_lookup_hashes",
+        "dependsOn": "20260529120000_add_partner_registration",
+        "applied": true
+      },
+      {
+        "migration": "20260530120000_user_devices_push_tokens",
+        "dependsOn": "20260529140000_sensitive_field_lookup_hashes",
+        "applied": true
+      },
+      {
+        "migration": "20260608120000_membership_premium_engine",
+        "dependsOn": "20260530120000_user_devices_push_tokens",
+        "applied": true
+      },
+      {
+        "migration": "20260608140000_referral_fraud_engine",
+        "dependsOn": "20260608120000_membership_premium_engine",
+        "applied": true
+      },
+      {
+        "migration": "20260608160000_prelaunch_compliance",
+        "dependsOn": "20260608140000_referral_fraud_engine",
+        "applied": true
+      },
+      {
+        "migration": "20260608180000_membership_enterprise_10",
+        "dependsOn": "20260608160000_prelaunch_compliance",
+        "applied": true
+      },
+      {
+        "migration": "20260608200000_membership_finalization",
+        "dependsOn": "20260608180000_membership_enterprise_10",
+        "applied": true
+      },
+      {
+        "migration": "20260608210000_financial_ledger",
+        "dependsOn": "20260608200000_membership_finalization",
+        "applied": true
+      },
+      {
+        "migration": "20260608220000_financial_core",
+        "dependsOn": "20260608210000_financial_ledger",
+        "applied": true
+      },
+      {
+        "migration": "20260608230000_finance_ops_finalization",
+        "dependsOn": "20260608220000_financial_core",
+        "applied": true
+      },
+      {
+        "migration": "20260608240000_finance_ops_10_finalization",
+        "dependsOn": "20260608230000_finance_ops_finalization",
+        "applied": true
+      },
+      {
+        "migration": "20260608250000_enterprise_observability",
+        "dependsOn": "20260608240000_finance_ops_10_finalization",
+        "applied": true
+      },
+      {
+        "migration": "20260608250000_p0_security_financial_atomicity",
+        "dependsOn": "20260608250000_enterprise_observability",
+        "applied": true
+      },
+      {
+        "migration": "20260608260000_p1_webhook_dedup_state_machine",
+        "dependsOn": "20260608250000_p0_security_financial_atomicity",
+        "applied": true
+      },
+      {
+        "migration": "20260608270000_finance_integrity_10_finalization",
+        "dependsOn": "20260608260000_p1_webhook_dedup_state_machine",
+        "applied": true
+      },
+      {
+        "migration": "20260608280000_finance_integrity_10_phase2",
+        "dependsOn": "20260608270000_finance_integrity_10_finalization",
+        "applied": true
+      },
+      {
+        "migration": "20260609120000_p3_admin_rbac",
+        "dependsOn": "20260608280000_finance_integrity_10_phase2",
+        "applied": true
+      },
+      {
+        "migration": "20260609140000_p3_token_security",
+        "dependsOn": "20260609120000_p3_admin_rbac",
+        "applied": true
+      },
+      {
+        "migration": "20260609160000_p3_gift_card_campaign_security",
+        "dependsOn": "20260609140000_p3_token_security",
+        "applied": true
+      },
+      {
+        "migration": "20260609180000_p4_encryption_audit",
+        "dependsOn": "20260609160000_p3_gift_card_campaign_security",
+        "applied": true
+      },
+      {
+        "migration": "20260609200000_p4_retention_compliance",
+        "dependsOn": "20260609180000_p4_encryption_audit",
+        "applied": true
+      },
+      {
+        "migration": "20260609220000_p0_p1_concurrency_rbac",
+        "dependsOn": "20260609200000_p4_retention_compliance",
+        "applied": true
+      },
+      {
+        "migration": "20260609230000_legacy_admin_rbac_hardening",
+        "dependsOn": "20260609220000_p0_p1_concurrency_rbac",
+        "applied": true
+      },
+      {
+        "migration": "20260609240000_booking_slot_exclusion_wallet_atomic",
+        "dependsOn": "20260609230000_legacy_admin_rbac_hardening",
+        "applied": true
+      },
+      {
+        "migration": "20260609250000_wallet_pending_hardening",
+        "dependsOn": "20260609240000_booking_slot_exclusion_wallet_atomic",
+        "applied": true
+      },
+      {
+        "migration": "20260609260000_money_paise_dual_write",
+        "dependsOn": "20260609250000_wallet_pending_hardening",
+        "applied": true
+      },
+      {
+        "migration": "20260609280000_money_paise_full_dual_write",
+        "dependsOn": "20260609260000_money_paise_dual_write",
+        "applied": true
+      },
+      {
+        "migration": "20260609300000_journal_entry_number_sequence",
+        "dependsOn": "20260609280000_money_paise_full_dual_write",
+        "applied": true
+      },
+      {
+        "migration": "20260610000000_saved_payment_methods",
+        "dependsOn": "20260609300000_journal_entry_number_sequence",
+        "applied": true
+      },
+      {
+        "migration": "20260610120000_enterprise_db_hardening",
+        "dependsOn": "20260610000000_saved_payment_methods",
+        "applied": true
+      },
+      {
+        "migration": "20260610140000_address_pii_encryption",
+        "dependsOn": "20260610120000_enterprise_db_hardening",
+        "applied": true
+      },
+      {
+        "migration": "20260612000000_assignment_one_sent_per_job",
+        "dependsOn": "20260610140000_address_pii_encryption",
+        "applied": true
+      },
+      {
+        "migration": "20260612140000_support_ticket_messages",
+        "dependsOn": "20260612000000_assignment_one_sent_per_job",
+        "applied": true
+      },
+      {
+        "migration": "20260612160000_enterprise_operations",
+        "dependsOn": "20260612140000_support_ticket_messages",
+        "applied": true
+      },
+      {
+        "migration": "20260616120000_assignment_broadcast_dispatch",
+        "dependsOn": "20260612160000_enterprise_operations",
+        "applied": true
+      },
+      {
+        "migration": "20260617100000_settlement_pending_status",
+        "dependsOn": "20260616120000_assignment_broadcast_dispatch",
+        "applied": true
+      }
+    ],
+    "diskMigrationCount": 42,
+    "issues": []
+  }
+}

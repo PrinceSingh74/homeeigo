@@ -1,0 +1,47 @@
+{
+  "verdict": "PARTIAL",
+  "ctx": "bucket=homigo-prod-backups-prince region=eu-north-1 recoverable=true",
+  "checks": [
+    {
+      "name": "backup_creation",
+      "status": "PASS",
+      "detail": "2 dump object(s); newest=homigo_2026-06-09T05-00-05-859Z.dump"
+    },
+    {
+      "name": "bucket_default_encryption",
+      "status": "PASS",
+      "detail": "AES256"
+    },
+    {
+      "name": "versioning",
+      "status": "PASS",
+      "detail": "Status=Enabled"
+    },
+    {
+      "name": "lifecycle_rules",
+      "status": "PASS",
+      "detail": "1 rule(s): homigo-backups-retention"
+    },
+    {
+      "name": "cross_region_replication",
+      "status": "FAIL",
+      "detail": "The replication configuration was not found"
+    },
+    {
+      "name": "object_encryption",
+      "status": "PASS",
+      "detail": "SSE=AES256"
+    },
+    {
+      "name": "restore_capability",
+      "status": "PASS",
+      "detail": "downloaded 3106484 bytes; pg custom-format magic=PGDMP ✅"
+    },
+    {
+      "name": "checksum_validation",
+      "status": "PASS",
+      "detail": "sha256=9fb1c8943b8610d6… size=3106484 match=true s3Checksum={\"ChecksumCRC32\":\"xNCccg==\",\"ChecksumType\":\"FULL_OBJECT\"}"
+    }
+  ],
+  "generatedAt": "2026-06-09T05:00:12.434Z"
+}

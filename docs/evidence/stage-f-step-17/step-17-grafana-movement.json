@@ -1,0 +1,27 @@
+{
+  "STEP17_RUN_ID": "stage17-f-20260805120630",
+  "EVENT_TIMESTAMP": "2026-08-05T06:36:00Z",
+  "PROMETHEUS_SAMPLE_TIMESTAMP": "2026-08-05T06:38:14Z",
+  "GRAFANA_PANEL_TIME_WINDOW": "now-15m to now",
+  "panels": [
+    {
+      "PANEL": "Domain Event Throughput (id=12)",
+      "VALUE_BEFORE": "booking.created counter 301",
+      "VALUE_AFTER": "booking.created counter 323; rate 4.67/s",
+      "VISIBLE_GRAPH_MOVEMENT": true
+    },
+    {
+      "PANEL": "Outbox Publish Results (id=14)",
+      "VALUE_BEFORE": "publish success counter 301",
+      "VALUE_AFTER": "publish success counter 329; success rate 4.78/s",
+      "VISIBLE_GRAPH_MOVEMENT": true
+    },
+    {
+      "PANEL": "Consumer Success vs Failures (id=15)",
+      "VALUE_BEFORE": "processed rate baseline",
+      "VALUE_AFTER": "processed rate ~14 ops/s",
+      "VISIBLE_GRAPH_MOVEMENT": true
+    }
+  ],
+  "verificationMethod": "Grafana dashboard API + Prometheus query via cert stack datasource proxy equivalent (direct PromQL through Grafana datasource health OK)"
+}

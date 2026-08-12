@@ -1,0 +1,18 @@
+{
+  "reviewWindowUtc": "2026-08-05T06:30:00Z to 2026-08-05T07:00:00Z",
+  "sources": ["Cloud Run staging logs", "Cloud Run job logs", "Prometheus cert stack"],
+  "findings": [
+    {"pattern": "P2021", "count": 0, "classification": "none"},
+    {"pattern": "P2022", "count": 0, "classification": "none"},
+    {"pattern": "panic|fatal|uncaught", "count": 0, "classification": "none"},
+    {"pattern": "deadlock", "count": 0, "classification": "none"},
+    {"pattern": "connection exhaustion", "count": 0, "classification": "none"},
+    {"pattern": "event processor crash", "count": 0, "classification": "none"},
+    {"pattern": "consumer crash loop", "count": 0, "classification": "none"},
+    {"pattern": "Prometheus scrape errors", "count": 0, "classification": "none"},
+    {"pattern": "Grafana datasource errors", "count": 0, "classification": "none"},
+    {"pattern": "alert evaluation errors", "count": 0, "classification": "none"},
+    {"pattern": "duplicate phone fixture", "count": 2, "classification": "noise — Step 10 fixture idempotency, non-blocking"}
+  ],
+  "CRITICAL_ERRORS": 0
+}

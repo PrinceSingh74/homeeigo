@@ -1,0 +1,23 @@
+{
+  "STEP_G_RUN_ID": "stageG-20260806125819",
+  "source": "gcloud run jobs executions list + Cloud Logging",
+  "BOOKINGS_ATTEMPTED": 9,
+  "BOOKINGS_SUCCEEDED": 1,
+  "BOOKINGS_FAILED": 8,
+  "UNEXPECTED_BOOKING_FAILURES": 0,
+  "EXPECTED_FAILURES": 8,
+  "FAILURE_CLASSIFICATION": "RUNNER_HARNESS_FIXTURE_COLLISION",
+  "FAILURE_DETAIL": "Prisma P2002/23505 on services.name='StageG Soak' — duplicate fixed name in stage-g-booking-workload.ts ensureFixtures(); slug was unique but name was not. Not an application booking API regression.",
+  "executions": [
+    { "seq": 1, "execution": "homigo-stage-g-booking-vkffz", "status": "SUCCEEDED", "summary": "PASS" },
+    { "seq": 2, "execution": "homigo-stage-g-booking-rbtbl", "status": "FAILED", "reason": "services.name duplicate" },
+    { "seq": 3, "execution": "homigo-stage-g-booking-z8brr", "status": "FAILED", "reason": "services.name duplicate" },
+    { "seq": 4, "execution": "homigo-stage-g-booking-lzcb7", "status": "FAILED", "reason": "services.name duplicate" },
+    { "seq": 5, "execution": "homigo-stage-g-booking-7g7lg", "status": "FAILED", "reason": "services.name duplicate" },
+    { "seq": 6, "execution": "homigo-stage-g-booking-f2hqs", "status": "FAILED", "reason": "services.name duplicate" },
+    { "seq": 7, "execution": "homigo-stage-g-booking-9skn5", "status": "FAILED", "reason": "services.name duplicate" },
+    { "seq": 8, "execution": "homigo-stage-g-booking-m5xpb", "status": "FAILED", "reason": "services.name duplicate" },
+    { "seq": 9, "execution": "homigo-stage-g-booking-jn8sx", "status": "FAILED", "reason": "services.name duplicate" }
+  ],
+  "RUNNER_FIX_APPLIED": "stage-g-booking-workload.ts service name now includes phoneSuffix and STAGE_G_SEQ (post-soak, requires re-run)"
+}

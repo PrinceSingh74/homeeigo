@@ -1,0 +1,55 @@
+{
+  "topologyDiscoveredAtUtc": "2026-08-05T06:35:00Z",
+  "APPLICATION_METRICS": {
+    "endpoint": "/metrics",
+    "implementation": "apps/backend/src/routes/observability.ts",
+    "engine": "apps/backend/src/lib/metrics.ts",
+    "auth": "OPS Bearer / X-Ops-Token when NODE_ENV=production",
+    "stagingAuthVerified": true
+  },
+  "PROMETHEUS": {
+    "hostedStagingDeployment": "NOT_DEPLOYED_IN_GCP",
+    "certificationStack": {
+      "type": "Docker prom/prometheus:v2.55.1",
+      "url": "http://localhost:9091",
+      "config": ".step8-tmp/stage-f-obs/prometheus-staging.yml",
+      "scrapeTarget": "homigo-backend-staging Cloud Run /metrics (HTTPS + OPS bearer file)",
+      "scrapeInterval": "10s",
+      "evaluationInterval": "15s",
+      "targetHealth": "up=1"
+    },
+    "localDevStack": "apps/backend/monitoring/_obsstack/docker-compose.yml (localhost:9090)"
+  },
+  "GRAFANA": {
+    "hostedStagingDeployment": "NOT_DEPLOYED_IN_GCP",
+    "certificationStack": {
+      "type": "Docker grafana/grafana:11.3.0",
+      "url": "http://localhost:3005",
+      "dashboardUid": "homigo-observability",
+      "dashboardLoaded": true,
+      "auth": "anonymous admin enabled for certification"
+    }
+  },
+  "DATASOURCE": {
+    "name": "Prometheus",
+    "uid": "prometheus",
+    "type": "prometheus",
+    "url": "http://prometheus:9090",
+    "targetClassification": "STAGING",
+    "health": "OK"
+  },
+  "ALERT_ENGINE": {
+    "type": "Prometheus rule evaluator (cert stack)",
+    "ruleFiles": ["apps/backend/monitoring/rules/homigo-alerts.yml"],
+    "eventAlertGroup": "homigo_events",
+    "alertmanagerStaging": "NOT_CONFIGURED"
+  },
+  "chain": [
+    "Cloud Run staging backend /metrics",
+    "Cert Prometheus scrape (OPS auth)",
+    "Prometheus TSDB query API",
+    "Grafana datasource proxy",
+    "homigo-observability dashboard panels"
+  ],
+  "operationalNote": "GCP project has no VM/GKE/Cloud Run Grafana service; Step 9 documented external scrape requirement. Stage F used reversible certification obsstack — not a permanent staging Grafana endpoint."
+}

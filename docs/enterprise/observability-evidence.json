@@ -1,0 +1,96 @@
+{
+  "timestamp": "2026-06-26T07:12:47.614Z",
+  "base": "http://localhost:3000",
+  "steps": [
+    {
+      "step": "prometheus_metrics_scrape",
+      "ok": false,
+      "detail": "TimeoutError: The operation timed out."
+    },
+    {
+      "step": "readiness_probe",
+      "ok": true,
+      "detail": "{\"status\":\"ready\",\"timestamp\":\"2026-06-26T07:12:47.168Z\",\"environment\":\"development\",\"checks\":{\"database\":{\"status\":\"healthy\",\"latencyMs\":766},\"redis\":{\"status\":\"healthy\",\"latencyMs\":2055,\"topology\":\""
+    },
+    {
+      "step": "alert_rule_payment failures",
+      "ok": true,
+      "detail": "rule present"
+    },
+    {
+      "step": "alert_rule_refund failures",
+      "ok": true,
+      "detail": "rule present"
+    },
+    {
+      "step": "alert_rule_booking spikes",
+      "ok": true,
+      "detail": "rule present"
+    },
+    {
+      "step": "alert_rule_wallet drift",
+      "ok": true,
+      "detail": "rule present"
+    },
+    {
+      "step": "alert_rule_provider payout mismatch",
+      "ok": true,
+      "detail": "rule present"
+    },
+    {
+      "step": "alert_rule_database saturation",
+      "ok": true,
+      "detail": "rule present"
+    },
+    {
+      "step": "alert_rule_Redis outage",
+      "ok": true,
+      "detail": "rule present"
+    },
+    {
+      "step": "alert_rule_webhook failures",
+      "ok": true,
+      "detail": "rule present"
+    },
+    {
+      "step": "alert_rule_websocket failures",
+      "ok": true,
+      "detail": "rule present"
+    },
+    {
+      "step": "alert_rule_queue failures",
+      "ok": true,
+      "detail": "rule present"
+    },
+    {
+      "step": "grafana_dashboard",
+      "ok": true,
+      "detail": "C:\\Users\\Kapiissh Green\\OneDrive\\Desktop\\homigo\\apps\\backend\\monitoring\\grafana\\dashboards\\homigo-observability.json (3982 bytes)"
+    },
+    {
+      "step": "alertmanager_routes",
+      "ok": true,
+      "detail": "routes+receivers configured"
+    },
+    {
+      "step": "metric_http_request_duration",
+      "ok": true,
+      "detail": "rule-only"
+    },
+    {
+      "step": "metric_payment",
+      "ok": true,
+      "detail": "rule-only"
+    },
+    {
+      "step": "metric_wallet",
+      "ok": true,
+      "detail": "rule-only"
+    },
+    {
+      "step": "metric_booking",
+      "ok": true,
+      "detail": "rule-only"
+    }
+  ]
+}

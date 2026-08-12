@@ -1,0 +1,10 @@
+{
+    "SOAK_START_UTC":  "2026-08-06T16:27:37Z",
+    "SOAK_END_UTC":  "2026-08-06T17:44:56Z",
+    "REVISION":  "homigo-backend-staging-00029-pbn",
+    "STEP_G_RUN_ID":  "stageG-20260806215554",
+    "STAGE_G_RESULT":  "PASS",
+    "APPLICATION_RC_SHA":  "c31f154a128022fa7d9c4e44652506eedf3fa3e4",
+    "SOAK_DURATION_MINUTES":  62.3,
+    "IMAGE_DIGEST":  "sha256:0ad025d274fb806c838cea5b6b2ffa0b7dbdf5d15c616355a2d5638d9a31ab32"
+}

@@ -1,0 +1,12 @@
+{
+  "STEP_G_RUN_ID": "stageG-20260806125819",
+  "PAYMENT_TEST_MODE": true,
+  "PAYMENT_TEST_ATTEMPTS": 0,
+  "PAYMENT_TEST_SUCCESS": 0,
+  "PAYMENT_TEST_FAILURE": 0,
+  "UNEXPECTED_PAYMENT_FAILURES": 0,
+  "DUPLICATE_PAYMENT_EFFECTS": 0,
+  "status": "NOT_EXECUTED",
+  "reason": "homigo-stage-g-payment Cloud Run Job was never created — Deploy-RunJob passed stage-d-step-12-payment-cert.ts but payment script expects STEP12_SCRIPT_B64 env var, not STAGE_G_SCRIPT_B64. Orchestrator runner defect.",
+  "RAZORPAY_LIVE_USED": false
+}

@@ -1,0 +1,21 @@
+{
+  "capturedAtUtc": "2026-08-05T06:31:28Z",
+  "source": "staging /metrics (OPS auth) + Prometheus cert stack",
+  "OUTBOX_PENDING_T0": 0,
+  "OUTBOX_PROCESSING_T0": "not exported as standalone gauge",
+  "DLQ_UNRESOLVED_T0": 0,
+  "OLDEST_PENDING_AGE_T0": 0,
+  "CONSUMER_FAILURE_RATE_T0": 0,
+  "SCHEDULED_JOB_LAG_T0": 66800.555,
+  "homigo_outbox_publish_total_success": 301,
+  "homigo_outbox_publish_total_retry": 0,
+  "homigo_outbox_publish_total_failed_terminal": 0,
+  "homigo_domain_event_total_booking_created": 301,
+  "homigo_consumer_processed_total_sum": 903,
+  "prometheusQueries": {
+    "homigo_outbox_pending": 0,
+    "homigo_dlq_unresolved": 0,
+    "sum_homigo_outbox_publish_success": 301,
+    "sum_homigo_domain_event_booking_created": 301
+  }
+}

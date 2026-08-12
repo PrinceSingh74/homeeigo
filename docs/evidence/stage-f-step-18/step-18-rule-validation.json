@@ -1,0 +1,16 @@
+{
+  "STEP18_RUN_ID": "stage18-cert-20260805121049",
+  "OFFICIAL_VALIDATOR": "promtool",
+  "VALIDATOR_VERSION": "prom/prometheus:v2.55.1",
+  "RULE_FILES": ["apps/backend/monitoring/rules/homigo-alerts.yml"],
+  "SYNTAX": "SUCCESS: 42 rules found",
+  "WARNINGS": 0,
+  "ERRORS": 0,
+  "RESULT": "PASS",
+  "DEPLOYED_RULES": {
+    "engine": "cert Prometheus localhost:9091",
+    "group": "homigo_events",
+    "rulesLoaded": 5,
+    "health": "ok"
+  }
+}

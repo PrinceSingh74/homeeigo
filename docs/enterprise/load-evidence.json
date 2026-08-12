@@ -1,0 +1,97 @@
+{
+  "timestamp": "2026-06-26T07:29:07.255Z",
+  "base": "http://localhost:3000",
+  "stages": [
+    100,
+    500
+  ],
+  "results": [
+    {
+      "stage": 100,
+      "scenario": "booking",
+      "p50": 0,
+      "p95": 957.53,
+      "p99": 99999,
+      "errorRate": 0,
+      "http5xx": 0.25,
+      "requests": 37736,
+      "pass": false
+    },
+    {
+      "stage": 100,
+      "scenario": "wallet",
+      "p50": 0,
+      "p95": 1843.71,
+      "p99": 99999,
+      "errorRate": 0,
+      "http5xx": 0,
+      "requests": 23852,
+      "pass": false
+    },
+    {
+      "stage": 100,
+      "scenario": "payment",
+      "p50": 0,
+      "p95": 10641.46,
+      "p99": 99999,
+      "errorRate": 0,
+      "http5xx": 0.33,
+      "requests": 5418,
+      "pass": false
+    },
+    {
+      "stage": 500,
+      "scenario": "booking",
+      "p50": 0,
+      "p95": 5809.28,
+      "p99": 99999,
+      "errorRate": 0,
+      "http5xx": 0.25,
+      "requests": 51676,
+      "pass": false
+    },
+    {
+      "stage": 500,
+      "scenario": "wallet",
+      "p50": 0,
+      "p95": 4291.26,
+      "p99": 99999,
+      "errorRate": 0,
+      "http5xx": 0,
+      "requests": 35044,
+      "pass": false
+    },
+    {
+      "stage": 500,
+      "scenario": "payment",
+      "p50": 0,
+      "p95": 5022.56,
+      "p99": 99999,
+      "errorRate": 0,
+      "http5xx": 0.33,
+      "requests": 50070,
+      "pass": false
+    }
+  ],
+  "db": {
+    "probeMs": 3747,
+    "ungrantedLocks": 0,
+    "topSlowQueries": [
+      {
+        "calls": 1,
+        "mean_ms": 268.373478,
+        "query": "SELECT COUNT(*)::bigint AS cnt FROM pg_locks WHERE NOT granted"
+      },
+      {
+        "calls": 3,
+        "mean_ms": 175.32093399999997,
+        "query": "SELECT COUNT(\"public\".\"app_log_entries\".\"id\") AS \"_count$id\", \"public\".\"app_log_"
+      },
+      {
+        "calls": 4,
+        "mean_ms": 45.18617149999999,
+        "query": "DELETE FROM \"public\".\"users\" WHERE (\"public\".\"users\".\"id\" = $1 AND $2=$3) RETURN"
+      }
+    ]
+  }
+}

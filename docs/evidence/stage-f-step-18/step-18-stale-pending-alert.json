@@ -1,0 +1,11 @@
+{
+  "STEP18_RUN_ID": "stage18-cert-20260805121049",
+  "RULE": "EventOutboxOldestPendingStale",
+  "BASELINE": "inactive",
+  "TEST_CONDITION_CREATED": "1 PENDING row created_at T-1100s @ 2026-08-05T06:41:00Z",
+  "PENDING": "2026-08-05T06:41:42Z",
+  "FIRING": "2026-08-05T06:47:20Z",
+  "RECOVERY": "cleanup @ 2026-08-05T06:57:00Z",
+  "RESOLVED": "inactive @ 2026-08-05T06:58:30Z",
+  "RESULT": "PASS"
+}

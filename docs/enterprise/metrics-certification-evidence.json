@@ -1,0 +1,139 @@
+{
+  "generatedAt": "2026-07-02T11:14:29.736Z",
+  "base": "http://localhost:3000",
+  "prometheusUrl": "http://localhost:9090",
+  "metricsEndpoint": {
+    "ok": true,
+    "status": 200,
+    "bytes": 27125
+  },
+  "inventory": [
+    {
+      "name": "admin_alerts_sent_total",
+      "live": true,
+      "lineCount": 1,
+      "hasLabels": false,
+      "sample": [
+        "admin_alerts_sent_total 0"
+      ]
+    },
+    {
+      "name": "admin_alerts_skipped_total",
+      "live": true,
+      "lineCount": 1,
+      "hasLabels": true,
+      "sample": [
+        "admin_alerts_skipped_total{reason=\"no_subscribers\"} 0"
+      ]
+    },
+    {
+      "name": "admin_alerts_deduplicated_total",
+      "live": true,
+      "lineCount": 1,
+      "hasLabels": false,
+      "sample": [
+        "admin_alerts_deduplicated_total 0"
+      ]
+    },
+    {
+      "name": "admin_alerts_rate_limited_total",
+      "live": true,
+      "lineCount": 2,
+      "hasLabels": true,
+      "sample": [
+        "admin_alerts_rate_limited_total{kind=\"throttle\"} 0",
+        "admin_alerts_rate_limited_total{kind=\"batch_cap\"} 0"
+      ]
+    },
+    {
+      "name": "websocket_connection_count",
+      "live": true,
+      "lineCount": 1,
+      "hasLabels": false,
+      "sample": [
+        "websocket_connection_count 0"
+      ]
+    },
+    {
+      "name": "websocket_room_count",
+      "live": true,
+      "lineCount": 1,
+      "hasLabels": false,
+      "sample": [
+        "websocket_room_count 0"
+      ]
+    },
+    {
+      "name": "websocket_duplicate_join_total",
+      "live": true,
+      "lineCount": 1,
+      "hasLabels": true,
+      "sample": [
+        "websocket_duplicate_join_total{room=\"admin:ops\"} 0"
+      ]
+    },
+    {
+      "name": "backup_total",
+      "live": true,
+      "lineCount": 1,
+      "hasLabels": false,
+      "sample": [
+        "backup_total 1"
+      ]
+    },
+    {
+      "name": "backup_size_bytes",
+      "live": true,
+      "lineCount": 1,
+      "hasLabels": false,
+      "sample": [
+        "backup_size_bytes 22774385"
+      ]
+    },
+    {
+      "name": "backup_last_success_timestamp",
+      "live": true,
+      "lineCount": 1,
+      "hasLabels": false,
+      "sample": [
+        "backup_last_success_timestamp 1782990756"
+      ]
+    },
+    {
+      "name": "backup_retention_deleted_total",
+      "live": true,
+      "lineCount": 1,
+      "hasLabels": false,
+      "sample": [
+        "backup_retention_deleted_total 0"
+      ]
+    },
+    {
+      "name": "auth_refresh_total",
+      "live": true,
+      "lineCount": 2,
+      "hasLabels": true,
+      "sample": [
+        "auth_refresh_total{outcome=\"success\"} 7",
+        "auth_refresh_total{outcome=\"failure\"} 0"
+      ]
+    },
+    {
+      "name": "auth_refresh_failures",
+      "live": true,
+      "lineCount": 1,
+      "hasLabels": false,
+      "sample": [
+        "auth_refresh_failures 0"
+      ]
+    }
+  ],
+  "missing": [],
+  "prometheusScrape": {
+    "targetsReachable": true,
+    "backendTargetUp": true,
+    "promStatus": 200
+  },
+  "verdict": "PASS",
+  "scrapeSnippet": "admin_alerts_sent_total 0\nadmin_alerts_skipped_total{reason=\"no_subscribers\"} 0\nadmin_alerts_deduplicated_total 0\nadmin_alerts_rate_limited_total{kind=\"throttle\"} 0\nadmin_alerts_rate_limited_total{kind=\"batch_cap\"} 0\nwebsocket_connection_count 0\nwebsocket_room_count 0\nwebsocket_duplicate_join_total{room=\"admin:ops\"} 0\nbackup_total 1\nbackup_size_bytes 22774385\nbackup_last_success_timestamp 1782990756\nbackup_retention_deleted_total 0\nauth_refresh_total{outcome=\"success\"} 7\nauth_refresh_total{outcome=\"failure\"} 0\nauth_refresh_failures 0"
+}

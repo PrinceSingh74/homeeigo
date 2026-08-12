@@ -1,0 +1,12 @@
+{
+  "STEP18_RUN_ID": "stage18-cert-20260805121049",
+  "RULE": "ScheduledJobLagHigh",
+  "TEST_JOB": "step18_job_stage18-cert-20260805121049 (synthetic) + pre-existing staging overdue jobs",
+  "BASELINE": "pending from pre-existing lag 66800s @ 2026-08-05T06:34:12Z",
+  "PENDING": "2026-08-05T06:34:12Z",
+  "FIRING": "2026-08-05T06:44:12Z (approx, after 10m for:)",
+  "RECOVERY": "synthetic job removed; pre-existing staging overdue jobs remain",
+  "RESOLVED": "still firing post-cleanup due to pre-existing staging scheduled job debt",
+  "RESULT": "PASS_WITH_LIMITATION",
+  "LIMITATION": "Full inactive resolution blocked by pre-existing non-cert staging scheduled jobs (lag ~68559s)"
+}

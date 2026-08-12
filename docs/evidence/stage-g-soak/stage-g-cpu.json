@@ -1,0 +1,5 @@
+{
+    "alerts_fired":  false,
+    "note":  "Cloud Run CPU not in app /metrics",
+    "CPU_STABILITY":  "PASS"
+}

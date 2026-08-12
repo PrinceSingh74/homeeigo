@@ -1,0 +1,190 @@
+{
+  "summary": {
+    "generatedAt": "2026-06-25T11:12:30.995Z",
+    "definedAlerts": 28,
+    "requiredAlerts": 9,
+    "requiredCovered": 9,
+    "receivers": [
+      "homigo-default[webhook,slack]",
+      "homigo-escalation[webhook,slack,email,pagerduty]",
+      "homigo-critical[webhook,slack,email]",
+      "homigo-warning[webhook,slack]",
+      "homigo-info[webhook,slack]"
+    ],
+    "deliveryChannels": {
+      "slack": true,
+      "email": true,
+      "pagerduty": true,
+      "webhookBridge": true
+    },
+    "escalationChain": true,
+    "missingAlerts": [],
+    "unroutedSeverities": []
+  },
+  "alerts": [
+    {
+      "name": "HighErrorRate",
+      "severity": "critical"
+    },
+    {
+      "name": "RedisDown",
+      "severity": "critical"
+    },
+    {
+      "name": "HighMemory",
+      "severity": "warning"
+    },
+    {
+      "name": "PaymentFailureSpike",
+      "severity": "critical"
+    },
+    {
+      "name": "RefundFailureSpike",
+      "severity": "warning"
+    },
+    {
+      "name": "SettlementMismatch",
+      "severity": "critical"
+    },
+    {
+      "name": "FinancialIntegrityBelow100",
+      "severity": "critical"
+    },
+    {
+      "name": "ReconciliationMatchRateLow",
+      "severity": "critical"
+    },
+    {
+      "name": "SettlementDelay48h",
+      "severity": "warning"
+    },
+    {
+      "name": "ProviderPayableDrift",
+      "severity": "critical"
+    },
+    {
+      "name": "WalletLiabilityDrift",
+      "severity": "critical"
+    },
+    {
+      "name": "DuplicatePaymentDetected",
+      "severity": "critical"
+    },
+    {
+      "name": "ChargebackSpike",
+      "severity": "escalation"
+    },
+    {
+      "name": "WebSocketConnectionsHigh",
+      "severity": "warning"
+    },
+    {
+      "name": "AssignmentQueueBacklog",
+      "severity": "warning"
+    },
+    {
+      "name": "DatabaseDown",
+      "severity": "critical"
+    },
+    {
+      "name": "BackendDown",
+      "severity": "critical"
+    },
+    {
+      "name": "HighRequestLatency",
+      "severity": "warning"
+    },
+    {
+      "name": "WebhookFailureSpike",
+      "severity": "critical"
+    },
+    {
+      "name": "FinanceIntegrityFailure",
+      "severity": "critical"
+    },
+    {
+      "name": "ReconciliationMismatch",
+      "severity": "critical"
+    },
+    {
+      "name": "WalletLiabilityMismatch",
+      "severity": "critical"
+    },
+    {
+      "name": "ProviderPayableMismatch",
+      "severity": "critical"
+    },
+    {
+      "name": "BookingSpike",
+      "severity": "warning"
+    },
+    {
+      "name": "DatabasePoolSaturation",
+      "severity": "critical"
+    },
+    {
+      "name": "DiskPressure",
+      "severity": "warning"
+    },
+    {
+      "name": "CpuPressure",
+      "severity": "warning"
+    },
+    {
+      "name": "MemoryPressureNode",
+      "severity": "warning"
+    }
+  ],
+  "alertCoverage": [
+    {
+      "condition": "High error rate",
+      "covered": true
+    },
+    {
+      "condition": "Payment failures",
+      "covered": true
+    },
+    {
+      "condition": "Database outage",
+      "covered": true
+    },
+    {
+      "condition": "Redis outage",
+      "covered": true
+    },
+    {
+      "condition": "High latency",
+      "covered": true
+    },
+    {
+      "condition": "Webhook failure",
+      "covered": true
+    },
+    {
+      "condition": "Disk pressure",
+      "covered": true
+    },
+    {
+      "condition": "Memory pressure",
+      "covered": true
+    },
+    {
+      "condition": "CPU pressure",
+      "covered": true
+    }
+  ],
+  "severityRouting": [
+    {
+      "severity": "critical",
+      "routed": true
+    },
+    {
+      "severity": "warning",
+      "routed": true
+    },
+    {
+      "severity": "escalation",
+      "routed": true
+    }
+  ]
+}
