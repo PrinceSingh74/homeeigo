@@ -1,0 +1,53 @@
+{
+  "cli": {
+    "version": ">= 14.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "env": {
+        "SENTRY_ORG": "homigo-g4",
+        "SENTRY_PROJECT": "node-fastify",
+        "EXPO_PUBLIC_SENTRY_CERT_ENABLED": "true"
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
+      }
+    },
+    "preview-aab": {
+      "extends": "preview",
+      "channel": "preview",
+      "android": {
+        "buildType": "app-bundle"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "channel": "production",
+      "env": {
+        "SENTRY_ORG": "homigo-g4",
+        "SENTRY_PROJECT": "node-fastify"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "ios": {}
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

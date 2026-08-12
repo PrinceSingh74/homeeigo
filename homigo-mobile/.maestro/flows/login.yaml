@@ -1,0 +1,12 @@
+appId: com.homigo.app
+---
+- launchApp
+- assertVisible: "Sign in"
+- tapOn: "Email"
+- inputText: "customer@homigo.demo"
+- tapOn: "Password"
+- inputText: "Homigo@123"
+- tapOn: "Sign in"
+- assertVisible:
+    text: ".*(Home|Services|Bookings).*"
+    regex: true

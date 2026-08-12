@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { KpiCard } from "@/components/KpiCard";
 import {
@@ -157,7 +158,79 @@ export function AiAssistantScreen() {
           <Text key={line} style={styles.tip}>• {line}</Text>
         ))}
       </HqCard>
+      <AiAssistantChat />
     </HqShell>
+  );
+}
+
+/**
+ * Ask-anything box, routed through the backend AI Gateway (`/api/ai/partner`).
+ *
+ * The insight list above stays deterministic and always renders; this adds the
+ * conversational half. On failure the turn is labelled offline rather than dropped, so a
+ * partner is never shown a canned line as though a model wrote it.
+ */
+function AiAssistantChat() {
+  const [input, setInput] = useState("");
+  const [turns, setTurns] = useState<Array<{ q: string; a: string; offline?: boolean }>>([]);
+
+  const ask = useMutation({
+    mutationFn: (q: string) => partnerApi.aiChat(q),
+    onSuccess: (res, q) => setTurns((t) => [...t, { q, a: res.content }]),
+    onError: (_e, q) =>
+      setTurns((t) => [
+        ...t,
+        { q, a: "Assistant is unavailable right now. Your dashboard insights above are still current.", offline: true },
+      ]),
+  });
+
+  const send = () => {
+    const q = input.trim();
+    if (!q || ask.isPending) return;
+    setInput("");
+    ask.mutate(q);
+  };
+
+  return (
+    <HqCard>
+      <Text style={styles.tip}>Ask about routes, earnings or scheduling</Text>
+      {turns.map((t, i) => (
+        <View key={i} style={{ marginBottom: 10 }}>
+          <Text style={[styles.tip, { fontWeight: "700" }]}>You: {t.q}</Text>
+          <Text style={styles.tip}>{t.a}</Text>
+          {t.offline ? (
+            <Text style={[styles.tip, { fontSize: 11, color: partnerColors.textMuted }]}>
+              OFFLINE ANSWER — assistant unavailable
+            </Text>
+          ) : null}
+        </View>
+      ))}
+      {ask.isPending ? <Text style={styles.tip}>Thinking…</Text> : null}
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <TextInput
+          value={input}
+          onChangeText={setInput}
+          onSubmitEditing={send}
+          editable={!ask.isPending}
+          placeholder="Ask the assistant…"
+          placeholderTextColor={partnerColors.textMuted}
+          style={{
+            flex: 1, borderWidth: 1, borderColor: partnerColors.line, borderRadius: 10,
+            paddingHorizontal: 12, paddingVertical: 8, color: partnerColors.text,
+          }}
+        />
+        <Pressable
+          onPress={send}
+          disabled={ask.isPending}
+          style={{
+            backgroundColor: partnerColors.primary, borderRadius: 10,
+            paddingHorizontal: 16, justifyContent: "center", opacity: ask.isPending ? 0.6 : 1,
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "700" }}>Ask</Text>
+        </Pressable>
+      </View>
+    </HqCard>
   );
 }
 

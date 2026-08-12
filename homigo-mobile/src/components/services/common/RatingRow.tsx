@@ -1,16 +1,25 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Star } from "lucide-react-native";
-import { serviceType } from "@/theme/typography";
+import { serviceType } from "@/components/services/theme/typography";
 import { useServicesTheme } from "../ServicesThemeContext";
 
 type Props = {
-  rating: number;
+  rating: number | null;
   reviews: string;
 };
 
 export function RatingRow({ rating, reviews }: Props) {
   const { c } = useServicesTheme();
+
+  // No reviews yet → show an honest "New" instead of a fabricated rating.
+  if (rating == null) {
+    return (
+      <View style={styles.row}>
+        <Text style={[styles.rating, { color: c.textMuted }]}>New</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.row}>

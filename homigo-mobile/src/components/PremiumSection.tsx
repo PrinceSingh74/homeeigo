@@ -76,10 +76,10 @@ export const PremiumSection: React.FC = () => {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={["#7C3AED", "#9333EA", "#DB2777"]}
+        colors={["#064e3b", "#0f766e", "#115e59"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.card, shadowStyles.glowViolet]}
+        style={[styles.card, shadowStyles.glowTeal]}
       >
         <LinearGradient
           colors={["rgba(255,255,255,0.16)", "rgba(255,255,255,0)"]}
@@ -90,7 +90,7 @@ export const PremiumSection: React.FC = () => {
 
         {/* Title band */}
         <View style={styles.topRow}>
-          <Text style={styles.title}>HOMIGO PREMIUM</Text>
+          <Text style={styles.title}>Homeeigo Premium</Text>
           <Crown />
         </View>
 
@@ -127,7 +127,7 @@ export const PremiumSection: React.FC = () => {
           <Text style={styles.upgradeBtnText}>
             {isPremium ? "Manage Premium" : "Upgrade Now"}
           </Text>
-          <ArrowRight size={15} color="#9333EA" strokeWidth={2.8} />
+          <ArrowRight size={15} color="#0f766e" strokeWidth={2.8} />
         </Pressable>
       </LinearGradient>
     </View>
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
   upgradeBtnText: {
     fontSize: 14,
     fontWeight: "800",
-    color: "#9333EA",
+    color: "#0f766e",
     letterSpacing: -0.2,
   },
 });

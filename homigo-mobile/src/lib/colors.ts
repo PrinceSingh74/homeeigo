@@ -6,10 +6,10 @@ export const colors = {
     textSecondary: "#64748B",
     border: "#E5E7EB",
 
-    primary: "#2563EB",
-    violet: "#7C3AED",
-    cyan: "#06B6D4",
-    pink: "#EC4899",
+    primary: "#059669",
+    teal: "#0d9488",
+    tealDeep: "#0f766e",
+    tealSoft: "#14b8a6",
     gold: "#D4AF37",
     success: "#10B981",
     warning: "#F59E0B",
@@ -22,10 +22,10 @@ export const colors = {
     textSecondary: "#D1D5DB",
     border: "#374151",
 
-    primary: "#3B82F6",
-    violet: "#8B5CF6",
-    cyan: "#06B6D4",
-    pink: "#EC4899",
+    primary: "#10b981",
+    teal: "#14b8a6",
+    tealDeep: "#0f766e",
+    tealSoft: "#14b8a6",
     gold: "#D4AF37",
     success: "#10B981",
     warning: "#F59E0B",
@@ -62,30 +62,37 @@ export const shadowStyles = {
     shadowOpacity: 0.08,
     shadowRadius: 20,
   },
-  glowBlue: {
+  glowPrimary: {
     elevation: 10,
-    shadowColor: "#2563EB",
+    shadowColor: "#059669",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.35,
     shadowRadius: 20,
   },
-  glowViolet: {
+  glowEmerald: {
     elevation: 10,
-    shadowColor: "#7C3AED",
+    shadowColor: "#10b981",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 22,
+  },
+  glowTeal: {
+    elevation: 10,
+    shadowColor: "#0d9488",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.35,
     shadowRadius: 24,
   },
-  glowCyan: {
+  glowTealDeep: {
     elevation: 10,
-    shadowColor: "#06B6D4",
+    shadowColor: "#0f766e",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
     shadowRadius: 18,
   },
-  glowPink: {
+  glowTealSoft: {
     elevation: 10,
-    shadowColor: "#EC4899",
+    shadowColor: "#14b8a6",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.28,
     shadowRadius: 16,
@@ -99,7 +106,7 @@ export const shadowStyles = {
   },
   glowSoft: {
     elevation: 6,
-    shadowColor: "#2563EB",
+    shadowColor: "#059669",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 12,
@@ -108,13 +115,13 @@ export const shadowStyles = {
 
 // Premium gradient stops (Luxury Aurora AI)
 export const gradients = {
-  hero: ["#2563EB", "#7C3AED", "#06B6D4"] as const,
-  premium: ["#7C3AED", "#EC4899"] as const,
+  hero: ["#059669", "#0d9488", "#0f766e"] as const,
+  premium: ["#0d9488", "#14b8a6"] as const,
   gold: ["#D4AF37", "#FDB022"] as const,
-  aiCard: ["#2563EB", "#7C3AED"] as const,
-  aurora: ["#06B6D4", "#7C3AED", "#EC4899"] as const,
-  deep: ["#1E1B4B", "#2563EB", "#7C3AED"] as const,
-  heroBackground: ["#F8FAFC", "#EFF6FF", "#F3E8FF"] as const,
-  heroBackgroundDark: ["#0A0F1E", "#0F172A", "#1E1B4B"] as const,
-  lightSpeed: ["#0F0A1F", "#1E1B4B", "#312E81"] as const,
+  aiCard: ["#059669", "#0d9488"] as const,
+  aurora: ["#0f766e", "#0d9488", "#14b8a6"] as const,
+  deep: ["#064e3b", "#059669", "#0d9488"] as const,
+  heroBackground: ["#F8FAFC", "#ECFDF5", "#F0FDF4"] as const,
+  heroBackgroundDark: ["#0A0F1E", "#0F172A", "#064e3b"] as const,
+  lightSpeed: ["#0F0A1F", "#064e3b", "#065f46"] as const,
 };

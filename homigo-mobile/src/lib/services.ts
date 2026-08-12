@@ -182,10 +182,11 @@ export const BOOKING_TIMES = [
   "07:00 PM",
 ];
 
+// ids must match the server catalog (BOOKING_ADDONS in booking-pricing.service).
 export const ADDONS = [
-  { name: "Fridge Cleaning", desc: "Deep cleaning & sanitization", price: 99 },
-  { name: "Sofa Cleaning", desc: "Vacuum & stain removal", price: 149 },
-  { name: "Microwave Cleaning", desc: "Interior cleaning", price: 79 },
+  { id: "fridge", name: "Fridge Cleaning", desc: "Deep cleaning & sanitization", price: 99 },
+  { id: "sofa", name: "Sofa Cleaning", desc: "Vacuum & stain removal", price: 149 },
+  { id: "microwave", name: "Microwave Cleaning", desc: "Interior cleaning", price: 79 },
 ];
 
 export function getServiceById(id: string) {

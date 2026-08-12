@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { View, Text, StyleSheet, useWindowDimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { ChevronRight } from "lucide-react-native";
+import { ChevronRight, Wallet, CalendarDays, MapPin, Coins } from "lucide-react-native";
 import Animated from "react-native-reanimated";
 import { useTheme } from "@/hooks/useTheme";
 import { PROFILE_STAT_CARDS } from "@/lib/profile-mobile-data";
@@ -11,6 +11,8 @@ import { profileTextBase, profileType } from "@/lib/profile-typography";
 import { shadowStyles } from "@/lib/colors";
 import { PressableScale } from "@/components/ai/PressableScale";
 import { profileEnter } from "@/lib/profile-animations";
+import { useWalletBalanceQuery, useBookingsQuery } from "@/hooks/use-core-data";
+import { formatINR } from "@/lib/wallet-mobile-data";
 
 type Props = {
   onStatPress: (id: string, route?: string) => void;
@@ -20,11 +22,43 @@ export function ProfileQuickStatsGrid({ onStatPress }: Props) {
   const { colors: c, isDark } = useTheme();
   const { width } = useWindowDimensions();
   const tileW = profileStatTileWidth(width);
+  const { data: walletData } = useWalletBalanceQuery();
+  const { data: bookingsData } = useBookingsQuery();
+
+  const activeBookings = useMemo(
+    () =>
+      (bookingsData?.bookings ?? []).filter(
+        (b) => b.status !== "completed" && !b.status.startsWith("cancelled"),
+      ).length,
+    [bookingsData?.bookings],
+  );
+
+  const cards = useMemo(() => {
+    return PROFILE_STAT_CARDS.map((card) => {
+      if (card.id === "wallet") {
+        return {
+          ...card,
+          value: formatINR(walletData?.balance ?? 0),
+        };
+      }
+      if (card.id === "bookings") {
+        return { ...card, value: String(activeBookings) };
+      }
+      return card;
+    });
+  }, [walletData?.balance, activeBookings]);
 
   return (
     <View style={styles.grid}>
-      {PROFILE_STAT_CARDS.map((card, i) => {
-        const Icon = card.icon;
+      {cards.map((card, i) => {
+        const Icon =
+          card.id === "wallet"
+            ? Wallet
+            : card.id === "bookings"
+              ? CalendarDays
+              : card.id === "addresses"
+                ? MapPin
+                : Coins;
         return (
           <Animated.View
             key={card.id}

@@ -12,7 +12,7 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
 import { useAppStore } from "@/lib/store";
-import { WALLET_TXNS } from "@/lib/wallet-mobile-data";
+import { useWalletTransactionsQuery } from "@/hooks/use-core-data";
 import { WALLET_SECTION_GAP } from "@/lib/wallet-layout";
 import { spacing, radius } from "@/lib/typography";
 import { PressableScale } from "@/components/ai/PressableScale";
@@ -35,6 +35,19 @@ type Props = {
 export function WalletRecentTransactions({ onViewAll }: Props) {
   const { colors: c, isDark } = useTheme();
   const showToast = useAppStore((s) => s.showToast);
+  const { data } = useWalletTransactionsQuery();
+  const txns = (data?.transactions ?? []).slice(0, 4).map((t) => ({
+    id: t.id,
+    title: t.description ?? t.reason ?? "Wallet transaction",
+    subtitle: new Date(t.createdAt).toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+    }),
+    amount: t.amount,
+    type: t.type,
+    iconColor: t.type === "credit" ? "#10B981" : "#EF4444",
+    iconBg: t.type === "credit" ? "#ECFDF5" : "#FEF2F2",
+  }));
 
   const copyAmount = async (amt: number) => {
     await Clipboard.setStringAsync(`₹${Math.abs(amt).toLocaleString("en-IN")}`);
@@ -53,7 +66,7 @@ export function WalletRecentTransactions({ onViewAll }: Props) {
       </View>
 
       <View style={styles.list}>
-        {WALLET_TXNS.map((t, i) => {
+        {txns.map((t, i) => {
           const isCredit = t.type === "credit";
           const prefix = isCredit ? "+ " : "- ";
           const amtStr = `₹${Math.abs(t.amount).toLocaleString("en-IN")}`;

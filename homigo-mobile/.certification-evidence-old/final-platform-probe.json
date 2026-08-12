@@ -1,0 +1,50 @@
+{
+  "generatedAt": "2026-06-26T19:58:04.486Z",
+  "base": "http://localhost:3000",
+  "checks": {
+    "backend_health": {
+      "ok": true,
+      "status": 200,
+      "db": "ok"
+    },
+    "maps_tracking_api": {
+      "ok": true,
+      "status": 200,
+      "bookingId": "cmquuelon03oktz14yltv14x2",
+      "hasLocation": false
+    },
+    "push_token_registration": {
+      "ok": false,
+      "status": 409,
+      "detail": "{\"success\":false,\"error\":\"Record already exists\",\"code\":\"CONFLICT\",\"timestamp\":\"2026-06-26T19:58:06.169Z\",\"suggestion\":\""
+    },
+    "push_token_auth_gate": {
+      "ok": true,
+      "status": 401,
+      "detail": "unauthenticated requests rejected"
+    },
+    "mobile_razorpay_wiring": {
+      "ok": true,
+      "sdk": "^2.3.1",
+      "keyConfigured": true,
+      "nativeCheckoutRuntime": false,
+      "detail": "Native Razorpay checkout requires EAS build + physical device — not proven this session"
+    },
+    "ota_updates_config": {
+      "ok": true,
+      "expoUpdates": "~29.0.18",
+      "runtimeVersion": {
+        "policy": "appVersion"
+      },
+      "updatesUrl": null,
+      "channels": {
+        "development": "development",
+        "preview": "preview",
+        "preview-aab": "preview",
+        "production": "production"
+      },
+      "otaRuntimeProof": false,
+      "detail": "updates URL missing — eas init required"
+    }
+  }
+}

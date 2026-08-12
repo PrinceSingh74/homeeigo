@@ -13,13 +13,18 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
 import { useRouter } from "expo-router";
-import { Scissors, type LucideIcon } from "lucide-react-native";
-import { openBook } from "@/lib/navigation";
-import { SERVICES } from "@/lib/services";
+import { ArrowRight, Scissors, type LucideIcon } from "lucide-react-native";
+import { openBook, openProviders } from "@/lib/navigation";
+import { useCatalogServices } from "@/hooks/use-catalog";
+import { getServicePhoto } from "@/lib/service-photos";
 
 const { width } = Dimensions.get("window");
 const CARD_W = width * 0.36;
 const FEAT_W = width * 0.4;
+/* Branded photo tiles — same artwork as the website's Popular Services. */
+const PHOTO_W = width * 0.58;
+const PHOTO_H = PHOTO_W * 1.18;
+const SNAP = PHOTO_W + 14;
 
 const IMAGES: Record<string, any> = {
   cleaning: require("../../assets/svc-cleaning.png"),
@@ -38,16 +43,6 @@ type Svc = {
   color: string;
   featured?: boolean;
 };
-
-const services: Svc[] = SERVICES.map((s) => ({
-  serviceId: s.id,
-  name: s.name,
-  price: s.price,
-  imgKey: s.imageKey,
-  icon: s.iconKey === "scissors" ? Scissors : undefined,
-  color: s.color,
-  featured: s.featured,
-}));
 
 function shade(hex: string, amt: number) {
   const n = parseInt(hex.slice(1), 16);
@@ -70,7 +65,7 @@ function IconChip({
   children: React.ReactNode;
 }) {
   return (
-    <View style={[styles.iconShadow, { shadowColor: feat ? "#4C1D95" : color }]}>
+    <View style={[styles.iconShadow, { shadowColor: feat ? "#065f46" : color }]}>
       <LinearGradient
         colors={
           feat
@@ -121,6 +116,56 @@ function ServiceIcon({ item, feat }: { item: Svc; feat: boolean }) {
   );
 }
 
+/**
+ * Premium branded photo tile — mirrors the website's Popular Services cards:
+ * a clear, full-bleed service photo with a bottom gradient scrim, extrabold
+ * name, glass price pill, and accent arrow. Fully static (no tilt), image stays
+ * crisp and uncovered — the scrim only darkens the lower third for legibility.
+ */
+function PhotoCard({ item, photo, accent }: { item: Svc; photo: any; accent: string }) {
+  const router = useRouter();
+  const scale = useRef(new Animated.Value(1)).current;
+  const to = (v: number, b = 0) =>
+    Animated.spring(scale, { toValue: v, useNativeDriver: true, speed: 50, bounciness: b }).start();
+
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Pressable
+        onPress={() => openBook(router, { service: item.serviceId })}
+        onPressIn={() => to(0.96)}
+        onPressOut={() => to(1, 7)}
+        style={[styles.photoCard, { shadowColor: accent }]}
+      >
+        <Image source={photo} style={styles.photoImg} resizeMode="cover" />
+        {/* bottom scrim only — keeps the image clear */}
+        <LinearGradient
+          colors={["transparent", "rgba(4,20,13,0.10)", "rgba(4,20,13,0.86)"]}
+          locations={[0, 0.45, 1]}
+          style={styles.photoScrim}
+        />
+        {item.featured ? (
+          <View style={[styles.photoBadge, { backgroundColor: accent }]}>
+            <Text style={styles.photoBadgeText}>POPULAR</Text>
+          </View>
+        ) : null}
+        <View style={styles.photoInfo}>
+          <Text numberOfLines={1} style={styles.photoName}>{item.name}</Text>
+          <View style={styles.photoRow}>
+            {item.price ? (
+              <View style={styles.pricePill}>
+                <Text style={styles.pricePillText}>From {item.price}</Text>
+              </View>
+            ) : <View />}
+            <View style={[styles.photoArrow, { backgroundColor: accent }]}>
+              <ArrowRight size={15} color="#fff" strokeWidth={2.6} />
+            </View>
+          </View>
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 function Card({ item }: { item: Svc }) {
   const router = useRouter();
   const { colors: themeColors } = useTheme();
@@ -145,10 +190,10 @@ function Card({ item }: { item: Svc }) {
       >
         {feat ? (
           <LinearGradient
-            colors={["#8B5CF6", "#7C3AED", "#6D28D9"]}
+            colors={["#10b981", "#0d9488", "#0f766e"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.card, shadowStyles.glowViolet]}
+            style={[styles.card, shadowStyles.glowEmerald]}
           >
             <LinearGradient
               colors={["rgba(255,255,255,0.28)", "rgba(255,255,255,0)"]}
@@ -195,6 +240,25 @@ function Card({ item }: { item: Svc }) {
 export const ServiceCategories: React.FC = () => {
   const router = useRouter();
   const { colors: themeColors } = useTheme();
+  const { services: catalogServices } = useCatalogServices();
+
+  const services: Svc[] = catalogServices.map((s) => ({
+    serviceId: s.id,
+    name: s.name,
+    price: s.price,
+    imgKey: s.imageKey,
+    icon: s.iconKey === "scissors" ? Scissors : undefined,
+    color: s.color,
+    featured: s.featured,
+  }));
+
+  // Split: services with branded website photos ride the premium photo rail;
+  // the rest keep the compact icon cards (never leaves the section empty).
+  const withPhoto = services
+    .map((s) => ({ svc: s, ...(getServicePhoto(s.name) ?? {}) }))
+    .filter((x): x is { svc: Svc; photo: any; accent: string } => Boolean((x as { photo?: unknown }).photo));
+  const rest = services.filter((s) => !getServicePhoto(s.name));
+  const hasPhotos = withPhoto.length > 0;
 
   return (
     <View style={styles.container}>
@@ -202,21 +266,47 @@ export const ServiceCategories: React.FC = () => {
         <Text style={[styles.title, { color: themeColors.text }]}>
           Popular Services
         </Text>
-        <Pressable onPress={() => openBook(router)}>
-          <Text style={[styles.seeAll, { color: themeColors.primary }]}>
-            See all
-          </Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 16 }}>
+          <Pressable onPress={() => openProviders(router)}>
+            <Text style={[styles.seeAll, { color: "#059669" }]}>
+              Find pros
+            </Text>
+          </Pressable>
+          <Pressable onPress={() => openBook(router)}>
+            <Text style={[styles.seeAll, { color: "#059669" }]}>
+              Book now
+            </Text>
+          </Pressable>
+        </View>
       </View>
-      <FlatList
-        data={services}
-        renderItem={({ item }) => <Card item={item} />}
-        keyExtractor={(i) => i.serviceId}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        decelerationRate="fast"
-        contentContainerStyle={styles.list}
-      />
+
+      {hasPhotos ? (
+        <FlatList
+          data={withPhoto}
+          renderItem={({ item }) => (
+            <PhotoCard item={item.svc} photo={item.photo} accent={item.accent} />
+          )}
+          keyExtractor={(i) => i.svc.serviceId}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          decelerationRate="fast"
+          snapToInterval={SNAP}
+          snapToAlignment="start"
+          contentContainerStyle={styles.photoList}
+        />
+      ) : null}
+
+      {rest.length > 0 ? (
+        <FlatList
+          data={rest}
+          renderItem={({ item }) => <Card item={item} />}
+          keyExtractor={(i) => i.serviceId}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          decelerationRate="fast"
+          contentContainerStyle={[styles.list, hasPhotos && { marginTop: 14 }]}
+        />
+      ) : null}
     </View>
   );
 };
@@ -233,6 +323,68 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
   seeAll: { fontSize: 13, fontWeight: "700" },
   list: { paddingHorizontal: 24, gap: 12, paddingVertical: 4 },
+
+  /* ---- Premium branded photo rail (matches website Popular Services) ---- */
+  photoList: { paddingHorizontal: 24, gap: 14, paddingVertical: 4 },
+  photoCard: {
+    width: PHOTO_W,
+    height: PHOTO_H,
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: "#e5f6ee",
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  photoImg: { width: "100%", height: "100%" },
+  photoScrim: { position: "absolute", left: 0, right: 0, bottom: 0, height: "62%" },
+  photoBadge: {
+    position: "absolute",
+    top: 12,
+    left: 12,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  photoBadgeText: { color: "#fff", fontSize: 9.5, fontWeight: "900", letterSpacing: 0.6 },
+  photoInfo: { position: "absolute", left: 14, right: 14, bottom: 13 },
+  photoName: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: -0.3,
+    textShadowColor: "rgba(0,0,0,0.35)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  photoRow: {
+    marginTop: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  pricePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+  },
+  pricePillText: { color: "#fff", fontSize: 11.5, fontWeight: "800" },
+  photoArrow: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
+  },
   card: {
     height: 172,
     borderRadius: 26,

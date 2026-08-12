@@ -7,7 +7,6 @@ import {
   Image,
 } from "react-native";
 import { BlurView } from "expo-blur";
-import { LinearGradient } from "expo-linear-gradient";
 import { MapPin, ChevronDown, Bell } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { useAppNavigation } from "@/hooks/useAppNavigation";
@@ -37,17 +36,17 @@ export const Navbar: React.FC = () => {
           ]}
         >
           <View style={styles.logoRow}>
-            <LinearGradient
-              colors={["#2563EB", "#7C3AED"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.logoMark}
-            >
-              <Text style={styles.logoMarkText}>H</Text>
-            </LinearGradient>
-            <Text style={[styles.logoText, { color: themeColors.text }]}>
-              HOMIGO
-            </Text>
+            <Image
+              source={
+                isDark
+                  ? require("../../assets/brand/logo-full-dark.png")
+                  : require("../../assets/brand/logo-full.png")
+              }
+              style={styles.logo}
+              resizeMode="contain"
+              accessibilityIgnoresInvertColors
+              accessibilityLabel="Homeeigo"
+            />
           </View>
 
           <Pressable
@@ -61,7 +60,7 @@ export const Navbar: React.FC = () => {
             ]}
             onPress={openLocation}
           >
-            <MapPin size={13} color={themeColors.primary} />
+            <MapPin size={13} color="#059669" />
             <Text
               numberOfLines={1}
               style={[styles.locationText, { color: themeColors.text }]}
@@ -86,7 +85,7 @@ export const Navbar: React.FC = () => {
               <View
                 style={[
                   styles.avatarRing,
-                  { borderColor: themeColors.primary },
+                  { borderColor: "#059669" },
                 ]}
               >
                 <Image
@@ -136,18 +135,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
-  logoMark: {
-    width: 26,
-    height: 26,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logoMarkText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "800",
+  /** Full brand lockup — 560×386 artwork, kept at its native 1.45:1 ratio. */
+  logo: {
+    height: 42,
+    width: 61,
   },
   logoText: {
     fontSize: 15,

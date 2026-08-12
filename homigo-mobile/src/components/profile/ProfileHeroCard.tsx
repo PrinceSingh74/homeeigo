@@ -12,7 +12,8 @@ import {
 } from "lucide-react-native";
 import Animated from "react-native-reanimated";
 import { useTheme } from "@/hooks/useTheme";
-import { PROFILE_USER } from "@/lib/profile-mobile-data";
+import { useAuth } from "@/hooks/use-auth";
+import { useMySubscription } from "@/hooks/use-subscription";
 import { PROFILE_CARD_RADIUS } from "@/lib/profile-layout";
 import { spacing } from "@/lib/typography";
 import { profileTextBase, profileType } from "@/lib/profile-typography";
@@ -27,7 +28,13 @@ type Props = {
 
 export function ProfileHeroCard({ onEdit, onAvatar }: Props) {
   const { colors: c, isDark } = useTheme();
-  const pct = PROFILE_USER.profileCompletion;
+  const { user } = useAuth();
+  const { data: mySub } = useMySubscription();
+  const activePlan = mySub?.active ?? null;
+  const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Homeeigo User";
+  const email = user?.email ?? "Sign in to sync profile";
+  const avatar = user?.profileImage ?? "https://api.dicebear.com/7.x/avataaars/png?seed=homigo";
+  const pct = user ? (user.isEmailVerified && user.isPhoneVerified ? 100 : 72) : 40;
 
   return (
     <Animated.View
@@ -44,7 +51,7 @@ export function ProfileHeroCard({ onEdit, onAvatar }: Props) {
       <View style={styles.identityRow}>
         <PressableScale onPress={onAvatar} haptic style={styles.avatarWrap}>
           <LinearGradient colors={["#2563EB", "#7C3AED"]} style={styles.avatarRing}>
-            <Image source={{ uri: PROFILE_USER.avatar }} style={styles.avatar} />
+            <Image source={{ uri: avatar }} style={styles.avatar} />
           </LinearGradient>
           <View style={styles.camBadge}>
             <Camera size={12} color="#fff" strokeWidth={2.5} />
@@ -57,14 +64,14 @@ export function ProfileHeroCard({ onEdit, onAvatar }: Props) {
               style={[profileType.heroName, profileTextBase, { color: c.text, flex: 1 }]}
               numberOfLines={1}
             >
-              {PROFILE_USER.name}
+              {displayName}
             </Text>
-            <BadgeCheck size={18} color={c.violet} fill={c.violet} strokeWidth={0} />
+            <BadgeCheck size={18} color={c.teal} fill={c.teal} strokeWidth={0} />
           </View>
           <View style={styles.premiumRow}>
             <Crown size={12} color={c.gold} fill={c.gold} />
-            <Text style={[profileType.heroBadge, profileTextBase, { color: c.violet }]}>
-              {PROFILE_USER.status}
+            <Text style={[profileType.heroBadge, profileTextBase, { color: c.teal }]}>
+              {user?.isEmailVerified ? "Verified member" : "Member"}
             </Text>
           </View>
           <View style={styles.metaRow}>
@@ -73,13 +80,13 @@ export function ProfileHeroCard({ onEdit, onAvatar }: Props) {
               style={[profileType.heroMeta, profileTextBase, { color: c.text, flex: 1 }]}
               numberOfLines={2}
             >
-              {PROFILE_USER.location}
+              {email}
             </Text>
           </View>
           <View style={styles.metaRow}>
             <Calendar size={12} color={c.textSecondary} style={styles.metaIcon} />
             <Text style={[profileType.heroMeta, profileTextBase, { color: c.textSecondary }]}>
-              Member since {PROFILE_USER.memberSince}
+              Member since {user?.createdAt ? new Date(user.createdAt).getFullYear() : "2026"}
             </Text>
           </View>
         </View>
@@ -105,19 +112,23 @@ export function ProfileHeroCard({ onEdit, onAvatar }: Props) {
         </StatCol>
         <View style={[styles.divider, { backgroundColor: c.border }]} />
         <StatCol
-          label="AI Trust Score"
-          value={`${PROFILE_USER.trustScore}/5`}
-          sub="Excellent"
-          subColor={c.success}
+          label="Referral Code"
+          value={user?.referralCode ?? "—"}
+          sub={`${user?.referralCount ?? 0} joined`}
+          subColor={c.textSecondary}
           textColor={c.text}
           muted={c.textSecondary}
         />
         <View style={[styles.divider, { backgroundColor: c.border }]} />
         <StatCol
           label="Membership"
-          value={PROFILE_USER.membership}
-          sub="Active"
-          subColor={c.success}
+          value={activePlan ? "Premium" : "Free"}
+          sub={
+            activePlan?.expiresAt
+              ? `until ${new Date(activePlan.expiresAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`
+              : "Tap to upgrade"
+          }
+          subColor={c.textSecondary}
           textColor={c.text}
           muted={c.textSecondary}
           icon={<Star size={11} color={c.gold} fill={c.gold} />}

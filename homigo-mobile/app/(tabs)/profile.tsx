@@ -13,6 +13,12 @@ import { ProfileQuickStatsGrid } from "@/components/profile/ProfileQuickStatsGri
 import { ProfileBookingsSection } from "@/components/profile/ProfileBookingsSection";
 import { ProfileInsightsSection } from "@/components/profile/ProfileInsightsSection";
 import { ProfileAddressesSection } from "@/components/profile/ProfileAddressesSection";
+import { ProfileEmailVerifyCard } from "@/components/profile/ProfileEmailVerifyCard";
+import { ProfileReferralCard } from "@/components/profile/ProfileReferralCard";
+import { ProfileSessionsSection } from "@/components/profile/ProfileSessionsSection";
+import { ProfileHelpLinks } from "@/components/profile/ProfileHelpLinks";
+import { AuthGuard } from "@/components/auth/AuthGuard";
+import { useBookingsQuery, useAddressesQuery } from "@/hooks/use-core-data";
 
 const BOOKING_SERVICE: Record<string, string> = {
   "p-ac": "ac-service",
@@ -29,6 +35,8 @@ export default function ProfileScreen() {
   const { colors: c, isDark } = useTheme();
   const nav = useAppNavigation();
   const scrollY = useSharedValue(0);
+  useBookingsQuery();
+  useAddressesQuery();
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (e) => {
@@ -60,6 +68,7 @@ export default function ProfileScreen() {
   );
 
   return (
+    <AuthGuard title="Sign in to view your profile">
     <SafeAreaView
       style={[styles.root, { backgroundColor: c.bg }]}
       edges={["top", "left", "right"]}
@@ -72,7 +81,7 @@ export default function ProfileScreen() {
       <LinearGradient
         colors={
           isDark
-            ? [`${c.violet}14`, "transparent"]
+            ? [`${c.teal}14`, "transparent"]
             : ["#F8FAFC", "#F8FAFC", "transparent"]
         }
         style={StyleSheet.absoluteFill}
@@ -95,6 +104,7 @@ export default function ProfileScreen() {
           onEdit={() => nav.showToast("Edit profile")}
           onAvatar={() => nav.showToast("Change profile photo")}
         />
+        <ProfileEmailVerifyCard />
         <ProfilePremiumBanner onManage={nav.openPremium} />
         <ProfileQuickStatsGrid onStatPress={onStatPress} />
         <ProfileBookingsSection
@@ -120,9 +130,13 @@ export default function ProfileScreen() {
           onAddress={() => nav.openAddresses()}
           onAdd={nav.openAddresses}
         />
+        <ProfileReferralCard />
+        <ProfileSessionsSection />
+        <ProfileHelpLinks />
         <Animated.View style={{ height: PROFILE_TAB_SPACER }} />
       </Animated.ScrollView>
     </SafeAreaView>
+    </AuthGuard>
   );
 }
 

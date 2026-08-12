@@ -43,7 +43,7 @@ export function AiPageAmbient() {
     return (
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <LinearGradient
-          colors={["rgba(123,97,255,0.08)", "transparent", "rgba(0,209,255,0.06)"]}
+          colors={["rgba(16, 185, 129,0.08)", "transparent", "rgba(45, 212, 191,0.06)"]}
           style={StyleSheet.absoluteFill}
         />
       </View>
@@ -53,7 +53,7 @@ export function AiPageAmbient() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <LinearGradient
-        colors={["rgba(0,209,255,0.06)", "transparent", "rgba(123,97,255,0.08)"]}
+        colors={["rgba(45, 212, 191,0.06)", "transparent", "rgba(16, 185, 129,0.08)"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.beam}

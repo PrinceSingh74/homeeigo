@@ -4,15 +4,22 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { SectionTitle } from "./SectionTitle";
 import { PressableScale } from "./PressableScale";
-import { QUICK_ACTIONS } from "@/lib/ai-mobile-data";
+import { useFeaturedCatalog } from "@/hooks/use-catalog";
 import { useAiTheme, aiSpacing, aiType, aiRadius, aiCardShadow } from "@/lib/ai-mobile-theme";
 import { openBook } from "@/lib/navigation";
 import { useAppNavigation } from "@/hooks/useAppNavigation";
+import { getServicePhoto } from "@/lib/service-photos";
 
 export function AiQuickActionsRow() {
   const router = useRouter();
   const { goServices } = useAppNavigation();
   const { c, isDark } = useAiTheme();
+  const { featured } = useFeaturedCatalog();
+  const actions = featured.slice(0, 6).map((s) => ({
+    label: s.name,
+    serviceId: s.id,
+    photo: getServicePhoto(s.name),
+  }));
 
   return (
     <View style={styles.wrap}>
@@ -29,12 +36,14 @@ export function AiQuickActionsRow() {
         snapToInterval={88 + 10}
         snapToAlignment="start"
       >
-        {QUICK_ACTIONS.map((item) => (
+        {actions.map((item) => (
           <PressableScale
             key={item.label}
             onPress={() => openBook(router, { service: item.serviceId })}
             haptic
             style={[styles.tileOuter, aiCardShadow(c.shadowColor, "lift")]}
+            accessibilityRole="button"
+            accessibilityLabel={`Book ${item.label}`}
           >
             <View
               style={[
@@ -54,21 +63,20 @@ export function AiQuickActionsRow() {
                 style={styles.tileShine}
                 pointerEvents="none"
               />
-              <LinearGradient
-                colors={item.tint}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 1 }}
-                style={[
-                  styles.iconBox,
-                  {
-                    borderColor: `${item.accent}44`,
-                    shadowColor: item.accent,
-                  },
-                  aiCardShadow(item.accent, "glow"),
-                ]}
-              >
-                <Image source={item.image} style={styles.icon} resizeMode="contain" />
-              </LinearGradient>
+              <View style={[styles.iconBox, { borderColor: `${c.accent}44` }]}>
+                {item.photo ? (
+                  <Image source={item.photo.photo} style={styles.iconImg} resizeMode="cover" />
+                ) : (
+                  <LinearGradient
+                    colors={[`${c.accent}55`, `${c.accent}22`]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={styles.iconFill}
+                  >
+                    <Text style={{ fontSize: 22 }}>🏠</Text>
+                  </LinearGradient>
+                )}
+              </View>
               <Text style={[styles.label, { color: c.text }]} numberOfLines={1}>
                 {item.label}
               </Text>
@@ -111,7 +119,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
   },
-  icon: { width: 48, height: 48 },
+  iconImg: { width: "100%", height: "100%" },
+  iconFill: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   label: {
     ...aiType.caption,
     marginTop: 9,

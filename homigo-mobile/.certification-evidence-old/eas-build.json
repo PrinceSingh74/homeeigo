@@ -1,0 +1,112 @@
+{
+  "generatedAt": "2026-06-27T04:38:42.587Z",
+  "projectId": "e78603fa-82a0-442a-ac86-e59c4629b235",
+  "checks": {
+    "eas_cli": {
+      "ok": true,
+      "detail": "eas-cli/20.4.0 win32-x64 node-v22.22.0"
+    },
+    "eas_login": {
+      "ok": true,
+      "detail": "harekrishna_2003\nprincesingh40343@gmail.com\n\nAccounts:\n• harekrishna_2003 (Role: Owner)\n• harekrishna2003s-team (Role: Owner)"
+    },
+    "project_id": {
+      "ok": true,
+      "detail": "e78603fa-82a0-442a-ac86-e59c4629b235"
+    },
+    "runtime_version": {
+      "ok": true,
+      "detail": "{\"policy\":\"appVersion\"}"
+    },
+    "expo_updates": {
+      "ok": true,
+      "detail": "expo-updates@~29.0.18"
+    },
+    "updates_url": {
+      "ok": true,
+      "detail": "https://u.expo.dev/e78603fa-82a0-442a-ac86-e59c4629b235"
+    },
+    "release_channels": {
+      "ok": false,
+      "detail": "development: build=development update=—; preview: build=preview update=—; preview-aab: build=preview update=—; production: build=production update=—"
+    },
+    "android_apk_profile": {
+      "ok": true,
+      "detail": "preview.android.buildType=apk"
+    },
+    "android_aab_profile": {
+      "ok": true,
+      "detail": "production=app-bundle, preview-aab=app-bundle"
+    },
+    "ios_bundle_id": {
+      "ok": true,
+      "detail": "com.homigo.mobile"
+    },
+    "expo_doctor": {
+      "ok": true,
+      "detail": "18/18 checks passed"
+    },
+    "js_bundle_export": {
+      "ok": true,
+      "detail": "expo export --platform web succeeded"
+    }
+  },
+  "profiles": {
+    "development": {
+      "defined": true,
+      "buildChannel": "development",
+      "androidBuildType": "apk",
+      "channelOk": true,
+      "updateProfileOk": false
+    },
+    "preview": {
+      "defined": true,
+      "buildChannel": "preview",
+      "androidBuildType": "apk",
+      "channelOk": true,
+      "updateProfileOk": false
+    },
+    "preview-aab": {
+      "defined": true,
+      "buildChannel": "preview",
+      "androidBuildType": "app-bundle",
+      "channelOk": true,
+      "updateProfileOk": true
+    },
+    "production": {
+      "defined": true,
+      "buildChannel": "production",
+      "androidBuildType": "app-bundle",
+      "channelOk": true,
+      "updateProfileOk": false
+    }
+  },
+  "builds": [
+    {
+      "profile": "preview",
+      "platform": "android",
+      "ok": false,
+      "buildUrl": null,
+      "output": "Resolved \"preview\" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds\nEnvironment variables with visibility \"Plain text\" and \"Sensitive\" loaded from the \"preview\" environment on EAS: EXPO_PUBLIC_API_URL, EXPO_PUBLIC_SENTRY_DSN, SENTRY_ORG, SENTRY_PROJECT.\nEnvironment variables loaded from the \"preview\" build profile \"env\" configuration: SENTRY_ORG, SENTRY_PROJECT.\nThe following environment variables are defined in both "
+    },
+    {
+      "profile": "preview-aab",
+      "platform": "android",
+      "ok": false,
+      "buildUrl": null,
+      "output": "Resolved \"preview\" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds\nEnvironment variables with visibility \"Plain text\" and \"Sensitive\" loaded from the \"preview\" environment on EAS: EXPO_PUBLIC_API_URL, EXPO_PUBLIC_SENTRY_DSN, SENTRY_ORG, SENTRY_PROJECT.\nEnvironment variables loaded from the \"preview-aab\" build profile \"env\" configuration: SENTRY_ORG, SENTRY_PROJECT.\nThe following environment variables are defined in b"
+    },
+    {
+      "profile": "production",
+      "platform": "android",
+      "ok": false,
+      "buildUrl": null,
+      "output": "\n⚠️ Detected that your app uses Expo Go for development, this is not recommended when building production apps.\nLearn more: https://expo.fyi/why-not-build-expo-go-for-production\nTo suppress this warning, set EAS_BUILD_NO_EXPO_GO_WARNING=true.\n\nResolved \"production\" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds\nNo environment variables with visibility \"Plain text\" and \"Sensitive\" found for the \"production\" environme"
+    }
+  ],
+  "blockers": [],
+  "summary": {
+    "staticConfig": "FAIL",
+    "cloudBuild": "READY_TO_ATTEMPT"
+  }
+}

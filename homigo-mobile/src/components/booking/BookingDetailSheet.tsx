@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ScrollView,
   Image,
-  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,6 +29,7 @@ import { spacing, type, screenPadding, radius } from "@/lib/typography";
 import { sheetHandle } from "@/lib/booking-ui";
 import type { SavedBooking } from "@/lib/store";
 import { useAppStore } from "@/lib/store";
+import { useCancelBookingMutation, useCancellationQuoteQuery } from "@/hooks/use-core-data";
 import { STATUS_CONFIG } from "@/lib/booking-status";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 import { BookingTimeline } from "./BookingTimeline";
@@ -47,42 +47,48 @@ export function BookingDetailSheet({ visible, booking, onClose }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors: c } = useTheme();
-  const updateBookingStatus = useAppStore((s) => s.updateBookingStatus);
-  const showToast = useAppStore((s) => s.showToast);
+  const cancelMutation = useCancelBookingMutation();
+  // Confirm step drives the quote fetch — the customer must see the real refund first.
+  const [cancelOpen, setCancelOpen] = React.useState(false);
+  const quoteQuery = useCancellationQuoteQuery(booking?.id ?? null, cancelOpen);
+  const quote = quoteQuery.data?.quote;
+
+  React.useEffect(() => {
+    if (!visible) setCancelOpen(false);
+  }, [visible]);
 
   if (!booking) return null;
 
   const cfg = STATUS_CONFIG[booking.status];
   const img = getServiceImage(booking.imageKey);
-  const canTrack = booking.status === "confirmed";
-  const canComplete =
+  const canTrack =
     booking.status === "confirmed" || booking.status === "in_progress";
+  const canRate = booking.status === "completed";
   const canCancel =
     booking.status === "confirmed" || booking.status === "in_progress";
   const canRebook =
     booking.status === "cancelled" || booking.status === "completed";
 
-  function setStatus(status: SavedBooking["status"], message: string) {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    updateBookingStatus(booking!.id, status);
-    showToast(message);
+  function goTrackLive() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onClose();
+    router.push(`/track/${booking!.id}`); // live map tracking screen
   }
 
-  function confirmCancel() {
-    Alert.alert(
-      "Cancel booking?",
-      "You won't be charged. You can book again anytime.",
-      [
-        { text: "Keep booking", style: "cancel" },
-        {
-          text: "Cancel booking",
-          style: "destructive",
-          onPress: () =>
-            setStatus("cancelled", "Booking cancelled successfully"),
-        },
-      ],
-    );
+  function goRateService() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onClose();
+    router.push(`/rate/${booking!.id}`);
+  }
+
+  function doCancel() {
+    cancelMutation.mutate(booking!.id, {
+      onSuccess: () => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setCancelOpen(false);
+        onClose();
+      },
+    });
   }
 
   return (
@@ -136,7 +142,7 @@ export function BookingDetailSheet({ visible, booking, onClose }: Props) {
               colors={[...cfg.gradient]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={[styles.hero, shadowStyles.glowBlue]}
+              style={[styles.hero, shadowStyles.glowPrimary]}
             >
               <View style={styles.heroContent}>
                 {img ? (
@@ -173,6 +179,13 @@ export function BookingDetailSheet({ visible, booking, onClose }: Props) {
                 label="Package"
                 value={`${booking.packageName} Package`}
               />
+              {booking.addons?.length ? (
+                <DetailRow
+                  icon={MessageSquare}
+                  label="Add-ons"
+                  value={booking.addons.map((a) => `${a.name} (+₹${a.price})`).join(" · ")}
+                />
+              ) : null}
               {booking.instructions ? (
                 <DetailRow icon={MessageSquare} label="Notes" value={booking.instructions} />
               ) : null}
@@ -193,27 +206,97 @@ export function BookingDetailSheet({ visible, booking, onClose }: Props) {
               {canTrack && (
                 <Button
                   title="Track live"
-                  onPress={() => setStatus("in_progress", "Pro is on the way!")}
+                  onPress={goTrackLive}
                   icon={<Navigation size={18} color="#fff" />}
                 />
               )}
-              {canComplete && (
+              {canRate && (
                 <Button
-                  title="Mark as completed"
+                  title="Rate service"
                   variant="secondary"
-                  onPress={() =>
-                    setStatus("completed", "Thanks! Service marked complete")
-                  }
+                  onPress={goRateService}
                   icon={<CheckCircle2 size={18} color={c.primary} />}
                 />
               )}
-              {canCancel && (
-                <Pressable style={styles.cancelBtn} onPress={confirmCancel}>
+              {canCancel && !cancelOpen && (
+                <Pressable style={styles.cancelBtn} onPress={() => setCancelOpen(true)}>
                   <XCircle size={18} color={c.error} />
                   <Text style={[styles.cancelText, { color: c.error }]}>
                     Cancel booking
                   </Text>
                 </Pressable>
+              )}
+
+              {/* Cancellation confirm — shows the REAL refund from the live policy
+                  before the customer commits. Never claims "free" on its own. */}
+              {canCancel && cancelOpen && (
+                <View style={[styles.cancelPanel, { borderColor: c.border, backgroundColor: c.cardBg }]}>
+                  <Text style={[styles.cancelPanelTitle, { color: c.text }]}>Cancel this booking?</Text>
+
+                  {quoteQuery.isLoading ? (
+                    <Text style={[styles.cancelPanelBody, { color: c.textSecondary }]}>
+                      Calculating your refund…
+                    </Text>
+                  ) : quote ? (
+                    <>
+                      <Text style={[styles.cancelPanelBody, { color: c.textSecondary }]}>
+                        {quote.message}
+                      </Text>
+                      <View style={[styles.refundRow, { borderTopColor: c.border }]}>
+                        <Text style={[styles.refundLabel, { color: c.textSecondary }]}>Paid</Text>
+                        <Text style={[styles.refundValue, { color: c.text }]}>₹{quote.paidAmount}</Text>
+                      </View>
+                      {quote.feeAmount > 0 && (
+                        <View style={styles.refundRow}>
+                          <Text style={[styles.refundLabel, { color: c.textSecondary }]}>
+                            Cancellation fee ({quote.feePercent}%)
+                          </Text>
+                          <Text style={[styles.refundValue, { color: c.error }]}>
+                            −₹{quote.feeAmount}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.refundRow}>
+                        <Text style={[styles.refundLabel, { color: c.text, fontWeight: "700" }]}>
+                          You get back
+                        </Text>
+                        <Text style={[styles.refundTotal, { color: c.primary }]}>
+                          ₹{quote.refundAmount}
+                        </Text>
+                      </View>
+                      <Text style={[styles.refundHint, { color: c.textSecondary }]}>
+                        {quote.refundMethodHint === "wallet_instant"
+                          ? "Refunded instantly to your Homeeigo wallet."
+                          : "Card/UPI refunds usually arrive in 5–7 business days."}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={[styles.cancelPanelBody, { color: c.textSecondary }]}>
+                      Couldn&apos;t load the refund amount. You can still cancel — the refund
+                      follows our cancellation policy.
+                    </Text>
+                  )}
+
+                  <View style={styles.cancelActions}>
+                    <Pressable
+                      style={[styles.keepBtn, { borderColor: c.border }]}
+                      onPress={() => setCancelOpen(false)}
+                      accessibilityRole="button"
+                    >
+                      <Text style={[styles.keepText, { color: c.text }]}>Keep booking</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.confirmCancelBtn, { backgroundColor: c.error }]}
+                      onPress={doCancel}
+                      disabled={cancelMutation.isPending}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.confirmCancelText}>
+                        {cancelMutation.isPending ? "Cancelling…" : "Confirm cancel"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
               )}
               {canRebook && (
                 <Button
@@ -368,4 +451,41 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   cancelText: { ...type.bodyBold },
+
+  cancelPanel: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: spacing.md,
+    gap: 6,
+  },
+  cancelPanelTitle: { ...type.bodyBold, fontSize: 15 },
+  cancelPanelBody: { ...type.caption, lineHeight: 18 },
+  refundRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 6,
+  },
+  refundLabel: { ...type.caption },
+  refundValue: { ...type.caption, fontWeight: "700" },
+  refundTotal: { ...type.bodyBold, fontSize: 17 },
+  refundHint: { ...type.caption, fontSize: 11, marginTop: 2 },
+  cancelActions: { flexDirection: "row", gap: 10, marginTop: spacing.sm },
+  keepBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    height: 44,
+    borderRadius: radius.md,
+    borderWidth: 1,
+  },
+  keepText: { ...type.bodyBold, fontSize: 14 },
+  confirmCancelBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    height: 44,
+    borderRadius: radius.md,
+  },
+  confirmCancelText: { ...type.bodyBold, fontSize: 14, color: "#fff" },
 });

@@ -1,0 +1,64 @@
+{
+  "generatedAt": "2026-06-26T20:02:45.649Z",
+  "marker": "HOMIGO_MOBILE_SENTRY_CERT_1782504165647",
+  "release": "homigo-mobile@1.0.0",
+  "checks": {
+    "dsn_configured": {
+      "ok": true,
+      "detail": "DSN present"
+    },
+    "auth_token": {
+      "ok": true,
+      "detail": "SENTRY_AUTH_TOKEN present"
+    },
+    "project_resolved": {
+      "ok": true,
+      "detail": "using project slug: node-fastify (available: node-fastify)"
+    },
+    "js_crash_delivery": {
+      "ok": true,
+      "detail": "HTTP 200",
+      "eventId": "0ec792ea128b4adc99a50c1a2fbb4fbe"
+    },
+    "native_crash_delivery": {
+      "ok": true,
+      "detail": "envelope HTTP 200 (true native crash requires EAS build on device)",
+      "eventId": "18e4ab3159cd407b8ae0262b66d1f70c"
+    },
+    "startup_breadcrumbs": {
+      "ok": true,
+      "detail": "2 breadcrumbs attached to test event"
+    },
+    "event_0ec792ea": {
+      "ok": true,
+      "detail": "Error: HOMIGO_MOBILE_SENTRY_CERT_1782504165647 js_crash",
+      "eventId": "0ec792ea128b4adc99a50c1a2fbb4fbe"
+    },
+    "event_18e4ab31": {
+      "ok": true,
+      "detail": "Error: HOMIGO_MOBILE_SENTRY_CERT_1782504165647 native_crash_simulated",
+      "eventId": "18e4ab3159cd407b8ae0262b66d1f70c"
+    },
+    "sentry_api_delivery": {
+      "ok": true,
+      "detail": "1 issue(s); eventLookup=true"
+    },
+    "event_visible_in_issue": {
+      "ok": true,
+      "detail": "14 event(s) on issue 7577880183"
+    },
+    "source_map_upload": {
+      "ok": false,
+      "detail": "release listed but no .map artifact (1 files)"
+    }
+  },
+  "eventIds": [
+    "0ec792ea128b4adc99a50c1a2fbb4fbe",
+    "18e4ab3159cd407b8ae0262b66d1f70c"
+  ],
+  "issueIds": [
+    "7577880183"
+  ],
+  "screenshotPath": null,
+  "remainingBlockers": []
+}

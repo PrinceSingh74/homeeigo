@@ -11,8 +11,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { ArrowRight } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { PressableScale } from "@/components/ai/PressableScale";
-import { serviceType } from "@/theme/typography";
-import { layout } from "@/theme/layout";
+import { serviceType } from "@/components/services/theme/typography";
+import { layout } from "@/components/services/theme/layout";
 import { useServicesActions } from "@/hooks/useServicesActions";
 import { useServicesTheme } from "./ServicesThemeContext";
 
@@ -32,7 +32,7 @@ export function CTABanner() {
 
   const gradientColors = isDark
     ? ([c.darkBg, c.expressMid, c.primary2] as const)
-    : (["#5B21B6", "#6D28D9", "#7C3AED"] as const);
+    : (["#065f46", "#0f766e", "#10b981"] as const);
 
   return (
     <Animated.View entering={FadeInUp.duration(520)}>

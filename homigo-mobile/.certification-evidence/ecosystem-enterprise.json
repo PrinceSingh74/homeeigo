@@ -1,0 +1,588 @@
+{
+  "generatedAt": "2026-07-03T10:34:22.943Z",
+  "runId": "eco-mr4sqcm9",
+  "base": "http://localhost:3000",
+  "overallStatus": "PASS",
+  "cleanupStatus": "PASS",
+  "summary": {
+    "total": 17,
+    "passed": 17,
+    "failed": 0,
+    "blocked": 0
+  },
+  "cleanup": {
+    "ok": true,
+    "steps": [
+      {
+        "table": "location_history",
+        "deleted": 1
+      },
+      {
+        "table": "membership_coupon_redemptions",
+        "deleted": 0
+      },
+      {
+        "table": "membership_cashbacks",
+        "deleted": 0
+      },
+      {
+        "table": "coupon_usages",
+        "deleted": 0
+      },
+      {
+        "table": "ratings",
+        "deleted": 0
+      },
+      {
+        "table": "fraud_alerts",
+        "deleted": 0
+      },
+      {
+        "table": "referral_commissions",
+        "deleted": 0
+      },
+      {
+        "table": "assignment_audits",
+        "deleted": 3
+      },
+      {
+        "table": "assignment_attempts",
+        "deleted": 10
+      },
+      {
+        "table": "assignment_jobs",
+        "deleted": 1
+      },
+      {
+        "table": "activity_logs",
+        "deleted": 0
+      },
+      {
+        "table": "support_tickets",
+        "deleted": 0
+      },
+      {
+        "table": "payment_settlements",
+        "deleted": 0
+      },
+      {
+        "table": "payments",
+        "deleted": 0
+      },
+      {
+        "table": "earnings",
+        "deleted": 1
+      },
+      {
+        "table": "notifications",
+        "deleted": 0
+      },
+      {
+        "table": "provider_match_scores",
+        "deleted": 0
+      },
+      {
+        "table": "tracking",
+        "deleted": 1
+      },
+      {
+        "table": "bookings",
+        "deleted": 1
+      },
+      {
+        "table": "wallet_transactions",
+        "deleted": 0
+      },
+      {
+        "table": "locations",
+        "deleted": 1
+      },
+      {
+        "table": "provider_match_scores",
+        "deleted": 1
+      },
+      {
+        "table": "notifications",
+        "deleted": 0
+      },
+      {
+        "table": "provider_wallet_reservations",
+        "deleted": 0
+      },
+      {
+        "table": "providers",
+        "deleted": 1
+      },
+      {
+        "table": "hcoin_transactions",
+        "deleted": 1
+      },
+      {
+        "table": "hcoin_wallets",
+        "deleted": 1
+      },
+      {
+        "table": "membership_benefit_usage",
+        "deleted": 0
+      },
+      {
+        "table": "membership_cashbacks",
+        "deleted": 0
+      },
+      {
+        "table": "membership_coupon_redemptions",
+        "deleted": 0
+      },
+      {
+        "table": "provider_match_scores",
+        "deleted": 9
+      },
+      {
+        "table": "referral_commissions",
+        "deleted": 0
+      },
+      {
+        "table": "fraud_alerts",
+        "deleted": 0
+      },
+      {
+        "table": "referral_transactions",
+        "deleted": 0
+      },
+      {
+        "table": "referral_withdrawals",
+        "deleted": 0
+      },
+      {
+        "table": "user_subscriptions",
+        "deleted": 0
+      },
+      {
+        "table": "wallet_transfers",
+        "deleted": 0
+      },
+      {
+        "table": "gift_card_transactions",
+        "deleted": 0
+      },
+      {
+        "table": "gift_cards",
+        "deleted": 0
+      },
+      {
+        "table": "coupon_usages",
+        "deleted": 0
+      },
+      {
+        "table": "activity_logs",
+        "deleted": 1
+      },
+      {
+        "table": "fraud_signals",
+        "deleted": 0
+      },
+      {
+        "table": "notifications",
+        "deleted": 4
+      },
+      {
+        "table": "payments",
+        "deleted": 0
+      },
+      {
+        "table": "addresses",
+        "deleted": 1
+      },
+      {
+        "table": "users",
+        "deleted": 2
+      },
+      {
+        "table": "services",
+        "deleted": 1
+      }
+    ],
+    "remaining": {
+      "users": 0,
+      "providers": 0,
+      "addresses": 0,
+      "services": 0,
+      "bookings": 0,
+      "hcoin_wallets": 0,
+      "hcoin_transactions": 0,
+      "wallet_transactions": 0,
+      "notifications": 0
+    },
+    "transactional": true
+  },
+  "steps": [
+    {
+      "id": "infra_backend",
+      "label": "Backend",
+      "ok": true,
+      "detail": "GET /health → 200 db=ok",
+      "evidence": {
+        "body": {
+          "status": "ok",
+          "message": "HOMIGO Backend is running!",
+          "timestamp": "2026-07-03T10:34:16.614Z",
+          "environment": "development",
+          "services": {
+            "database": "ok",
+            "redis": "ok"
+          }
+        }
+      }
+    },
+    {
+      "id": "infra_postgresql",
+      "label": "PostgreSQL",
+      "ok": true,
+      "detail": "ready.database=healthy latencyMs=6"
+    },
+    {
+      "id": "infra_redis",
+      "label": "Redis",
+      "ok": true,
+      "detail": "ready.redis=healthy topology=standalone"
+    },
+    {
+      "id": "booking_creation",
+      "label": "Booking creation",
+      "ok": true,
+      "detail": "POST /api/bookings → 201 id=cmr4sqd9r008",
+      "evidence": {
+        "bookingId": "cmr4sqd9r008atzs031vcpyhr",
+        "status": "pending"
+      }
+    },
+    {
+      "id": "partner_assignment",
+      "label": "Partner assignment",
+      "ok": true,
+      "detail": "job=DISPATCHED attempts=1 dispatchedTo=cmq6b29yz0 target=cmr4sqcw00",
+      "evidence": {
+        "jobId": "cmr4sqdgc008ctzs0vxi2uirc",
+        "attemptId": "cmr4sqe1z009qtzs0q0to1ssh",
+        "matchedTarget": false
+      }
+    },
+    {
+      "id": "partner_acceptance",
+      "label": "Partner acceptance",
+      "ok": true,
+      "detail": "POST accept → 200 status=ACCEPTED acceptedAt=set"
+    },
+    {
+      "id": "tracking_updates",
+      "label": "Tracking updates",
+      "ok": true,
+      "detail": "POST /api/tracking/location → 200 trackingStatus=ON_THE_WAY",
+      "evidence": {
+        "lastUpdateAt": "2026-07-03T10:34:19.875Z"
+      }
+    },
+    {
+      "id": "completion",
+      "label": "Completion",
+      "ok": true,
+      "detail": "POST complete → 200 status=COMPLETED"
+    },
+    {
+      "id": "wallet_credit",
+      "label": "Wallet credit",
+      "ok": true,
+      "detail": "provider wallet Δ₹660.00 earning=₹660",
+      "evidence": {
+        "earningId": "cmr4sqfgt00aetzs01cwkt6m2",
+        "journalCheck": "see ledger"
+      }
+    },
+    {
+      "id": "settlement_creation",
+      "label": "Settlement creation",
+      "ok": true,
+      "blocked": false,
+      "detail": "payment_settlements=70 linkedPayments=70/89",
+      "evidence": {
+        "settlementCount": 70,
+        "settledPayments": 70,
+        "successPayments": 89
+      }
+    },
+    {
+      "id": "analytics_event",
+      "label": "Analytics event",
+      "ok": true,
+      "detail": "POST /api/ux-signals → 200"
+    },
+    {
+      "id": "admin_panel_api",
+      "label": "Admin Panel",
+      "ok": true,
+      "detail": "admin bookings=200 analytics=200",
+      "blocked": false,
+      "evidence": {
+        "bookingsStatus": 200,
+        "analyticsStatus": 200
+      }
+    },
+    {
+      "id": "partner_panel_api",
+      "label": "Partner Panel",
+      "ok": true,
+      "detail": "GET /api/providers/me/bookings → 200 count=1",
+      "evidence": {
+        "count": 1
+      }
+    },
+    {
+      "id": "customer_mobile_api",
+      "label": "Customer Mobile",
+      "ok": true,
+      "detail": "GET /api/bookings/cmr4sqd9… → 200"
+    },
+    {
+      "id": "prometheus_metrics",
+      "label": "Prometheus metrics",
+      "ok": true,
+      "detail": "GET /metrics 30316B bookingMetrics=true bizGauges=true",
+      "evidence": {
+        "sample": [
+          "email_sent_total{type=\"booking_confirmation\"} 1",
+          "email_sent_total{type=\"booking_assigned\"} 1",
+          "email_sent_total{type=\"booking_completed\"} 1",
+          "# TYPE booking_assigned_total counter",
+          "booking_assigned_total 1",
+          "# TYPE booking_completed_total counter"
+        ]
+      }
+    },
+    {
+      "id": "prometheus_scrape",
+      "label": "Prometheus scrape",
+      "ok": true,
+      "blocked": false,
+      "detail": "Prometheus sees homigo-backend target up"
+    },
+    {
+      "id": "grafana_visibility",
+      "label": "Grafana visibility",
+      "ok": true,
+      "blocked": false,
+      "detail": "Grafana http://localhost:3004 healthy dashboards=18",
+      "evidence": {
+        "dashboardCount": 18
+      }
+    },
+    {
+      "id": "fixture_cleanup",
+      "label": "Fixture cleanup",
+      "ok": true,
+      "detail": "removed 41 rows across 47 tables",
+      "evidence": {
+        "steps": [
+          {
+            "table": "location_history",
+            "deleted": 1
+          },
+          {
+            "table": "membership_coupon_redemptions",
+            "deleted": 0
+          },
+          {
+            "table": "membership_cashbacks",
+            "deleted": 0
+          },
+          {
+            "table": "coupon_usages",
+            "deleted": 0
+          },
+          {
+            "table": "ratings",
+            "deleted": 0
+          },
+          {
+            "table": "fraud_alerts",
+            "deleted": 0
+          },
+          {
+            "table": "referral_commissions",
+            "deleted": 0
+          },
+          {
+            "table": "assignment_audits",
+            "deleted": 3
+          },
+          {
+            "table": "assignment_attempts",
+            "deleted": 10
+          },
+          {
+            "table": "assignment_jobs",
+            "deleted": 1
+          },
+          {
+            "table": "activity_logs",
+            "deleted": 0
+          },
+          {
+            "table": "support_tickets",
+            "deleted": 0
+          },
+          {
+            "table": "payment_settlements",
+            "deleted": 0
+          },
+          {
+            "table": "payments",
+            "deleted": 0
+          },
+          {
+            "table": "earnings",
+            "deleted": 1
+          },
+          {
+            "table": "notifications",
+            "deleted": 0
+          },
+          {
+            "table": "provider_match_scores",
+            "deleted": 0
+          },
+          {
+            "table": "tracking",
+            "deleted": 1
+          },
+          {
+            "table": "bookings",
+            "deleted": 1
+          },
+          {
+            "table": "wallet_transactions",
+            "deleted": 0
+          },
+          {
+            "table": "locations",
+            "deleted": 1
+          },
+          {
+            "table": "provider_match_scores",
+            "deleted": 1
+          },
+          {
+            "table": "notifications",
+            "deleted": 0
+          },
+          {
+            "table": "provider_wallet_reservations",
+            "deleted": 0
+          },
+          {
+            "table": "providers",
+            "deleted": 1
+          },
+          {
+            "table": "hcoin_transactions",
+            "deleted": 1
+          },
+          {
+            "table": "hcoin_wallets",
+            "deleted": 1
+          },
+          {
+            "table": "membership_benefit_usage",
+            "deleted": 0
+          },
+          {
+            "table": "membership_cashbacks",
+            "deleted": 0
+          },
+          {
+            "table": "membership_coupon_redemptions",
+            "deleted": 0
+          },
+          {
+            "table": "provider_match_scores",
+            "deleted": 9
+          },
+          {
+            "table": "referral_commissions",
+            "deleted": 0
+          },
+          {
+            "table": "fraud_alerts",
+            "deleted": 0
+          },
+          {
+            "table": "referral_transactions",
+            "deleted": 0
+          },
+          {
+            "table": "referral_withdrawals",
+            "deleted": 0
+          },
+          {
+            "table": "user_subscriptions",
+            "deleted": 0
+          },
+          {
+            "table": "wallet_transfers",
+            "deleted": 0
+          },
+          {
+            "table": "gift_card_transactions",
+            "deleted": 0
+          },
+          {
+            "table": "gift_cards",
+            "deleted": 0
+          },
+          {
+            "table": "coupon_usages",
+            "deleted": 0
+          },
+          {
+            "table": "activity_logs",
+            "deleted": 1
+          },
+          {
+            "table": "fraud_signals",
+            "deleted": 0
+          },
+          {
+            "table": "notifications",
+            "deleted": 4
+          },
+          {
+            "table": "payments",
+            "deleted": 0
+          },
+          {
+            "table": "addresses",
+            "deleted": 1
+          },
+          {
+            "table": "users",
+            "deleted": 2
+          },
+          {
+            "table": "services",
+            "deleted": 1
+          }
+        ],
+        "remaining": {
+          "users": 0,
+          "providers": 0,
+          "addresses": 0,
+          "services": 0,
+          "bookings": 0,
+          "hcoin_wallets": 0,
+          "hcoin_transactions": 0,
+          "wallet_transactions": 0,
+          "notifications": 0
+        }
+      }
+    }
+  ]
+}

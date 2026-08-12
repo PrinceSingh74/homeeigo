@@ -10,6 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Sparkles } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
+import { gradients } from "@/lib/colors";
 
 interface CenterTabButtonProps {
   focused: boolean;
@@ -55,8 +56,11 @@ export const CenterTabButton: React.FC<CenterTabButtonProps> = ({
       >
         <Animated.View style={[styles.pulseRing, pulseStyle]} />
         <Animated.View style={pressStyle}>
+          {/* Brand gradient, not the pre-rebrand blue→purple this used to hardcode.
+              The website's AI surface is emerald with no violet anywhere, and this
+              button is the most-visible chrome in the app. */}
           <LinearGradient
-            colors={["#2563EB", "#7C3AED"]}
+            colors={[...gradients.aiCard]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.centerBtn}
@@ -106,7 +110,7 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: "#FFFFFF",
     overflow: "hidden",
-    shadowColor: "#2563EB",
+    shadowColor: "#059669",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.45,
     shadowRadius: 14,
@@ -125,7 +129,7 @@ const styles = StyleSheet.create({
     width: 58,
     height: 58,
     borderRadius: 29,
-    backgroundColor: "#7C3AED",
+    backgroundColor: "#0d9488",
   },
   centerLabel: {
     fontSize: 10,

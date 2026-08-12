@@ -10,6 +10,14 @@ export function openBook(router: Router, params: BookParams = {}) {
         ? { package: String(params.package) }
         : {}),
       ...(params.promo ? { promo: params.promo } : {}),
+      ...(params.providerId ? { providerId: params.providerId } : {}),
     },
+  });
+}
+
+export function openProviders(router: Router, params?: { serviceId?: string }) {
+  router.push({
+    pathname: "/providers",
+    params: params?.serviceId ? { serviceId: params.serviceId } : {},
   });
 }

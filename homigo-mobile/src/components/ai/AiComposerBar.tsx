@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef, forwardRef, useImperativeHandle } from "react";
 import { View, TextInput, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
@@ -9,7 +9,9 @@ import Animated, {
   Easing,
   interpolate,
 } from "react-native-reanimated";
-import { ImageIcon, Mic, Sparkles } from "lucide-react-native";
+// Deliberately no microphone icon: this build ships no speech-to-text, so a mic
+// would advertise dictation that does not exist. The orb opens the composer.
+import { ImageIcon, Sparkles } from "lucide-react-native";
 import {
   useAiTheme,
   aiSpacing,
@@ -32,16 +34,19 @@ type Props = {
   sendDisabled?: boolean;
 };
 
-export function AiComposerBar({
-  onFocus,
-  onBlur,
-  keyboardVisible,
-  onSend,
-  sendDisabled,
-}: Props) {
+/** Exposed so the hero's "Talk to AI"/voice affordances can open the composer. */
+export type AiComposerHandle = { focusInput: () => void };
+
+export const AiComposerBar = forwardRef<AiComposerHandle, Props>(function AiComposerBar(
+  { onFocus, onBlur, keyboardVisible, onSend, sendDisabled },
+  ref,
+) {
   const { c, isDark } = useAiTheme();
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+
+  useImperativeHandle(ref, () => ({ focusInput: () => inputRef.current?.focus() }), []);
 
   const pulse = useSharedValue(0);
   useEffect(() => {
@@ -71,9 +76,11 @@ export function AiComposerBar({
     <View style={styles.wrap}>
       <AiGlassCard shadow="lift" glow radius={aiRadius.xxl} pad={14} style={styles.composerGlass}>
         <TextInput
+          ref={inputRef}
           value={text}
           onChangeText={setText}
           placeholder="Ask anything about your home..."
+          accessibilityLabel="Message the AI assistant"
           placeholderTextColor={c.subtle}
           style={[styles.input, { color: c.text }]}
           cursorColor={c.accent}
@@ -99,7 +106,12 @@ export function AiComposerBar({
         {/* Claude-style action row */}
         <View style={styles.actionRow}>
           <View style={styles.leftActions}>
-            <PressableScale hitSlop={8}>
+            <PressableScale
+              hitSlop={8}
+              onPress={() => inputRef.current?.focus()}
+              accessibilityRole="button"
+              accessibilityLabel="Add details to your message"
+            >
               <View
                 style={[
                   styles.toolBtn,
@@ -109,7 +121,7 @@ export function AiComposerBar({
                 <ImageIcon size={17} color={c.subtle} strokeWidth={2.2} />
               </View>
             </PressableScale>
-            <View style={styles.aiPill}>
+            <View style={styles.aiPill} accessibilityLabel="AI powered" accessible>
               <Sparkles size={12} color={c.accent} strokeWidth={2.4} />
             </View>
           </View>
@@ -118,22 +130,30 @@ export function AiComposerBar({
         </View>
       </AiGlassCard>
 
-      <PressableScale style={styles.fabWrap} haptic disabled={sendDisabled}>
+      <PressableScale
+        style={styles.fabWrap}
+        haptic
+        disabled={sendDisabled}
+        onPress={() => inputRef.current?.focus()}
+        accessibilityRole="button"
+        accessibilityLabel="Ask the AI assistant"
+        accessibilityHint="Opens the message box"
+      >
         <Animated.View style={[styles.fabHalo, haloStyle]} pointerEvents="none" />
         <LinearGradient
-          colors={active ? ["#00D1FF", "#7B61FF", "#4A90E2"] : ["#8B5CF6", "#7B61FF", "#4A90E2"]}
+          colors={active ? ["#2dd4bf", "#10b981", "#0d9488"] : ["#10b981", "#10b981", "#0d9488"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.fab}
         >
           <View style={styles.fabInner}>
-            <Mic size={22} color="#FFFFFF" strokeWidth={2.6} />
+            <Sparkles size={22} color="#FFFFFF" strokeWidth={2.6} />
           </View>
         </LinearGradient>
       </PressableScale>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: {
@@ -177,7 +197,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(123,97,255,0.12)",
+    backgroundColor: "rgba(16, 185, 129,0.12)",
   },
   fabWrap: {
     width: 52,
@@ -192,7 +212,7 @@ const styles = StyleSheet.create({
     width: 62,
     height: 62,
     borderRadius: 31,
-    backgroundColor: "#7B61FF",
+    backgroundColor: "#10b981",
   },
   fab: {
     width: 52,
@@ -202,7 +222,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.35)",
-    shadowColor: "#7B61FF",
+    shadowColor: "#10b981",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.55,
     shadowRadius: 16,

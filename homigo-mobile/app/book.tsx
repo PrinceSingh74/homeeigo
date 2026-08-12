@@ -33,13 +33,22 @@ import {
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles, gradients } from "@/lib/colors";
 import {
-  SERVICES,
   ADDONS,
   BOOKING_TIMES,
-  getServiceIndex,
   popularPackageIndex,
   getLocation,
 } from "@/lib/services";
+import { useCatalogServices, getServiceIndexFromCatalog } from "@/hooks/use-catalog";
+import {
+  useAddressesQuery,
+  useCreateBookingMutation,
+  useCreateAddressMutation,
+  mapBackendBookingToSaved,
+} from "@/hooks/use-core-data";
+import { useBookingPayment, type BookingPaymentState } from "@/hooks/use-booking-payment";
+import { preloadRazorpayCheckout } from "@/hooks/use-razorpay-checkout";
+import { buildAddressCreatePayload } from "@/lib/addresses";
+import { AuthGuard } from "@/components/auth/AuthGuard";
 import {
   defaultScheduledSlot,
   formatDateLabel,
@@ -53,9 +62,10 @@ import {
   applyTimePart,
   sameCalendarDay,
 } from "@/lib/booking-datetime";
-import { calculateTotal, generateBookingId } from "@/lib/booking";
+import { getErrorMessage, AuthApiError } from "@/lib/auth/errors";
+import { calculateTotal } from "@/lib/booking";
 import { getServiceImage } from "@/lib/service-assets";
-import { useAppStore, createInitialTimeline } from "@/lib/store";
+import { useAppStore } from "@/lib/store";
 import { createBookStyles } from "@/lib/book-styles";
 import { radius, type as typo } from "@/lib/typography";
 import { Button } from "@/components/Button";
@@ -64,6 +74,16 @@ import { BookingSuccessModal } from "@/components/booking/BookingSuccessModal";
 import { BookingSectionHeader } from "@/components/booking/BookingSectionHeader";
 
 const STEPS = ["Service", "Package", "Schedule", "Confirm"];
+
+/** Stages of the confirm → pay → verify sequence, in the order they occur. */
+type CheckoutStage = "idle" | "booking" | "order" | "checkout" | "verifying";
+
+const CHECKOUT_STAGE_LABEL: Record<Exclude<CheckoutStage, "idle">, string> = {
+  booking: "Creating booking…",
+  order: "Preparing payment…",
+  checkout: "Waiting for payment…",
+  verifying: "Confirming payment…",
+};
 
 function startOfDay(d: Date): Date {
   const x = new Date(d);
@@ -91,6 +111,7 @@ export default function BookScreen() {
     service?: string;
     package?: string;
     promo?: string;
+    providerId?: string;
   }>();
   const { colors: c, isDark } = useTheme();
   const scrollRef = useRef<ScrollView>(null);
@@ -100,15 +121,19 @@ export default function BookScreen() {
   const locationId = useAppStore((s) => s.locationId);
   const activePromo = useAppStore((s) => s.activePromo);
   const setActivePromo = useAppStore((s) => s.setActivePromo);
-  const addBooking = useAppStore((s) => s.addBooking);
   const showToast = useAppStore((s) => s.showToast);
+  const { services: catalogServices } = useCatalogServices();
+  const { data: addressData } = useAddressesQuery();
+  const createBooking = useCreateBookingMutation();
+  const { payForBooking } = useBookingPayment();
+  const createAddress = useCreateAddressMutation();
 
   const initialIdx = params.service
-    ? getServiceIndex(String(params.service))
+    ? getServiceIndexFromCatalog(catalogServices, String(params.service))
     : 0;
   const initialPkg = params.package
     ? Number(params.package)
-    : popularPackageIndex(SERVICES[initialIdx]);
+    : popularPackageIndex(catalogServices[initialIdx] ?? catalogServices[0]!);
 
   const [serviceIdx, setServiceIdx] = useState(initialIdx);
   const [pkgIdx, setPkgIdx] = useState(initialPkg);
@@ -127,11 +152,15 @@ export default function BookScreen() {
   const [locationOpen, setLocationOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [flowStep, setFlowStep] = useState(1);
+  // Narrates the confirm → pay → verify sequence on the footer button so the user is
+  // never left staring at one opaque spinner while Razorpay is being prepared.
+  const [checkoutStage, setCheckoutStage] = useState<CheckoutStage>("idle");
+  const [paymentState, setPaymentState] = useState<BookingPaymentState>("pending");
   const [successBooking, setSuccessBooking] = useState<
     import("@/lib/store").SavedBooking | null
   >(null);
 
-  const svc = SERVICES[serviceIdx];
+  const svc = catalogServices[serviceIdx] ?? catalogServices[0]!;
   const selected = svc.packages[pkgIdx] ?? svc.packages[0];
   const loc = getLocation(locationId);
 
@@ -144,6 +173,12 @@ export default function BookScreen() {
       arr.push(d);
     }
     return arr;
+  }, []);
+
+  // Payment follows booking — warm the Razorpay module now so the pay tap
+  // doesn't stall on an on-demand bundle load.
+  useEffect(() => {
+    preloadRazorpayCheckout();
   }, []);
 
   useEffect(() => {
@@ -162,9 +197,12 @@ export default function BookScreen() {
     () => [...addons].reduce((s, i) => s + ADDONS[i].price, 0),
     [addons],
   );
+  // Match the server price exactly: baseAmount = selected package price + add-ons.
+  // (Was calculateTotal(svc.priceFrom) — ignored both the tier AND add-ons, so the
+  // summary under-charged vs what the backend actually bills.)
   const pricing = useMemo(
-    () => calculateTotal(selected.price, addonTotal, activePromo),
-    [selected.price, addonTotal, activePromo],
+    () => calculateTotal(selected.price + addonTotal),
+    [selected.price, addonTotal],
   );
 
   const currentStep = successBooking || confirming ? 3 : flowStep;
@@ -176,10 +214,10 @@ export default function BookScreen() {
   const selectService = (i: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setServiceIdx(i);
-    setPkgIdx(popularPackageIndex(SERVICES[i]));
+    setPkgIdx(popularPackageIndex(catalogServices[i]!));
     setAddons(new Set());
     setFlowStep(1);
-    showToast(`${SERVICES[i].title} selected`);
+    showToast(`${catalogServices[i]!.title} selected`);
   };
 
   const selectPackage = (i: number) => {
@@ -191,7 +229,16 @@ export default function BookScreen() {
 
   const selectQuickDay = (d: Date) => {
     Haptics.selectionAsync();
-    setScheduledAt(applyDatePart(scheduledAt, d));
+    let next = applyDatePart(scheduledAt, d);
+    // Keeping the old time part can land in the past when switching to today —
+    // bump to the first future quick slot so the summary is always bookable.
+    if (next.getTime() <= Date.now()) {
+      const future = BOOKING_TIMES.map((t) => apply12hTimeOnDate(next, t)).find(
+        (x): x is Date => !!x && x.getTime() > Date.now(),
+      );
+      if (future) next = future;
+    }
+    setScheduledAt(next);
     setFlowStep(2);
   };
 
@@ -267,40 +314,131 @@ export default function BookScreen() {
     showToast("AI picked Standard — best for 2BHK");
   };
 
+  /**
+   * Opens Razorpay for an already-created booking and reports whether money actually
+   * moved. Never throws: an unpaid booking is a state the UI has to show, not a crash.
+   */
+  async function runCheckout(bookingId: string): Promise<BookingPaymentState> {
+    try {
+      const outcome = await payForBooking({
+        bookingId,
+        amount: pricing.total,
+        description: `${svc.title} booking`,
+        onPhase: (phase) =>
+          setCheckoutStage(phase === "creating-order" ? "order" : phase),
+        onVerified: () =>
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
+      });
+      if (outcome.status === "paid") return "paid";
+      showToast(
+        outcome.status === "dismissed"
+          ? "Payment cancelled — your slot is held, pay anytime."
+          : outcome.message,
+      );
+    } catch (error) {
+      showToast(getErrorMessage(error, "Could not start payment. You can pay later."));
+    }
+    return "pending";
+  }
+
+  /** "Pay now" from the success sheet — same checkout, for a booking already made. */
+  async function retryPayment() {
+    if (!successBooking || confirming) return;
+    setConfirming(true);
+    try {
+      const state = await runCheckout(successBooking.id);
+      setPaymentState(state);
+      if (state === "paid") showToast("Payment confirmed");
+    } finally {
+      setConfirming(false);
+      setCheckoutStage("idle");
+    }
+  }
+
   async function confirmBooking() {
     if (confirming) return;
+    // Backend rejects past slots ("Booking date must be in the future") — catch it here
+    // with a clear message instead of a failed request.
+    if (scheduledAt.getTime() <= Date.now()) {
+      showToast("That time has already passed — please pick a future slot.");
+      return;
+    }
     setConfirming(true);
+    setCheckoutStage("booking");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    await new Promise((r) => setTimeout(r, 900));
-    const now = new Date().toISOString();
-    const pros = ["Rajesh Kumar", "Amit Sharma", "Priya Singh", "Vikram Patel"];
-    const booking = {
-      id: generateBookingId(),
-      serviceId: svc.id,
-      serviceTitle: svc.title,
-      serviceName: svc.name,
-      packageName: selected.name,
-      dateLabel: `${formatDateLabel(scheduledAt)}, ${scheduledAt.getFullYear()}`,
-      timeLabel: formatTimeLabel(scheduledAt),
-      address: `${loc.label}, ${loc.pin}`,
-      total: pricing.total,
-      status: "confirmed" as const,
-      createdAt: now,
-      updatedAt: now,
-      imageKey: svc.imageKey,
-      serviceColor: svc.color,
-      proName: pros[Math.floor(Math.random() * pros.length)]!,
-      instructions: instructions.trim() || undefined,
-      timeline: createInitialTimeline(now),
-    };
-    addBooking(booking);
-    setSuccessBooking(booking);
-    setConfirming(false);
+    try {
+      let addressId = addressData?.addresses?.find((a) => a.isDefault)?.id
+        ?? addressData?.addresses?.[0]?.id;
+
+      if (!addressId) {
+        const created = await createAddress.mutateAsync(
+          buildAddressCreatePayload({
+            line1: loc.label,
+            line2: `${loc.city}, ${loc.pin}`,
+            label: "Home",
+            latitude: 28.4595,
+            longitude: 77.0266,
+          }),
+        );
+        if (created.queued) {
+          showToast("You're offline — booking saved and will sync when connected");
+          return;
+        }
+        addressId = created.address.id;
+      }
+
+      const result = await createBooking.mutateAsync({
+        serviceId: svc.id,
+        addressId,
+        scheduledDate: scheduledAt.toISOString(),
+        description: instructions.trim() || undefined,
+        paymentMethod: "razorpay",
+        // Server re-prices from its own catalog — these are selections, not amounts.
+        packagePrice: selected.price,
+        addonIds: [...addons].map((i) => ADDONS[i]!.id),
+        ...(params.providerId ? { providerId: String(params.providerId) } : {}),
+      });
+
+      if (result.queued) {
+        showToast("Booking saved — will confirm when you're back online");
+        return;
+      }
+
+      if (result.booking) {
+        const saved = mapBackendBookingToSaved(result.booking);
+        saved.address = `${loc.label}, ${loc.pin}`;
+        saved.total = pricing.total;
+        saved.packageName = selected.name;
+
+        // Payment runs BEFORE the success sheet: showing "You're all set" while
+        // Razorpay is still open (or was cancelled) tells the user a lie, and on
+        // Android the sheet also races the native checkout activity for the screen.
+        if (Platform.OS === "web") {
+          setPaymentState("pending");
+        } else {
+          setPaymentState(await runCheckout(result.booking.id));
+        }
+        setSuccessBooking(saved);
+      }
+    } catch (error) {
+      // Surface the real backend reason (past slot, overlap, validation…) — a generic
+      // "check you are signed in" hides the actual fix from the user.
+      const expired = error instanceof AuthApiError && error.status === 401;
+      showToast(
+        expired
+          ? "Your session expired — please sign out and sign in again."
+          : getErrorMessage(error, "Could not create booking. Please try again."),
+      );
+    } finally {
+      setConfirming(false);
+      setCheckoutStage("idle");
+    }
   }
 
   const imgSource = getServiceImage(svc.imageKey);
 
   return (
+    <AuthGuard title="Sign in to book a service">
     <SafeAreaView style={[styles.root, { backgroundColor: c.bg }]} edges={["top"]}>
       <View style={[styles.header, { borderBottomColor: c.border }]}>
         <Pressable
@@ -387,7 +525,7 @@ export default function BookScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.svcStrip}
         >
-          {SERVICES.map((s, i) => {
+          {catalogServices.map((s, i) => {
             const active = i === serviceIdx;
             const src = getServiceImage(s.imageKey);
             return (
@@ -397,13 +535,13 @@ export default function BookScreen() {
                 style={[
                   styles.svcCard,
                   active
-                    ? [shadowStyles.glowViolet]
+                    ? [shadowStyles.glowTeal]
                     : [{ backgroundColor: c.cardBg, borderColor: c.border }],
                 ]}
               >
                 {active ? (
                   <LinearGradient
-                    colors={["#8B5CF6", "#7C3AED", "#6D28D9"]}
+                    colors={["#10b981", "#0d9488", "#0f766e"]}
                     style={StyleSheet.absoluteFill}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
@@ -441,7 +579,7 @@ export default function BookScreen() {
 
         <LinearGradient
           colors={gradients.lightSpeed}
-          style={[styles.hero, shadowStyles.glowViolet]}
+          style={[styles.hero, shadowStyles.glowTeal]}
         >
           {imgSource && (
             <Image source={imgSource} style={styles.heroImg} resizeMode="contain" />
@@ -613,19 +751,23 @@ export default function BookScreen() {
           <View style={styles.chipRow}>
             {BOOKING_TIMES.map((t) => {
               const picked = apply12hTimeOnDate(scheduledAt, t);
+              const isPast = !!picked && picked.getTime() <= Date.now();
               const active =
                 !!picked &&
+                !isPast &&
                 picked.getHours() === scheduledAt.getHours() &&
                 picked.getMinutes() === scheduledAt.getMinutes();
               return (
                 <Pressable
                   key={t}
+                  disabled={isPast}
                   onPress={() => selectQuickTime(t)}
                   style={[
                     styles.timeChip,
                     active
                       ? { backgroundColor: c.primary }
                       : { backgroundColor: c.cardBg, borderColor: c.border, borderWidth: 1 },
+                    isPast && { opacity: 0.35 },
                   ]}
                 >
                   <Text style={[styles.timeChipText, { color: active ? "#fff" : c.text }]}>
@@ -645,11 +787,11 @@ export default function BookScreen() {
         </View>
 
         <LinearGradient
-          colors={isDark ? ["#1E1B4B", "#312E81"] : ["#EDE9FE", "#FCE7F3"]}
+          colors={isDark ? ["#06140e", "#0a2018"] : ["#ECFDF5", "#F0FDFA"]}
           style={styles.aiCard}
         >
           <View style={styles.aiHeader}>
-            <Sparkles size={18} color={c.violet} />
+            <Sparkles size={18} color={c.teal} />
             <Text style={[styles.aiTitle, { color: c.text }]}>AI Recommendation</Text>
           </View>
           <Text style={[styles.aiBody, { color: c.textSecondary }]}>
@@ -720,25 +862,19 @@ export default function BookScreen() {
             subtitle="No charge until service is complete"
           />
           <View style={[styles.summary, { backgroundColor: c.cardBg, borderColor: c.border }]}>
-            <SummaryRow label="Package" value={`₹${selected.price}`} c={c} />
-            {pricing.discount > 0 && (
-              <SummaryRow
-                label={`Promo (${activePromo})`}
-                value={`-₹${pricing.discount}`}
-                c={c}
-                success
-              />
-            )}
-            <SummaryRow label="Platform fee" value="₹20" c={c} />
-            <SummaryRow label="GST (18%)" value={`₹${pricing.gst}`} c={c} />
+            <SummaryRow label="Service price" value={`₹${selected.price}`} c={c} />
+            {addonTotal > 0 ? (
+              <SummaryRow label={`Add-ons (${addons.size})`} value={`+₹${addonTotal}`} c={c} />
+            ) : null}
+            <SummaryRow label="Taxes (10%)" value={`₹${pricing.taxes}`} c={c} />
             <View style={[styles.totalRow, { borderTopColor: c.border }]}>
               <Text style={[styles.totalLabel, { color: c.text }]}>Total Payable</Text>
-              <Text style={[styles.totalValue, { color: c.violet }]}>₹{pricing.total}</Text>
+              <Text style={[styles.totalValue, { color: c.teal }]}>₹{pricing.total}</Text>
             </View>
             <View style={styles.secure}>
               <Lock size={14} color={c.success} />
               <Text style={[styles.secureText, { color: c.textSecondary }]}>
-                Secure payment · No charge until service
+                Secure payment · Razorpay opens after you confirm
               </Text>
             </View>
           </View>
@@ -750,11 +886,15 @@ export default function BookScreen() {
       <View style={[styles.footer, { backgroundColor: c.cardBg, borderTopColor: c.border }]}>
         <View>
           <Text style={[styles.footerLabel, { color: c.textSecondary }]}>Total</Text>
-          <Text style={[styles.footerTotal, { color: c.violet }]}>₹{pricing.total}</Text>
+          <Text style={[styles.footerTotal, { color: c.teal }]}>₹{pricing.total}</Text>
         </View>
         <View style={{ flex: 1, marginLeft: 16 }}>
           <Button
-            title={confirming ? "Securing…" : "Confirm Booking"}
+            title={
+              checkoutStage === "idle"
+                ? "Confirm Booking"
+                : CHECKOUT_STAGE_LABEL[checkoutStage]
+            }
             onPress={confirmBooking}
             loading={confirming}
             size="md"
@@ -819,6 +959,9 @@ export default function BookScreen() {
       <BookingSuccessModal
         visible={!!successBooking}
         booking={successBooking}
+        paymentState={paymentState}
+        paying={confirming}
+        onPayNow={retryPayment}
         onClose={() => {
           setSuccessBooking(null);
           router.back();
@@ -829,6 +972,7 @@ export default function BookScreen() {
         }}
       />
     </SafeAreaView>
+    </AuthGuard>
   );
 }
 

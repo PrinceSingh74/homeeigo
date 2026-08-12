@@ -1,0 +1,15 @@
+{
+  "generatedAt": "2026-06-26T19:04:20.400Z",
+  "enqueued": 4,
+  "delivered": 4,
+  "lost": 0,
+  "duplicateOnReplay": 0,
+  "remainingQueue": 0,
+  "signals": [
+    "hydration_duration",
+    "bootstrap_duration",
+    "interactive_duration",
+    "startup_duration"
+  ],
+  "pass": true
+}

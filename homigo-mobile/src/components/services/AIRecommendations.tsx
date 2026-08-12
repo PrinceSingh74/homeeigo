@@ -4,11 +4,11 @@ import Animated, { SlideInRight } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { Sparkles } from "lucide-react-native";
 import { useServicesActions } from "@/hooks/useServicesActions";
-import { AI_RECOMMENDATIONS } from "@/constants/servicesData";
+import { useServicesDiscovery } from "@/hooks/use-services-discovery";
 import { SectionHeader } from "./common/SectionHeader";
 import { BookNowButton } from "./common/BookNowButton";
-import { serviceType } from "@/theme/typography";
-import { layout } from "@/theme/layout";
+import { serviceType } from "@/components/services/theme/typography";
+import { layout } from "@/components/services/theme/layout";
 import { useServicesTheme } from "./ServicesThemeContext";
 
 function cardColors(
@@ -23,6 +23,7 @@ function cardColors(
 export function AIRecommendations() {
   const { book, openAiRecommendations } = useServicesActions();
   const { c, shadows, isDark, layout: L } = useServicesTheme();
+  const { aiRecommendations } = useServicesDiscovery();
 
   return (
     <View>
@@ -42,7 +43,7 @@ export function AIRecommendations() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={L.listContent}
       >
-        {AI_RECOMMENDATIONS.map((item, index) => (
+        {aiRecommendations.map((item, index) => (
           <Animated.View
             key={item.id}
             entering={SlideInRight.delay(index * 70).springify().damping(18)}

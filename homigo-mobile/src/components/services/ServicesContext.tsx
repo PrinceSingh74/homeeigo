@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
-import { TRENDING_SERVICES } from "@/constants/servicesData";
-import type { TrendingService } from "@/constants/servicesData";
 import { filterTrendingServices } from "@/lib/services-search";
+import type { TrendingService } from "@/constants/servicesData";
+import { useServicesDiscovery } from "@/hooks/use-services-discovery";
 
 type ServicesContextValue = {
   searchQuery: string;
@@ -11,6 +11,7 @@ type ServicesContextValue = {
   activePopularSearch: string | null;
   setActivePopularSearch: (s: string | null) => void;
   filteredTrending: TrendingService[];
+  isFromApi: boolean;
 };
 
 const ServicesContext = createContext<ServicesContextValue | null>(null);
@@ -18,19 +19,12 @@ const ServicesContext = createContext<ServicesContextValue | null>(null);
 export function ServicesProvider({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
-  const [activePopularSearch, setActivePopularSearch] = useState<string | null>(
-    null,
-  );
+  const [activePopularSearch, setActivePopularSearch] = useState<string | null>(null);
+  const { trending, isLoading, isFromApi } = useServicesDiscovery();
 
   const filteredTrending = useMemo(
-    () =>
-      filterTrendingServices(
-        TRENDING_SERVICES,
-        searchQuery,
-        activeCategoryId,
-        activePopularSearch,
-      ),
-    [searchQuery, activeCategoryId, activePopularSearch],
+    () => filterTrendingServices(trending, searchQuery, activeCategoryId, activePopularSearch),
+    [trending, searchQuery, activeCategoryId, activePopularSearch],
   );
 
   const value = useMemo(
@@ -42,18 +36,19 @@ export function ServicesProvider({ children }: { children: React.ReactNode }) {
       activePopularSearch,
       setActivePopularSearch,
       filteredTrending,
+      isFromApi: isFromApi && !isLoading,
     }),
     [
       searchQuery,
       activeCategoryId,
       activePopularSearch,
       filteredTrending,
+      isFromApi,
+      isLoading,
     ],
   );
 
-  return (
-    <ServicesContext.Provider value={value}>{children}</ServicesContext.Provider>
-  );
+  return <ServicesContext.Provider value={value}>{children}</ServicesContext.Provider>;
 }
 
 export function useServicesContext() {

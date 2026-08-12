@@ -1,20 +1,15 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import { View, Text, StyleSheet, Pressable, ActivityIndicator } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import {
-  Wind,
-  Sparkles,
-  Wrench,
-  type LucideIcon,
-} from "lucide-react-native";
+import { Gift, Sparkles, type LucideIcon } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles } from "@/lib/colors";
-import { PROMO_OFFERS } from "@/lib/services";
 import { openBook } from "@/lib/navigation";
 import { useAppStore } from "@/lib/store";
+import { useWalletOffersQuery } from "@/hooks/use-core-data";
 
 function shade(hex: string, amt: number) {
   const n = parseInt(hex.slice(1), 16);
@@ -27,59 +22,19 @@ function shade(hex: string, amt: number) {
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
 
-interface Offer {
-  icon: LucideIcon;
-  discount: string;
-  desc: string;
-  code: string;
-  from: string;
-  to: string;
-  fg: string;
-}
-
-const OFFERS: Offer[] = [
-  {
-    icon: Wind,
-    discount: "Flat ₹100 OFF",
-    desc: "On AC Service",
-    code: "COOL100",
-    from: "#DBEAFE",
-    to: "#BAE6FD",
-    fg: "#0C3B66",
-  },
-  {
-    icon: Sparkles,
-    discount: "20% OFF",
-    desc: "On Deep Cleaning",
-    code: "CLEAN20",
-    from: "#FCE7F3",
-    to: "#FBCFE8",
-    fg: "#9D2463",
-  },
-  {
-    icon: Wrench,
-    discount: "Up to ₹150 OFF",
-    desc: "On Plumbing",
-    code: "PLUMB150",
-    from: "#D1FAE5",
-    to: "#A7F3D0",
-    fg: "#047857",
-  },
-];
-
-const CODE_TO_SERVICE: Record<string, string> = {
-  COOL100: "ac-service",
-  CLEAN20: "cleaning",
-  PLUMB150: "plumbing",
-  FRESH25: "cleaning",
-  FIX150: "plumbing",
-};
+const PALETTE = [
+  { from: "#D1FAE5", to: "#A7F3D0", fg: "#047857", icon: Gift },
+  { from: "#CCFBF1", to: "#99F6E4", fg: "#0F766E", icon: Sparkles },
+  { from: "#DCFCE7", to: "#BBF7D0", fg: "#15803D", icon: Gift },
+] as const;
 
 export const OffersSection: React.FC = () => {
   const router = useRouter();
   const { colors: themeColors } = useTheme();
   const setActivePromo = useAppStore((s) => s.setActivePromo);
   const [copied, setCopied] = useState<string | null>(null);
+  const { data, isLoading } = useWalletOffersQuery();
+  const offers = data?.offers ?? [];
 
   async function copyCode(code: string) {
     await Clipboard.setStringAsync(code);
@@ -92,16 +47,22 @@ export const OffersSection: React.FC = () => {
     setTimeout(() => setCopied(null), 2000);
   }
 
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { alignItems: "center" }]}>
+        <ActivityIndicator color="#059669" />
+      </View>
+    );
+  }
+
+  if (!offers.length) return null;
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: themeColors.text }]}>
-          Offers for You
-        </Text>
+        <Text style={[styles.title, { color: themeColors.text }]}>Offers for You</Text>
         <Pressable style={styles.seeAll} onPress={() => openBook(router)}>
-          <Text style={[styles.seeAllText, { color: themeColors.primary }]}>
-            See all
-          </Text>
+          <Text style={[styles.seeAllText, { color: "#059669" }]}>See all</Text>
         </Pressable>
       </View>
 
@@ -115,69 +76,52 @@ export const OffersSection: React.FC = () => {
           shadowStyles.md,
         ]}
       >
-        {OFFERS.map((o, idx) => {
-          const Icon = o.icon;
-          const isCopied = copied === o.code;
+        {offers.slice(0, 3).map((o, idx) => {
+          const palette = PALETTE[idx % PALETTE.length]!;
+          const Icon = palette.icon as LucideIcon;
+          const code = String(o.id ?? `OFFER${idx + 1}`).toUpperCase();
+          const discount =
+            typeof o.discount === "number"
+              ? `${o.discount}% OFF`
+              : typeof o.amount === "number"
+                ? `₹${o.amount} bonus`
+                : "Special offer";
+          const isCopied = copied === code;
           return (
             <Pressable
-              key={o.code}
+              key={code}
               onPress={() => {
-                const sid =
-                  CODE_TO_SERVICE[o.code] ??
-                  PROMO_OFFERS.find((p) => p.code === o.code)?.serviceId ??
-                  "cleaning";
-                setActivePromo(o.code);
-                openBook(router, { service: sid, promo: o.code });
+                setActivePromo(code);
+                openBook(router, { service: "cleaning", promo: code });
               }}
-              onLongPress={() => copyCode(o.code)}
-              style={[
-                styles.offer,
-                { marginRight: idx < OFFERS.length - 1 ? 10 : 0 },
-              ]}
+              onLongPress={() => copyCode(code)}
+              style={[styles.offer, { marginRight: idx < Math.min(offers.length, 3) - 1 ? 10 : 0 }]}
             >
               <LinearGradient
-                colors={[o.from, o.to]}
+                colors={[palette.from, palette.to]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.offerInner}
               >
-                <View style={[styles.iconShadow, { shadowColor: o.fg }]}>
+                <View style={[styles.iconShadow, { shadowColor: palette.fg }]}>
                   <LinearGradient
-                    colors={[shade(o.fg, 70), o.fg, shade(o.fg, -25)]}
+                    colors={[shade(palette.fg, 70), palette.fg, shade(palette.fg, -25)]}
                     start={{ x: 0.1, y: 0 }}
                     end={{ x: 0.9, y: 1 }}
                     style={styles.iconChip}
                   >
-                    <LinearGradient
-                      colors={["rgba(255,255,255,0.5)", "rgba(255,255,255,0)"]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 0, y: 0.7 }}
-                      style={styles.gloss}
-                    />
                     <Icon size={16} color="#fff" strokeWidth={2.4} />
                   </LinearGradient>
                 </View>
-                <Text
-                  style={[styles.discount, { color: o.fg }]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  {o.discount}
+                <Text style={[styles.discount, { color: palette.fg }]} numberOfLines={1}>
+                  {discount}
                 </Text>
-                <Text
-                  style={[styles.desc, { color: o.fg }]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  {o.desc}
+                <Text style={[styles.desc, { color: palette.fg }]} numberOfLines={2}>
+                  {String(o.title ?? o.description ?? "Wallet offer")}
                 </Text>
                 <View style={styles.codeRow}>
-                  <Text
-                    style={[styles.codeText, { color: o.fg }]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                  >
-                    {isCopied ? "Copied!" : `Use Code: ${o.code}`}
+                  <Text style={[styles.codeText, { color: palette.fg }]} numberOfLines={1}>
+                    {isCopied ? "Copied!" : code}
                   </Text>
                 </View>
               </LinearGradient>
@@ -208,9 +152,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 12,
   },
-  offer: {
-    flex: 1,
-  },
+  offer: { flex: 1 },
   offerInner: {
     borderRadius: 14,
     padding: 12,
@@ -231,26 +173,9 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
   },
-  gloss: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: "60%",
-  },
-  discount: {
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: -0.3,
-  },
-  desc: {
-    fontSize: 10,
-    fontWeight: "600",
-    marginTop: 3,
-    opacity: 0.85,
-  },
+  discount: { fontSize: 13, fontWeight: "800", letterSpacing: -0.3 },
+  desc: { fontSize: 10, fontWeight: "600", marginTop: 3, opacity: 0.85 },
   codeRow: {
     marginTop: 10,
     backgroundColor: "rgba(255,255,255,0.5)",
@@ -258,10 +183,5 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
   },
-  codeText: {
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 0.2,
-    textAlign: "center",
-  },
+  codeText: { fontSize: 9, fontWeight: "800", letterSpacing: 0.2, textAlign: "center" },
 });

@@ -1,0 +1,449 @@
+{
+  "generatedAt": "2026-07-02T17:31:29.396Z",
+  "base": "http://localhost:3003",
+  "samples": 5,
+  "target_ms": 300,
+  "routes_tested": 10,
+  "routes_over_300ms": [
+    "/",
+    "/observability",
+    "/command-center",
+    "/support",
+    "/digital-twin",
+    "/customers",
+    "/bookings",
+    "/operations",
+    "/heatmap"
+  ],
+  "slowest_routes": [
+    {
+      "route": "/",
+      "content_p50": 710,
+      "content_p95": 743
+    },
+    {
+      "route": "/observability",
+      "content_p50": 677,
+      "content_p95": 810
+    },
+    {
+      "route": "/command-center",
+      "content_p50": 559,
+      "content_p95": 788
+    },
+    {
+      "route": "/support",
+      "content_p50": 506,
+      "content_p95": 901
+    },
+    {
+      "route": "/digital-twin",
+      "content_p50": 492,
+      "content_p95": 620
+    }
+  ],
+  "layout_remount_routes": [],
+  "routes": [
+    {
+      "route": "/",
+      "label": "Overview",
+      "samples": 5,
+      "commit_p50": 363,
+      "paint_p50": 410,
+      "content_p50": 710,
+      "content_p95": 743,
+      "content_max": 743,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 2,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 0,
+        "BusinessOverviewPage": 2,
+        "DataTable": 2,
+        "AdminDashboardCharts": 2
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/",
+          "commitMs": 276,
+          "paintMs": 307,
+          "at": 1783013324573
+        }
+      ]
+    },
+    {
+      "route": "/observability",
+      "label": "Observability",
+      "samples": 5,
+      "commit_p50": 388,
+      "paint_p50": 427,
+      "content_p50": 677,
+      "content_p95": 810,
+      "content_max": 810,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 1,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 0
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        2,
+        2,
+        3,
+        2,
+        2
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/observability",
+          "commitMs": 399,
+          "paintMs": 424,
+          "at": 1783013473288
+        }
+      ]
+    },
+    {
+      "route": "/command-center",
+      "label": "Command Center",
+      "samples": 5,
+      "commit_p50": 445,
+      "paint_p50": 488,
+      "content_p50": 559,
+      "content_p95": 788,
+      "content_max": 788,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 7,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 0,
+        "CommandCenterPage": 6,
+        "ExecutiveKpiRibbon": 6,
+        "AiIntelligencePanel": 4,
+        "OperationalTimeline": 4,
+        "CommandMap": 4
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        3,
+        2,
+        2,
+        2,
+        3
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/command-center",
+          "commitMs": 375,
+          "paintMs": 394,
+          "at": 1783013344148
+        }
+      ]
+    },
+    {
+      "route": "/support",
+      "label": "Support",
+      "samples": 5,
+      "commit_p50": 420,
+      "paint_p50": 473,
+      "content_p50": 506,
+      "content_p95": 901,
+      "content_max": 901,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 2,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 0,
+        "DataTable": 8
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        2,
+        2,
+        2,
+        3,
+        2
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/support",
+          "commitMs": 352,
+          "paintMs": 377,
+          "at": 1783013453551
+        }
+      ]
+    },
+    {
+      "route": "/digital-twin",
+      "label": "City Digital Twin",
+      "samples": 5,
+      "commit_p50": 444,
+      "paint_p50": 478,
+      "content_p50": 492,
+      "content_p95": 620,
+      "content_max": 620,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 2,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 0,
+        "DigitalTwinPage": 6
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/digital-twin",
+          "commitMs": 251,
+          "paintMs": 272,
+          "at": 1783013364078
+        }
+      ]
+    },
+    {
+      "route": "/customers",
+      "label": "Customers",
+      "samples": 5,
+      "commit_p50": 336,
+      "paint_p50": 396,
+      "content_p50": 454,
+      "content_p95": 467,
+      "content_max": 467,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 2,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 0,
+        "DataTable": 2
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        2,
+        2,
+        3,
+        2,
+        2
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/customers",
+          "commitMs": 290,
+          "paintMs": 305,
+          "at": 1783013435641
+        }
+      ]
+    },
+    {
+      "route": "/bookings",
+      "label": "Bookings",
+      "samples": 5,
+      "commit_p50": 341,
+      "paint_p50": 372,
+      "content_p50": 429,
+      "content_p95": 477,
+      "content_max": 477,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 1,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 0,
+        "DataTable": 2
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/bookings",
+          "commitMs": 254,
+          "paintMs": 268,
+          "at": 1783013418461
+        }
+      ]
+    },
+    {
+      "route": "/operations",
+      "label": "Live Ops",
+      "samples": 5,
+      "commit_p50": 347,
+      "paint_p50": 402,
+      "content_p50": 422,
+      "content_p95": 725,
+      "content_max": 725,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 1,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 0,
+        "OperationsPage": 2
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        2,
+        3,
+        2,
+        2,
+        2
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/operations",
+          "commitMs": 259,
+          "paintMs": 282,
+          "at": 1783013381944
+        }
+      ]
+    },
+    {
+      "route": "/heatmap",
+      "label": "Demand Heatmap",
+      "samples": 5,
+      "commit_p50": 310,
+      "paint_p50": 357,
+      "content_p50": 379,
+      "content_p95": 556,
+      "content_max": 556,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 1,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 0,
+        "HeatmapPage": 2
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        3,
+        2,
+        3,
+        2,
+        2
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/heatmap",
+          "commitMs": 249,
+          "paintMs": 279,
+          "at": 1783013400419
+        }
+      ]
+    },
+    {
+      "route": "/settings",
+      "label": "Settings",
+      "samples": 0,
+      "commit_p50": null,
+      "paint_p50": null,
+      "content_p50": null,
+      "content_p95": null,
+      "content_max": null,
+      "over_300ms": false,
+      "layout_remounted": false,
+      "api_calls_avg": 0,
+      "duplicate_api": {},
+      "render_delta": {},
+      "effect_delta": {},
+      "long_tasks": [],
+      "nav_events": []
+    }
+  ]
+}

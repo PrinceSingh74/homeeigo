@@ -14,6 +14,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useTheme } from "@/hooks/useTheme";
+import { gradients } from "@/lib/colors";
 import { CenterTabButton } from "./CenterTabButton";
 
 const { width: W } = Dimensions.get("window");
@@ -107,7 +108,7 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
             <Pressable key={route.key} onPress={onPress} style={styles.item}>
               {focused ? (
                 <LinearGradient
-                  colors={["#2563EB", "#7C3AED"]}
+                  colors={[...gradients.aiCard]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={styles.activeBadge}
@@ -177,7 +178,7 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#2563EB",
+    shadowColor: "#059669",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 8,

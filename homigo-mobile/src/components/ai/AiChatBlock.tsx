@@ -16,17 +16,21 @@ import Animated, {
   withTiming,
   withDelay,
   Easing,
+  FadeInLeft,
+  FadeInRight,
 } from "react-native-reanimated";
 import {
   SquarePen,
   Stethoscope,
   UserRound,
-  Camera,
+  ReceiptText,
   CheckCheck,
-  ImageIcon,
   ArrowUp,
+  Navigation,
+  CalendarClock,
+  LifeBuoy,
 } from "lucide-react-native";
-import { CHAT_ACTIONS } from "@/lib/ai-mobile-data";
+import { useActiveTracking } from "@/hooks/use-active-tracking";
 import type { AiChatMessage } from "@/lib/use-ai-chat";
 import {
   useAiTheme,
@@ -41,7 +45,40 @@ import { SectionTitle } from "./SectionTitle";
 import { PressableScale } from "./PressableScale";
 
 const ROBOT = require("../../../assets/robot-3d.png");
-const ACTION_ICONS = [Stethoscope, UserRound, Camera];
+
+type Chip = {
+  label: string;
+  /** What actually gets sent — the chip is a shortcut for typing, nothing more. */
+  prompt: string;
+  Icon: typeof Stethoscope;
+};
+
+/**
+ * Chips follow the conversation instead of being a fixed toolbar: someone with a
+ * professional already on the way needs different next steps than someone starting
+ * fresh. Both sets send ordinary text to the same AI endpoint — no new API, no new
+ * logic, and nothing shown that the app cannot actually do.
+ */
+function chatChips(hasLiveBooking: boolean): Chip[] {
+  if (hasLiveBooking) {
+    return [
+      // Three chips share one row on a 360dp screen — labels stay short so they
+      // read fully rather than eliding to "Track m…".
+      { label: "Track pro", prompt: "Where is my professional right now?", Icon: Navigation },
+      { label: "Reschedule", prompt: "I want to reschedule my booking", Icon: CalendarClock },
+      { label: "Get help", prompt: "I need help with my current booking", Icon: LifeBuoy },
+    ];
+  }
+  return [
+    { label: "Diagnose Now", prompt: "Diagnose my AC issue", Icon: Stethoscope },
+    { label: "Book Expert", prompt: "Book an expert for me", Icon: UserRound },
+    {
+      label: "Get Estimate",
+      prompt: "Give me an estimate for a deep home cleaning",
+      Icon: ReceiptText,
+    },
+  ];
+}
 
 type Msg = AiChatMessage;
 
@@ -77,7 +114,16 @@ function ThinkingDot({ delay, color }: { delay: number; color: string }) {
 
 function UserBubble({ msg, c }: { msg: Msg; c: AiPalette }) {
   return (
-    <View style={styles.userWrap}>
+    <Animated.View
+      // Messages arrive from the side they belong to, which reads as conversation
+      // rather than a list refresh. Damping is high so it settles without bounce.
+      entering={FadeInRight.duration(280).springify().damping(20)}
+      style={styles.userWrap}
+      // One node per message: a screen reader announces who spoke, what, and when
+      // instead of stumbling over the bubble, timestamp and tick as separate items.
+      accessible
+      accessibilityLabel={`You said: ${msg.text}. Sent ${msg.time}, delivered.`}
+    >
       <LinearGradient
         colors={[...c.userBubble]}
         start={{ x: 0, y: 0 }}
@@ -86,17 +132,22 @@ function UserBubble({ msg, c }: { msg: Msg; c: AiPalette }) {
       >
         <Text style={styles.userText}>{msg.text}</Text>
       </LinearGradient>
-      <View style={styles.userMetaRow}>
+      <View style={styles.userMetaRow} importantForAccessibility="no-hide-descendants">
         <Text style={[styles.metaTxt, { color: c.subtle }]}>{msg.time}</Text>
         <CheckCheck size={12} color={c.accentBlue} strokeWidth={2.6} />
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
 function AiBubble({ msg, c }: { msg: Msg; c: AiPalette }) {
   return (
-    <View style={styles.aiRow}>
+    <Animated.View
+      entering={FadeInLeft.duration(280).springify().damping(20)}
+      style={styles.aiRow}
+      accessible
+      accessibilityLabel={`Homeeigo AI said: ${msg.text}. ${msg.time}.`}
+    >
       <View
         style={[
           styles.aiAvatarWrap,
@@ -116,13 +167,20 @@ function AiBubble({ msg, c }: { msg: Msg; c: AiPalette }) {
         </View>
         <Text style={[styles.aiTimeTxt, { color: c.subtle }]}>{msg.time}</Text>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
 function ThinkingBubble({ c }: { c: AiPalette }) {
   return (
-    <View style={styles.aiRow}>
+    <View
+      style={styles.aiRow}
+      accessible
+      // Announced without stealing focus, so the user knows a reply is coming
+      // instead of hearing silence while the dots animate.
+      accessibilityLiveRegion="polite"
+      accessibilityLabel="Homeeigo AI is thinking"
+    >
       <View
         style={[
           styles.aiAvatarWrap,
@@ -150,6 +208,7 @@ function ThinkingBubble({ c }: { c: AiPalette }) {
 
 export function AiChatBlock({ messages, isThinking, onSend, onReset }: Props) {
   const { c, isDark } = useAiTheme();
+  const { activeBooking } = useActiveTracking();
   const [input, setInput] = useState("");
   const scrollRef = useRef<ScrollView>(null);
 
@@ -164,10 +223,7 @@ export function AiChatBlock({ messages, isThinking, onSend, onReset }: Props) {
     if (onSend(text)) setInput("");
   }
 
-  function handleChipAction(label: string) {
-    if (label === "Diagnose Now") sendFromInput("Diagnose my AC issue");
-    else if (label === "Book Expert") sendFromInput("Book an expert for me");
-  }
+  const chips = React.useMemo(() => chatChips(!!activeBooking?.id), [activeBooking?.id]);
 
   function handleReset() {
     onReset();
@@ -196,7 +252,7 @@ export function AiChatBlock({ messages, isThinking, onSend, onReset }: Props) {
     <View style={styles.wrap}>
       <SectionTitle
         noInset
-        title="Chat with HOMIGO AI"
+        title="Chat with Homeeigo AI"
         subtitle="Instant diagnosis & booking"
         right={newChatBtn}
       />
@@ -222,30 +278,31 @@ export function AiChatBlock({ messages, isThinking, onSend, onReset }: Props) {
 
         {/* Action chips */}
         <View style={styles.chips}>
-          {CHAT_ACTIONS.map((label, i) => {
-            const Icon = ACTION_ICONS[i];
+          {chips.map(({ label, prompt, Icon }) => {
             return (
               <PressableScale
                 key={label}
-                onPress={() => handleChipAction(label)}
+                onPress={() => sendFromInput(prompt)}
                 disabled={isThinking}
                 style={[
                   styles.chip,
                   {
                     borderColor: c.chipBorder,
                     backgroundColor: isDark
-                      ? "rgba(123,97,255,0.08)"
+                      ? "rgba(16, 185, 129,0.08)"
                       : c.cardSoft,
                     opacity: isThinking ? 0.5 : 1,
                   },
                 ]}
                 hitSlop={4}
                 haptic
+                accessibilityRole="button"
+                accessibilityLabel={label}
               >
                 <View
                   style={[
                     styles.chipIcon,
-                    { backgroundColor: "rgba(123,97,255,0.18)" },
+                    { backgroundColor: "rgba(16, 185, 129,0.18)" },
                   ]}
                 >
                   <Icon size={13} color={c.accent} strokeWidth={2.4} />
@@ -253,6 +310,10 @@ export function AiChatBlock({ messages, isThinking, onSend, onReset }: Props) {
                 <Text
                   style={[styles.chipText, { color: c.accent }]}
                   numberOfLines={1}
+                  // Last-resort shrink so a longer label (or a large system font
+                  // scale) still reads in full instead of eliding.
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
                 >
                   {label}
                 </Text>
@@ -299,13 +360,11 @@ export function AiChatBlock({ messages, isThinking, onSend, onReset }: Props) {
             editable={!isThinking}
           />
 
-          <Pressable hitSlop={8} style={styles.attachBtn}>
-            <ImageIcon size={19} color={c.subtle} strokeWidth={2.2} />
-          </Pressable>
-
           <Pressable
             onPress={() => sendFromInput(input)}
             disabled={!canSend}
+            accessibilityRole="button"
+            accessibilityLabel="Send message"
             style={({ pressed }) => [
               styles.sendWrap,
               {
@@ -315,7 +374,7 @@ export function AiChatBlock({ messages, isThinking, onSend, onReset }: Props) {
             ]}
           >
             <LinearGradient
-              colors={["#7B61FF", "#4A90E2"]}
+              colors={["#10b981", "#0d9488"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.sendBtn}
@@ -373,10 +432,10 @@ const styles = StyleSheet.create({
   },
   userText: {
     ...aiType.body,
-    fontSize: 13.5,
+    fontSize: 14.5,
     fontWeight: "600",
     color: "#FFFFFF",
-    lineHeight: 19,
+    lineHeight: 20,
   },
   userMetaRow: {
     flexDirection: "row",
@@ -416,9 +475,9 @@ const styles = StyleSheet.create({
   },
   aiText: {
     ...aiType.body,
-    fontSize: 13.5,
+    fontSize: 14.5,
     fontWeight: "500",
-    lineHeight: 19,
+    lineHeight: 21,
   },
   aiTimeTxt: {
     marginTop: 5,
@@ -506,7 +565,7 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: 19,
     overflow: "hidden",
-    shadowColor: "#7B61FF",
+    shadowColor: "#10b981",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.55,
     shadowRadius: 10,

@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
+  FlatList,
   View,
   Text,
   StyleSheet,
@@ -23,6 +24,8 @@ import {
 } from "@/lib/booking-status";
 import { BookingCard } from "@/components/booking/BookingCard";
 import { BookingDetailSheet } from "@/components/booking/BookingDetailSheet";
+import { AuthGuard } from "@/components/auth/AuthGuard";
+import { useBookingsQuery } from "@/hooks/use-core-data";
 
 const FILTERS: { key: BookingFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -40,6 +43,7 @@ const FLOW = [
 export default function BookingsScreen() {
   const router = useRouter();
   const { colors: c } = useTheme();
+  useBookingsQuery();
   const bookings = useAppStore((s) => s.bookings);
 
   const [filter, setFilter] = useState<BookingFilter>("all");
@@ -51,7 +55,22 @@ export default function BookingsScreen() {
     [bookings, filter],
   );
 
+  // Stable identities so memoised rows are not invalidated on every parent render
+  // (filter chip taps and opening the detail sheet both re-render this screen).
+  const keyExtractor = useCallback((b: SavedBooking) => b.id, []);
+  const renderItem = useCallback(
+    ({ item }: { item: SavedBooking }) => (
+      // Rows carry the screen inset themselves now that they are list items rather
+      // than children of the padded list wrapper.
+      <View style={styles.rowInset}>
+        <BookingCard booking={item} onPress={() => setSelected(item)} />
+      </View>
+    ),
+    [],
+  );
+
   return (
+    <AuthGuard title="Sign in to view your bookings">
     <SafeAreaView style={[styles.root, { backgroundColor: c.bg }]} edges={["top", "left", "right"]}>
       <LinearGradient
         colors={[`${c.primary}08`, "transparent"]}
@@ -65,7 +84,7 @@ export default function BookingsScreen() {
           <View style={[styles.brandMark, { backgroundColor: c.primary + "18" }]}>
             <Sparkles size={14} color={c.primary} strokeWidth={2.5} />
           </View>
-          <Text style={[styles.overline, { color: c.primary }]}>HOMIGO</Text>
+          <Text style={[styles.overline, { color: c.primary }]}>Homeeigo</Text>
           <Text style={[styles.title, { color: c.text }]}>My Bookings</Text>
           <Text style={[styles.sub, { color: c.textSecondary }]}>
             Your appointments, beautifully organised — track, manage, rebook.
@@ -73,7 +92,7 @@ export default function BookingsScreen() {
         </View>
         <Pressable
           onPress={() => openBook(router)}
-          style={[styles.addBtn, shadowStyles.glowBlue]}
+          style={[styles.addBtn, shadowStyles.glowPrimary]}
           accessibilityLabel="Book new service"
         >
           <LinearGradient colors={gradients.hero} style={styles.addGrad}>
@@ -82,10 +101,20 @@ export default function BookingsScreen() {
         </Pressable>
       </View>
 
-      <ScrollView
+      <FlatList
+        data={filtered}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollBody}
-      >
+        // Only the rows near the viewport stay mounted. Each card decodes a photo
+        // and paints a gradient, so mounting all of them was the scroll cost here.
+        removeClippedSubviews
+        initialNumToRender={4}
+        maxToRenderPerBatch={5}
+        windowSize={7}
+        ListHeaderComponent={
+          <>
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Journey</Text>
           <View style={styles.flowRow}>
@@ -181,33 +210,35 @@ export default function BookingsScreen() {
           </ScrollView>
         </View>
 
-        {bookings.length === 0 ? (
-          <EmptyPanel
-            title="No bookings yet"
-            body="Verified pros, clear pricing, live tracking — your first booking appears here in seconds."
-            cta="Book your first service"
-            onCta={() => openBook(router)}
-            c={c}
-          />
-        ) : filtered.length === 0 ? (
-          <EmptyPanel
-            title={`No ${filter === "all" ? "" : filter} bookings`}
-            body="Try another filter or start a fresh booking."
-            cta="Book a service"
-            onCta={() => openBook(router)}
-            c={c}
-          />
-        ) : (
+        {filtered.length > 0 ? (
           <View style={styles.list}>
             <Text style={[styles.listLabel, { color: c.textSecondary }]}>
               {filtered.length} {filtered.length === 1 ? "booking" : "bookings"}
             </Text>
-            {filtered.map((item) => (
-              <BookingCard key={item.id} booking={item} onPress={() => setSelected(item)} />
-            ))}
           </View>
-        )}
-      </ScrollView>
+        ) : null}
+          </>
+        }
+        ListEmptyComponent={
+          bookings.length === 0 ? (
+            <EmptyPanel
+              title="No bookings yet"
+              body="Verified pros, clear pricing, live tracking — your first booking appears here in seconds."
+              cta="Book your first service"
+              onCta={() => openBook(router)}
+              c={c}
+            />
+          ) : (
+            <EmptyPanel
+              title={`No ${filter === "all" ? "" : filter} bookings`}
+              body="Try another filter or start a fresh booking."
+              cta="Book a service"
+              onCta={() => openBook(router)}
+              c={c}
+            />
+          )
+        }
+      />
 
       <BookingDetailSheet
         visible={!!selected}
@@ -215,6 +246,7 @@ export default function BookingsScreen() {
         onClose={() => setSelected(null)}
       />
     </SafeAreaView>
+    </AuthGuard>
   );
 }
 
@@ -276,7 +308,7 @@ function EmptyPanel({
       </View>
       <Text style={[styles.emptyTitle, { color: c.text }]}>{title}</Text>
       <Text style={[styles.emptySub, { color: c.textSecondary }]}>{body}</Text>
-      <Pressable onPress={onCta} style={[styles.emptyCta, shadowStyles.glowBlue]}>
+      <Pressable onPress={onCta} style={[styles.emptyCta, shadowStyles.glowPrimary]}>
         <LinearGradient colors={gradients.hero} style={styles.emptyCtaGrad}>
           <Text style={styles.emptyCtaText}>{cta}</Text>
         </LinearGradient>
@@ -389,6 +421,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: screenPadding,
     paddingTop: spacing.lg,
   },
+  rowInset: { paddingHorizontal: screenPadding },
   listLabel: {
     ...type.overline,
     marginBottom: spacing.md,

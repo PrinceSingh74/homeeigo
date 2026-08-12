@@ -30,8 +30,8 @@ export function Premium3DIcon({
             borderRadius: size * 0.4,
             bottom: -size * 0.06,
             backgroundColor: isDark
-              ? "rgba(139, 92, 246, 0.35)"
-              : "rgba(108, 58, 232, 0.18)",
+              ? "rgba(52, 211, 153, 0.35)"
+              : "rgba(5, 150, 105, 0.18)",
           },
         ]}
       />
@@ -45,7 +45,7 @@ export function Premium3DIcon({
             borderColor: active
               ? c.primary
               : isDark
-                ? "rgba(139, 92, 246, 0.2)"
+                ? "rgba(52, 211, 153, 0.2)"
                 : "rgba(255,255,255,0.9)",
           },
           shadows.soft,
@@ -63,7 +63,7 @@ export function Premium3DIcon({
           <LinearGradient
             colors={
               isDark
-                ? ["rgba(139, 92, 246, 0.2)", "rgba(139, 92, 246, 0)"]
+                ? ["rgba(52, 211, 153, 0.2)", "rgba(52, 211, 153, 0)"]
                 : ["rgba(255,255,255,0.55)", "rgba(255,255,255,0)"]
             }
             style={[styles.shine, { borderTopLeftRadius: r, borderTopRightRadius: r }]}

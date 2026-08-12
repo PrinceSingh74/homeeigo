@@ -9,7 +9,8 @@ import {
 import { Plus } from "lucide-react-native";
 import Animated from "react-native-reanimated";
 import { useTheme } from "@/hooks/useTheme";
-import { PROFILE_ADDRESSES } from "@/lib/profile-mobile-data";
+import { useAddressesQuery } from "@/hooks/use-core-data";
+import { formatAddressLine } from "@/lib/addresses";
 import { profileAddressCardWidth } from "@/lib/profile-layout";
 import { spacing } from "@/lib/typography";
 import { profileTextBase, profileType } from "@/lib/profile-typography";
@@ -28,6 +29,8 @@ export function ProfileAddressesSection({ onManage, onAddress, onAdd }: Props) {
   const { colors: c, isDark } = useTheme();
   const { width } = useWindowDimensions();
   const cardW = profileAddressCardWidth(width);
+  const { data } = useAddressesQuery();
+  const addresses = data?.addresses ?? [];
 
   return (
     <Animated.View entering={profileEnter.section} style={styles.wrap}>
@@ -39,74 +42,59 @@ export function ProfileAddressesSection({ onManage, onAddress, onAdd }: Props) {
         contentContainerStyle={styles.scroll}
         decelerationRate="fast"
       >
-        {PROFILE_ADDRESSES.map((addr, i) => {
-          if (addr.type === "add") {
-            return (
-              <Animated.View key="add" entering={profileEnter.row(i)}>
-                <PressableScale
-                  onPress={onAdd}
-                  haptic
-                  style={[
-                    styles.addCard,
-                    {
-                      width: cardW,
-                      borderColor: c.border,
-                      backgroundColor: isDark ? c.cardBg : "#F9FAFB",
-                    },
-                  ]}
-                >
-                  <View style={[styles.addIcon, { backgroundColor: "#EFF6FF" }]}>
-                    <Plus size={22} color={c.primary} strokeWidth={2.5} />
-                  </View>
-                  <Text
-                    style={[profileType.addressAdd, profileTextBase, { color: c.primary }]}
-                    numberOfLines={2}
-                  >
-                    Add New Address
-                  </Text>
-                </PressableScale>
-              </Animated.View>
-            );
-          }
-
-          return (
-            <Animated.View key={addr.id} entering={profileEnter.row(i)}>
-              <PressableScale
-                onPress={() => onAddress(addr.id)}
-                haptic
-                style={[
-                  styles.card,
-                  {
-                    width: cardW,
-                    backgroundColor: c.cardBg,
-                    borderColor: isDark ? c.border : "#E5E7EB",
-                  },
-                  shadowStyles.sm,
-                ]}
+        {addresses.map((addr, i) => (
+          <Animated.View key={addr.id} entering={profileEnter.row(i)}>
+            <PressableScale
+              onPress={() => onAddress(addr.id)}
+              haptic
+              style={[
+                styles.card,
+                {
+                  width: cardW,
+                  backgroundColor: c.cardBg,
+                  borderColor: isDark ? c.border : "#E5E7EB",
+                },
+                shadowStyles.sm,
+              ]}
+            >
+              <View style={[styles.tag, { backgroundColor: "#EFF6FF" }]}>
+                <Text style={[profileType.addressTag, profileTextBase, { color: c.primary }]}>
+                  {addr.label ?? "Address"}
+                </Text>
+              </View>
+              <Text
+                style={[profileType.addressLine, profileTextBase, { color: c.text }]}
+                numberOfLines={3}
               >
-                <View style={[styles.tag, { backgroundColor: addr.tagBg }]}>
-                  <Text
-                    style={[profileType.addressTag, profileTextBase, { color: addr.tagColor }]}
-                  >
-                    {addr.type} · {addr.tag}
-                  </Text>
-                </View>
-                <Text
-                  style={[profileType.addressLine, profileTextBase, { color: c.text }]}
-                  numberOfLines={2}
-                >
-                  {addr.line1}
-                </Text>
-                <Text
-                  style={[profileType.addressLine, profileTextBase, { color: c.textSecondary }]}
-                  numberOfLines={2}
-                >
-                  {addr.line2}
-                </Text>
-              </PressableScale>
-            </Animated.View>
-          );
-        })}
+                {formatAddressLine(addr)}
+              </Text>
+            </PressableScale>
+          </Animated.View>
+        ))}
+        <Animated.View key="add" entering={profileEnter.row(addresses.length)}>
+          <PressableScale
+            onPress={onAdd}
+            haptic
+            style={[
+              styles.addCard,
+              {
+                width: cardW,
+                borderColor: c.border,
+                backgroundColor: isDark ? c.cardBg : "#F9FAFB",
+              },
+            ]}
+          >
+            <View style={[styles.addIcon, { backgroundColor: "#EFF6FF" }]}>
+              <Plus size={22} color={c.primary} strokeWidth={2.5} />
+            </View>
+            <Text
+              style={[profileType.addressAdd, profileTextBase, { color: c.primary }]}
+              numberOfLines={2}
+            >
+              Add New Address
+            </Text>
+          </PressableScale>
+        </Animated.View>
       </ScrollView>
     </Animated.View>
   );

@@ -3,9 +3,9 @@ import { View, Text, StyleSheet, ScrollView } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { PressableScale } from "@/components/ai/PressableScale";
-import { CATEGORIES } from "@/constants/servicesData";
 import { SectionHeader } from "./common/SectionHeader";
-import { fontFamily } from "@/theme/typography";
+import { fontFamily } from "@/components/services/theme/typography";
+import { useServicesDiscovery } from "@/hooks/use-services-discovery";
 import { useServicesContext } from "./ServicesContext";
 import { useServicesActions } from "@/hooks/useServicesActions";
 import { Premium3DIcon } from "./visual/Premium3DIcon";
@@ -15,6 +15,7 @@ export function CategoriesSection() {
   const { activeCategoryId, setActiveCategoryId } = useServicesContext();
   const { openCategories, book } = useServicesActions();
   const { c, layout: L } = useServicesTheme();
+  const { categories } = useServicesDiscovery();
 
   return (
     <View>
@@ -22,7 +23,7 @@ export function CategoriesSection() {
         overline="Explore"
         title="Browse by Categories"
         subtitle="Tap a category to filter trending services"
-        viewAllLabel="View All →"
+        viewAllLabel="View all"
         onViewAll={openCategories}
       />
       <ScrollView
@@ -30,7 +31,7 @@ export function CategoriesSection() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={L.listContent}
       >
-        {CATEGORIES.map((cat, index) => {
+        {categories.map((cat, index) => {
           const active = activeCategoryId === cat.id;
           return (
             <Animated.View

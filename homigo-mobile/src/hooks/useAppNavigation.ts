@@ -1,9 +1,11 @@
 import { useCallback } from "react";
 import { useRouter } from "expo-router";
 import { useAppStore } from "@/lib/store";
-import { openBook } from "@/lib/navigation";
+import { openBook, openProviders } from "@/lib/navigation";
 import { resolveServiceIdFromQuery } from "@/lib/services-search";
 import { getLocation } from "@/lib/services";
+import { useUnreadNotificationCount } from "@/hooks/use-core-data";
+import { useAuth } from "@/hooks/use-auth";
 import type { BookParams } from "@/lib/booking";
 
 /** App-wide navigation — tabs, book flow, and global sheets */
@@ -13,7 +15,8 @@ export function useAppNavigation() {
   const closeOverlay = useAppStore((s) => s.closeOverlay);
   const markNotificationsRead = useAppStore((s) => s.markNotificationsRead);
   const locationId = useAppStore((s) => s.locationId);
-  const unreadNotifications = useAppStore((s) => s.unreadNotifications);
+  const unreadNotifications = useUnreadNotificationCount();
+  const { isAuthenticated } = useAuth();
   const isPremium = useAppStore((s) => s.isPremium);
   const showToast = useAppStore((s) => s.showToast);
 
@@ -22,9 +25,13 @@ export function useAppNavigation() {
   const book = useCallback(
     (params: BookParams = {}) => {
       closeOverlay();
+      if (!isAuthenticated) {
+        router.push("/login");
+        return;
+      }
       openBook(router, params);
     },
-    [router, closeOverlay],
+    [router, closeOverlay, isAuthenticated],
   );
 
   const goHome = useCallback(() => {
@@ -39,8 +46,12 @@ export function useAppNavigation() {
 
   const goBookings = useCallback(() => {
     closeOverlay();
+    if (!isAuthenticated) {
+      router.push("/login");
+      return;
+    }
     router.push("/(tabs)/bookings");
-  }, [router, closeOverlay]);
+  }, [router, closeOverlay, isAuthenticated]);
 
   const goAi = useCallback(() => {
     closeOverlay();
@@ -49,13 +60,29 @@ export function useAppNavigation() {
 
   const goWallet = useCallback(() => {
     closeOverlay();
+    if (!isAuthenticated) {
+      router.push("/login");
+      return;
+    }
     router.push("/(tabs)/wallet");
-  }, [router, closeOverlay]);
+  }, [router, closeOverlay, isAuthenticated]);
 
   const goProfile = useCallback(() => {
     closeOverlay();
+    if (!isAuthenticated) {
+      router.push("/login");
+      return;
+    }
     router.push("/(tabs)/profile");
-  }, [router, closeOverlay]);
+  }, [router, closeOverlay, isAuthenticated]);
+
+  const goProviders = useCallback(
+    (serviceId?: string) => {
+      closeOverlay();
+      openProviders(router, serviceId ? { serviceId } : undefined);
+    },
+    [router, closeOverlay],
+  );
 
   const openLocation = useCallback(() => openOverlay("location"), [openOverlay]);
 
@@ -79,6 +106,7 @@ export function useAppNavigation() {
     goAi,
     goWallet,
     goProfile,
+    goProviders,
     openProfile: goProfile,
     openAi: goAi,
     openBookings: goBookings,

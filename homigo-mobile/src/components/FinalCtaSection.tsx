@@ -61,8 +61,8 @@ export const FinalCtaSection: React.FC = () => {
       <LinearGradient
         colors={
           isDark
-            ? ["#1E1B4B", "#312E81"]
-            : ["#EDE9FE", "#F5F3FF", "#FCE7F3"]
+            ? ["#04140d", "#065f46"]
+            : ["#ECFDF5", "#F0FDFA", "#F0FDF4"]
         }
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -84,10 +84,10 @@ export const FinalCtaSection: React.FC = () => {
 
           <Pressable onPress={() => openBook(router)}>
             <LinearGradient
-              colors={["#2563EB", "#7C3AED"]}
+              colors={["#10b981", "#0d9488"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={[styles.btn, shadowStyles.glowBlue]}
+              style={[styles.btn, shadowStyles.glowPrimary]}
             >
               <Text style={styles.btnText}>Get Started</Text>
               <ArrowRight size={15} color="#fff" strokeWidth={2.6} />

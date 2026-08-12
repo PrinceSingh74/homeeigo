@@ -1,0 +1,349 @@
+{
+  "generatedAt": "2026-07-02T17:27:43.266Z",
+  "base": "http://localhost:3003",
+  "samples": 5,
+  "target_ms": 300,
+  "routes_tested": 10,
+  "routes_over_300ms": [
+    "/support",
+    "/command-center",
+    "/operations",
+    "/digital-twin",
+    "/bookings",
+    "/customers"
+  ],
+  "slowest_routes": [
+    {
+      "route": "/support",
+      "content_p50": 834,
+      "content_p95": 834
+    },
+    {
+      "route": "/command-center",
+      "content_p50": 496,
+      "content_p95": 496
+    },
+    {
+      "route": "/operations",
+      "content_p50": 433,
+      "content_p95": 433
+    },
+    {
+      "route": "/digital-twin",
+      "content_p50": 423,
+      "content_p95": 423
+    },
+    {
+      "route": "/bookings",
+      "content_p50": 421,
+      "content_p95": 421
+    }
+  ],
+  "layout_remount_routes": [],
+  "routes": [
+    {
+      "route": "/support",
+      "label": "Support",
+      "samples": 1,
+      "commit_p50": 483,
+      "paint_p50": 491,
+      "content_p50": 834,
+      "content_p95": 834,
+      "content_max": 834,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 2,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 4,
+        "DataTable": 8
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        2
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/support",
+          "commitMs": 485,
+          "paintMs": 491,
+          "at": 1783013259182
+        }
+      ]
+    },
+    {
+      "route": "/command-center",
+      "label": "Command Center",
+      "samples": 1,
+      "commit_p50": 468,
+      "paint_p50": 482,
+      "content_p50": 496,
+      "content_p95": 496,
+      "content_max": 496,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 7,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 4,
+        "CommandCenterPage": 4,
+        "ExecutiveKpiRibbon": 4,
+        "AiIntelligencePanel": 2,
+        "OperationalTimeline": 2,
+        "CommandMap": 4
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        3
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/command-center",
+          "commitMs": 470,
+          "paintMs": 484,
+          "at": 1783013238820
+        }
+      ]
+    },
+    {
+      "route": "/operations",
+      "label": "Live Ops",
+      "samples": 1,
+      "commit_p50": 386,
+      "paint_p50": 405,
+      "content_p50": 433,
+      "content_p95": 433,
+      "content_max": 433,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 1,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 4,
+        "OperationsPage": 2
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        2
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/operations",
+          "commitMs": 377,
+          "paintMs": 401,
+          "at": 1783013245073
+        }
+      ]
+    },
+    {
+      "route": "/digital-twin",
+      "label": "City Digital Twin",
+      "samples": 1,
+      "commit_p50": 386,
+      "paint_p50": 412,
+      "content_p50": 423,
+      "content_p95": 423,
+      "content_max": 423,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 3,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 4,
+        "DigitalTwinPage": 4
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        2
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/digital-twin",
+          "commitMs": 388,
+          "paintMs": 413,
+          "at": 1783013241974
+        }
+      ]
+    },
+    {
+      "route": "/bookings",
+      "label": "Bookings",
+      "samples": 1,
+      "commit_p50": 377,
+      "paint_p50": 402,
+      "content_p50": 421,
+      "content_p95": 421,
+      "content_max": 421,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 0,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 4,
+        "DataTable": 2
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        2
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/bookings",
+          "commitMs": 366,
+          "paintMs": 396,
+          "at": 1783013248485
+        }
+      ]
+    },
+    {
+      "route": "/customers",
+      "label": "Customers",
+      "samples": 1,
+      "commit_p50": 359,
+      "paint_p50": 377,
+      "content_p50": 395,
+      "content_p95": 395,
+      "content_max": 395,
+      "over_300ms": true,
+      "layout_remounted": false,
+      "layout_remounts": {
+        "AdminShell": 0,
+        "AdminSidebar": 0,
+        "AdminTopBar": 0
+      },
+      "api_calls_avg": 2,
+      "duplicate_api": {},
+      "render_delta": {
+        "AdminRealtimeBridge": 0,
+        "AdminSidebar": 2,
+        "AdminTopBar": 2,
+        "DataTable": 2
+      },
+      "effect_delta": {},
+      "long_tasks": [
+        2
+      ],
+      "nav_events": [
+        {
+          "from": "/settings",
+          "to": "/customers",
+          "commitMs": 368,
+          "paintMs": 383,
+          "at": 1783013251886
+        }
+      ]
+    },
+    {
+      "route": "/",
+      "label": "Overview",
+      "samples": 0,
+      "commit_p50": null,
+      "paint_p50": null,
+      "content_p50": null,
+      "content_p95": null,
+      "content_max": null,
+      "over_300ms": false,
+      "layout_remounted": false,
+      "api_calls_avg": 0,
+      "duplicate_api": {},
+      "render_delta": {},
+      "effect_delta": {},
+      "long_tasks": [],
+      "nav_events": []
+    },
+    {
+      "route": "/heatmap",
+      "label": "Demand Heatmap",
+      "samples": 0,
+      "commit_p50": null,
+      "paint_p50": null,
+      "content_p50": null,
+      "content_p95": null,
+      "content_max": null,
+      "over_300ms": false,
+      "layout_remounted": false,
+      "api_calls_avg": 0,
+      "duplicate_api": {},
+      "render_delta": {},
+      "effect_delta": {},
+      "long_tasks": [],
+      "nav_events": []
+    },
+    {
+      "route": "/observability",
+      "label": "Observability",
+      "samples": 0,
+      "commit_p50": null,
+      "paint_p50": null,
+      "content_p50": null,
+      "content_p95": null,
+      "content_max": null,
+      "over_300ms": false,
+      "layout_remounted": false,
+      "api_calls_avg": 0,
+      "duplicate_api": {},
+      "render_delta": {},
+      "effect_delta": {},
+      "long_tasks": [],
+      "nav_events": []
+    },
+    {
+      "route": "/settings",
+      "label": "Settings",
+      "samples": 0,
+      "commit_p50": null,
+      "paint_p50": null,
+      "content_p50": null,
+      "content_p95": null,
+      "content_max": null,
+      "over_300ms": false,
+      "layout_remounted": false,
+      "api_calls_avg": 0,
+      "duplicate_api": {},
+      "render_delta": {},
+      "effect_delta": {},
+      "long_tasks": [],
+      "nav_events": []
+    }
+  ]
+}

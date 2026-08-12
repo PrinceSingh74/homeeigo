@@ -24,8 +24,8 @@ export function AiThemeToggle() {
         style={[
           styles.btn,
           {
-            backgroundColor: isDark ? "rgba(123,97,255,0.22)" : c.card,
-            borderColor: isDark ? "rgba(123,97,255,0.45)" : c.cardBorderStrong,
+            backgroundColor: isDark ? "rgba(16, 185, 129,0.22)" : c.card,
+            borderColor: isDark ? "rgba(16, 185, 129,0.45)" : c.cardBorderStrong,
           },
           aiCardShadow(isDark ? c.shadowAccent : c.shadowColor, isDark ? "glow" : "soft"),
         ]}
@@ -39,7 +39,7 @@ export function AiThemeToggle() {
           </LinearGradient>
         ) : (
           <LinearGradient
-            colors={["#4F46E5", "#7B61FF"]}
+            colors={["#4F46E5", "#10b981"]}
             style={styles.iconGrad}
           >
             <Moon size={18} color="#FFFFFF" strokeWidth={2.5} />

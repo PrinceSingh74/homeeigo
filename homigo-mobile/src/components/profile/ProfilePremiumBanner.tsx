@@ -1,9 +1,11 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { View, Text, StyleSheet, Image, ScrollView } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { ChevronRight } from "lucide-react-native";
 import Animated from "react-native-reanimated";
 import { PROFILE_PREMIUM_FEATURES } from "@/lib/profile-mobile-data";
+import { useMySubscription } from "@/hooks/use-subscription";
+import { useAppStore } from "@/lib/store";
 import { PROFILE_CARD_RADIUS } from "@/lib/profile-layout";
 import { spacing } from "@/lib/typography";
 import { profileTextBase, profileType } from "@/lib/profile-typography";
@@ -15,6 +17,18 @@ const CROWN_IMG = require("../../../assets/crown-3d.png");
 type Props = { onManage: () => void };
 
 export function ProfilePremiumBanner({ onManage }: Props) {
+  const { data: mine } = useMySubscription();
+  const setPremium = useAppStore((s) => s.setPremium);
+  const active = mine?.active ?? null;
+
+  useEffect(() => {
+    if (mine) setPremium(active !== null);
+  }, [mine, active, setPremium]);
+
+  const expiry = active?.expiresAt
+    ? new Date(active.expiresAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+    : null;
+
   return (
     <Animated.View entering={profileEnter.premium} style={styles.outer}>
       <LinearGradient
@@ -27,13 +41,17 @@ export function ProfilePremiumBanner({ onManage }: Props) {
 
         <View style={styles.content}>
           <View style={styles.titleRow}>
-            <Text style={[profileType.premiumBrand, profileTextBase]}>HOMIGO PREMIUM</Text>
-            <View style={styles.activeTag}>
-              <Text style={[profileType.premiumActive, profileTextBase]}>ACTIVE</Text>
-            </View>
+            <Text style={[profileType.premiumBrand, profileTextBase]}>Homeeigo Premium</Text>
+            {active && (
+              <View style={styles.activeTag}>
+                <Text style={[profileType.premiumActive, profileTextBase]}>ACTIVE</Text>
+              </View>
+            )}
           </View>
           <Text style={[profileType.premiumTagline, profileTextBase]}>
-            Enjoy priority service, elite experts & more
+            {active
+              ? `${active.plan.name} · active until ${expiry}`
+              : "Priority service, elite experts, cashback & more"}
           </Text>
 
           <ScrollView
@@ -60,7 +78,9 @@ export function ProfilePremiumBanner({ onManage }: Props) {
 
           <PressableScale onPress={onManage} haptic style={styles.btnWrap}>
             <View style={styles.btn}>
-              <Text style={[profileType.premiumBtn, profileTextBase]}>Manage Membership</Text>
+              <Text style={[profileType.premiumBtn, profileTextBase]}>
+                {active ? "Manage membership" : "View plans"}
+              </Text>
               <ChevronRight size={14} color="#7C3AED" strokeWidth={2.5} />
             </View>
           </PressableScale>

@@ -28,13 +28,9 @@ import {
 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
-import {
-  WALLET_BALANCE,
-  WALLET_ADDED_MONTH,
-  WALLET_H_COINS,
-  WALLET_PREMIUM_EXPIRY,
-  formatINR,
-} from "@/lib/wallet-mobile-data";
+import { formatINR } from "@/lib/wallet-mobile-data";
+import { useWalletBalanceQuery } from "@/hooks/use-core-data";
+import { useHCoinSummary } from "@/hooks/use-hcoins";
 import { WALLET_HERO_H, WALLET_HERO_H_COMPACT } from "@/lib/wallet-layout";
 import { spacing, radius } from "@/lib/typography";
 import { PressableScale } from "@/components/ai/PressableScale";
@@ -52,6 +48,12 @@ type Props = {
 export function WalletHeroCard({ onAddMoney, onPremium, onCoins }: Props) {
   const { isDark } = useTheme();
   const { width } = useWindowDimensions();
+  const { data: walletData } = useWalletBalanceQuery();
+  const { data: hcoins } = useHCoinSummary();
+  const balance = walletData?.balance ?? 0;
+  const addedMonth = walletData?.lastTransaction?.type === "credit"
+    ? walletData.lastTransaction.amount
+    : 0;
   const compact = width < 380;
   const cardH = compact ? WALLET_HERO_H_COMPACT : WALLET_HERO_H;
   const [hidden, setHidden] = useState(false);
@@ -144,12 +146,12 @@ export function WalletHeroCard({ onAddMoney, onPremium, onCoins }: Props) {
           <View style={styles.bodyRow}>
             <View style={styles.balanceBlock}>
               <Text style={[styles.amount, compact && styles.amountCompact]}>
-                {hidden ? "₹ ••••••" : `₹${formatINR(WALLET_BALANCE)}`}
+                {hidden ? "₹ ••••••" : `₹${formatINR(balance)}`}
               </Text>
               <View style={styles.pill}>
                 <TrendingUp size={12} color="#10B981" strokeWidth={2.5} />
                 <Text style={styles.pillText}>
-                  ₹{formatINR(WALLET_ADDED_MONTH, 0)} added this month
+                  ₹{formatINR(addedMonth, 0)} added this month
                 </Text>
               </View>
             </View>
@@ -168,9 +170,9 @@ export function WalletHeroCard({ onAddMoney, onPremium, onCoins }: Props) {
                 <Crown size={16} color="#D4AF37" />
               </View>
               <View style={styles.stripText}>
-                <Text style={styles.stripTitle}>HOMIGO Premium</Text>
+                <Text style={styles.stripTitle}>Homeeigo Premium</Text>
                 <Text style={styles.stripSub} numberOfLines={1}>
-                  Active | Valid till {WALLET_PREMIUM_EXPIRY}
+                  Active | Valid till Dec 2026
                 </Text>
               </View>
               <ChevronRight size={14} color="rgba(255,255,255,0.6)" />
@@ -181,8 +183,8 @@ export function WalletHeroCard({ onAddMoney, onPremium, onCoins }: Props) {
                 <Coins size={16} color="#F59E0B" />
               </View>
               <View style={styles.stripText}>
-                <Text style={styles.stripTitle}>H-Coins</Text>
-                <Text style={styles.stripSub}>{WALLET_H_COINS} Coins</Text>
+                <Text style={styles.stripTitle}>{(hcoins?.balance ?? 0).toLocaleString("en-IN")} H-Coins</Text>
+                <Text style={styles.stripSub}>≈ ₹{(hcoins?.redeemableValue ?? 0).toLocaleString("en-IN")}</Text>
               </View>
               <ChevronRight size={14} color="rgba(255,255,255,0.6)" />
             </PressableScale>

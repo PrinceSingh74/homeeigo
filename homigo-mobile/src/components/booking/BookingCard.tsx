@@ -10,15 +10,22 @@ import type { SavedBooking } from "@/lib/store";
 import { STATUS_CONFIG } from "@/lib/booking-status";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 import { getServiceImage } from "@/lib/service-assets";
+import { getServicePhoto } from "@/lib/service-photos";
 
 type Props = {
   booking: SavedBooking;
   onPress: () => void;
 };
 
-export function BookingCard({ booking, onPress }: Props) {
+/**
+ * Memoised: this renders inside a virtualised list, where any parent state change
+ * (filter chip, sheet open/close) would otherwise re-render every mounted card —
+ * each of which decodes a photo, a gradient and three shadows.
+ */
+export const BookingCard = React.memo(function BookingCard({ booking, onPress }: Props) {
   const { colors: c } = useTheme();
   const cfg = STATUS_CONFIG[booking.status];
+  const photo = getServicePhoto(booking.serviceTitle);
   const img = getServiceImage(booking.imageKey);
   const cancelled = booking.status === "cancelled";
 
@@ -60,11 +67,21 @@ export function BookingCard({ booking, onPress }: Props) {
             styles.thumb,
             {
               backgroundColor: booking.serviceColor + "14",
-              borderColor: booking.serviceColor + "28",
+              borderColor: "rgba(16,185,129,0.22)",
             },
+            cancelled && { opacity: 0.55 },
           ]}
         >
-          {img ? (
+          {photo ? (
+            <>
+              <Image source={photo.photo} style={styles.thumbCover} resizeMode="cover" />
+              <LinearGradient
+                colors={["transparent", "rgba(4,20,13,0.28)"]}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+            </>
+          ) : img ? (
             <Image source={img} style={styles.thumbImg} resizeMode="contain" />
           ) : (
             <Text style={styles.emoji}>✂️</Text>
@@ -97,13 +114,13 @@ export function BookingCard({ booking, onPress }: Props) {
         <Text style={[styles.statusHint, { color: cfg.text }]} numberOfLines={2}>
           {cfg.description}
         </Text>
-        <Text style={[styles.price, { color: c.violet }]}>
+        <Text style={[styles.price, { color: c.teal }]}>
           {cancelled ? "—" : `₹${booking.total}`}
         </Text>
       </View>
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {
@@ -130,13 +147,15 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   thumb: {
-    width: 72,
-    height: 72,
+    width: 76,
+    height: 76,
     borderRadius: radius.lg,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
+  thumbCover: { width: "100%", height: "100%" },
   thumbImg: { width: 54, height: 54 },
   emoji: { fontSize: 26 },
   info: { flex: 1, gap: 4 },

@@ -1,0 +1,173 @@
+{
+  "generatedAt": "2026-06-26T19:52:43.748Z",
+  "runId": "eco-mqvclf9i",
+  "base": "http://localhost:3000",
+  "overallStatus": "PASS",
+  "summary": {
+    "total": 17,
+    "passed": 17,
+    "failed": 0,
+    "blocked": 0
+  },
+  "steps": [
+    {
+      "id": "infra_backend",
+      "label": "Backend",
+      "ok": true,
+      "detail": "GET /health → 200 db=ok",
+      "evidence": {
+        "body": {
+          "status": "ok",
+          "message": "HOMIGO Backend is running!",
+          "timestamp": "2026-06-26T19:52:37.298Z",
+          "environment": "development",
+          "services": {
+            "database": "ok",
+            "redis": "ok"
+          }
+        }
+      }
+    },
+    {
+      "id": "infra_postgresql",
+      "label": "PostgreSQL",
+      "ok": true,
+      "detail": "ready.database=healthy latencyMs=8"
+    },
+    {
+      "id": "infra_redis",
+      "label": "Redis",
+      "ok": true,
+      "detail": "ready.redis=healthy topology=standalone"
+    },
+    {
+      "id": "booking_creation",
+      "label": "Booking creation",
+      "ok": true,
+      "detail": "POST /api/bookings → 201 id=cmqvclgj3067",
+      "evidence": {
+        "bookingId": "cmqvclgj30671tzyckbpx4g14",
+        "status": "pending"
+      }
+    },
+    {
+      "id": "partner_assignment",
+      "label": "Partner assignment",
+      "ok": true,
+      "detail": "job=DISPATCHED attempts=1 dispatchedTo=cmq6b29yz0 target=cmqvclfo70",
+      "evidence": {
+        "jobId": "cmqvclgq00677tzyctbkylp2l",
+        "attemptId": "cmqvclhiy069gtzycxuwxerep",
+        "matchedTarget": false
+      }
+    },
+    {
+      "id": "partner_acceptance",
+      "label": "Partner acceptance",
+      "ok": true,
+      "detail": "POST accept → 200 status=ACCEPTED acceptedAt=set"
+    },
+    {
+      "id": "tracking_updates",
+      "label": "Tracking updates",
+      "ok": true,
+      "detail": "POST /api/tracking/location → 200 trackingStatus=ON_THE_WAY",
+      "evidence": {
+        "lastUpdateAt": "2026-06-26T19:52:41.769Z"
+      }
+    },
+    {
+      "id": "completion",
+      "label": "Completion",
+      "ok": true,
+      "detail": "POST complete → 200 status=COMPLETED"
+    },
+    {
+      "id": "wallet_credit",
+      "label": "Wallet credit",
+      "ok": true,
+      "detail": "provider wallet Δ₹660.00 earning=₹660",
+      "evidence": {
+        "earningId": "cmqvcliww06a0tzyc76qmy3m4",
+        "journalCheck": "see ledger"
+      }
+    },
+    {
+      "id": "settlement_creation",
+      "label": "Settlement creation",
+      "ok": true,
+      "blocked": false,
+      "detail": "payment_settlements=70 linkedPayments=70/84",
+      "evidence": {
+        "settlementCount": 70,
+        "settledPayments": 70,
+        "successPayments": 84
+      }
+    },
+    {
+      "id": "analytics_event",
+      "label": "Analytics event",
+      "ok": true,
+      "detail": "POST /api/ux-signals → 200"
+    },
+    {
+      "id": "admin_panel_api",
+      "label": "Admin Panel",
+      "ok": true,
+      "detail": "admin bookings=200 analytics=200",
+      "blocked": false,
+      "evidence": {
+        "bookingsStatus": 200,
+        "analyticsStatus": 200
+      }
+    },
+    {
+      "id": "partner_panel_api",
+      "label": "Partner Panel",
+      "ok": true,
+      "detail": "GET /api/providers/me/bookings → 200 count=1",
+      "evidence": {
+        "count": 1
+      }
+    },
+    {
+      "id": "customer_mobile_api",
+      "label": "Customer Mobile",
+      "ok": true,
+      "detail": "GET /api/bookings/cmqvclgj… → 200"
+    },
+    {
+      "id": "prometheus_metrics",
+      "label": "Prometheus metrics",
+      "ok": true,
+      "detail": "GET /metrics 34691B bookingMetrics=true bizGauges=true",
+      "evidence": {
+        "sample": [
+          "# TYPE booking_assigned_total counter",
+          "booking_assigned_total 4",
+          "# TYPE booking_completed_total counter",
+          "booking_completed_total 4",
+          "# TYPE cost_per_booking_usd gauge",
+          "cost_per_booking_usd 0"
+        ]
+      }
+    },
+    {
+      "id": "prometheus_scrape",
+      "label": "Prometheus scrape",
+      "ok": true,
+      "blocked": false,
+      "detail": "Prometheus sees homigo-backend target up"
+    },
+    {
+      "id": "grafana_visibility",
+      "label": "Grafana visibility",
+      "ok": true,
+      "blocked": false,
+      "detail": "Grafana http://localhost:3004 healthy dashboards=18",
+      "evidence": {
+        "dashboardCount": 18
+      }
+    }
+  ]
+}

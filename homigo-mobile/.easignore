@@ -1,0 +1,10 @@
+# Keep EAS upload tarball small — certification export dirs are not needed for native builds.
+.expo-export-test/
+.expo-export-certify/
+.certification-evidence/
+device-matrix-certification.md
+sentry-native-certification.md
+sentry-enterprise-upgrade-certification.md
+eas-production-certification.md
+ecosystem-enterprise-certification.md
+device-matrix-certification.md

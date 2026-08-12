@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Image } from "react-native";
 import { Star, User } from "lucide-react-native";
 import Animated from "react-native-reanimated";
 import { useTheme } from "@/hooks/useTheme";
-import { PROFILE_BOOKINGS } from "@/lib/profile-mobile-data";
+import { useAppStore } from "@/lib/store";
 import { PROFILE_CARD_RADIUS } from "@/lib/profile-layout";
 import { spacing } from "@/lib/typography";
 import { profileTextBase, profileType } from "@/lib/profile-typography";
@@ -11,6 +11,7 @@ import { shadowStyles } from "@/lib/colors";
 import { PressableScale } from "@/components/ai/PressableScale";
 import { profileEnter } from "@/lib/profile-animations";
 import { getServiceImage } from "@/lib/service-assets";
+import { STATUS_CONFIG } from "@/lib/booking-status";
 import { SectionHeader } from "@/components/profile/SectionHeader";
 
 type Props = {
@@ -20,6 +21,9 @@ type Props = {
 
 export function ProfileBookingsSection({ onViewAll, onBooking }: Props) {
   const { colors: c, isDark } = useTheme();
+  const bookings = useAppStore((s) => s.bookings).slice(0, 2);
+
+  if (bookings.length === 0) return null;
 
   return (
     <Animated.View
@@ -36,12 +40,14 @@ export function ProfileBookingsSection({ onViewAll, onBooking }: Props) {
       <SectionHeader title="My Bookings" onAction={onViewAll} actionLabel="View All" />
 
       <View style={styles.list}>
-        {PROFILE_BOOKINGS.map((b, i) => {
+        {bookings.map((b, i) => {
           const img = getServiceImage(b.imageKey);
+          const cfg = STATUS_CONFIG[b.status];
+          const action = b.status === "confirmed" || b.status === "in_progress" ? "Track" : "Rebook";
           return (
             <Animated.View key={b.id} entering={profileEnter.row(i)}>
               <PressableScale
-                onPress={() => onBooking(b.id, b.action)}
+                onPress={() => onBooking(b.id, action)}
                 haptic
                 style={[
                   styles.row,
@@ -60,7 +66,7 @@ export function ProfileBookingsSection({ onViewAll, onBooking }: Props) {
                       style={[profileType.bookingTitle, profileTextBase, { color: c.text }]}
                       numberOfLines={1}
                     >
-                      {b.title}
+                      {b.serviceTitle}
                     </Text>
                     <View style={styles.proRow}>
                       <User size={12} color={c.textSecondary} />
@@ -68,44 +74,39 @@ export function ProfileBookingsSection({ onViewAll, onBooking }: Props) {
                         style={[profileType.bookingMeta, profileTextBase, { color: c.textSecondary }]}
                         numberOfLines={1}
                       >
-                        {b.pro}
-                      </Text>
-                      <Text style={[profileType.bookingMeta, { color: c.textSecondary }]}>•</Text>
-                      <Star size={11} color={c.gold} fill={c.gold} />
-                      <Text style={[profileType.bookingMeta, profileTextBase, { color: c.textSecondary }]}>
-                        {b.rating}
+                        {b.proName}
                       </Text>
                     </View>
                     <Text
                       style={[profileType.bookingMeta, profileTextBase, { color: c.textSecondary }]}
                       numberOfLines={1}
                     >
-                      {b.date}
+                      {b.dateLabel} · {b.timeLabel}
                     </Text>
                   </View>
 
                   <View style={styles.actions}>
-                    <View style={[styles.badge, { backgroundColor: b.statusBg }]}>
+                    <View style={[styles.badge, { backgroundColor: cfg.bg }]}>
                       <Text
                         style={[
                           profileType.bookingBadge,
                           profileTextBase,
-                          { color: b.statusColor },
+                          { color: cfg.text },
                         ]}
                       >
-                        {b.status}
+                        {cfg.label}
                       </Text>
                     </View>
                     <View
                       style={[
                         styles.actionBtn,
-                        { borderColor: "#DBEAFE", backgroundColor: "#EFF6FF" },
+                        { borderColor: "#A7F3D0", backgroundColor: "#ECFDF5" },
                       ]}
                     >
                       <Text
                         style={[profileType.bookingAction, profileTextBase, { color: c.primary }]}
                       >
-                        {b.action}
+                        {action}
                       </Text>
                     </View>
                   </View>

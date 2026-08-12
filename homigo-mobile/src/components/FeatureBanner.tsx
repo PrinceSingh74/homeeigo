@@ -14,6 +14,8 @@ import { useRouter } from "expo-router";
 import { ArrowRight, Sparkles } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { openBook } from "@/lib/navigation";
+import { useWalletBalanceQuery } from "@/hooks/use-core-data";
+import { formatINR } from "@/lib/wallet-mobile-data";
 import { shadowStyles } from "@/lib/colors";
 
 const WALLET_IMG = require("../../assets/wallet-3d.png");
@@ -59,7 +61,7 @@ function Waveform() {
           style={{
             width: 3,
             borderRadius: 2,
-            backgroundColor: "#06B6D4",
+            backgroundColor: "#34d399",
             height: val.interpolate({ inputRange: [0, 1], outputRange: [4, 18] }),
           }}
         />
@@ -71,6 +73,7 @@ function Waveform() {
 export const FeatureBanner: React.FC = () => {
   const router = useRouter();
   const { colors: themeColors } = useTheme();
+  const { data: walletData } = useWalletBalanceQuery();
   const float = useRef(new Animated.Value(0)).current;
   const trail = useRef(new Animated.Value(0)).current;
 
@@ -106,7 +109,7 @@ export const FeatureBanner: React.FC = () => {
       <View style={styles.row}>
         {/* LEFT — Light Speed banner */}
         <LinearGradient
-          colors={["#0A0F1E", "#1E1B4B", "#2563EB"]}
+          colors={["#04140d", "#065f46", "#0f766e"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.banner, shadowStyles.xl]}
@@ -114,7 +117,7 @@ export const FeatureBanner: React.FC = () => {
           <Text style={styles.eyebrow}>HOME SERVICES AT</Text>
           <Text style={styles.bannerTitle}>
             Light{"\n"}
-            <Text style={{ color: themeColors.cyan }}>Speed.</Text>
+            <Text style={{ color: themeColors.tealDeep }}>Speed.</Text>
           </Text>
           <Text style={styles.bannerSub}>
             Instant booking. Real-time tracking. Lightning fast service.
@@ -122,7 +125,7 @@ export const FeatureBanner: React.FC = () => {
 
           <Pressable style={styles.bookBtn} onPress={() => openBook(router)}>
             <Text style={styles.bookText}>Book Now</Text>
-            <ArrowRight size={13} color="#1E1B4B" />
+            <ArrowRight size={13} color="#065f46" />
           </Pressable>
 
           {/* Rider + speed trails */}
@@ -138,7 +141,7 @@ export const FeatureBanner: React.FC = () => {
                   height: 3,
                   borderRadius: 2,
                   backgroundColor:
-                    i % 2 === 0 ? themeColors.cyan : themeColors.pink,
+                    i % 2 === 0 ? themeColors.tealDeep : themeColors.tealSoft,
                   opacity: trail.interpolate({
                     inputRange: [0, 0.5, 1],
                     outputRange: [0, 0.85, 0],
@@ -168,10 +171,10 @@ export const FeatureBanner: React.FC = () => {
         {/* RIGHT — stacked mini cards */}
         <View style={styles.side}>
           <LinearGradient
-            colors={["#2563EB", "#7C3AED"]}
+            colors={["#10b981", "#0d9488"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.miniCard, shadowStyles.glowBlue]}
+            style={[styles.miniCard, shadowStyles.glowPrimary]}
           >
             <View style={styles.miniTop}>
               <Text style={styles.miniGreet}>Hi Arjun! 👋</Text>
@@ -197,8 +200,8 @@ export const FeatureBanner: React.FC = () => {
             ]}
           >
             <View style={styles.miniTop}>
-              <Text style={[styles.walletLabel, { color: themeColors.primary }]}>
-                HOMIGO Wallet
+              <Text style={[styles.walletLabel, { color: "#059669" }]}>
+                Homeeigo Wallet
               </Text>
               <Image
                 source={WALLET_IMG}
@@ -211,7 +214,7 @@ export const FeatureBanner: React.FC = () => {
               adjustsFontSizeToFit
               style={[styles.walletAmt, { color: themeColors.text }]}
             >
-              ₹2,450.00
+              ₹{formatINR(walletData?.balance ?? 0)}
             </Text>
             <Text
               style={[styles.walletSub, { color: themeColors.textSecondary }]}
@@ -274,7 +277,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: 12,
   },
-  bookText: { fontSize: 12, fontWeight: "800", color: "#1E1B4B" },
+  bookText: { fontSize: 12, fontWeight: "800", color: "#065f46" },
   rider: { position: "absolute", right: -8, bottom: 0 },
   riderImg: {
     width: 120,

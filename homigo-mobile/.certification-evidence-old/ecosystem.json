@@ -1,0 +1,34 @@
+{
+  "generatedAt": "2026-06-26T19:56:19.900Z",
+  "base": "http://localhost:3000",
+  "steps": [
+    {
+      "name": "backend_ready",
+      "ok": true,
+      "status": 200,
+      "db": "ready"
+    },
+    {
+      "name": "ux_signals_ingest",
+      "ok": true,
+      "status": 200
+    },
+    {
+      "name": "vitals_ingest",
+      "ok": true,
+      "status": 200
+    },
+    {
+      "name": "prometheus_metrics",
+      "ok": true,
+      "bytes": 34702,
+      "hasHttp": true,
+      "hasStartup": true
+    },
+    {
+      "name": "health_services",
+      "ok": true,
+      "status": 200
+    }
+  ]
+}

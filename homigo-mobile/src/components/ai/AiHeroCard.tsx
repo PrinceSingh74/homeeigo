@@ -9,10 +9,22 @@ import Animated, {
   Easing,
   interpolate,
 } from "react-native-reanimated";
-import { Camera, Mic } from "lucide-react-native";
-import { AI_USER } from "@/lib/ai-mobile-data";
+import { useRouter } from "expo-router";
+// No microphone iconography here: this build has no speech-to-text, and these
+// controls open the text composer. A mic icon would promise dictation the app
+// cannot deliver, so the affordance is labelled for what it actually does.
+import { LayoutGrid, MessageCircle, Navigation, Sparkles } from "lucide-react-native";
+import { useAuth } from "@/hooks/use-auth";
+import { useActiveTracking } from "@/hooks/use-active-tracking";
 import { useAiTheme, aiSpacing, aiType, aiRadius, aiCardShadow } from "@/lib/ai-mobile-theme";
 import { PressableScale } from "./PressableScale";
+
+type Props = {
+  /** Opens the composer so the user can ask the AI (real text-first action). */
+  onAsk?: () => void;
+  /** Navigates to the services catalog. */
+  onBrowse?: () => void;
+};
 
 const ROBOT = require("../../../assets/robot-3d.png");
 
@@ -30,8 +42,48 @@ function getGreeting() {
   return "Good Evening";
 }
 
-export function AiHeroCard() {
+/**
+ * The hero speaks to what the user is actually in the middle of, rather than
+ * repeating one generic line. Every branch is driven by real state we already
+ * hold — a live booking and the clock — so nothing here is invented.
+ */
+function heroCopy(hasLiveBooking: boolean, hour: number): { headline: string; subline: string } {
+  // The headline column is narrow, so every variant keeps the proven two-short-lines
+  // shape; the time/booking context is carried mainly by the subline, which has room.
+  if (hasLiveBooking) {
+    return {
+      headline: "Your pro is\non the way",
+      subline: "Track them live, or ask me anything.",
+    };
+  }
+  if (hour < 12) {
+    return {
+      headline: "How can I help\nthis morning?",
+      subline: "Book a service, diagnose an issue, or plan your day.",
+    };
+  }
+  if (hour < 17) {
+    return {
+      headline: "How can I help\ntoday?",
+      subline: "Book services, diagnose issues, or manage your home.",
+    };
+  }
+  return {
+    headline: "How can I help\nthis evening?",
+    subline: "Book for tomorrow, check an order, or just ask.",
+  };
+}
+
+export function AiHeroCard({ onAsk, onBrowse }: Props) {
   const { c } = useAiTheme();
+  const { user } = useAuth();
+  const router = useRouter();
+  const { activeBooking } = useActiveTracking();
+  const displayName = user?.firstName ?? "there";
+  const copy = React.useMemo(
+    () => heroCopy(!!activeBooking?.id, new Date().getHours()),
+    [activeBooking?.id],
+  );
 
   // Robot float
   const float = useSharedValue(0);
@@ -85,7 +137,7 @@ export function AiHeroCard() {
           <View style={styles.robotCol}>
             <View style={styles.platformShadow} />
             <LinearGradient
-              colors={["transparent", "rgba(0, 209, 255, 0.95)", "transparent"]}
+              colors={["transparent", "rgba(45, 212, 191, 0.95)", "transparent"]}
               start={{ x: 0, y: 0.5 }}
               end={{ x: 1, y: 0.5 }}
               style={styles.platformLine}
@@ -98,44 +150,87 @@ export function AiHeroCard() {
           {/* Greeting + headline */}
           <View style={styles.textCol}>
             <Text style={[styles.greeting, { color: HERO_INK.greeting }]}>
-              {getGreeting()}, {AI_USER.name}{" "}
+              {getGreeting()}, {displayName}{" "}
               <Text style={{ fontSize: 13, color: HERO_INK.greeting }}>👋</Text>
             </Text>
-            <Text style={[styles.headline, { color: HERO_INK.headline }]} numberOfLines={2}>
-              How can I help{"\n"}today?
+            {/* Shrinks rather than truncates: the column is narrow and the copy now
+                varies with context, so a fixed size would clip the longer variants
+                (and long first names) on 360dp screens. */}
+            <Text
+              style={[styles.headline, { color: HERO_INK.headline }]}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+            >
+              {copy.headline}
             </Text>
-            <Text style={[styles.subline, { color: HERO_INK.subline }]} numberOfLines={2}>
-              Book services, diagnose issues,{"\n"}or manage your home instantly.
+            <Text
+              style={[styles.subline, { color: HERO_INK.subline }]}
+              numberOfLines={3}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
+            >
+              {copy.subline}
             </Text>
           </View>
 
-          {/* Voice orb with pulsing rings */}
-          <View style={styles.orbCol}>
+          {/* Voice orb with pulsing rings — opens the composer to ask the AI */}
+          <PressableScale
+            style={styles.orbCol}
+            haptic
+            onPress={onAsk}
+            accessibilityRole="button"
+            accessibilityLabel="Ask the AI assistant"
+          >
             <Animated.View style={[styles.orbWave, wave2Style]} />
             <Animated.View style={[styles.orbWave, wave1Style]} />
             <View style={styles.orbHalo} />
             <LinearGradient
-              colors={["#5B45E0", "#7B61FF", "#4A90E2"]}
+              colors={["#2dd4bf", "#10b981", "#0d9488"]}
               style={styles.orbBody}
             >
               <View style={styles.orbInner}>
-                <Mic size={22} color="#FFFFFF" strokeWidth={2.6} />
+                <Sparkles size={22} color="#FFFFFF" strokeWidth={2.6} />
               </View>
             </LinearGradient>
-          </View>
+          </PressableScale>
         </View>
+
+        {/* Context-aware: a live booking gets a track shortcut right in the hero */}
+        {activeBooking?.id ? (
+          <PressableScale
+            haptic
+            onPress={() => router.push(`/track/${activeBooking.id}` as never)}
+            style={styles.liveRow}
+            accessibilityRole="button"
+            accessibilityLabel="Track your live booking"
+          >
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText} numberOfLines={1}>
+              Your booking is live — track your professional
+            </Text>
+            <Navigation size={14} color="#6ee7b7" strokeWidth={2.6} />
+          </PressableScale>
+        ) : null}
 
         {/* CTA buttons */}
         <View style={styles.ctaRow}>
-          <PressableScale style={styles.ctaPrimaryWrap} haptic>
+          <PressableScale
+            style={styles.ctaPrimaryWrap}
+            haptic
+            onPress={onAsk}
+            accessibilityRole="button"
+            accessibilityLabel="Ask the AI assistant a question"
+            accessibilityHint="Opens the message box"
+          >
             <LinearGradient
-              colors={["#7B61FF", "#6366F1"]}
+              colors={["#10b981", "#0d9488"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.ctaPrimary}
             >
-              <Mic size={16} color="#FFFFFF" strokeWidth={2.5} />
-              <Text style={styles.ctaPrimaryText}>Talk to AI</Text>
+              <MessageCircle size={16} color="#FFFFFF" strokeWidth={2.5} />
+              <Text style={styles.ctaPrimaryText}>Ask AI</Text>
             </LinearGradient>
           </PressableScale>
 
@@ -145,9 +240,12 @@ export function AiHeroCard() {
               { borderColor: "rgba(255,255,255,0.18)", backgroundColor: "rgba(255,255,255,0.04)" },
             ]}
             haptic
+            onPress={onBrowse}
+            accessibilityRole="button"
+            accessibilityLabel="Browse services"
           >
-            <Camera size={16} color="#E2E8F0" strokeWidth={2.2} />
-            <Text style={styles.ctaGhostText}>Upload Photo</Text>
+            <LayoutGrid size={16} color="#E2E8F0" strokeWidth={2.2} />
+            <Text style={styles.ctaGhostText}>Browse Services</Text>
           </PressableScale>
         </View>
       </LinearGradient>
@@ -202,8 +300,8 @@ const styles = StyleSheet.create({
     width: 82,
     height: 26,
     borderRadius: 13,
-    backgroundColor: "rgba(0, 209, 255, 0.35)",
-    shadowColor: "#00D1FF",
+    backgroundColor: "rgba(45, 212, 191, 0.35)",
+    shadowColor: "#2dd4bf",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.6,
     shadowRadius: 16,
@@ -256,15 +354,15 @@ const styles = StyleSheet.create({
     height: 78,
     borderRadius: 39,
     borderWidth: 2,
-    borderColor: "#7B61FF",
+    borderColor: "#10b981",
   },
   orbHalo: {
     position: "absolute",
     width: 84,
     height: 84,
     borderRadius: 42,
-    backgroundColor: "rgba(123,97,255,0.35)",
-    shadowColor: "#7B61FF",
+    backgroundColor: "rgba(16, 185, 129,0.35)",
+    shadowColor: "#10b981",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 18,
@@ -285,6 +383,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  liveRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: aiRadius.md,
+    backgroundColor: "rgba(16, 185, 129, 0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(52, 211, 153, 0.32)",
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#34d399",
+  },
+  liveText: {
+    ...aiType.small,
+    flex: 1,
+    color: "#D4EFE2",
+    fontWeight: "700",
+    fontSize: 12,
   },
   ctaRow: {
     flexDirection: "row",

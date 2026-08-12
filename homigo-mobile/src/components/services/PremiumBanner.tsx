@@ -14,8 +14,8 @@ import { Crown, ArrowRight } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { PREMIUM_FEATURES } from "@/constants/servicesData";
 import { useServicesTheme } from "./ServicesThemeContext";
-import { serviceType } from "@/theme/typography";
-import { layout } from "@/theme/layout";
+import { serviceType } from "@/components/services/theme/typography";
+import { layout } from "@/components/services/theme/layout";
 import { PressableScale } from "@/components/ai/PressableScale";
 import { useServicesActions } from "@/hooks/useServicesActions";
 import { useAppStore } from "@/lib/store";
@@ -60,7 +60,7 @@ export function PremiumBanner() {
       style={[styles.wrap, { paddingHorizontal: L.pad }]}
     >
       <LinearGradient
-        colors={[c.primary, "#8B3DFF", "#9C4AFF"]}
+        colors={[c.primary, "#0f766e", "#064e3b"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[styles.container, shadows.deep]}
@@ -71,7 +71,7 @@ export function PremiumBanner() {
             <Crown size={34} color={c.gold} fill={c.gold} />
           </Animated.View>
           <View style={styles.titleRow}>
-            <Text style={styles.title}>HOMIGO Premium</Text>
+            <Text style={styles.title}>Homeeigo Premium</Text>
             <View style={[styles.valueBadge, { backgroundColor: c.gold }]}>
               <Text style={[styles.valueText, { color: c.textPrimary }]}>
                 BEST VALUE
@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
   wrap: {},
   container: {
     borderRadius: layout.cardRadiusLg,
-    padding: 22,
+    padding: 24,
     overflow: "hidden",
   },
   glow: {
@@ -154,8 +154,8 @@ const styles = StyleSheet.create({
     fontSize: 19,
   },
   valueBadge: {
-    borderRadius: 10,
-    paddingHorizontal: 9,
+    borderRadius: 12,
+    paddingHorizontal: 10,
     paddingVertical: 4,
   },
   valueText: {
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   featureIconWrap: {
     width: 40,
     height: 40,
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: "rgba(255,255,255,0.12)",
     alignItems: "center",
     justifyContent: "center",

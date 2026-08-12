@@ -4,21 +4,26 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { SectionTitle } from "./SectionTitle";
 import { PressableScale } from "./PressableScale";
-import { RECOMMENDATIONS } from "@/lib/ai-mobile-data";
+import { useServicesDiscovery } from "@/hooks/use-services-discovery";
 import { useAiTheme, aiSpacing, aiType, aiRadius, aiCardShadow } from "@/lib/ai-mobile-theme";
 import { openBook } from "@/lib/navigation";
 import { useAppNavigation } from "@/hooks/useAppNavigation";
+import { getServicePhoto } from "@/lib/service-photos";
 
 export function AiRecommendationsRow() {
   const router = useRouter();
   const { openAiRecommendations } = useAppNavigation();
   const { c, isDark } = useAiTheme();
+  const { aiRecommendations } = useServicesDiscovery();
 
   return (
     <View style={styles.wrap}>
       <SectionTitle
-        title="AI Recommendations for You"
-        subtitle="Personalized for your home"
+        // Honest framing: this is a curated shortcut row, not a per-user model
+        // output. Calling it "personalised" implied an AI prediction the app does
+        // not make — the copy now matches what the list actually is.
+        title="Popular home services"
+        subtitle="Tap to explore and book"
         onViewAll={openAiRecommendations}
       />
       <ScrollView
@@ -29,12 +34,16 @@ export function AiRecommendationsRow() {
         snapToInterval={136 + 10}
         snapToAlignment="start"
       >
-        {RECOMMENDATIONS.map((item) => (
+        {aiRecommendations.map((item) => {
+          const photo = getServicePhoto(item.title);
+          return (
           <PressableScale
-            key={item.title}
+            key={item.id}
             style={[styles.cardOuter, aiCardShadow(c.shadowColor, "lift")]}
             onPress={() => openBook(router, { service: item.serviceId })}
             haptic
+            accessibilityRole="button"
+            accessibilityLabel={`Book ${item.title}`}
           >
             <View
               style={[
@@ -45,48 +54,42 @@ export function AiRecommendationsRow() {
                 },
               ]}
             >
-              <LinearGradient
-                colors={
-                  isDark
-                    ? ["rgba(255,255,255,0.07)", "transparent"]
-                    : ["rgba(255,255,255,0.95)", "transparent"]
-                }
-                style={styles.cardShine}
-                pointerEvents="none"
-              />
-              <LinearGradient
-                colors={item.tint}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 1 }}
-                style={[
-                  styles.iconBox,
-                  { borderColor: `${item.accent}44` },
-                  aiCardShadow(item.accent, "glow"),
-                ]}
-              >
-                <Image source={item.image} style={styles.icon} resizeMode="contain" />
-              </LinearGradient>
+              <View style={[styles.iconBox, { borderColor: `${c.accent}44` }]}>
+                {photo ? (
+                  <Image source={photo.photo} style={styles.iconImg} resizeMode="cover" />
+                ) : (
+                  <LinearGradient
+                    colors={[`${c.accent}55`, `${c.accent}22`]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={styles.iconFill}
+                  >
+                    <Text style={{ fontSize: 24 }}>{item.emoji}</Text>
+                  </LinearGradient>
+                )}
+              </View>
 
               <View style={styles.body}>
                 <Text style={[styles.cardTitle, { color: c.text }]} numberOfLines={1}>
                   {item.title}
                 </Text>
                 <Text style={[styles.note, { color: c.subtle }]} numberOfLines={2}>
-                  {item.note}
+                  {item.desc}
                 </Text>
               </View>
 
               <LinearGradient
-                colors={["#00D1FF", "#7B61FF", "#6366F1"]}
+                colors={["#2dd4bf", "#10b981", "#0d9488"]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
-                style={[styles.bookBtn, aiCardShadow("#7B61FF", "glow")]}
+                style={[styles.bookBtn, aiCardShadow("#10b981", "glow")]}
               >
                 <Text style={styles.bookText}>Book Now</Text>
               </LinearGradient>
             </View>
           </PressableScale>
-        ))}
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -122,7 +125,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
   },
-  icon: { width: 50, height: 50 },
+  iconImg: { width: "100%", height: "100%" },
+  iconFill: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   body: {
     width: "100%",
     marginTop: 12,

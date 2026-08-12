@@ -12,7 +12,8 @@ import Animated, {
   Extrapolation,
 } from "react-native-reanimated";
 import { useTheme } from "@/hooks/useTheme";
-import { WALLET_USER } from "@/lib/wallet-mobile-data";
+import { useAuth } from "@/hooks/use-auth";
+import { useNotificationsQuery } from "@/hooks/use-core-data";
 import { WALLET_PAD } from "@/lib/wallet-layout";
 import { spacing } from "@/lib/typography";
 import { PressableScale } from "@/components/ai/PressableScale";
@@ -24,7 +25,8 @@ type Props = {
   onProfile: () => void;
 };
 
-function PulseBadge() {
+function PulseBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
   const opacity = useSharedValue(1);
 
   useEffect(() => {
@@ -42,13 +44,18 @@ function PulseBadge() {
 
   return (
     <Animated.View style={[styles.badge, badgeAnim]}>
-      <Text style={styles.badgeText}>3</Text>
+      <Text style={styles.badgeText}>{count > 9 ? "9+" : count}</Text>
     </Animated.View>
   );
 }
 
 export function WalletHeader({ scrollY, onNotifications, onProfile }: Props) {
   const { colors: c, isDark } = useTheme();
+  const { user } = useAuth();
+  const { data: notificationsData } = useNotificationsQuery();
+  const unreadCount = (notificationsData?.notifications ?? []).filter((n) => !n.isRead).length;
+  const avatar =
+    user?.profileImage ?? "https://api.dicebear.com/7.x/avataaars/png?seed=homigo";
 
   const titleAnim = useAnimatedStyle(() => {
     if (!scrollY) return {};
@@ -96,11 +103,11 @@ export function WalletHeader({ scrollY, onNotifications, onProfile }: Props) {
             accessibilityLabel="Notifications"
           >
             <Bell size={20} color={c.text} strokeWidth={2} />
-            <PulseBadge />
+            <PulseBadge count={unreadCount} />
           </PressableScale>
           <PressableScale onPress={onProfile} haptic accessibilityLabel="Profile">
             <Image
-              source={{ uri: WALLET_USER.avatar }}
+              source={{ uri: avatar }}
               style={[
                 styles.avatar,
                 {

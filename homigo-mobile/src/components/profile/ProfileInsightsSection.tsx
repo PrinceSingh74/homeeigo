@@ -9,7 +9,7 @@ import {
 import { ChevronRight, Lightbulb, Snowflake, Sparkles, Wallet } from "lucide-react-native";
 import Animated from "react-native-reanimated";
 import { useTheme } from "@/hooks/useTheme";
-import { PROFILE_INSIGHTS } from "@/lib/profile-mobile-data";
+import { useProfileDerived } from "@/hooks/use-profile-derived";
 import { profileInsightCardWidth } from "@/lib/profile-layout";
 import { spacing } from "@/lib/typography";
 import { profileTextBase, profileType } from "@/lib/profile-typography";
@@ -31,6 +31,7 @@ export function ProfileInsightsSection({ onViewAll, onInsight }: Props) {
   const { colors: c } = useTheme();
   const { width } = useWindowDimensions();
   const cardW = profileInsightCardWidth(width);
+  const { insights } = useProfileDerived();
 
   return (
     <Animated.View entering={profileEnter.section} style={styles.wrap}>
@@ -58,8 +59,11 @@ export function ProfileInsightsSection({ onViewAll, onInsight }: Props) {
         contentContainerStyle={styles.scroll}
         decelerationRate="fast"
       >
-        {PROFILE_INSIGHTS.map((item, i) => {
-          const Icon = ICONS[item.icon];
+        {insights.map((item, i) => {
+          const Icon = i === 0 ? Snowflake : Wallet;
+          const bg = i === 0 ? `${c.primary}12` : `${c.teal}12`;
+          const border = i === 0 ? `${c.primary}30` : `${c.teal}30`;
+          const iconBg = i === 0 ? c.primary : c.teal;
           return (
             <Animated.View key={item.id} entering={profileEnter.row(i)}>
               <PressableScale
@@ -69,12 +73,12 @@ export function ProfileInsightsSection({ onViewAll, onInsight }: Props) {
                   styles.card,
                   {
                     width: cardW,
-                    backgroundColor: item.bg,
-                    borderColor: item.border,
+                    backgroundColor: bg,
+                    borderColor: border,
                   },
                 ]}
               >
-                <View style={[styles.iconBox, { backgroundColor: item.iconBg }]}>
+                <View style={[styles.iconBox, { backgroundColor: iconBg }]}>
                   <Icon size={22} color="#fff" strokeWidth={2} />
                 </View>
                 <Text
@@ -85,9 +89,9 @@ export function ProfileInsightsSection({ onViewAll, onInsight }: Props) {
                 </Text>
                 <Text
                   style={[profileType.insightSub, profileTextBase, { color: c.textSecondary }]}
-                  numberOfLines={2}
+                  numberOfLines={3}
                 >
-                  {item.subtitle}
+                  {item.body}
                 </Text>
               </PressableScale>
             </Animated.View>

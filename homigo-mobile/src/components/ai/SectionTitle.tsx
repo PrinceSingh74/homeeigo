@@ -27,7 +27,7 @@ export function SectionTitle({
     <View style={[styles.wrap, noInset && styles.wrapNoInset]}>
       <View style={styles.left}>
         <LinearGradient
-          colors={["#00D1FF", "#7B61FF", "#A855F7"]}
+          colors={["#2dd4bf", "#10b981", "#34d399"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
           style={[styles.accentBar, aiCardShadow(c.shadowAccent, "glow")]}
@@ -45,12 +45,20 @@ export function SectionTitle({
       </View>
 
       {right ?? (onViewAll ? (
-        <PressableScale onPress={onViewAll} hitSlop={10} haptic>
+        <PressableScale
+          onPress={onViewAll}
+          hitSlop={10}
+          haptic
+          accessibilityRole="button"
+          // Names the section it belongs to — three bare "View all" buttons on one
+          // screen are indistinguishable to a screen-reader user.
+          accessibilityLabel={`${viewAllLabel}: ${title}`}
+        >
           <LinearGradient
             colors={
               isDark
-                ? ["rgba(123,97,255,0.25)", "rgba(0,209,255,0.12)"]
-                : ["rgba(123,97,255,0.12)", "rgba(255,255,255,0.9)"]
+                ? ["rgba(16, 185, 129,0.25)", "rgba(45, 212, 191,0.12)"]
+                : ["rgba(16, 185, 129,0.12)", "rgba(255,255,255,0.9)"]
             }
             style={[styles.viewAllPill, { borderColor: c.cardBorderStrong }]}
           >

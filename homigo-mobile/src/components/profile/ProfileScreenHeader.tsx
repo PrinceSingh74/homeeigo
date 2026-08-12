@@ -78,7 +78,7 @@ export function ProfileScreenHeader({ onNotifications, onSettings }: Props) {
           onPress={onSettings}
           haptic
           accessibilityLabel="Settings"
-          style={[styles.settingsBtn, shadowStyles.glowViolet]}
+          style={[styles.settingsBtn, shadowStyles.glowTeal]}
         >
           <Settings size={20} color="#fff" strokeWidth={2} />
         </PressableScale>

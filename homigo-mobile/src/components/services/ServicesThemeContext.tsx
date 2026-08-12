@@ -7,7 +7,7 @@ import {
   SERVICES_LIGHT,
   getServicesShadows,
   type ServicesPalette,
-} from "@/theme/services-theme";
+} from "@/components/services/theme/services-theme";
 import {
   computeServicesLayout,
   type ServicesLayoutMetrics,

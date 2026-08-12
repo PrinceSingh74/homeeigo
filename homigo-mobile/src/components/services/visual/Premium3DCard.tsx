@@ -33,7 +33,7 @@ export function Premium3DCard({
         <LinearGradient
           colors={
             isDark
-              ? ["rgba(139, 92, 246, 0.12)", "transparent"]
+              ? ["rgba(52, 211, 153, 0.12)", "transparent"]
               : ["rgba(255,255,255,0.8)", "transparent"]
           }
           style={[

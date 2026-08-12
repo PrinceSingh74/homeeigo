@@ -1,7 +1,8 @@
 import React from "react";
 import { Modal, View, Text, Pressable, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Check, Calendar, MapPin } from "lucide-react-native";
+import Animated, { ZoomIn, FadeInDown } from "react-native-reanimated";
+import { Check, Calendar, MapPin, Clock, ShieldCheck } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles, gradients } from "@/lib/colors";
 import { spacing, radius, type } from "@/lib/typography";
@@ -14,6 +15,10 @@ import { BookingStatusBadge } from "./BookingStatusBadge";
 type Props = {
   visible: boolean;
   booking: SavedBooking | null;
+  /** `paid` only after Razorpay succeeded AND the backend verified the signature. */
+  paymentState: "paid" | "pending";
+  paying?: boolean;
+  onPayNow?: () => void;
   onClose: () => void;
   onViewBookings: () => void;
 };
@@ -21,6 +26,9 @@ type Props = {
 export function BookingSuccessModal({
   visible,
   booking,
+  paymentState,
+  paying = false,
+  onPayNow,
   onClose,
   onViewBookings,
 }: Props) {
@@ -28,23 +36,37 @@ export function BookingSuccessModal({
   if (!booking) return null;
 
   const cfg = STATUS_CONFIG[booking.status];
+  const paid = paymentState === "paid";
 
   return (
     <Modal visible={visible} animationType="fade" transparent>
       <View style={styles.overlay}>
-        <View style={[styles.card, { backgroundColor: c.cardBg }, shadowStyles.lg]}>
-          <LinearGradient
-            colors={gradients.hero}
-            style={[styles.iconWrap, shadowStyles.glowBlue]}
-          >
-            <Check size={36} color="#fff" strokeWidth={3} />
-          </LinearGradient>
+        <Animated.View
+          entering={FadeInDown.duration(320).springify().damping(18)}
+          style={[styles.card, { backgroundColor: c.cardBg }, shadowStyles.lg]}
+        >
+          <Animated.View entering={ZoomIn.delay(120).duration(420).springify().damping(12)}>
+            <LinearGradient
+              colors={paid ? gradients.hero : [c.warning, "#D97706"]}
+              style={[styles.iconWrap, paid ? shadowStyles.glowPrimary : undefined]}
+            >
+              {paid ? (
+                <Check size={36} color="#fff" strokeWidth={3} />
+              ) : (
+                <Clock size={34} color="#fff" strokeWidth={2.5} />
+              )}
+            </LinearGradient>
+          </Animated.View>
 
           <BookingStatusBadge status={booking.status} />
-          <Text style={[styles.heading, { color: c.text }]}>You&apos;re all set!</Text>
+          <Text style={[styles.heading, { color: c.text }]}>
+            {paid ? "You're all set!" : "Booking confirmed"}
+          </Text>
           <Text style={[styles.id, { color: c.primary }]}>{booking.id}</Text>
           <Text style={[styles.hint, { color: c.textSecondary }]}>
-            {cfg.description} · Pro {booking.proName}
+            {paid
+              ? `${cfg.description} · Pro ${booking.proName}`
+              : "Your slot is held. Pay now to lock it in — or pay anytime from My Bookings."}
           </Text>
           <Text style={[styles.service, { color: c.text }]}>{booking.serviceTitle}</Text>
           <Text style={[styles.pkg, { color: c.textSecondary }]}>
@@ -62,16 +84,41 @@ export function BookingSuccessModal({
               <MapPin size={16} color={c.primary} />
               <Text style={[styles.detailText, { color: c.text }]}>{booking.address}</Text>
             </View>
-            <Text style={[styles.total, { color: c.violet }]}>
-              ₹{booking.total} payable at service
-            </Text>
+            {paid ? (
+              <View style={styles.paidRow}>
+                <ShieldCheck size={16} color={c.success} />
+                <Text style={[styles.total, { color: c.success }]}>
+                  ₹{booking.total} paid · Razorpay
+                </Text>
+              </View>
+            ) : (
+              <Text style={[styles.total, { color: c.warning }]}>
+                ₹{booking.total} due · payment pending
+              </Text>
+            )}
           </View>
 
-          <Button title="View my bookings" onPress={onViewBookings} size="md" />
-          <Pressable onPress={onClose} style={styles.secondary}>
-            <Text style={[styles.secondaryText, { color: c.primary }]}>Book another</Text>
-          </Pressable>
-        </View>
+          {paid ? (
+            <>
+              <Button title="View my bookings" onPress={onViewBookings} size="md" />
+              <Pressable onPress={onClose} style={styles.secondary}>
+                <Text style={[styles.secondaryText, { color: c.primary }]}>Book another</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Button
+                title={paying ? "Opening payment…" : `Pay ₹${booking.total} now`}
+                onPress={onPayNow ?? onViewBookings}
+                loading={paying}
+                size="md"
+              />
+              <Pressable onPress={onViewBookings} style={styles.secondary} disabled={paying}>
+                <Text style={[styles.secondaryText, { color: c.primary }]}>Pay later</Text>
+              </Pressable>
+            </>
+          )}
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -106,6 +153,7 @@ const styles = StyleSheet.create({
   detailRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   detailText: { ...type.small, flex: 1 },
   total: { ...type.price, marginTop: spacing.xs },
+  paidRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   secondary: { marginTop: spacing.lg, padding: spacing.sm },
   secondaryText: { ...type.bodyBold },
 });

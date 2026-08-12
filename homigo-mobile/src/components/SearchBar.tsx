@@ -45,8 +45,8 @@ export const SearchBar: React.FC = () => {
   };
 
   const focusGlowStyle = useAnimatedStyle(() => ({
-    borderColor: `rgba(37, 99, 235, ${focusGlow.value * 0.4})`,
-    shadowColor: "#2563EB",
+    borderColor: `rgba(16, 185, 129, ${focusGlow.value * 0.45})`,
+    shadowColor: "#10b981",
     shadowOpacity: focusGlow.value * 0.3,
   }));
 
@@ -94,7 +94,7 @@ export const SearchBar: React.FC = () => {
           ]}
         >
           <TouchableOpacity onPress={handleMicPress} hitSlop={8}>
-            <Mic size={18} color={themeColors.primary} />
+            <Mic size={18} color={"#059669"} />
           </TouchableOpacity>
         </Animated.View>
       </Animated.View>
@@ -111,7 +111,7 @@ export const SearchBar: React.FC = () => {
           shadowStyles.sm,
         ]}
       >
-        <SlidersHorizontal size={18} color={themeColors.primary} />
+        <SlidersHorizontal size={18} color={"#059669"} />
       </TouchableOpacity>
     </View>
   );

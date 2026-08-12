@@ -1,0 +1,95 @@
+{
+  "generatedAt": "2026-06-26T20:04:39.105Z",
+  "release": "homigo-mobile@1.0.0",
+  "org": "homigo-g4",
+  "project": "node-fastify",
+  "phases": {
+    "source_maps": {
+      "error": "error: Project not found. Ensure that you configured the correct project and organization.\n\nAdd --log-level=[info|debug] or export SENTRY_LOG_LEVEL=[info|debug] to see more output.\nPlease attach the full debug log to all bug reports.\n",
+      "files_error": "⚠ DEPRECATION NOTICE: This functionality will be removed in a future version of `sentry-cli`. Use the `sourcemaps` command instead.\nerror: Release not found. Ensure that you configured the correct release, project, and organization.\n\nAdd --log-level=[info|debug] or export SENTRY_LOG_LEVEL=[info|debu",
+      "artifact_count": 0,
+      "source_map_count": 0,
+      "pass": false
+    },
+    "release_tracking": {
+      "release_id": "homigo-mobile@1.0.0",
+      "dateCreated": "2026-06-26T19:04:39.501000Z",
+      "dateReleased": null,
+      "newGroups": 1,
+      "commitCount": 0,
+      "projects": [
+        "node-fastify"
+      ]
+    },
+    "js_crash": {
+      "eventId": "0ec792ea128b4adc99a50c1a2fbb4fbe",
+      "issueIds": [
+        "7577880183"
+      ],
+      "timestamp": "2026-06-26T20:02:46.452000Z",
+      "environment": "certification",
+      "release": "homigo-mobile@1.0.0",
+      "title": "Error: HOMIGO_MOBILE_SENTRY_CERT_1782504165647 js_crash"
+    },
+    "breadcrumbs": {
+      "total": 2,
+      "startup_count": 2,
+      "startup_messages": [
+        "APP_START",
+        "INTERACTIVE"
+      ],
+      "required": [
+        "APP_START",
+        "HYDRATION_START",
+        "HYDRATION_END",
+        "BOOTSTRAP_START",
+        "BOOTSTRAP_END",
+        "HOME_RENDER",
+        "INTERACTIVE",
+        "AUTH_READY"
+      ],
+      "missing": [
+        "HYDRATION_START",
+        "HYDRATION_END",
+        "BOOTSTRAP_START",
+        "BOOTSTRAP_END",
+        "HOME_RENDER",
+        "AUTH_READY"
+      ],
+      "pass": false
+    },
+    "user_context": {
+      "user_id": null,
+      "user_email": null,
+      "role_tag": null,
+      "app_version_tag": null,
+      "environment": "certification",
+      "pass": false
+    },
+    "native_crashes": {
+      "android": {
+        "count": 0,
+        "events": [],
+        "pass": false
+      },
+      "ios": {
+        "count": 0,
+        "events": [],
+        "pass": false
+      }
+    },
+    "breadcrumb_wiring": {
+      "auth_ready_in_allowlist": true,
+      "required_markers_in_startup_trace": [
+        "APP_START",
+        "HYDRATION_START",
+        "HYDRATION_END",
+        "BOOTSTRAP_START",
+        "BOOTSTRAP_END",
+        "HOME_RENDER",
+        "INTERACTIVE",
+        "AUTH_READY"
+      ]
+    }
+  }
+}

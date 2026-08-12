@@ -42,7 +42,7 @@ export function createBookStyles(screenWidth: number) {
       position: "absolute",
       top: 6,
       right: 6,
-      backgroundColor: "#EC4899",
+      backgroundColor: "#10b981",
       width: 16,
       height: 16,
       borderRadius: 8,
@@ -98,7 +98,7 @@ export function createBookStyles(screenWidth: number) {
     heroText: { flex: 1, marginLeft: spacing.sm },
     bestSeller: {
       alignSelf: "flex-start",
-      backgroundColor: "#7C3AED",
+      backgroundColor: "#059669",
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.xs,
       borderRadius: radius.pill,
@@ -218,7 +218,7 @@ export function createBookStyles(screenWidth: number) {
     },
     addonTitle: { ...type.bodyBold },
     addonDesc: { ...type.caption, marginTop: 2 },
-    addonPrice: { ...type.chip, color: "#2563EB", fontWeight: "800" },
+    addonPrice: { ...type.chip, color: "#059669", fontWeight: "800" },
     checkbox: {
       width: 24,
       height: 24,

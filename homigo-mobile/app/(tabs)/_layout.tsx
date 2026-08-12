@@ -6,7 +6,14 @@ export default function TabsLayout() {
   return (
     <Tabs
       tabBar={(props) => <BottomNav {...props} />}
-      screenOptions={{ headerShown: false }}
+      screenOptions={{
+        headerShown: false,
+        // A visited tab stays mounted, so without this every hero pulse, particle
+        // field and shimmer on all six tabs keeps animating and re-rendering while
+        // the user looks at one of them. Freezing suspends the off-screen trees;
+        // state and scroll position survive, so nothing is re-fetched on return.
+        freezeOnBlur: true,
+      }}
     >
       <Tabs.Screen name="index" options={{ title: "Home" }} />
       <Tabs.Screen name="services" options={{ title: "Services" }} />

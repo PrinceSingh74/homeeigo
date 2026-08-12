@@ -1,0 +1,79 @@
+{
+  "generatedAt": "2026-06-26T20:03:37.473Z",
+  "release": "homigo-mobile@1.0.0",
+  "org": "homigo-g4",
+  "project": "homigo-mobile",
+  "checks": {
+    "dsn_configured": {
+      "ok": true,
+      "detail": "EXPO_PUBLIC_SENTRY_DSN in env"
+    },
+    "auth_token": {
+      "ok": true,
+      "detail": "SENTRY_AUTH_TOKEN present"
+    },
+    "source_map_upload": {
+      "ok": false,
+      "detail": "0 file(s); no .map on release homigo-mobile@1.0.0",
+      "files": []
+    },
+    "release_artifacts": {
+      "ok": false,
+      "detail": "release homigo-mobile@1.0.0 has zero artifacts"
+    },
+    "stack_trace_symbolicated": {
+      "ok": false,
+      "detail": "2/2 named frames; context_line=false",
+      "sample": [
+        {
+          "file": "app/_layout.tsx",
+          "fn": "RootLayout"
+        },
+        {
+          "file": "src/lib/observability/sentry.ts",
+          "fn": "triggerSentryTestException"
+        }
+      ],
+      "eventId": "0ec792ea128b4adc99a50c1a2fbb4fbe"
+    },
+    "startup_breadcrumbs": {
+      "ok": true,
+      "detail": "2 breadcrumb(s); startup=2"
+    },
+    "user_context_runtime": {
+      "ok": false,
+      "detail": "no user.id on cert envelope event"
+    },
+    "native_android_crash": {
+      "ok": false,
+      "detail": "0 non-cert platform:android event(s) in last query — requires EAS build + device crash"
+    },
+    "native_ios_crash": {
+      "ok": false,
+      "detail": "0 non-cert platform:cocoa event(s) in last query — requires EAS build + device crash"
+    },
+    "native_sdk_enabled": {
+      "ok": true,
+      "detail": "enableNative + enableNativeCrashHandling in sentry.ts"
+    },
+    "user_context_wiring": {
+      "ok": true,
+      "detail": "auth-store calls setSentryUser on login/logout"
+    },
+    "startup_breadcrumbs_wiring": {
+      "ok": true,
+      "detail": "startup-trace calls addStartupBreadcrumb"
+    }
+  },
+  "availableProjects": [
+    "node-fastify"
+  ],
+  "projectResolved": "node-fastify",
+  "passCriteria": {
+    "source_map_upload": false,
+    "native_android_crash": false,
+    "native_ios_crash": false,
+    "stack_trace_symbolicated": false
+  },
+  "overallStatus": "BLOCKED"
+}

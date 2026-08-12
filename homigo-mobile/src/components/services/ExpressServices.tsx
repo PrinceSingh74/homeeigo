@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Image, ScrollView, Dimensions } from "react-native";
 import Animated, {
   FadeIn,
   FadeInUp,
@@ -10,13 +10,16 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
-import { Clock, Home, Zap, User } from "lucide-react-native";
-import { EXPRESS_SERVICES } from "@/constants/servicesData";
+import { Clock, Home, Zap, User, ArrowRight } from "lucide-react-native";
+import { getServicePhoto } from "@/lib/service-photos";
+import { useServicesDiscovery } from "@/hooks/use-services-discovery";
 import { useServicesTheme } from "./ServicesThemeContext";
-import { serviceType, fontFamily } from "@/theme/typography";
-import { layout } from "@/theme/layout";
+import { serviceType, fontFamily } from "@/components/services/theme/typography";
+import { layout } from "@/components/services/theme/layout";
 import { PressableScale } from "@/components/ai/PressableScale";
 import { useServicesActions } from "@/hooks/useServicesActions";
+import { useActiveTracking } from "@/hooks/use-active-tracking";
+import { useRouter } from "expo-router";
 
 function ExpressInnerHeader() {
   const { c, layout: L } = useServicesTheme();
@@ -74,44 +77,60 @@ function ExpressServiceCard({
   iconSize: number;
 }) {
   const { book } = useServicesActions();
-  const { c } = useServicesTheme();
+  const photo = getServicePhoto(name);
 
   return (
     <Animated.View entering={FadeIn.delay(index * 90).duration(400)} style={styles.cardCol}>
       <PressableScale
         haptic
-        scaleTo={0.96}
+        scaleTo={0.95}
         style={[styles.expressCard, { minHeight: cardMinH }]}
         onPress={() => book({ service: serviceId })}
       >
-        <View
-          style={[
-            styles.iconCircle,
-            {
-              width: iconSize,
-              height: iconSize,
-              borderRadius: iconSize / 2,
-              backgroundColor: iconBg,
-            },
-          ]}
-        >
-          <Text style={[styles.iconEmoji, { fontSize: iconSize * 0.48 }]}>{icon}</Text>
+        {/* branded photo or gradient icon — premium visual */}
+        <View style={styles.exVisual}>
+          {photo ? (
+            <Image source={photo.photo} style={styles.exPhoto} resizeMode="cover" />
+          ) : (
+            <LinearGradient
+              colors={["#10b981", "#0d9488"]}
+              start={{ x: 0.1, y: 0 }}
+              end={{ x: 0.9, y: 1 }}
+              style={styles.exPhoto}
+            >
+              <Text style={{ fontSize: iconSize * 0.5 }}>{icon}</Text>
+            </LinearGradient>
+          )}
+          {/* express badge on the visual */}
+          <View style={styles.exBadge}>
+            <Zap size={8.5} color="#04140d" fill="#04140d" />
+            <Text style={styles.exBadgeText}>20 MIN</Text>
+          </View>
         </View>
+
         <Text style={styles.svcName} numberOfLines={2}>
           {name}
         </Text>
-        <Text style={styles.svcPrice}>From ₹{price}</Text>
-        <View style={styles.cardSpacer} />
-        <View style={styles.arrivalPill}>
-          <Clock size={10} color={c.success} strokeWidth={2.5} />
-          <Text style={[styles.arrivalText, { color: c.success }]}>20 min</Text>
+        <View style={styles.exFooter}>
+          <Text style={styles.svcPrice}>From ₹{price}</Text>
+          <View style={styles.exArrow}>
+            <ArrowRight size={12} color="#04140d" strokeWidth={2.8} />
+          </View>
         </View>
       </PressableScale>
     </Animated.View>
   );
 }
 
-function TrackingPreview({ onPress }: { onPress: () => void }) {
+function TrackingPreview({
+  onPress,
+  hasLive,
+  etaMin,
+}: {
+  onPress: () => void;
+  hasLive: boolean;
+  etaMin: number | null;
+}) {
   const { c, layout: L } = useServicesTheme();
   const progress = useSharedValue(0);
   const node = L.isCompact ? 28 : 32;
@@ -133,12 +152,14 @@ function TrackingPreview({ onPress }: { onPress: () => void }) {
     <PressableScale haptic scaleTo={0.99} onPress={onPress} style={styles.trackBox}>
       <View style={styles.trackHeader}>
         <View style={styles.trackHeaderLeft}>
-          <Text style={styles.trackTitle}>Live tracking preview</Text>
-          <Text style={styles.trackSub}>See how express dispatch works</Text>
+          <Text style={styles.trackTitle}>{hasLive ? "Your pro is on the way" : "Live tracking"}</Text>
+          <Text style={styles.trackSub}>
+            {hasLive ? "Tap to open the live map" : "Real-time map on every booking"}
+          </Text>
         </View>
-        <View style={styles.livePill}>
+        <View style={[styles.livePill, hasLive ? null : { opacity: 0.7 }]}>
           <View style={styles.liveDot} />
-          <Text style={styles.liveText}>LIVE</Text>
+          <Text style={styles.liveText}>{hasLive ? "LIVE" : "PREVIEW"}</Text>
         </View>
       </View>
 
@@ -193,7 +214,7 @@ function TrackingPreview({ onPress }: { onPress: () => void }) {
 
       <View style={styles.etaRow}>
         <Text style={styles.etaLabel}>Expert arriving in</Text>
-        <Text style={styles.etaValue}>12 mins</Text>
+        <Text style={styles.etaValue}>{hasLive && etaMin != null ? `${etaMin} mins` : "~12 mins"}</Text>
       </View>
     </PressableScale>
   );
@@ -202,6 +223,19 @@ function TrackingPreview({ onPress }: { onPress: () => void }) {
 export function ExpressServices() {
   const { book, openBookings } = useServicesActions();
   const { c, shadows, layout: L } = useServicesTheme();
+  const { expressServices } = useServicesDiscovery();
+  const router = useRouter();
+  // Real live tracking — if a booking is active, the preview shows its ETA and
+  // opens the full-screen Uber-style map; otherwise it stays a preview.
+  const { activeBooking, tracking } = useActiveTracking();
+  const hasLive = !!activeBooking;
+  const etaMin = (tracking as { eta?: number } | undefined)?.eta != null
+    ? Math.round((tracking as { eta: number }).eta)
+    : null;
+  const openTracking = () => {
+    if (activeBooking?.id) router.push(`/track/${activeBooking.id}` as never);
+    else openBookings();
+  };
   const cardMinH = L.isCompact ? 124 : 136;
   const iconSize = L.isCompact ? 40 : 44;
   const innerPad = L.isCompact ? 16 : 20;
@@ -217,8 +251,14 @@ export function ExpressServices() {
 
         <ExpressInnerHeader />
 
-        <View style={[styles.cardsRow, { gap: L.isCompact ? 8 : 10, marginTop: 18 }]}>
-          {EXPRESS_SERVICES.map((svc, i) => (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          decelerationRate="fast"
+          contentContainerStyle={[styles.cardsRow, { paddingHorizontal: innerPad }]}
+          style={{ marginTop: 18, marginHorizontal: -innerPad }}
+        >
+          {expressServices.map((svc, i) => (
             <ExpressServiceCard
               key={svc.name}
               icon={svc.icon}
@@ -231,11 +271,11 @@ export function ExpressServices() {
               iconSize={iconSize}
             />
           ))}
-        </View>
+        </ScrollView>
 
         <View style={styles.divider} />
 
-        <TrackingPreview onPress={openBookings} />
+        <TrackingPreview onPress={openTracking} hasLive={hasLive} etaMin={etaMin} />
       </LinearGradient>
     </Animated.View>
   );
@@ -253,7 +293,7 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: "rgba(139, 92, 246, 0.35)",
+    backgroundColor: "rgba(52, 211, 153, 0.32)",
     opacity: 0.5,
   },
   innerHeader: {
@@ -276,7 +316,7 @@ const styles = StyleSheet.create({
     ...serviceType.overline,
     fontSize: 9,
     letterSpacing: 1.4,
-    color: "#A78BFA",
+    color: "#2dd4bf",
   },
   expressChip: {
     flexDirection: "row",
@@ -333,40 +373,75 @@ const styles = StyleSheet.create({
   cardsRow: {
     flexDirection: "row",
     alignItems: "stretch",
+    gap: 12,
   },
   cardCol: {
-    flex: 1,
-    minWidth: 0,
+    width: Dimensions.get("window").width * 0.44,
   },
   expressCard: {
     flex: 1,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: layout.cardRadiusSm,
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 10,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderRadius: 20,
+    padding: 8,
+    paddingBottom: 11,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(255,255,255,0.12)",
     alignItems: "flex-start",
   },
-  iconCircle: {
+  exVisual: {
+    width: "100%",
+    aspectRatio: 1.5,
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  exPhoto: { width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
+  exBadge: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "#fbbf24",
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  exBadgeText: { fontSize: 8, fontWeight: "900", color: "#04140d", letterSpacing: 0.4 },
+  iconCircle: { alignItems: "center", justifyContent: "center" },
+  iconEmoji: { textAlign: "center" },
+  svcName: {
+    color: "#fff",
+    fontSize: 13.5,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+    lineHeight: 18,
+    marginTop: 10,
+    paddingHorizontal: 3,
+    width: "100%",
+    minHeight: 36,
+  },
+  exFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    marginTop: 6,
+    paddingHorizontal: 3,
+  },
+  exArrow: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: "#34d399",
     alignItems: "center",
     justifyContent: "center",
   },
-  iconEmoji: {
-    textAlign: "center",
-  },
-  svcName: {
-    ...serviceType.cardTitleSm,
-    color: "#fff",
-    marginTop: 10,
-    width: "100%",
-  },
   svcPrice: {
     ...serviceType.captionSm,
-    color: "rgba(255,255,255,0.55)",
-    marginTop: 2,
-    width: "100%",
+    color: "#6ee7b7",
+    fontWeight: "800",
   },
   cardSpacer: {
     flexGrow: 1,
@@ -466,7 +541,7 @@ const styles = StyleSheet.create({
   pulseRing: {
     position: "absolute",
     borderWidth: 2,
-    borderColor: "rgba(139, 92, 246, 0.45)",
+    borderColor: "rgba(52, 211, 153, 0.5)",
     opacity: 0.7,
   },
   trackMid: {

@@ -16,9 +16,10 @@ import { AiQuickActionsRow } from "@/components/ai/AiQuickActionsRow";
 import { AiChatBlock } from "@/components/ai/AiChatBlock";
 import { AiBookingBlock } from "@/components/ai/AiBookingBlock";
 import { AiRecommendationsRow } from "@/components/ai/AiRecommendationsRow";
-import { AiComposerBar } from "@/components/ai/AiComposerBar";
+import { AiComposerBar, type AiComposerHandle } from "@/components/ai/AiComposerBar";
 import { useAiTheme } from "@/lib/ai-mobile-theme";
 import { useAiChat } from "@/lib/use-ai-chat";
+import { useAppNavigation } from "@/hooks/useAppNavigation";
 import { useKeyboardInset } from "@/lib/use-keyboard-inset";
 import {
   TAB_MENU_GAP,
@@ -30,9 +31,15 @@ const SCROLL_END_GAP = 20;
 export default function AIScreen() {
   const { c, isDark } = useAiTheme();
   const scrollRef = useRef<ScrollView>(null);
+  const composerRef = useRef<AiComposerHandle>(null);
   const keyboardInset = useKeyboardInset();
   const keyboardPad = composerKeyboardPadding(keyboardInset);
   const { messages, isThinking, sendText, resetChat } = useAiChat();
+  const { goServices } = useAppNavigation();
+
+  const focusComposer = useCallback(() => {
+    composerRef.current?.focusInput();
+  }, []);
 
   const onComposerFocus = useCallback(() => {
     requestAnimationFrame(() => {
@@ -42,13 +49,14 @@ export default function AIScreen() {
 
   const onComposerSend = useCallback(
     (text: string) => {
-      const sent = sendText(text);
-      if (sent) {
-        requestAnimationFrame(() => {
-          scrollRef.current?.scrollToEnd({ animated: true });
-        });
-      }
-      return sent;
+      void sendText(text).then((sent) => {
+        if (sent) {
+          requestAnimationFrame(() => {
+            scrollRef.current?.scrollToEnd({ animated: true });
+          });
+        }
+      });
+      return true;
     },
     [sendText],
   );
@@ -79,12 +87,15 @@ export default function AIScreen() {
             nestedScrollEnabled
             decelerationRate="normal"
           >
-            <AiHeroCard />
+            <AiHeroCard onAsk={focusComposer} onBrowse={goServices} />
             <AiQuickActionsRow />
             <AiChatBlock
               messages={messages}
               isThinking={isThinking}
-              onSend={sendText}
+              onSend={(text) => {
+                void sendText(text);
+                return true;
+              }}
               onReset={resetChat}
             />
             <AiBookingBlock />
@@ -112,6 +123,7 @@ export default function AIScreen() {
             />
             <AiNeonTopEdge />
             <AiComposerBar
+              ref={composerRef}
               onFocus={onComposerFocus}
               keyboardVisible={keyboardInset > 0}
               onSend={onComposerSend}
@@ -145,7 +157,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     ...Platform.select({
       ios: {
-        shadowColor: "#7B61FF",
+        shadowColor: "#10b981",
         shadowOffset: { width: 0, height: -8 },
         shadowOpacity: 0.2,
         shadowRadius: 20,

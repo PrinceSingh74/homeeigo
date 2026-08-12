@@ -2,8 +2,8 @@ import React from "react";
 import { Text, StyleSheet, type ViewStyle } from "react-native";
 import * as Haptics from "expo-haptics";
 import { PressableScale } from "@/components/ai/PressableScale";
-import { serviceType } from "@/theme/typography";
-import { layout } from "@/theme/layout";
+import { serviceType } from "@/components/services/theme/typography";
+import { layout } from "@/components/services/theme/layout";
 import { useServicesTheme } from "../ServicesThemeContext";
 
 type Props = {
@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
   },
   compact: {
     height: 34,
-    borderRadius: 10,
+    borderRadius: 12,
   },
   text: {
     ...serviceType.buttonSm,

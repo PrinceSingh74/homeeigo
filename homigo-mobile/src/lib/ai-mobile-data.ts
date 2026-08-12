@@ -25,8 +25,8 @@ export const QUICK_ACTIONS: {
     label: "AC Service",
     serviceId: "ac-service",
     image: SERVICE_IMAGES.ac,
-    accent: "#00D1FF",
-    tint: ["rgba(0, 209, 255, 0.22)", "rgba(37, 99, 235, 0.05)"],
+    accent: "#2dd4bf",
+    tint: ["rgba(45, 212, 191, 0.22)", "rgba(37, 99, 235, 0.05)"],
   },
   {
     label: "Plumbing",
@@ -53,8 +53,8 @@ export const QUICK_ACTIONS: {
     label: "Deep Cleaning",
     serviceId: "cleaning",
     image: SERVICE_IMAGES.cleaning,
-    accent: "#A855F7",
-    tint: ["rgba(168, 85, 247, 0.22)", "rgba(109, 40, 217, 0.05)"],
+    accent: "#34d399",
+    tint: ["rgba(52, 211, 153, 0.22)", "rgba(109, 40, 217, 0.05)"],
   },
 ];
 
@@ -68,7 +68,7 @@ export const CHAT_MESSAGES = [
   },
 ];
 
-export const CHAT_ACTIONS = ["Diagnose Now", "Book Expert", "Upload Photo"] as const;
+export const CHAT_ACTIONS = ["Diagnose Now", "Book Expert", "Get Estimate"] as const;
 
 export const RECOMMENDATIONS: {
   title: string;
@@ -80,23 +80,23 @@ export const RECOMMENDATIONS: {
 }[] = [
   {
     title: "Deep Cleaning",
-    note: "Recommended next week",
+    note: "Whole-home refresh",
     serviceId: "cleaning",
     image: SERVICE_IMAGES.cleaning,
-    accent: "#A855F7",
-    tint: ["rgba(168, 85, 247, 0.22)", "rgba(109, 40, 217, 0.05)"],
+    accent: "#34d399",
+    tint: ["rgba(52, 211, 153, 0.22)", "rgba(109, 40, 217, 0.05)"],
   },
   {
     title: "AC Maintenance",
-    note: "Recommended in 7 days",
+    note: "Cooling & filter care",
     serviceId: "ac-service",
     image: SERVICE_IMAGES.ac,
-    accent: "#00D1FF",
-    tint: ["rgba(0, 209, 255, 0.22)", "rgba(37, 99, 235, 0.05)"],
+    accent: "#2dd4bf",
+    tint: ["rgba(45, 212, 191, 0.22)", "rgba(37, 99, 235, 0.05)"],
   },
   {
     title: "Water Filter Change",
-    note: "Due in 15 days",
+    note: "Clean drinking water",
     serviceId: "plumbing",
     image: SERVICE_IMAGES.plumbing,
     accent: "#22D3EE",
@@ -104,7 +104,7 @@ export const RECOMMENDATIONS: {
   },
   {
     title: "Pest Control",
-    note: "Recommended in 20 days",
+    note: "Protect your home",
     serviceId: "pest-control",
     image: SERVICE_IMAGES.pest,
     accent: "#4ADE80",

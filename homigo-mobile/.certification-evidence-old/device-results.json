@@ -1,0 +1,775 @@
+{
+  "generatedAt": "2026-06-26T19:52:37.627Z",
+  "overallStatus": "BLOCKED",
+  "summary": {
+    "devices": 11,
+    "flows": 9,
+    "totalCells": 99,
+    "passedCells": 0,
+    "blockedCells": 99
+  },
+  "environment": {
+    "platform": "win32",
+    "adb": {
+      "available": true,
+      "path": "C:\\Users\\Kapiissh Green\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe",
+      "version": "Android Debug Bridge version 1.0.41\r",
+      "deviceCount": 0,
+      "devices": [],
+      "raw": "List of devices attached"
+    },
+    "maestro": {
+      "installed": false,
+      "detail": "INFO: Could not find files for the given pattern(s)."
+    },
+    "hostCanRunAndroid": false,
+    "hostCanRunIos": false,
+    "blockers": [
+      "no Android device/emulator connected (adb devices empty)",
+      "maestro CLI not installed",
+      "iOS runtime requires macOS host (xcrun/simctl unavailable on Windows)"
+    ]
+  },
+  "proofFormat": {
+    "path": ".certification-evidence/device-proofs/{deviceId}__{flowId}.json",
+    "screenshotDir": ".certification-evidence/device-proofs/screenshots/",
+    "logDir": ".certification-evidence/device-proofs/logs/",
+    "example": {
+      "ok": true,
+      "deviceId": "pixel",
+      "flowId": "login",
+      "testedAt": "2026-06-27T12:00:00.000Z",
+      "screenshot": "pixel__login.png",
+      "log": "pixel__login.log",
+      "notes": "Login completed in 2.1s"
+    }
+  },
+  "devices": [
+    {
+      "id": "samsung",
+      "label": "Samsung",
+      "platform": "android",
+      "oem": "Samsung",
+      "status": "BLOCKED",
+      "envBlocked": true,
+      "flowsPassed": 0,
+      "flowsTotal": 9,
+      "flows": {
+        "launch": {
+          "label": "Launch",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "login": {
+          "label": "Login",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "signup": {
+          "label": "Signup",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "booking": {
+          "label": "Booking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "tracking": {
+          "label": "Tracking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "wallet": {
+          "label": "Wallet",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "payment": {
+          "label": "Payment",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "notifications": {
+          "label": "Notifications",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "background_resume": {
+          "label": "Background Resume",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "id": "pixel",
+      "label": "Google Pixel",
+      "platform": "android",
+      "oem": "Google",
+      "status": "BLOCKED",
+      "envBlocked": true,
+      "flowsPassed": 0,
+      "flowsTotal": 9,
+      "flows": {
+        "launch": {
+          "label": "Launch",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "login": {
+          "label": "Login",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "signup": {
+          "label": "Signup",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "booking": {
+          "label": "Booking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "tracking": {
+          "label": "Tracking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "wallet": {
+          "label": "Wallet",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "payment": {
+          "label": "Payment",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "notifications": {
+          "label": "Notifications",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "background_resume": {
+          "label": "Background Resume",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "id": "oneplus",
+      "label": "OnePlus",
+      "platform": "android",
+      "oem": "OnePlus",
+      "status": "BLOCKED",
+      "envBlocked": true,
+      "flowsPassed": 0,
+      "flowsTotal": 9,
+      "flows": {
+        "launch": {
+          "label": "Launch",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "login": {
+          "label": "Login",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "signup": {
+          "label": "Signup",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "booking": {
+          "label": "Booking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "tracking": {
+          "label": "Tracking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "wallet": {
+          "label": "Wallet",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "payment": {
+          "label": "Payment",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "notifications": {
+          "label": "Notifications",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "background_resume": {
+          "label": "Background Resume",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "id": "android-10",
+      "label": "Android 10",
+      "platform": "android",
+      "api": 29,
+      "status": "BLOCKED",
+      "envBlocked": true,
+      "flowsPassed": 0,
+      "flowsTotal": 9,
+      "flows": {
+        "launch": {
+          "label": "Launch",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "login": {
+          "label": "Login",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "signup": {
+          "label": "Signup",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "booking": {
+          "label": "Booking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "tracking": {
+          "label": "Tracking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "wallet": {
+          "label": "Wallet",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "payment": {
+          "label": "Payment",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "notifications": {
+          "label": "Notifications",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "background_resume": {
+          "label": "Background Resume",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "id": "android-11",
+      "label": "Android 11",
+      "platform": "android",
+      "api": 30,
+      "status": "BLOCKED",
+      "envBlocked": true,
+      "flowsPassed": 0,
+      "flowsTotal": 9,
+      "flows": {
+        "launch": {
+          "label": "Launch",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "login": {
+          "label": "Login",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "signup": {
+          "label": "Signup",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "booking": {
+          "label": "Booking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "tracking": {
+          "label": "Tracking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "wallet": {
+          "label": "Wallet",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "payment": {
+          "label": "Payment",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "notifications": {
+          "label": "Notifications",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "background_resume": {
+          "label": "Background Resume",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "id": "android-12",
+      "label": "Android 12",
+      "platform": "android",
+      "api": 31,
+      "status": "BLOCKED",
+      "envBlocked": true,
+      "flowsPassed": 0,
+      "flowsTotal": 9,
+      "flows": {
+        "launch": {
+          "label": "Launch",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "login": {
+          "label": "Login",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "signup": {
+          "label": "Signup",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "booking": {
+          "label": "Booking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "tracking": {
+          "label": "Tracking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "wallet": {
+          "label": "Wallet",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "payment": {
+          "label": "Payment",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "notifications": {
+          "label": "Notifications",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "background_resume": {
+          "label": "Background Resume",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "id": "android-13",
+      "label": "Android 13",
+      "platform": "android",
+      "api": 33,
+      "status": "BLOCKED",
+      "envBlocked": true,
+      "flowsPassed": 0,
+      "flowsTotal": 9,
+      "flows": {
+        "launch": {
+          "label": "Launch",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "login": {
+          "label": "Login",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "signup": {
+          "label": "Signup",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "booking": {
+          "label": "Booking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "tracking": {
+          "label": "Tracking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "wallet": {
+          "label": "Wallet",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "payment": {
+          "label": "Payment",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "notifications": {
+          "label": "Notifications",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "background_resume": {
+          "label": "Background Resume",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "id": "android-14",
+      "label": "Android 14",
+      "platform": "android",
+      "api": 34,
+      "status": "BLOCKED",
+      "envBlocked": true,
+      "flowsPassed": 0,
+      "flowsTotal": 9,
+      "flows": {
+        "launch": {
+          "label": "Launch",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "login": {
+          "label": "Login",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "signup": {
+          "label": "Signup",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "booking": {
+          "label": "Booking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "tracking": {
+          "label": "Tracking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "wallet": {
+          "label": "Wallet",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "payment": {
+          "label": "Payment",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "notifications": {
+          "label": "Notifications",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "background_resume": {
+          "label": "Background Resume",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "id": "android-15",
+      "label": "Android 15",
+      "platform": "android",
+      "api": 35,
+      "status": "BLOCKED",
+      "envBlocked": true,
+      "flowsPassed": 0,
+      "flowsTotal": 9,
+      "flows": {
+        "launch": {
+          "label": "Launch",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "login": {
+          "label": "Login",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "signup": {
+          "label": "Signup",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "booking": {
+          "label": "Booking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "tracking": {
+          "label": "Tracking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "wallet": {
+          "label": "Wallet",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "payment": {
+          "label": "Payment",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "notifications": {
+          "label": "Notifications",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "background_resume": {
+          "label": "Background Resume",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "id": "iphone",
+      "label": "iPhone",
+      "platform": "ios",
+      "oem": "Apple",
+      "status": "BLOCKED",
+      "envBlocked": true,
+      "flowsPassed": 0,
+      "flowsTotal": 9,
+      "flows": {
+        "launch": {
+          "label": "Launch",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "login": {
+          "label": "Login",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "signup": {
+          "label": "Signup",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "booking": {
+          "label": "Booking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "tracking": {
+          "label": "Tracking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "wallet": {
+          "label": "Wallet",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "payment": {
+          "label": "Payment",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "notifications": {
+          "label": "Notifications",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "background_resume": {
+          "label": "Background Resume",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "id": "ipad",
+      "label": "iPad",
+      "platform": "ios",
+      "oem": "Apple",
+      "status": "BLOCKED",
+      "envBlocked": true,
+      "flowsPassed": 0,
+      "flowsTotal": 9,
+      "flows": {
+        "launch": {
+          "label": "Launch",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "login": {
+          "label": "Login",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "signup": {
+          "label": "Signup",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "booking": {
+          "label": "Booking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "tracking": {
+          "label": "Tracking",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "wallet": {
+          "label": "Wallet",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "payment": {
+          "label": "Payment",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "notifications": {
+          "label": "Notifications",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        },
+        "background_resume": {
+          "label": "Background Resume",
+          "status": "BLOCKED",
+          "reason": "no proof file",
+          "evidence": null
+        }
+      }
+    }
+  ]
+}

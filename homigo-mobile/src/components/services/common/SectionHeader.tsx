@@ -1,8 +1,10 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { ArrowRight } from "lucide-react-native";
 import { PressableScale } from "@/components/ai/PressableScale";
-import { serviceType } from "@/theme/typography";
-import { layout } from "@/theme/layout";
+import { serviceType } from "@/components/services/theme/typography";
+import { layout } from "@/components/services/theme/layout";
 import { useServicesTheme } from "../ServicesThemeContext";
 
 type Props = {
@@ -14,11 +16,16 @@ type Props = {
   leading?: React.ReactNode;
 };
 
+/**
+ * Shared section header — the page's editorial anchor. A premium gradient
+ * "kicker" bar precedes the overline for a consistent, world-class rhythm that
+ * repeats across every services-page section.
+ */
 export function SectionHeader({
   title,
   subtitle,
   overline,
-  viewAllLabel = "View All →",
+  viewAllLabel = "View all",
   onViewAll,
   leading,
 }: Props) {
@@ -29,7 +36,15 @@ export function SectionHeader({
       <View style={styles.row}>
         <View style={styles.left}>
           {overline ? (
-            <Text style={[styles.overline, { color: c.primary }]}>{overline}</Text>
+            <View style={styles.kickerRow}>
+              <LinearGradient
+                colors={[c.primary, c.accentPurple]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.kickerBar}
+              />
+              <Text style={[styles.overline, { color: c.primary }]}>{overline}</Text>
+            </View>
           ) : null}
           <View style={styles.titleRow}>
             {leading}
@@ -41,7 +56,10 @@ export function SectionHeader({
         </View>
         {onViewAll ? (
           <PressableScale onPress={onViewAll} haptic style={styles.viewAllHit}>
-            <Text style={[styles.viewAll, { color: c.primary }]}>{viewAllLabel}</Text>
+            <View style={[styles.viewAllPill, { borderColor: c.borderLight }]}>
+              <Text style={[styles.viewAll, { color: c.primary }]}>{viewAllLabel}</Text>
+              <ArrowRight size={13} color={c.primary} strokeWidth={2.6} />
+            </View>
           </PressableScale>
         ) : null}
       </View>
@@ -59,23 +77,41 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   left: { flex: 1, paddingRight: 12 },
-  overline: { ...serviceType.overline, marginBottom: 6 },
+  kickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  kickerBar: {
+    width: 18,
+    height: 3,
+    borderRadius: 2,
+  },
+  overline: { ...serviceType.overline },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     flexWrap: "wrap",
   },
-  title: { ...serviceType.sectionTitle },
+  title: { ...serviceType.sectionTitle, fontSize: 21, lineHeight: 27, letterSpacing: -0.5 },
   subtitle: {
     ...serviceType.sectionSubtitle,
-    marginTop: 5,
-    maxWidth: "92%",
+    marginTop: 6,
+    maxWidth: "94%",
   },
   viewAllHit: {
-    paddingVertical: 6,
-    paddingHorizontal: 4,
     marginTop: 2,
   },
-  viewAll: { ...serviceType.link },
+  viewAllPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+  },
+  viewAll: { ...serviceType.link, fontSize: 12 },
 });

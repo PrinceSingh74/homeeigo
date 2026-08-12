@@ -8,24 +8,36 @@ import { useAiTheme, aiSpacing, aiType, aiRadius, aiCardShadow } from "@/lib/ai-
 import { AiThemeToggle } from "./AiThemeToggle";
 import { PressableScale } from "./PressableScale";
 import { useAppNavigation } from "@/hooks/useAppNavigation";
+import { useAuth } from "@/hooks/use-auth";
 
-const AVATAR =
-  "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&h=120&fit=crop&q=80";
+/**
+ * The signed-in user's own picture, or their initials — not a stock cartoon.
+ * The previous placeholder was the same generated face for every account and
+ * required a third-party request to render the user's own header.
+ */
+function initialsOf(first?: string | null, last?: string | null): string {
+  const a = first?.trim()?.[0] ?? "";
+  const b = last?.trim()?.[0] ?? "";
+  return (a + b).toUpperCase() || "H";
+}
 
 /** Header always high-contrast on its own surface (not hero card) */
 const HEADER = {
-  dark: { title: "#FFFFFF", ai: "#5EE9FF", tagline: "#B8C5E0" },
-  light: { title: "#0B1020", ai: "#6D49FF", tagline: "#475569" },
+  dark: { title: "#FFFFFF", ai: "#34d399", tagline: "#B4CCC0" },
+  light: { title: "#0B1020", ai: "#059669", tagline: "#475569" },
 };
 
 export function AiScreenHeader() {
-  const { openNotifications, goProfile } = useAppNavigation();
+  const { openNotifications, goProfile, unreadNotifications } = useAppNavigation();
+  const { user } = useAuth();
+  const avatarUri = user?.profileImage?.trim() || null;
+  const initials = initialsOf(user?.firstName, user?.lastName);
   const { c, isDark } = useAiTheme();
   const ink = isDark ? HEADER.dark : HEADER.light;
   const headerBg = isDark ? "rgba(6, 8, 22, 0.96)" : "rgba(255, 255, 255, 0.98)";
 
   return (
-    <View style={[styles.wrap, { backgroundColor: headerBg, borderBottomColor: isDark ? "rgba(123,97,255,0.25)" : "rgba(15,23,42,0.08)" }]}>
+    <View style={[styles.wrap, { backgroundColor: headerBg, borderBottomColor: isDark ? "rgba(16, 185, 129,0.25)" : "rgba(15,23,42,0.08)" }]}>
       {Platform.OS === "ios" ? (
         <BlurView intensity={isDark ? 40 : 72} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
       ) : null}
@@ -41,7 +53,7 @@ export function AiScreenHeader() {
 
       <View style={styles.brand}>
         <LinearGradient
-          colors={["#00D1FF", "#7B61FF", "#A855F7"]}
+          colors={["#2dd4bf", "#10b981", "#34d399"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.logoMark, aiCardShadow(c.shadowAccent, "glow")]}
@@ -50,7 +62,7 @@ export function AiScreenHeader() {
         </LinearGradient>
         <View style={{ minWidth: 0, flexShrink: 1 }}>
           <Text style={[styles.logo, { color: ink.title }]} numberOfLines={1}>
-            HOMIGO <Text style={{ color: ink.ai }}>AI</Text>
+            Homeeigo <Text style={{ color: ink.ai }}>AI</Text>
           </Text>
           <Text style={[styles.tagline, { color: ink.tagline }]} numberOfLines={1}>
             {AI_TAGLINE}
@@ -69,11 +81,21 @@ export function AiScreenHeader() {
           ]}
           hitSlop={8}
           haptic
+          accessibilityRole="button"
+          accessibilityLabel={
+            unreadNotifications > 0
+              ? `Notifications, ${unreadNotifications} unread`
+              : "Notifications"
+          }
         >
           <Bell size={19} color={c.muted} strokeWidth={2.2} />
-          <LinearGradient colors={["#EF4444", "#DC2626"]} style={styles.badge}>
-            <Text style={styles.badgeText}>3</Text>
-          </LinearGradient>
+          {unreadNotifications > 0 ? (
+            <LinearGradient colors={["#EF4444", "#DC2626"]} style={styles.badge}>
+              <Text style={styles.badgeText}>
+                {unreadNotifications > 9 ? "9+" : unreadNotifications}
+              </Text>
+            </LinearGradient>
+          ) : null}
         </PressableScale>
 
         <PressableScale
@@ -81,9 +103,17 @@ export function AiScreenHeader() {
           style={[styles.avatarWrap, aiCardShadow(c.shadowAccent, "glow")]}
           hitSlop={6}
           haptic
+          accessibilityRole="button"
+          accessibilityLabel="Open your profile"
         >
-          <LinearGradient colors={["#00D1FF", "#7B61FF"]} style={styles.avatarRing}>
-            <Image source={{ uri: AVATAR }} style={styles.avatar} />
+          <LinearGradient colors={["#2dd4bf", "#10b981"]} style={styles.avatarRing}>
+            {avatarUri ? (
+              <Image source={{ uri: avatarUri }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarFallback]}>
+                <Text style={styles.avatarInitials}>{initials}</Text>
+              </View>
+            )}
           </LinearGradient>
         </PressableScale>
       </View>
@@ -150,4 +180,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   avatar: { width: 36, height: 36, borderRadius: 18 },
+  avatarFallback: { alignItems: "center", justifyContent: "center", backgroundColor: "#06140e" },
+  avatarInitials: { color: "#6ee7b7", fontSize: 14, fontWeight: "800", letterSpacing: 0.4 },
 });

@@ -1,0 +1,22 @@
+{
+  "generatedAt": "2026-07-02T17:00:22.086Z",
+  "runId": "probe-mr3r2zi1",
+  "exactFailingRelation": "hcoin_wallets_user_id_fkey",
+  "walletBefore": 1,
+  "walletAfter": 0,
+  "usersAfter": 0,
+  "pass1": {
+    "ok": true,
+    "transactional": true,
+    "totalDeleted": 10,
+    "hcoinWalletsDeleted": 1,
+    "usersDeleted": 2
+  },
+  "pass2": {
+    "ok": true,
+    "transactional": true,
+    "totalDeleted": 0,
+    "idempotent": true
+  },
+  "verdict": "PASS"
+}

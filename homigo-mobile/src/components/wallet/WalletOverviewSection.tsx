@@ -1,20 +1,19 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { Check, ChevronRight, Coins } from "lucide-react-native";
+import { Check, ChevronRight, CalendarDays, MapPin } from "lucide-react-native";
 import Animated from "react-native-reanimated";
 import { useTheme } from "@/hooks/useTheme";
-import {
-  WALLET_BALANCE,
-  WALLET_H_COINS,
-  WALLET_GIFT_VALUE,
-  WALLET_GIFT_COUNT,
-  formatINR,
-} from "@/lib/wallet-mobile-data";
 import { WALLET_SECTION_GAP } from "@/lib/wallet-layout";
-import { spacing, radius } from "@/lib/typography";
+import { spacing } from "@/lib/typography";
 import { shadowStyles } from "@/lib/colors";
 import { PressableScale } from "@/components/ai/PressableScale";
 import { walletEnter } from "@/lib/wallet-animations";
+import {
+  useWalletBalanceQuery,
+  useBookingsQuery,
+  useAddressesQuery,
+} from "@/hooks/use-core-data";
+import { formatINR } from "@/lib/wallet-mobile-data";
 
 type Props = {
   onViewDetails: () => void;
@@ -22,6 +21,14 @@ type Props = {
 
 export function WalletOverviewSection({ onViewDetails }: Props) {
   const { colors: c } = useTheme();
+  const { data: walletData } = useWalletBalanceQuery();
+  const { data: bookingsData } = useBookingsQuery();
+  const { data: addressesData } = useAddressesQuery();
+
+  const activeBookings = (bookingsData?.bookings ?? []).filter(
+    (b) => b.status !== "completed" && !String(b.status).startsWith("cancelled"),
+  ).length;
+  const addressCount = addressesData?.addresses?.length ?? 0;
 
   return (
     <View style={[styles.section, { marginBottom: WALLET_SECTION_GAP }]}>
@@ -42,17 +49,13 @@ export function WalletOverviewSection({ onViewDetails }: Props) {
       >
         <Animated.View entering={walletEnter.overview(0)} style={styles.colWrap}>
           <PressableScale style={styles.col} haptic>
-            <Text style={[styles.colLabel, { color: c.textSecondary }]}>
-              Money in Wallet
-            </Text>
+            <Text style={[styles.colLabel, { color: c.textSecondary }]}>Money in Wallet</Text>
             <Text style={[styles.colValue, { color: c.text }]}>
-              ₹{formatINR(WALLET_BALANCE)}
+              ₹{formatINR(walletData?.balance ?? 0)}
             </Text>
             <View style={styles.secureRow}>
               <Check size={12} color={c.success} strokeWidth={3} />
-              <Text style={[styles.footGreen, { color: c.success }]}>
-                Secured & Safe
-              </Text>
+              <Text style={[styles.footGreen, { color: c.success }]}>Secured & Safe</Text>
             </View>
           </PressableScale>
         </Animated.View>
@@ -60,25 +63,22 @@ export function WalletOverviewSection({ onViewDetails }: Props) {
         <Animated.View entering={walletEnter.overview(1)} style={styles.colWrap}>
           <PressableScale style={styles.col} haptic>
             <View style={styles.labelWithIcon}>
-              <Text style={[styles.colLabel, { color: c.textSecondary }]}>H-Coins</Text>
-              <Coins size={12} color="#D4AF37" />
+              <Text style={[styles.colLabel, { color: c.textSecondary }]}>Active Bookings</Text>
+              <CalendarDays size={12} color={c.primary} />
             </View>
-            <Text style={[styles.colValue, { color: c.text }]}>{WALLET_H_COINS}</Text>
-            <Text style={[styles.footMuted, { color: c.textSecondary }]}>
-              Use Coins to save more
-            </Text>
+            <Text style={[styles.colValue, { color: c.text }]}>{activeBookings}</Text>
+            <Text style={[styles.footMuted, { color: c.textSecondary }]}>Live service requests</Text>
           </PressableScale>
         </Animated.View>
         <View style={[styles.vDivider, { backgroundColor: c.border }]} />
         <Animated.View entering={walletEnter.overview(2)} style={styles.colWrap}>
           <PressableScale style={styles.col} haptic>
-            <Text style={[styles.colLabel, { color: c.textSecondary }]}>Gift Cards</Text>
-            <Text style={[styles.colValue, { color: c.text }]}>
-              ₹{formatINR(WALLET_GIFT_VALUE, 0)}
-            </Text>
-            <Text style={[styles.footMuted, { color: c.textSecondary }]}>
-              {WALLET_GIFT_COUNT} Gift Cards
-            </Text>
+            <View style={styles.labelWithIcon}>
+              <Text style={[styles.colLabel, { color: c.textSecondary }]}>Saved Addresses</Text>
+              <MapPin size={12} color={c.teal} />
+            </View>
+            <Text style={[styles.colValue, { color: c.text }]}>{addressCount}</Text>
+            <Text style={[styles.footMuted, { color: c.textSecondary }]}>Ready for booking</Text>
           </PressableScale>
         </Animated.View>
       </View>
@@ -107,11 +107,7 @@ const styles = StyleSheet.create({
   colWrap: { flex: 1 },
   col: { flex: 1, alignItems: "center", paddingHorizontal: 6 },
   colLabel: { fontSize: 11, fontWeight: "600", textAlign: "center" },
-  labelWithIcon: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
+  labelWithIcon: { flexDirection: "row", alignItems: "center", gap: 4 },
   colValue: {
     fontSize: 18,
     fontWeight: "800",

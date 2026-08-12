@@ -1,32 +1,68 @@
 import React, { Fragment } from "react";
-import { View, Text, Image, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Bike, Check, MapPin, Navigation2, Phone, Star } from "lucide-react-native";
+import { Check, Navigation2 } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import { useAiTheme, aiSpacing, aiRadius, aiCardShadow } from "@/lib/ai-mobile-theme";
 import { useTrackingLayout } from "@/lib/tracking-layout";
+import { useLiveTrackingView } from "@/hooks/use-live-tracking-view";
+import { HomeLiveMap } from "@/components/track/HomeLiveMap";
 import { SectionTitle } from "./SectionTitle";
 import { PressableScale } from "./PressableScale";
-import { AiLiveTrackingMap } from "./AiLiveTrackingMap";
 
-const EXPERT =
-  "https://api.dicebear.com/7.x/avataaars/png?seed=rahul&size=128&backgroundColor=1a2744";
+/** Progress is derived from the booking's real status — never assumed. */
+function stepsFor(status: string): { label: string; done: boolean }[] {
+  const onTheWay = status === "in_progress";
+  return [
+    { label: "Confirmed", done: true },
+    { label: "On the way", done: onTheWay },
+    { label: "Arriving", done: false },
+  ];
+}
 
-const STEPS = [
-  { label: "Confirmed", done: true },
-  { label: "On the way", done: true },
-  { label: "Arriving", done: false },
-];
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  return (parts[0]![0]! + (parts[1]?.[0] ?? "")).toUpperCase();
+}
 
 export function AiBookingBlock() {
   const router = useRouter();
   const { c, isDark } = useAiTheme();
   const L = useTrackingLayout();
+  // Same derivation the home Live Tracking card uses, so the two surfaces can
+  // never disagree about where the professional is.
+  const {
+    activeBooking,
+    connected,
+    provider,
+    destination,
+    region,
+    routePoints,
+    bearing,
+    enRoute,
+    distanceKm,
+    etaMin,
+    isRealPosition,
+  } = useLiveTrackingView();
+
+  // No live booking means there is nothing truthful to show. Previously this card
+  // rendered a fabricated pro, ETA and route for every user — the card is now
+  // simply absent until real booking data exists.
+  if (!activeBooking) return null;
+
+  const proName = activeBooking.proName?.trim() || "Your professional";
+  const steps = stepsFor(activeBooking.status);
+  const onTheWay = activeBooking.status === "in_progress";
+  // Distance/ETA are only shown once the provider's real position has arrived over
+  // the tracking socket — before that the numbers would describe a placeholder.
+  const eta = isRealPosition ? etaMin : null;
+  const km = isRealPosition ? distanceKm : null;
 
   const onWayBadge = (
     <View style={styles.onWayBadge}>
       <View style={styles.onWayDot} />
-      <Text style={styles.onWayTxt}>On the way</Text>
+      <Text style={styles.onWayTxt}>{onTheWay ? "On the way" : "Confirmed"}</Text>
     </View>
   );
 
@@ -34,31 +70,65 @@ export function AiBookingBlock() {
     <View style={styles.wrap}>
       <SectionTitle
         noInset
-        title="Your Booking is Confirmed"
-        subtitle="Live tracking · Expert on route"
+        title={onTheWay ? "Your professional is on the way" : "Your booking is confirmed"}
+        subtitle={activeBooking.serviceTitle}
         right={onWayBadge}
       />
 
-      <Pressable onPress={() => router.push("/(tabs)/bookings")} style={{ width: "100%" }}>
+      <Pressable
+        onPress={() => router.push(`/track/${activeBooking.id}` as never)}
+        style={{ width: "100%" }}
+        accessibilityRole="button"
+        accessibilityLabel={`${activeBooking.serviceTitle} with ${proName}. Open live tracking.`}
+      >
         <View
           style={[
             styles.shell,
             {
               borderRadius: L.shellRadius,
-              borderColor: isDark ? "rgba(123,97,255,0.3)" : "rgba(123,97,255,0.2)",
-              backgroundColor: isDark ? "#0a0e1c" : "#f8fafc",
+              borderColor: isDark ? "rgba(16, 185, 129,0.3)" : "rgba(16, 185, 129,0.2)",
+              backgroundColor: isDark ? "#06140e" : "#f0fdf4",
             },
-            aiCardShadow("#7B61FF", "hero"),
+            aiCardShadow("#10b981", "hero"),
           ]}
         >
           <LinearGradient
-            colors={["#00D1FF", "#7B61FF", "#A855F7", "#00D1FF"]}
+            colors={["#2dd4bf", "#10b981", "#34d399", "#2dd4bf"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.topBar}
           />
 
-          <AiLiveTrackingMap height={L.mapH} />
+          {/* Real Google map on the real road route — same component and same
+              backend feed as the home card and the full tracking screen. */}
+          <View
+            style={{ height: L.mapH }}
+            accessible
+            accessibilityLabel={
+              isRealPosition
+                ? `Live map: ${proName} is ${distanceKm.toFixed(1)} kilometres away`
+                : "Live map, waiting for your professional's position"
+            }
+          >
+            <HomeLiveMap
+              provider={provider}
+              destination={destination}
+              region={region}
+              height={L.mapH}
+              routePoints={routePoints}
+              bearing={bearing}
+              follow={connected && enRoute}
+            />
+            <View
+              pointerEvents="none"
+              style={[
+                styles.mapTag,
+                { backgroundColor: connected ? "rgba(16,185,129,0.94)" : "rgba(4,20,13,0.75)" },
+              ]}
+            >
+              <Text style={styles.mapTagTxt}>{connected ? "LIVE MAP" : "RECONNECTING"}</Text>
+            </View>
+          </View>
 
           <View
             style={[
@@ -69,15 +139,19 @@ export function AiBookingBlock() {
               },
             ]}
           >
-            <View style={styles.livePill}>
-              <View style={styles.liveDot} />
-              <Text style={[styles.liveLbl, { fontSize: L.chipFont }]}>Service in progress</Text>
-            </View>
+            {onTheWay ? (
+              <View style={styles.livePill}>
+                <View style={styles.liveDot} />
+                <Text style={[styles.liveLbl, { fontSize: L.chipFont }]}>Service in progress</Text>
+              </View>
+            ) : null}
 
             <View style={styles.expertRow}>
+              {/* Initials, not a stock portrait: we know the pro's name, not their face. */}
               <View
                 style={[
                   styles.avatarWrap,
+                  styles.avatarInitials,
                   {
                     width: L.avatarSize,
                     height: L.avatarSize,
@@ -85,70 +159,60 @@ export function AiBookingBlock() {
                   },
                 ]}
               >
-                <Image source={{ uri: EXPERT }} style={styles.avatar} />
+                <Text style={[styles.avatarInitialsTxt, { fontSize: L.avatarSize * 0.36 }]}>
+                  {initialsOf(proName)}
+                </Text>
               </View>
               <View style={styles.expertMeta}>
                 <Text style={[styles.expertName, { color: c.text, fontSize: L.expertName }]} numberOfLines={1}>
-                  Rahul Kumar
+                  {proName}
                 </Text>
-                <View style={styles.ratingRow}>
-                  <Star size={L.isCompact ? 10 : 12} fill="#FBBF24" color="#FBBF24" />
-                  <Text style={[styles.ratingTxt, { color: c.muted, fontSize: L.chipFontSm }]} numberOfLines={1}>
-                    4.9 · AC Repair Expert
-                  </Text>
-                </View>
-                <View style={styles.bikeRow}>
-                  <Bike size={L.isCompact ? 11 : 13} color="#00D1FF" strokeWidth={2.5} />
-                  <Text style={[styles.bikeTxt, { color: c.subtle, fontSize: L.chipFont }]} numberOfLines={1}>
-                    Bike · HOMIGO Express
-                  </Text>
-                </View>
+                <Text
+                  style={[styles.ratingTxt, { color: c.muted, fontSize: L.chipFontSm }]}
+                  numberOfLines={1}
+                >
+                  {activeBooking.serviceTitle}
+                </Text>
+                <Text
+                  style={[styles.bikeTxt, { color: c.subtle, fontSize: L.chipFont }]}
+                  numberOfLines={1}
+                >
+                  {activeBooking.dateLabel} · {activeBooking.timeLabel}
+                </Text>
               </View>
             </View>
 
+            {/* ETA comes from the live tracking feed; an em dash when it has not
+                arrived yet, never an invented number. */}
             <View style={styles.etaBlock}>
-              <Text style={[styles.etaLbl, { color: c.subtle, fontSize: L.chipFont }]}>Arriving in</Text>
+              <Text style={[styles.etaLbl, { color: c.subtle, fontSize: L.chipFont }]}>
+                {eta != null ? "Arriving in" : "Live ETA"}
+              </Text>
               <View style={styles.etaRow}>
                 <Text style={[styles.etaBig, { color: c.text, fontSize: L.etaBig, lineHeight: L.etaBig + 4 }]}>
-                  12
+                  {eta != null ? eta : "—"}
                 </Text>
-                <Text style={[styles.etaUnit, { color: c.muted, fontSize: L.etaUnit }]}>mins</Text>
+                {eta != null ? (
+                  <Text style={[styles.etaUnit, { color: c.muted, fontSize: L.etaUnit }]}>mins</Text>
+                ) : null}
               </View>
-              <View style={[styles.locRow, L.isCompact && styles.locRowCompact]}>
-                <View
-                  style={[
-                    styles.locChip,
-                    { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.05)" },
-                  ]}
-                >
-                  <MapPin size={10} color="#7B61FF" />
-                  <Text style={[styles.locTxt, { color: c.muted, fontSize: L.chipFont }]} numberOfLines={1}>
-                    Sector 12
-                  </Text>
-                </View>
-                {!L.isCompact && <Navigation2 size={11} color={c.faint} />}
-                <View
-                  style={[
-                    styles.locChip,
-                    { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.05)" },
-                  ]}
-                >
-                  <MapPin size={10} color="#00D1FF" />
-                  <Text style={[styles.locTxt, { color: c.muted, fontSize: L.chipFont }]} numberOfLines={1}>
-                    Indiranagar
-                  </Text>
-                </View>
-                <Text style={[styles.kmSep, { color: c.faint, fontSize: L.chipFont }]}>· 2.4 km</Text>
-              </View>
+              <Text
+                style={[styles.locTxt, { color: c.subtle, fontSize: L.chipFont }]}
+                numberOfLines={1}
+              >
+                {km != null
+                  ? `${km.toFixed(1)} km away · ${connected ? "updating live" : "reconnecting"}`
+                  : "Waiting for live updates"}
+              </Text>
             </View>
 
             <View style={styles.stepsRow}>
-              {STEPS.map((s, i) => (
+              {steps.map((s, i) => (
                 <Fragment key={s.label}>
                   <View style={[styles.stepCol, { minWidth: L.isCompact ? 52 : 58 }]}>
                     {s.done ? (
                       <LinearGradient
-                        colors={["#00D1FF", "#7B61FF"]}
+                        colors={["#2dd4bf", "#10b981"]}
                         style={[styles.stepDone, { width: L.isCompact ? 26 : 30, height: L.isCompact ? 26 : 30, borderRadius: 15 }]}
                       >
                         <Check size={L.isCompact ? 12 : 14} color="#FFF" strokeWidth={3} />
@@ -178,17 +242,25 @@ export function AiBookingBlock() {
                       {s.label}
                     </Text>
                   </View>
-                  {i < STEPS.length - 1 ? (
-                    <View style={[styles.stepLine, (STEPS[i + 1].done || s.done) && styles.stepLineDone]} />
+                  {i < steps.length - 1 ? (
+                    <View style={[styles.stepLine, (steps[i + 1]!.done || s.done) && styles.stepLineDone]} />
                   ) : null}
                 </Fragment>
               ))}
             </View>
 
-            <PressableScale onPress={() => {}} style={styles.callBtn} haptic>
-              <LinearGradient colors={["#22C55E", "#16A34A"]} style={[styles.callGrad, { height: L.isCompact ? 44 : 48 }]}>
-                <Phone size={L.isCompact ? 16 : 17} color="#FFF" strokeWidth={2.6} />
-                <Text style={[styles.callTxt, { fontSize: L.isCompact ? 13 : 14 }]}>Call expert</Text>
+            {/* Was a dead "Call expert" button — the app holds no phone number for
+                the pro. This opens the real live-tracking screen instead. */}
+            <PressableScale
+              onPress={() => router.push(`/track/${activeBooking.id}` as never)}
+              style={styles.callBtn}
+              haptic
+              accessibilityRole="button"
+              accessibilityLabel={`Track ${proName} on the live map`}
+            >
+              <LinearGradient colors={["#10b981", "#0d9488"]} style={[styles.callGrad, { height: L.isCompact ? 44 : 48 }]}>
+                <Navigation2 size={L.isCompact ? 16 : 17} color="#FFF" strokeWidth={2.6} />
+                <Text style={[styles.callTxt, { fontSize: L.isCompact ? 13 : 14 }]}>Track live</Text>
               </LinearGradient>
             </PressableScale>
           </View>
@@ -257,54 +329,30 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     overflow: "hidden",
     borderWidth: 2,
-    borderColor: "rgba(123,97,255,0.45)",
-    backgroundColor: "#1a2744",
+    borderColor: "rgba(16, 185, 129,0.45)",
+    backgroundColor: "#0a2018",
   },
-  avatar: { width: "100%", height: "100%" },
+  avatarInitials: { alignItems: "center", justifyContent: "center" },
+  avatarInitialsTxt: { color: "#6ee7b7", fontWeight: "800", letterSpacing: 0.5 },
   expertMeta: { flex: 1, minWidth: 0 },
   expertName: { fontWeight: "800", letterSpacing: -0.3 },
-  ratingRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3, flexWrap: "wrap" },
-  ratingTxt: { fontWeight: "600", flexShrink: 1 },
-  bikeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginTop: 7,
-    alignSelf: "flex-start",
-    maxWidth: "100%",
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(0,209,255,0.28)",
-    backgroundColor: "rgba(0,209,255,0.08)",
-  },
-  bikeTxt: { fontWeight: "700", flexShrink: 1 },
+  ratingTxt: { fontWeight: "600", flexShrink: 1, marginTop: 3 },
+  bikeTxt: { fontWeight: "700", flexShrink: 1, marginTop: 5 },
   etaBlock: { gap: 3, width: "100%" },
   etaLbl: { fontWeight: "800", letterSpacing: 0.9, textTransform: "uppercase" },
   etaRow: { flexDirection: "row", alignItems: "baseline" },
   etaBig: { fontWeight: "800", letterSpacing: -2 },
   etaUnit: { fontWeight: "700", marginLeft: 3 },
-  locRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 5,
-    marginTop: 6,
-    width: "100%",
-  },
-  locRowCompact: { gap: 4 },
-  locChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    paddingHorizontal: 7,
+  locTxt: { fontWeight: "600", flexShrink: 1, marginTop: 6 },
+  mapTag: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    paddingHorizontal: 9,
     paddingVertical: 4,
-    borderRadius: 8,
-    maxWidth: "46%",
+    borderRadius: 999,
   },
-  locTxt: { fontWeight: "600", flexShrink: 1 },
-  kmSep: { fontWeight: "600" },
+  mapTagTxt: { color: "#fff", fontSize: 10, fontWeight: "800", letterSpacing: 0.8 },
   stepsRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -324,7 +372,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 1,
     minWidth: 8,
   },
-  stepLineDone: { backgroundColor: "#7B61FF" },
+  stepLineDone: { backgroundColor: "#10b981" },
   callBtn: { width: "100%", marginTop: 2 },
   callGrad: {
     borderRadius: aiRadius.md,

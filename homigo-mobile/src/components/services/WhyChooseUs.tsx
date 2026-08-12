@@ -7,8 +7,8 @@ import { Premium3DCard } from "./visual/Premium3DCard";
 import { PressableScale } from "@/components/ai/PressableScale";
 import { useServicesTheme } from "./ServicesThemeContext";
 import { useServicesActions } from "@/hooks/useServicesActions";
-import { serviceType } from "@/theme/typography";
-import { layout } from "@/theme/layout";
+import { serviceType } from "@/components/services/theme/typography";
+import { layout } from "@/components/services/theme/layout";
 
 export function WhyChooseUs() {
   const { c, layout: L } = useServicesTheme();
@@ -40,8 +40,8 @@ export function WhyChooseUs() {
     <View>
       <SectionHeader
         overline="Trust"
-        title="Why Choose HOMIGO?"
-        subtitle="Built for safety, speed, and peace of mind"
+        title="Why Choose Homeeigo?"
+        subtitle="Trust, quality, and reliability in every service"
       />
       <ScrollView
         horizontal

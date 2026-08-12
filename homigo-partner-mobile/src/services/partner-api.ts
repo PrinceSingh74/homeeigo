@@ -119,6 +119,19 @@ export const partnerApi = {
     request<unknown>(`/api/bookings/${bookingId}/reject`, { method: "POST", body: { reason } }),
 
   /**
+   * Partner AI assistant, via the backend AI Gateway (`/api/ai/partner`).
+   *
+   * The gateway owns auth, RBAC, prompt-injection screening, rate limiting, audit and
+   * cost accounting. The app never holds a model-provider key and never calls a provider
+   * directly — that is the single-entry rule this platform is built on.
+   */
+  aiChat: (message: string) =>
+    request<{ content: string; provider: string; model: string; fallbackUsed: boolean }>(
+      "/api/ai/partner",
+      { method: "POST", body: { message } },
+    ),
+
+  /**
    * Declares departure — the authoritative producer of `enRouteAt`, which the ETA
    * training label's duration is measured from. Idempotent: a repeat call returns
    * `newlyTransitioned: false` and leaves the timestamp untouched.

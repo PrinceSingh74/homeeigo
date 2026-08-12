@@ -52,7 +52,7 @@ export const TrustSection: React.FC = () => {
           return (
             <View key={t.id} style={styles.item}>
               <View style={styles.iconWrap}>
-                <Icon size={22} color={themeColors.primary} strokeWidth={2} />
+                <Icon size={22} color="#059669" strokeWidth={2} />
               </View>
               <Text
                 style={[styles.label, { color: themeColors.textSecondary }]}

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   Modal,
   View,
@@ -6,28 +6,37 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
+  Alert,
+  Share,
 } from "react-native";
-import { X, Check, Crown, Star, ArrowRight } from "lucide-react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import { X, ArrowRight, Bell } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { LocationSheet } from "@/components/booking/LocationSheet";
+import { MembershipSheet } from "@/components/app/MembershipSheet";
 import { PressableScale } from "@/components/ai/PressableScale";
 import { useAppStore } from "@/lib/store";
 import { useAppNavigation } from "@/hooks/useAppNavigation";
 import { useTheme } from "@/hooks/useTheme";
-import { PROFILE_ADDRESSES } from "@/lib/profile-mobile-data";
-import { WALLET_TXNS } from "@/lib/wallet-mobile-data";
-import { Smartphone, CreditCard } from "lucide-react-native";
-import { SERVICES_NOTIFICATIONS } from "@/lib/services-notifications";
+import { useAuth } from "@/hooks/use-auth";
+import { useRouter } from "expo-router";
+import { useWalletPayment } from "@/hooks/use-wallet-payment";
 import {
-  CATEGORIES,
-  AI_RECOMMENDATIONS,
-  TRENDING_SERVICES,
-  CUSTOMER_REVIEWS,
-} from "@/constants/servicesData";
-import { serviceType, fontFamily } from "@/theme/typography";
-import { layout } from "@/theme/layout";
+  useNotificationsQuery,
+  useMarkNotificationReadMutation,
+  useMarkAllNotificationsReadMutation,
+  useAddressesQuery,
+  useWalletTransactionsQuery,
+} from "@/hooks/use-core-data";
+import { formatAddressLine } from "@/lib/addresses";
+import { CreditCard } from "lucide-react-native";
+import { useServicesDiscovery } from "@/hooks/use-services-discovery";
+import { useCustomerReviews } from "@/hooks/use-customer-reviews";
+import { serviceType, fontFamily } from "@/components/services/theme/typography";
+import { layout } from "@/components/services/theme/layout";
 import { sheetHandle } from "@/lib/booking-ui";
+import { CookieConsentBanner } from "@/components/legal/CookieConsentBanner";
+import { useAfterInteractive } from "@/hooks/use-after-interactive";
+import { coreApi } from "@/services/core/api";
 
 function SheetShell({
   visible,
@@ -100,8 +109,6 @@ function ListRow({
 export function AppOverlays() {
   const overlay = useAppStore((s) => s.overlay);
   const closeOverlay = useAppStore((s) => s.closeOverlay);
-  const setPremium = useAppStore((s) => s.setPremium);
-  const isPremium = useAppStore((s) => s.isPremium);
   const showToast = useAppStore((s) => s.showToast);
   const {
     book,
@@ -111,6 +118,26 @@ export function AppOverlays() {
     openAddresses,
   } = useAppNavigation();
   const { colors: c } = useTheme();
+  const router = useRouter();
+  const { logout } = useAuth();
+  const { topUp, isProcessing: walletPayProcessing } = useWalletPayment();
+  const { data: notificationsData } = useNotificationsQuery({ enabled: overlay === "notifications" });
+  const markRead = useMarkNotificationReadMutation();
+  const markAllRead = useMarkAllNotificationsReadMutation();
+
+  // Opening the sheet IS reading — clear the badge shortly after the list shows.
+  const notifUnread = notificationsData?.unreadCount ?? 0;
+  const markAllSilently = markAllRead.mutate;
+  useEffect(() => {
+    if (overlay !== "notifications" || notifUnread === 0) return;
+    const t = setTimeout(() => markAllSilently(), 1200);
+    return () => clearTimeout(t);
+  }, [overlay, notifUnread, markAllSilently]);
+  const { data: addressesData } = useAddressesQuery();
+  const { data: walletTxData } = useWalletTransactionsQuery();
+  const afterInteractive = useAfterInteractive();
+  const { categories, trending, aiRecommendations } = useServicesDiscovery(afterInteractive);
+  const { data: customerReviews = [] } = useCustomerReviews(8, afterInteractive);
 
   const handleBook = (serviceId: string, promo?: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -130,94 +157,32 @@ export function AppOverlays() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.list}
         >
-          {SERVICES_NOTIFICATIONS.map((n) => {
-            const Icon = n.icon;
-            return (
+          {(notificationsData?.notifications ?? []).map((n) => (
               <PressableScale
                 key={n.id}
                 haptic
-                onPress={() => handleBook(n.serviceId, n.promo)}
+                onPress={() => {
+                  if (!n.isRead) markRead.mutate(n.id);
+                  if (n.referenceId) handleBook("cleaning");
+                }}
                 style={[styles.notifRow, { borderColor: c.border, backgroundColor: c.bg }]}
               >
-                <View style={[styles.notifIcon, { backgroundColor: `${c.violet}22` }]}>
-                  <Icon size={20} color={c.primary} />
+                <View style={[styles.notifIcon, { backgroundColor: `${c.teal}22` }]}>
+                  <Bell size={20} color={c.primary} />
                 </View>
                 <View style={styles.rowText}>
                   <Text style={[styles.rowTitle, { color: c.text }]}>{n.title}</Text>
-                  <Text style={[styles.rowSub, { color: c.textSecondary }]}>{n.body}</Text>
-                  <Text style={[styles.notifTime, { color: c.textSecondary }]}>{n.time}</Text>
+                  <Text style={[styles.rowSub, { color: c.textSecondary }]}>{n.message}</Text>
+                  <Text style={[styles.notifTime, { color: c.textSecondary }]}>
+                    {new Date(n.createdAt).toLocaleString("en-IN")}
+                  </Text>
                 </View>
               </PressableScale>
-            );
-          })}
+            ))}
         </ScrollView>
       </SheetShell>
 
-      <Modal
-        visible={overlay === "premium"}
-        animationType="slide"
-        transparent
-        onRequestClose={closeOverlay}
-      >
-        <Pressable style={styles.backdrop} onPress={closeOverlay} />
-        <View style={[styles.sheet, { backgroundColor: c.cardBg }]}>
-          <View style={sheetHandle} />
-          <View style={styles.sheetHead}>
-            <Text style={[styles.sheetTitle, { color: c.text }]}>
-              HOMIGO Premium
-            </Text>
-            <Pressable onPress={closeOverlay} hitSlop={12}>
-              <X size={22} color={c.textSecondary} />
-            </Pressable>
-          </View>
-          <LinearGradient
-            colors={[c.primary, "#8B3DFF", "#9C4AFF"]}
-            style={styles.premiumHero}
-          >
-            <Crown size={36} color={c.gold} fill={c.gold} />
-            <Text style={styles.premiumPrice}>₹499 / month</Text>
-            <Text style={styles.premiumTrial}>7-day free trial · Cancel anytime</Text>
-            <View style={styles.premiumStars}>
-              <Star size={14} color={c.gold} fill={c.gold} />
-              <Text style={styles.premiumStarsText}>Loved by 12,000+ members</Text>
-            </View>
-          </LinearGradient>
-          <ScrollView contentContainerStyle={styles.premiumBenefits}>
-            {[
-              "Priority booking & elite professionals",
-              "24/7 premium support",
-              "Free revisits on eligible services",
-              "AI-optimized scheduling & pricing",
-            ].map((b) => (
-              <View key={b} style={styles.benefitRow}>
-                <Check size={16} color={c.success} strokeWidth={3} />
-                <Text style={[styles.benefitText, { color: c.textSecondary }]}>{b}</Text>
-              </View>
-            ))}
-          </ScrollView>
-          <PressableScale
-            haptic
-            onPress={() => {
-              Haptics.notificationAsync(
-                Haptics.NotificationFeedbackType.Success,
-              ).catch(() => {});
-              setPremium(true);
-              closeOverlay();
-            }}
-            style={styles.premiumBtnWrap}
-          >
-            <LinearGradient
-              colors={[c.primary, c.violet]}
-              style={styles.premiumBtn}
-            >
-              <Text style={styles.premiumBtnText}>
-                {isPremium ? "You're a Premium member" : "Start free trial"}
-              </Text>
-              {!isPremium && <ArrowRight size={18} color="#fff" />}
-            </LinearGradient>
-          </PressableScale>
-        </View>
-      </Modal>
+      <MembershipSheet visible={overlay === "premium"} onClose={closeOverlay} />
 
       <SheetShell
         visible={overlay === "categories"}
@@ -225,7 +190,7 @@ export function AppOverlays() {
         onClose={closeOverlay}
       >
         <ScrollView contentContainerStyle={styles.list}>
-          {CATEGORIES.map((cat) => (
+          {categories.map((cat) => (
             <ListRow
               key={cat.id}
               title={`${cat.emoji} ${cat.name}`}
@@ -243,11 +208,11 @@ export function AppOverlays() {
         onClose={closeOverlay}
       >
         <ScrollView contentContainerStyle={styles.list}>
-          {TRENDING_SERVICES.map((item) => (
+          {trending.map((item) => (
             <ListRow
               key={item.id}
               title={item.title}
-              subtitle={`★ ${item.rating} · ₹${item.price} · ${item.duration}`}
+              subtitle={`${item.rating != null ? `★ ${item.rating}` : "New"} · ₹${item.price} · ${item.duration}`}
               trailing="Book"
               onPress={() => handleBook(item.serviceId)}
             />
@@ -261,7 +226,7 @@ export function AppOverlays() {
         onClose={closeOverlay}
       >
         <ScrollView contentContainerStyle={styles.list}>
-          {AI_RECOMMENDATIONS.map((item) => (
+          {aiRecommendations.map((item) => (
             <ListRow
               key={item.id}
               title={`${item.emoji} ${item.title}`}
@@ -279,7 +244,7 @@ export function AppOverlays() {
         onClose={closeOverlay}
       >
         <ScrollView contentContainerStyle={styles.list}>
-          {CUSTOMER_REVIEWS.map((r) => (
+          {customerReviews.map((r) => (
             <PressableScale
               key={r.id}
               haptic
@@ -335,6 +300,90 @@ export function AppOverlays() {
                 goAi();
               },
             },
+            {
+              label: "Change password",
+              action: () => {
+                closeOverlay();
+                router.push("/change-password");
+              },
+            },
+            {
+              label: "Privacy Policy",
+              action: () => {
+                closeOverlay();
+                router.push("/legal/privacy");
+              },
+            },
+            {
+              label: "Terms of Service",
+              action: () => {
+                closeOverlay();
+                router.push("/legal/terms");
+              },
+            },
+            {
+              label: "Export my data (JSON)",
+              action: () => {
+                void (async () => {
+                  try {
+                    const data = await coreApi.users.exportData("json");
+                    const text = JSON.stringify(data, null, 2);
+                    await Share.share({ message: text.slice(0, 8000), title: "Homeeigo data export" });
+                    showToast("Data export ready to share");
+                  } catch {
+                    showToast("Could not export data");
+                  }
+                })();
+              },
+            },
+            {
+              label: "Delete account",
+              action: () => {
+                Alert.alert(
+                  "Delete account",
+                  "Your account will be deactivated immediately. Data is permanently removed after 30 days unless you contact support to restore.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Delete",
+                      style: "destructive",
+                      onPress: () => {
+                        Alert.alert("Confirm deletion", "This cannot be undone from the app. Continue?", [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Yes, delete",
+                            style: "destructive",
+                            onPress: () => {
+                              void (async () => {
+                                try {
+                                  await coreApi.users.deleteAccount("User requested via mobile app");
+                                  closeOverlay();
+                                  await logout();
+                                  showToast("Account scheduled for deletion");
+                                  router.replace("/login");
+                                } catch {
+                                  showToast("Could not delete account");
+                                }
+                              })();
+                            },
+                          },
+                        ]);
+                      },
+                    },
+                  ],
+                );
+              },
+            },
+            {
+              label: "Sign out",
+              action: () => {
+                closeOverlay();
+                void logout().then(() => {
+                  showToast("Signed out");
+                  router.replace("/login");
+                });
+              },
+            },
           ].map((item) => (
             <ListRow
               key={item.label}
@@ -351,21 +400,21 @@ export function AppOverlays() {
         onClose={closeOverlay}
       >
         <ScrollView contentContainerStyle={styles.list}>
-          {PROFILE_ADDRESSES.filter((a) => a.type !== "add").map((a) => (
+          {(addressesData?.addresses ?? []).map((a) => (
             <ListRow
               key={a.id}
-              title={`${a.type} · ${a.tag}`}
-              subtitle={`${a.line1}\n${a.line2}`}
+              title={a.label ?? "Address"}
+              subtitle={formatAddressLine(a)}
               onPress={() => {
                 closeOverlay();
-                showToast(`Delivering to ${a.type}`);
+                showToast(`Delivering to ${a.label ?? "address"}`);
               }}
             />
           ))}
           <ListRow
             title="Add new address"
             trailing="+"
-            onPress={() => showToast("Add address — demo")}
+            onPress={() => showToast("Add address from profile")}
           />
         </ScrollView>
       </SheetShell>
@@ -376,14 +425,18 @@ export function AppOverlays() {
         onClose={closeOverlay}
       >
         <ScrollView contentContainerStyle={styles.list}>
-          {WALLET_TXNS.map((t) => (
+          {(walletTxData?.transactions ?? []).map((t) => (
             <View
               key={t.id}
               style={[styles.row, { borderColor: c.border, backgroundColor: c.bg }]}
             >
               <View style={styles.rowText}>
-                <Text style={[styles.rowTitle, { color: c.text }]}>{t.title}</Text>
-                <Text style={[styles.rowSub, { color: c.textSecondary }]}>{t.subtitle}</Text>
+                <Text style={[styles.rowTitle, { color: c.text }]}>
+                  {t.description ?? t.reason ?? "Wallet transaction"}
+                </Text>
+                <Text style={[styles.rowSub, { color: c.textSecondary }]}>
+                  {new Date(t.createdAt).toLocaleDateString("en-IN")}
+                </Text>
               </View>
               <Text
                 style={[
@@ -391,7 +444,7 @@ export function AppOverlays() {
                   { color: t.type === "credit" ? c.success : c.text },
                 ]}
               >
-                {t.type === "credit" ? "+" : ""}₹{Math.abs(t.amount)}
+                {t.type === "credit" ? "+" : "-"}₹{Math.abs(t.amount)}
               </Text>
             </View>
           ))}
@@ -403,10 +456,10 @@ export function AppOverlays() {
         title="Invite & earn"
         onClose={closeOverlay}
       >
-        <View style={[styles.referralBox, { backgroundColor: `${c.violet}18`, borderColor: c.border }]}>
+        <View style={[styles.referralBox, { backgroundColor: `${c.teal}18`, borderColor: c.border }]}>
           <Text style={[styles.referralTitle, { color: c.text }]}>Earn ₹200 per friend</Text>
           <Text style={[styles.referralSub, { color: c.textSecondary }]}>
-            Share HOMIGO with friends. They get ₹150 off, you earn wallet cash.
+            Share Homeeigo with friends. They get ₹150 off, you earn wallet cash.
           </Text>
           <PressableScale
             haptic
@@ -424,30 +477,30 @@ export function AppOverlays() {
         onClose={closeOverlay}
       >
         <Text style={[styles.rowSub, { color: c.textSecondary, marginBottom: 12 }]}>
-          Funds reflect instantly in your HOMIGO wallet.
+          Funds reflect instantly in your Homeeigo wallet.
         </Text>
-        {[
-          { label: "UPI", icon: Smartphone, color: c.cyan },
-          { label: "Debit / Credit Card", icon: CreditCard, color: c.primary },
-        ].map((o) => {
-          const Icon = o.icon;
-          return (
-            <PressableScale
-              key={o.label}
-              haptic
-              onPress={() => {
-                showToast(`${o.label} payment — demo`);
-                closeOverlay();
-              }}
-              style={[styles.row, { borderColor: c.border, backgroundColor: c.bg }]}
-            >
-              <Icon size={22} color={o.color} />
-              <Text style={[styles.rowTitle, { color: c.text, flex: 1 }]}>{o.label}</Text>
-              <ArrowRight size={18} color={c.primary} />
-            </PressableScale>
-          );
-        })}
+        {[500, 1000, 2000].map((amount) => (
+          <PressableScale
+            key={amount}
+            haptic
+            disabled={walletPayProcessing}
+            onPress={() => {
+              void topUp(amount)
+                .then(() => closeOverlay())
+                .catch(() => showToast("Could not start payment"));
+            }}
+            style={[styles.row, { borderColor: c.border, backgroundColor: c.bg }]}
+          >
+            <CreditCard size={22} color={c.primary} />
+            <Text style={[styles.rowTitle, { color: c.text, flex: 1 }]}>
+              Add ₹{amount.toLocaleString("en-IN")}
+            </Text>
+            <ArrowRight size={18} color={c.primary} />
+          </PressableScale>
+        ))}
       </SheetShell>
+
+      <CookieConsentBanner />
     </>
   );
 }

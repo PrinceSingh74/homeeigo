@@ -86,7 +86,7 @@ export function AiGlassCard({
 export function AiNeonTopEdge({ style }: { style?: StyleProp<ViewStyle> }) {
   return (
     <LinearGradient
-      colors={["#00D1FF", "#7B61FF", "#A855F7", "transparent"]}
+      colors={["#2dd4bf", "#10b981", "#34d399", "transparent"]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 0 }}
       style={[styles.neonEdge, style]}

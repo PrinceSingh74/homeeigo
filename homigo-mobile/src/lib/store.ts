@@ -27,6 +27,8 @@ export type SavedBooking = {
   timeLabel: string;
   address: string;
   total: number;
+  /** Catalog snapshot of purchased add-ons ({id,name,price}) from the backend. */
+  addons?: { id: string; name: string; price: number }[];
   status: BookingStatus;
   createdAt: string;
   updatedAt: string;
@@ -115,6 +117,8 @@ interface AppState {
   isWishlisted: (id: number) => boolean;
   bookings: SavedBooking[];
   addBooking: (booking: SavedBooking) => void;
+  /** Reconcile the local store with the authoritative server list (prunes stale bookings). */
+  syncServerBookings: (serverBookings: SavedBooking[]) => void;
   updateBookingStatus: (id: string, status: BookingStatus) => void;
   getBookingById: (id: string) => SavedBooking | undefined;
   toast: string | null;
@@ -145,7 +149,7 @@ export const useAppStore = create<AppState>()(
       isPremium: false,
       setPremium: (value) => {
         set({ isPremium: value });
-        if (value) get().showToast("Welcome to HOMIGO Premium!");
+        if (value) get().showToast("Welcome to Homeeigo Premium!");
       },
 
       unreadNotifications: 1,
@@ -165,7 +169,23 @@ export const useAppStore = create<AppState>()(
 
       bookings: [],
       addBooking: (booking) =>
-        set((state) => ({ bookings: [booking, ...state.bookings] })),
+        set((state) => ({
+          bookings: [booking, ...state.bookings.filter((b) => b.id !== booking.id)],
+        })),
+
+      // Backend is the source of truth: keep exactly what it returns so stale
+      // bookings persisted from a previous session/reseed are dropped (prevents
+      // "Booking not found" when opening a dead local booking).
+      syncServerBookings: (serverBookings) =>
+        set(() => {
+          const seen = new Set<string>();
+          const unique = serverBookings.filter((b) => {
+            if (seen.has(b.id)) return false;
+            seen.add(b.id);
+            return true;
+          });
+          return { bookings: unique };
+        }),
 
       updateBookingStatus: (id, status) => {
         const now = new Date().toISOString();
@@ -201,11 +221,9 @@ export const useAppStore = create<AppState>()(
       partialize: (s) => ({
         locationId: s.locationId,
         activePromo: s.activePromo,
-        bookings: s.bookings,
         isDarkMode: s.isDarkMode,
         isPremium: s.isPremium,
         wishlistIds: s.wishlistIds,
-        unreadNotifications: s.unreadNotifications,
       }),
     },
   ),

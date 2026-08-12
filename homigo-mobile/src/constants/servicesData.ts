@@ -24,7 +24,7 @@ export type AiRecommendation = {
 export type TrendingService = {
   id: number;
   title: string;
-  rating: number;
+  rating: number | null;
   reviews: string;
   price: number;
   duration: string;
@@ -210,42 +210,16 @@ export const EXPRESS_SERVICES: ExpressService[] = [
 ];
 
 export const WHY_FEATURES: WhyFeature[] = [
-  {
-    icon: "👤",
-    title: "Verified Professionals",
-    desc: "Background verified experts",
-    color: "#6C3AE8",
-    bg: "#EDE9FE",
-  },
-  {
-    icon: "🔒",
-    title: "Secure & Safe",
-    desc: "100% secure payments",
-    color: "#10B981",
-    bg: "#D1FAE5",
-  },
-  {
-    icon: "🤖",
-    title: "AI-Powered Matching",
-    desc: "Right expert for you",
-    color: "#6C3AE8",
-    bg: "#EDE9FE",
-  },
-  {
-    icon: "⏰",
-    title: "On-time Service",
-    desc: "Punctual & reliable",
-    color: "#F59E0B",
-    bg: "#FEF3C7",
-  },
-  {
-    icon: "💬",
-    title: "24/7 Support",
-    desc: "We're always here",
-    color: "#EF4444",
-    bg: "#FEE2E2",
-  },
+  { icon: "🛡️", title: "Background Verified", desc: "All partners undergo thorough background checks", color: "#059669", bg: "#D1FAE5" },
+  { icon: "⏰", title: "On-Time Guarantee", desc: "Arrive on time, every time. Guaranteed.", color: "#0d9488", bg: "#CCFBF1" },
+  { icon: "✅", title: "Satisfaction Guaranteed", desc: "100% satisfaction or your money back", color: "#15803d", bg: "#DCFCE7" },
+  { icon: "🔒", title: "Secure Payments", desc: "Safe, encrypted transactions always", color: "#0f766e", bg: "#CCFBF1" },
+  { icon: "🤖", title: "AI Scheduling", desc: "Smart matching for best service quality", color: "#059669", bg: "#D1FAE5" },
+  { icon: "📍", title: "Live Tracking", desc: "Know where your service partner is", color: "#14b8a6", bg: "#CCFBF1" },
+  { icon: "👥", title: "Verified Partners", desc: "10,000+ verified experts across India", color: "#15803d", bg: "#DCFCE7" },
+  { icon: "💸", title: "Transparent Pricing", desc: "No hidden charges, no surprises", color: "#0d9488", bg: "#CCFBF1" },
 ];
+
 
 export const PREMIUM_FEATURES: PremiumFeature[] = [
   { icon: "📅", label: "Priority Booking" },
@@ -280,7 +254,7 @@ export const CUSTOMER_REVIEWS: CustomerReview[] = [
     location: "Gurugram",
     rating: 5,
     review:
-      "HOMIGO is my go-to app for all home services. Super reliable and easy to use.",
+      "Homeeigo is my go-to app for all home services. Super reliable and easy to use.",
     initial: "V",
   },
 ];
