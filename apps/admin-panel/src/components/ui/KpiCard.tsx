@@ -1,32 +1,55 @@
+import { memo } from "react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-export function KpiCard({
+export const KpiCard = memo(function KpiCard({
   label,
   value,
   sub,
   icon: Icon,
   accent,
+  loading,
 }: {
   label: string;
   value: string;
   sub?: string;
-  icon: LucideIcon;
+  icon?: LucideIcon;
   accent?: "amber" | "green" | "red";
+  loading?: boolean;
 }) {
-  const accentClass =
+  const chipClass =
     accent === "green"
-      ? "text-[var(--color-biz-success)]"
+      ? "biz-icon-chip biz-icon-chip--success"
       : accent === "red"
-        ? "text-[var(--color-biz-danger)]"
-        : "text-[var(--color-biz-accent)]";
+        ? "biz-icon-chip biz-icon-chip--danger"
+        : accent === "amber"
+          ? "biz-icon-chip biz-icon-chip--warning"
+          : "biz-icon-chip";
 
   return (
-    <div className="biz-card p-5">
-      <Icon className={cn("mb-3 h-5 w-5", accentClass)} />
-      <p className="text-xs text-[var(--color-biz-muted)]">{label}</p>
-      <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
-      {sub && <p className="mt-1 text-xs text-[var(--color-biz-muted)]">{sub}</p>}
+    <div className="biz-glass-panel biz-kpi p-5">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-biz-muted)]">
+          {label}
+        </p>
+        {Icon ? (
+          <span className={chipClass}>
+            <Icon className="h-4 w-4" />
+          </span>
+        ) : null}
+      </div>
+      <p
+        data-stat-value
+        className={cn(
+          "mt-2 text-[1.75rem] font-bold leading-9 tracking-tight",
+          loading && "text-[var(--color-biz-faint)]",
+        )}
+      >
+        {loading ? "…" : value}
+      </p>
+      {sub && !loading && (
+        <p className="mt-1 text-xs text-[var(--color-biz-muted)]">{sub}</p>
+      )}
     </div>
   );
-}
+});

@@ -1,0 +1,166 @@
+{
+  "audited_at": "2026-07-02T15:27:18.329Z",
+  "environment": {
+    "admin_url": "http://localhost:3003",
+    "probe_window_ms": 65000,
+    "probe_warmup_ms": 30000,
+    "react_strict_mode": true,
+    "next_dev": true
+  },
+  "backend_latency_ms": {
+    "/health": {
+      "status": 200,
+      "ms": 109
+    },
+    "/ready": {
+      "status": 200,
+      "ms": 26
+    },
+    "/api/admin/dashboard": {
+      "status": 401,
+      "ms": 8
+    },
+    "/api/admin/bookings": {
+      "status": 401,
+      "ms": 16
+    },
+    "/api/geo-intel/exec-kpis": {
+      "status": 401,
+      "ms": 8
+    }
+  },
+  "websocket_at_login": {
+    "notification_socket_count": 1,
+    "urls": [
+      "ws://localhost:3003/ws/notifications?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjbXE5aDY3cGswMDAwdHo4czZ0dm5wZXQ1IiwiZW1haWwiOiJhZG1pbkBob21pZ28uZGVtbyIsImRldmljZUlkIjoiMTA3MTE3YjctNGFmZi00ZDRlLTk5N2QtZDA4MTM4OGFlNDJmIiwiYXV0aEVwb2NoIjoxLCJqdGkiOiIyMTcwNWM4YS02NWY4LTQ1MDktOTA0OS0xNDAxNTk2YjMxNGYiLCJ0eXBlIjoiYWNjZXNzIiwiaWF0IjoxNzgzMDA1NjM0LCJleHAiOjE3ODMwMDkyMzR9.EUg-559wjZmHh11rcq-EmJg0gZzXRQmmpdmVGFCJtYI"
+    ]
+  },
+  "pages": [
+    {
+      "page": "dashboard",
+      "path": "/",
+      "windowMs": 65016,
+      "warmupMs": 30000,
+      "api_calls_total": 0,
+      "api_calls_per_min": 0,
+      "api_calls_by_path": {},
+      "duplicate_api_paths": {},
+      "websocket_frames_per_min": 0,
+      "websocket_frames_total": 0,
+      "websocket_notification_sockets_during_window": 0,
+      "websocket_urls_during_window": [],
+      "render_counts_idle_window": {
+        "AdminRealtimeBridge": 0,
+        "AdminTopBar": 0,
+        "BusinessOverviewPage": 0,
+        "DataTable": 0,
+        "AdminDashboardCharts": 0
+      },
+      "render_total_idle_window": 0,
+      "mount_counts_cumulative": {
+        "AdminRealtimeBridge": 1,
+        "AdminTopBar": 2,
+        "DataTable": 2,
+        "BusinessOverviewPage": 2,
+        "AdminDashboardCharts": 2
+      },
+      "dom_nodes": 750,
+      "dom_delta": 0,
+      "longtask_buffered": 3
+    },
+    {
+      "page": "command-center",
+      "path": "/command-center",
+      "windowMs": 65011,
+      "warmupMs": 30000,
+      "api_calls_total": 1,
+      "api_calls_per_min": 0.9,
+      "api_calls_by_path": {
+        "/api/geo-intel/exec-kpis": 1
+      },
+      "duplicate_api_paths": {},
+      "websocket_frames_per_min": 0,
+      "websocket_frames_total": 0,
+      "websocket_notification_sockets_during_window": 0,
+      "websocket_urls_during_window": [],
+      "render_counts_idle_window": {
+        "AdminRealtimeBridge": 0,
+        "AdminTopBar": 0,
+        "CommandCenterPage": 2,
+        "CommandMap": 0
+      },
+      "render_total_idle_window": 2,
+      "mount_counts_cumulative": {
+        "AdminRealtimeBridge": 1,
+        "AdminTopBar": 2,
+        "CommandMap": 2,
+        "CommandCenterPage": 2
+      },
+      "dom_nodes": 848,
+      "dom_delta": -1,
+      "longtask_buffered": 6
+    },
+    {
+      "page": "bookings",
+      "path": "/bookings",
+      "windowMs": 65011,
+      "warmupMs": 30000,
+      "api_calls_total": 1,
+      "api_calls_per_min": 0.9,
+      "api_calls_by_path": {
+        "/api/admin/bookings": 1
+      },
+      "duplicate_api_paths": {},
+      "websocket_frames_per_min": 0,
+      "websocket_frames_total": 0,
+      "websocket_notification_sockets_during_window": 0,
+      "websocket_urls_during_window": [],
+      "render_counts_idle_window": {
+        "AdminRealtimeBridge": 0,
+        "AdminTopBar": 0,
+        "DataTable": 4
+      },
+      "render_total_idle_window": 4,
+      "mount_counts_cumulative": {
+        "AdminRealtimeBridge": 1,
+        "AdminTopBar": 2,
+        "DataTable": 2
+      },
+      "dom_nodes": 602,
+      "dom_delta": 0,
+      "longtask_buffered": 5
+    },
+    {
+      "page": "support",
+      "path": "/support",
+      "windowMs": 65004,
+      "warmupMs": 30000,
+      "api_calls_total": 3,
+      "api_calls_per_min": 2.8,
+      "api_calls_by_path": {
+        "/api/admin/support/tickets": 3
+      },
+      "duplicate_api_paths": {
+        "/api/admin/support/tickets": 3
+      },
+      "websocket_frames_per_min": 31.4,
+      "websocket_frames_total": 34,
+      "websocket_notification_sockets_during_window": 0,
+      "websocket_urls_during_window": [],
+      "render_counts_idle_window": {
+        "AdminRealtimeBridge": 8,
+        "AdminTopBar": 8,
+        "DataTable": 8
+      },
+      "render_total_idle_window": 24,
+      "mount_counts_cumulative": {
+        "AdminRealtimeBridge": 1,
+        "AdminTopBar": 2,
+        "DataTable": 2
+      },
+      "dom_nodes": 604,
+      "dom_delta": 0,
+      "longtask_buffered": 3
+    }
+  ]
+}

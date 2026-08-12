@@ -1,33 +1,703 @@
 @import "tailwindcss";
 
-/* HOMIGO Business Command Center — NOT partner, NOT customer */
+/* ═══════════════════════════════════════════════════════════════════════
+   HOMIGO ENTERPRISE OS — Design Language v5 "Executive Graphite"
+   Business Command Center — NOT partner, NOT customer.
+
+   Palette      : Deep Graphite · Midnight Black · Executive Navy
+   Accent       : Electric Blue · Intelligence Cyan · Emerald · Risk Amber · Critical Red
+   Typography   : Inter Tight (display) · Inter (primary) · IBM Plex Sans (numerals)
+   Motion       : 150–350ms, GPU-composited transform/opacity only
+   ═══════════════════════════════════════════════════════════════════════ */
 
 @theme {
-  --color-biz-bg: #09090b;
-  --color-biz-surface: #18181b;
-  --color-biz-elevated: #27272a;
-  --color-biz-accent: #f59e0b;
-  --color-biz-accent-dim: rgb(245 158 11 / 0.15);
+  /* ── Surfaces (layered, never flat) ─────────────────────────────────── */
+  --color-biz-bg: #05070d;
+  --color-biz-surface: #0b101b;
+  --color-biz-elevated: #131a2a;
+  --color-biz-overlay: #182136;
+  --color-biz-glass: rgb(142 176 255 / 0.05);
+
+  /* ── Accent system ──────────────────────────────────────────────────── */
+  --color-biz-accent: #3d7eff;            /* Electric Blue   */
+  --color-biz-accent-dim: rgb(61 126 255 / 0.13);
+  --color-biz-cyan: #22d3ee;              /* Intelligence Cyan */
+  --color-biz-cyan-dim: rgb(34 211 238 / 0.12);
+  --color-biz-success: #10b981;           /* Success Emerald */
+  --color-biz-warning: #f59e0b;           /* Risk Amber      */
+  --color-biz-danger: #ef4444;            /* Critical Red    */
+
+  /* ── Ink ────────────────────────────────────────────────────────────── */
+  --color-biz-text: #eef2fa;
+  --color-biz-muted: #8b95ad;
+  --color-biz-faint: #5c6579;
+  --color-biz-line: rgb(96 116 156 / 0.22);
+  --color-biz-line-strong: rgb(112 134 178 / 0.34);
+
+  /* ── Typography ─────────────────────────────────────────────────────── */
+  --font-sans: var(--font-inter), "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-inter-tight), var(--font-inter), "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+  --font-num: var(--font-plex), var(--font-inter), "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+
+  /* ── Geometry & elevation ───────────────────────────────────────────── */
+  --spacing-enterprise: 1.5rem;
+  --radius-enterprise: 14px;
+  --shadow-enterprise: 0 1px 2px rgb(2 4 10 / 0.5), 0 12px 32px -16px rgb(2 4 10 / 0.6);
+  --shadow-glow-amber: 0 0 44px rgb(245 158 11 / 0.07);
+  --shadow-glow-blue: 0 0 44px rgb(61 126 255 / 0.09);
+}
+
+/* Mirror theme tokens on :root so var() works in inline styles & arbitrary classes */
+:root {
+  --color-biz-bg: #05070d;
+  --color-biz-surface: #0b101b;
+  --color-biz-elevated: #131a2a;
+  --color-biz-overlay: #182136;
+  --color-biz-glass: rgb(142 176 255 / 0.05);
+  --color-biz-accent: #3d7eff;
+  --color-biz-accent-dim: rgb(61 126 255 / 0.13);
+  --color-biz-cyan: #22d3ee;
+  --color-biz-cyan-dim: rgb(34 211 238 / 0.12);
   --color-biz-success: #10b981;
+  --color-biz-warning: #f59e0b;
   --color-biz-danger: #ef4444;
-  --color-biz-text: #fafafa;
-  --color-biz-muted: #a1a1aa;
-  --color-biz-line: rgb(63 63 70 / 0.8);
+  --color-biz-text: #eef2fa;
+  --color-biz-muted: #8b95ad;
+  --color-biz-faint: #5c6579;
+  --color-biz-line: rgb(96 116 156 / 0.22);
+  --color-biz-line-strong: rgb(112 134 178 / 0.34);
+  --spacing-enterprise: 1.5rem;
+  --radius-enterprise: 14px;
+  --shadow-enterprise: 0 1px 2px rgb(2 4 10 / 0.5), 0 12px 32px -16px rgb(2 4 10 / 0.6);
+  --shadow-glow-amber: 0 0 44px rgb(245 158 11 / 0.07);
+  --shadow-glow-blue: 0 0 44px rgb(61 126 255 / 0.09);
 }
 
 body {
-  background: var(--color-biz-bg);
+  background:
+    radial-gradient(1200px 500px at 85% -10%, rgb(61 126 255 / 0.05), transparent 60%),
+    radial-gradient(900px 420px at -10% 0%, rgb(34 211 238 / 0.03), transparent 55%),
+    var(--color-biz-bg);
   color: var(--color-biz-text);
   min-height: 100dvh;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DAY MODE — "Executive Mint" (token remap only; night stays Graphite)
+   Background = customer Services-page canvas; accent = brand emerald.
+   ═══════════════════════════════════════════════════════════════════════ */
+html[data-theme="light"] {
+  --color-biz-bg: #f7fdf9;
+  --color-biz-surface: #ffffff;
+  --color-biz-elevated: #eefaf3;
+  --color-biz-overlay: #e3f6ec;
+  --color-biz-glass: rgb(16 185 129 / 0.05);
+  --color-biz-accent: #059669;
+  --color-biz-accent-dim: rgb(5 150 105 / 0.1);
+  --color-biz-cyan: #0d9488;
+  --color-biz-cyan-dim: rgb(13 148 136 / 0.1);
+  --color-biz-text: #06110c;
+  --color-biz-muted: #3d5249;
+  --color-biz-faint: #64766d;
+  --color-biz-line: rgb(6 95 70 / 0.2);
+  --color-biz-line-strong: rgb(6 95 70 / 0.34);
+  --shadow-enterprise: 0 1px 2px rgb(6 78 59 / 0.05), 0 12px 32px -18px rgb(6 78 59 / 0.16);
+  --shadow-glow-amber: 0 0 44px rgb(245 158 11 / 0.08);
+  --shadow-glow-blue: 0 0 44px rgb(16 185 129 / 0.1);
+}
+
+html[data-theme="light"] body {
+  /* EXACT Services-page hero canvas + soft emerald orbs */
+  background:
+    radial-gradient(1200px 500px at 85% -10%, rgb(16 185 129 / 0.08), transparent 60%),
+    radial-gradient(900px 420px at -10% 0%, rgb(20 184 166 / 0.06), transparent 55%),
+    linear-gradient(135deg, #ffffff 0%, #f0fdf4 35%, #ffffff 100%);
+  /* Subpixel rendering — noticeably crisper dark-on-light text on Windows */
+  -webkit-font-smoothing: auto;
+}
+
+/* ── Day-mode legibility remap ─────────────────────────────────────────────
+   Dozens of screens use dark-canvas grays (text-slate/zinc-200…500) that are
+   unreadable on the mint canvas. Remap them to ink globally; dark islands
+   (maps, heatmaps, dark chips) below re-assert their original grays. */
+html[data-theme="light"] :is(.text-slate-100, .text-slate-200, .text-zinc-100, .text-zinc-200, .text-gray-100, .text-gray-200) {
+  color: var(--color-biz-text);
+}
+html[data-theme="light"] :is(.text-slate-300, .text-zinc-300, .text-gray-300) {
+  color: #22352c;
+}
+html[data-theme="light"] :is(.text-slate-400, .text-zinc-400, .text-gray-400, .text-slate-500, .text-zinc-500, .text-gray-500) {
+  color: var(--color-biz-muted);
+}
+html[data-theme="light"] :is(.text-emerald-300, .text-emerald-400) {
+  color: #047857;
+}
+html[data-theme="light"] :is(.text-amber-300, .text-amber-400) {
+  color: #b45309;
+}
+html[data-theme="light"] :is(.text-red-300, .text-red-400, .text-rose-300, .text-rose-400) {
+  color: #b91c1c;
+}
+html[data-theme="light"] :is(.text-sky-300, .text-sky-400, .text-blue-300, .text-blue-400, .text-cyan-300, .text-cyan-400) {
+  color: #0e7490;
+}
+html[data-theme="light"] :is(.text-violet-300, .text-violet-400, .text-purple-300, .text-fuchsia-300) {
+  color: #6d28d9;
+}
+
+/* Dark islands keep their bright grays (readable on their own dark surfaces) */
+html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900, .heatmap-canvas)
+  :is(.text-slate-200, .text-slate-300, .text-zinc-200, .text-zinc-300, .text-gray-300) {
+  color: #cbd5e1;
+}
+html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900, .heatmap-canvas)
+  :is(.text-slate-400, .text-slate-500, .text-zinc-400, .text-zinc-500, .text-gray-400) {
+  color: #94a3b8;
+}
+html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900, .heatmap-canvas)
+  :is(.text-emerald-300, .text-emerald-400) {
+  color: #34d399;
+}
+html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900, .heatmap-canvas)
+  :is(.text-amber-300, .text-amber-400) {
+  color: #fbbf24;
+}
+
+html[data-theme="light"] :focus-visible {
+  outline-color: rgb(5 150 105 / 0.65);
+}
+
+html[data-theme="light"] .biz-card {
+  background: linear-gradient(180deg, rgb(16 185 129 / 0.03) 0%, transparent 38%), var(--color-biz-surface);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), var(--shadow-enterprise);
+}
+
+html[data-theme="light"] .biz-glass-panel {
+  background:
+    linear-gradient(155deg, rgb(16 185 129 / 0.06) 0%, rgb(16 185 129 / 0.02) 42%, transparent 100%),
+    var(--color-biz-surface);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), var(--shadow-enterprise);
+}
+
+html[data-theme="light"] .biz-kpi::before {
+  background: linear-gradient(90deg, transparent, rgb(5 150 105 / 0.55), transparent);
+}
+
+html[data-theme="light"] .biz-icon-chip {
+  border-color: rgb(5 150 105 / 0.25);
+}
+
+html[data-theme="light"] .biz-sidebar {
+  background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
+  border-right-color: var(--color-biz-line);
+}
+
+html[data-theme="light"] .biz-sidebar-brand {
+  background: linear-gradient(180deg, rgb(16 185 129 / 0.08) 0%, transparent 100%);
+}
+
+html[data-theme="light"] .biz-hq-link-card {
+  background: linear-gradient(180deg, rgb(16 185 129 / 0.03) 0%, transparent 40%), var(--color-biz-surface);
+}
+
+html[data-theme="light"] .biz-hq-link-card:hover {
+  border-color: rgb(5 150 105 / 0.4);
+  background: var(--color-biz-elevated);
+}
+
+html[data-theme="light"] .biz-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-biz-elevated) 0%,
+    rgb(16 185 129 / 0.1) 50%,
+    var(--color-biz-elevated) 100%
+  );
+  background-size: 200% 100%;
+}
+
+html[data-theme="light"] .biz-route-progress {
+  box-shadow: 0 0 12px rgb(5 150 105 / 0.5);
+}
+
+html[data-theme="light"] .biz-btn {
+  background: linear-gradient(180deg, rgb(16 185 129 / 0.05) 0%, transparent 55%), var(--color-biz-surface);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 1px 2px rgb(6 78 59 / 0.08);
+}
+
+html[data-theme="light"] .biz-btn:hover:not(:disabled) {
+  border-color: rgb(5 150 105 / 0.4);
+}
+
+html[data-theme="light"] .biz-btn-primary {
+  border-color: rgb(5 150 105 / 0.5);
+  background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 2px 8px rgb(5 150 105 / 0.35);
+}
+
+html[data-theme="light"] .biz-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #14c48d 0%, #0aa877 100%);
+  border-color: rgb(5 150 105 / 0.7);
+}
+
+html[data-theme="light"] .biz-segment-btn.is-active {
+  box-shadow: 0 1px 6px rgb(5 150 105 / 0.4);
+}
+
+html[data-theme="light"] * {
+  scrollbar-color: rgb(6 95 70 / 0.3) transparent;
+}
+
+html[data-theme="light"] *::-webkit-scrollbar-thumb {
+  background: rgb(6 95 70 / 0.3);
+}
+
+html[data-theme="light"] *::-webkit-scrollbar-thumb:hover {
+  background: rgb(6 95 70 / 0.5);
+}
+
+/* Executive numerals — every metric reads like a terminal readout */
+[data-stat-value],
+.biz-num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.01em;
+}
+
+.biz-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+/* Accessible, brand-consistent focus */
+:focus-visible {
+  outline: 2px solid rgb(61 126 255 / 0.65);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Refined scrollbars (WebKit + Firefox) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(96 116 156 / 0.35) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(96 116 156 / 0.35);
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(96 116 156 / 0.55);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── Enterprise OS v5 design language ─────────────────────────────────── */
 
 .biz-card {
-  background: var(--color-biz-surface);
+  background: linear-gradient(180deg, rgb(142 176 255 / 0.03) 0%, transparent 38%), var(--color-biz-surface);
   border: 1px solid var(--color-biz-line);
-  border-radius: 12px;
+  border-radius: var(--radius-enterprise);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04), var(--shadow-enterprise);
 }
 
+.biz-glass-panel {
+  background:
+    linear-gradient(155deg, rgb(142 176 255 / 0.07) 0%, rgb(142 176 255 / 0.02) 42%, transparent 100%),
+    var(--color-biz-surface);
+  border: 1px solid var(--color-biz-line);
+  border-radius: var(--radius-enterprise);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), var(--shadow-enterprise);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.biz-glass-panel:hover {
+  border-color: var(--color-biz-line-strong);
+}
+
+.biz-glass-glow-amber {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), var(--shadow-enterprise), var(--shadow-glow-amber);
+}
+
+.biz-glass-glow-blue {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), var(--shadow-enterprise), var(--shadow-glow-blue);
+}
+
+.biz-glass-glow-emerald {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), var(--shadow-enterprise), 0 0 44px rgb(16 185 129 / 0.07);
+}
+
+.biz-glass-glow-red {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), var(--shadow-enterprise), 0 0 44px rgb(239 68 68 / 0.07);
+}
+
+/* KPI hero tile — the "board-room number" */
+.biz-kpi {
+  position: relative;
+  overflow: hidden;
+}
+
+.biz-kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgb(61 126 255 / 0.55), transparent);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.biz-kpi:hover::before {
+  opacity: 1;
+}
+
+/* Icon chip used across KPI cards */
+.biz-icon-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.625rem;
+  background: var(--color-biz-accent-dim);
+  border: 1px solid rgb(61 126 255 / 0.22);
+  color: var(--color-biz-accent);
+  flex-shrink: 0;
+}
+
+.biz-icon-chip--success {
+  background: rgb(16 185 129 / 0.1);
+  border-color: rgb(16 185 129 / 0.22);
+  color: var(--color-biz-success);
+}
+
+.biz-icon-chip--danger {
+  background: rgb(239 68 68 / 0.1);
+  border-color: rgb(239 68 68 / 0.22);
+  color: var(--color-biz-danger);
+}
+
+.biz-icon-chip--warning {
+  background: rgb(245 158 11 / 0.1);
+  border-color: rgb(245 158 11 / 0.22);
+  color: var(--color-biz-warning);
+}
+
+.biz-icon-chip--cyan {
+  background: var(--color-biz-cyan-dim);
+  border-color: rgb(34 211 238 / 0.22);
+  color: var(--color-biz-cyan);
+}
+
+/* Sidebar */
 .biz-sidebar {
-  background: var(--color-biz-surface);
+  background: linear-gradient(180deg, #0a0f1a 0%, #070b13 100%);
   border-right: 1px solid var(--color-biz-line);
+}
+
+.biz-sidebar-brand {
+  border-bottom: 1px solid var(--color-biz-line);
+  padding: 1rem 1rem 1.125rem;
+  background: linear-gradient(180deg, rgb(61 126 255 / 0.06) 0%, transparent 100%);
+}
+
+.biz-hq-hero {
+  padding-bottom: 0.25rem;
+}
+
+.biz-hq-link-card {
+  display: block;
+  border-radius: var(--radius-enterprise);
+  border: 1px solid var(--color-biz-line);
+  background: linear-gradient(180deg, rgb(142 176 255 / 0.03) 0%, transparent 40%), var(--color-biz-surface);
+  padding: 1rem 1.125rem;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+  will-change: transform;
+}
+
+.biz-hq-link-card:hover {
+  border-color: rgb(61 126 255 / 0.4);
+  background: var(--color-biz-elevated);
+  transform: translateY(-1px);
+}
+
+.biz-page-enter {
+  animation: biz-page-enter 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.biz-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-biz-elevated) 0%,
+    rgb(142 176 255 / 0.08) 50%,
+    var(--color-biz-elevated) 100%
+  );
+  background-size: 200% 100%;
+  animation: biz-shimmer 1.4s ease-in-out infinite;
+}
+
+/* Route progress — instant nav feedback, GPU-only (transform/opacity) */
+.biz-route-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 9999;
+  pointer-events: none;
+  background: linear-gradient(90deg, var(--color-biz-accent), var(--color-biz-cyan));
+  box-shadow: 0 0 12px rgb(61 126 255 / 0.6);
+  transform-origin: left;
+  transform: scaleX(0);
+}
+
+.biz-route-progress[data-state="active"] {
+  animation: biz-route-trickle 1.6s cubic-bezier(0.16, 0.84, 0.44, 1) forwards;
+}
+
+.biz-route-progress[data-state="done"] {
+  transform: scaleX(1);
+  opacity: 0;
+  transition: transform 0.15s ease-out, opacity 0.22s ease-out 0.05s;
+}
+
+@keyframes biz-route-trickle {
+  0% {
+    transform: scaleX(0);
+  }
+  18% {
+    transform: scaleX(0.38);
+  }
+  55% {
+    transform: scaleX(0.72);
+  }
+  100% {
+    transform: scaleX(0.9);
+  }
+}
+
+/* Live indicator dot — pulses, GPU-only */
+.biz-live-dot {
+  position: relative;
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--color-biz-success);
+}
+
+.biz-live-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: inherit;
+  animation: biz-ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* Wall-screen / mission-control fullscreen mode */
+.biz-wallscreen {
+  width: 100vw;
+  height: 100vh;
+}
+
+[data-fullscreen="true"] [data-stat-value] {
+  font-size: 2.25rem;
+  line-height: 2.5rem;
+}
+
+[data-fullscreen="true"] .biz-glass-panel {
+  padding: 1.25rem;
+}
+
+@keyframes biz-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes biz-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes biz-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  75%,
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .biz-page-enter,
+  .biz-skeleton,
+  .biz-live-dot::after,
+  .biz-route-progress {
+    animation: none;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Buttons */
+.biz-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-biz-line-strong);
+  background: linear-gradient(180deg, rgb(142 176 255 / 0.06) 0%, transparent 55%), var(--color-biz-surface);
+  color: var(--color-biz-text) !important;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 1px 2px rgb(2 4 10 / 0.4);
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  cursor: pointer;
+}
+
+.biz-btn:hover:not(:disabled) {
+  background: var(--color-biz-elevated);
+  border-color: rgb(61 126 255 / 0.35);
+}
+
+.biz-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.biz-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.biz-btn svg {
+  color: var(--color-biz-text);
+  flex-shrink: 0;
+}
+
+.biz-btn-primary {
+  border-color: rgb(61 126 255 / 0.5);
+  background: linear-gradient(180deg, #4f8bff 0%, #2e6ff2 100%);
+  color: #fff !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 2px 8px rgb(46 111 242 / 0.35);
+}
+
+.biz-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #5b93ff 0%, #3a79f5 100%);
+  border-color: rgb(61 126 255 / 0.7);
+}
+
+.biz-segment {
+  display: flex;
+  gap: 0.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-biz-line);
+  background: var(--color-biz-bg);
+  padding: 0.25rem;
+}
+
+.biz-segment-btn {
+  border: none;
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-biz-muted);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.biz-segment-btn:hover {
+  background: var(--color-biz-elevated);
+  color: var(--color-biz-text);
+}
+
+.biz-segment-btn.is-active {
+  background: var(--color-biz-accent);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 1px 6px rgb(61 126 255 / 0.4);
+}
+
+/* Enterprise tables */
+.biz-thead-sticky th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-biz-surface);
+}
+
+.biz-th {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-biz-muted);
+  white-space: nowrap;
+}
+
+/* Heatmap (operations) */
+.heatmap-canvas {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--color-biz-line);
+  background-color: #060a12;
+  background-image:
+    radial-gradient(ellipse at 50% 35%, rgba(239, 68, 68, 0.1), transparent 65%),
+    radial-gradient(ellipse at 80% 20%, rgba(61, 126, 255, 0.08), transparent 50%),
+    linear-gradient(rgba(139, 149, 173, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(139, 149, 173, 0.1) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
+  box-shadow: inset 0 0 60px rgba(2, 4, 10, 0.5);
+}
+
+.heatmap-cell {
+  position: absolute;
+  border-radius: 9999px;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.heatmap-zone-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(239 68 68 / 0.25);
+  border-left: 3px solid #ef4444;
+  background: rgb(239 68 68 / 0.08);
+  padding: 0.625rem 0.75rem;
+}
+
+.heatmap-zone-row--success {
+  border-color: rgb(16 185 129 / 0.25);
+  border-left-color: #10b981;
+  background: rgb(16 185 129 / 0.08);
 }

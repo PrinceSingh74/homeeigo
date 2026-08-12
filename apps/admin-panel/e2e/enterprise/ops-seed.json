@@ -1,0 +1,13 @@
+{
+  "adminId": "cmq9h67pk0000tz8s6tvnpet5",
+  "withdrawalId": "cmqb60g2f0001tzeceorqsnhs",
+  "chargebackId": "cmqb61b180003tzgcxhdhs8s3",
+  "discrepancyId": "cmqb61b1u0006tzgcg5ms21fy",
+  "providerId": "cmq6v2wks00lftztc8kfu0o9r",
+  "approverEmail": "finance-approver@homigo.demo",
+  "approverPassword": "Homigo@123",
+  "customerId": "cmq9h68mp0008tz8so7py2429",
+  "serviceId": "cmq6v2wjj00latztcrd9op9we",
+  "addressId": "cmqaib3py003htzfcu4sqm5n4",
+  "seededAt": "2026-06-12T16:53:37.498Z"
+}

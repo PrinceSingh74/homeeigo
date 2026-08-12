@@ -1,0 +1,197 @@
+{
+  "audited_at": "2026-07-02T16:50:57.981Z",
+  "environment": {
+    "admin_url": "http://localhost:3003",
+    "backend_url": "http://localhost:3000",
+    "probe_window_ms": 65000,
+    "probe_warmup_ms": 25000,
+    "react_strict_mode": true,
+    "next_dev": true
+  },
+  "backend_latency_ms": {
+    "/health": {
+      "status": 200,
+      "ms": 128
+    },
+    "/ready": {
+      "status": 200,
+      "ms": 19
+    },
+    "/api/admin/dashboard": {
+      "status": 401,
+      "ms": 6
+    },
+    "/api/admin/bookings": {
+      "status": 401,
+      "ms": 6
+    },
+    "/api/geo-intel/exec-kpis": {
+      "status": 401,
+      "ms": 11
+    },
+    "/api/admin/heatmap?gridSize=0.05&days=30": {
+      "status": 401,
+      "ms": 7
+    },
+    "/api/digital-twin/cities": {
+      "status": 401,
+      "ms": 16
+    },
+    "/api/admin/observability/health": {
+      "status": 401,
+      "ms": 13
+    }
+  },
+  "pages": [
+    {
+      "target": "command-center",
+      "windowMs": 65010,
+      "warmupMs": 25000,
+      "homigo_api_calls_total": 1,
+      "homigo_api_calls_per_min": 0.9,
+      "api_calls_by_path": {
+        "/api/geo-intel/exec-kpis": 1
+      },
+      "duplicate_api_paths": {},
+      "websocket_urls_during_window": [],
+      "websocket_notification_socket_count": 0,
+      "websocket_frames_received": 0,
+      "websocket_frames_per_min": 0,
+      "mount_counts_cumulative": {
+        "AdminRealtimeBridge": 1,
+        "AdminTopBar": 2,
+        "ExecutiveKpiRibbon": 2,
+        "CommandMap": 2,
+        "AiIntelligencePanel": 2,
+        "OperationalTimeline": 2,
+        "CommandCenterPage": 2
+      },
+      "mount_counts_idle_window": {
+        "AdminRealtimeBridge": 0,
+        "AdminTopBar": 0,
+        "ExecutiveKpiRibbon": 0,
+        "CommandMap": 0,
+        "AiIntelligencePanel": 0,
+        "OperationalTimeline": 0,
+        "CommandCenterPage": 0
+      },
+      "react_render_counts_idle_window": {
+        "AdminRealtimeBridge": 0,
+        "AdminTopBar": 0,
+        "CommandCenterPage": 2,
+        "ExecutiveKpiRibbon": 2,
+        "CommandMap": 0,
+        "AiIntelligencePanel": 0,
+        "OperationalTimeline": 0
+      },
+      "dom_nodes_before": 848,
+      "dom_nodes_after": 847,
+      "longtask_buffered": 5
+    },
+    {
+      "target": "operations",
+      "windowMs": 65009,
+      "warmupMs": 25000,
+      "homigo_api_calls_total": 1,
+      "homigo_api_calls_per_min": 0.9,
+      "api_calls_by_path": {
+        "/api/admin/ops-map": 1
+      },
+      "duplicate_api_paths": {},
+      "websocket_urls_during_window": [],
+      "websocket_notification_socket_count": 0,
+      "websocket_frames_received": 0,
+      "websocket_frames_per_min": 0,
+      "mount_counts_cumulative": {
+        "AdminRealtimeBridge": 1,
+        "AdminTopBar": 2,
+        "OperationsPage": 2
+      },
+      "mount_counts_idle_window": {
+        "AdminRealtimeBridge": 0,
+        "AdminTopBar": 0,
+        "OperationsPage": 0
+      },
+      "react_render_counts_idle_window": {
+        "AdminRealtimeBridge": 0,
+        "AdminTopBar": 0,
+        "OperationsPage": 4,
+        "OpsLiveMap": 0
+      },
+      "dom_nodes_before": 633,
+      "dom_nodes_after": 633,
+      "longtask_buffered": 4
+    },
+    {
+      "target": "digital-twin",
+      "windowMs": 65007,
+      "warmupMs": 25000,
+      "homigo_api_calls_total": 3,
+      "homigo_api_calls_per_min": 2.8,
+      "api_calls_by_path": {
+        "/api/digital-twin/Gurugram": 1,
+        "/api/digital-twin/Gurugram/insights": 1,
+        "/api/digital-twin/cities": 1
+      },
+      "duplicate_api_paths": {},
+      "websocket_urls_during_window": [],
+      "websocket_notification_socket_count": 0,
+      "websocket_frames_received": 0,
+      "websocket_frames_per_min": 0,
+      "mount_counts_cumulative": {
+        "AdminRealtimeBridge": 1,
+        "AdminTopBar": 2,
+        "DigitalTwinPage": 2
+      },
+      "mount_counts_idle_window": {
+        "AdminRealtimeBridge": 0,
+        "AdminTopBar": 0,
+        "DigitalTwinPage": 0
+      },
+      "react_render_counts_idle_window": {
+        "AdminRealtimeBridge": 0,
+        "AdminTopBar": 0,
+        "DigitalTwinPage": 4
+      },
+      "dom_nodes_before": 565,
+      "dom_nodes_after": 565,
+      "longtask_buffered": 2
+    },
+    {
+      "target": "heatmap",
+      "windowMs": 65001,
+      "warmupMs": 25000,
+      "homigo_api_calls_total": 1,
+      "homigo_api_calls_per_min": 0.9,
+      "api_calls_by_path": {
+        "/api/admin/heatmap": 1
+      },
+      "duplicate_api_paths": {},
+      "websocket_urls_during_window": [],
+      "websocket_notification_socket_count": 0,
+      "websocket_frames_received": 0,
+      "websocket_frames_per_min": 0,
+      "mount_counts_cumulative": {
+        "AdminRealtimeBridge": 1,
+        "AdminTopBar": 2,
+        "HeatmapPage": 2,
+        "HeatmapCanvas": 2
+      },
+      "mount_counts_idle_window": {
+        "AdminRealtimeBridge": 0,
+        "AdminTopBar": 0,
+        "HeatmapPage": 0,
+        "HeatmapCanvas": 0
+      },
+      "react_render_counts_idle_window": {
+        "AdminRealtimeBridge": 0,
+        "AdminTopBar": 0,
+        "HeatmapPage": 0,
+        "HeatmapCanvas": 0
+      },
+      "dom_nodes_before": 569,
+      "dom_nodes_after": 569,
+      "longtask_buffered": 2
+    }
+  ]
+}

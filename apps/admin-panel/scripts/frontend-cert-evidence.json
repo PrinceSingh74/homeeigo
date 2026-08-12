@@ -1,0 +1,86 @@
+{
+  "audited_at": "2026-07-02T15:51:54.756Z",
+  "probe_window_ms": 65000,
+  "probe_warmup_ms": 25000,
+  "websocket_frame_types_during_session": {
+    "PING": 0,
+    "PONG": 0,
+    "other": 0
+  },
+  "pages": [
+    {
+      "page": "dashboard",
+      "windowMs": 65012,
+      "api_calls_total": 0,
+      "api_calls_per_min": 0,
+      "api_calls_by_path": {},
+      "duplicate_api_paths": {},
+      "websocket_app_frames_total": 0,
+      "websocket_app_frames_per_min": 0,
+      "websocket_hmr_frames_total": 0,
+      "react_render_total_idle": 0,
+      "react_render_counts_idle_window": {
+        "AdminRealtimeBridge": 0,
+        "AdminTopBar": 0,
+        "BusinessOverviewPage": 0,
+        "DataTable": 0,
+        "AdminDashboardCharts": 0
+      }
+    },
+    {
+      "page": "bookings",
+      "windowMs": 65012,
+      "api_calls_total": 1,
+      "api_calls_per_min": 0.9,
+      "api_calls_by_path": {
+        "/api/admin/bookings": 1
+      },
+      "duplicate_api_paths": {},
+      "websocket_app_frames_total": 0,
+      "websocket_app_frames_per_min": 0,
+      "websocket_hmr_frames_total": 0,
+      "react_render_total_idle": 0,
+      "react_render_counts_idle_window": {
+        "AdminRealtimeBridge": 0,
+        "AdminTopBar": 0,
+        "DataTable": 0
+      }
+    },
+    {
+      "page": "support",
+      "windowMs": 65003,
+      "api_calls_total": 1,
+      "api_calls_per_min": 0.9,
+      "api_calls_by_path": {
+        "/api/admin/support/tickets": 1
+      },
+      "duplicate_api_paths": {},
+      "websocket_app_frames_total": 0,
+      "websocket_app_frames_per_min": 0,
+      "websocket_hmr_frames_total": 0,
+      "react_render_total_idle": 0,
+      "react_render_counts_idle_window": {
+        "AdminRealtimeBridge": 0,
+        "AdminTopBar": 0,
+        "DataTable": 0
+      }
+    }
+  ],
+  "navigation": [
+    {
+      "nav": "Bookings",
+      "href": "/bookings",
+      "route_transition_ms": 300
+    },
+    {
+      "nav": "Support",
+      "href": "/support",
+      "route_transition_ms": 494
+    },
+    {
+      "nav": "Overview",
+      "href": "/",
+      "route_transition_ms": 376
+    }
+  ]
+}
