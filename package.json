@@ -10,6 +10,8 @@
     "dev:admin": "npm run dev --prefix apps/admin-panel",
     "dev:web": "npm run dev:customer",
     "dev:backend": "npm run dev --prefix apps/backend",
+    "dev:mobile": "npm run start --prefix homigo-mobile",
+    "dev:partner-mobile": "npm run start --prefix homigo-partner-mobile",
     "dev:all": "concurrently -n customer,partner,admin,backend \"npm run dev:customer\" \"npm run dev:partner\" \"npm run dev:admin\" \"npm run dev:backend\"",
     "build": "npm run build:customer && npm run build:partner && npm run build:backend",
     "build:customer": "npm run build --prefix apps/web",
@@ -21,8 +23,16 @@
     "start:web": "npm run start --prefix apps/web",
     "start:partner": "npm run start --prefix apps/partner-web",
     "start:backend": "npm run start --prefix apps/backend",
+    "enterprise:e2e": "bun run scripts/enterprise/run-e2e-suite.ts",
+    "enterprise:mobile": "bun run scripts/enterprise/run-mobile-runtime.ts",
+    "enterprise:load": "cd apps/backend && bun run enterprise:load",
+    "enterprise:observability": "cd apps/backend && bun run enterprise:observability",
     "lint": "eslint . --ext ts,tsx",
     "test": "jest",
+    "test:e2e:web": "npm run test:e2e --prefix apps/web",
+    "test:e2e:admin": "npm run test:e2e --prefix apps/admin-panel",
+    "test:e2e:partner": "npm run test:e2e --prefix apps/partner-web",
+    "test:e2e:all": "npm run test:e2e:web && npm run test:e2e:admin && npm run test:e2e:partner",
     "format": "prettier --write .",
     "clean": "rm -rf node_modules apps/*/node_modules .turbo dist"
   },
@@ -43,9 +53,14 @@
   "author": "Your Name",
   "license": "MIT",
   "workspaces": [
-    "homigo-mobile"
+    "homigo-mobile",
+    "homigo-partner-mobile"
   ],
+  "overrides": {
+    "ws": "^8.18.2"
+  },
   "dependencies": {
+    "expo-dev-client": "~6.0.21",
     "jose": "^6.2.3"
   }
 }

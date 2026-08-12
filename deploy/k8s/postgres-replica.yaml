@@ -1,0 +1,36 @@
+# HOMIGO PostgreSQL READ REPLICAS (2) — async streaming replication from primary.
+# PgBouncer routes read-only reporting/analytics/heatmap traffic here (offload primary).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: { name: homigo-postgres-replica, labels: { app: homigo-postgres, role: replica } }
+spec:
+  serviceName: homigo-postgres-replica
+  replicas: 2
+  selector: { matchLabels: { app: homigo-postgres, role: replica } }
+  template:
+    metadata: { labels: { app: homigo-postgres, role: replica } }
+    spec:
+      initContainers:
+        - name: pg-basebackup
+          image: postgres:16
+          command: ["sh", "-c", "until pg_basebackup -h homigo-postgres-primary -D /var/lib/postgresql/data -U replicator -R -X stream; do sleep 5; done"]
+          envFrom: [{ secretRef: { name: homigo-pg-credentials } }]
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+      containers:
+        - name: postgres
+          image: postgres:16
+          args: ["-c", "hot_standby=on"]
+          ports: [{ containerPort: 5432 }]
+          envFrom: [{ secretRef: { name: homigo-pg-credentials } }]
+          resources: { requests: { cpu: "1", memory: "4Gi" }, limits: { cpu: "2", memory: "8Gi" } }
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec: { accessModes: ["ReadWriteOnce"], storageClassName: fast-ssd, resources: { requests: { storage: 100Gi } } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: homigo-postgres-replica }   # read-only endpoint (round-robins replicas)
+spec:
+  selector: { app: homigo-postgres, role: replica }
+  ports: [{ port: 5432, targetPort: 5432 }]

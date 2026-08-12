@@ -155,6 +155,10 @@ Once backend is running, visit:
 - **API Status:** http://localhost:3000/api/v1/status
 - **Swagger Docs:** http://localhost:3000/swagger
 
+## ✅ QA Verification Report
+
+- Latest backend/frontend integration QA report: `docs/QA_VERIFICATION_REPORT.md`
+
 ---
 
 ## 🎨 Design System

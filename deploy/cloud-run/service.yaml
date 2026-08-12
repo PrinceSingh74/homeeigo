@@ -1,0 +1,66 @@
+# HOMIGO backend — Google Cloud Run service (Knative).
+# Deploy:  gcloud run services replace deploy/cloud-run/service.yaml --region=asia-south1
+# Image is built from apps/backend/Dockerfile (gcloud builds submit / Artifact Registry).
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: homigo-backend
+  labels:
+    app: homigo
+    component: backend
+  annotations:
+    run.googleapis.com/ingress: all            # front with Cloud Load Balancer + Cloud Armor in prod
+spec:
+  template:
+    metadata:
+      annotations:
+        # ---- PHASE 1: autoscaling ----
+        autoscaling.knative.dev/minScale: "1"   # 1 warm instance → no cold start on first request
+        autoscaling.knative.dev/maxScale: "50"  # ceiling for ~10k concurrent users (raise for 100k)
+        run.googleapis.com/cpu-throttling: "false"  # keep CPU between requests (timers/maintenance jobs)
+        run.googleapis.com/startup-cpu-boost: "true" # faster cold start
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/sessionAffinity: "true"
+    spec:
+      # ---- PHASE 1: concurrency ----
+      containerConcurrency: 80                  # requests per instance before scaling out
+      timeoutSeconds: 30
+      serviceAccountName: homigo-backend@PROJECT_ID.iam.gserviceaccount.com  # has secretAccessor + cloudsql.client
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT_ID/homigo/backend:latest
+          ports:
+            - name: http1
+              containerPort: 8080
+          # ---- PHASE 1: CPU + memory limits ----
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          env:
+            - { name: NODE_ENV, value: "production" }
+            - { name: SECRETS_SOURCE, value: "gsm" }
+            - { name: GCP_PROJECT_ID, value: "PROJECT_ID" }
+            # ---- PHASE 2: secrets from Secret Manager (no plaintext in the manifest/image) ----
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: DATABASE_URL, key: latest } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: JWT_SECRET, key: latest } }
+            - name: PII_MASTER_KEY
+              valueFrom: { secretKeyRef: { name: PII_MASTER_KEY, key: latest } }
+            - name: RAZORPAY_KEY_SECRET
+              valueFrom: { secretKeyRef: { name: RAZORPAY_KEY_SECRET, key: latest } }
+            - name: RAZORPAY_WEBHOOK_SECRET
+              valueFrom: { secretKeyRef: { name: RAZORPAY_WEBHOOK_SECRET, key: latest } }
+          # ---- PHASE 1: cold-start / health gating ----
+          startupProbe:
+            httpGet: { path: /health, port: 8080 }
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 10                # up to ~30s for a cold container to become ready
+          livenessProbe:
+            httpGet: { path: /health, port: 8080 }
+            periodSeconds: 15
+            timeoutSeconds: 3
+  traffic:
+    - percent: 100
+      latestRevision: true

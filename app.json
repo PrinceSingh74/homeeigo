@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "daf90ae5-1eba-4339-a7d0-c29f1f2f03b1"
+      }
+    },
+    "android": {
+      "package": "com.harekrishna_2003.homigo"
+    }
+  }
+}

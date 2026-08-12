@@ -1,0 +1,13 @@
+# HOMIGO backend Service (ClusterIP) — fronts the HPA-managed backend pods.
+apiVersion: v1
+kind: Service
+metadata:
+  name: homigo-backend
+  labels: { app: homigo-backend }
+spec:
+  type: ClusterIP
+  selector: { app: homigo-backend }
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000

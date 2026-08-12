@@ -1,0 +1,59 @@
+# HOMIGO PostgreSQL HA — CloudNativePG cluster: 1 primary + 2 sync/async replicas,
+# automatic failover, continuous WAL archiving to object storage (PITR), and a built-in
+# connection pooler. Mirrors the locally-validated config (wal_level=replica,
+# archive_mode=on, archive_timeout=5m → RPO ≤ 5 min).
+#
+# Requires: CloudNativePG operator (cnpg.io). For 500k-user roadmap, add read-replica
+# routing (the `-ro` service) for reporting/analytics, and shard hot tables.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: homigo-postgres
+spec:
+  instances: 3                     # 1 primary + 2 replicas (automatic failover)
+  imageName: ghcr.io/cloudnative-pg/postgresql:16
+  primaryUpdateStrategy: unsupervised
+
+  postgresql:
+    parameters:
+      max_connections: "300"        # behind PgBouncer; app never connects directly
+      shared_buffers: "2GB"
+      effective_cache_size: "6GB"
+      work_mem: "16MB"
+      wal_level: "replica"
+      archive_mode: "on"
+      archive_timeout: "300"        # ≤ 5-min RPO (validated locally)
+      shared_preload_libraries: "pg_stat_statements"
+      pg_stat_statements.track: "all"
+
+  storage:
+    size: 100Gi
+    storageClass: fast-ssd
+
+  # Continuous backup + WAL archiving to object storage → Point-In-Time Recovery.
+  backup:
+    barmanObjectStore:
+      destinationPath: "s3://homigo-pg-backups/"
+      s3Credentials:
+        accessKeyId: { name: homigo-pg-backup-creds, key: ACCESS_KEY_ID }
+        secretAccessKey: { name: homigo-pg-backup-creds, key: SECRET_ACCESS_KEY }
+      wal: { compression: gzip, maxParallel: 4 }
+      data: { compression: gzip }
+    retentionPolicy: "30d"
+
+  # Scheduled base backups (PITR base) — every 6h.
+  resources:
+    requests: { cpu: "1", memory: "4Gi" }
+    limits: { cpu: "2", memory: "8Gi" }
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata: { name: homigo-postgres-6h }
+spec:
+  schedule: "0 0 */6 * * *"
+  cluster: { name: homigo-postgres }
+  backupOwnerReference: self
+---
+# Read-only service → route reporting/analytics/heatmap reads to replicas (offload primary).
+# CloudNativePG auto-creates: homigo-postgres-rw (primary), homigo-postgres-ro (replicas),
+# homigo-postgres-r (any). PgBouncer points its read pool at -ro.

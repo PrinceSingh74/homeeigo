@@ -1,0 +1,87 @@
+# HOMIGO backend — stateless Deployment + HPA + Service.
+# Stateless (JWT auth, Redis-backed sessions/rate-limit) → horizontally scalable.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homigo-backend
+  labels: { app: homigo-backend }
+spec:
+  replicas: 4                      # baseline for ~10k users (see capacity table)
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels: { app: homigo-backend }
+  template:
+    metadata:
+      labels: { app: homigo-backend }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "3000"
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/homigo/backend:latest
+          ports: [{ containerPort: 3000 }]
+          env:
+            # Point Prisma at PgBouncer (transaction pooling), not Postgres directly.
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: homigo-secrets, key: database-url-pgbouncer } }
+            - name: REDIS_URL
+              valueFrom: { secretKeyRef: { name: homigo-secrets, key: redis-url } }
+            - name: PRISMA_CONNECTION_LIMIT
+              value: "20"           # per-pod; N pods × 20 ≤ PgBouncer MAX_CLIENT_CONN
+          resources:
+            requests: { cpu: "500m", memory: "512Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }
+          readinessProbe:
+            httpGet: { path: /ready, port: 3000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 3000 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          # Graceful shutdown so in-flight requests drain before the pod dies.
+          lifecycle:
+            preStop: { exec: { command: ["sleep", "10"] } }
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homigo-backend
+spec:
+  selector: { app: homigo-backend }
+  ports: [{ port: 80, targetPort: 3000 }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: homigo-backend-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: homigo-backend
+  minReplicas: 4
+  maxReplicas: 64                   # 100k-user ceiling (see capacity table)
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 65 }   # CPU was the measured bottleneck
+    - type: Resource
+      resource:
+        name: memory
+        target: { type: Utilization, averageUtilization: 75 }
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies: [{ type: Percent, value: 100, periodSeconds: 30 }]   # double fast under load
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies: [{ type: Percent, value: 25, periodSeconds: 60 }]    # shed slowly

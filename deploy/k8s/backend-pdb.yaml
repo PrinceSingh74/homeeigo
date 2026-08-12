@@ -1,0 +1,7 @@
+# HOMIGO backend PodDisruptionBudget — keep >=3 pods during node drains/upgrades.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: homigo-backend-pdb }
+spec:
+  minAvailable: 3
+  selector: { matchLabels: { app: homigo-backend } }

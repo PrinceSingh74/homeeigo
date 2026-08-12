@@ -1,0 +1,249 @@
+# HOMIGO queue workers — 8 dedicated worker pools, each scaling INDEPENDENTLY on its
+# own queue depth (KEDA ScaledObject on Redis list length). Keeps notifications, email,
+# weather, maps, billing, and analytics off the request path and isolated from each other.
+#
+# Requires: KEDA (kedacore) for queue-depth autoscaling. Each worker is the same image
+# with a WORKER_QUEUE env selecting which BullMQ/Redis queue it drains.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homigo-worker-queues
+data:
+  queues: "notifications,emails,weather,maps,billing,analytics"
+---
+# Template repeated per queue (notifications shown; others identical with name/queue/scale swapped).
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: homigo-worker-notifications, labels: { app: homigo-worker, queue: notifications } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: homigo-worker, queue: notifications } }
+  template:
+    metadata: { labels: { app: homigo-worker, queue: notifications } }
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/homigo/backend:latest
+          command: ["bun", "run", "src/worker.ts"]
+          env:
+            - { name: WORKER_QUEUE, value: "notifications" }
+          envFrom: [{ secretRef: { name: homigo-secrets } }]
+          resources: { requests: { cpu: "250m", memory: "256Mi" }, limits: { cpu: "500m", memory: "512Mi" } }
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: scale-worker-notifications }
+spec:
+  scaleTargetRef: { name: homigo-worker-notifications }
+  minReplicaCount: 1
+  maxReplicaCount: 20
+  triggers:
+    - type: redis
+      metadata: { address: "homigo-redis:6379", listName: "bull:notifications:wait", listLength: "100" }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: homigo-worker-emails, labels: { app: homigo-worker, queue: emails } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: homigo-worker, queue: emails } }
+  template:
+    metadata: { labels: { app: homigo-worker, queue: emails } }
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/homigo/backend:latest
+          command: ["bun", "run", "src/worker.ts"]
+          env: [{ name: WORKER_QUEUE, value: "emails" }]
+          envFrom: [{ secretRef: { name: homigo-secrets } }]
+          resources: { requests: { cpu: "150m", memory: "192Mi" }, limits: { cpu: "300m", memory: "384Mi" } }
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: scale-worker-emails }
+spec:
+  scaleTargetRef: { name: homigo-worker-emails }
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  triggers:
+    - type: redis
+      metadata: { address: "homigo-redis:6379", listName: "bull:emails:wait", listLength: "200" }
+---
+# weather / maps / billing / analytics — same pattern, independent ScaledObjects.
+# weather:   maxReplicaCount 8,  listName bull:weather:wait    (refresh NCR + city weather caches)
+# maps:      maxReplicaCount 8,  listName bull:maps:wait       (batch geocode / route precompute)
+# billing:   maxReplicaCount 6,  listName bull:billing:wait    (settlements, payouts, invoices)
+# analytics: maxReplicaCount 12, listName bull:analytics:wait  (zone aggregation, heatmaps, reports)
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: homigo-worker-analytics, labels: { app: homigo-worker, queue: analytics } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: homigo-worker, queue: analytics } }
+  template:
+    metadata: { labels: { app: homigo-worker, queue: analytics } }
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/homigo/backend:latest
+          command: ["bun", "run", "src/worker.ts"]
+          env: [{ name: WORKER_QUEUE, value: "analytics" }]
+          envFrom: [{ secretRef: { name: homigo-secrets } }]
+          resources: { requests: { cpu: "500m", memory: "512Mi" }, limits: { cpu: "1", memory: "1Gi" } }
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: scale-worker-analytics }
+spec:
+  scaleTargetRef: { name: homigo-worker-analytics }
+  minReplicaCount: 2
+  maxReplicaCount: 12
+  triggers:
+    - type: redis
+      metadata: { address: "homigo-redis:6379", listName: "bull:analytics:wait", listLength: "150" }
+---
+# SMS worker — OTP / transactional SMS (Twilio), isolated from email so an SMS provider
+# outage never backs up email (and vice-versa).
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: homigo-worker-sms, labels: { app: homigo-worker, queue: sms } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: homigo-worker, queue: sms } }
+  template:
+    metadata: { labels: { app: homigo-worker, queue: sms } }
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/homigo/backend:latest
+          command: ["bun", "run", "src/worker.ts"]
+          env: [{ name: WORKER_QUEUE, value: "sms" }]
+          envFrom: [{ secretRef: { name: homigo-secrets } }]
+          resources: { requests: { cpu: "150m", memory: "192Mi" }, limits: { cpu: "300m", memory: "384Mi" } }
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: scale-worker-sms }
+spec:
+  scaleTargetRef: { name: homigo-worker-sms }
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  triggers:
+    - type: redis
+      metadata: { address: "homigo-redis:6379", listName: "bull:sms:wait", listLength: "200" }
+---
+# Webhooks worker — outbound webhook delivery + inbound Razorpay webhook processing
+# (idempotent, signature-verified). Independent scaling so a slow partner endpoint
+# can't stall the payment path.
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: homigo-worker-webhooks, labels: { app: homigo-worker, queue: webhooks } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: homigo-worker, queue: webhooks } }
+  template:
+    metadata: { labels: { app: homigo-worker, queue: webhooks } }
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/homigo/backend:latest
+          command: ["bun", "run", "src/worker.ts"]
+          env: [{ name: WORKER_QUEUE, value: "webhooks" }]
+          envFrom: [{ secretRef: { name: homigo-secrets } }]
+          resources: { requests: { cpu: "250m", memory: "256Mi" }, limits: { cpu: "500m", memory: "512Mi" } }
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: scale-worker-webhooks }
+spec:
+  scaleTargetRef: { name: homigo-worker-webhooks }
+  minReplicaCount: 1
+  maxReplicaCount: 15
+  triggers:
+    - type: redis
+      metadata: { address: "homigo-redis:6379", listName: "bull:webhooks:wait", listLength: "100" }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: homigo-worker-weather, labels: { app: homigo-worker, queue: weather } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: homigo-worker, queue: weather } }
+  template:
+    metadata: { labels: { app: homigo-worker, queue: weather } }
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/homigo/backend:latest
+          command: ["bun", "run", "src/worker.ts"]
+          env: [{ name: WORKER_QUEUE, value: "weather" }]
+          envFrom: [{ secretRef: { name: homigo-secrets } }]
+          resources: { requests: { cpu: "250m", memory: "256Mi" }, limits: { cpu: "300m", memory: "512Mi" } }
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: scale-worker-weather }
+spec:
+  scaleTargetRef: { name: homigo-worker-weather }
+  minReplicaCount: 1
+  maxReplicaCount: 8
+  triggers:
+    - type: redis
+      metadata: { address: "homigo-redis:6379", listName: "bull:weather:wait", listLength: "150" }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: homigo-worker-maps, labels: { app: homigo-worker, queue: maps } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: homigo-worker, queue: maps } }
+  template:
+    metadata: { labels: { app: homigo-worker, queue: maps } }
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/homigo/backend:latest
+          command: ["bun", "run", "src/worker.ts"]
+          env: [{ name: WORKER_QUEUE, value: "maps" }]
+          envFrom: [{ secretRef: { name: homigo-secrets } }]
+          resources: { requests: { cpu: "250m", memory: "256Mi" }, limits: { cpu: "300m", memory: "512Mi" } }
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: scale-worker-maps }
+spec:
+  scaleTargetRef: { name: homigo-worker-maps }
+  minReplicaCount: 1
+  maxReplicaCount: 8
+  triggers:
+    - type: redis
+      metadata: { address: "homigo-redis:6379", listName: "bull:maps:wait", listLength: "150" }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: homigo-worker-billing, labels: { app: homigo-worker, queue: billing } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: homigo-worker, queue: billing } }
+  template:
+    metadata: { labels: { app: homigo-worker, queue: billing } }
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/homigo/backend:latest
+          command: ["bun", "run", "src/worker.ts"]
+          env: [{ name: WORKER_QUEUE, value: "billing" }]
+          envFrom: [{ secretRef: { name: homigo-secrets } }]
+          resources: { requests: { cpu: "250m", memory: "256Mi" }, limits: { cpu: "500m", memory: "1Gi" } }
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: scale-worker-billing }
+spec:
+  scaleTargetRef: { name: homigo-worker-billing }
+  minReplicaCount: 1
+  maxReplicaCount: 6
+  triggers:
+    - type: redis
+      metadata: { address: "homigo-redis:6379", listName: "bull:billing:wait", listLength: "150" }

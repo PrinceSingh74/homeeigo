@@ -1,0 +1,53 @@
+# Redis Cluster — cache / dispatch-locks / pub-sub fan-out / presence.
+# StatefulSet of 6 (3 primaries + 3 replicas). Eviction policy = volatile-lru
+# (all cache keys are TTL'd; lock keys are protected). See redis-enterprise-audit.md.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: homigo-redis
+  labels: { app: homigo-redis }
+spec:
+  serviceName: homigo-redis
+  replicas: 6
+  selector:
+    matchLabels: { app: homigo-redis }
+  template:
+    metadata:
+      labels: { app: homigo-redis }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          command:
+            - redis-server
+            - --cluster-enabled
+            - "yes"
+            - --cluster-node-timeout
+            - "5000"
+            - --maxmemory
+            - "1gb"
+            - --maxmemory-policy
+            - volatile-lru
+            - --appendonly
+            - "yes"
+          ports:
+            - { containerPort: 6379, name: client }
+            - { containerPort: 16379, name: gossip }
+          resources:
+            requests: { cpu: "250m", memory: "1Gi" }
+            limits:   { cpu: "500m", memory: "1280Mi" }
+          readinessProbe:
+            exec: { command: ["redis-cli", "ping"] }
+            periodSeconds: 10
+      volumeClaimTemplates: []        # bind a PVC per pod in the cluster's storage class
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homigo-redis
+spec:
+  clusterIP: None                     # headless — stable per-pod DNS for cluster gossip
+  selector: { app: homigo-redis }
+  ports:
+    - { port: 6379, name: client }
+    - { port: 16379, name: gossip }

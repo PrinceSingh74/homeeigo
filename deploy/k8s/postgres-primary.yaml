@@ -1,0 +1,43 @@
+# HOMIGO PostgreSQL PRIMARY (vanilla streaming replication alternative to postgresql-ha.yaml/CNPG).
+# Streaming replication to replicas + WAL archiving for PITR (validated locally:
+# archive_mode=on, archive_timeout=300s → RPO ≤ 5 min).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: { name: homigo-postgres-primary, labels: { app: homigo-postgres, role: primary } }
+spec:
+  serviceName: homigo-postgres-primary
+  replicas: 1
+  selector: { matchLabels: { app: homigo-postgres, role: primary } }
+  template:
+    metadata: { labels: { app: homigo-postgres, role: primary } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          args:
+            - "-c"
+            - "wal_level=replica"
+            - "-c"
+            - "archive_mode=on"
+            - "-c"
+            - "archive_command=wal-g wal-push %p"     # WAL → object storage (PITR)
+            - "-c"
+            - "archive_timeout=300"                    # ≤ 5-min RPO
+            - "-c"
+            - "max_wal_senders=10"
+            - "-c"
+            - "shared_preload_libraries=pg_stat_statements"
+          ports: [{ containerPort: 5432 }]
+          envFrom: [{ secretRef: { name: homigo-pg-credentials } }]
+          resources: { requests: { cpu: "1", memory: "4Gi" }, limits: { cpu: "2", memory: "8Gi" } }
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec: { accessModes: ["ReadWriteOnce"], storageClassName: fast-ssd, resources: { requests: { storage: 100Gi } } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: homigo-postgres-primary }
+spec:
+  selector: { app: homigo-postgres, role: primary }
+  ports: [{ port: 5432, targetPort: 5432 }]

@@ -1,0 +1,16 @@
+# HOMIGO backend HPA — min 4 / max 64 pods, scale on CPU 65% + memory 75%.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: homigo-backend-hpa }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: homigo-backend }
+  minReplicas: 4
+  maxReplicas: 64
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
+    - type: Resource
+      resource: { name: memory, target: { type: Utilization, averageUtilization: 75 } }
+  behavior:
+    scaleUp:   { stabilizationWindowSeconds: 30,  policies: [{ type: Percent, value: 100, periodSeconds: 30 }] }
+    scaleDown: { stabilizationWindowSeconds: 300, policies: [{ type: Percent, value: 25,  periodSeconds: 60 }] }
