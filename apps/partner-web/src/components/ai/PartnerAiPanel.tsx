@@ -51,7 +51,7 @@ export function PartnerAiPanel() {
       });
     }
 
-    if (dash.rates.acceptanceRate < 0.9) {
+    if (dash.rates.acceptanceRate < 90) {
       items.push({
         id: "acceptance",
         title: "Lift acceptance above 90%",
@@ -231,7 +231,7 @@ function aiReply(
     return `You've netted ${formatInr(dashboard.earnings.today)} today and ${formatInr(dashboard.earnings.thisWeek)} this week. Forecast for the week is on pace if peak-hour acceptance stays above 85%.`;
   }
   if (q.includes("accept")) {
-    const acc = Math.round(dashboard.rates.acceptanceRate * 100);
+    const acc = Math.round(dashboard.rates.acceptanceRate);
     return `Acceptance rate is ${acc}%. ${acc < 90 ? "Bonus tier unlocks at 90% — try to respond within 5 minutes of a request." : "You're in the bonus tier — keep it up."}`;
   }
   if (q.includes("rating")) {

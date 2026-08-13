@@ -521,6 +521,17 @@ export function useMarkArrivedMutation() {
   });
 }
 
+/**
+ * Sends the service-start PIN to the customer. No optimistic cache patching —
+ * this only triggers a notification/email/SMS on the customer's side.
+ */
+export function useRequestStartOtpMutation() {
+  return useMutation({
+    mutationFn: ({ bookingId }: { bookingId: string }) =>
+      partnerApi.requestStartOtp(bookingId),
+  });
+}
+
 export function useStartBookingMutation() {
   const qc = useQueryClient();
   const showToast = useToastStore((s) => s.showToast);
@@ -529,11 +540,13 @@ export function useStartBookingMutation() {
       bookingId,
       latitude,
       longitude,
+      otp,
     }: {
       bookingId: string;
       latitude: number;
       longitude: number;
-    }) => partnerApi.startBooking(bookingId, latitude, longitude),
+      otp?: string;
+    }) => partnerApi.startBooking(bookingId, latitude, longitude, otp),
     onMutate: async ({ bookingId }) => {
       await qc.cancelQueries({ queryKey: partnerKeys.bookingsAll });
       const snapshots = patchBookingsCache(qc, bookingId, { status: "in_progress" });

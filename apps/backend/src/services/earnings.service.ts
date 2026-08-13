@@ -1,10 +1,17 @@
 import {
   BookingStatus,
+  type Prisma,
   WalletTxnStatus,
   WalletTxnType,
   WithdrawalStatus,
 } from "@prisma/client";
 import prisma from "../lib/prisma";
+
+/**
+ * The global client or a transaction handle. Both expose the model methods this service reads
+ * through, so a caller inside `$transaction` can pass `tx` and see its own uncommitted writes.
+ */
+type PrismaLike = typeof prisma | Prisma.TransactionClient;
 import { nextWalletTxnNumber } from "../lib/booking-number";
 import { razorpayService } from "./razorpay.service";
 import { AuditLogService } from "./audit-log.service";
@@ -56,9 +63,19 @@ export class EarningsService {
   /**
    * Compute commission + bonuses + deductions for a single completed booking.
    * Pure read; does not write anything to the database.
+   *
+   * `client` accepts a transaction handle so the caller can compute the breakdown *inside* the
+   * transaction that completes the booking. That matters for more than tidiness: the commission
+   * tier comes from the provider's monthly completed count, and this booking has to be part of
+   * that count. Reading through the global client from inside such a transaction would not see
+   * the not-yet-committed status and would quietly price the booking one tier too low whenever
+   * it happens to be the one crossing a volume threshold.
    */
-  async calculateBookingEarning(bookingId: string): Promise<EarningCalculation> {
-    const booking = await prisma.booking.findUnique({
+  async calculateBookingEarning(
+    bookingId: string,
+    client: PrismaLike = prisma,
+  ): Promise<EarningCalculation> {
+    const booking = await client.booking.findUnique({
       where: { id: bookingId },
       include: { provider: true },
     });
@@ -67,12 +84,12 @@ export class EarningsService {
       throw new Error("Booking has no provider assigned");
     }
 
-    const monthlyCompleted = await this.countMonthlyCompleted(booking.providerId);
+    const monthlyCompleted = await this.countMonthlyCompleted(booking.providerId, client);
     const commissionRate = commissionRateForVolume(monthlyCompleted);
     const commission = roundCurrency(booking.finalAmount * commissionRate);
 
     const bonus = this.calculateBonuses(booking.provider);
-    const deduction = await this.calculateDeductions(booking.providerId, booking.provider.rating);
+    const deduction = await this.calculateDeductions(booking.providerId, booking.provider.rating, client);
 
     const netEarning = Math.max(0, roundCurrency(booking.finalAmount - commission + bonus - deduction));
 
@@ -496,12 +513,12 @@ export class EarningsService {
 
   // ── internals ──────────────────────────────────────────────────────────────
 
-  private async countMonthlyCompleted(providerId: string): Promise<number> {
+  private async countMonthlyCompleted(providerId: string, client: PrismaLike = prisma): Promise<number> {
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    return prisma.booking.count({
+    return client.booking.count({
       where: {
         providerId,
         status: BookingStatus.COMPLETED,
@@ -517,7 +534,11 @@ export class EarningsService {
     return bonus;
   }
 
-  private async calculateDeductions(providerId: string, rating: number): Promise<number> {
+  private async calculateDeductions(
+    providerId: string,
+    rating: number,
+    client: PrismaLike = prisma,
+  ): Promise<number> {
     let deduction = 0;
     if (rating > 0 && rating < 3.5) deduction += LOW_RATING_DEDUCTION;
 
@@ -525,7 +546,7 @@ export class EarningsService {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const cancellations = await prisma.booking.count({
+    const cancellations = await client.booking.count({
       where: {
         providerId,
         status: BookingStatus.CANCELLED_BY_PROVIDER,

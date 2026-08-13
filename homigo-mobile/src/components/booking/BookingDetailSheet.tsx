@@ -36,6 +36,7 @@ import { BookingTimeline } from "./BookingTimeline";
 import { Button } from "@/components/Button";
 import { openBook } from "@/lib/navigation";
 import { getServiceImage } from "@/lib/service-assets";
+import { ServiceStartPinCard } from "@/components/track/ServiceStartPinCard";
 
 type Props = {
   visible: boolean;
@@ -190,6 +191,11 @@ export function BookingDetailSheet({ visible, booking, onClose }: Props) {
                 <DetailRow icon={MessageSquare} label="Notes" value={booking.instructions} />
               ) : null}
             </View>
+
+            {/* Service-start PIN — shown while the job hasn't started yet */}
+            {booking.status === "confirmed" ? (
+              <ServiceStartPinCard bookingId={booking.id} proName={booking.proName} />
+            ) : null}
 
             <Text style={[styles.sectionTitle, { color: c.text }]}>Status timeline</Text>
             <View

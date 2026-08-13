@@ -428,6 +428,8 @@ model Booking {
   assignedAt                  DateTime?                    @map("assigned_at")
   enRouteAt                   DateTime?                    @map("en_route_at")
   arrivedAt                   DateTime?                    @map("arrived_at")
+  /// Set when the customer's start PIN was verified — the gate for `start`.
+  startOtpVerifiedAt          DateTime?                    @map("start_otp_verified_at")
   travelDurationMin           Int?                         @map("travel_duration_min")
   campaignDiscount            Float                        @default(0) @map("campaign_discount")
   campaignDiscountPaise       BigInt                       @default(0) @map("campaign_discount_paise")
@@ -452,6 +454,7 @@ model Booking {
   membershipCouponRedemptions MembershipCouponRedemption[]
   payment                     Payment?
   rating                      Rating?
+  startOtps                   BookingStartOtp[]
   supportTickets              SupportTicket[]
   tracking                    Tracking?
 
@@ -470,6 +473,35 @@ model Booking {
   @@index([addressId])
   @@index([serviceId])
   @@map("bookings")
+}
+
+/// Service-start verification PIN ("start OTP").
+///
+/// Issued to the CUSTOMER when the partner is at the doorstep; the partner must
+/// read it back and submit it before `POST /bookings/:id/start` succeeds. Only
+/// the hash is persisted — the plaintext code travels exclusively over the
+/// customer's channels (in-app notification, email, SMS).
+model BookingStartOtp {
+  id           String    @id @default(cuid())
+  bookingId    String    @map("booking_id")
+  otpHash      String    @map("otp_hash")
+  /// Encrypted-at-rest copy so the booking OWNER can view their own PIN
+  /// in-app (Urban-Company style). Never exposed to the partner.
+  otpCiphertext String?  @map("otp_ciphertext")
+  expiresAt    DateTime  @map("expires_at")
+  attemptCount Int       @default(0) @map("attempt_count")
+  maxAttempts  Int       @default(5) @map("max_attempts")
+  isUsed       Boolean   @default(false) @map("is_used")
+  usedAt       DateTime? @map("used_at")
+  /// Delivery channels the code was actually dispatched on ("app","email","sms").
+  channels     String[]  @default([])
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  booking      Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, createdAt])
+  @@index([expiresAt])
+  @@map("booking_start_otps")
 }
 
 model Payment {

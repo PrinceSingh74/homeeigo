@@ -219,6 +219,19 @@ export const coreApi = {
       apiRequest<ApiResponse<{ booking: BackendBooking }>>(`/api/bookings/${id}`, {
         auth: true,
       }).then((r) => r.data!),
+    /**
+     * Owner-only service-start PIN (Urban-Company style). "active" carries the
+     * plaintext PIN the customer shares in person with the partner at the door.
+     */
+    startPin: (id: string) =>
+      apiRequest<
+        ApiResponse<{
+          state: "verified" | "waiting" | "active";
+          pin: string | null;
+          expiresAt: string | null;
+          verifiedAt: string | null;
+        }>
+      >(`/api/bookings/${id}/start-pin`, { auth: true }).then((r) => r.data!),
     cancel: (id: string, reason: string, cancelledBy: "user" | "provider") =>
       apiRequest<
         ApiResponse<{
@@ -407,6 +420,19 @@ export const coreApi = {
         `/api/geo/eta?fromLat=${from.lat}&fromLng=${from.lng}&toLat=${to.lat}&toLng=${to.lng}`,
         { auth: true },
       ).then((r) => r.data!),
+    /** Server-side driving route (Google → OSRM fallback) — works without client Maps billing. */
+    route: (from: { lat: number; lng: number }, to: { lat: number; lng: number }) =>
+      apiRequest<
+        ApiResponse<{
+          polyline: string | null;
+          distanceKm: number;
+          durationMin: number;
+          etaMinutes: number;
+          source: string;
+        }>
+      >(`/api/geo/route?fromLat=${from.lat}&fromLng=${from.lng}&toLat=${to.lat}&toLng=${to.lng}`, {
+        auth: true,
+      }).then((r) => r.data!),
     nearbyProviders: (payload: { serviceId: string; latitude: number; longitude: number; scheduledDate?: string; maxDistanceKm?: number }) =>
       apiRequest<ApiResponse<{ providers: NearbyProvider[]; count: number }>>("/api/geo/nearby-providers", {
         method: "POST",

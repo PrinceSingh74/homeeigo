@@ -139,6 +139,35 @@ class EmailService {
     return this.send({ to, subject: "Your HOMEEIGO verification code", html });
   }
 
+  /**
+   * Service-start verification PIN. Sent to the CUSTOMER when the partner is at
+   * the doorstep — the partner cannot begin work until the customer reads this
+   * code back to them. Proof-of-presence, Urban-Company style.
+   */
+  async sendServiceStartOtp(
+    to: string,
+    args: { otp: string; serviceTitle: string; partnerName: string; expiresMinutes: number },
+    firstName?: string | null,
+  ): Promise<SendResult> {
+    const greeting = firstName ? `Hi ${this.escapeHtml(firstName)},` : "Hi,";
+    const html = baseTemplate({
+      title: "Your service start PIN",
+      preview: `Start PIN ${args.otp} · share only with your professional at the door`,
+      body: `
+        <p style="margin:0 0 16px 0;font-size:15px;color:#1f2937">${greeting}</p>
+        <p style="margin:0 0 16px 0;font-size:15px;color:#1f2937">
+          <strong>${this.escapeHtml(args.partnerName)}</strong> is ready to begin your
+          <strong>${this.escapeHtml(args.serviceTitle)}</strong> service. Share this PIN with them
+          <strong>only in person</strong> so work can start.
+        </p>
+        <p style="margin:24px 0;text-align:center;font-family:monospace;font-size:32px;letter-spacing:8px;color:#065f46;font-weight:700">${this.escapeHtml(args.otp)}</p>
+        <p style="margin:0 0 8px 0;font-size:13px;color:#6b7280">This PIN expires in ${args.expiresMinutes} minutes.</p>
+        <p style="margin:0;font-size:13px;color:#6b7280">Never share it over phone calls or messages from unknown numbers — HOMEEIGO staff will never ask for it.</p>
+      `,
+    });
+    return this.send({ to, subject: `Service start PIN: ${args.otp}`, html });
+  }
+
   async sendBookingConfirmation(
     to: string,
     booking: { id: string; serviceTitle: string; dateLabel: string; total: number },

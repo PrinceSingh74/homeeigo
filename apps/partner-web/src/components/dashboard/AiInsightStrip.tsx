@@ -11,7 +11,7 @@ export function AiInsightStrip() {
   const { data, isLoading } = usePartnerDashboardQuery();
   const pending = data?.counts.pendingRequests ?? 0;
   const todayEarnings = data?.earnings.today ?? 0;
-  const acceptanceRate = Math.round((data?.rates.acceptanceRate ?? 0) * 100);
+  const acceptanceRate = Math.round(data?.rates.acceptanceRate ?? 0);
 
   const cards = [
     {

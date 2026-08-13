@@ -91,7 +91,7 @@ const geoCoreRoutes = new Elysia({ prefix: "/api/geo" })
         distanceKm: route?.distanceKm ?? eta.distanceKm,
         durationMin: route?.durationMin ?? eta.etaMinutes,
         etaMinutes: eta.etaMinutes,
-        source: route ? "google" : eta.source,
+        source: route ? route.source : eta.source,
       },
     };
   })

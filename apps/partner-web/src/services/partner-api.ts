@@ -204,13 +204,31 @@ export const partnerApi = {
       body: { latitude, longitude },
     }).then((r) => r.data!),
 
-  startBooking: (bookingId: string, latitude: number, longitude: number) =>
+  /**
+   * Dispatches the service-start PIN to the CUSTOMER (in-app + email + SMS).
+   * The partner cannot start until the customer reads the PIN back in person.
+   */
+  requestStartOtp: (bookingId: string) =>
+    apiRequest<
+      ApiResponse<{
+        alreadyVerified: boolean;
+        channels: string[];
+        sentTo: { email: string | null; phone: string | null };
+        expiresInSec: number;
+        resendInSec: number;
+      }>
+    >(`/api/bookings/${bookingId}/start-otp`, {
+      method: "POST",
+      auth: true,
+    }).then((r) => r.data!),
+
+  startBooking: (bookingId: string, latitude: number, longitude: number, otp?: string) =>
     apiRequest<
       ApiResponse<{ booking: { status: string; startedAt?: string | null } }>
     >(`/api/bookings/${bookingId}/start`, {
       method: "POST",
       auth: true,
-      body: { latitude, longitude },
+      body: { latitude, longitude, ...(otp ? { otp } : {}) },
     }).then((r) => r.data!),
 
   completeBooking: (

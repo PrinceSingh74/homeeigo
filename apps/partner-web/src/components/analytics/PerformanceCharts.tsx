@@ -27,9 +27,10 @@ export function PerformanceCharts() {
   const earnings = usePartnerEarningsQuery(days);
 
   const rating = me.data?.rating ?? 0;
-  const completion = Math.round((dashboard.data?.rates.completionRate ?? 0) * 100);
-  const response = Math.round((dashboard.data?.rates.responseRate ?? 0) * 100);
-  const cancellation = Math.round((dashboard.data?.rates.cancellationRate ?? 0) * 100);
+  // rates.* are already percentages (0–100) from the provider record.
+  const completion = Math.round(dashboard.data?.rates.completionRate ?? 0);
+  const response = Math.round(dashboard.data?.rates.responseRate ?? 0);
+  const cancellation = Math.round(dashboard.data?.rates.cancellationRate ?? 0);
 
   const metrics = [
     { label: "Rating", value: rating > 0 ? rating.toFixed(2) : "—", unit: "★" },

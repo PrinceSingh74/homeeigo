@@ -18,12 +18,14 @@ export function DashboardStatsRow() {
 
   const todayEarnings = liveEarnings?.todayEarnings ?? data?.earnings.today ?? 0;
   const todayChange = data?.earnings.todayChange ?? 0;
-  const completedToday =
-    liveEarnings?.completedBookings ?? data?.counts.completedToday ?? 0;
+  // REST only — the stream's `completedBookings` is the lifetime earning-row
+  // count, not today's completions, so it must not patch this tile.
+  const completedToday = data?.counts.completedToday ?? 0;
   const completedDelta = data?.counts.completedTodayDelta ?? 0;
   const pendingRequests = data?.counts.pendingRequests ?? 0;
   const rating = data?.rating ?? 0;
-  const acceptanceRate = Math.round((data?.rates.acceptanceRate ?? 0) * 100);
+  // rates.* are already percentages (0–100) from the provider record.
+  const acceptanceRate = Math.round(data?.rates.acceptanceRate ?? 0);
   const sparklineValues = (data?.earnings.sparkline ?? []).map((d) => d.amount);
 
   const cards = [

@@ -22,6 +22,7 @@ import {
 import { LiveTrackingMapView } from "@/components/LiveTrackingMapView";
 import type { LiveTelemetry, RouteInfo } from "@/components/tracking/LiveTrackingMap";
 import { toJourneyStage, type JourneyStage } from "@/components/tracking/BookingJourney";
+import { ServiceStartPin } from "@/components/tracking/ServiceStartPin";
 import { HOMIGO_RIDER_IMAGE } from "@/lib/demo-tracking-booking";
 import { useActiveTracking } from "@/hooks/use-active-tracking";
 import { useBookingDetailQuery } from "@/hooks/use-core-data";
@@ -313,6 +314,17 @@ export function LiveTrackingSection() {
                     )}
                   </div>
 
+                  {/* Service-start PIN — appears the moment the partner requests
+                      it at the door; renders nothing until then (compact). */}
+                  {stageIdx < STAGE_ORDER.indexOf("STARTED") && (
+                    <ServiceStartPin
+                      bookingId={activeBooking!.id}
+                      proName={activeBooking!.proName}
+                      variant="compact"
+                      showWaiting={stage === "ARRIVED"}
+                    />
+                  )}
+
                   {/* Partner card — real name + real service */}
                   <div className="flex min-w-0 items-center gap-2.5 rounded-2xl bg-canvas/70 p-2.5 ring-1 ring-line sm:gap-3 sm:p-3 dark:bg-white/[0.04]">
                     <div className="relative h-12 w-14 shrink-0 sm:h-14 sm:w-[4.5rem]">
@@ -574,6 +586,19 @@ export function LiveTrackingSection() {
                   transition={{ delay: 0.12, duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
                   className="absolute inset-x-3 bottom-3 z-10 space-y-2.5 rounded-2xl border border-white/10 bg-slate-900/85 p-3.5 shadow-2xl backdrop-blur-xl sm:inset-x-auto sm:left-1/2 sm:w-[min(40rem,92vw)] sm:-translate-x-1/2"
                 >
+                  {/* Service-start PIN — the full map is where customers watch
+                      the partner arrive, so the PIN must surface here too.
+                      `.dark` wrapper keys the card to the dark glass panel. */}
+                  {stageIdx < STAGE_ORDER.indexOf("STARTED") && (
+                    <div className="dark">
+                      <ServiceStartPin
+                        bookingId={activeBooking!.id}
+                        proName={activeBooking!.proName}
+                        variant="compact"
+                        showWaiting={stage === "ARRIVED"}
+                      />
+                    </div>
+                  )}
                   <div className="flex items-end justify-between gap-3">
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">

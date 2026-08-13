@@ -9,6 +9,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { DashboardPanel } from "@/components/ui/DashboardPanel";
+import { StartJobOtpDialog } from "@/components/requests/StartJobOtpDialog";
 import {
   useCompleteBookingMutation,
   useMarkArrivedMutation,
@@ -54,6 +55,8 @@ export function DashboardLiveTracking() {
   const [busy, setBusy] = useState<
     "start" | "complete" | "en_route" | "arrived" | null
   >(null);
+  // "Start job" routes through the customer-PIN verification gate.
+  const [otpDialogOpen, setOtpDialogOpen] = useState(false);
 
   const activeJob = useMemo(
     () =>
@@ -89,6 +92,11 @@ export function DashboardLiveTracking() {
   /** Runs the staged action. The server owns every timestamp; the client only reports position. */
   async function runNextAction() {
     if (!activeJob || !nextAction) return;
+    // Start requires the customer's PIN — hand off to the verification dialog.
+    if (nextAction === "start") {
+      setOtpDialogOpen(true);
+      return;
+    }
     setBusy(nextAction);
     try {
       const coords = await getCurrentCoords();
@@ -99,7 +107,6 @@ export function DashboardLiveTracking() {
       };
       if (nextAction === "en_route") await enRouteMutation.mutateAsync(args);
       else if (nextAction === "arrived") await arrivedMutation.mutateAsync(args);
-      else if (nextAction === "start") await startMutation.mutateAsync(args);
       else await completeMutation.mutateAsync(args);
     } catch {
       /* mutation onError surfaces the toast — avoid an uncaught PartnerApiError */
@@ -226,6 +233,28 @@ export function DashboardLiveTracking() {
           </button>
         )}
       </div>
+
+      {otpDialogOpen && activeJob && (
+        <StartJobOtpDialog
+          bookingId={activeJob.id}
+          customerName={customerName || "the customer"}
+          onClose={() => setOtpDialogOpen(false)}
+          onStart={async (otp) => {
+            setBusy("start");
+            try {
+              const coords = await getCurrentCoords();
+              await startMutation.mutateAsync({
+                bookingId: activeJob.id,
+                latitude: coords.latitude,
+                longitude: coords.longitude,
+                otp,
+              });
+            } finally {
+              setBusy(null);
+            }
+          }}
+        />
+      )}
     </DashboardPanel>
   );
 }

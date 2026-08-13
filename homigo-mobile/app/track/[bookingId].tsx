@@ -13,6 +13,7 @@ import { reportUxSignal } from "@/lib/observability/telemetry";
 import { decodePolyline } from "@/lib/polyline";
 import { toJourneyStage, STAGE_ORDER, RAIL_STEPS } from "@/lib/journey-stage";
 import { HomeLiveMap, type LatLng } from "@/components/track/HomeLiveMap";
+import { ServiceStartPinCard } from "@/components/track/ServiceStartPinCard";
 
 const { height } = Dimensions.get("window");
 
@@ -257,6 +258,11 @@ export default function TrackBookingScreen() {
               );
             })}
           </View>
+
+          {/* service-start PIN — lights up the moment the partner requests it */}
+          {stageIdx < STAGE_ORDER.indexOf("STARTED") ? (
+            <ServiceStartPinCard bookingId={bookingId} proName={proName} />
+          ) : null}
 
           {/* partner card */}
           <View style={styles.proCard}>

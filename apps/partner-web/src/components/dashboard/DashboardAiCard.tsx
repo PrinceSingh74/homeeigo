@@ -21,7 +21,8 @@ function buildSuggestions(args: {
       text: `${args.pending} pending request${args.pending === 1 ? "" : "s"} — respond within 5 minutes for higher acceptance.`,
     });
   }
-  if (args.acceptanceRate < 0.85) {
+  // acceptanceRate is a percentage (0–100).
+  if (args.acceptanceRate < 85) {
     out.push({
       id: "acc",
       icon: Star,

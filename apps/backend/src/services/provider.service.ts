@@ -462,6 +462,11 @@ export class ProviderService {
             status: bookingStatusApi(b.status),
             scheduledDate: b.scheduledDate,
             completedAt: b.completedAt,
+            // Lifecycle anchors — arrival does not change `status`, so the partner UI
+            // needs these to know whether to offer "On my way", "I've arrived" or
+            // "Start job". Omitting them locked the card on "I've arrived" forever.
+            enRouteAt: b.enRouteAt,
+            arrivedAt: b.arrivedAt,
             startedAt: b.startedAt,
             amount: b.baseAmount,
             finalAmount: b.finalAmount,

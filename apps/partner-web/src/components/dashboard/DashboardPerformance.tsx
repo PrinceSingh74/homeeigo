@@ -6,8 +6,9 @@ import { DashboardPanel } from "@/components/ui/DashboardPanel";
 import { partnerLayout } from "@/lib/partner-layout";
 import { cn } from "@/lib/cn";
 
+/** Rates arrive as percentages (0–100). `invert` widens low-is-good bars. */
 function toPct(value: number, invert = false): number {
-  const v = Math.round(value * 100);
+  const v = Math.round(value);
   return invert ? Math.min(100, v * 4) : v;
 }
 
@@ -15,10 +16,10 @@ export function DashboardPerformance() {
   const { data, isLoading } = usePartnerDashboardQuery();
   const rates = data?.rates;
 
-  const completion = Math.round((rates?.completionRate ?? 0) * 100);
-  const response = Math.round((rates?.responseRate ?? 0) * 100);
-  const onTime = Math.round((rates?.onTimeRate ?? 0) * 100);
-  const cancellation = Math.round((rates?.cancellationRate ?? 0) * 100);
+  const completion = Math.round(rates?.completionRate ?? 0);
+  const response = Math.round(rates?.responseRate ?? 0);
+  const onTime = Math.round(rates?.onTimeRate ?? 0);
+  const cancellation = Math.round(rates?.cancellationRate ?? 0);
 
   const score = completion;
   const scoreLabel =

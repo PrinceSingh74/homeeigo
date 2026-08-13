@@ -1296,33 +1296,38 @@ export class BookingService {
           }),
         );
       }
-      return updated;
-    });
-    incCounter("booking_completed_total");
-    await prisma.tracking.updateMany({
-      where: { bookingId: id },
-      data: { status: TrackingStatus.COMPLETED, actualEndTime: new Date(), totalDuration: duration },
-    });
-    if (existing.providerId) {
-      const existingEarning = await prisma.earning.findUnique({ where: { bookingId: id } });
-      if (!existingEarning) {
-        const breakdown = await earningsService.calculateBookingEarning(id);
-        const { rupeesToPaise } = await import("../lib/money-paise");
-        const netPaise = rupeesToPaise(breakdown.netEarning);
+      /**
+       * The partner is paid in the same transaction that marks the job done.
+       *
+       * These used to be two transactions: the booking was committed COMPLETED, and only then
+       * was the wallet credited, the earning row written and the ledger posted. Anything that
+       * interrupted the gap — a process restart, a dropped request — left a finished job with
+       * no earning attached, no error anywhere, and a partner whose dashboard simply showed
+       * nothing. Six of a hundred and eleven completed bookings were in that state.
+       *
+       * Joining them means a failure now rolls the completion back too, so the partner sees a
+       * job that did not complete and can retry, rather than one that completed for free.
+       */
+      if (existing.providerId) {
+        const alreadyEarned = await tx.earning.findUnique({ where: { bookingId: id } });
+        if (!alreadyEarned) {
+          // Computed through `tx` so the commission tier counts this booking, matching the
+          // behaviour of the previous ordering where the status was already committed.
+          const breakdown = await earningsService.calculateBookingEarning(id, tx);
+          const { rupeesToPaise } = await import("../lib/money-paise");
 
-        await prisma.$transaction(async (tx) => {
           await tx.provider.update({
-            where: { id: existing.providerId! },
+            where: { id: existing.providerId },
             data: {
               walletBalance: { increment: breakdown.netEarning },
-              walletBalancePaise: { increment: netPaise },
+              walletBalancePaise: { increment: rupeesToPaise(breakdown.netEarning) },
               totalEarnings: { increment: breakdown.netEarning },
               completedBookings: { increment: 1 },
             },
           });
           await tx.earning.create({
             data: {
-              providerId: existing.providerId!,
+              providerId: existing.providerId,
               bookingId: id,
               grossAmount: breakdown.bookingAmount,
               commission: breakdown.commission,
@@ -1338,15 +1343,22 @@ export class BookingService {
             breakdown.bonus,
             breakdown.deduction,
           );
-        });
-
-        const provider = await prisma.provider.findUnique({
-          where: { id: existing.providerId },
-          select: { userId: true },
-        });
-        if (provider?.userId) {
-          void earningsLiveService.broadcastEarningsUpdate(provider.userId).catch(() => undefined);
         }
+      }
+      return updated;
+    });
+    incCounter("booking_completed_total");
+    await prisma.tracking.updateMany({
+      where: { bookingId: id },
+      data: { status: TrackingStatus.COMPLETED, actualEndTime: new Date(), totalDuration: duration },
+    });
+    if (existing.providerId) {
+      const provider = await prisma.provider.findUnique({
+        where: { id: existing.providerId },
+        select: { userId: true },
+      });
+      if (provider?.userId) {
+        void earningsLiveService.broadcastEarningsUpdate(provider.userId).catch(() => undefined);
       }
     }
     if (booking.userId) {

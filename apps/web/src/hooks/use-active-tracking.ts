@@ -11,10 +11,15 @@ import { qk, upsertTrackingInCache } from "@/hooks/use-core-data";
 import { resolveWsBase } from "@/lib/api-base";
 
 
-/** Backend statuses a partner can actually be tracked for, most-live first. */
+/**
+ * Backend statuses a partner can actually be tracked for, most-live first.
+ * A partner riding to the door (en_route/arrived) needs the live map — and the
+ * start-PIN card — more than a job already underway, so en_route outranks
+ * in_progress when the customer has two concurrent active bookings.
+ */
 const TRACKABLE_RANK: Record<string, number> = {
-  in_progress: 0,
-  en_route: 1,
+  en_route: 0,
+  in_progress: 1,
   assigned: 2,
   accepted: 3,
 };

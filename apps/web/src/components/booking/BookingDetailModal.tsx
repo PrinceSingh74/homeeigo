@@ -36,6 +36,7 @@ import { bookUrl } from "@/lib/booking-url";
 import { useBookingPayment } from "@/hooks/use-booking-payment";
 import { RescheduleBookingModal } from "@/components/booking/RescheduleBookingModal";
 import { CustomerTrackingMap } from "@/components/tracking/CustomerTrackingMap";
+import { ServiceStartPin } from "@/components/tracking/ServiceStartPin";
 import { WalletCheckoutSummary } from "@/components/checkout/WalletCheckoutSummary";
 
 export function BookingDetailModal({
@@ -173,6 +174,10 @@ export function BookingDetailModal({
                 <BookingTimeline events={booking.timeline} />
               </div>
             </div>
+
+            {/* Service-start PIN — the customer shares it in person so the
+                partner can begin. Shown while the job hasn't started yet. */}
+            {canTrack && <ServiceStartPin bookingId={bookingId} proName={booking.proName} />}
 
             {/* Live provider tracking (real backend WS — graceful when no provider/offline). */}
             {canTrack && (

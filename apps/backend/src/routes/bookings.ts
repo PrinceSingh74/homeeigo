@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { authPlugin } from "../plugins/auth.plugin";
 import { bookingService } from "../services/booking.service";
+import { bookingStartOtpService } from "../services/booking-start-otp.service";
 import { bookingRefundService } from "../services/booking-refund.service";
 import { cancellationPolicyService } from "../services/cancellation-policy.service";
 import { parseBody } from "../lib/route-security";
@@ -168,6 +169,29 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
       }),
     },
   )
+  /**
+   * CUSTOMER-only view of the service-start PIN. Owner-scoped inside the
+   * service (`booking.userId` must match) — a partner token gets 404 here,
+   * which is the point: the code must travel person-to-person at the door.
+   */
+  .get("/:id/start-pin", async ({ requireAuth, params: rawParams, set }) => {
+    const { userId } = requireAuth();
+    const params = validate(idParamSchema, rawParams);
+    const result = await bookingStartOtpService.customerView(userId, params.id);
+    if (!result.ok) {
+      set.status = 404;
+      return { success: false, error: "Booking not found", code: "NOT_FOUND" };
+    }
+    return {
+      success: true,
+      data: {
+        state: result.state,
+        pin: result.pin,
+        expiresAt: result.expiresAt,
+        verifiedAt: result.verifiedAt,
+      },
+    };
+  })
   .get("/:id", async ({ requireAuth, params, set }) => {
     const { userId, providerId } = requireAuth();
     const booking = await bookingService.getById(
@@ -351,11 +375,85 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
     { body: t.Object({ latitude: t.Number(), longitude: t.Number() }) },
   )
   .post(
+    "/:id/start-otp",
+    async ({ requireProvider, params: rawParams, set }) => {
+      const { providerId } = requireProvider();
+      const params = validate(idParamSchema, rawParams);
+      const result = await bookingStartOtpService.issue(providerId!, params.id);
+      if (!result.ok) {
+        if (result.error === "NOT_FOUND") {
+          set.status = 404;
+          return { success: false, error: "This booking is not assigned to you", code: "NOT_FOUND" };
+        }
+        if (result.error === "INVALID_STATUS") {
+          set.status = 400;
+          return {
+            success: false,
+            error: "A start PIN cannot be issued for this booking anymore",
+            code: "INVALID_STATUS",
+          };
+        }
+        set.status = 429;
+        return {
+          success: false,
+          error:
+            result.error === "RESEND_COOLDOWN"
+              ? `Please wait ${result.retryAfterSec ?? 30}s before resending`
+              : "Too many PIN requests for this booking — try again later",
+          code: result.error,
+          data: { retryAfterSec: result.retryAfterSec ?? null },
+        };
+      }
+      return {
+        success: true,
+        message: result.alreadyVerified
+          ? "Customer already verified — you can start the job"
+          : "Start PIN sent to the customer",
+        data: {
+          alreadyVerified: result.alreadyVerified,
+          channels: result.channels,
+          sentTo: result.sentTo,
+          expiresInSec: result.expiresInSec,
+          resendInSec: result.resendInSec,
+        },
+      };
+    },
+  )
+  .post(
     "/:id/start",
     async ({ requireProvider, params: rawParams, body: raw, set }) => {
       const { providerId } = requireProvider();
       const params = validate(idParamSchema, rawParams);
       const body = parseBody(geoPingSchema, raw);
+      const otp = typeof (raw as { otp?: unknown })?.otp === "string"
+        ? (raw as { otp: string }).otp
+        : undefined;
+
+      // Proof-of-presence gate: the customer's start PIN must be verified
+      // before any work can begin. Durable via booking.startOtpVerifiedAt,
+      // so a retry after a network error never re-prompts the partner.
+      const gate = await bookingStartOtpService.ensureCanStart(providerId!, params.id, otp);
+      if (!gate.ok) {
+        if (gate.error === "NOT_FOUND") {
+          set.status = 404;
+          return { success: false, error: "This booking is not assigned to you", code: "NOT_FOUND" };
+        }
+        set.status = 400;
+        const messages: Record<string, string> = {
+          OTP_REQUIRED: "Ask the customer for their start PIN to begin this job",
+          OTP_NOT_REQUESTED: "No active PIN for this job — send a new one to the customer",
+          OTP_EXPIRED: "The PIN has expired — send a new one to the customer",
+          OTP_LOCKED: "Too many incorrect attempts — send a new PIN to the customer",
+          OTP_INVALID: "Incorrect PIN — please check with the customer",
+        };
+        return {
+          success: false,
+          error: messages[gate.error] ?? "Customer verification failed",
+          code: gate.error,
+          data: { attemptsLeft: gate.attemptsLeft ?? null },
+        };
+      }
+
       try {
         const booking = await bookingService.start(
           providerId!,
@@ -374,7 +472,11 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
       }
     },
     {
-      body: t.Object({ latitude: t.Number(), longitude: t.Number() }),
+      body: t.Object({
+        latitude: t.Number(),
+        longitude: t.Number(),
+        otp: t.Optional(t.String()),
+      }),
     },
   )
   .post(

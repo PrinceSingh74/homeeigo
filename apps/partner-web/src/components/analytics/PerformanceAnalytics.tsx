@@ -39,8 +39,9 @@ export function PerformanceAnalytics() {
   const invoices = usePartnerInvoicesQuery();
 
   const rates = dashboard.data?.rates;
-  const acceptancePct = Math.round((rates?.acceptanceRate ?? 0) * 100);
-  const completionPct = Math.round((rates?.completionRate ?? 0) * 100);
+  // rates.* are already percentages (0–100) from the provider record.
+  const acceptancePct = Math.round(rates?.acceptanceRate ?? 0);
+  const completionPct = Math.round(rates?.completionRate ?? 0);
   const rating = me.data?.rating ?? dashboard.data?.rating ?? 0;
   const avgResponse = me.data?.avgResponseTime ?? 0;
 

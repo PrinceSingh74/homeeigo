@@ -16,6 +16,19 @@ const BASE = "https://maps.googleapis.com/maps/api";
 const TIMEOUT_MS = 6000;
 const CACHE_TTL = { geo: 86_400, place: 604_800, eta: 120 } as const;
 
+/**
+ * Testing-phase routing fallback — OSRM public demo server (free, keyless).
+ *
+ * Google stays the PRIMARY provider: the moment Cloud billing is enabled its
+ * branch wins again and OSRM is never consulted. Enabled by default outside
+ * production; production requires an explicit OSRM_FALLBACK_ENABLED=true
+ * (the public demo server has no SLA — self-host OSRM if ever needed live).
+ */
+const OSRM_FALLBACK =
+  process.env.OSRM_FALLBACK_ENABLED === "true" ||
+  (process.env.OSRM_FALLBACK_ENABLED !== "false" && process.env.NODE_ENV !== "production");
+const OSRM_BASE = (process.env.OSRM_BASE_URL || "https://router.project-osrm.org").replace(/\/$/, "");
+
 // HOMIGO serves India only — reject coordinates outside the national bounding box.
 const INDIA = { latMin: 6.5, latMax: 37.5, lngMin: 67.5, lngMax: 97.5 };
 
@@ -263,31 +276,79 @@ export const mapsService = {
   async directions(
     from: LatLng,
     to: LatLng,
-  ): Promise<{ polyline: string; distanceKm: number; durationMin: number } | null> {
-    if (!KEY) return null;
-    const data = await gfetch("/directions/json", {
-      origin: `${from.lat},${from.lng}`,
-      destination: `${to.lat},${to.lng}`,
-      mode: "driving",
-      departure_time: "now",
-    });
-    const route = (
-      data?.routes as
-        | Array<{
-            overview_polyline?: { points: string };
-            legs: Array<{
-              distance: { value: number };
-              duration: { value: number };
-              duration_in_traffic?: { value: number };
-            }>;
-          }>
-        | undefined
-    )?.[0];
-    if (data?.status !== "OK" || !route?.overview_polyline?.points) return null;
-    const distanceKm = Math.round((route.legs.reduce((s, l) => s + l.distance.value, 0) / 1000) * 10) / 10;
-    const durationMin = Math.ceil(
-      route.legs.reduce((s, l) => s + (l.duration_in_traffic?.value ?? l.duration.value), 0) / 60,
-    );
-    return { polyline: route.overview_polyline.points, distanceKm, durationMin };
+  ): Promise<{ polyline: string; distanceKm: number; durationMin: number; source: "google" | "osrm" } | null> {
+    if (KEY) {
+      const data = await gfetch("/directions/json", {
+        origin: `${from.lat},${from.lng}`,
+        destination: `${to.lat},${to.lng}`,
+        mode: "driving",
+        departure_time: "now",
+      });
+      const route = (
+        data?.routes as
+          | Array<{
+              overview_polyline?: { points: string };
+              legs: Array<{
+                distance: { value: number };
+                duration: { value: number };
+                duration_in_traffic?: { value: number };
+              }>;
+            }>
+          | undefined
+      )?.[0];
+      if (data?.status === "OK" && route?.overview_polyline?.points) {
+        const distanceKm = Math.round((route.legs.reduce((s, l) => s + l.distance.value, 0) / 1000) * 10) / 10;
+        const durationMin = Math.ceil(
+          route.legs.reduce((s, l) => s + (l.duration_in_traffic?.value ?? l.duration.value), 0) / 60,
+        );
+        return { polyline: route.overview_polyline.points, distanceKm, durationMin, source: "google" };
+      }
+    }
+    // Google absent or denied (e.g. billing disabled during testing) → OSRM.
+    return osrmDirections(from, to);
   },
 };
+
+/**
+ * Real road route from the OSRM public demo server — same encoded-polyline
+ * format Google returns, so every consumer works unchanged. No traffic model
+ * (durations are free-flow), which is fine for the testing phase.
+ */
+async function osrmDirections(
+  from: LatLng,
+  to: LatLng,
+): Promise<{ polyline: string; distanceKm: number; durationMin: number; source: "osrm" } | null> {
+  if (!OSRM_FALLBACK) return null;
+  const cacheKey = `geo:osrm:${from.lat.toFixed(3)},${from.lng.toFixed(3)}:${to.lat.toFixed(3)},${to.lng.toFixed(3)}`;
+  const cached = await redisClient.get(cacheKey).catch(() => null);
+  if (cached) {
+    return JSON.parse(cached) as { polyline: string; distanceKm: number; durationMin: number; source: "osrm" };
+  }
+  try {
+    const url =
+      `${OSRM_BASE}/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}` +
+      `?overview=full&geometries=polyline`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (!res.ok) throw new Error(`osrm_http_${res.status}`);
+    const data = (await res.json()) as {
+      code?: string;
+      routes?: Array<{ geometry?: string; distance?: number; duration?: number }>;
+    };
+    const r = data.routes?.[0];
+    if (data.code !== "Ok" || !r?.geometry) return null;
+    const out = {
+      polyline: r.geometry,
+      distanceKm: Math.round(((r.distance ?? 0) / 1000) * 10) / 10,
+      durationMin: Math.max(1, Math.ceil((r.duration ?? 60) / 60)),
+      source: "osrm" as const,
+    };
+    await redisClient.set(cacheKey, JSON.stringify(out), CACHE_TTL.eta).catch(() => {});
+    recordFeatureEvent("maps_directions", "osrm_fallback");
+    return out;
+  } catch (e) {
+    logger.warn("maps.osrm_fallback_failed", {
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return null;
+  }
+}

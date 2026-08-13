@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useGoogleMapsLoader } from "@/hooks/use-google-maps-loader";
 import { GpsKalmanFilter } from "@/lib/kalman-gps";
 import { HOMIGO_RIDER_IMAGE } from "@/lib/demo-tracking-booking";
+import { decodePolyline } from "@/lib/polyline";
+import { coreApi } from "@/services/core/api";
 
 type LatLng = { lat: number; lng: number };
 
@@ -526,6 +528,122 @@ function homePinIcon(g: any) {
 }
 
 /**
+ * Once Google denies Directions (billing disabled on the Cloud project →
+ * REQUEST_DENIED), stop asking: every retry logs an unavoidable console error
+ * (Google logs it internally) and can never succeed. We fall back to the
+ * BACKEND route proxy (/api/geo/route → Google server key or keyless OSRM),
+ * which returns the same encoded road polyline — the customer still sees the
+ * real route on the map.
+ *
+ * The denial is remembered in localStorage so page reloads skip Google
+ * entirely (zero console noise). It auto-expires so once billing IS enabled,
+ * Google takes over again within a few hours without any code change.
+ */
+let directionsUnavailable = false;
+let fallbackRouteInFlight = false;
+
+const DIRECTIONS_DENIED_KEY = "homigo:directions-denied-until";
+const DIRECTIONS_RETRY_MS = 6 * 60 * 60 * 1000;
+
+function isDirectionsDenied(): boolean {
+  if (directionsUnavailable) return true;
+  try {
+    const until = Number(window.localStorage.getItem(DIRECTIONS_DENIED_KEY) ?? 0);
+    if (Date.now() < until) {
+      directionsUnavailable = true;
+      return true;
+    }
+  } catch {
+    /* storage unavailable (private mode) — fall through to a live attempt */
+  }
+  return false;
+}
+
+function markDirectionsDenied(): void {
+  directionsUnavailable = true;
+  try {
+    window.localStorage.setItem(DIRECTIONS_DENIED_KEY, String(Date.now() + DIRECTIONS_RETRY_MS));
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Last resort when even the backend has no route: dashed straight-line path. */
+function drawStraightLine(
+  g: any,
+  map: any,
+  lineRef: React.MutableRefObject<any>,
+  origin: LatLng,
+  destination: LatLng,
+) {
+  if (lineRef.current) lineRef.current.setMap(null);
+  lineRef.current = new g.maps.Polyline({
+    map,
+    path: [origin, destination],
+    geodesic: true,
+    strokeOpacity: 0,
+    icons: [
+      {
+        icon: { path: "M 0,-1 0,1", strokeOpacity: 0.8, strokeColor: "#34d399", scale: 3 },
+        offset: "0",
+        repeat: "14px",
+      },
+    ],
+    zIndex: 5,
+  });
+}
+
+/** Road route via the backend proxy — no client-side Maps billing required. */
+async function drawServerRoute(
+  g: any,
+  map: any,
+  lineRef: React.MutableRefObject<any>,
+  origin: LatLng,
+  destination: LatLng,
+  onRoute?: (info: RouteInfo) => void,
+) {
+  if (fallbackRouteInFlight) return;
+  fallbackRouteInFlight = true;
+  try {
+    const route = await coreApi.geo.route(origin, destination);
+    const path = decodePolyline(route.polyline);
+    if (path.length < 2) {
+      drawStraightLine(g, map, lineRef, origin, destination);
+      return;
+    }
+    if (lineRef.current) lineRef.current.setMap(null);
+    lineRef.current = new g.maps.Polyline({
+      map,
+      path,
+      geodesic: true,
+      strokeColor: "#22c55e",
+      strokeOpacity: 0.9,
+      strokeWeight: 6,
+      icons: [
+        {
+          icon: { path: g.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2.4, fillColor: "#ffffff", fillOpacity: 1, strokeColor: "#22c55e", strokeWeight: 1 },
+          offset: "0%",
+          repeat: "90px",
+        },
+      ],
+      zIndex: 5,
+    });
+    onRoute?.({
+      distanceKm: route.distanceKm,
+      distanceText: `${route.distanceKm} km`,
+      etaMin: Math.max(1, Math.round(route.etaMinutes || route.durationMin)),
+      durationText: `${route.durationMin} min`,
+      withTraffic: false,
+      trafficLevel: "light",
+    });
+  } catch {
+    drawStraightLine(g, map, lineRef, origin, destination);
+  } finally {
+    fallbackRouteInFlight = false;
+  }
+}
+
+/**
  * Draw a traffic-aware route (provider → destination) with the exact road polyline,
  * repeated direction arrows, and a colour tint reflecting congestion. Reports the exact
  * Google route distance + traffic ETA via `onRoute`.
@@ -538,6 +656,10 @@ function drawRoute(
   destination: LatLng,
   onRoute?: (info: RouteInfo) => void,
 ) {
+  if (isDirectionsDenied()) {
+    void drawServerRoute(g, map, lineRef, origin, destination, onRoute);
+    return;
+  }
   new g.maps.DirectionsService().route(
     {
       origin,
@@ -547,6 +669,12 @@ function drawRoute(
       drivingOptions: { departureTime: new Date(), trafficModel: "bestguess" },
     },
     (res: any, status: string) => {
+      // REQUEST_DENIED = key/billing problem — remember it so reloads skip Google.
+      if (status === "REQUEST_DENIED") {
+        markDirectionsDenied();
+        void drawServerRoute(g, map, lineRef, origin, destination, onRoute);
+        return;
+      }
       if (status !== "OK" || !res?.routes?.[0]) return;
       const route = res.routes[0];
       const leg = route.legs?.[0];

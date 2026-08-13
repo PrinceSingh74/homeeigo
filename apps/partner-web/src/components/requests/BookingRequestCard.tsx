@@ -26,6 +26,7 @@ import {
 } from "@/hooks/use-partner-data";
 import type { PartnerBooking } from "@/types/partner";
 import { formatTime } from "@/lib/format";
+import { StartJobOtpDialog } from "@/components/requests/StartJobOtpDialog";
 
 async function getCurrentCoords(): Promise<{ latitude: number; longitude: number }> {
   return new Promise((resolve) => {
@@ -63,6 +64,8 @@ export function BookingRequestCard({
   const [busy, setBusy] = useState<
     "accept" | "reject" | "cancel" | "start" | "complete" | "en_route" | "arrived" | null
   >(null);
+  // "Start job" opens the customer-PIN gate instead of starting directly.
+  const [otpDialogOpen, setOtpDialogOpen] = useState(false);
 
   const customerName =
     `${request.customer.firstName ?? ""} ${request.customer.lastName ?? ""}`.trim() ||
@@ -272,16 +275,7 @@ export function BookingRequestCard({
                   variant="primary"
                   className="w-full"
                   disabled={busy !== null}
-                  onClick={() =>
-                    void withBusy("start", async () => {
-                      const coords = await getCurrentCoords();
-                      await startMutation.mutateAsync({
-                        bookingId: request.id,
-                        latitude: coords.latitude,
-                        longitude: coords.longitude,
-                      });
-                    })
-                  }
+                  onClick={() => setOtpDialogOpen(true)}
                 >
                   <PlayCircle className="h-4 w-4" />
                   {busy === "start" ? "Starting…" : "Start job"}
@@ -331,6 +325,28 @@ export function BookingRequestCard({
           )}
         </div>
       </PartnerCard>
+
+      {otpDialogOpen && (
+        <StartJobOtpDialog
+          bookingId={request.id}
+          customerName={customerName}
+          onClose={() => setOtpDialogOpen(false)}
+          onStart={async (otp) => {
+            setBusy("start");
+            try {
+              const coords = await getCurrentCoords();
+              await startMutation.mutateAsync({
+                bookingId: request.id,
+                latitude: coords.latitude,
+                longitude: coords.longitude,
+                otp,
+              });
+            } finally {
+              setBusy(null);
+            }
+          }}
+        />
+      )}
     </motion.div>
   );
 }

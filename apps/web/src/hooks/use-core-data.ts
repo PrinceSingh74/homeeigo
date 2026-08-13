@@ -191,6 +191,30 @@ export function useBookingDetailQuery(bookingId?: string) {
   });
 }
 
+/**
+ * Customer's service-start PIN for a booking. Polls while the job hasn't
+ * started so the PIN appears the moment the partner requests it at the door;
+ * stops polling once verified.
+ */
+export function useStartPinQuery(bookingId?: string, enabled = true) {
+  return useQuery({
+    queryKey: ["bookings", "start-pin", bookingId ?? "none"],
+    queryFn: () => coreApi.bookings.startPin(bookingId!),
+    enabled: !!bookingId && enabled,
+    staleTime: 5_000,
+    retry: 1,
+    refetchInterval: (queryRef) => {
+      const state = queryRef.state.data?.state;
+      return state === "verified" ? false : 10_000;
+    },
+    // The customer often has the partner's screen (or another tab) focused
+    // while testing/doing the handoff — keep polling so the PIN is already
+    // on screen the moment they look back.
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+  });
+}
+
 export function useRefreshBookingFromServerMutation() {
   const qc = useQueryClient();
   const addBooking = useAppStore((s) => s.addBooking);

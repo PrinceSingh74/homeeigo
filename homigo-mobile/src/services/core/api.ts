@@ -229,6 +229,19 @@ export const coreApi = {
       apiRequest<ApiResponse<{ booking: BackendBooking }>>(`/api/bookings/${id}`, {
         auth: true,
       }).then((r) => r.data!),
+    /**
+     * Owner-only service-start PIN (Urban-Company style). "active" carries the
+     * plaintext PIN the customer shares in person with the partner at the door.
+     */
+    startPin: (id: string) =>
+      apiRequest<
+        ApiResponse<{
+          state: "verified" | "waiting" | "active";
+          pin: string | null;
+          expiresAt: string | null;
+          verifiedAt: string | null;
+        }>
+      >(`/api/bookings/${id}/start-pin`, { auth: true }).then((r) => r.data!),
     cancel: (id: string, reason: string, cancelledBy: "user" | "provider") =>
       apiRequest<ApiResponse<{ booking: BackendBooking }>>(`/api/bookings/${id}/cancel`, {
         method: "POST",
