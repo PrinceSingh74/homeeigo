@@ -1,42 +1,68 @@
-import { Check, RotateCcw } from "lucide-react";
-import { LegalHero } from "@/components/legal/LegalHero";
+import { RotateCcw } from "lucide-react";
+import { LegalDocument, type LegalTocItem } from "@/components/legal/LegalDocument";
 import { LegalFooterNav } from "@/components/legal/LegalFooterNav";
-import {
-  REFUND_SECTIONS,
-  REFUND_TIERS,
-  type PrivacySection,
-} from "@/lib/legal/legal-data";
+import { LegalKeyPoints, LegalSection } from "@/components/legal/LegalSection";
+import { LegalStatusPill } from "@/components/legal/LegalStatusPill";
+import { LegalTrustBadges } from "@/components/legal/LegalTrustBadges";
+import { REFUND_SECTIONS, REFUND_TIERS, type TrustBadge } from "@/lib/legal/legal-data";
+import { getLegalDoc } from "@/lib/legal/legal-docs";
 
+const DOC = getLegalDoc("refund");
+
+const BADGES: readonly TrustBadge[] = [
+  { label: "Instant wallet refunds", icon: "card" },
+  { label: "Free cancellation window", icon: "shield" },
+  { label: "Transparent fees", icon: "globe" },
+];
+
+const TOC: readonly LegalTocItem[] = REFUND_SECTIONS.map((section) => ({
+  id: section.id,
+  title: section.title,
+}));
+
+/** Cancellation fee tiers — a table on tablet and up, stacked rows on phones. */
 function RefundTierTable() {
   return (
-    <div className="mt-5">
-      {/* Desktop table */}
-      <div className="hidden overflow-hidden rounded-2xl border border-line bg-surface shadow-e2 sm:block">
-        <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Refund tiers table (scrollable)">
-          <table className="w-full min-w-[560px] border-collapse text-left text-sm">
+    <div>
+      <div className="hidden overflow-hidden rounded-xl border border-line bg-surface sm:block">
+        <div
+          className="overflow-x-auto"
+          tabIndex={0}
+          role="region"
+          aria-label="Cancellation fee tiers (scrollable)"
+        >
+          <table className="w-full min-w-[32rem] border-collapse text-left text-sm">
+            <caption className="sr-only">
+              Cancellation fee by how far ahead of the slot you cancel
+            </caption>
             <thead>
-              <tr className="border-b border-line bg-canvas/60 text-xs uppercase tracking-wide text-muted">
-                <th scope="col" className="px-5 py-3.5 font-semibold">When you cancel</th>
-                <th scope="col" className="px-5 py-3.5 font-semibold">Cancellation fee</th>
-                <th scope="col" className="px-5 py-3.5 font-semibold">What it means</th>
+              <tr className="border-b border-line bg-canvas/70 text-xs uppercase tracking-wide text-muted">
+                <th scope="col" className="px-4 py-3 font-semibold">
+                  When you cancel
+                </th>
+                <th scope="col" className="px-4 py-3 font-semibold">
+                  Cancellation fee
+                </th>
+                <th scope="col" className="px-4 py-3 font-semibold">
+                  What it means
+                </th>
               </tr>
             </thead>
-            <tbody>
-              {REFUND_TIERS.map((t, i) => (
-                <tr key={t.window} className={i % 2 ? "bg-canvas/30" : ""}>
-                  <td className="px-5 py-4 font-semibold text-content">{t.window}</td>
-                  <td className="px-5 py-4">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${
-                        t.fee === "Free"
-                          ? "bg-emerald-500/12 text-emerald-600 ring-emerald-500/25 dark:text-emerald-300"
-                          : "bg-amber-500/12 text-amber-600 ring-amber-500/25 dark:text-amber-300"
-                      }`}
-                    >
-                      {t.fee}
-                    </span>
+            <tbody className="divide-y divide-line">
+              {REFUND_TIERS.map((tier) => (
+                <tr key={tier.window}>
+                  <th
+                    scope="row"
+                    className="px-4 py-3.5 text-left font-semibold text-content"
+                  >
+                    {tier.window}
+                  </th>
+                  <td className="px-4 py-3.5">
+                    <LegalStatusPill tone={tier.fee === "Free" ? "positive" : "caution"}>
+                      {tier.fee}
+                    </LegalStatusPill>
                   </td>
-                  <td className="px-5 py-4 text-muted">{t.note}</td>
+                  <td className="px-4 py-3.5 text-muted">{tier.note}</td>
                 </tr>
               ))}
             </tbody>
@@ -44,23 +70,18 @@ function RefundTierTable() {
         </div>
       </div>
 
-      {/* Mobile cards */}
-      <ul className="space-y-3 sm:hidden">
-        {REFUND_TIERS.map((t) => (
-          <li key={t.window} className="rounded-2xl border border-line bg-surface p-4 shadow-e1">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-semibold text-content">{t.window}</p>
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${
-                  t.fee === "Free"
-                    ? "bg-emerald-500/12 text-emerald-600 ring-emerald-500/25 dark:text-emerald-300"
-                    : "bg-amber-500/12 text-amber-600 ring-amber-500/25 dark:text-amber-300"
-                }`}
-              >
-                {t.fee}
-              </span>
+      <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface sm:hidden">
+        {REFUND_TIERS.map((tier) => (
+          <li key={tier.window} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[0.9375rem] font-semibold leading-snug text-content">
+                {tier.window}
+              </p>
+              <LegalStatusPill tone={tier.fee === "Free" ? "positive" : "caution"}>
+                {tier.fee}
+              </LegalStatusPill>
             </div>
-            <p className="mt-2 text-sm text-muted">{t.note}</p>
+            <p className="mt-1.5 text-[0.9375rem] leading-relaxed text-muted">{tier.note}</p>
           </li>
         ))}
       </ul>
@@ -68,96 +89,32 @@ function RefundTierTable() {
   );
 }
 
-function SectionCard({ index, section }: { index: number; section: PrivacySection }) {
-  return (
-    <section
-      id={section.id}
-      className="scroll-mt-24 rounded-3xl border border-line bg-surface/80 p-6 shadow-e1 backdrop-blur-sm sm:p-8"
-    >
-      <div className="flex items-start gap-4">
-        <span
-          aria-hidden
-          className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 font-display text-sm font-bold text-primary"
-        >
-          {String(index).padStart(2, "0")}
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="font-display text-xl font-bold text-content sm:text-2xl">{section.title}</h2>
-          {section.intro ? (
-            <p className="mt-2 text-sm leading-relaxed text-muted sm:text-base">{section.intro}</p>
-          ) : null}
-          {section.body ? (
-            <p className="mt-2 text-sm leading-relaxed text-muted sm:text-base">{section.body}</p>
-          ) : null}
-
-          {section.id === "customer-cancellations" ? <RefundTierTable /> : null}
-
-          {section.items?.length ? (
-            <ul className="mt-5 grid gap-3 sm:grid-cols-2">
-              {section.items.map((it) => (
-                <li key={it.label} className="rounded-2xl border border-line/70 bg-canvas/40 p-4">
-                  <p className="flex items-center gap-2 font-semibold text-content">
-                    <Check size={15} className="text-success" aria-hidden />
-                    {it.label}
-                  </p>
-                  <p className="mt-1.5 text-sm leading-relaxed text-muted">{it.detail}</p>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 export function RefundPolicy() {
   return (
-    <main className="min-h-screen">
-      <LegalHero
-        eyebrow="Refunds & Cancellations"
-        title="Refund & Cancellation Policy"
-        subtitle="Clear, fair rules for cancellations and refunds — including free-cancellation windows, a rework guarantee, and fast payouts."
-        badges={[
-          { label: "Instant wallet refunds", icon: "card" },
-          { label: "Free cancellation window", icon: "shield" },
-          { label: "Transparent fees", icon: "globe" },
-        ]}
+    <main>
+      <LegalDocument
+        doc={DOC}
+        toc={TOC}
+        header={
+          <div className="space-y-5">
+            <LegalTrustBadges badges={BADGES} />
+            <p className="inline-flex items-center gap-2 text-sm font-medium text-muted">
+              <RotateCcw size={15} className="text-legal-accent" aria-hidden />
+              Most refunds are automatic — no request needed.
+            </p>
+          </div>
+        }
+        footer={<LegalFooterNav current={DOC.href} />}
       >
-        <p className="mx-auto mt-6 inline-flex items-center gap-2 text-sm font-medium text-muted">
-          <RotateCcw size={15} className="text-primary" aria-hidden />
-          Most refunds are automatic — no request needed.
-        </p>
-      </LegalHero>
-
-      <div className="mx-auto max-w-3xl px-4 sm:px-6">
-        <nav
-          aria-label="On this page"
-          className="mb-10 rounded-2xl border border-line bg-surface/70 p-4 shadow-e1 backdrop-blur-sm"
-        >
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">On this page</p>
-          <ul className="flex flex-wrap gap-2">
-            {REFUND_SECTIONS.map((s, i) => (
-              <li key={s.id}>
-                <a
-                  href={`#${s.id}`}
-                  className="inline-flex items-center rounded-full border border-line bg-canvas/50 px-3 py-1.5 text-xs font-medium text-content transition-colors hover:border-primary/40 hover:text-primary"
-                >
-                  {String(i + 1).padStart(2, "0")}. {s.title}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-
-        <div className="space-y-6">
-          {REFUND_SECTIONS.map((s, i) => (
-            <SectionCard key={s.id} index={i + 1} section={s} />
-          ))}
-        </div>
-      </div>
-
-      <LegalFooterNav current="/legal/refund" />
+        {REFUND_SECTIONS.map((section, i) => (
+          <LegalSection key={section.id} id={section.id} index={i + 1} title={section.title}>
+            {section.intro ? <p>{section.intro}</p> : null}
+            {section.body ? <p>{section.body}</p> : null}
+            {section.id === "customer-cancellations" ? <RefundTierTable /> : null}
+            {section.items?.length ? <LegalKeyPoints items={section.items} /> : null}
+          </LegalSection>
+        ))}
+      </LegalDocument>
     </main>
   );
 }

@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { apiRequest } from "@/services/auth/api-client";
 
 const STORAGE_KEY = "homigo_cookie_consent";
+const CONSENT_CENTER = "/legal/cookies";
 
 export function CookieConsentBanner() {
+  const pathname = usePathname();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -27,7 +30,9 @@ export function CookieConsentBanner() {
     }
   }
 
-  if (!visible) return null;
+  // The Cookie Preferences Center offers the same choices with more detail, and
+  // the fixed banner would sit on top of its save bar.
+  if (!visible || pathname === CONSENT_CENTER) return null;
 
   return (
     <div
@@ -37,7 +42,10 @@ export function CookieConsentBanner() {
     >
       <p className="text-sm text-content">
         We use essential cookies to keep you signed in and optional cookies to improve HOMEEIGO.{" "}
-        <Link href="/legal/cookies" className="font-semibold text-primary hover:underline">
+        <Link
+          href="/legal/cookies"
+          className="rounded-sm font-semibold text-[#1B5E4F] underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:text-emerald-300"
+        >
           Cookie Policy
         </Link>
       </p>
@@ -45,14 +53,14 @@ export function CookieConsentBanner() {
         <button
           type="button"
           onClick={() => void record(true)}
-          className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white"
+          className="inline-flex min-h-11 items-center rounded-xl bg-[#1B5E4F] px-4 text-sm font-semibold text-white outline-none transition-colors hover:bg-[#164a3f] focus-visible:ring-2 focus-visible:ring-emerald-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
         >
           Accept
         </button>
         <button
           type="button"
           onClick={() => void record(false)}
-          className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-content"
+          className="inline-flex min-h-11 items-center rounded-xl border border-line px-4 text-sm font-semibold text-content outline-none transition-colors hover:border-[#1B5E4F]/40 hover:text-[#1B5E4F] focus-visible:ring-2 focus-visible:ring-emerald-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas dark:hover:text-emerald-300"
         >
           Decline optional
         </button>

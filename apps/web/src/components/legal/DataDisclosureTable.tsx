@@ -1,47 +1,57 @@
+import { LegalStatusPill, type LegalPillTone } from "@/components/legal/LegalStatusPill";
 import { DATA_DISCLOSURE, type DisclosureRow } from "@/lib/legal/legal-data";
 
-function SharedPill({ value }: { value: DisclosureRow["shared"] }) {
-  const styles: Record<DisclosureRow["shared"], string> = {
-    Yes: "bg-amber-500/12 text-amber-600 ring-amber-500/25 dark:text-amber-300",
-    Limited: "bg-primary/10 text-primary ring-primary/25",
-    No: "bg-emerald-500/12 text-emerald-600 ring-emerald-500/25 dark:text-emerald-300",
-  };
-  return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${styles[value]}`}>
-      {value}
-    </span>
-  );
-}
+const SHARED_TONE: Record<DisclosureRow["shared"], LegalPillTone> = {
+  Yes: "caution",
+  Limited: "info",
+  No: "positive",
+};
 
 /**
- * Google Play "Data safety" style disclosure — premium enterprise table on
- * desktop, stacked cards on mobile. Same data source, one accessible component.
+ * Google Play "Data safety" style disclosure — a real table on tablet and up,
+ * stacked rows on phones. One data source, one accessible component.
  */
 export function DataDisclosureTable() {
   return (
     <div>
-      {/* Desktop / tablet: real table */}
-      <div className="hidden overflow-hidden rounded-2xl border border-line bg-surface shadow-e2 sm:block">
-        <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Data disclosure table (scrollable)">
-          <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+      <div className="hidden overflow-hidden rounded-xl border border-line bg-surface sm:block">
+        <div
+          className="overflow-x-auto"
+          tabIndex={0}
+          role="region"
+          aria-label="Data disclosure table (scrollable)"
+        >
+          <table className="w-full min-w-[34rem] border-collapse text-left text-sm">
+            <caption className="sr-only">
+              Data collected, why it is used, whether it is shared, and how long it is retained
+            </caption>
             <thead>
-              <tr className="border-b border-line bg-canvas/60 text-xs uppercase tracking-wide text-muted">
-                <th scope="col" className="px-5 py-3.5 font-semibold">Collected Data</th>
-                <th scope="col" className="px-5 py-3.5 font-semibold">Purpose</th>
-                <th scope="col" className="px-5 py-3.5 font-semibold">Shared?</th>
-                <th scope="col" className="px-5 py-3.5 font-semibold">Retention</th>
+              <tr className="border-b border-line bg-canvas/70 text-xs uppercase tracking-wide text-muted">
+                <th scope="col" className="px-4 py-3 font-semibold">
+                  Collected Data
+                </th>
+                <th scope="col" className="px-4 py-3 font-semibold">
+                  Purpose
+                </th>
+                <th scope="col" className="px-4 py-3 font-semibold">
+                  Shared?
+                </th>
+                <th scope="col" className="px-4 py-3 font-semibold">
+                  Retention
+                </th>
               </tr>
             </thead>
-            <tbody>
-              {DATA_DISCLOSURE.map((row, i) => (
-                <tr
-                  key={row.data}
-                  className={i % 2 ? "bg-canvas/30" : "bg-transparent"}
-                >
-                  <td className="px-5 py-4 font-semibold text-content">{row.data}</td>
-                  <td className="px-5 py-4 text-muted">{row.purpose}</td>
-                  <td className="px-5 py-4"><SharedPill value={row.shared} /></td>
-                  <td className="px-5 py-4 text-muted">{row.retention}</td>
+            <tbody className="divide-y divide-line">
+              {DATA_DISCLOSURE.map((row) => (
+                <tr key={row.data}>
+                  <th scope="row" className="px-4 py-3.5 text-left font-semibold text-content">
+                    {row.data}
+                  </th>
+                  <td className="px-4 py-3.5 text-muted">{row.purpose}</td>
+                  <td className="px-4 py-3.5">
+                    <LegalStatusPill tone={SHARED_TONE[row.shared]}>{row.shared}</LegalStatusPill>
+                  </td>
+                  <td className="px-4 py-3.5 text-muted">{row.retention}</td>
                 </tr>
               ))}
             </tbody>
@@ -49,22 +59,25 @@ export function DataDisclosureTable() {
         </div>
       </div>
 
-      {/* Mobile: stacked cards */}
-      <ul className="space-y-3 sm:hidden">
+      <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface sm:hidden">
         {DATA_DISCLOSURE.map((row) => (
-          <li key={row.data} className="rounded-2xl border border-line bg-surface p-4 shadow-e1">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-semibold text-content">{row.data}</p>
-              <SharedPill value={row.shared} />
+          <li key={row.data} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[0.9375rem] font-semibold leading-snug text-content">{row.data}</p>
+              <LegalStatusPill tone={SHARED_TONE[row.shared]}>{row.shared}</LegalStatusPill>
             </div>
-            <dl className="mt-3 space-y-1.5 text-sm">
-              <div className="flex gap-2">
-                <dt className="w-20 shrink-0 text-xs font-semibold uppercase tracking-wide text-muted">Purpose</dt>
-                <dd className="text-muted">{row.purpose}</dd>
+            <dl className="mt-3 space-y-2 text-[0.9375rem]">
+              <div className="flex gap-3">
+                <dt className="w-[4.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Purpose
+                </dt>
+                <dd className="min-w-0 flex-1 leading-relaxed text-muted">{row.purpose}</dd>
               </div>
-              <div className="flex gap-2">
-                <dt className="w-20 shrink-0 text-xs font-semibold uppercase tracking-wide text-muted">Retention</dt>
-                <dd className="text-muted">{row.retention}</dd>
+              <div className="flex gap-3">
+                <dt className="w-[4.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Retention
+                </dt>
+                <dd className="min-w-0 flex-1 leading-relaxed text-muted">{row.retention}</dd>
               </div>
             </dl>
           </li>

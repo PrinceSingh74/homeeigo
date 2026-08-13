@@ -23,6 +23,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     route("/support", 0.7, "monthly"),
     route("/login", 0.5, "yearly"),
     route("/signup", 0.6, "yearly"),
+    route("/legal", 0.4, "yearly"),
     route("/legal/privacy", 0.3, "yearly"),
     route("/legal/terms", 0.3, "yearly"),
     route("/legal/cookies", 0.3, "yearly"),

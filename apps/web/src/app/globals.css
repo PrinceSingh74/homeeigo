@@ -1795,3 +1795,228 @@
     animation: none;
   }
 }
+
+/* ============================================================
+   Legal Center — editorial document reading system
+   Scoped to `.legal-page` (set by LegalShell) so nothing here can
+   reach the marketing pages or the authenticated app shell.
+   ============================================================ */
+.legal-page {
+  /* Sticky breadcrumb bar height + breathing room, so `#anchor` jumps and
+     in-page TOC links never land underneath the bar. */
+  --legal-anchor-offset: 5.5rem;
+
+  /*
+    Same greens as Home + Services — scoped so the rest of the site is untouched.
+    Services hero CTA / outline: #1B5E4F (hover #164a3f)
+    Home / Services accents: emerald-500 → teal-500
+    Home body accent text: emerald-700 / dark emerald-300
+  */
+  --color-primary: #1b5e4f;
+  --legal-accent: #1b5e4f;
+}
+
+.dark .legal-page {
+  --color-primary: #1b5e4f;
+  --legal-accent: #6ee7b7;
+}
+
+/* Services hero filled-button hover */
+.legal-page :is(a, button).bg-primary:hover {
+  background-color: #164a3f;
+}
+
+/* Exact Home / Services section hairline: emerald-500 → teal-500 */
+.legal-page .legal-title-rule {
+  width: 2.5rem;
+  height: 3px;
+  border-radius: 9999px;
+  background-image: linear-gradient(to right, #10b981, #14b8a6);
+}
+
+.legal-page main {
+  animation: legal-enter 0.45s var(--ease-out-soft) both;
+}
+
+@keyframes legal-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility text-legal-accent {
+  color: var(--legal-accent, var(--color-primary));
+}
+
+@utility border-legal-accent {
+  border-color: var(--legal-accent, var(--color-primary));
+}
+
+.legal-page .legal-section,
+.legal-page .legal-anchor {
+  scroll-margin-top: var(--legal-anchor-offset);
+}
+
+/* Guaranteed focus indicator. The Tailwind `ring-primary/60` halos used across
+   the app drop under the 3:1 non-text minimum against the dark canvas once the
+   60% alpha is composited, so every focusable element here also gets a solid
+   outline in the theme-aware accent. */
+.legal-page :focus-visible {
+  outline: 2px solid var(--legal-accent);
+  outline-offset: 2px;
+}
+
+/* Clauses are divided by a hairline, not boxed individually. */
+.legal-page .legal-section + .legal-section {
+  margin-top: 2.5rem;
+  border-top: 1px solid var(--line);
+  padding-top: 2.5rem;
+}
+
+@media (min-width: 640px) {
+  .legal-page .legal-section + .legal-section {
+    margin-top: 3rem;
+    padding-top: 3rem;
+  }
+}
+
+/* Body copy: full-contrast text (not muted), comfortable leading. The
+   character measure is held by the 42rem column in LegalDocument. */
+.legal-page .legal-prose {
+  color: var(--content);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+}
+
+@media (min-width: 640px) {
+  .legal-page .legal-prose {
+    font-size: 1rem;
+    line-height: 1.8;
+  }
+}
+
+.legal-page .legal-prose > * + * {
+  margin-top: 1.125rem;
+}
+
+/* Direct children only — nested component lists (data tables, chip rows) keep
+   their own layout and must not inherit document bullets. */
+.legal-page .legal-prose > ul,
+.legal-page .legal-prose > ol {
+  padding-left: 1.25rem;
+  list-style-position: outside;
+}
+
+.legal-page .legal-prose > ul {
+  list-style-type: disc;
+}
+
+.legal-page .legal-prose > ol {
+  list-style-type: decimal;
+}
+
+.legal-page .legal-prose > ul > li + li,
+.legal-page .legal-prose > ol > li + li {
+  margin-top: 0.5rem;
+}
+
+.legal-page .legal-prose > ul > li::marker,
+.legal-page .legal-prose > ol > li::marker {
+  color: color-mix(in srgb, var(--muted) 80%, transparent);
+}
+
+.legal-page .legal-prose strong {
+  color: var(--content);
+  font-weight: 650;
+}
+
+.legal-page .legal-prose a {
+  color: var(--legal-accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  border-radius: 3px;
+}
+
+.legal-page .legal-prose a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.legal-page .legal-prose a:focus-visible {
+  outline: 2px solid var(--legal-accent);
+  outline-offset: 2px;
+}
+
+/* Reading progress hairline — scaleX avoids per-frame layout. */
+.legal-page .legal-progress {
+  transform-origin: left center;
+  transition: transform 0.15s ease-out;
+  will-change: transform;
+}
+
+/* Native disclosure used for the compact contents list. */
+.legal-page .legal-toc-details summary {
+  list-style: none;
+}
+
+.legal-page .legal-toc-details summary::-webkit-details-marker {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .legal-page .legal-progress {
+    transition: none;
+  }
+
+  .legal-page main {
+    animation: none;
+  }
+}
+
+/* ---- Printable legal document ---- */
+@media print {
+  .legal-page {
+    background: #fff;
+  }
+
+  .legal-page main {
+    animation: none;
+  }
+
+  .legal-page .legal-prose,
+  .legal-page .legal-section h2,
+  .legal-page h1 {
+    color: #000;
+  }
+
+  .legal-page .legal-prose {
+    font-size: 10.5pt;
+    line-height: 1.5;
+  }
+
+  /* Spell out destinations — a printed policy has no clickable links. */
+  .legal-page .legal-prose a::after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    font-weight: 400;
+  }
+
+  .legal-page .legal-section,
+  .legal-page .legal-keypoints {
+    break-inside: avoid;
+  }
+
+  .legal-page .legal-title-rule {
+    background: #111;
+  }
+
+  .legal-page .legal-section + .legal-section {
+    border-top: 1px solid #ccc;
+  }
+}
