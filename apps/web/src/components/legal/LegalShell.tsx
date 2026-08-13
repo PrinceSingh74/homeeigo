@@ -43,8 +43,17 @@ export function LegalShell({ children }: { children: React.ReactNode }) {
   const currentDoc = LEGAL_DOCS.find((doc) => doc.href === pathname);
 
   return (
-    // Same page canvas as the Services page root: white in light, app canvas in dark.
-    <div className="legal-page min-h-screen bg-white dark:bg-canvas">
+    <div className="legal-page min-h-screen bg-transparent">
+      {/* Whole-page canvas — EXACT Home-page background applied across the full
+          viewport: linear-gradient(135deg,#ffffff,#f0fdf4 35%,#ffffff)
+          + emerald/teal orbs. Fixed, ~zero GPU cost. Dark-safe. */}
+      <div aria-hidden className="mesh-bg print:hidden">
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,#ffffff_0%,#f0fdf4_35%,#ffffff_100%)] dark:hidden" />
+        <div className="absolute inset-0 hidden bg-canvas dark:block" />
+        <div className="absolute right-[-6%] top-[-6%] size-[42rem] rounded-full bg-emerald-100/40 blur-3xl dark:bg-emerald-500/10" />
+        <div className="absolute bottom-[-8%] left-[-8%] size-[38rem] rounded-full bg-teal-100/30 blur-3xl dark:bg-teal-500/10" />
+      </div>
+
       <a
         href="#legal-content"
         className="sr-only rounded-lg bg-surface px-4 py-2 text-sm font-semibold text-content shadow-e3 focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60]"
