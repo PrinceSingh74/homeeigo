@@ -41,6 +41,8 @@ export type AdminListParams = {
   limit?: number;
   search?: string;
   status?: string;
+  kyc?: string;
+  sort?: string;
   /** Top-bar badge counts — long cache, WS-invalidated. */
   badge?: boolean;
 };

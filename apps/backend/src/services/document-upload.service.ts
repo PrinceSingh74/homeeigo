@@ -139,20 +139,23 @@ export class DocumentUploadService {
   async rejectDocument(documentId: string, reason: string) {
     return prisma.providerDocument.update({
       where: { id: documentId },
-      data: { isVerified: false, verificationNotes: reason },
+      data: { isVerified: false, uploadStatus: "rejected", verificationNotes: reason },
     });
   }
 
   async listAllPending(limit = 50) {
     return prisma.providerDocument.findMany({
-      where: { isVerified: false },
-      orderBy: { uploadedAt: "desc" },
+      where: { isVerified: false, NOT: { uploadStatus: "rejected" } },
+      orderBy: { uploadedAt: "asc" },
       take: limit,
       include: {
         provider: {
           select: {
             id: true,
             businessName: true,
+            city: true,
+            isApproved: true,
+            registrationStatus: true,
             user: { select: { firstName: true, lastName: true, email: true } },
           },
         },

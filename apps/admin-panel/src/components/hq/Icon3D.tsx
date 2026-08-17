@@ -22,18 +22,20 @@ export const Icon3D = memo(function Icon3D({
   const reduce = useReducedMotion();
 
   return (
-    <motion.span
-      className={cn("biz-icon-3d", `biz-icon-3d--${tone}`, `biz-icon-3d--${size}`, className)}
-      aria-hidden
-      whileHover={reduce ? undefined : { y: -2, scale: 1.06 }}
-      transition={{ type: "spring", stiffness: 420, damping: 28 }}
-    >
-      <span className="biz-icon-3d-layer biz-icon-3d-layer--3" />
-      <span className="biz-icon-3d-layer biz-icon-3d-layer--2" />
-      <span className="biz-icon-3d-face">
-        <Icon strokeWidth={2.2} />
-        <span className="biz-icon-3d-shine" />
-      </span>
-    </motion.span>
+    <span className={cn("biz-icon-3d-wrap", `biz-icon-3d--${size}`, className)}>
+      <motion.span
+        className={cn("biz-icon-3d", `biz-icon-3d--${tone}`)}
+        aria-hidden
+        whileHover={reduce ? undefined : { y: -1, scale: 1.04 }}
+        transition={{ type: "spring", stiffness: 420, damping: 28 }}
+      >
+        <span className="biz-icon-3d-layer biz-icon-3d-layer--3" />
+        <span className="biz-icon-3d-layer biz-icon-3d-layer--2" />
+        <span className="biz-icon-3d-face">
+          <Icon strokeWidth={2.15} />
+          <span className="biz-icon-3d-shine" />
+        </span>
+      </motion.span>
+    </span>
   );
 });

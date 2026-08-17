@@ -215,7 +215,7 @@ const geoCoreRoutes = new Elysia({ prefix: "/api/geo" })
       const geofence = await geofenceService.update(params.id, body as Record<string, never>);
       return { success: true, data: { geofence } };
     },
-    { body: t.Object({ name: t.Optional(t.String()), radiusMeters: t.Optional(t.Number()), centerLat: t.Optional(t.Number()), centerLng: t.Optional(t.Number()), serviceCategories: t.Optional(t.Array(t.String())), isActive: t.Optional(t.Boolean()), city: t.Optional(t.String()), state: t.Optional(t.String()) }) },
+    { body: t.Object({ name: t.Optional(t.String()), radiusMeters: t.Optional(t.Number()), centerLat: t.Optional(t.Number()), centerLng: t.Optional(t.Number()), serviceCategories: t.Optional(t.Array(t.String())), isActive: t.Optional(t.Boolean()), city: t.Optional(t.String()), state: t.Optional(t.String()), zoneType: t.Optional(t.String()), surgeMultiplier: t.Optional(t.Number()) }) },
   )
   .delete("/geofences/:id", async ({ requireRole, params }) => {
     requireRole("ADMIN");

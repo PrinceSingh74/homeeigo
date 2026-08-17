@@ -31,7 +31,7 @@ test.describe("Enterprise admin E2E", () => {
       { timeout: 30_000 },
     );
     await providersRes;
-    await expect(page.getByRole("heading", { name: /vendors|providers/i }).first()).toBeVisible({
+    await expect(page.getByRole("heading", { name: /partners|vendors|providers/i }).first()).toBeVisible({
       timeout: 30_000,
     });
     const token = await adminApiToken();

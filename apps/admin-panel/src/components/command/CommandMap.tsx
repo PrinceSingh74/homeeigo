@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useRenderProbe, useMountProbe } from "@/lib/render-probe";
 import { useGoogleMapsLoader, mapsLoadErrorHint } from "@/hooks/use-google-maps-loader";
 
@@ -28,6 +28,33 @@ const DARK_STYLE = [
   { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#1e293b" }] },
   { featureType: "water", elementType: "geometry", stylers: [{ color: "#060b15" }] },
 ];
+
+const LIGHT_STYLE = [
+  { elementType: "geometry", stylers: [{ color: "#eefaf3" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#3d5249" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#ffffff" }] },
+  { featureType: "poi", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#d7eee3" }] },
+  { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#c5ddd0" }] },
+  { featureType: "administrative.country", elementType: "geometry.stroke", stylers: [{ color: "#7aa38f" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#c6ebe0" }] },
+];
+
+function useDocumentTheme(): "light" | "dark" {
+  const [theme, setTheme] = useState<"light" | "dark">(() =>
+    document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark",
+  );
+  useEffect(() => {
+    const read = () =>
+      setTheme(document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark");
+    const obs = new MutationObserver(read);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => obs.disconnect();
+  }, []);
+  return theme;
+}
 
 const heat = (t: number, a = 0.55) => {
   const c = t < 0.5 ? [34 + t * 2 * (245 - 34), 197 + t * 2 * (158 - 197), 94 + t * 2 * (11 - 94)]
@@ -80,6 +107,8 @@ function CommandMapInner({
 }) {
   useRenderProbe("CommandMap");
   useMountProbe("CommandMap");
+  const theme = useDocumentTheme();
+  const light = theme === "light";
   const { loaded, error, configured } = useGoogleMapsLoader();
   const divRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
@@ -99,11 +128,19 @@ function CommandMapInner({
       zoom: 5,
       disableDefaultUI: true,
       zoomControl: true,
-      backgroundColor: "#0b1220",
-      styles: DARK_STYLE,
+      backgroundColor: light ? "#eefaf3" : "#0b1220",
+      styles: light ? LIGHT_STYLE : DARK_STYLE,
       minZoom: 4,
     });
   }, [loaded]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    mapRef.current.setOptions({
+      backgroundColor: light ? "#eefaf3" : "#0b1220",
+      styles: light ? LIGHT_STYLE : DARK_STYLE,
+    });
+  }, [light]);
 
   useEffect(() => {
     if (!loaded || !mapRef.current) return;
@@ -115,6 +152,9 @@ function CommandMapInner({
 
     const maxRev = Math.max(1, ...zones.map((z) => z.revenue24h));
     const maxDens = Math.max(0.001, ...zones.map((z) => z.densityPerKm2));
+    const fence = light ? "#0f766e" : "#38bdf8";
+    const densityFill = light ? "#059669" : "#3b82f6";
+    const densityStroke = light ? "#047857" : "#60a5fa";
 
     const add = (o: any) => { overlaysRef.current.push(o); };
 
@@ -122,23 +162,23 @@ function CommandMapInner({
       const center = { lat: z.centerLat, lng: z.centerLng };
 
       if (layers.has("geofence")) {
-        add(new g.maps.Circle({ map, center, radius: z.radiusM, fillOpacity: 0, strokeColor: "#38bdf8", strokeOpacity: 0.5, strokeWeight: 1.5 }));
+        add(new g.maps.Circle({ map, center, radius: z.radiusM, fillOpacity: 0, strokeColor: fence, strokeOpacity: 0.55, strokeWeight: 1.5 }));
       }
       if (layers.has("density")) {
-        add(new g.maps.Circle({ map, center, radius: z.radiusM * 0.6, fillColor: "#3b82f6", fillOpacity: 0.12 + 0.5 * (z.densityPerKm2 / maxDens), strokeColor: "#60a5fa", strokeOpacity: 0.6, strokeWeight: 1 }));
+        add(new g.maps.Circle({ map, center, radius: z.radiusM * 0.6, fillColor: densityFill, fillOpacity: 0.12 + 0.5 * (z.densityPerKm2 / maxDens), strokeColor: densityStroke, strokeOpacity: 0.55, strokeWeight: 1 }));
       }
       if (layers.has("demand")) {
         add(new g.maps.Circle({ map, center, radius: z.radiusM * 0.7, fillColor: heat(z.demandScore / 100, 1).replace(/[\d.]+\)$/, "0.35)"), fillOpacity: 0.1 + 0.5 * (z.demandScore / 100), strokeOpacity: 0, strokeWeight: 0 }));
       }
       if (layers.has("revenue")) {
-        add(new g.maps.Circle({ map, center, radius: z.radiusM * 0.5, fillColor: "#22c55e", fillOpacity: 0.12 + 0.55 * (z.revenue24h / maxRev), strokeColor: "#4ade80", strokeOpacity: 0.5, strokeWeight: 1 }));
+        add(new g.maps.Circle({ map, center, radius: z.radiusM * 0.5, fillColor: "#059669", fillOpacity: 0.12 + 0.55 * (z.revenue24h / maxRev), strokeColor: "#10b981", strokeOpacity: 0.5, strokeWeight: 1 }));
       }
       if (layers.has("surge") && z.predictedSurge > 1) {
         const t = Math.min(1, (z.predictedSurge - 1) / 2);
         add(new g.maps.Circle({ map, center, radius: z.radiusM * (0.5 + 0.5 * t), fillColor: heat(t, 1).slice(0, -4) + "0.22)", fillOpacity: 1, strokeColor: heat(t, 1).slice(0, -4) + "0.9)", strokeOpacity: 1, strokeWeight: 2 }));
       }
       if (layers.has("weather") && z.weatherSurge > 1) {
-        add(new g.maps.Circle({ map, center, radius: z.radiusM * 0.9, fillColor: "#f59e0b", fillOpacity: 0.06 + 0.2 * Math.min(1, (z.weatherSurge - 1) / 0.5), strokeOpacity: 0, strokeWeight: 0 }));
+        add(new g.maps.Circle({ map, center, radius: z.radiusM * 0.9, fillColor: "#d97706", fillOpacity: 0.06 + 0.2 * Math.min(1, (z.weatherSurge - 1) / 0.5), strokeOpacity: 0, strokeWeight: 0 }));
       }
     }
 
@@ -146,7 +186,7 @@ function CommandMapInner({
       for (const f of clusteredFraud) {
         add(new g.maps.Marker({
           map, position: { lat: f.lat, lng: f.lng }, title: `Fake GPS · ${f.implied_kmh} km/h`,
-          icon: { path: g.maps.SymbolPath.CIRCLE, scale: 7, fillColor: "#ef4444", fillOpacity: 0.9, strokeColor: "#fff", strokeWeight: 1.5 },
+          icon: { path: g.maps.SymbolPath.CIRCLE, scale: 7, fillColor: "#dc2626", fillOpacity: 0.9, strokeColor: "#fff", strokeWeight: 1.5 },
           zIndex: 999,
         }));
       }
@@ -158,11 +198,11 @@ function CommandMapInner({
     } else if (trafficRef.current) {
       trafficRef.current.setMap(null);
     }
-  }, [loaded, layerKey, zoneKey, fraudKey, zones, clusteredFraud, layers]);
+  }, [loaded, layerKey, zoneKey, fraudKey, zones, clusteredFraud, layers, light]);
 
   if (!configured || error) {
     return (
-      <div className={`flex items-center justify-center bg-slate-950 text-center text-sm text-slate-400 ${className}`}>
+      <div className={`flex items-center justify-center text-center text-sm ${className}`} style={{ background: "var(--cmd-card)", color: "var(--cmd-muted)" }}>
         <p className="max-w-md px-4">{!configured ? "Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to enable the command map." : mapsLoadErrorHint(error)}</p>
       </div>
     );
@@ -172,7 +212,7 @@ function CommandMapInner({
     <div className={`relative ${className}`}>
       <div ref={divRef} className="h-full w-full" aria-label="India operations command map" />
       {!loaded ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 text-sm text-slate-400">Loading command map…</div>
+        <div className="absolute inset-0 flex items-center justify-center text-sm" style={{ background: "var(--cmd-card)", color: "var(--cmd-muted)" }}>Loading command map…</div>
       ) : null}
     </div>
   );

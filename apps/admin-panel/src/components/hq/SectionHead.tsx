@@ -24,9 +24,9 @@ export function SectionHead({
       <div className="exec-section-head__title">
         {icon ? <Icon3D icon={icon} tone={tone} size="md" /> : null}
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold leading-none tracking-tight">{title}</h2>
+          <h2 className="truncate text-sm font-semibold leading-snug tracking-tight">{title}</h2>
           {subtitle ? (
-            <p className="mt-1.5 text-[11px] leading-none text-[var(--color-biz-muted)]">{subtitle}</p>
+            <p className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-[var(--color-biz-muted)]">{subtitle}</p>
           ) : null}
         </div>
       </div>

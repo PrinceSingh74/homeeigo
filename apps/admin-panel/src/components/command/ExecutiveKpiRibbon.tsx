@@ -1,22 +1,67 @@
 "use client";
 
 import { memo, useEffect, useRef, useState } from "react";
+import {
+  Radio,
+  IndianRupee,
+  ShoppingBag,
+  CircleCheck,
+  Ban,
+  RotateCcw,
+  Wifi,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { useRenderProbe, useMountProbe } from "@/lib/render-probe";
 import type { ExecKpis } from "@/services/admin-api";
+import { Icon3D, type Icon3DTone } from "@/components/hq/Icon3D";
+import { cn } from "@/lib/cn";
 
-type Tone = "good" | "warn" | "bad" | "neutral";
-const toneCls: Record<Tone, string> = {
-  good: "text-emerald-400",
-  warn: "text-amber-400",
-  bad: "text-red-400",
-  neutral: "text-sky-300",
+type Tone = "good" | "warn" | "bad" | "accent" | "cyan";
+
+const ICON_TONE: Record<Tone, Icon3DTone> = {
+  good: "success",
+  warn: "warning",
+  bad: "danger",
+  accent: "success",
+  cyan: "cyan",
 };
 
-function Stat({ label, value, tone, fmt }: { label: string; value: number; tone: Tone; fmt: (n: number) => string }) {
+const METER: Record<Tone, string> = {
+  good: "biz-meter--success",
+  warn: "biz-meter--warning",
+  bad: "biz-meter--danger",
+  accent: "biz-meter--success",
+  cyan: "",
+};
+
+function Stat({
+  label,
+  value,
+  tone,
+  icon: Icon,
+  meter,
+}: {
+  label: string;
+  value: string;
+  tone: Tone;
+  icon: LucideIcon;
+  meter?: number;
+}) {
   return (
-    <div className="flex min-w-[7.5rem] flex-col px-3.5 py-2">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{label}</span>
-      <span className={`mt-0.5 font-mono text-lg font-bold tabular-nums ${toneCls[tone]}`}>{fmt(value)}</span>
+    <div className={cn("cmd-card cmd-kpi", `cmd-kpi--${tone}`)}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="cmd-kpi-label">{label}</span>
+        <Icon3D icon={Icon} tone={ICON_TONE[tone]} size="sm" />
+      </div>
+      <span className="cmd-kpi-value" data-stat-value>
+        {value}
+      </span>
+      {meter != null ? (
+        <div className={cn("biz-meter cmd-kpi-meter", METER[tone])}>
+          <span style={{ width: `${Math.max(4, Math.min(100, meter))}%` }} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -64,36 +109,38 @@ function ExecutiveKpiRibbonInner({
   }, [kpis]);
 
   if (!kpis) {
-    return <div className="flex h-14 items-center px-4 text-sm text-slate-500">Loading executive KPIs…</div>;
+    return <div className="cmd-card cmd-kpi-skeleton" aria-hidden />;
   }
 
-  const completionTone: Tone = kpis.completionRate >= 70 ? "good" : kpis.completionRate >= 45 ? "warn" : "bad";
-  const cancelTone: Tone = kpis.cancellationRate <= 20 ? "good" : kpis.cancellationRate <= 40 ? "warn" : "bad";
-  const refundTone: Tone = kpis.refundRate <= 10 ? "good" : kpis.refundRate <= 30 ? "warn" : "bad";
+  const completionTone: Tone =
+    kpis.completionRate >= 70 ? "good" : kpis.completionRate >= 45 ? "warn" : "bad";
+  const cancelTone: Tone =
+    kpis.cancellationRate <= 20 ? "good" : kpis.cancellationRate <= 40 ? "warn" : "bad";
+  const refundTone: Tone =
+    kpis.refundRate <= 10 ? "good" : kpis.refundRate <= 30 ? "warn" : "bad";
 
   return (
-    <div className="flex items-stretch gap-px overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/70 backdrop-blur-xl">
-      <div className="flex items-center gap-2 px-4">
-        <span className="relative flex h-2.5 w-2.5">
-          <span
-            className={`relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 transition-transform duration-300 ${pulse ? "scale-125 ring-2 ring-emerald-400/40" : ""}`}
-          />
-        </span>
-        <div className="leading-tight">
-          <p className="text-xs font-bold text-[var(--color-biz-text)]">COMMAND</p>
-          <p className="text-[9px] text-slate-500">
-            {freshness ? new Date(freshness).toLocaleTimeString() : "live"}
+    <div className="cmd-kpi-ribbon">
+      <div className="cmd-card cmd-kpi-brand">
+        <Icon3D icon={Radio} tone="success" size="sm" />
+        <div className="min-w-0 leading-tight">
+          <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--cmd-ink)" }}>
+            <span className={cn("cmd-live-dot", pulse && "scale-125")} />
+            Live
+          </p>
+          <p className="mt-1 truncate text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--cmd-muted)" }}>
+            {freshness ? new Date(freshness).toLocaleTimeString() : "synced"}
             {confidence != null ? ` · ${Math.round(confidence * 100)}%` : ""}
           </p>
         </div>
       </div>
-      <Stat label="GMV" value={kpis.gmv} tone="neutral" fmt={inr} />
-      <Stat label="Orders Today" value={kpis.bookingsToday} tone="neutral" fmt={num} />
-      <Stat label="Completion" value={kpis.completionRate} tone={completionTone} fmt={pct} />
-      <Stat label="Cancellation" value={kpis.cancellationRate} tone={cancelTone} fmt={pct} />
-      <Stat label="Refund" value={kpis.refundRate} tone={refundTone} fmt={pct} />
-      <Stat label="Online Providers" value={kpis.onlineProviders} tone="good" fmt={num} />
-      <Stat label="Active Customers" value={kpis.activeCustomers} tone="neutral" fmt={num} />
+      <Stat label="GMV" value={inr(kpis.gmv)} tone="accent" icon={IndianRupee} />
+      <Stat label="Orders" value={num(kpis.bookingsToday)} tone="cyan" icon={ShoppingBag} />
+      <Stat label="Completion" value={pct(kpis.completionRate)} tone={completionTone} icon={CircleCheck} meter={kpis.completionRate} />
+      <Stat label="Cancel" value={pct(kpis.cancellationRate)} tone={cancelTone} icon={Ban} meter={kpis.cancellationRate} />
+      <Stat label="Refund" value={pct(kpis.refundRate)} tone={refundTone} icon={RotateCcw} meter={kpis.refundRate} />
+      <Stat label="Providers" value={num(kpis.onlineProviders)} tone="good" icon={Wifi} />
+      <Stat label="Customers" value={num(kpis.activeCustomers)} tone="accent" icon={Users} />
     </div>
   );
 }

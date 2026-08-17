@@ -47,12 +47,12 @@ test.describe("Admin sign-off journey", () => {
   test("geofence console", async ({ page }) => {
     await adminLogin(page);
     const res = page.waitForResponse(
-      (r) => r.url().includes("/api/admin/geofences") && r.ok(),
+      (r) => r.url().includes("/api/geo/geofences") && r.ok(),
       { timeout: 30_000 },
     );
     await page.goto("/geofences");
     await res;
-    await expect(page.getByRole("heading", { name: /geofence/i }).first()).toBeVisible({
+    await expect(page.getByRole("heading", { name: /zone control/i }).first()).toBeVisible({
       timeout: 30_000,
     });
   });

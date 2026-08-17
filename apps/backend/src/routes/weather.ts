@@ -85,7 +85,14 @@ export const weatherRoutes = new Elysia({ prefix: "/api/weather" })
       .findMany({ where: { isActive: true, city: { not: null } }, select: { city: true }, distinct: ["city"] })
       .catch(() => [] as Array<{ city: string | null }>);
     const zoneCities = zones.map((z) => z.city).filter((c): c is string => !!c).map((c) => `${c},IN`);
-    const list = [...new Set([...NCR_CITIES, ...zoneCities, ...DEFAULT_CITIES])];
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const city of [...NCR_CITIES, ...zoneCities, ...DEFAULT_CITIES]) {
+      const key = city.replace(/,IN$/i, "").trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      list.push(/,IN$/i.test(city) ? city : `${city},IN`);
+    }
 
     const results = await Promise.all(
       list.map(async (city) => {
@@ -95,6 +102,7 @@ export const weatherRoutes = new Elysia({ prefix: "/api/weather" })
           city,
           available: true,
           tempC: snap.tempC,
+          feelsLikeC: snap.feelsLikeC,
           humidity: snap.humidity,
           windSpeedKmh: snap.windSpeedKmh,
           rain1hMm: snap.rain1hMm,

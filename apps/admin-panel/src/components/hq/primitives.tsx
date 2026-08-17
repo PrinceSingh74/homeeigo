@@ -15,6 +15,7 @@ export const StatTile = memo(function StatTile({
   tone = "default",
   loading,
   embedded,
+  className,
 }: {
   label: string;
   value: string;
@@ -23,6 +24,7 @@ export const StatTile = memo(function StatTile({
   tone?: "default" | "success" | "danger" | "accent";
   loading?: boolean;
   embedded?: boolean;
+  className?: string;
 }) {
   const toneClass =
     tone === "success"
@@ -34,7 +36,7 @@ export const StatTile = memo(function StatTile({
           : "text-[var(--color-biz-text)]";
 
   return (
-    <div className={embedded ? "flex h-full flex-col bg-[var(--color-biz-surface)] p-5" : "biz-glass-panel biz-kpi p-5"}>
+    <div className={cn(embedded ? "flex h-full flex-col bg-[var(--color-biz-surface)] p-5" : "biz-glass-panel biz-kpi p-5", className)}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-biz-muted)]">
           {label}
@@ -137,10 +139,10 @@ export const MeterBar = memo(function MeterBar({
         : "bg-gradient-to-r from-blue-600 to-cyan-400";
 
   return (
-    <div>
-      <div className="mb-1 flex items-center justify-between text-xs">
-        <span className="text-[var(--color-biz-muted)]">{label}</span>
-        <span className="biz-num font-semibold tabular-nums">
+    <div className="min-w-0">
+      <div className="mb-1.5 flex items-baseline justify-between gap-3 text-xs">
+        <span className="min-w-0 truncate text-[var(--color-biz-muted)]">{label}</span>
+        <span className="biz-num shrink-0 whitespace-nowrap font-semibold tabular-nums">
           {value.toFixed(suffix === "%" ? 1 : 0)}
           {suffix}
         </span>

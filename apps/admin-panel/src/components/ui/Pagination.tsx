@@ -7,6 +7,7 @@ type PaginationProps = {
   limit: number;
   onPageChange: (page: number) => void;
   isFetching?: boolean;
+  className?: string;
 };
 
 export function Pagination({
@@ -15,6 +16,7 @@ export function Pagination({
   limit,
   onPageChange,
   isFetching,
+  className,
 }: PaginationProps) {
   const pageCount = Math.max(1, Math.ceil(total / limit));
   const from = total === 0 ? 0 : (page - 1) * limit + 1;
@@ -23,7 +25,7 @@ export function Pagination({
   const nextDisabled = page >= pageCount || isFetching;
 
   return (
-    <div className="flex items-center justify-between gap-3 border-t border-[var(--color-biz-line)] px-4 py-3 text-xs text-[var(--color-biz-muted)]">
+    <div className={cn("flex items-center justify-between gap-3 border-t border-[var(--color-biz-line)] px-4 py-3 text-xs text-[var(--color-biz-muted)]", className)}>
       <span>
         Showing <span className="font-medium text-[var(--color-biz-text)]">{from}</span>–
         <span className="font-medium text-[var(--color-biz-text)]">{to}</span> of

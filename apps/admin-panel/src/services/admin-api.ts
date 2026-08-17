@@ -20,6 +20,8 @@ type ListQuery = {
   status?: string;
   startDate?: string;
   endDate?: string;
+  kyc?: string;
+  sort?: string;
 };
 
 // --- Geo-Intelligence envelope + data shapes (mirrors GeoIntelligenceService) ---
@@ -38,9 +40,14 @@ export type PendingPartnerDocument = {
   uploadedAt: string;
   expiryDate: string | null;
   verificationNotes: string | null;
+  fileSize?: number | null;
+  fileFormat?: string | null;
   provider: {
     id: string;
     businessName: string | null;
+    city?: string | null;
+    isApproved?: boolean;
+    registrationStatus?: string | null;
     user: { firstName: string | null; lastName: string | null; email: string | null };
   };
 };
@@ -340,6 +347,16 @@ export const adminApi = {
       auth: true,
     }).then((r) => r.data!),
 
+  getProviderIntelligence: (id: string) =>
+    apiRequest<
+      ApiResponse<{
+        periodDays: number;
+        uniqueCustomers: number;
+        returningCustomers: number;
+        repeatCustomerRatePct: number;
+      }>
+    >(`/api/admin/providers/${id}/intelligence`, { auth: true }).then((r) => r.data!),
+
   listBookings: (query: ListQuery = {}) =>
     apiRequest<ApiResponse<AdminListBookingsResponse>>("/api/admin/bookings", {
       auth: true,
@@ -481,6 +498,13 @@ export const adminApi = {
       method: "PUT",
       auth: true,
       body: { action, reason },
+    }).then((r) => r.data!),
+
+  forceLogoutUser: (id: string, reason?: string) =>
+    apiRequest<ApiResponse<{ message?: string }>>(`/api/admin/users/${id}/force-logout`, {
+      method: "POST",
+      auth: true,
+      body: reason ? { reason } : {},
     }).then((r) => r.data!),
 
   processWithdrawal: (id: string) =>
@@ -1366,17 +1390,7 @@ export const adminApi = {
   // Phase 17.4 / 16.4 / 16.3 — operations map, heatmap, geofence management (existing APIs).
   opsMap: () => apiRequest<ApiResponse<OpsMapData>>("/api/admin/ops-map", { auth: true }).then((r) => r.data!),
   workforceAnalytics: () =>
-    apiRequest<
-      ApiResponse<{
-        onlineProviders: number;
-        totalProviders: number;
-        activeJobs: number;
-        attendanceCheckInsToday: number;
-        avgAcceptanceRate: number;
-        avgCompletionRate: number;
-        generatedAt: string;
-      }>
-    >("/api/admin/workforce/analytics", { auth: true }).then((r) => r.data!),
+    apiRequest<ApiResponse<WorkforceAnalytics>>("/api/admin/workforce/analytics", { auth: true }).then((r) => r.data!),
   academyModules: () =>
     apiRequest<ApiResponse<{ modules: unknown[] }>>("/api/admin/academy/modules", { auth: true }).then((r) => r.data!),
   incentiveRules: () =>
@@ -1733,8 +1747,38 @@ export type OpsMapData = {
 };
 export type HeatmapCell = { lat: number; lng: number; demand: number; completed: number; cancelled: number; cancellationRate: number; revenue: number; supplyOnline: number; supplyTotal: number; demandScore: number; supplyGap: number };
 export type HeatmapData = { gridSize: number; days: number; cells: HeatmapCell[]; totals: { demand: number; revenue: number; supplyOnline: number; cells: number } };
+export type WorkforceAnalytics = {
+  onlineProviders: number;
+  totalProviders: number;
+  activeJobs: number;
+  attendanceCheckInsToday: number;
+  avgAcceptanceRate: number;
+  avgCompletionRate: number;
+  avgCancellationRate: number;
+  avgOnTimeRate: number;
+  avgRating: number;
+  busyProviders: number;
+  idleOnline: number;
+  offlineProviders: number;
+  openSessions: number;
+  jobsByStatus: Array<{ status: string; count: number }>;
+  checkInsByDay: Array<{ date: string; count: number }>;
+  checkInsByHour: Array<{ hour: number; count: number }>;
+  topPartners: Array<{
+    id: string;
+    name: string;
+    city: string | null;
+    online: boolean;
+    rating: number;
+    acceptanceRate: number;
+    completionRate: number;
+    completedBookings: number;
+  }>;
+  cities: Array<{ city: string; count: number }>;
+  generatedAt: string;
+};
 export type Geofence = { id: string; name: string; zoneType: string; shape?: string; polygon?: Array<{ lat: number; lng: number }> | null; city: string | null; state: string | null; centerLat: number; centerLng: number; radiusMeters: number; serviceCategories: string[]; surgeMultiplier?: number; isActive: boolean; createdAt: string };
-export type GeofenceInput = { name: string; centerLat: number; centerLng: number; radiusMeters: number; city?: string; state?: string; serviceCategories?: string[]; zoneType?: string; shape?: string; polygon?: Array<{ lat: number; lng: number }> };
+export type GeofenceInput = { name: string; centerLat: number; centerLng: number; radiusMeters: number; city?: string; state?: string; serviceCategories?: string[]; zoneType?: string; shape?: string; polygon?: Array<{ lat: number; lng: number }>; surgeMultiplier?: number };
 export type GeofenceEvent = { id: string; geofenceId: string; userId: string | null; providerId: string | null; eventType: string; latitude: number; longitude: number; createdAt: string; geofence?: { name: string; city: string | null } };
 
 export type AdminAdjustmentRow = {
@@ -2129,6 +2173,7 @@ export type WeatherCity = {
   city: string;
   available: boolean;
   tempC?: number;
+  feelsLikeC?: number;
   humidity?: number;
   windSpeedKmh?: number;
   rain1hMm?: number;

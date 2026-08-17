@@ -85,13 +85,23 @@ export class AdminService {
     }
     if (query.status === "banned") where.isBanned = true;
     if (query.status === "active") where.isBanned = false;
+    if (query.kyc === "verified") where.kycStatus = "APPROVED";
+    if (query.kyc === "pending") where.kycStatus = { in: ["NOT_STARTED", "PENDING", "IN_REVIEW"] };
+    if (query.kyc === "rejected") where.kycStatus = "REJECTED";
+
+    const orderBy =
+      query.sort === "spend"
+        ? { totalSpent: "desc" as const }
+        : query.sort === "bookings"
+          ? { bookings: { _count: "desc" as const } }
+          : { createdAt: "desc" as const };
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: "desc" },
+        orderBy,
         include: { _count: { select: { bookings: true } } },
       }),
       prisma.user.count({ where }),
@@ -102,8 +112,13 @@ export class AdminService {
         id: u.id,
         email: u.email,
         firstName: u.firstName,
+        lastName: u.lastName,
         totalBookings: u._count.bookings,
         totalSpent: u.totalSpent,
+        walletBalance: u.walletBalance,
+        referralCount: u.referralCount,
+        preferredCity: u.preferredCity,
+        lastActivityAt: u.lastActivityAt?.toISOString() ?? null,
         kycStatus: formatKycStatus(u.kycStatus),
         isActive: u.isActive && !u.isBanned,
         createdAt: u.createdAt.toISOString().slice(0, 10),
@@ -118,19 +133,32 @@ export class AdminService {
     const where: Record<string, unknown> = {};
     if (query.status === "verified") where.isVerified = true;
     if (query.status === "pending") where.isApproved = false;
+    if (query.status === "rejected") where.registrationStatus = "REJECTED";
     if (query.status === "applications") {
       where.registrationStatus = "PENDING";
       where.isApproved = false;
     }
+    if (query.kyc === "verified") where.isVerified = true;
+    if (query.kyc === "pending") where.isVerified = false;
     if (query.search) {
       const term = sanitizeUserInput(query.search, 200);
       where.user = {
         OR: [
           { firstName: { contains: term, mode: "insensitive" } },
           { lastName: { contains: term, mode: "insensitive" } },
+          { email: { contains: term, mode: "insensitive" } },
         ],
       };
     }
+
+    const orderBy =
+      query.sort === "earnings"
+        ? { totalEarnings: "desc" as const }
+        : query.sort === "rating"
+          ? { rating: "desc" as const }
+          : query.sort === "jobs"
+            ? { totalBookings: "desc" as const }
+            : { createdAt: "desc" as const };
 
     const [rows, total] = await Promise.all([
       prisma.provider.findMany({
@@ -138,7 +166,7 @@ export class AdminService {
         skip,
         take: limit,
         include: { user: true },
-        orderBy: { createdAt: "desc" },
+        orderBy,
       }),
       prisma.provider.count({ where }),
     ]);
@@ -146,9 +174,10 @@ export class AdminService {
     const providers = await Promise.all(
       rows.map(async (p) => {
         const masked = await userPiiService.withMaskedPii(p.user);
+        const displayName = `${p.user.firstName} ${p.user.lastName}`.trim();
         return {
         id: p.id,
-        name: `${p.user.firstName} ${p.user.lastName}`,
+        name: p.businessName || displayName || "Partner",
         email: masked.email,
         phone: masked.phoneNumber,
         rating: p.rating,
@@ -156,6 +185,13 @@ export class AdminService {
         completedBookings: p.completedBookings,
         isVerified: p.isVerified,
         isApproved: p.isApproved,
+        isOnline: p.isOnline,
+        lastSeenAt: p.lastSeenAt?.toISOString() ?? null,
+        completionRate: p.completionRate,
+        acceptanceRate: p.acceptanceRate,
+        totalReviews: p.totalReviews,
+        currentStatus: p.currentStatus,
+        businessName: p.businessName,
         registrationStatus: p.registrationStatus,
         serviceCategories: p.serviceCategories,
         city: p.city,

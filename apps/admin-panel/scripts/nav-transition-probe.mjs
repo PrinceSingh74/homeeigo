@@ -35,7 +35,7 @@ const CORE_ROUTES = [
 const EXTENDED_ROUTES = [
   ...CORE_ROUTES,
   { href: "/geospatial", label: "Geo Command", ready: "Geo Command" },
-  { href: "/vendors", label: "Vendors", ready: "Vendors" },
+  { href: "/vendors", label: "Vendors", ready: "Partner Network" },
   { href: "/analytics", label: "Analytics", ready: "Analytics" },
   { href: "/ai", label: "AI Systems", ready: "AI systems" },
   { href: "/fraud", label: "Fraud", ready: "Fraud" },

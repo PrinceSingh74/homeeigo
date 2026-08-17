@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
@@ -14,9 +15,32 @@ import {
   TrendingUp,
   XCircle,
 } from "lucide-react";
-import { KpiCard } from "@/components/ui/KpiCard";
+import { DataTable, StatusBadge } from "@/components/ui/DataTable";
+import { StatTile } from "@/components/hq/primitives";
+import { SectionHead } from "@/components/hq/SectionHead";
+import { Icon3D } from "@/components/hq/Icon3D";
 import { adminApi } from "@/services/admin-api";
 import { formatNumber, formatPercent } from "@/lib/format";
+import { cn } from "@/lib/cn";
+
+function MetricRow({ label, value, heat }: { label: string; value: string; heat?: "good" | "warn" | "bad" }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-[var(--color-biz-line)] py-2.5 last:border-0">
+      <span className="text-sm text-[var(--color-biz-muted)]">{label}</span>
+      <span
+        data-stat-value
+        className={cn(
+          "text-sm font-bold tabular-nums",
+          heat === "good" && "text-[var(--color-biz-success)]",
+          heat === "warn" && "text-[var(--color-biz-warning)]",
+          heat === "bad" && "text-[var(--color-biz-danger)]",
+        )}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
 
 export default function EtaIntelligencePage() {
   const dashboard = useQuery({
@@ -45,257 +69,237 @@ export default function EtaIntelligencePage() {
     queryFn: () => adminApi.etaIntelligence.trips(25),
     staleTime: 30_000,
   });
+  const geofences = useQuery({
+    queryKey: ["eta-geofence-cities"],
+    queryFn: () => adminApi.geofences.list({ activeOnly: true }),
+    staleTime: 120_000,
+  });
 
   const d = dashboard.data as Record<string, unknown> | undefined;
   const q = quality.data as Record<string, unknown> | undefined;
   const r = readiness.data as Record<string, unknown> | undefined;
   const g = google.data as Record<string, unknown> | undefined;
-  const cities = (d?.cities as Array<{ city: string; count: number }>) ?? [];
+  const labeled = (d?.cities as Array<{ city: string; count: number }>) ?? [];
+
+  const cities = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const fence of geofences.data ?? []) {
+      const city = fence.city?.trim();
+      if (city && !counts.has(city)) counts.set(city, 0);
+    }
+    for (const row of labeled) {
+      const city = row.city?.trim() || "Unknown";
+      counts.set(city, (counts.get(city) ?? 0) + row.count);
+    }
+    const max = Math.max(1, ...counts.values());
+    return [...counts.entries()]
+      .map(([city, count]) => ({ city, count, share: Math.round((count / max) * 100) }))
+      .sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
+  }, [geofences.data, labeled]);
+
+  const tripRows = useMemo(
+    () =>
+      ((trips.data?.trips as Array<Record<string, unknown>>) ?? []).map((t) => [
+        <span key={`b-${String(t.bookingId)}`} className="font-mono text-xs">
+          {String(t.bookingId).slice(0, 10)}…
+        </span>,
+        String(t.city ?? "—"),
+        <StatusBadge key={`s-${String(t.bookingId)}`} status={String(t.status ?? "").toLowerCase()} />,
+        `${Number(t.qualityScore ?? 0).toFixed(0)}%`,
+        t.actualTravelDurationMin != null ? `${Number(t.actualTravelDurationMin)} min` : "—",
+        t.googleEtaMinutes != null ? `${Number(t.googleEtaMinutes)} min` : "—",
+        t.gapMinutes != null ? (
+          <span
+            key={`g-${String(t.bookingId)}`}
+            className={Number(t.gapMinutes) > 5 ? "font-semibold text-[var(--color-biz-warning)]" : ""}
+          >
+            {Number(t.gapMinutes) > 0 ? "+" : ""}
+            {Number(t.gapMinutes).toFixed(1)} min
+          </span>
+        ) : (
+          "—"
+        ),
+      ]),
+    [trips.data],
+  );
+
+  const readinessPct = Math.min(100, Number(r?.readinessPct ?? 0));
+  const qualityPct = Number(d?.avgQualityScore ?? 100);
+  const failRate = Number(g?.failureRate ?? 0);
+  const rejections = (q?.rejectionReasons as Array<{ reason: string; count: number }>) ?? [];
+
+  const refresh = () => {
+    void dashboard.refetch();
+    void quality.refetch();
+    void readiness.refetch();
+    void google.refetch();
+    void trips.refetch();
+  };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4">
-      <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">
-            ETA Intelligence
-            <span className="mt-1 block text-sm font-normal text-[var(--color-biz-muted)]">
-              Label collection platform — Google vs Actual — no ML inference
-            </span>
-          </h1>
+    <div className="exec-hq mx-auto max-w-[1600px] space-y-8 biz-page-enter">
+      <header className="flex flex-col gap-5 border-b border-[var(--color-biz-line)] pb-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-4">
+          <Icon3D icon={Navigation} tone="cyan" size="lg" />
+          <div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <h1 className="biz-display text-[1.75rem] font-bold leading-none tracking-tight">ETA Intelligence</h1>
+              <span className="cmd-live-pill">
+                <span className="cmd-live-dot" aria-hidden />
+                Labels
+              </span>
+            </div>
+            <p className="mt-2.5 max-w-2xl text-sm leading-relaxed text-[var(--color-biz-muted)]">
+              Google vs actual travel time — label collection only, no ML inference
+            </p>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            void dashboard.refetch();
-            void quality.refetch();
-            void readiness.refetch();
-          }}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10"
-        >
+        <button type="button" onClick={refresh} className="biz-btn">
           <RefreshCw size={14} className={dashboard.isFetching ? "animate-spin" : ""} />
           Refresh
         </button>
       </header>
 
       {dashboard.isLoading ? (
-        <div className="flex items-center justify-center py-16 text-[var(--color-biz-muted)]">
+        <div className="flex items-center justify-center py-20 text-[var(--color-biz-muted)]">
           <Loader2 className="mr-2 animate-spin" size={20} />
           Loading ETA intelligence…
         </div>
       ) : dashboard.isError ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-300">
-          {/*
-            Every failure used to be reported as a missing Phase-2 migration, which sent people
-            looking at the database for what was in fact a client-side contract bug. The cause is
-            not knowable from here, so the message no longer guesses at one.
-          */}
+        <div className="biz-glass-panel border-[var(--color-biz-danger)]/30 p-5 text-[var(--color-biz-danger)]">
           Failed to load ETA dashboard. Please try again.
         </div>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatTile
               label="Trips Collected"
               value={formatNumber(Number(d?.tripsCollected ?? 0))}
-              icon={Database}
               sub={`${formatNumber(Number(d?.labelsToday ?? 0))} today`}
+              icon={Database}
+              tone="accent"
             />
-            <KpiCard
+            <StatTile
               label="Training Ready"
               value={formatNumber(Number(d?.trainingReady ?? 0))}
-              icon={CheckCircle2}
               sub={`${formatPercent(Number(r?.readinessPct ?? 0) / 100)} of min threshold`}
+              icon={CheckCircle2}
+              tone={Number(d?.trainingReady ?? 0) > 0 ? "success" : "default"}
             />
-            <KpiCard
+            <StatTile
               label="Label Quality"
-              value={`${Number(d?.avgQualityScore ?? 100).toFixed(1)}%`}
-              icon={Target}
+              value={`${qualityPct.toFixed(1)}%`}
               sub={`${formatNumber(Number(d?.rejected ?? 0))} rejected`}
+              icon={Target}
+              tone={qualityPct >= 80 ? "success" : qualityPct >= 60 ? "accent" : "danger"}
             />
-            <KpiCard
-              label="Google vs Actual Gap"
+            <StatTile
+              label="Google vs Actual"
               value={d?.avgGapMinutes != null ? `${Number(d.avgGapMinutes).toFixed(1)} min` : "—"}
-              icon={TrendingUp}
               sub="Average prediction gap"
+              icon={TrendingUp}
+              tone={d?.avgGapMinutes != null && Math.abs(Number(d.avgGapMinutes)) > 5 ? "danger" : "success"}
             />
-          </div>
+          </section>
 
-          <div className="grid gap-3 lg:grid-cols-3">
-            <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 lg:col-span-1">
-              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-slate-400">
-                <Activity size={14} />
-                Training Readiness
-              </h2>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Training ready</span>
-                  <span className="font-mono text-emerald-400">{formatNumber(Number(r?.trainingReady ?? 0))}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Validated</span>
-                  <span className="font-mono">{formatNumber(Number(r?.validated ?? 0))}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Raw</span>
-                  <span className="font-mono">{formatNumber(Number(r?.raw ?? 0))}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Min for training</span>
-                  <span className="font-mono">{formatNumber(Number(r?.minLabelsForTraining ?? 50))}</span>
-                </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className="h-full rounded-full bg-emerald-500 transition-all"
-                    style={{ width: `${Math.min(100, Number(r?.readinessPct ?? 0))}%` }}
-                  />
-                </div>
+          <section className="grid gap-4 lg:grid-cols-3">
+            <div className="biz-glass-panel p-6">
+              <SectionHead icon={Activity} tone="success" title="Training Readiness" meta={`${readinessPct.toFixed(0)}%`} />
+              <MetricRow label="Training ready" value={formatNumber(Number(r?.trainingReady ?? 0))} heat="good" />
+              <MetricRow label="Validated" value={formatNumber(Number(r?.validated ?? 0))} />
+              <MetricRow label="Raw" value={formatNumber(Number(r?.raw ?? 0))} />
+              <MetricRow label="Min for training" value={formatNumber(Number(r?.minLabelsForTraining ?? 50))} />
+              <div className="biz-meter biz-meter--success mt-4">
+                <span style={{ width: `${readinessPct}%` }} />
               </div>
-            </section>
+            </div>
 
-            <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 lg:col-span-1">
-              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-slate-400">
-                <Navigation size={14} />
-                Google Maps Capture
-              </h2>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Snapshots</span>
-                  <span className="font-mono">{formatNumber(Number(g?.snapshotCount ?? 0))}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Avg latency</span>
-                  <span className="font-mono">{Number(g?.avgLatencyMs ?? 0)} ms</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Failure rate</span>
-                  <span className={`font-mono ${Number(g?.failureRate ?? 0) > 5 ? "text-amber-400" : ""}`}>
-                    {Number(g?.failureRate ?? 0).toFixed(1)}%
-                  </span>
-                </div>
-              </div>
-            </section>
+            <div className="biz-glass-panel p-6">
+              <SectionHead icon={Navigation} tone="cyan" title="Google Maps Capture" />
+              <MetricRow label="Snapshots" value={formatNumber(Number(g?.snapshotCount ?? 0))} />
+              <MetricRow label="Avg latency" value={`${Number(g?.avgLatencyMs ?? 0)} ms`} />
+              <MetricRow
+                label="Failure rate"
+                value={`${failRate.toFixed(1)}%`}
+                heat={failRate > 5 ? "warn" : "good"}
+              />
+            </div>
 
-            <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 lg:col-span-1">
-              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-slate-400">
-                <Clock size={14} />
-                Data Freshness
-              </h2>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Last label</span>
-                  <span className="font-mono">
-                    {d?.freshnessMinutes != null ? `${Number(d.freshnessMinutes)} min ago` : "—"}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Overall quality</span>
-                  <span className="font-mono">{Number(q?.overallScore ?? 100).toFixed(1)}%</span>
-                </div>
-              </div>
-            </section>
-          </div>
-
-          {cities.length > 0 && (
-            <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-slate-400">
-                <MapPin size={14} />
-                Cities
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                {cities.map((c) => (
-                  <span
-                    key={c.city}
-                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-sm"
-                  >
-                    {c.city}{" "}
-                    <span className="text-slate-400">({formatNumber(c.count)})</span>
-                  </span>
-                ))}
-              </div>
-            </section>
-          )}
-
-          <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">
-              Recent Trips
-            </h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-white/10 text-slate-400">
-                    <th className="pb-2 pr-4 font-medium">Booking</th>
-                    <th className="pb-2 pr-4 font-medium">City</th>
-                    <th className="pb-2 pr-4 font-medium">Status</th>
-                    <th className="pb-2 pr-4 font-medium">Quality</th>
-                    <th className="pb-2 pr-4 font-medium">Actual</th>
-                    <th className="pb-2 pr-4 font-medium">Google</th>
-                    <th className="pb-2 font-medium">Gap</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {((trips.data?.trips as Array<Record<string, unknown>>) ?? []).map((t) => (
-                    <tr key={String(t.bookingId)} className="border-b border-white/5">
-                      <td className="py-2 pr-4 font-mono text-xs">{String(t.bookingId).slice(0, 12)}…</td>
-                      <td className="py-2 pr-4">{String(t.city ?? "—")}</td>
-                      <td className="py-2 pr-4">
-                        <span
-                          className={
-                            t.status === "TRAINING_READY"
-                              ? "text-emerald-400"
-                              : t.status === "REJECTED"
-                                ? "text-red-400"
-                                : "text-slate-300"
-                          }
-                        >
-                          {String(t.status)}
-                        </span>
-                      </td>
-                      <td className="py-2 pr-4">{Number(t.qualityScore ?? 0).toFixed(0)}%</td>
-                      <td className="py-2 pr-4">
-                        {t.actualTravelDurationMin != null ? `${Number(t.actualTravelDurationMin)} min` : "—"}
-                      </td>
-                      <td className="py-2 pr-4">
-                        {t.googleEtaMinutes != null ? `${Number(t.googleEtaMinutes)} min` : "—"}
-                      </td>
-                      <td className="py-2">
-                        {t.gapMinutes != null ? (
-                          <span className={Number(t.gapMinutes) > 5 ? "text-amber-400" : ""}>
-                            {Number(t.gapMinutes) > 0 ? "+" : ""}
-                            {Number(t.gapMinutes).toFixed(1)} min
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  {trips.isSuccess && !(trips.data?.trips as unknown[])?.length && (
-                    <tr>
-                      <td colSpan={7} className="py-8 text-center text-slate-500">
-                        No ETA labels collected yet. Labels are created when bookings complete.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+            <div className="biz-glass-panel p-6">
+              <SectionHead icon={Clock} tone="warning" title="Data Freshness" />
+              <MetricRow
+                label="Last label"
+                value={d?.freshnessMinutes != null ? `${Number(d.freshnessMinutes)} min ago` : "—"}
+              />
+              <MetricRow
+                label="Overall quality"
+                value={`${Number(q?.overallScore ?? 100).toFixed(1)}%`}
+                heat={Number(q?.overallScore ?? 100) >= 80 ? "good" : "warn"}
+              />
             </div>
           </section>
 
-          {((q?.rejectionReasons as Array<{ reason: string; count: number }>) ?? []).length > 0 && (
-            <section className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
-              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-amber-300">
-                <XCircle size={14} />
-                Quality Rejections
-              </h2>
+          <section className="biz-glass-panel p-6">
+            <SectionHead
+              icon={MapPin}
+              tone="success"
+              title="Cities"
+              subtitle="Every live city on the platform — trip labels collected vs coverage"
+              meta={`${cities.length} cities`}
+            />
+            {cities.length ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {cities.map((c) => (
+                  <article key={c.city} className="rounded-[14px] border border-[var(--color-biz-line)] bg-[var(--color-biz-surface)] p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="text-sm font-bold tracking-tight">{c.city}</h3>
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-biz-muted)]">
+                        {c.count ? "Active" : "No labels"}
+                      </span>
+                    </div>
+                    <p data-stat-value className="mt-2 text-2xl font-bold tabular-nums tracking-tight">
+                      {formatNumber(c.count)}
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--color-biz-muted)]">trips collected</p>
+                    <div className={cn("biz-meter mt-3", c.count ? "biz-meter--success" : "")}>
+                      <span style={{ width: `${Math.max(c.count ? 8 : 0, c.share)}%` }} />
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-[var(--color-biz-muted)]">No city coverage yet.</p>
+            )}
+          </section>
+
+          <section className="biz-glass-panel p-6">
+            <SectionHead icon={Database} tone="default" title="Recent Trips" meta="Latest 25 labels" />
+            <DataTable
+              flush
+              headers={["Booking", "City", "Status", "Quality", "Actual", "Google", "Gap"]}
+              rows={tripRows}
+              isLoading={trips.isLoading}
+              isError={trips.isError}
+              emptyMessage="No ETA labels collected yet. Labels are created when bookings complete."
+              onRetry={() => void trips.refetch()}
+            />
+          </section>
+
+          {rejections.length > 0 ? (
+            <section className="biz-glass-panel p-6">
+              <SectionHead icon={XCircle} tone="warning" title="Quality Rejections" />
               <div className="flex flex-wrap gap-2">
-                {((q?.rejectionReasons as Array<{ reason: string; count: number }>) ?? []).map((item) => (
-                  <span key={item.reason} className="rounded-lg bg-amber-500/10 px-3 py-1 text-sm text-amber-200">
-                    {item.reason.replace(/_/g, " ")} ({item.count})
+                {rejections.map((item) => (
+                  <span
+                    key={item.reason}
+                    className="rounded-full border border-[var(--color-biz-warning)]/25 bg-[var(--color-biz-warning)]/10 px-3 py-1.5 text-sm font-semibold text-[var(--color-biz-warning)]"
+                  >
+                    {item.reason.replace(/_/g, " ")} · {item.count}
                   </span>
                 ))}
               </div>
             </section>
-          )}
+          ) : null}
         </>
       )}
     </div>

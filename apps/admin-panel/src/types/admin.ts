@@ -32,8 +32,13 @@ export type AdminCustomer = {
   id: string;
   email: string;
   firstName: string | null;
+  lastName?: string | null;
   totalBookings: number;
   totalSpent: number;
+  walletBalance?: number;
+  referralCount?: number;
+  preferredCity?: string | null;
+  lastActivityAt?: string | null;
   kycStatus: string;
   isActive: boolean;
   createdAt: string;
@@ -49,6 +54,13 @@ export type AdminProvider = {
   completedBookings: number;
   isVerified: boolean;
   isApproved: boolean;
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
+  completionRate?: number;
+  acceptanceRate?: number;
+  totalReviews?: number;
+  currentStatus?: string | null;
+  businessName?: string | null;
   registrationStatus?: "PENDING" | "APPROVED" | "REJECTED";
   serviceCategories?: string[];
   city?: string | null;

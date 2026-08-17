@@ -103,8 +103,8 @@ export const HQ_SECTIONS: readonly HqSection[] = [
       { href: "/alerts", label: "Alert Center", icon: Bell },
       { href: "/heatmap", label: "Demand Heatmap", icon: Flame },
       { href: "/weather", label: "Weather Center", icon: CloudSun },
-      { href: "/geofences", label: "Geofences", icon: MapPinned },
-      { href: "/digital-twin", label: "Digital Twin", icon: Globe2 },
+      { href: "/geofences", label: "Zone Control", icon: MapPinned },
+      { href: "/digital-twin", label: "City Twin", icon: Globe2 },
     ],
   },
   {

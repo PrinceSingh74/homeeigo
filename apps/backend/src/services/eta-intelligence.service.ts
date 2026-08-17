@@ -557,7 +557,6 @@ class EtaIntelligenceService {
         _count: { city: true },
         where: { city: { not: null } },
         orderBy: { _count: { city: "desc" } },
-        take: 10,
       }),
       prisma.etaTrainingLabel.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     ]);

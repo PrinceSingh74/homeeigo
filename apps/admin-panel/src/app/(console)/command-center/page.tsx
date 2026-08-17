@@ -4,7 +4,8 @@ import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { useRenderProbe, useMountProbe } from "@/lib/render-probe";
 import { useQuery } from "@tanstack/react-query";
-import { Layers, Users, Flame, IndianRupee, Zap, ShieldAlert, Hexagon, Car, CloudRain } from "lucide-react";
+import { Layers, Users, Flame, IndianRupee, Zap, ShieldAlert, Hexagon, Car, CloudRain, Gauge } from "lucide-react";
+import { Icon3D } from "@/components/hq/Icon3D";
 import { adminApi } from "@/services/admin-api";
 import {
   COMMAND_DEMAND_POLL_MS,
@@ -22,7 +23,7 @@ import { DeferAfterPaint } from "@/components/perf/DeferAfterPaint";
 
 const CommandMap = dynamic(
   () => import("@/components/command/CommandMap").then((m) => m.CommandMap),
-  { ssr: false, loading: () => <div className="h-full w-full rounded-2xl bg-white/5" aria-hidden /> },
+  { ssr: false, loading: () => <div className="h-full w-full rounded-2xl" style={{ background: "var(--cmd-card)" }} aria-hidden /> },
 );
 
 const LAYERS: { key: LayerKey; label: string; icon: typeof Users }[] = [
@@ -78,64 +79,74 @@ export default function CommandCenterPage() {
   );
 
   return (
-    <div className="flex h-[calc(100dvh-1rem)] flex-col gap-3 p-1">
-      {/* TOP — Executive KPI ribbon */}
+    <div className="cmd-center flex h-[calc(100dvh-2.5rem)] flex-col gap-4 biz-page-enter">
+      <header className="cmd-page-head">
+        <Icon3D icon={Gauge} tone="success" size="lg" />
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <h1 className="biz-display text-[1.45rem] font-bold leading-none tracking-tight">Command Center</h1>
+            <span className="cmd-live-pill">
+              <span className="cmd-live-dot" aria-hidden />
+              Live
+            </span>
+          </div>
+          <p className="mt-1.5 text-sm" style={{ color: "var(--cmd-muted)" }}>
+            Live operations — density, surge, geofence, and fraud on one map
+          </p>
+        </div>
+      </header>
+
       <ExecutiveKpiRibbon kpis={kpisQ.data?.data ?? null} freshness={kpisQ.data?.freshness} confidence={kpisQ.data?.confidence} />
 
-      {/* MIDDLE — map (center) + AI panel (right) */}
-      <div className="flex min-h-0 flex-1 gap-3">
-        <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/10">
+      <div className="flex min-h-0 flex-1 gap-4">
+        <div className="cmd-card cmd-map-frame">
           <MapPerformanceBoundary label="CommandMap" className="h-full w-full" deferAfterPaint rootMargin="0px">
             <MapDOMIsolationBoundary label="CommandMap" className="h-full w-full">
               <CommandMap zones={zones} fraud={fraudPins} layers={layers} className="h-full w-full" />
             </MapDOMIsolationBoundary>
           </MapPerformanceBoundary>
 
-          {/* Layer toggle bar */}
-          <div className="absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-1.5 rounded-xl border border-white/10 bg-slate-900/85 p-1.5 backdrop-blur">
-            <span className="flex items-center gap-1 px-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500"><Layers size={12} />Layers</span>
+          <div className="cmd-layer-bar absolute left-3 top-3 z-10">
+            <span className="cmd-layer-kicker">
+              <Layers size={12} /> Layers
+            </span>
             {LAYERS.map((l) => {
               const Icon = l.icon;
               return (
-              <button
-                key={l.key}
-                onClick={() => toggle(l.key)}
-                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition ${layers.has(l.key) ? "bg-sky-500 text-white shadow-lg shadow-sky-500/25" : "text-slate-400 hover:bg-slate-800"}`}
-              >
-                <Icon size={13} />{l.label}
-              </button>
-            );
+                <button
+                  key={l.key}
+                  type="button"
+                  onClick={() => toggle(l.key)}
+                  className={`cmd-layer-btn${layers.has(l.key) ? " is-on" : ""}`}
+                >
+                  <Icon size={13} />
+                  {l.label}
+                </button>
+              );
             })}
           </div>
 
-          {/* Zone count chip */}
-          <div className="absolute bottom-3 left-3 z-10 rounded-lg border border-white/10 bg-slate-900/85 px-3 py-1.5 text-[11px] text-slate-300 backdrop-blur">
+          <div className="cmd-map-chip absolute bottom-3 left-3 z-10">
             {zones.length} zones · {zones.reduce((s, z) => s + z.providers, 0)} providers live · {fraudPins.length} fraud pins
           </div>
         </div>
 
-        {/* RIGHT — AI intelligence panel (deferred after first paint) */}
         <DeferAfterPaint
           label="AiIntelligencePanel"
-          fallback={<div className="w-[20rem] shrink-0 rounded-2xl border border-white/10 bg-slate-900/40" aria-hidden />}
+          fallback={<div className="cmd-card cmd-intel-board" aria-hidden />}
         >
-          <div className="w-[20rem] shrink-0">
-            <AiIntelligencePanel
-              surge={surgeQ.data?.data}
-              demand={demandQ.data?.data}
-              fraud={fraudQ.data?.data}
-              revenue={revQ.data?.data}
-              zones={zonesQ.data?.data}
-            />
-          </div>
+          <AiIntelligencePanel
+            surge={surgeQ.data?.data}
+            demand={demandQ.data?.data}
+            fraud={fraudQ.data?.data}
+            revenue={revQ.data?.data}
+            zones={zonesQ.data?.data}
+          />
         </DeferAfterPaint>
       </div>
 
-      {/* BOTTOM — operational timeline (deferred) */}
-      <DeferAfterPaint label="OperationalTimeline" fallback={<div className="h-12 shrink-0" aria-hidden />}>
-        <div className="h-12 shrink-0">
-          <OperationalTimeline fraud={fraudQ.data?.data} surge={surgeQ.data?.data} />
-        </div>
+      <DeferAfterPaint label="OperationalTimeline" fallback={<div className="cmd-card cmd-timeline shrink-0" aria-hidden />}>
+        <OperationalTimeline fraud={fraudQ.data?.data} surge={surgeQ.data?.data} />
       </DeferAfterPaint>
     </div>
   );

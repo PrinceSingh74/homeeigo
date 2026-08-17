@@ -502,26 +502,120 @@ export class PartnerOsService {
   async getWorkforceAnalytics() {
     const now = new Date();
     const todayStart = startOfDay(now);
-    const [online, activeJobs, attendanceToday, providers, acceptanceAvg] = await Promise.all([
+    const rangeStart = startOfDay(new Date(todayStart.getTime() - 13 * DAY_MS));
+    const activeStatuses = ["ACCEPTED", "ASSIGNED", "EN_ROUTE", "IN_PROGRESS"] as const;
+
+    const [
+      online,
+      attendanceToday,
+      providers,
+      rates,
+      openSessions,
+      busyRows,
+      jobsByStatus,
+      attendanceRows,
+      topPartners,
+      cityRows,
+    ] = await Promise.all([
       prisma.provider.count({ where: { isOnline: true, isApproved: true } }),
-      prisma.booking.count({
-        where: { status: { in: ["ACCEPTED", "ASSIGNED", "EN_ROUTE", "IN_PROGRESS"] } },
-      }),
       prisma.partnerAttendanceSession.count({ where: { checkInAt: { gte: todayStart } } }),
       prisma.provider.count({ where: { isApproved: true, isActive: true } }),
       prisma.provider.aggregate({
         where: { isApproved: true },
-        _avg: { acceptanceRate: true, completionRate: true },
+        _avg: { acceptanceRate: true, completionRate: true, cancellationRate: true, onTimeRate: true, rating: true },
+      }),
+      prisma.partnerAttendanceSession.count({ where: { checkOutAt: null } }),
+      prisma.booking.findMany({
+        where: { status: { in: [...activeStatuses] }, providerId: { not: null } },
+        select: { providerId: true },
+        distinct: ["providerId"],
+      }),
+      prisma.booking.groupBy({
+        by: ["status"],
+        where: { status: { in: [...activeStatuses] } },
+        _count: { _all: true },
+      }),
+      prisma.partnerAttendanceSession.findMany({
+        where: { checkInAt: { gte: rangeStart } },
+        select: { checkInAt: true },
+      }),
+      prisma.provider.findMany({
+        where: { isApproved: true, isActive: true },
+        orderBy: [{ completionRate: "desc" }, { rating: "desc" }],
+        take: 8,
+        select: {
+          id: true,
+          city: true,
+          isOnline: true,
+          rating: true,
+          acceptanceRate: true,
+          completionRate: true,
+          completedBookings: true,
+          user: { select: { firstName: true, lastName: true } },
+        },
+      }),
+      prisma.provider.groupBy({
+        by: ["city"],
+        where: { isApproved: true, isActive: true },
+        _count: { _all: true },
       }),
     ]);
+
+    const dayKey = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const dayCounts = new Map<string, number>();
+    const hourCounts = Array.from({ length: 24 }, () => 0);
+    for (const row of attendanceRows) {
+      const at = row.checkInAt;
+      dayCounts.set(dayKey(at), (dayCounts.get(dayKey(at)) ?? 0) + 1);
+      if (at >= todayStart) hourCounts[at.getHours()] += 1;
+    }
+
+    const checkInsByDay = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(rangeStart.getTime() + i * DAY_MS);
+      const date = dayKey(d);
+      return { date, count: dayCounts.get(date) ?? 0 };
+    });
+    const checkInsByHour = Array.from({ length: now.getHours() + 1 }, (_, hour) => ({
+      hour,
+      count: hourCounts[hour] ?? 0,
+    }));
+
+    const busyProviders = busyRows.length;
+    const idleOnline = Math.max(0, online - busyProviders);
 
     return {
       onlineProviders: online,
       totalProviders: providers,
-      activeJobs,
+      activeJobs: jobsByStatus.reduce((sum, row) => sum + row._count._all, 0),
       attendanceCheckInsToday: attendanceToday,
-      avgAcceptanceRate: round2(acceptanceAvg._avg.acceptanceRate ?? 0),
-      avgCompletionRate: round2(acceptanceAvg._avg.completionRate ?? 0),
+      avgAcceptanceRate: round2(rates._avg.acceptanceRate ?? 0),
+      avgCompletionRate: round2(rates._avg.completionRate ?? 0),
+      avgCancellationRate: round2(rates._avg.cancellationRate ?? 0),
+      avgOnTimeRate: round2(rates._avg.onTimeRate ?? 0),
+      avgRating: round2(rates._avg.rating ?? 0),
+      busyProviders,
+      idleOnline,
+      offlineProviders: Math.max(0, providers - online),
+      openSessions,
+      jobsByStatus: jobsByStatus
+        .map((row) => ({ status: row.status, count: row._count._all }))
+        .sort((a, b) => b.count - a.count),
+      checkInsByDay,
+      checkInsByHour,
+      topPartners: topPartners.map((p) => ({
+        id: p.id,
+        name: `${p.user.firstName} ${p.user.lastName}`.trim() || "Partner",
+        city: p.city,
+        online: p.isOnline,
+        rating: round2(p.rating),
+        acceptanceRate: round2(p.acceptanceRate),
+        completionRate: round2(p.completionRate),
+        completedBookings: p.completedBookings,
+      })),
+      cities: cityRows
+        .map((row) => ({ city: row.city?.trim() || "Unassigned", count: row._count._all }))
+        .sort((a, b) => b.count - a.count || a.city.localeCompare(b.city)),
       generatedAt: now.toISOString(),
     };
   }

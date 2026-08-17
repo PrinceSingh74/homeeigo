@@ -73,7 +73,7 @@ export function GlobalSearch() {
     for (const b of bookings.data?.bookings ?? [])
       out.push({ kind: "booking", id: b.id, title: b.bookingNumber ?? b.id.slice(0, 8), sub: `${b.service} · ${b.user} · ${b.status}`, href: `/bookings/${b.id}` });
     for (const c of customers.data?.users ?? [])
-      out.push({ kind: "customer", id: c.id, title: c.firstName ?? c.email, sub: `${c.email} · ${c.totalBookings} bookings`, href: `/customers?q=${encodeURIComponent(c.email)}` });
+      out.push({ kind: "customer", id: c.id, title: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email, sub: `${c.email} · ${c.totalBookings} bookings`, href: `/customers?q=${encodeURIComponent(c.email)}` });
     return out;
   }, [vendors.data, bookings.data, customers.data]);
 

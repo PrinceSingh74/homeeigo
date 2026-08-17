@@ -93,7 +93,12 @@ export default function HqLandingPage() {
   }, [sectionId]);
 
   return (
-    <HqLandingShell emoji={section.emoji} title={section.label} subtitle={section.description}>
+    <HqLandingShell
+      emoji={section.emoji}
+      title={section.label}
+      subtitle={section.description}
+      className={sectionId === "marketplace" ? "max-w-[1600px]" : undefined}
+    >
       {Dashboard}
 
       <section>

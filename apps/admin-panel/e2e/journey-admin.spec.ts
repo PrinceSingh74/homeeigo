@@ -29,7 +29,7 @@ test.describe("Admin journey", () => {
     await expect(page.getByRole("heading", { name: /Demand Heatmap/i })).toBeVisible({ timeout: 20_000 });
 
     // 4) Geofence
-    await page.getByRole("link", { name: /Geofences/i }).click();
+    await page.getByRole("link", { name: /Zone Control/i }).click();
     await expect(page).toHaveURL(/\/geofences/, { timeout: 20_000 });
     await page.waitForLoadState("networkidle");
 

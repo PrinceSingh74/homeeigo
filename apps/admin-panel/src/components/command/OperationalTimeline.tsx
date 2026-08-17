@@ -4,6 +4,7 @@ import { memo, useMemo } from "react";
 import { AlertTriangle, Zap, Activity } from "lucide-react";
 import { useRenderProbe, useMountProbe } from "@/lib/render-probe";
 import type { FraudData, SurgeZone } from "@/services/admin-api";
+import { Icon3D } from "@/components/hq/Icon3D";
 
 type Event = { ts: number; kind: "fraud" | "surge"; text: string };
 
@@ -33,25 +34,22 @@ function OperationalTimelineInner({ fraud, surge }: { fraud?: FraudData; surge?:
   const events = useMemo(() => buildEvents(fraud, surge), [fraud, surge]);
 
   return (
-    <div className="flex h-full items-center gap-3 overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-2 backdrop-blur-xl">
-      <span className="flex shrink-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-        <Activity size={13} className="text-sky-400" /> Live Ops
+    <div className="cmd-card cmd-timeline">
+      <span className="flex shrink-0 items-center gap-2 pr-1 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--cmd-muted)" }}>
+        <Icon3D icon={Activity} tone="cyan" size="sm" /> Live Ops
       </span>
       {events.length === 0 ? (
-        <span className="text-xs text-slate-500">No operational events in the current window.</span>
+        <span className="text-xs" style={{ color: "var(--cmd-muted)" }}>No operational events in the current window.</span>
       ) : (
         events.slice(0, 20).map((e, i) => (
-          <div
-            key={i}
-            className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-slate-800/60 px-3 py-1 text-[11px]"
-          >
+          <div key={i} className={`cmd-event-chip cmd-event-chip--${e.kind}`}>
             {e.kind === "fraud" ? (
-              <AlertTriangle size={11} className="text-red-400" />
+              <AlertTriangle size={11} className="text-[var(--color-biz-danger)]" />
             ) : (
-              <Zap size={11} className="text-amber-400" />
+              <Zap size={11} className="text-[var(--color-biz-warning)]" />
             )}
-            <span className="text-slate-200">{e.text}</span>
-            <span className="text-slate-500">
+            <span>{e.text}</span>
+            <span className="text-[var(--color-biz-faint)]">
               {new Date(e.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
           </div>
