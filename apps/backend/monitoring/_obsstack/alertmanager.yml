@@ -21,9 +21,8 @@ receivers:
       - url: http://host.docker.internal:45678/webhook
         send_resolved: true
 
-  - name: homigo-cert-slack
-    slack_configs:
-      - send_resolved: true
-        channel: "#homigo-cert-alerts"
-        title: "[CERT] {{ .CommonLabels.alertname }}"
-        text: "{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}"
+# A `homigo-cert-slack` receiver used to sit here. It was never routed to — every route above
+# points at the webhook — and it carried `slack_configs` with no `slack_api_url`, which
+# Alertmanager rejects at startup rather than at send time. So the only thing it did was make the
+# container exit 1 on boot. Add it back with a real `global.slack_api_url` if Slack delivery is
+# wanted; leaving a half-configured receiver in place buys nothing and costs the whole process.

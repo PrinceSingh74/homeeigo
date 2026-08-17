@@ -28,6 +28,7 @@ import { financialLedgerService } from "../services/financial-ledger.service";
 import { cleanupPublishedOutbox, startOutboxProcessor, stopOutboxProcessor } from "../events/core/outbox-processor";
 import { startScheduledJobProcessor, stopScheduledJobProcessor } from "../events/core/job-processor";
 import { bootstrapScheduledJobs } from "../events/jobs";
+import { bootstrapWorkflows } from "../automation/registry/definitions";
 import { cleanupEventPlatformData } from "../events/core/retention";
 import { startEtlScheduler, stopEtlScheduler } from "../../analytics/scheduler/etl-scheduler";
 import { expireStaleMemories, purgeExpiredContextCache } from "../ai-brain";
@@ -336,6 +337,19 @@ export function startMaintenance(): void {
   void bootstrapRetention().catch(() => undefined);
   startOutboxProcessor();
   bootstrapScheduledJobs();
+  /**
+   * Workflow definitions are registered and reconciled before the job processor starts.
+   *
+   * Order matters: a workflow step job arriving before its definition is in the registry would
+   * find no code for its pinned version and fail the instance. Registering first closes that
+   * window. A failure here is logged loudly rather than swallowed — the most likely cause is an
+   * edited definition that running instances are pinned to, and that deserves attention.
+   */
+  void bootstrapWorkflows().catch((err) => {
+    logger.error("workflow_bootstrap_failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
   startScheduledJobProcessor();
   startEtlScheduler();
   void runOtpCleanup();
