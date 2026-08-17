@@ -207,11 +207,22 @@ describe("TEST 9 — provenance", () => {
     expect(inferred.qualityScore).toBeLessThan(gps.qualityScore);
   });
 
-  test("absent provenance is tolerated for pre-provenance labels", () => {
+  test("absent provenance is retained but capped below training", () => {
     const { arrivalSource: _omitted, ...withoutProvenance } = arrivedAgoSec(600);
     const r = validateEtaLabel(withoutProvenance);
+
+    // Absent is not the same as invalid: the label is kept and stays queryable.
     expect(r.rejectionReasons).not.toContain("invalid_provenance");
-    expect(r.status).toBe("TRAINING_READY");
+
+    /**
+     * It is nonetheless capped at VALIDATED. An arrival with no attributable producer used to be
+     * scored as if it were GPS-precise, which promoted unverifiable arrivals to full training
+     * weight; `historical_provenance_unknown` stops that. The reason is asserted explicitly, not
+     * just the status, so a future change to the blocking list cannot quietly re-open the gap.
+     */
+    expect(r.rejectionReasons).toContain("historical_provenance_unknown");
+    expect(r.status).toBe("VALIDATED");
+    expect(r.status).not.toBe("TRAINING_READY");
   });
 });
 

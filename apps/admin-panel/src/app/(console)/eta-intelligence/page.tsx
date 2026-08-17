@@ -84,7 +84,12 @@ export default function EtaIntelligencePage() {
         </div>
       ) : dashboard.isError ? (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-300">
-          Failed to load ETA dashboard. Ensure backend Phase 2 migration is applied.
+          {/*
+            Every failure used to be reported as a missing Phase-2 migration, which sent people
+            looking at the database for what was in fact a client-side contract bug. The cause is
+            not knowable from here, so the message no longer guesses at one.
+          */}
+          Failed to load ETA dashboard. Please try again.
         </div>
       ) : (
         <>

@@ -439,20 +439,24 @@ export const adminApi = {
   },
 
   /** Phase 2 ETA Intelligence — label collection platform (no ML inference) */
+  /**
+   * The ETA analytics routes answer with a flat envelope — `{ success, ...payload }` — rather
+   * than nesting the payload under `data`. These methods used to unwrap `.data`, which is always
+   * `undefined` here, and React Query rejects an `undefined` result from a query function. Every
+   * ETA query therefore failed, and the page read that as the Phase-2 migration being missing.
+   *
+   * Returned unwrapped, exactly as `geoIntel` above does for the same envelope shape.
+   */
   etaIntelligence: {
-    dashboard: () =>
-      apiRequest<ApiResponse<Record<string, unknown>>>("/api/analytics/eta", { auth: true }).then((r) => r.data!),
-    quality: () =>
-      apiRequest<ApiResponse<Record<string, unknown>>>("/api/analytics/eta/quality", { auth: true }).then((r) => r.data!),
-    readiness: () =>
-      apiRequest<ApiResponse<Record<string, unknown>>>("/api/analytics/eta/readiness", { auth: true }).then((r) => r.data!),
+    dashboard: () => apiRequest<Record<string, unknown>>("/api/analytics/eta", { auth: true }),
+    quality: () => apiRequest<Record<string, unknown>>("/api/analytics/eta/quality", { auth: true }),
+    readiness: () => apiRequest<Record<string, unknown>>("/api/analytics/eta/readiness", { auth: true }),
     trips: (limit = 50, offset = 0) =>
-      apiRequest<ApiResponse<{ trips: Array<Record<string, unknown>> }>>("/api/analytics/eta/trips", {
+      apiRequest<{ trips: Array<Record<string, unknown>> }>("/api/analytics/eta/trips", {
         auth: true,
         query: { limit, offset },
-      }).then((r) => r.data!),
-    google: () =>
-      apiRequest<ApiResponse<Record<string, unknown>>>("/api/analytics/eta/google", { auth: true }).then((r) => r.data!),
+      }),
+    google: () => apiRequest<Record<string, unknown>>("/api/analytics/eta/google", { auth: true }),
   },
 
   verifyProvider: (
