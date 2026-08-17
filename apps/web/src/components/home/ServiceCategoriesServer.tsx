@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { ServerServiceCard } from "@/components/home/ServerServiceCard";
 import { PopularServicesGrid } from "@/components/home/PopularServicesGrid";
-import { SERVICES } from "@/lib/services";
+import { PopularServicesLive } from "@/components/home/PopularServicesLive";
 import { PageSection } from "@/components/layout/PageSection";
 import { SectionHeader } from "@/components/layout/SectionHeader";
 import { sectionAction } from "@/lib/page-layout";
@@ -26,34 +25,6 @@ export function ServiceCategoriesServer({
         featured: s.isFeatured ?? false,
         thumbnail: s.thumbnail ?? null,
       })) ?? [];
-  const staticServices = SERVICES.length
-    ? SERVICES
-    : [
-        {
-          id: "service-unavailable",
-          name: "Service",
-          price: "₹0",
-          priceFrom: 0,
-          color: "#7C3AED",
-          img: undefined,
-          icon: undefined,
-          featured: false,
-        },
-      ];
-
-  const services =
-    apiServices?.map((s, i) => {
-      const fallback = staticServices[i % staticServices.length]!;
-      return {
-        id: s.id,
-        name: s.name || fallback.name,
-        price: `₹${s.basePrice ?? s.minPrice ?? fallback.priceFrom}`,
-        color: fallback.color,
-        img: s.thumbnail ?? s.icon ?? fallback.img,
-        featured: s.isFeatured ?? fallback.featured,
-        premiumOnly: s.premiumOnly ?? false,
-      };
-    }) ?? staticServices;
 
   return (
     <PageSection>
@@ -72,20 +43,9 @@ export function ServiceCategoriesServer({
       {popular.length > 0 ? (
         <PopularServicesGrid services={popular} />
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4 lg:gap-6">
-          {services.slice(0, 8).map((s) => (
-            <ServerServiceCard
-              key={s.id}
-              serviceId={s.id}
-              name={s.name}
-              price={s.price}
-              color={s.color}
-              img={s.img}
-              featured={s.featured}
-              premiumOnly={"premiumOnly" in s ? s.premiumOnly : false}
-            />
-          ))}
-        </div>
+        // SSR fetch failed (backend down/slow at render time) — recover on the
+        // client with live data instead of static demo cards.
+        <PopularServicesLive />
       )}
     </PageSection>
   );
