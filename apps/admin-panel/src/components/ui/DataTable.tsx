@@ -22,6 +22,7 @@ type DataTableProps = {
   onRetry?: () => void;
   title?: string;
   footer?: React.ReactNode;
+  flush?: boolean;
 };
 
 const TableRow = memo(function TableRow({
@@ -89,6 +90,7 @@ function DataTableInner({
   onRetry,
   title,
   footer,
+  flush = false,
 }: DataTableProps) {
   useRenderProbe("DataTable");
   useMountProbe("DataTable");
@@ -109,7 +111,7 @@ function DataTableInner({
   const virtualRows = virtualize ? virtualizer.getVirtualItems() : [];
 
   return (
-    <div className="biz-card overflow-hidden">
+    <div className={flush ? "overflow-hidden" : "biz-card overflow-hidden"}>
       {title ? (
         <div className="biz-display border-b border-[var(--color-biz-line)] bg-[var(--color-biz-glass)] px-4 py-3 text-sm font-semibold tracking-tight">
           {title}
@@ -226,6 +228,7 @@ export const DataTable = memo(DataTableInner, (prev, next) => {
     prev.isLoading === next.isLoading &&
     prev.isFetching === next.isFetching &&
     prev.isError === next.isError &&
+    prev.flush === next.flush &&
     prev.emptyMessage === next.emptyMessage &&
     prev.errorMessage === next.errorMessage &&
     rowsSignature(prev.rows) === rowsSignature(next.rows) &&

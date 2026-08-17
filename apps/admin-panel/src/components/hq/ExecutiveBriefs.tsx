@@ -2,13 +2,22 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Sunrise, Sunset, CalendarDays, CalendarRange, Presentation, Landmark } from "lucide-react";
+import {
+  Sunrise,
+  Sunset,
+  CalendarDays,
+  CalendarRange,
+  Presentation,
+  Landmark,
+  Crosshair,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { adminApi } from "@/services/admin-api";
 import { useAdminDashboardQuery } from "@/hooks/use-admin-data";
 import { inr, formatNumber } from "@/lib/format";
 import { GlassPanel } from "./GlassPanel";
 import { HqLoading } from "./primitives";
+import { Icon3D } from "./Icon3D";
 import { cn } from "@/lib/cn";
 
 type BriefId = "morning" | "evening" | "weekly" | "monthly" | "board" | "investor";
@@ -50,20 +59,29 @@ export function ExecutiveBriefs() {
   const stats = dashboard.data?.stats;
   const isLoading = dashboard.isLoading || finance.isLoading;
 
-  const lines = useMemo<string[]>(() => {
-    if (isLoading || !stats) return [];
+  const derived = useMemo(() => {
     const fo = (finance.data?.overview ?? {}) as Record<string, unknown>;
     const rep = (reports.data ?? {}) as Record<string, unknown>;
     const u = (unit.data ?? {}) as Record<string, unknown>;
-
     const completion =
-      stats.totalBookings > 0 ? Math.round((stats.completedBookings / stats.totalBookings) * 100) : 0;
-    const gmv = num(fo.gmv);
-    const net = num(fo.netRevenue);
-    const margin = num(rep.platformMarginPct);
-    const mrr = num(fo.mrr);
-    const ltv = num(u.avgLtv);
-    const cac = num(u.cac);
+      stats && stats.totalBookings > 0
+        ? Math.round((stats.completedBookings / stats.totalBookings) * 100)
+        : 0;
+    return {
+      fo,
+      completion,
+      gmv: num(fo.gmv),
+      net: num(fo.netRevenue),
+      margin: num(rep.platformMarginPct),
+      mrr: num(fo.mrr),
+      ltv: num(u.avgLtv),
+      cac: num(u.cac),
+    };
+  }, [stats, finance.data, reports.data, unit.data]);
+
+  const lines = useMemo<string[]>(() => {
+    if (isLoading || !stats) return [];
+    const { completion, gmv, net, margin, mrr, ltv, cac, fo } = derived;
 
     switch (brief) {
       case "morning":
@@ -115,16 +133,42 @@ export function ExecutiveBriefs() {
       default:
         return [];
     }
-  }, [brief, isLoading, stats, finance.data, reports.data, unit.data]);
+  }, [brief, isLoading, stats, derived]);
+
+  const chips = useMemo(() => {
+    if (!stats) {
+      return [
+        { label: "Online now", value: "—" },
+        { label: "MTD revenue", value: "—" },
+        { label: "Completion", value: "—" },
+        { label: "Avg rating", value: "—" },
+      ];
+    }
+    return [
+      { label: "Online now", value: formatNumber(stats.activeNow) },
+      { label: "MTD revenue", value: inr(stats.thisMonthRevenue, true) },
+      { label: "Completion", value: `${derived.completion}%` },
+      { label: "Avg rating", value: `${stats.averageRating.toFixed(1)}★` },
+    ];
+  }, [stats, derived.completion]);
 
   const active = BRIEFS.find((b) => b.id === brief)!;
+  const narrative = lines.slice(0, -1);
+  const focus = lines[lines.length - 1];
 
   return (
-    <GlassPanel glow="amber" className="p-5">
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <active.icon className="h-4 w-4 text-[var(--color-biz-accent)]" />
-        <h2 className="text-sm font-semibold">Executive AI Briefing</h2>
-        <div className="biz-segment ml-auto flex-wrap">
+    <GlassPanel glow="amber" className="biz-panel-fill gap-5 p-6">
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <Icon3D icon={active.icon} tone="warning" size="md" />
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold leading-none">Executive AI Briefing</h2>
+            <p className="mt-1.5 text-[11px] leading-none text-[var(--color-biz-muted)]">
+              Board-ready · {active.label} cut
+            </p>
+          </div>
+        </div>
+        <div className="biz-segment flex-wrap">
           {BRIEFS.map((b) => (
             <button
               key={b.id}
@@ -138,13 +182,26 @@ export function ExecutiveBriefs() {
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {chips.map((c) => (
+          <div key={c.label} className="biz-metric-chip">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-biz-muted)]">
+              {c.label}
+            </p>
+            <p data-stat-value className="text-lg font-semibold tabular-nums leading-none">
+              {isLoading ? "—" : c.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
       {isLoading ? (
         <HqLoading label="Composing briefing from live data…" />
-      ) : lines.length > 0 ? (
-        <ul className="space-y-2 text-sm leading-relaxed">
-          {lines.map((l, i) => (
-            <li key={i} className="flex gap-2">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-biz-accent)]" />
+      ) : narrative.length > 0 ? (
+        <ul className="space-y-3 text-sm leading-relaxed">
+          {narrative.map((l, i) => (
+            <li key={i} className="flex gap-3">
+              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-biz-accent)]" />
               <span>{l}</span>
             </li>
           ))}
@@ -153,7 +210,17 @@ export function ExecutiveBriefs() {
         <p className="text-sm text-[var(--color-biz-muted)]">No data available for this brief.</p>
       )}
 
-      <p className="mt-4 border-t border-[var(--color-biz-line)] pt-3 text-[10px] text-[var(--color-biz-muted)]">
+      {focus ? (
+        <div className="biz-brief-focus">
+          <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-biz-muted)]">
+            <Crosshair className="h-3 w-3 text-[var(--color-biz-accent)]" />
+            Today&apos;s focus
+          </p>
+          <p className="mt-2 text-sm font-medium leading-relaxed">{focus}</p>
+        </div>
+      ) : null}
+
+      <p className="border-t border-[var(--color-biz-line)] pt-4 text-[10px] leading-relaxed text-[var(--color-biz-muted)]">
         Generated deterministically from live platform data — no language model, no fabricated figures.
       </p>
     </GlassPanel>

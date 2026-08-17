@@ -1,27 +1,28 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { memo, useMemo, type ReactNode } from "react";
 import Link from "next/link";
-import {
-  Building2,
-  CreditCard,
-  LayoutDashboard,
-  TrendingUp,
-} from "lucide-react";
+import { Building2, CreditCard, LayoutDashboard, Star, CheckCircle2 } from "lucide-react";
 import { formatNumber, inr } from "@/lib/format";
 import { useRenderProbe, useMountProbe } from "@/lib/render-probe";
 import { useChartProfiler } from "@/lib/chart-profiler";
+import { IsoBarChart } from "@/components/hq/IsoBarChart";
+import { GlassRing3D } from "@/components/hq/GlassRing3D";
+import { Icon3D } from "@/components/hq/Icon3D";
 
 type DayPoint = { date: string; count?: number; revenue?: number };
 
 export const AdminDashboardCharts = memo(function AdminDashboardCharts({
   bookingsByDay,
   revenueByDay,
-  maxRevenue,
+  maxRevenue: _maxRevenue,
   isLoading,
   activeNow,
   thisMonthRevenue,
   totalRevenue,
+  totalBookings = 0,
+  averageRating = 0,
+  completedBookings = 0,
 }: {
   bookingsByDay: DayPoint[];
   revenueByDay: DayPoint[];
@@ -30,65 +31,85 @@ export const AdminDashboardCharts = memo(function AdminDashboardCharts({
   activeNow: number;
   thisMonthRevenue: number;
   totalRevenue: number;
+  totalBookings?: number;
+  averageRating?: number;
+  completedBookings?: number;
 }) {
   useRenderProbe("AdminDashboardCharts");
   useMountProbe("AdminDashboardCharts");
 
   const bookingValues = useMemo(
-    () => bookingsByDay.map((d) => ({ label: d.date, value: d.count ?? 0 })),
+    () => bookingsByDay.map((d) => ({ label: d.date.slice(5), value: d.count ?? 0 })),
     [bookingsByDay],
   );
   const revenueValues = useMemo(
-    () => revenueByDay.map((d) => ({ label: d.date, value: d.revenue ?? 0 })),
+    () => revenueByDay.map((d) => ({ label: d.date.slice(5), value: d.revenue ?? 0 })),
     [revenueByDay],
   );
   const bookingKey = useMemo(() => bookingValues.map((v) => `${v.label}:${v.value}`).join("|"), [bookingValues]);
   const revenueKey = useMemo(() => revenueValues.map((v) => `${v.label}:${v.value}`).join("|"), [revenueValues]);
   useChartProfiler("AdminDashboardCharts", `${bookingKey}|${revenueKey}`);
 
+  const completion =
+    totalBookings > 0 ? Math.round((completedBookings / Math.max(1, totalBookings)) * 100) : 0;
+  const ringTone = completion >= 70 ? "success" : completion >= 40 ? "warning" : "danger";
+
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <ChartCard
-        title="Bookings (last 7 days)"
-        values={bookingValues}
-        format={(v) => formatNumber(v)}
-        icon={LayoutDashboard}
-        isLoading={isLoading}
-      />
-      <ChartCard
-        title="Revenue (last 7 days)"
-        values={revenueValues}
-        format={(v) => inr(v, true)}
-        max={maxRevenue}
-        icon={CreditCard}
-        accent="green"
-        isLoading={isLoading}
-      />
-      <div className="biz-card flex flex-col gap-3 p-5">
-        <Building2 className="h-5 w-5 text-[var(--color-biz-accent)]" />
-        <div>
-          <p className="text-sm font-semibold">Operations health</p>
-          <p className="mt-1 text-xs text-[var(--color-biz-muted)]">
-            Live data refreshes every 120 seconds.
-          </p>
+    <div className="grid items-stretch gap-4 lg:grid-cols-3">
+      <div className="biz-glass-panel flex h-full flex-col p-6">
+        <div className="exec-section-head">
+          <p className="text-sm font-semibold leading-none">Bookings · last 7 days</p>
+          <Icon3D icon={LayoutDashboard} tone="default" size="sm" />
         </div>
-        <ul className="mt-2 space-y-2 text-xs">
-          <li className="flex items-center justify-between rounded-md bg-[var(--color-biz-elevated)]/50 px-3 py-2">
-            <span className="text-[var(--color-biz-muted)]">Providers online</span>
-            <span className="font-medium">{formatNumber(activeNow)}</span>
-          </li>
-          <li className="flex items-center justify-between rounded-md bg-[var(--color-biz-elevated)]/50 px-3 py-2">
-            <span className="text-[var(--color-biz-muted)]">This month</span>
-            <span className="font-medium">{inr(thisMonthRevenue, true)}</span>
-          </li>
-          <li className="flex items-center justify-between rounded-md bg-[var(--color-biz-elevated)]/50 px-3 py-2">
-            <span className="text-[var(--color-biz-muted)]">All-time</span>
-            <span className="font-medium">{inr(totalRevenue, true)}</span>
-          </li>
+        <IsoBarChart
+          data={bookingValues}
+          format={(v) => formatNumber(v)}
+          accent="blue"
+          isLoading={isLoading}
+          height={210}
+        />
+      </div>
+      <div className="biz-glass-panel flex h-full flex-col p-6">
+        <div className="exec-section-head">
+          <p className="text-sm font-semibold leading-none">Revenue · last 7 days</p>
+          <Icon3D icon={CreditCard} tone="success" size="sm" />
+        </div>
+        <IsoBarChart
+          data={revenueValues}
+          format={(v) => inr(v, true)}
+          accent="emerald"
+          isLoading={isLoading}
+          height={210}
+          layout="area"
+        />
+      </div>
+      <div className="biz-glass-panel flex h-full flex-col p-6">
+        <div className="exec-section-head">
+          <p className="text-sm font-semibold leading-none">Operations health</p>
+          <Icon3D icon={Building2} tone="cyan" size="sm" />
+        </div>
+        <GlassRing3D
+          value={completion}
+          label="Complete"
+          sub={`${formatNumber(activeNow)} partners live · ${inr(thisMonthRevenue, true)} MTD`}
+          tone={ringTone}
+        />
+        <ul className="mt-auto space-y-2.5 text-xs">
+          <HealthRow label="All-time revenue" value={inr(totalRevenue, true)} />
+          <HealthRow
+            label="Avg rating"
+            value={`${averageRating.toFixed(1)}★`}
+            icon={<Star className="h-3 w-3 text-[var(--color-biz-warning)]" />}
+          />
+          <HealthRow
+            label="Closed bookings"
+            value={formatNumber(completedBookings)}
+            icon={<CheckCircle2 className="h-3 w-3 text-[var(--color-biz-success)]" />}
+          />
         </ul>
         <Link
           href="/analytics"
-          className="mt-auto text-xs font-medium text-[var(--color-biz-accent)] hover:underline"
+          className="mt-4 text-xs font-medium text-[var(--color-biz-accent)] hover:underline"
         >
           Open analytics →
         </Link>
@@ -97,59 +118,22 @@ export const AdminDashboardCharts = memo(function AdminDashboardCharts({
   );
 });
 
-const ChartCard = memo(function ChartCard({
-  title,
-  values,
-  format,
-  max,
-  icon: Icon,
-  accent = "primary",
-  isLoading,
+function HealthRow({
+  label,
+  value,
+  icon,
 }: {
-  title: string;
-  values: { label: string; value: number }[];
-  format: (v: number) => string;
-  max?: number;
-  icon: typeof TrendingUp;
-  accent?: "primary" | "green";
-  isLoading?: boolean;
+  label: string;
+  value: string;
+  icon?: ReactNode;
 }) {
-  const localMax = max ?? Math.max(1, ...values.map((v) => v.value));
-  const barClass =
-    accent === "green"
-      ? "bg-emerald-500/80"
-      : "bg-[var(--color-biz-accent)]/80";
-
   return (
-    <div className="biz-card p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm font-semibold">{title}</p>
-        <Icon className="h-4 w-4 text-[var(--color-biz-muted)]" />
-      </div>
-      <div className="flex h-44 items-end justify-between gap-2">
-        {isLoading
-          ? Array.from({ length: 7 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-full flex-1 max-w-12 rounded-t bg-[var(--color-biz-elevated)]"
-              />
-            ))
-          : values.map((v, i) => (
-              <div key={`${v.label}-${i}`} className="flex flex-1 flex-col items-center gap-1">
-                <div
-                  className={`w-full max-w-12 rounded-t ${barClass}`}
-                  style={{
-                    height: `${(v.value / localMax) * 100}%`,
-                    minHeight: 6,
-                  }}
-                  title={`${v.label}: ${format(v.value)}`}
-                />
-                <span className="text-[10px] text-[var(--color-biz-muted)]">
-                  {v.label.slice(5)}
-                </span>
-              </div>
-            ))}
-      </div>
-    </div>
+    <li className="flex items-center justify-between rounded-lg border border-[var(--color-biz-line)] bg-[var(--color-biz-elevated)]/40 px-3 py-2 backdrop-blur-sm">
+      <span className="flex items-center gap-1.5 text-[var(--color-biz-muted)]">
+        {icon}
+        {label}
+      </span>
+      <span className="biz-num font-medium tabular-nums">{value}</span>
+    </li>
   );
-});
+}

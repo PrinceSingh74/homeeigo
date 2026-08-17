@@ -8,7 +8,8 @@ import { adminApi } from "@/services/admin-api";
 import { useAdminDashboardQuery } from "@/hooks/use-admin-data";
 import { inr, formatNumber } from "@/lib/format";
 import { GlassPanel } from "./GlassPanel";
-import { StatTile, DataUnavailable, SectionHeading, SparkBars } from "./primitives";
+import { StatTile, DataUnavailable, SectionHeading } from "./primitives";
+import { IsoBarChart } from "./IsoBarChart";
 
 function num(v: unknown, d = 0): number {
   const n = Number(v);
@@ -53,20 +54,20 @@ export function InvestorDashboard() {
   const retention = num(mem.retentionRatePct);
 
   const revenueBars = useMemo(
-    () => (dashboard.data?.charts.revenueByDay ?? []).map((d) => d.revenue),
+    () => (dashboard.data?.charts.revenueByDay ?? []).map((d) => ({ label: d.date.slice(5), value: d.revenue })),
     [dashboard.data],
   );
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-8">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="GMV (30d)" value={inr(gmv, true)} icon={TrendingUp} loading={finance.isLoading} tone="accent" />
         <StatTile label="Net Revenue (30d)" value={inr(net, true)} icon={IndianRupee} loading={finance.isLoading} tone="success" />
         <StatTile label="MRR" value={inr(mrr, true)} icon={Repeat} loading={finance.isLoading} />
         <StatTile label="ARR" value={inr(arr, true)} icon={TrendingUp} loading={finance.isLoading} />
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Customers" value={formatNumber(stats?.totalUsers ?? 0)} icon={Users} loading={dashboard.isLoading} />
         <StatTile label="Partners" value={formatNumber(stats?.totalProviders ?? 0)} icon={Wrench} loading={dashboard.isLoading} />
         <StatTile label="Avg LTV" value={inr(ltv)} sub="unit economics" icon={IndianRupee} loading={unit.isLoading} />
@@ -80,18 +81,24 @@ export function InvestorDashboard() {
         />
       </section>
 
-      <GlassPanel glow="emerald" className="p-5">
-        <SectionHeading title="Revenue Trend" hint="daily · trailing window" />
+      <GlassPanel glow="emerald" className="p-6">
+        <SectionHeading title="Revenue Trend" hint={`${revenueBars.length || "—"} days · retention ${retention.toFixed(0)}%`} />
         {dashboard.isLoading ? (
           <div className="biz-skeleton h-16 w-full rounded" />
         ) : revenueBars.length > 0 ? (
-          <SparkBars data={revenueBars} label={`${revenueBars.length} days · retention ${retention.toFixed(0)}%`} color="var(--color-biz-success)" height={72} />
+          <IsoBarChart
+            data={revenueBars}
+            format={(v) => inr(v, true)}
+            accent="emerald"
+            height={200}
+            layout="area"
+          />
         ) : (
           <DataUnavailable title="No revenue trend" reason="Dashboard returned no daily revenue series." />
         )}
       </GlassPanel>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           label="Gross Margin"
           value={intel.data?.grossMargin.grossMarginPct != null ? `${intel.data.grossMargin.grossMarginPct.toFixed(1)}%` : "—"}

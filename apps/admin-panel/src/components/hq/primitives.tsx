@@ -4,6 +4,7 @@ import { memo } from "react";
 import { Info, Loader2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Icon3D } from "./Icon3D";
 
 /** Small metric tile used across HQ dashboards. */
 export const StatTile = memo(function StatTile({
@@ -13,6 +14,7 @@ export const StatTile = memo(function StatTile({
   icon: Icon,
   tone = "default",
   loading,
+  embedded,
 }: {
   label: string;
   value: string;
@@ -20,6 +22,7 @@ export const StatTile = memo(function StatTile({
   icon?: LucideIcon;
   tone?: "default" | "success" | "danger" | "accent";
   loading?: boolean;
+  embedded?: boolean;
 }) {
   const toneClass =
     tone === "success"
@@ -31,12 +34,18 @@ export const StatTile = memo(function StatTile({
           : "text-[var(--color-biz-text)]";
 
   return (
-    <div className="biz-glass-panel biz-kpi p-4">
+    <div className={embedded ? "flex h-full flex-col bg-[var(--color-biz-surface)] p-5" : "biz-glass-panel biz-kpi p-5"}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-biz-muted)]">
           {label}
         </span>
-        {Icon ? <Icon className="h-4 w-4 text-[var(--color-biz-faint)]" /> : null}
+        {Icon ? (
+          <Icon3D
+            icon={Icon}
+            size="sm"
+            tone={tone === "success" ? "success" : tone === "danger" ? "danger" : tone === "accent" ? "cyan" : "default"}
+          />
+        ) : null}
       </div>
       <p data-stat-value className={cn("mt-2 text-2xl font-bold tabular-nums tracking-tight", toneClass)}>
         {loading ? "—" : value}
@@ -179,7 +188,7 @@ export const SectionHeading = memo(function SectionHeading({
   hint?: string;
 }) {
   return (
-    <div className="mb-3 flex items-baseline justify-between gap-2">
+    <div className="mb-2 flex items-baseline justify-between gap-3">
       <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-biz-muted)]">
         <span className="h-3 w-0.5 rounded-full bg-[var(--color-biz-accent)]" aria-hidden />
         {title}

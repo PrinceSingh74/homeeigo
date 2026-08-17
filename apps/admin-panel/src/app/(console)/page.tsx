@@ -4,7 +4,21 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  Loader2,
+  RefreshCw,
+  Crown,
+  Gauge,
+  TrendingUp,
+  ShieldAlert,
+  Activity,
+  LayoutGrid,
+  Megaphone,
+  Bot,
+  Settings,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { DataTable, StatusBadge } from "@/components/ui/DataTable";
 import { useAdminBookingsQuery, useAdminDashboardQuery } from "@/hooks/use-admin-data";
 import { inr } from "@/lib/format";
@@ -14,9 +28,11 @@ import { ExecutiveKpiGrid, type ExecutiveViewMode } from "@/components/hq/Execut
 import { AiBriefingPanel } from "@/components/hq/AiBriefingPanel";
 import { ViewModeSwitcher } from "@/components/hq/ViewModeSwitcher";
 import { HqQuickLinkGrid } from "@/components/hq/HqQuickLinkGrid";
+import { ExecutiveBriefs } from "@/components/hq/ExecutiveBriefs";
+import { ExecutiveCoveragePanel } from "@/components/hq/ExecutiveCoveragePanel";
+import { Icon3D } from "@/components/hq/Icon3D";
 import { HQ_SECTIONS } from "@/lib/hq-navigation";
 import { adminApi } from "@/services/admin-api";
-import { Gauge, TrendingUp, ShieldAlert, Activity } from "lucide-react";
 
 const PlatformLaunchpad = dynamic(
   () => import("@/components/dashboard/PlatformLaunchpad").then((m) => m.PlatformLaunchpad),
@@ -41,20 +57,21 @@ const ExecutiveIntelligencePanel = dynamic(
   { ssr: false },
 );
 
-const ExecutiveCoveragePanel = dynamic(
-  () => import("@/components/hq/ExecutiveCoveragePanel").then((m) => m.ExecutiveCoveragePanel),
-  { ssr: false },
-);
-
-const ExecutiveBriefs = dynamic(
-  () => import("@/components/hq/ExecutiveBriefs").then((m) => m.ExecutiveBriefs),
-  { ssr: false },
-);
-
 const InvestorDashboard = dynamic(
   () => import("@/components/hq/InvestorDashboard").then((m) => m.InvestorDashboard),
   { ssr: false },
 );
+
+const HQ_ICONS: Record<string, LucideIcon> = {
+  operations: Gauge,
+  marketplace: LayoutGrid,
+  growth: Megaphone,
+  finance: TrendingUp,
+  risk: ShieldAlert,
+  ai: Bot,
+  monitoring: Activity,
+  platform: Settings,
+};
 
 export default function ExecutiveHqPage() {
   useRenderProbe("ExecutiveHqPage");
@@ -83,20 +100,20 @@ export default function ExecutiveHqPage() {
     [revenueByDay],
   );
 
+  const syncedAt = dashboard.dataUpdatedAt
+    ? new Date(dashboard.dataUpdatedAt).toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
+
   const hqLinks = useMemo(
     () =>
       HQ_SECTIONS.filter((s) => s.id !== "executive").map((s) => ({
         href: s.dashboardHref,
         label: s.shortLabel,
         description: s.description,
-        icon:
-          s.id === "operations"
-            ? Gauge
-            : s.id === "finance"
-              ? TrendingUp
-              : s.id === "risk"
-                ? ShieldAlert
-                : Activity,
+        icon: HQ_ICONS[s.id] ?? Activity,
       })),
     [],
   );
@@ -117,26 +134,24 @@ export default function ExecutiveHqPage() {
   );
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6 biz-page-enter" data-dashboard-page>
-      <header className="flex flex-col gap-4 border-b border-[var(--color-biz-line)] pb-5 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex items-start gap-3.5">
-          <span
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--color-biz-accent-dim)] text-xl shadow-[0_0_24px_rgb(61_126_255_/_0.12)] ring-1 ring-inset ring-[rgb(61_126_255_/_0.25)]"
-            aria-hidden
-          >
-            👑
-          </span>
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <h1 className="biz-display text-2xl font-bold tracking-tight md:text-[1.75rem]">
+    <div className="exec-hq mx-auto max-w-[1600px] space-y-8 biz-page-enter" data-dashboard-page>
+      <header className="flex flex-col gap-5 border-b border-[var(--color-biz-line)] pb-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-4">
+          <Icon3D icon={Crown} tone="warning" size="lg" />
+          <div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <h1 className="biz-display text-[1.75rem] font-bold leading-none tracking-tight">
                 Executive HQ
               </h1>
               <span className="flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
                 <span className="biz-live-dot" aria-hidden />
                 Live
               </span>
+              {syncedAt ? (
+                <span className="text-[11px] text-[var(--color-biz-faint)]">Synced {syncedAt}</span>
+              ) : null}
             </div>
-            <p className="max-w-2xl text-sm text-[var(--color-biz-muted)]">
+            <p className="mt-2.5 max-w-2xl text-sm leading-relaxed text-[var(--color-biz-muted)]">
               Business overview — live intelligence across markets, partners, and revenue
             </p>
           </div>
@@ -150,7 +165,7 @@ export default function ExecutiveHqPage() {
               void finance.refetch();
             }}
             disabled={dashboard.isFetching}
-            className="biz-btn !px-3 !py-1.5 !text-xs"
+            className="biz-btn !px-3.5 !py-2 !text-xs"
           >
             {dashboard.isFetching ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -183,22 +198,26 @@ export default function ExecutiveHqPage() {
 
       {viewMode === "investor" ? <InvestorDashboard /> : null}
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <div className="xl:col-span-2">
-          <ExecutiveBriefs />
-        </div>
-        <div className="space-y-4">
-          <AiBriefingPanel stats={stats} isLoading={dashboard.isLoading} />
-          <ExecutiveCoveragePanel />
-          <section className="biz-glass-panel p-4">
-            <h2 className="mb-3 text-sm font-semibold">HQ Navigation</h2>
-            <HqQuickLinkGrid links={hqLinks.slice(0, 4)} columns={2} />
-          </section>
-        </div>
+      <div className="grid items-stretch gap-5 xl:grid-cols-2">
+        <ExecutiveBriefs />
+        <AiBriefingPanel stats={stats} isLoading={dashboard.isLoading} />
       </div>
 
+      <ExecutiveCoveragePanel />
+
+      <section className="biz-glass-panel p-6">
+        <div className="exec-section-head">
+          <div className="exec-section-head__title">
+            <Icon3D icon={Gauge} tone="default" size="md" />
+            <h2 className="text-sm font-semibold leading-none tracking-tight">HQ Command</h2>
+          </div>
+          <span className="exec-section-head__meta">8 operating systems</span>
+        </div>
+        <HqQuickLinkGrid links={hqLinks} columns={4} />
+      </section>
+
       <DashboardDOMBoundary label="below-fold" fallback={null} rootMargin="-420px 0px 0px 0px">
-        <div className="space-y-6">
+        <div className="space-y-8">
           <ExecutiveIntelligencePanel />
           <ExecutiveGeoPanel />
           <AdminDashboardCharts
@@ -209,15 +228,18 @@ export default function ExecutiveHqPage() {
             activeNow={stats?.activeNow ?? 0}
             thisMonthRevenue={stats?.thisMonthRevenue ?? 0}
             totalRevenue={stats?.totalRevenue ?? 0}
+            totalBookings={stats?.totalBookings ?? 0}
+            averageRating={stats?.averageRating ?? 0}
+            completedBookings={stats?.completedBookings ?? 0}
           />
 
-          <section>
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="biz-display flex items-center gap-2 font-semibold tracking-tight">
-                <span className="h-3.5 w-0.5 rounded-full bg-[var(--color-biz-accent)]" aria-hidden />
-                Live bookings
-              </h2>
-              <Link href="/bookings" className="text-sm font-medium text-[var(--color-biz-accent)] hover:underline">
+          <section className="biz-glass-panel overflow-hidden p-0">
+            <div className="flex items-center justify-between gap-4 border-b border-[var(--color-biz-line)] px-6 py-4">
+              <div className="exec-section-head__title">
+                <Icon3D icon={Activity} tone="cyan" size="md" />
+                <h2 className="text-sm font-semibold leading-none tracking-tight">Live bookings</h2>
+              </div>
+              <Link href="/bookings" className="text-xs font-medium text-[var(--color-biz-accent)] hover:underline">
                 View all
               </Link>
             </div>
@@ -230,6 +252,7 @@ export default function ExecutiveHqPage() {
               onRetry={() => void recent.refetch()}
               emptyMessage="No bookings yet."
               rows={recentRows}
+              flush
             />
           </section>
 
