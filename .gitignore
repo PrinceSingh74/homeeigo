@@ -63,3 +63,6 @@ measurements/
 
 # Incremental TypeScript build state — machine-specific, regenerated on every build.
 *.tsbuildinfo
+
+# Local database dumps — data, not source.
+backups/
