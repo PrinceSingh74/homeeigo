@@ -5,6 +5,7 @@ export const partnerColors = {
   primaryDark: "#2d5240",
   text: "#1a2e1f",
   textMuted: "#5c6b5f",
+  textSecondary: "#5c6b5f",
   danger: "#dc2626",
   surface: "#ffffff",
   surfaceDark: "#0f172a",

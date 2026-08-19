@@ -12,15 +12,16 @@ type PartnerScreenProps = {
   children: ReactNode;
   footer?: ReactNode;
   showBack?: boolean;
+  onBack?: () => void;
 };
 
-export function PartnerScreen({ title, subtitle, children, footer, showBack }: PartnerScreenProps) {
+export function PartnerScreen({ title, subtitle, children, footer, showBack, onBack }: PartnerScreenProps) {
   return (
     <LinearGradient colors={[partnerColors.cream, partnerColors.sage]} style={styles.root}>
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           {showBack ? (
-            <Pressable onPress={() => router.back()} style={styles.backBtn}>
+            <Pressable onPress={() => (onBack ? onBack() : router.back())} style={styles.backBtn}>
               <ChevronLeft color={partnerColors.primary} size={22} />
               <Text style={styles.backText}>Back</Text>
             </Pressable>

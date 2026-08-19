@@ -1,13 +1,7 @@
-import * as SecureStore from "expo-secure-store";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { partnerApi, setApiAccessToken, type PartnerUser } from "@/services/partner-api";
-
-const secureStorage = {
-  getItem: (name: string) => SecureStore.getItemAsync(name),
-  setItem: (name: string, value: string) => SecureStore.setItemAsync(name, value),
-  removeItem: (name: string) => SecureStore.deleteItemAsync(name),
-};
+import { appStorage } from "@/lib/secure-storage";
 
 type AuthState = {
   user: PartnerUser | null;
@@ -83,7 +77,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "homeeigo-partner-auth",
-      storage: createJSONStorage(() => secureStorage),
+      storage: createJSONStorage(() => appStorage),
       partialize: (s) => ({
         user: s.user,
         accessToken: s.accessToken,

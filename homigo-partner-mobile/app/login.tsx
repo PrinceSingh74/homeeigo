@@ -69,6 +69,9 @@ export default function LoginScreen() {
             <Text style={styles.buttonText}>Continue to Partner OS</Text>
           )}
         </Pressable>
+        <Pressable onPress={() => router.push("/register")} style={{ marginTop: 16, alignItems: "center" }}>
+          <Text style={{ color: partnerColors.primary, fontWeight: "600" }}>Apply to become a partner</Text>
+        </Pressable>
       </View>
     </PartnerScreen>
   );

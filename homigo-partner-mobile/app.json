@@ -17,14 +17,17 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.homeeigo.partner",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "HOMEEIGO Partner uses your location for job navigation, attendance check-in, and territory insights."
+        "NSLocationWhenInUseUsageDescription": "HOMEEIGO Partner uses your location for job navigation, attendance check-in, and territory insights.",
+        "NSCameraUsageDescription": "HOMEEIGO Partner uses the camera to photograph PAN, Aadhaar, and cancelled cheque during onboarding.",
+        "NSPhotoLibraryUsageDescription": "HOMEEIGO Partner uses your photo library to upload onboarding documents."
       }
     },
     "android": {
       "package": "com.homeeigo.partner",
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -42,6 +45,13 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "Allow HOMEEIGO Partner to use your location for jobs and attendance."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow HOMEEIGO Partner to upload PAN, Aadhaar, and cheque photos from your library.",
+          "cameraPermission": "Allow HOMEEIGO Partner to photograph onboarding documents."
         }
       ]
     ]
