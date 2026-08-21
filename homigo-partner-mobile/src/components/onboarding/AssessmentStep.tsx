@@ -87,7 +87,7 @@ export function AssessmentStep({
           <Text style={styles.copy}>
             Score {result.score}/{result.maxScore} · {result.correctCount} of {result.total} correct
           </Text>
-          <Text style={styles.copy}>You can submit your application for HQ review.</Text>
+          <Text style={styles.copy}>Continue to training, then review and submit.</Text>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -101,7 +101,7 @@ export function AssessmentStep({
             });
           }}
         >
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Submit application</Text>}
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Continue to training</Text>}
         </Pressable>
       </View>
     );

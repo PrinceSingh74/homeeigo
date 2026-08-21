@@ -21,6 +21,8 @@ import { AvailabilityStep } from "@/components/onboarding/AvailabilityStep";
 import { KycStep, validateKyc } from "@/components/onboarding/KycStep";
 import { DocumentsStep } from "@/components/onboarding/DocumentsStep";
 import { AssessmentStep } from "@/components/onboarding/AssessmentStep";
+import { TrainingStep } from "@/components/onboarding/TrainingStep";
+import { ReviewStep } from "@/components/onboarding/ReviewStep";
 import {
   draftSection,
   MOBILE_STEP_LABELS,
@@ -49,6 +51,8 @@ const STEP_BACK: Partial<Record<MobileOnboardingStep, MobileOnboardingStep>> = {
   kyc: "availability",
   documents: "kyc",
   assessment: "documents",
+  training: "assessment",
+  review: "training",
 };
 
 export default function RegisterScreen() {
@@ -79,6 +83,7 @@ export default function RegisterScreen() {
   const [otp, setOtp] = useState("");
   const [resumePassword, setResumePassword] = useState("");
   const [stepError, setStepError] = useState<string | null>(null);
+  const [returnToReview, setReturnToReview] = useState(false);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -91,6 +96,8 @@ export default function RegisterScreen() {
     experienceYears: "2",
     serviceRegions: "",
     serviceRadiusKm: "5",
+    latitude: "",
+    longitude: "",
     emergencyName: "",
     emergencyPhone: "",
     dateOfBirth: "",
@@ -130,6 +137,8 @@ export default function RegisterScreen() {
         ? (location.serviceRegions as string[]).join(", ")
         : prev.serviceRegions,
       serviceRadiusKm: location.serviceRadiusKm ? String(location.serviceRadiusKm) : prev.serviceRadiusKm,
+      latitude: location.baseLatitude ? String(location.baseLatitude) : prev.latitude,
+      longitude: location.baseLongitude ? String(location.baseLongitude) : prev.longitude,
       experienceYears: String(skills.experienceYears ?? services.experienceYears ?? prev.experienceYears),
       emergencyName: profile.emergencyContactName ? String(profile.emergencyContactName) : prev.emergencyName,
       emergencyPhone: profile.emergencyContactPhone ? String(profile.emergencyContactPhone) : prev.emergencyPhone,
@@ -157,6 +166,15 @@ export default function RegisterScreen() {
     setFieldErrors({});
     setStepError(null);
     setError(null);
+  }
+
+  function afterSave(next: MobileOnboardingStep) {
+    if (returnToReview) {
+      setReturnToReview(false);
+      goTo("review");
+      return;
+    }
+    goTo(next);
   }
 
   function applyProgress(progress: {
@@ -220,7 +238,9 @@ export default function RegisterScreen() {
           }
         } catch (err) {
           invalidInvite = true;
+          await clearApplicationInvite();
           if (!cancelled) {
+            setInvite(null);
             const message = err instanceof Error ? err.message : "";
             setInviteWarning(
               /reach backend|network|failed to fetch/i.test(message)
@@ -250,7 +270,7 @@ export default function RegisterScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [params.invite]);
 
   async function run(fn: () => Promise<void>) {
     setLoading(true);
@@ -505,7 +525,7 @@ export default function RegisterScreen() {
                     dateOfBirth: form.dateOfBirth,
                     gender: form.gender,
                   });
-                  goTo("location");
+                  afterSave("location");
                 });
               }}
             />
@@ -516,6 +536,8 @@ export default function RegisterScreen() {
               city={form.city}
               serviceRegions={form.serviceRegions}
               serviceRadiusKm={form.serviceRadiusKm}
+              latitude={form.latitude}
+              longitude={form.longitude}
               error={stepError ?? undefined}
               loading={loading}
               onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
@@ -530,12 +552,21 @@ export default function RegisterScreen() {
                   .filter(Boolean);
                 setStepError(null);
                 void run(async () => {
+                  const radius = Number(form.serviceRadiusKm);
+                  const lat = Number(form.latitude);
+                  const lng = Number(form.longitude);
+                  const hasCoords =
+                    Boolean(form.latitude?.trim()) &&
+                    Boolean(form.longitude?.trim()) &&
+                    Number.isFinite(lat) &&
+                    Number.isFinite(lng);
                   await partnerRegistrationApi.saveLocation({
                     city: form.city.trim(),
                     serviceRegions: regions.length ? regions : [form.city.trim()],
-                    serviceRadiusKm: Math.min(50, Math.max(1, Number(form.serviceRadiusKm) || 5)),
+                    serviceRadiusKm: radius,
+                    ...(hasCoords ? { baseLatitude: lat, baseLongitude: lng } : {}),
                   });
-                  goTo("availability");
+                  afterSave("availability");
                 });
               }}
             />
@@ -569,7 +600,7 @@ export default function RegisterScreen() {
                     workingHoursEnd: form.workingHoursEnd || "18:00",
                     workingDays: form.workingDays,
                   });
-                  goTo("kyc");
+                  afterSave("kyc");
                 });
               }}
             />
@@ -599,7 +630,7 @@ export default function RegisterScreen() {
                     ifscCode: form.ifscCode.trim().toUpperCase() || undefined,
                     bankName: form.bankName.trim() || undefined,
                   });
-                  goTo("documents");
+                  afterSave("documents");
                 });
               }}
             />
@@ -611,7 +642,7 @@ export default function RegisterScreen() {
               onContinue={(uploaded) =>
                 void run(async () => {
                   await partnerRegistrationApi.completeDocuments(uploaded);
-                  goTo("assessment");
+                  afterSave("assessment");
                 })
               }
             />
@@ -620,8 +651,32 @@ export default function RegisterScreen() {
           {step === "assessment" ? (
             <AssessmentStep
               loading={loading}
-              onPassed={() =>
+              onPassed={() => afterSave("training")}
+            />
+          ) : null}
+
+          {step === "training" ? (
+            <TrainingStep
+              loading={loading}
+              onContinue={() =>
                 run(async () => {
+                  await partnerRegistrationApi.acknowledgeTraining();
+                  goTo("review");
+                })
+              }
+            />
+          ) : null}
+
+          {step === "review" ? (
+            <ReviewStep
+              loading={loading}
+              onEdit={(target) => {
+                setReturnToReview(true);
+                goTo(target);
+              }}
+              onSubmit={() =>
+                run(async () => {
+                  await partnerRegistrationApi.acknowledgeReview();
                   await partnerRegistrationApi.submit();
                   await clearApplicationInvite();
                   goTo("done");

@@ -25,10 +25,26 @@ export type MobileOnboardingStep =
   | "kyc"
   | "documents"
   | "assessment"
+  | "training"
+  | "review"
   | "done";
 
 function hasStep(completedSteps: string[], step: string): boolean {
   return completedSteps.includes(step);
+}
+
+function mapChangesStep(step: string): MobileOnboardingStep {
+  if (step === "otp" || step === "account") return "account";
+  if (step === "services" || step === "skills") return "services";
+  if (step === "profile") return "profile";
+  if (step === "location") return "location";
+  if (step === "availability") return "availability";
+  if (step === "kyc") return "kyc";
+  if (step === "documents") return "documents";
+  if (step === "assessment" || step === "background") return "assessment";
+  if (step === "training") return "training";
+  if (step === "review") return "review";
+  return "review";
 }
 
 export function resolveMobileOnboardingStep(
@@ -37,19 +53,7 @@ export function resolveMobileOnboardingStep(
   changesRequestedStep?: string | null,
 ): MobileOnboardingStep {
   if (submitted && !changesRequestedStep) return "done";
-  if (changesRequestedStep) {
-    if (changesRequestedStep === "otp" || changesRequestedStep === "account") return "account";
-    if (changesRequestedStep === "services" || changesRequestedStep === "skills") return "services";
-    if (changesRequestedStep === "profile") return "profile";
-    if (changesRequestedStep === "location") return "location";
-    if (changesRequestedStep === "availability") return "availability";
-    if (changesRequestedStep === "kyc") return "kyc";
-    if (changesRequestedStep === "documents") return "documents";
-    if (changesRequestedStep === "assessment" || changesRequestedStep === "background" || changesRequestedStep === "training") {
-      return "assessment";
-    }
-    return "documents";
-  }
+  if (changesRequestedStep) return mapChangesStep(changesRequestedStep);
   if (!hasStep(completedSteps, "otp")) return "otp";
   if (!hasStep(completedSteps, "services")) return "services";
   if (!hasStep(completedSteps, "profile")) return "profile";
@@ -58,6 +62,8 @@ export function resolveMobileOnboardingStep(
   if (!hasStep(completedSteps, "kyc")) return "kyc";
   if (!hasStep(completedSteps, "documents")) return "documents";
   if (!hasStep(completedSteps, "assessment")) return "assessment";
+  if (!hasStep(completedSteps, "training")) return "training";
+  if (!hasStep(completedSteps, "review")) return "review";
   return "done";
 }
 
@@ -91,5 +97,7 @@ export const MOBILE_STEP_LABELS: Record<MobileOnboardingStep, string> = {
   kyc: "KYC",
   documents: "Documents",
   assessment: "Assessment",
+  training: "Training",
+  review: "Review",
   done: "Submitted",
 };

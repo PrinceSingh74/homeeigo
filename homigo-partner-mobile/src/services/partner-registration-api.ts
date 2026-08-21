@@ -78,6 +78,8 @@ export const partnerRegistrationApi = {
     city: string;
     serviceRegions: string[];
     serviceRadiusKm: number;
+    baseLatitude?: number;
+    baseLongitude?: number;
   }) {
     return regRequest<unknown>("/api/partner/onboarding/location", { method: "POST", body });
   },
@@ -142,6 +144,68 @@ export const partnerRegistrationApi = {
       return d;
     });
   },
+  getTraining() {
+    return regRequest<OnboardingTrainingPayload>("/api/partner/onboarding/training");
+  },
+  completeTrainingModule(moduleId: string) {
+    return regRequest<OnboardingTrainingPayload>(`/api/partner/onboarding/training/${moduleId}/complete`, {
+      method: "POST",
+    });
+  },
+  acknowledgeTraining() {
+    return regRequest<OnboardingTrainingPayload>("/api/partner/onboarding/training/acknowledge", { method: "POST" });
+  },
+  getReview() {
+    return regRequest<OnboardingReviewPayload>("/api/partner/onboarding/review");
+  },
+  acknowledgeReview() {
+    return regRequest<OnboardingReviewPayload>("/api/partner/onboarding/review/acknowledge", { method: "POST" });
+  },
+  reverseGeocode(lat: number, lng: number) {
+    return regRequest<{
+      available: boolean;
+      address: GeoAddress | null;
+      coverageZones: Array<{ id: string; name: string; zoneType: string; city: string | null }>;
+    }>(`/api/partner/onboarding/geo/reverse?lat=${lat}&lng=${lng}`);
+  },
+  searchLocation(q: string) {
+    return regRequest<{ available: boolean; address: GeoAddress | null }>(
+      `/api/partner/onboarding/geo/search?q=${encodeURIComponent(q)}`,
+    );
+  },
+};
+
+export type GeoAddress = {
+  formattedAddress: string;
+  city: string | null;
+  state: string | null;
+  latitude: number;
+  longitude: number;
+};
+
+export type OnboardingTrainingPayload = {
+  modules: Array<{
+    id: string;
+    title: string;
+    contentType: string;
+    contentUrl?: string | null;
+    body?: string | null;
+    completedAt: string | null;
+    status: "NOT_STARTED" | "COMPLETED";
+  }>;
+  completedCount: number;
+  requiredModules: number;
+  remaining: number;
+  requiredForActivation: boolean;
+  trainingComplete: boolean;
+  policy: string;
+};
+
+export type OnboardingReviewPayload = {
+  sections: Array<{ id: string; label: string; complete: boolean; summary: string | null }>;
+  canSubmit: boolean;
+  submitBlockers: string[];
+  training: OnboardingTrainingPayload;
 };
 
 export { clearRegistrationToken, getRegistrationToken, setRegistrationToken };

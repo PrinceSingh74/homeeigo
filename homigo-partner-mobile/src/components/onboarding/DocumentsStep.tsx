@@ -35,7 +35,11 @@ export function DocumentsStep({
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      setMessage(camera ? "Camera permission is required." : "Photo library permission is required.");
+      setMessage(
+        camera
+          ? "Camera permission denied. Use Gallery, or enable Camera in system settings."
+          : "Photo library permission denied. Use Camera, or enable Photos in system settings.",
+      );
       return;
     }
     const pickerOptions: ImagePicker.ImagePickerOptions = {
