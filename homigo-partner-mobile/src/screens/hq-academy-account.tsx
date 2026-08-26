@@ -6,9 +6,16 @@ import { EmptyState, HqCard, HqCardTitle, HqMuted, LoadingBlock, ProgressRow, St
 import { PartnerScreen } from "@/components/PartnerScreen";
 import { formatCurrency, formatDate, formatPct } from "@/lib/format";
 import { partnerApi } from "@/services/partner-api";
+import { getJobCoords } from "@/lib/job-coords";
+import { useAuthStore } from "@/stores/auth-store";
 import { useRazorpayCheckout } from "@/hooks/use-razorpay-checkout";
 import { OnlineToggleCard, useDashboardQuery, useProviderQuery } from "@/screens/hq-work-earnings";
+import { AvailabilityWorkspaceScreen } from "@/screens/availability-workspace";
 import { partnerColors } from "@/theme/colors";
+
+function useAuthedQuery() {
+  return useAuthStore((s) => s.hydrated && Boolean(s.accessToken));
+}
 
 function HqShell({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
@@ -68,8 +75,13 @@ export function AcademyCertificationsScreen() {
 }
 
 export function TrustDocumentsScreen() {
-  const docs = useQuery({ queryKey: ["partner", "documents"], queryFn: () => partnerApi.partnerOs.documents() });
-  if (docs.isLoading) return <HqShell title="Documents" subtitle="Uploaded docs"><LoadingBlock /></HqShell>;
+  const enabled = useAuthedQuery();
+  const docs = useQuery({
+    queryKey: ["partner", "documents"],
+    queryFn: () => partnerApi.partnerOs.documents(),
+    enabled,
+  });
+  if (docs.isLoading || docs.isPending) return <HqShell title="Documents" subtitle="Uploaded docs"><LoadingBlock /></HqShell>;
   return (
     <HqShell title="Documents" subtitle="Uploaded documents overview.">
       <HqCard>
@@ -108,22 +120,47 @@ export function TrustVerificationScreen() {
 }
 
 export function TrustComplianceScreen() {
-  const compliance = useQuery({ queryKey: ["partner", "compliance"], queryFn: () => partnerApi.partnerOs.compliance() });
-  if (compliance.isLoading) return <HqShell title="Compliance" subtitle="Score and expiry"><LoadingBlock /></HqShell>;
-  const c = compliance.data!;
+  const enabled = useAuthedQuery();
+  const compliance = useQuery({
+    queryKey: ["partner", "compliance"],
+    queryFn: () => partnerApi.partnerOs.compliance(),
+    enabled,
+  });
+  if (compliance.isLoading || compliance.isPending) {
+    return <HqShell title="Compliance" subtitle="Score and expiry"><LoadingBlock /></HqShell>;
+  }
+  const c = compliance.data;
+  if (!c) {
+    return (
+      <HqShell title="Compliance Center" subtitle="Could not load compliance.">
+        <EmptyState message={compliance.error instanceof Error ? compliance.error.message : "Try again from HQ."} />
+      </HqShell>
+    );
+  }
+  const kyc = String(c.verification?.kycStatus ?? c.verification?.isVerified ?? "—");
+  const nextAction =
+    (c.documents ?? []).find((d) => d.cta && d.cta !== "OK")?.cta ??
+    (c.restricted ? "Resolve restriction with operations" : "No action required");
   return (
-    <HqShell title="Compliance" subtitle="Compliance score, documents, and expiry tracking.">
-      <View style={styles.grid}>
-        <KpiCard label="Score" value={c.complianceScore} />
-        <KpiCard label="Expiring soon" value={c.expiringSoon} />
+    <HqShell title="Compliance Center" subtitle={c.explanation ?? "KYC, documents, and expiry."}>
+      <View style={styles.grid} accessibilityLabel="Compliance status summary">
+        <KpiCard label="Status" value={(c.status ?? "PENDING").replace(/_/g, " ")} />
+        <KpiCard label="Restriction" value={c.restricted ? "Restricted" : "In good standing"} />
+        <KpiCard label="Expiring" value={c.expiringSoon} />
       </View>
       <HqCard>
+        <HqCardTitle>KYC</HqCardTitle>
+        <StatRow label="KYC status" value={String(kyc)} />
+        <StatRow label="Next action" value={nextAction} />
+        {c.restricted && c.restrictionReason ? <StatRow label="Restriction" value={c.restrictionReason} /> : null}
+      </HqCard>
+      <HqCard>
         <HqCardTitle>Documents</HqCardTitle>
-        {c.documents.map((d) => (
+        {(c.documents ?? []).map((d) => (
           <StatRow
             key={d.id}
             label={d.documentName || d.documentType}
-            value={d.expiringSoon ? "Expiring soon" : d.isVerified ? "Verified" : "Pending"}
+            value={d.expiryState || d.cta || (d.expiringSoon ? "Expiring soon" : d.isVerified ? "Verified" : "Pending")}
           />
         ))}
       </HqCard>
@@ -204,16 +241,69 @@ export function WellbeingInsuranceScreen() {
 }
 
 export function WellbeingSosScreen() {
-  const wellbeing = useQuery({ queryKey: ["partner", "wellbeing"], queryFn: () => partnerApi.partnerOs.wellbeing() });
-  if (wellbeing.isLoading) return <HqShell title="SOS" subtitle="Emergency"><LoadingBlock /></HqShell>;
+  const enabled = useAuthedQuery();
+  const wellbeing = useQuery({
+    queryKey: ["partner", "wellbeing"],
+    queryFn: () => partnerApi.partnerOs.wellbeing(),
+    enabled,
+  });
+  const [armed, setArmed] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const sos = useMutation({
+    mutationFn: async () => {
+      const coords = await getJobCoords("strict");
+      return partnerApi.partnerOs.triggerSos({ latitude: coords.latitude, longitude: coords.longitude });
+    },
+    onSuccess: (data) => {
+      setMsg(data.created ? "SOS sent to operations." : "SOS already active.");
+      setArmed(false);
+    },
+    onError: (err) =>
+      setMsg(err instanceof Error ? err.message : "Could not reach operations. Call the hotline."),
+  });
+  if (wellbeing.isLoading || wellbeing.isPending) return <HqShell title="SOS" subtitle="Emergency"><LoadingBlock /></HqShell>;
   const phone = wellbeing.data?.sosPhone ?? "112";
+  const emName = wellbeing.data?.emergencyContactName;
+  const emPhone = wellbeing.data?.emergencyContactPhone;
   return (
-    <HqShell title="SOS" subtitle="Emergency hotline and support.">
+    <HqShell title="SOS" subtitle="Hold to arm, then confirm. Operations is notified once.">
       <HqCard>
-        <Text style={styles.sosText}>In an emergency, call the partner SOS hotline immediately.</Text>
-        <Pressable onPress={() => void Linking.openURL(`tel:${phone}`)} style={styles.sosBtn}>
-          <Text style={styles.sosBtnText}>Call {phone}</Text>
+        <HqCardTitle>Emergency contact</HqCardTitle>
+        <Text style={styles.sosText}>{emName ? `${emName}${emPhone ? ` · ${emPhone}` : ""}` : "Add an emergency contact during onboarding or from this screen."}</Text>
+        {emPhone ? (
+          <Pressable onPress={() => void Linking.openURL(`tel:${emPhone}`)} style={styles.outlineBtn} accessibilityRole="button" accessibilityLabel="Call emergency contact">
+            <Text style={styles.outlineBtnText}>Call emergency contact</Text>
+          </Pressable>
+        ) : null}
+      </HqCard>
+      <HqCard>
+        <Text style={styles.sosText}>In an emergency, call the hotline and confirm SOS so operations receives your location.</Text>
+        <Pressable onPress={() => void Linking.openURL(`tel:${phone}`)} style={styles.outlineBtn} accessibilityRole="button" accessibilityLabel={`Call ${phone}`}>
+          <Text style={styles.outlineBtnText}>Call {phone}</Text>
         </Pressable>
+        {!armed ? (
+          <Pressable
+            testID="sos-arm"
+            accessibilityRole="button"
+            accessibilityLabel="Hold to activate SOS"
+            onLongPress={() => setArmed(true)}
+            delayLongPress={600}
+            style={styles.sosBtn}
+          >
+            <Text style={styles.sosBtnText}>Hold to activate SOS</Text>
+          </Pressable>
+        ) : (
+          <View>
+            <Text style={styles.sosText}>Confirm emergency? This alerts operations once.</Text>
+            <Pressable testID="sos-confirm" accessibilityRole="button" accessibilityLabel="Confirm emergency" onPress={() => sos.mutate()} style={styles.sosBtn}>
+              <Text style={styles.sosBtnText}>{sos.isPending ? "Sending…" : "Confirm emergency"}</Text>
+            </Pressable>
+            <Pressable onPress={() => setArmed(false)} style={styles.outlineBtn}>
+              <Text style={styles.outlineBtnText}>Cancel</Text>
+            </Pressable>
+          </View>
+        )}
+        {msg ? <Text style={styles.sosText}>{msg}</Text> : null}
       </HqCard>
     </HqShell>
   );
@@ -470,43 +560,14 @@ export function AccountInvoicesScreen() {
 }
 
 export function AccountAvailabilityScreen() {
-  return (
-    <HqShell title="Availability" subtitle="Go online or offline.">
-      <OnlineToggleCard />
-    </HqShell>
-  );
+  return <AvailabilityWorkspaceScreen />;
 }
 
-export function AccountMapScreen() {
-  const bookings = useQuery({
-    queryKey: ["partner", "bookings", "active-map"],
-    queryFn: () => partnerApi.listBookings({ status: "in_progress", limit: 10 }),
-  });
-  return (
-    <HqShell title="Live Map" subtitle="Active jobs and locations.">
-      <HqCard>
-        {bookings.isLoading ? (
-          <LoadingBlock />
-        ) : (bookings.data?.bookings ?? []).length === 0 ? (
-          <EmptyState message="No active jobs on map right now." />
-        ) : (
-          bookings.data!.bookings.map((b) => (
-            <Pressable
-              key={b.id}
-              onPress={() => {
-                if (b.address.latitude && b.address.longitude) {
-                  void Linking.openURL(`https://www.google.com/maps?q=${b.address.latitude},${b.address.longitude}`);
-                }
-              }}
-            >
-              <StatRow label={b.service.name} value={b.address.fullAddress.slice(0, 40)} />
-            </Pressable>
-          ))
-        )}
-      </HqCard>
-    </HqShell>
-  );
-}
+/**
+ * The former `AccountMapScreen` lived here: a list that deep-linked out to Google Maps in the
+ * browser rather than rendering a map. It is replaced by the real in-app map in
+ * `src/screens/partner-live-map.tsx`, wired to the same `account-map` HQ registry id.
+ */
 
 const styles = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 4 },
@@ -519,8 +580,10 @@ const styles = StyleSheet.create({
   linkBtn: { marginTop: 8, backgroundColor: partnerColors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center" },
   linkBtnText: { color: "#fff", fontWeight: "700" },
   sosText: { fontSize: 14, color: partnerColors.text, lineHeight: 20, marginBottom: 12 },
-  sosBtn: { backgroundColor: partnerColors.danger, borderRadius: 12, paddingVertical: 16, alignItems: "center" },
+  sosBtn: { backgroundColor: partnerColors.primaryDark, borderRadius: 12, paddingVertical: 16, alignItems: "center", marginTop: 8 },
   sosBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  outlineBtn: { borderWidth: 1, borderColor: partnerColors.line, borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 8 },
+  outlineBtnText: { fontWeight: "700", color: partnerColors.text },
   notif: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: partnerColors.line },
   notifTitle: { fontSize: 14, fontWeight: "600", color: partnerColors.text },
   unread: { color: partnerColors.primary },

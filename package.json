@@ -57,7 +57,9 @@
     "homigo-partner-mobile"
   ],
   "overrides": {
-    "ws": "^8.18.2"
+    "ws": "^8.18.2",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   },
   "dependencies": {
     "expo-dev-client": "~6.0.21",

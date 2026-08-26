@@ -58,6 +58,7 @@ export const useAuthStore = create<AuthState>()(
           user: me.user,
           accessToken: payload.accessToken,
           refreshToken: payload.refreshToken,
+          hydrated: true,
         });
       },
 
@@ -65,6 +66,11 @@ export const useAuthStore = create<AuthState>()(
         const { refreshToken, accessToken } = get();
         if (accessToken && refreshToken) {
           setApiAccessToken(accessToken);
+          // Revoke this device's push token BEFORE the session is torn down — it needs the
+          // still-valid access token to authenticate. Otherwise a signed-out phone keeps
+          // receiving the next partner's job alerts on this device.
+          const { revokePushTokenForLogout } = await import("@/hooks/use-push-notifications");
+          await revokePushTokenForLogout();
           try {
             await partnerApi.logout(refreshToken);
           } catch {
@@ -85,7 +91,8 @@ export const useAuthStore = create<AuthState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state?.accessToken) setApiAccessToken(state.accessToken);
-        if (state) state.hydrated = true;
+        // Leave hydrated=false until bootstrap() validates the session. Otherwise HQ
+        // screens fire queries with a stale token and stick on 401.
       },
     },
   ),

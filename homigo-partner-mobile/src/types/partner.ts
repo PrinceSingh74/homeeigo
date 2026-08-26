@@ -40,9 +40,19 @@ export type ProviderProfile = {
   totalEarnings: number;
   isOnline: boolean;
   onlineSince: string | null;
+  currentStatus?: string;
+  pausedAt?: string | null;
+  pauseReason?: string | null;
+  timezone?: string;
   workingHoursStart: string | null;
   workingHoursEnd: string | null;
   workingDays: string[];
+  maxJobsPerDay?: number | null;
+  maxConcurrentJobs?: number;
+  breakWindows?: Array<{ start: string; end: string }>;
+  serviceRadiusKm?: number | null;
+  baseLatitude?: number | null;
+  baseLongitude?: number | null;
   services: Array<{ id: string; name: string }>;
   serviceCategories: string[];
   certifications: string[];
@@ -51,6 +61,8 @@ export type ProviderProfile = {
   upiId?: string | null;
   isApproved: boolean;
   isVerified: boolean;
+  isActive?: boolean;
+  isBanned?: boolean;
   kycStatus: string;
   badges: string[];
   backgroundCheckStatus: string;
@@ -92,6 +104,42 @@ export type PartnerDashboard = {
   onlineSince: string | null;
 };
 
+export type PartnerOperations = {
+  operationalStatus: string;
+  uiOnline: boolean;
+  isOnline: boolean;
+  isPaused: boolean;
+  isSuspended: boolean;
+  suspendedMessage: string | null;
+  pauseReason: string | null;
+  pausedAt: string | null;
+  onlineSince: string | null;
+  timezone: string;
+  workingDays: string[];
+  workingHoursStart: string | null;
+  workingHoursEnd: string | null;
+  breakWindows: Array<{ start: string; end: string }>;
+  maxJobsPerDay: number | null;
+  maxConcurrentJobs: number;
+  serviceRadiusKm: number | null;
+  serviceRegions: string[];
+  city: string | null;
+  baseLatitude: number | null;
+  baseLongitude: number | null;
+  capacity: {
+    currentJobs: number;
+    availableSlots: number;
+    utilization: number;
+    capacityFull: boolean;
+    maxConcurrentJobs: number;
+    maxJobsPerDay: number | null;
+    jobsToday: number;
+    nextAvailableAt: string | null;
+  };
+  readiness: { ready: boolean; blockers: Array<{ code: string; message: string }> };
+  preferredAreaLabel: string;
+};
+
 export type PartnerBooking = {
   id: string;
   bookingNumber: string;
@@ -103,12 +151,20 @@ export type PartnerBooking = {
   /** Arrival. Does not change `status`, so it must be read to know the real stage. */
   arrivedAt: string | null;
   startedAt: string | null;
+  /** Present when start OTP gate has been cleared (optional on list payloads). */
+  startOtpVerifiedAt?: string | null;
   amount: number;
   finalAmount: number;
   paymentStatus: string;
   description: string | null;
   eta: number | null;
-  customer: { firstName: string | null; lastName: string | null; profileImage: string | null };
+  customer: {
+    firstName: string | null;
+    lastName: string | null;
+    profileImage: string | null;
+    /** Masked customer phone — never raw phoneNumber on booking payloads. */
+    phoneMasked?: string | null;
+  };
   service: { id: string; name: string; icon: string | null; basePrice: number };
   address: { fullAddress: string; latitude: number | null; longitude: number | null };
 };
@@ -130,10 +186,14 @@ export type PartnerEarningsSummary = {
 };
 
 export type WalletBalance = {
-  totalBalance: number;
-  availableBalance: number;
-  reservedBalance: number;
+  balance: number;
   currency: string;
+  lastTransaction?: {
+    type: string;
+    amount: number;
+    reason?: string;
+    createdAt: string;
+  } | null;
 };
 
 export type WalletTransaction = {
@@ -151,17 +211,34 @@ export type WalletTransactionsResponse = {
   page: number;
 };
 
+export type PartnerWithdrawalRow = {
+  id: string;
+  reference: string;
+  amount: number;
+  fee?: number;
+  tax?: number;
+  netAmount: number;
+  status: string;
+  bank?: string | null;
+  settlementDate?: string | null;
+  failureReason?: string | null;
+  requestedAt?: string;
+};
+
 export type PartnerPayoutsData = {
-  pendingAmount: number;
-  lifetimePaid: number;
+  currentBalance: number;
+  availableBalance: number;
+  pendingBalance: number;
+  lifetimeEarnings: number;
+  lifetimeGross: number;
   nextPayoutDate: string | null;
-  withdrawals: Array<{
-    id: string;
-    withdrawalNumber: string;
-    amount: number;
-    status: string;
-    createdAt: string;
-  }>;
+  withdrawals: PartnerWithdrawalRow[];
+  analytics?: {
+    daily: Array<{ period: string; amount: number }>;
+    weekly: Array<{ period: string; amount: number }>;
+    monthly: Array<{ period: string; amount: number }>;
+    yearly: Array<{ period: string; amount: number }>;
+  };
 };
 
 export type PartnerReview = {
@@ -293,9 +370,22 @@ export type PartnerIncentives = {
     current: number;
     eligible: boolean;
     progressPct: number;
+    paid?: boolean;
+    payoutStatus?: string | null;
+    payoutAmount?: number | null;
+    payoutId?: string | null;
+    payoutAt?: string | null;
+    periodKey?: string;
   }>;
   streakDays: number;
-  payouts: unknown[];
+  payouts: Array<{
+    id: string;
+    amount: number;
+    periodKey: string;
+    status: string;
+    createdAt: string;
+    rule?: { name: string; code: string };
+  }>;
 };
 
 export type PartnerForecast = {
@@ -339,12 +429,19 @@ export type PartnerAcademy = {
 };
 
 export type PartnerCompliance = {
+  status?: string;
+  explanation?: string;
+  restricted?: boolean;
+  restrictionReason?: string | null;
   documents: Array<{
     id: string;
     documentType: string;
     documentName: string | null;
     isVerified: boolean;
     expiryDate: string | null;
+    expiryState?: string;
+    daysToExpiry?: number | null;
+    cta?: string;
     expiringSoon: boolean;
   }>;
   verification: Record<string, unknown>;
@@ -357,6 +454,8 @@ export type PartnerWellbeing = {
   sosPhone: string | null;
   insuranceUrl: string | null;
   communityUrl: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
 };
 
 export type PartnerRewards = {
