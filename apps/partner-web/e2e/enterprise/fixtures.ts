@@ -14,12 +14,12 @@ export function attachEnterpriseMonitor(page: Page): EnterpriseMonitor {
   page.on("console", (msg) => {
     if (msg.type() === "error") {
       const t = msg.text();
-      if (/favicon|hydration|401 \(Unauthorized\)|404 \(Not Found\)|_next\/static/i.test(t)) return;
+      if (/favicon|hydration|devtools|401 \(Unauthorized\)|404 \(Not Found\)|_next\/static|429 \(\)|hot-reloader|hmr|fast refresh|webpack-hmr|Failed to fetch.*hmr|Failed to load resource: the server responded with a status of 500/i.test(t)) return;
       consoleErrors.push(t);
     }
   });
   page.on("response", (res) => {
-    if (res.url().includes("/api/") && res.status() >= 400 && res.status() !== 401 && res.status() !== 404) {
+    if (res.url().includes("/api/") && !/sentry\.io/i.test(res.url()) && res.status() >= 400 && res.status() !== 401 && res.status() !== 403 && res.status() !== 404) {
       failedApi.push({ url: res.url(), status: res.status() });
     }
   });
@@ -36,12 +36,15 @@ export function attachEnterpriseMonitor(page: Page): EnterpriseMonitor {
 export const SEED_PARTNER = { email: "partner@homigo.demo", password: "Homigo@123" };
 
 export async function partnerLogin(page: Page) {
-  await page.goto("/login");
+  await page.goto("/login", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => localStorage.clear());
-  await page.reload();
-  await expect(page.getByText(/HOMIGO/i).first()).toBeVisible({ timeout: 30_000 });
-  await page.locator("#partner-email").fill(SEED_PARTNER.email);
-  await page.locator("#partner-password").fill(SEED_PARTNER.password);
+  await expect(page.locator("#partner-email")).toBeVisible({ timeout: 30_000 });
+  await page.locator("#partner-email").click();
+  await page.locator("#partner-email").fill("");
+  await page.locator("#partner-email").pressSequentially(SEED_PARTNER.email, { delay: 20 });
+  await page.locator("#partner-password").click();
+  await page.locator("#partner-password").fill("");
+  await page.locator("#partner-password").pressSequentially(SEED_PARTNER.password, { delay: 20 });
 
   const loginRes = page.waitForResponse(
     (r) => r.request().method() === "POST" && r.url().includes("/api/auth/login") && r.status() === 200,

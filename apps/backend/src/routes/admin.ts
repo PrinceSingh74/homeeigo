@@ -155,6 +155,27 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     const data = await opsMapService.snapshot({ gridSize });
     return { success: true, data };
   })
+  .get("/partner-availability", async ({ query, adminContext, set }) => {
+    const admin = adminContext!;
+    try {
+      await rbacService.enforcePermission(admin, "ANALYTICS", "READ");
+      const { partnerOperationsService } = await import("../services/partner-operations.service");
+      const data = await partnerOperationsService.adminRoster({
+        status: typeof query.status === "string" ? query.status : undefined,
+        zone: typeof query.zone === "string" ? query.zone : undefined,
+        skill: typeof query.skill === "string" ? query.skill : undefined,
+        capacity: query.capacity === "full" || query.capacity === "available" ? query.capacity : undefined,
+        search: typeof query.search === "string" ? query.search : undefined,
+        page: query.page ? Number(query.page) : undefined,
+        limit: query.limit ? Number(query.limit) : undefined,
+      });
+      return { success: true, data };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed";
+      set.status = 403;
+      return { success: false, error: message };
+    }
+  })
   .get("/bookings", async ({ query }) => {
     const data = await adminService.listBookings(sanitizeQueryStrings(query as Record<string, string>));
     return { success: true, data };

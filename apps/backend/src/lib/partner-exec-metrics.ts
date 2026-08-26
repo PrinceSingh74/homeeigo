@@ -33,8 +33,8 @@ import { setGauge, registerScrapeSampler } from "./metrics";
 const TTL_MS = 20_000;
 let last = 0;
 
-const BUSY_STATUSES = ["busy", "on_job", "on_the_way", "in_progress", "en_route"];
-const AVAILABLE_STATUSES = ["available", "online", "idle", "ready"];
+const BUSY_STATUSES = ["busy", "on_job", "on_the_way", "in_progress", "en_route", "accepting_job"];
+const AVAILABLE_STATUSES = ["available", "online", "idle", "ready", "offered"];
 
 export function registerPartnerExecSamplers(): void {
   registerScrapeSampler(async () => {

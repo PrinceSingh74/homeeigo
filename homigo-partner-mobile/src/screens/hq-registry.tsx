@@ -5,7 +5,6 @@ import { findNavItem } from "@/lib/partner-navigation";
 import {
   AcademyCertificationsScreen,
   AcademyTrainingScreen,
-  AccountAvailabilityScreen,
   AccountInvoicesScreen,
   AccountMapScreen,
   AccountMembershipScreen,
@@ -53,6 +52,7 @@ import {
   WorkScheduleScreen,
   WorkServiceHistoryScreen,
 } from "@/screens/hq-work-earnings";
+import { AvailabilityWorkspaceScreen } from "@/screens/availability-workspace";
 import { RequestsScreen } from "@/screens/RequestsScreen";
 
 type ScreenComponent = ComponentType;
@@ -64,6 +64,7 @@ export const HQ_SCREEN_REGISTRY: Record<string, ScreenComponent> = {
   "route-center": RouteCenterScreen,
   "work-attendance": WorkAttendanceScreen,
   "work-schedule": WorkScheduleScreen,
+  "account-availability": AvailabilityWorkspaceScreen,
   "work-service-history": WorkServiceHistoryScreen,
   "earnings-hq": EarningsHqScreen,
   "earnings-detail": EarningsDetailScreen,
@@ -103,7 +104,6 @@ export const HQ_SCREEN_REGISTRY: Record<string, ScreenComponent> = {
   "account-support": AccountSupportScreen,
   "account-membership": AccountMembershipScreen,
   "account-invoices": AccountInvoicesScreen,
-  "account-availability": AccountAvailabilityScreen,
   "account-map": AccountMapScreen,
 };
 

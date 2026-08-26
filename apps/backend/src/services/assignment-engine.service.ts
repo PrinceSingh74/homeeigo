@@ -6,6 +6,7 @@ import {
 } from "@prisma/client";
 import { randomUUID } from "crypto";
 import prisma from "../lib/prisma";
+import { logger } from "../lib/logger";
 import { redisClient } from "../lib/redis";
 import { bookingPriorityService } from "./booking-priority.service";
 import { matchingService } from "./matching.service";
@@ -16,6 +17,7 @@ import { fromWaitTimeMsBigInt } from "../lib/wait-time-ms";
 import { eventPlatformConfig } from "../events/core/config";
 import { emitInTransaction } from "../events/core/event-publisher";
 import { buildPartnerDispatchedEvent } from "../events/catalog/partner.events";
+import { partnerOperationsService } from "./partner-operations.service";
 
 const DISPATCH_TIMEOUT_MS = Number(process.env.ASSIGNMENT_DISPATCH_TIMEOUT_MS || 300_000);
 const MAX_DISPATCH_PER_TICK = Number(process.env.ASSIGNMENT_MAX_PER_TICK || 10);
@@ -96,9 +98,29 @@ export class AssignmentEngine {
           continue;
         }
 
-        const sent = await this.dispatchToNextProvider(activeJob.id);
-        processed++;
-        if (sent) dispatched++;
+        /**
+         * A throw from one job must not abort the rest of this tick's queue.
+         *
+         * `dispatchToNextProvider` has no internal catch, so an error anywhere past its per-
+         * candidate transaction (notification send, WS push, the final job-status update)
+         * previously propagated straight out of this `for` loop — silently ending the tick and
+         * leaving every remaining queued booking, however old, unprocessed until the next run.
+         * That is a direct, compounding contributor to queue starvation: the older a stuck job,
+         * the more chances it has had to be the one that aborts everyone behind it.
+         */
+        try {
+          const sent = await this.dispatchToNextProvider(activeJob.id);
+          processed++;
+          if (sent) dispatched++;
+        } catch (err) {
+          incCounter("assignment_dispatch_tick_error_total");
+          logger.error("assignment_dispatch_tick_failed", {
+            jobId: activeJob.id,
+            bookingId: item.bookingId,
+            error: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
+          });
+        }
       }
     } finally {
       await redisClient.releaseLock(LOCK_KEY, token);
@@ -231,6 +253,19 @@ export class AssignmentEngine {
       .sort((a, b) => b.totalScore - a.totalScore);
 
     if (eligible.length === 0) {
+      /**
+       * A no-candidate outcome is still an attempt. Left uncounted, a job whose entire matching
+       * pool has already declined returns NO_PROVIDER on every cron tick forever — dispatchAttempts
+       * stays 0, so `dispatchAttempts >= maxAttempts` (the only path to EXHAUSTED) can never fire,
+       * and the job occupies a getAssignmentQueue() slot permanently. With a strict oldest-first
+       * FIFO and no other eviction, enough of these accumulate to starve every booking behind them.
+       * EXHAUSTED does not cancel the booking — it only stops silent retry and raises an ops alert
+       * for manual reassignment, so counting this path is safe.
+       */
+      await prisma.assignmentJob.update({
+        where: { id: jobId },
+        data: { dispatchAttempts: { increment: 1 } },
+      });
       await this.audit(jobId, "NO_PROVIDER", {
         serviceId: booking.serviceId,
         matchCount: matches.length,
@@ -257,8 +292,20 @@ export class AssignmentEngine {
 
       try {
         await prisma.$transaction(async (tx) => {
+          const blocked = await partnerOperationsService.assertOfferEligible(tx, provider.id, {
+            latitude: lat,
+            longitude: lng,
+            scheduledDate: booking.scheduledDate,
+          });
+          if (blocked) {
+            throw new Error(`SKIP_OFFER:${blocked}`);
+          }
           await tx.assignmentAttempt.create({
             data: { jobId, providerId: provider.id, status: AssignmentAttemptStatus.SENT, dispatchedAt: now },
+          });
+          await tx.provider.update({
+            where: { id: provider.id },
+            data: { currentStatus: "offered" },
           });
           if (eventPlatformConfig.outboxEnabled && eventPlatformConfig.partnerEventsEnabled) {
             await emitInTransaction(
@@ -274,6 +321,7 @@ export class AssignmentEngine {
           }
         });
       } catch (err) {
+        if (err instanceof Error && err.message.startsWith("SKIP_OFFER:")) continue;
         // Already offered to this provider for this job — skip, keep broadcasting.
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") continue;
         throw err;
@@ -281,36 +329,61 @@ export class AssignmentEngine {
       offeredProviderIds.push(provider.id);
       incCounter("dispatch_attempts_total");
 
-      await notificationService.sendNotification(provider.userId, "BOOKING_REQUEST", {
-        title: "New Booking Request",
-        body: `${booking.user.firstName} wants ${booking.service.name}`,
-        sound: "notification_high",
-        referenceId: booking.id,
-        referenceType: "booking",
-        actions: [
-          { action: "accept", title: "Accept" },
-          { action: "reject", title: "Reject" },
-        ],
-        data: {
-          bookingId: booking.id,
-          price: booking.finalAmount,
-          customerName: `${booking.user.firstName} ${booking.user.lastName}`,
-          serviceName: booking.service.name,
-          assignmentJobId: jobId,
-        },
-      });
+      /**
+       * The AssignmentAttempt this provider needs to see the job in `myBookings()` is already
+       * committed above — notifying them is best-effort on top of that, not a precondition for
+       * it. Previously an uncaught throw here (a bad push token, a template lookup failure, a
+       * transient WS error) propagated straight out of this function, skipping the final
+       * `assignmentJob.update` to DISPATCHED below entirely. The result was a job stuck PENDING
+       * forever with a real SENT AssignmentAttempt already on record — dispatched in substance,
+       * invisible to the retry/exhaustion logic, and with no error anywhere explaining why.
+       */
+      try {
+        await notificationService.sendNotification(provider.userId, "BOOKING_REQUEST", {
+          title: "New Booking Request",
+          body: `${booking.user.firstName} wants ${booking.service.name}`,
+          sound: "notification_high",
+          referenceId: booking.id,
+          referenceType: "booking",
+          actions: [
+            { action: "accept", title: "Accept" },
+            { action: "reject", title: "Reject" },
+          ],
+          data: {
+            bookingId: booking.id,
+            price: booking.finalAmount,
+            customerName: `${booking.user.firstName} ${booking.user.lastName}`,
+            serviceName: booking.service.name,
+            assignmentJobId: jobId,
+          },
+        });
 
-      pushToUser(
-        provider.userId,
-        createWsEnvelope(
-          "booking_dispatched",
-          { bookingId: booking.id, providerId: provider.id, serviceName: booking.service.name, status: "PENDING" },
-          booking.id,
-        ),
-      );
+        pushToUser(
+          provider.userId,
+          createWsEnvelope(
+            "booking_dispatched",
+            { bookingId: booking.id, providerId: provider.id, serviceName: booking.service.name, status: "PENDING" },
+            booking.id,
+          ),
+        );
+      } catch (err) {
+        incCounter("assignment_notify_failed_total");
+        logger.error("assignment_dispatch_notify_failed", {
+          jobId,
+          bookingId: booking.id,
+          providerId: provider.id,
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
+        });
+      }
     }
 
     if (offeredProviderIds.length === 0) {
+      // Same reasoning as the eligible.length===0 branch above: this is still an attempt.
+      await prisma.assignmentJob.update({
+        where: { id: jobId },
+        data: { dispatchAttempts: { increment: 1 } },
+      });
       await this.audit(jobId, "NO_PROVIDER", {
         serviceId: booking.serviceId,
         matchCount: matches.length,
@@ -434,20 +507,23 @@ export class AssignmentEngine {
 
     const now = new Date();
     await prisma.$transaction(async (tx) => {
-      const openAttempt = await tx.assignmentAttempt.findFirst({
+      /**
+       * Broadcast dispatch (the default — see BROADCAST_DISPATCH) offers a job to several
+       * providers at once, so more than one AssignmentAttempt can be SENT for a single job. This
+       * used to close only the single most-recently-dispatched attempt (`findFirst` +
+       * single `update`), which left every other broadcast recipient's attempt permanently SENT
+       * once the booking was cancelled — nothing else in the system ever revisits a SENT row
+       * outside the DISPATCHED-job timeout path, which no longer applies once the job moves to
+       * CANCELLED below. Each stuck SENT attempt then counts against that provider's capacity
+       * forever (`partnerOperationsService.loadCapacityMap` — `reservedOffers`), eventually
+       * making an otherwise-idle provider register as `capacityFull` and silently stop receiving
+       * any new offers at all. `updateMany` closes every open attempt on this job, matching the
+       * same broadcast-wide expiry `handleTimeouts()` already does for the ordinary timeout path.
+       */
+      await tx.assignmentAttempt.updateMany({
         where: { jobId: job.id, status: AssignmentAttemptStatus.SENT },
-        orderBy: { dispatchedAt: "desc" },
+        data: { status: AssignmentAttemptStatus.TIMEOUT, respondedAt: now },
       });
-      if (openAttempt) {
-        await tx.assignmentAttempt.update({
-          where: { id: openAttempt.id },
-          data: {
-            status: AssignmentAttemptStatus.TIMEOUT,
-            respondedAt: now,
-            responseMs: now.getTime() - openAttempt.dispatchedAt.getTime(),
-          },
-        });
-      }
       await tx.assignmentJob.update({
         where: { id: job.id },
         data: {

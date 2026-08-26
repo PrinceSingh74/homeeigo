@@ -7,7 +7,8 @@ import { routeOptimizationService } from "../services/route-optimization.service
 import { invoiceReportService } from "../services/invoice-report.service";
 import prisma from "../lib/prisma";
 import { parseBody } from "../lib/route-security";
-import { providerMatchSchema, providerOnlineSchema, providerSearchSchema } from "../schemas/provider.schema";
+import { providerMatchSchema, providerOnlineSchema, providerSearchSchema, providerPauseSchema, providerServiceAreaSchema } from "../schemas/provider.schema";
+import { partnerOperationsService } from "../services/partner-operations.service";
 
 export const providersRoutes = new Elysia({ prefix: "/api/providers" })
   .use(authPlugin)
@@ -59,6 +60,63 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
     },
     { body: t.Object({ online: t.Boolean() }) },
   )
+  .post(
+    "/me/pause",
+    async ({ requireProvider, body: raw }) => {
+      const { providerId } = requireProvider();
+      const body = parseBody(providerPauseSchema, raw ?? {});
+      const data = await partnerOperationsService.pause(providerId, body.reason);
+      return { success: true, message: "New offers are paused", data };
+    },
+    { body: t.Optional(t.Object({ reason: t.Optional(t.String()) })) },
+  )
+  .post("/me/resume", async ({ requireProvider }) => {
+    const { providerId } = requireProvider();
+    const data = await partnerOperationsService.resume(providerId);
+    return { success: true, message: "You are available for jobs again", data };
+  })
+  .get("/me/operations", async ({ requireProvider }) => {
+    const { providerId } = requireProvider();
+    const data = await partnerOperationsService.snapshot(providerId);
+    return { success: true, data };
+  })
+  .put(
+    "/me/service-area",
+    async ({ requireProvider, body: raw }) => {
+      const { providerId } = requireProvider();
+      const body = parseBody(providerServiceAreaSchema, raw);
+      const data = await partnerOperationsService.updateServiceArea(providerId, body);
+      return { success: true, message: "Service area saved", data };
+    },
+    {
+      body: t.Object({
+        city: t.Optional(t.String()),
+        serviceRegions: t.Optional(t.Array(t.String())),
+        serviceRadiusKm: t.Optional(t.Number()),
+        baseLatitude: t.Optional(t.Number()),
+        baseLongitude: t.Optional(t.Number()),
+      }),
+    },
+  )
+  .get("/me/service-area/zones", async ({ requireProvider, query, set }) => {
+    const { providerId } = requireProvider();
+    const lat = query.lat ? Number(query.lat) : undefined;
+    const lng = query.lng ? Number(query.lng) : undefined;
+    if (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng)) {
+      const me = await prisma.provider.findUnique({
+        where: { id: providerId },
+        select: { baseLatitude: true, baseLongitude: true },
+      });
+      if (me?.baseLatitude == null || me.baseLongitude == null) {
+        set.status = 400;
+        return { success: false, error: "Provide coordinates to load nearby zones", code: "VALIDATION_ERROR" };
+      }
+      const data = await partnerOperationsService.nearbyZones(me.baseLatitude, me.baseLongitude);
+      return { success: true, data: { zones: data } };
+    }
+    const data = await partnerOperationsService.nearbyZones(lat, lng);
+    return { success: true, data: { zones: data } };
+  })
   .put(
     "/me/settings",
     async ({ requireProvider, body }) => {
@@ -71,6 +129,9 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
         workingHoursStart: t.Optional(t.String()),
         workingHoursEnd: t.Optional(t.String()),
         workingDays: t.Optional(t.Array(t.String())),
+        breakWindows: t.Optional(t.Array(t.Object({ start: t.String(), end: t.String() }))),
+        maxJobsPerDay: t.Optional(t.Union([t.Number(), t.Null()])),
+        maxConcurrentJobs: t.Optional(t.Number()),
         paymentMethodPreference: t.Optional(t.String()),
         upiId: t.Optional(t.String()),
         bio: t.Optional(t.String({ maxLength: 2000 })),
@@ -170,6 +231,32 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
     const data = await partnerOsService.getForecast(providerId);
     return { success: true, data };
   })
+  /**
+   * Ranked zone opportunities for the authenticated partner.
+   *
+   * Server-authoritative: the UI receives scores and reasons, and computes none of them. The
+   * partner is resolved from the session by `requireProvider()` — never from a query, body or
+   * header — so one partner cannot request another's ranking.
+   *
+   * Gated by `PARTNER_ZONE_RECOMMENDATIONS`, which is fail-closed: a missing flag row, a disabled
+   * flag or a lookup failure all return 404 rather than exposing the capability. 404 rather than
+   * 403 because an ungated capability should not advertise its own existence.
+   */
+  .get("/me/intel/zones", async ({ requireProvider, query, set }) => {
+    const { providerId } = requireProvider();
+    const { isFeatureEnabled } = await import("../services/feature-flag.service");
+    if (!(await isFeatureEnabled("PARTNER_ZONE_RECOMMENDATIONS", providerId))) {
+      set.status = 404;
+      return { success: false, error: "Not found", code: "NOT_FOUND" };
+    }
+    const { zoneRecommendationService } = await import("../services/zone-recommendation.service");
+    const limit = query.limit ? Number(query.limit) : undefined;
+    const data = await zoneRecommendationService.recommend(providerId, { limit });
+    return { success: true, data };
+  }, {
+    query: t.Object({ limit: t.Optional(t.String()) }),
+  })
+
   .get("/me/intelligence", async ({ requireProvider, query }) => {
     const { providerId } = requireProvider();
     const { partnerOsService } = await import("../services/partner-os.service");

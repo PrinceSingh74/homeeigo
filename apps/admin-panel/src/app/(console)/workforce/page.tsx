@@ -23,6 +23,7 @@ import { GlassRing3D } from "@/components/hq/GlassRing3D";
 import { adminApi, type WorkforceAnalytics } from "@/services/admin-api";
 import { formatNumber, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { LivePartnerAvailabilityRoster } from "@/components/operations/LivePartnerAvailabilityRoster";
 
 function MetricRow({ label, value, heat }: { label: string; value: string; heat?: "good" | "warn" | "bad" }) {
   return (
@@ -172,6 +173,8 @@ export default function WorkforcePage() {
               tone={data.avgCompletionRate >= 70 ? "success" : data.avgCompletionRate >= 40 ? "accent" : "danger"}
             />
           </section>
+
+          <LivePartnerAvailabilityRoster />
 
           <section className="grid gap-4 lg:grid-cols-2">
             <div className="biz-glass-panel p-6">

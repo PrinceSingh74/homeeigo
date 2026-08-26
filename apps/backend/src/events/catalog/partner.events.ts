@@ -14,6 +14,37 @@ export type PartnerOfflinePayload = {
   offlineAt: string;
 };
 
+export type PartnerPausedPayload = {
+  providerId: string;
+  pausedAt: string;
+  reason: string;
+};
+
+export type PartnerResumedPayload = {
+  providerId: string;
+  resumedAt: string;
+};
+
+export type PartnerAvailabilityUpdatedPayload = {
+  providerId: string;
+  workingDays: string[];
+  workingHoursStart: string | null;
+  workingHoursEnd: string | null;
+};
+
+export type PartnerServiceAreaUpdatedPayload = {
+  providerId: string;
+  serviceRegions: string[];
+  serviceRadiusKm: number | null;
+};
+
+export type PartnerCapacityChangedPayload = {
+  providerId: string;
+  currentJobs: number;
+  availableSlots: number;
+  utilization: number;
+};
+
 export type PartnerDispatchedPayload = {
   providerId: string;
   bookingId: string;
@@ -119,6 +150,86 @@ export function buildPartnerOfflineEvent(input: {
     EVENT_SOURCES.PROVIDER,
     input.providerId,
     { providerId: input.providerId, offlineAt: input.offlineAt.toISOString() },
+  );
+}
+
+export function buildPartnerPausedEvent(input: {
+  providerId: string;
+  pausedAt: Date;
+  reason: string;
+}): HomigoEvent<PartnerPausedPayload> {
+  return partnerEnvelope(
+    EVENT_TYPES.PARTNER_PAUSED,
+    EVENT_SOURCES.PROVIDER,
+    input.providerId,
+    { providerId: input.providerId, pausedAt: input.pausedAt.toISOString(), reason: input.reason },
+  );
+}
+
+export function buildPartnerResumedEvent(input: {
+  providerId: string;
+  resumedAt: Date;
+}): HomigoEvent<PartnerResumedPayload> {
+  return partnerEnvelope(
+    EVENT_TYPES.PARTNER_RESUMED,
+    EVENT_SOURCES.PROVIDER,
+    input.providerId,
+    { providerId: input.providerId, resumedAt: input.resumedAt.toISOString() },
+  );
+}
+
+export function buildPartnerAvailabilityUpdatedEvent(input: {
+  providerId: string;
+  workingDays: string[];
+  workingHoursStart: string | null;
+  workingHoursEnd: string | null;
+}): HomigoEvent<PartnerAvailabilityUpdatedPayload> {
+  return partnerEnvelope(
+    EVENT_TYPES.PARTNER_AVAILABILITY_UPDATED,
+    EVENT_SOURCES.PROVIDER,
+    input.providerId,
+    {
+      providerId: input.providerId,
+      workingDays: input.workingDays,
+      workingHoursStart: input.workingHoursStart,
+      workingHoursEnd: input.workingHoursEnd,
+    },
+  );
+}
+
+export function buildPartnerServiceAreaUpdatedEvent(input: {
+  providerId: string;
+  serviceRegions: string[];
+  serviceRadiusKm: number | null;
+}): HomigoEvent<PartnerServiceAreaUpdatedPayload> {
+  return partnerEnvelope(
+    EVENT_TYPES.PARTNER_SERVICE_AREA_UPDATED,
+    EVENT_SOURCES.PROVIDER,
+    input.providerId,
+    {
+      providerId: input.providerId,
+      serviceRegions: input.serviceRegions,
+      serviceRadiusKm: input.serviceRadiusKm,
+    },
+  );
+}
+
+export function buildPartnerCapacityChangedEvent(input: {
+  providerId: string;
+  currentJobs: number;
+  availableSlots: number;
+  utilization: number;
+}): HomigoEvent<PartnerCapacityChangedPayload> {
+  return partnerEnvelope(
+    EVENT_TYPES.PARTNER_CAPACITY_CHANGED,
+    EVENT_SOURCES.PROVIDER,
+    input.providerId,
+    {
+      providerId: input.providerId,
+      currentJobs: input.currentJobs,
+      availableSlots: input.availableSlots,
+      utilization: input.utilization,
+    },
   );
 }
 

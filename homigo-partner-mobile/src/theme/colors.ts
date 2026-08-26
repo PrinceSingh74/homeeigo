@@ -7,6 +7,8 @@ export const partnerColors = {
   textMuted: "#5c6b5f",
   textSecondary: "#5c6b5f",
   danger: "#dc2626",
+  warning: "#d97706",
+  success: "#16a34a",
   surface: "#ffffff",
   surfaceDark: "#0f172a",
   line: "rgba(61, 107, 79, 0.15)",

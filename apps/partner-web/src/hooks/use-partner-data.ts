@@ -15,6 +15,7 @@ import type {
 export const partnerKeys = {
   me: ["partner", "me"] as const,
   dashboard: ["partner", "dashboard"] as const,
+  operations: ["partner", "operations"] as const,
   earnings: (days: number) => ["partner", "earnings", days] as const,
   reviews: (params: ReviewListParams) => ["partner", "reviews", params] as const,
   reviewsAll: ["partner", "reviews"] as const,
@@ -84,6 +85,17 @@ export function usePartnerDashboardQuery() {
     queryKey: partnerKeys.dashboard,
     queryFn: () => partnerApi.dashboard(),
     staleTime: 20_000,
+    refetchInterval: enabled ? 30_000 : false,
+    enabled,
+  });
+}
+
+export function usePartnerOperationsQuery() {
+  const enabled = usePartnerQueriesEnabled();
+  return useQuery({
+    queryKey: partnerKeys.operations,
+    queryFn: () => partnerApi.operations(),
+    staleTime: 15_000,
     refetchInterval: enabled ? 30_000 : false,
     enabled,
   });
@@ -509,7 +521,11 @@ export function useMarkArrivedMutation() {
       longitude: number;
     }) => partnerApi.markArrived(bookingId, latitude, longitude),
     onError: (error) => {
-      showToast(getErrorMessage(error), "error");
+      const msg =
+        error instanceof PartnerApiError && error.code === "OUTSIDE_SERVICE_AREA"
+          ? "You're outside the job area — move closer to the service location and try again."
+          : getErrorMessage(error);
+      showToast(msg, "error");
     },
     onSuccess: (data) => {
       showToast(data.newlyTransitioned ? "Arrival recorded" : "Arrival already recorded", "success");
@@ -554,7 +570,11 @@ export function useStartBookingMutation() {
     },
     onError: (error, _vars, ctx) => {
       if (ctx?.snapshots) restoreSnapshots(qc, ctx.snapshots);
-      showToast(getErrorMessage(error), "error");
+      const msg =
+        error instanceof PartnerApiError && error.code === "OUTSIDE_SERVICE_AREA"
+          ? "You're outside the job area — move closer to the service location and try again."
+          : getErrorMessage(error);
+      showToast(msg, "error");
     },
     onSuccess: (_data, { bookingId }) => {
       showToast("Job started", "success");
@@ -578,12 +598,14 @@ export function useCompleteBookingMutation() {
       latitude,
       longitude,
       notes,
+      photos,
     }: {
       bookingId: string;
       latitude: number;
       longitude: number;
       notes?: string;
-    }) => partnerApi.completeBooking(bookingId, latitude, longitude, notes),
+      photos?: string[];
+    }) => partnerApi.completeBooking(bookingId, latitude, longitude, notes, photos),
     onMutate: async ({ bookingId }) => {
       await qc.cancelQueries({ queryKey: partnerKeys.bookingsAll });
       const snapshots = patchBookingsCache(qc, bookingId, {
@@ -640,6 +662,7 @@ export function useSetOnlineMutation() {
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: partnerKeys.me });
       void qc.invalidateQueries({ queryKey: partnerKeys.dashboard });
+      void qc.invalidateQueries({ queryKey: partnerKeys.operations });
     },
   });
 }
@@ -653,6 +676,7 @@ export function useWithdrawMutation() {
       bankAccountNumber: string;
       ifscCode: string;
       accountHolder: string;
+      idempotencyKey?: string;
     }) => partnerApi.withdraw(payload),
     onSuccess: () => {
       showToast("Withdrawal requested", "success");

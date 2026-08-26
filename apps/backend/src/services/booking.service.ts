@@ -19,6 +19,7 @@ import { entitlementService, BENEFIT } from "./entitlement.service";
 import { bookingPriorityService } from "./booking-priority.service";
 import { addressPiiService } from "./address-pii.service";
 import { assignmentEngine } from "./assignment-engine.service";
+import { partnerOperationsService } from "./partner-operations.service";
 import { incCounter } from "../lib/metrics";
 import { membershipCouponService } from "./membership-coupon.service";
 import { cashbackService } from "./cashback.service";
@@ -724,7 +725,13 @@ export class BookingService {
       }
     | {
         ok: false;
-        error: "NOT_FOUND" | "INVALID_STATUS" | "PROVIDER_UNAVAILABLE" | "ALREADY_CLAIMED";
+        error:
+          | "NOT_FOUND"
+          | "INVALID_STATUS"
+          | "PROVIDER_UNAVAILABLE"
+          | "ALREADY_CLAIMED"
+          | "CAPACITY_LIMIT"
+          | "ACCOUNT_RESTRICTED";
       }
   > {
     const pre = await prisma.booking.findUnique({
@@ -806,6 +813,11 @@ export class BookingService {
               throw new Error(conflict.code);
             }
 
+            const capacityBlock = await partnerOperationsService.assertAcceptEligible(tx, assignedProviderId);
+            if (capacityBlock) {
+              throw new Error(capacityBlock);
+            }
+
             const acceptedAt = new Date();
             const waitTimeMs = row.queued_at
               ? toWaitTimeMsBigInt(acceptedAt.getTime() - new Date(row.queued_at).getTime())
@@ -882,6 +894,10 @@ export class BookingService {
         }
 
         void assignmentEngine.onProviderAccepted(id, providerId).catch(() => undefined);
+        void partnerOperationsService
+          .syncCurrentStatus(providerId)
+          .then(() => partnerOperationsService.emitCapacityIfChanged(providerId))
+          .catch(() => undefined);
 
         return { ok: true, booking, newlyAccepted };
       } catch (error) {
@@ -898,6 +914,8 @@ export class BookingService {
           if (error.message === "PROVIDER_UNAVAILABLE" || error.message === "OVERLAPPING_BOOKING") {
             return { ok: false, error: "PROVIDER_UNAVAILABLE" };
           }
+          if (error.message === "CAPACITY_LIMIT") return { ok: false, error: "CAPACITY_LIMIT" };
+          if (error.message === "ACCOUNT_RESTRICTED") return { ok: false, error: "ACCOUNT_RESTRICTED" };
         }
         throw error;
       }
@@ -1348,6 +1366,12 @@ export class BookingService {
       return updated;
     });
     incCounter("booking_completed_total");
+    if (existing.providerId) {
+      void partnerOperationsService
+        .syncCurrentStatus(existing.providerId)
+        .then(() => partnerOperationsService.emitCapacityIfChanged(existing.providerId!))
+        .catch(() => undefined);
+    }
     await prisma.tracking.updateMany({
       where: { bookingId: id },
       data: { status: TrackingStatus.COMPLETED, actualEndTime: new Date(), totalDuration: duration },

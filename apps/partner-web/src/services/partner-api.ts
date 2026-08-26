@@ -1,6 +1,9 @@
 import { apiRequest } from "@/lib/api-client";
 import type {
   ApiResponse,
+  JobActionResult,
+  JobChatList,
+  JobEvidenceItem,
   PartnerBookingsResponse,
   PartnerDashboard,
   PartnerEarningsSummary,
@@ -105,12 +108,55 @@ export const partnerApi = {
 
   setOnline: (online: boolean) =>
     apiRequest<
-      ApiResponse<{ id: string; isOnline: boolean; onlineSince: string | null }>
+      ApiResponse<{
+        id: string;
+        isOnline: boolean;
+        onlineSince: string | null;
+        operationalStatus?: string;
+        operations?: import("@/types/partner").PartnerOperations;
+      }>
     >("/api/providers/me/online", {
       method: "PUT",
       auth: true,
       body: { online },
     }).then((r) => r.data!),
+
+  operations: () =>
+    apiRequest<ApiResponse<import("@/types/partner").PartnerOperations>>("/api/providers/me/operations", {
+      auth: true,
+    }).then((r) => r.data!),
+
+  pause: (reason?: string) =>
+    apiRequest<ApiResponse<import("@/types/partner").PartnerOperations>>("/api/providers/me/pause", {
+      method: "POST",
+      auth: true,
+      body: { reason },
+    }).then((r) => r.data!),
+
+  resume: () =>
+    apiRequest<ApiResponse<import("@/types/partner").PartnerOperations>>("/api/providers/me/resume", {
+      method: "POST",
+      auth: true,
+    }).then((r) => r.data!),
+
+  updateServiceArea: (body: {
+    city?: string;
+    serviceRegions?: string[];
+    serviceRadiusKm?: number;
+    baseLatitude?: number;
+    baseLongitude?: number;
+  }) =>
+    apiRequest<ApiResponse<Record<string, unknown>>>("/api/providers/me/service-area", {
+      method: "PUT",
+      auth: true,
+      body,
+    }).then((r) => r.data!),
+
+  nearbyServiceZones: (lat?: number, lng?: number) =>
+    apiRequest<ApiResponse<{ zones: Array<{ id: string; name: string; zoneType: string; city: string | null }> }>>(
+      `/api/providers/me/service-area/zones${lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : ""}`,
+      { auth: true },
+    ).then((r) => r.data!),
 
   /* ----------------- Dashboard + earnings + reviews ------------------- */
   dashboard: () =>
@@ -236,6 +282,7 @@ export const partnerApi = {
     latitude: number,
     longitude: number,
     notes?: string,
+    photos?: string[],
   ) =>
     apiRequest<
       ApiResponse<{
@@ -244,7 +291,76 @@ export const partnerApi = {
     >(`/api/bookings/${bookingId}/complete`, {
       method: "POST",
       auth: true,
-      body: { latitude, longitude, notes },
+      body: {
+        latitude,
+        longitude,
+        notes,
+        ...(photos?.length ? { photos } : {}),
+      },
+    }).then((r) => r.data!),
+
+  getJobActions: (bookingId: string) =>
+    apiRequest<ApiResponse<JobActionResult>>(`/api/bookings/${bookingId}/actions`, {
+      auth: true,
+    }).then((r) => r.data!),
+
+  listEvidence: (bookingId: string) =>
+    apiRequest<ApiResponse<{ evidence: JobEvidenceItem[] }>>(
+      `/api/bookings/${bookingId}/evidence`,
+      { auth: true },
+    ).then((r) => r.data!),
+
+  uploadEvidence: (
+    bookingId: string,
+    body: {
+      stage: "ARRIVAL" | "START" | "COMPLETION";
+      mediaUrl?: string;
+      photos?: string[];
+      latitude?: number;
+      longitude?: number;
+      clientUploadId?: string;
+      replace?: boolean;
+    },
+  ) =>
+    apiRequest<ApiResponse<{ evidence: JobEvidenceItem }>>(
+      `/api/bookings/${bookingId}/evidence`,
+      { method: "POST", auth: true, body },
+    ).then((r) => r.data!),
+
+  listChat: (bookingId: string, query: { cursor?: string; limit?: number } = {}) =>
+    apiRequest<ApiResponse<JobChatList>>(`/api/bookings/${bookingId}/chat`, {
+      auth: true,
+      query: { ...query },
+    }).then((r) => r.data!),
+
+  sendChat: (bookingId: string, body: string, clientMessageId?: string) =>
+    apiRequest<ApiResponse<{ message: JobChatList["messages"][number]; created: boolean }>>(
+      `/api/bookings/${bookingId}/chat`,
+      {
+        method: "POST",
+        auth: true,
+        body: { body, ...(clientMessageId ? { clientMessageId } : {}) },
+      },
+    ).then((r) => r.data!),
+
+  markChatRead: (bookingId: string) =>
+    apiRequest<ApiResponse<{ marked: number }>>(`/api/bookings/${bookingId}/chat/read`, {
+      method: "POST",
+      auth: true,
+    }).then((r) => r.data!),
+
+  getContact: (bookingId: string) =>
+    apiRequest<ApiResponse<{ phoneMasked: string | null; canCall: boolean }>>(
+      `/api/bookings/${bookingId}/contact`,
+      { auth: true },
+    ).then((r) => r.data!),
+
+  initiateCall: (bookingId: string) =>
+    apiRequest<
+      ApiResponse<{ dialUri: string; phoneMasked: string; expiresInSec: number }>
+    >(`/api/bookings/${bookingId}/call`, {
+      method: "POST",
+      auth: true,
     }).then((r) => r.data!),
 
   cancelBooking: (bookingId: string, reason: string) =>
@@ -271,6 +387,7 @@ export const partnerApi = {
     bankAccountNumber: string;
     ifscCode: string;
     accountHolder: string;
+    idempotencyKey?: string;
   }) =>
     apiRequest<
       ApiResponse<{
@@ -485,6 +602,9 @@ export const partnerApi = {
     workingHoursStart?: string;
     workingHoursEnd?: string;
     workingDays?: string[];
+    breakWindows?: Array<{ start: string; end: string }>;
+    maxJobsPerDay?: number | null;
+    maxConcurrentJobs?: number;
     paymentMethodPreference?: string;
     upiId?: string;
     bio?: string;
@@ -664,6 +784,9 @@ export type PartnerIncentives = {
     current: number;
     eligible: boolean;
     progressPct: number;
+    paid?: boolean;
+    payoutStatus?: string | null;
+    payoutAmount?: number | null;
   }>;
   streakDays: number;
   payouts: unknown[];

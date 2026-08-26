@@ -1389,6 +1389,40 @@ export const adminApi = {
 
   // Phase 17.4 / 16.4 / 16.3 — operations map, heatmap, geofence management (existing APIs).
   opsMap: () => apiRequest<ApiResponse<OpsMapData>>("/api/admin/ops-map", { auth: true }).then((r) => r.data!),
+  partnerAvailability: (query: {
+    status?: string;
+    zone?: string;
+    skill?: string;
+    capacity?: "full" | "available";
+    search?: string;
+    page?: number;
+    limit?: number;
+  } = {}) =>
+    apiRequest<
+      ApiResponse<{
+        items: Array<{
+          id: string;
+          name: string;
+          status: string;
+          isOnline: boolean;
+          city: string | null;
+          zones: string[];
+          skills: string[];
+          currentJobs: number;
+          maxConcurrent: number;
+          dailyQuota: number | null;
+          jobsToday: number;
+          availableSlots: number;
+          utilization: number;
+          lastSeen: string | null;
+          nextAvailable: string | null;
+          rating: number;
+        }>;
+        total: number;
+        page: number;
+        limit: number;
+      }>
+    >("/api/admin/partner-availability", { auth: true, query }).then((r) => r.data!),
   workforceAnalytics: () =>
     apiRequest<ApiResponse<WorkforceAnalytics>>("/api/admin/workforce/analytics", { auth: true }).then((r) => r.data!),
   academyModules: () =>

@@ -3,6 +3,10 @@ import prisma from "../lib/prisma";
 import { distanceKm, etaMinutes } from "../lib/geo";
 import { resolveServiceMatchTokens, serviceCategoryMatchWhere } from "../lib/service-match";
 import { entitlementService } from "./entitlement.service";
+import { geofenceService } from "./geofence.service";
+import { partnerOperationsService } from "./partner-operations.service";
+import { isInBreakWindow, isWithinWorkingWindow } from "../lib/partner-ops-clock";
+import { MIN_SERVICE_RADIUS_KM } from "../lib/partner-capacity";
 
 export interface MatchingRequest {
   serviceId: string;
@@ -40,17 +44,6 @@ export interface ProviderMatch {
 const MAX_DISTANCE_DEFAULT_KM = 50;
 const CONFLICT_WINDOW_MS = 2 * 60 * 60 * 1000;
 
-const DAY_NAMES_SHORT = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
-const DAY_NAMES_LONG = [
-  "sunday",
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-];
-
 type ProviderForMatching = Awaited<ReturnType<MatchingService["loadCandidates"]>>[number];
 
 export class MatchingService {
@@ -71,7 +64,7 @@ export class MatchingService {
       maxDistanceKm = MAX_DISTANCE_DEFAULT_KM,
     } = request;
 
-    const providers = await this.loadCandidates(serviceId);
+    const providers = await this.loadCandidates(serviceId, { onlyOnline: true });
     if (providers.length === 0) return [];
 
     const entitlements = request.customerId
@@ -80,7 +73,12 @@ export class MatchingService {
     const isPremium = Boolean(entitlements?.hasMembership && entitlements.premiumAccess);
 
     const providerIds = providers.map((p) => p.id);
-    const conflicts = await this.loadConflictMap(providerIds, scheduledDate);
+    const [conflicts, capacityMap, jobZones] = await Promise.all([
+      this.loadConflictMap(providerIds, scheduledDate),
+      partnerOperationsService.loadCapacityMap(providerIds, scheduledDate),
+      geofenceService.findContaining(latitude, longitude, { zoneType: "SERVICE_ZONE" }).catch(() => []),
+    ]);
+    const jobZoneNames = new Set(jobZones.map((z) => z.name.trim().toLowerCase()));
 
     const matches = providers
       .map((p) =>
@@ -91,13 +89,14 @@ export class MatchingService {
           scheduledDate,
           conflicts.get(p.id) ?? false,
           isPremium,
+          { capacityFull: capacityMap.get(p.id)?.capacityFull ?? false, jobZoneNames },
         ),
       )
-      .filter((m) => m.distance <= maxDistanceKm);
+      .filter((m) => m.distance <= maxDistanceKm && m.availability);
 
     matches.sort((a, b) => b.totalScore - a.totalScore);
 
-    const available = matches.filter((m) => m.availability).slice(0, maxResults);
+    const available = matches.slice(0, maxResults);
 
     if (request.customerId && available.length > 0) {
       void this.persistMatchScores({
@@ -150,17 +149,31 @@ export class MatchingService {
     const entitlements = customerId ? await entitlementService.resolve(customerId) : null;
     const isPremium = Boolean(entitlements?.hasMembership && entitlements.premiumAccess);
     const providers = await this.loadCandidates(serviceId, { onlyOnline: true, exclude: excludeProviderIds });
+    if (providers.length === 0) return [];
+    const now = new Date();
+    const [capacityMap, jobZones] = await Promise.all([
+      partnerOperationsService.loadCapacityMap(
+        providers.map((p) => p.id),
+        now,
+      ),
+      geofenceService
+        .findContaining(customerLocation.latitude, customerLocation.longitude, { zoneType: "SERVICE_ZONE" })
+        .catch(() => []),
+    ]);
+    const jobZoneNames = new Set(jobZones.map((z) => z.name.trim().toLowerCase()));
     return providers
       .map((p) =>
         this.scoreProvider(
           p,
           customerLocation.latitude,
           customerLocation.longitude,
-          new Date(),
+          now,
           false,
           isPremium,
+          { capacityFull: capacityMap.get(p.id)?.capacityFull ?? false, jobZoneNames },
         ),
       )
+      .filter((m) => m.availability)
       .sort((a, b) => b.totalScore - a.totalScore);
   }
 
@@ -179,6 +192,8 @@ export class MatchingService {
         ...serviceCategoryMatchWhere(matchTokens),
         isActive: true,
         isApproved: true,
+        isBanned: false,
+        pausedAt: null,
         user: { isBanned: false },
         ...(options.onlyOnline ? { isOnline: true } : {}),
         ...(options.exclude && options.exclude.length > 0
@@ -232,16 +247,25 @@ export class MatchingService {
     scheduledDate: Date,
     hasConflict: boolean,
     isPremiumCustomer = false,
+    extras?: { capacityFull?: boolean; jobZoneNames?: Set<string> },
   ): ProviderMatch {
     const loc = provider.currentLocation;
-    // Providers without GPS still participate — neutral distance inside the radius.
-    const distance = loc
-      ? distanceKm(customerLat, customerLng, loc.latitude, loc.longitude)
-      : 15;
+    const originLat = loc?.latitude ?? provider.baseLatitude;
+    const originLng = loc?.longitude ?? provider.baseLongitude;
+    const distance =
+      originLat != null && originLng != null
+        ? distanceKm(customerLat, customerLng, originLat, originLng)
+        : 15;
 
     const ratingScore = this.calculateRatingScore(provider.rating, provider.totalReviews);
     const distanceScore = this.calculateDistanceScore(distance);
-    const availabilityScore = this.calculateAvailabilityScore(provider, scheduledDate, hasConflict);
+    const availabilityScore = this.calculateAvailabilityScore(
+      provider,
+      scheduledDate,
+      hasConflict,
+      extras,
+      distance,
+    );
     const responseScore = this.calculateResponseScore(provider.responseRate, provider.avgResponseTime);
     const completionScore = this.calculateCompletionScore(provider.completionRate);
 
@@ -302,38 +326,45 @@ export class MatchingService {
   }
 
   /**
-   * 0-20. Honors working_days / working_hours when set; treats unset as 24/7
-   * so we don't punish providers with incomplete profiles.
+   * 0-20. Working window, breaks, capacity, and service radius/zones.
+   * Unset schedule still treats as 24/7 so incomplete profiles are not punished.
    */
   private calculateAvailabilityScore(
     provider: ProviderForMatching,
     scheduledDate: Date,
     hasConflict: boolean,
+    extras?: { capacityFull?: boolean; jobZoneNames?: Set<string> },
+    distanceKmValue = 15,
   ): number {
-    if (!this.isWithinWorkingWindow(provider, scheduledDate)) return 0;
-    return hasConflict ? 10 : 20;
-  }
+    if (!provider.isOnline || provider.pausedAt) return 0;
+    if (extras?.capacityFull) return 0;
 
-  private isWithinWorkingWindow(provider: ProviderForMatching, scheduledDate: Date): boolean {
-    const dow = scheduledDate.getDay();
-    if (provider.workingDays.length > 0) {
-      const matchesDay = provider.workingDays.some((d) => {
-        const norm = d.trim().toLowerCase();
-        return (
-          norm === String(dow) ||
-          norm === DAY_NAMES_SHORT[dow] ||
-          norm === DAY_NAMES_LONG[dow]
-        );
-      });
-      if (!matchesDay) return false;
+    const schedule = {
+      workingDays: provider.workingDays,
+      workingHoursStart: provider.workingHoursStart,
+      workingHoursEnd: provider.workingHoursEnd,
+      breakWindows: provider.breakWindows,
+      timezone: provider.timezone,
+    };
+    if (!isWithinWorkingWindow(schedule, scheduledDate)) return 0;
+    if (isInBreakWindow(schedule, new Date())) return 0;
+
+    const radius = provider.serviceRadiusKm;
+    if (radius != null && radius >= MIN_SERVICE_RADIUS_KM) {
+      const loc = provider.currentLocation;
+      const hasOrigin = Boolean(loc) || (provider.baseLatitude != null && provider.baseLongitude != null);
+      if (!hasOrigin || distanceKmValue > radius) return 0;
     }
 
-    const startHour = parseHour(provider.workingHoursStart);
-    const endHour = parseHour(provider.workingHoursEnd);
-    if (startHour === null || endHour === null) return true;
+    if (provider.serviceRegions.length > 0 && extras?.jobZoneNames && extras.jobZoneNames.size > 0) {
+      const wants = provider.serviceRegions.map((r) => r.trim().toLowerCase()).filter(Boolean);
+      const zoneHit = wants.some((w) =>
+        [...extras.jobZoneNames!].some((n) => n === w || n.includes(w) || w.includes(n)),
+      );
+      if (!zoneHit) return 0;
+    }
 
-    const hour = scheduledDate.getHours();
-    return hour >= startHour && hour <= endHour;
+    return hasConflict ? 10 : 20;
   }
 
   /** 0-15. Weighted down by slow response time. */
@@ -363,13 +394,6 @@ export class MatchingService {
     if (completionRate >= 80) return 4;
     return 1;
   }
-}
-
-function parseHour(value: string | null): number | null {
-  if (!value) return null;
-  const [h] = value.split(":");
-  const n = Number(h);
-  return Number.isFinite(n) ? n : null;
 }
 
 function round1(n: number): number {

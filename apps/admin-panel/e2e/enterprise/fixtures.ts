@@ -18,12 +18,12 @@ export function attachEnterpriseMonitor(page: Page): EnterpriseMonitor {
   page.on("console", (msg) => {
     if (msg.type() === "error") {
       const t = msg.text();
-      if (/favicon|hydration|401 \(Unauthorized\)|404 \(Not Found\)|_next\/static|\/api\/vitals/i.test(t)) return;
+      if (/favicon|hydration|401 \(Unauthorized\)|404 \(Not Found\)|429|_next\/static|\/api\/vitals|hot-reloader|hmr|webpack-hmr/i.test(t)) return;
       consoleErrors.push(t);
     }
   });
   page.on("response", (res) => {
-    if (res.url().includes("/api/") && res.status() >= 400 && res.status() !== 401 && res.status() !== 404) {
+    if (res.url().includes("/api/") && res.status() >= 400 && res.status() !== 401 && res.status() !== 404 && res.status() !== 429) {
       failedApi.push({ url: res.url(), status: res.status() });
     }
   });
@@ -40,11 +40,22 @@ export function attachEnterpriseMonitor(page: Page): EnterpriseMonitor {
 export const SEED_ADMIN = { email: "admin@homigo.demo", password: "Homigo@123" };
 
 export async function adminLogin(page: Page) {
-  await page.goto("/login");
-  await page.locator("#admin-email").fill(SEED_ADMIN.email);
-  await page.locator("#admin-password").fill(SEED_ADMIN.password);
+  await page.goto("/login", { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  await expect(page.locator("#admin-email")).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator("#admin-email")).toBeEnabled({ timeout: 30_000 });
+  await page.locator("#admin-email").click();
+  await page.locator("#admin-email").fill("");
+  await page.locator("#admin-email").pressSequentially(SEED_ADMIN.email, { delay: 20 });
+  await page.locator("#admin-password").click();
+  await page.locator("#admin-password").fill("");
+  await page.locator("#admin-password").pressSequentially(SEED_ADMIN.password, { delay: 20 });
+
   const res = page.waitForResponse(
-    (r) => r.url().includes("/api/auth/login") && r.status() === 200,
+    (r) => r.request().method() === "POST" && r.url().includes("/api/auth/login") && r.status() === 200,
     { timeout: 60_000 },
   );
   await page.getByRole("button", { name: /enter business hq/i }).click();

@@ -56,9 +56,19 @@ export type ProviderProfile = {
   totalEarnings: number;
   isOnline: boolean;
   onlineSince: string | null;
+  currentStatus?: string;
+  pausedAt?: string | null;
+  pauseReason?: string | null;
+  timezone?: string;
   workingHoursStart: string | null;
   workingHoursEnd: string | null;
   workingDays: string[];
+  maxJobsPerDay?: number | null;
+  maxConcurrentJobs?: number;
+  breakWindows?: Array<{ start: string; end: string }>;
+  serviceRadiusKm?: number | null;
+  baseLatitude?: number | null;
+  baseLongitude?: number | null;
   services: Array<{ id: string; name: string }>;
   serviceCategories: string[];
   certifications: string[];
@@ -68,6 +78,8 @@ export type ProviderProfile = {
   bankName?: string | null;
   isApproved: boolean;
   isVerified: boolean;
+  isActive?: boolean;
+  isBanned?: boolean;
   kycStatus: string;
   badges: string[];
   backgroundCheckStatus: string;
@@ -111,6 +123,44 @@ export type PartnerDashboard = {
   onlineSince: string | null;
 };
 
+export type PartnerOperations = {
+  operationalStatus: string;
+  uiOnline: boolean;
+  isOnline: boolean;
+  isPaused: boolean;
+  isSuspended: boolean;
+  suspendedMessage: string | null;
+  pauseReason: string | null;
+  pausedAt: string | null;
+  onlineSince: string | null;
+  lastSeenAt: string | null;
+  timezone: string;
+  workingDays: string[];
+  workingHoursStart: string | null;
+  workingHoursEnd: string | null;
+  breakWindows: Array<{ start: string; end: string }>;
+  maxJobsPerDay: number | null;
+  maxConcurrentJobs: number;
+  serviceRadiusKm: number | null;
+  serviceRegions: string[];
+  city: string | null;
+  baseLatitude: number | null;
+  baseLongitude: number | null;
+  capacity: {
+    currentJobs: number;
+    reservedOffers: number;
+    jobsToday: number;
+    maxConcurrentJobs: number;
+    maxJobsPerDay: number | null;
+    availableSlots: number;
+    utilization: number;
+    capacityFull: boolean;
+    nextAvailableAt: string | null;
+  };
+  readiness: { ready: boolean; blockers: Array<{ code: string; message: string }> };
+  preferredAreaLabel: string;
+};
+
 export type PartnerBookingStatus =
   | "pending"
   | "accepted"
@@ -144,6 +194,8 @@ export type PartnerBooking = {
     firstName: string | null;
     lastName: string | null;
     profileImage: string | null;
+    /** Masked customer phone from list API — never raw phoneNumber. */
+    phoneMasked?: string | null;
   };
   service: {
     id: string;
@@ -158,6 +210,63 @@ export type PartnerBooking = {
   };
   ratingGiven: boolean;
   rating: number | null;
+};
+
+export type JobAction =
+  | "ACCEPT"
+  | "DECLINE"
+  | "START_NAVIGATION"
+  | "MARK_ARRIVED"
+  | "START_SERVICE"
+  | "COMPLETE_SERVICE"
+  | "CALL_CUSTOMER"
+  | "OPEN_CHAT"
+  | "UPLOAD_EVIDENCE";
+
+export type JobLifecycleStage =
+  | "PENDING"
+  | "ACCEPTED"
+  | "EN_ROUTE"
+  | "ARRIVED"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "EARNINGS_POSTED"
+  | "CANCELLED"
+  | "REJECTED";
+
+export type JobActionResult = {
+  stage: JobLifecycleStage;
+  availableActions: JobAction[];
+  primaryAction: JobAction | null;
+  requiredGates: string[];
+  disabledReasons: Partial<Record<JobAction, string>>;
+};
+
+export type JobEvidenceItem = {
+  id: string;
+  stage: "ARRIVAL" | "START" | "COMPLETION" | string;
+  mediaUrl?: string | null;
+  mediaAccessUrl?: string | null;
+  capturedAt: string;
+  isCurrent: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+export type JobChatMessage = {
+  id: string;
+  senderUserId: string;
+  body: string;
+  clientMessageId: string | null;
+  deliveredAt: string | null;
+  readAt: string | null;
+  createdAt: string;
+};
+
+export type JobChatList = {
+  conversationId: string;
+  messages: JobChatMessage[];
+  nextCursor: string | null;
 };
 
 export type PartnerBookingsResponse = Paginated<{ bookings: PartnerBooking[] }>;

@@ -6,9 +6,7 @@ import { bookingStatusApi, paymentStatusApi } from "../lib/format";
 import { commissionRateForVolume } from "./earnings.service";
 import { addressPiiService } from "./address-pii.service";
 import { encryptionService } from "./encryption.service";
-import { eventPlatformConfig } from "../events/core/config";
-import { emitInTransaction } from "../events/core/event-publisher";
-import { buildPartnerOfflineEvent, buildPartnerOnlineEvent } from "../events/catalog/partner.events";
+import { partnerOperationsService } from "./partner-operations.service";
 
 function startOfDayUtc(d = new Date()): Date {
   const c = new Date(d);
@@ -194,25 +192,26 @@ export class ProviderService {
 
   async availability(providerId: string, date: string, serviceId: string) {
     const dayStart = new Date(`${date}T00:00:00`);
-    const dayEnd = new Date(`${date}T23:59:59`);
-    const busy = await prisma.booking.count({
-      where: {
-        providerId,
-        serviceId,
-        scheduledDate: { gte: dayStart, lte: dayEnd },
-        status: { in: BUSY_STATUSES },
-      },
-    });
-    const isAvailable = busy < 4;
+    const cap = await partnerOperationsService.loadCapacityFor(providerId, dayStart);
+    const snap = await partnerOperationsService.snapshot(providerId);
+    const isAvailable = cap.availableSlots > 0 && snap.operationalStatus !== "suspended" && snap.operationalStatus !== "paused";
+    const start = snap.workingHoursStart ?? "09:00";
+    const end = snap.workingHoursEnd ?? "18:00";
+    const slots =
+      isAvailable && snap.breakWindows.length === 0
+        ? [{ startTime: start, endTime: end }]
+        : isAvailable
+          ? [
+              { startTime: start, endTime: snap.breakWindows[0]!.start },
+              { startTime: snap.breakWindows[0]!.end, endTime: end },
+            ]
+          : [];
     return {
       isAvailable,
-      availableSlots: isAvailable
-        ? [
-            { startTime: "08:00", endTime: "12:00" },
-            { startTime: "14:00", endTime: "18:00" },
-          ]
-        : [],
+      availableSlots: slots.filter((s) => s.startTime < s.endTime),
       nextAvailableDate: date,
+      capacity: cap,
+      serviceId,
     };
   }
 
@@ -282,7 +281,7 @@ export class ProviderService {
       profileImage: p.profileImage ?? p.user.profileImage,
       businessName: p.businessName,
       bio: p.bio,
-      city: p.user.preferredCity,
+      city: p.city || p.user.preferredCity,
       rating: p.rating,
       totalReviews: p.totalReviews,
       totalBookings: p.totalBookings,
@@ -297,9 +296,19 @@ export class ProviderService {
       totalEarnings: p.totalEarnings,
       isOnline: p.isOnline,
       onlineSince: p.onlineSince,
+      currentStatus: p.currentStatus,
+      pausedAt: p.pausedAt,
+      pauseReason: p.pauseReason,
+      timezone: p.timezone,
       workingHoursStart: p.workingHoursStart,
       workingHoursEnd: p.workingHoursEnd,
       workingDays: p.workingDays,
+      maxJobsPerDay: p.maxJobsPerDay,
+      maxConcurrentJobs: p.maxConcurrentJobs,
+      breakWindows: p.breakWindows,
+      serviceRadiusKm: p.serviceRadiusKm,
+      baseLatitude: p.baseLatitude,
+      baseLongitude: p.baseLongitude,
       services,
       serviceCategories: p.serviceCategories,
       certifications: p.certifications,
@@ -309,6 +318,8 @@ export class ProviderService {
       bankName: p.bankName,
       isApproved: p.isApproved,
       isVerified: p.isVerified,
+      isActive: p.isActive,
+      isBanned: p.isBanned,
       kycStatus: p.user.kycStatus,
       badges: p.badges,
       backgroundCheckStatus: p.backgroundCheckStatus,
@@ -321,29 +332,48 @@ export class ProviderService {
       workingHoursStart?: string;
       workingHoursEnd?: string;
       workingDays?: string[];
+      breakWindows?: Array<{ start: string; end: string }>;
+      maxJobsPerDay?: number | null;
+      maxConcurrentJobs?: number;
       paymentMethodPreference?: string;
       upiId?: string;
       bio?: string;
     },
   ) {
+    const opsPatch = {
+      workingHoursStart: patch.workingHoursStart,
+      workingHoursEnd: patch.workingHoursEnd,
+      workingDays: patch.workingDays,
+      breakWindows: patch.breakWindows,
+      maxJobsPerDay: patch.maxJobsPerDay,
+      maxConcurrentJobs: patch.maxConcurrentJobs,
+    };
+    const hasOps = Object.values(opsPatch).some((v) => v !== undefined);
+    if (hasOps) {
+      await partnerOperationsService.updateAvailabilityConfig(providerId, opsPatch);
+    }
+
     const data: Prisma.ProviderUpdateInput = {};
-    if (patch.workingHoursStart !== undefined) data.workingHoursStart = patch.workingHoursStart;
-    if (patch.workingHoursEnd !== undefined) data.workingHoursEnd = patch.workingHoursEnd;
-    if (patch.workingDays !== undefined) data.workingDays = patch.workingDays;
     if (patch.paymentMethodPreference !== undefined) {
       data.paymentMethodPreference = patch.paymentMethodPreference;
     }
     if (patch.upiId !== undefined) data.upiId = patch.upiId;
     if (patch.bio !== undefined) data.bio = patch.bio;
 
-    return prisma.provider.update({
+    if (Object.keys(data).length > 0) {
+      await prisma.provider.update({ where: { id: providerId }, data });
+    }
+
+    return prisma.provider.findUnique({
       where: { id: providerId },
-      data,
       select: {
         id: true,
         workingHoursStart: true,
         workingHoursEnd: true,
         workingDays: true,
+        breakWindows: true,
+        maxJobsPerDay: true,
+        maxConcurrentJobs: true,
         paymentMethodPreference: true,
         upiId: true,
         bio: true,
@@ -352,31 +382,19 @@ export class ProviderService {
   }
 
   async setOnline(providerId: string, online: boolean) {
-    const now = new Date();
-    return prisma.$transaction(async (tx) => {
-      const row = await tx.provider.update({
-        where: { id: providerId },
-        data: {
-          isOnline: online,
-          onlineSince: online ? now : null,
-        },
-        select: { id: true, isOnline: true, onlineSince: true },
-      });
-      if (eventPlatformConfig.outboxEnabled && eventPlatformConfig.partnerEventsEnabled) {
-        await emitInTransaction(
-          tx,
-          online
-            ? buildPartnerOnlineEvent({ providerId, onlineSince: now })
-            : buildPartnerOfflineEvent({ providerId, offlineAt: now }),
-        );
-      }
-      return row;
-    });
+    const snap = await partnerOperationsService.setOnline(providerId, online);
+    return {
+      id: providerId,
+      isOnline: snap.isOnline,
+      onlineSince: snap.onlineSince,
+      operationalStatus: snap.operationalStatus,
+      operations: snap,
+    };
   }
 
   async myBookings(
     providerId: string,
-    query: { status?: string; page?: number; limit?: number; sortBy?: string },
+    query: { status?: string; page?: string | number; limit?: string | number; sortBy?: string },
   ) {
     const { page, limit, skip } = parsePagination(query);
     let where: Prisma.BookingWhereInput = { providerId };
@@ -456,6 +474,7 @@ export class ProviderService {
           // Google-login users can carry a non-phone identifier (e.g. "oauth_…") — only
           // surface something that actually looks like a callable number.
           const phoneNumber = rawPhone && /^\+?\d[\d\s-]{6,}$/.test(rawPhone) ? rawPhone : null;
+          const { maskPhoneForPartner } = await import("../lib/pii-normalize");
           return {
             id: b.id,
             bookingNumber: b.bookingNumber,
@@ -478,7 +497,8 @@ export class ProviderService {
               firstName: b.user.firstName,
               lastName: b.user.lastName,
               profileImage: b.user.profileImage,
-              phoneNumber,
+              // List payloads never include raw phone — Call Customer reveals dial URI once.
+              phoneMasked: phoneNumber ? maskPhoneForPartner(phoneNumber) : null,
             },
             service: b.service,
             address,
@@ -676,8 +696,19 @@ export class ProviderService {
       totalGross: Math.round(totalGross),
       totalCommission: Math.round(totalCommission),
       totalNet: Math.round(totalNet),
+      /** GROSS per job — the customer-facing job value. Unchanged; existing consumers rely on it. */
       averagePerJob:
         earnings.length > 0 ? Math.round(totalGross / earnings.length) : 0,
+      /**
+       * NET per job — what the partner actually receives after commission.
+       *
+       * Added because the two are ~19% apart on live data (gross 562 vs net 458) and every
+       * REALISED figure in this service is net (`_sum.netEarning`). Any calculation that divides a
+       * net amount by a per-job value must use this one; using the gross average understates the
+       * jobs required to reach a target.
+       */
+      averageNetPerJob:
+        earnings.length > 0 ? Math.round(totalNet / earnings.length) : 0,
       series,
     };
   }

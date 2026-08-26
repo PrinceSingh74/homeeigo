@@ -117,7 +117,7 @@ function DataTableInner({
           {title}
         </div>
       ) : null}
-      <div className="relative overflow-x-auto">
+      <div className="relative overflow-x-auto" tabIndex={0} role="region" aria-label="Scrollable data table">
         {isFetching && !isLoading ? (
           <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-md bg-[var(--color-biz-bg)]/80 px-2 py-1 text-[10px] text-[var(--color-biz-muted)] backdrop-blur">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -187,7 +187,8 @@ function DataTableInner({
                 <td colSpan={headers.length} className="p-0">
                   <div
                     ref={parentRef}
-                    className="max-h-[min(70vh,640px)] overflow-y-auto"
+                    tabIndex={0}
+                    className="max-h-[min(70vh,640px)] overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-biz-accent)]"
                   >
                     <div
                       className="relative w-full"
@@ -261,6 +262,7 @@ export function StatusBadge({
     validated: "border-emerald-500/25 bg-emerald-500/10 text-emerald-400",
     in_progress: "border-amber-500/25 bg-amber-500/10 text-amber-400",
     accepted: "border-blue-500/25 bg-blue-500/10 text-blue-400",
+    paused: "border-amber-500/25 bg-amber-500/10 text-amber-400",
     en_route: "border-blue-500/25 bg-blue-500/10 text-blue-400",
     requested: "border-blue-500/25 bg-blue-500/10 text-blue-400",
     pending: "border-amber-500/25 bg-amber-500/10 text-amber-400",

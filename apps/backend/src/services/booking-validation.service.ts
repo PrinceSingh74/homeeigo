@@ -2,6 +2,7 @@ import { BookingStatus, type Prisma } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { distanceKm } from "../lib/geo";
 import { providerOffersService, resolveServiceMatchTokens } from "../lib/service-match";
+import { isWithinWorkingWindow } from "../lib/partner-ops-clock";
 
 export interface ValidationRequest {
   userId: string;
@@ -36,17 +37,6 @@ const ACTIVE_STATUSES: BookingStatus[] = [
   BookingStatus.ASSIGNED,
   BookingStatus.EN_ROUTE,
   BookingStatus.IN_PROGRESS,
-];
-
-const DAY_NAMES_SHORT = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
-const DAY_NAMES_LONG = [
-  "sunday",
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
 ];
 
 export class BookingValidationService {
@@ -231,26 +221,16 @@ export class BookingValidationService {
     const provider = await prisma.provider.findUnique({ where: { id: providerId } });
     if (!provider) return null;
 
-    if (provider.workingDays.length > 0) {
-      const dow = scheduledDate.getDay();
-      const matches = provider.workingDays.some((d) => {
-        const norm = d.trim().toLowerCase();
-        return (
-          norm === String(dow) ||
-          norm === DAY_NAMES_SHORT[dow] ||
-          norm === DAY_NAMES_LONG[dow]
-        );
-      });
-      if (!matches) return `Provider does not work on ${DAY_NAMES_SHORT[dow]}`;
-    }
-
-    const startHour = parseHour(provider.workingHoursStart);
-    const endHour = parseHour(provider.workingHoursEnd);
-    if (startHour !== null && endHour !== null) {
-      const hour = scheduledDate.getHours();
-      if (hour < startHour || hour > endHour) {
-        return `Provider is not available at this time. Working hours: ${startHour}:00 - ${endHour}:00`;
-      }
+    if (!isWithinWorkingWindow(
+      {
+        workingDays: provider.workingDays,
+        workingHoursStart: provider.workingHoursStart,
+        workingHoursEnd: provider.workingHoursEnd,
+        timezone: provider.timezone,
+      },
+      scheduledDate,
+    )) {
+      return "Provider is not available at this time";
     }
     return null;
   }
@@ -328,13 +308,6 @@ export class BookingValidationService {
     }
     return null;
   }
-}
-
-function parseHour(value: string | null): number | null {
-  if (!value) return null;
-  const [h] = value.split(":");
-  const n = Number(h);
-  return Number.isFinite(n) ? n : null;
 }
 
 function bufferWindow(scheduledDate: Date, minutes: number) {

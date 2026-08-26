@@ -1,4 +1,5 @@
 import { registerConsumer } from "../core/consumer-registry";
+import { automationTriggerConsumer, AUTOMATION_TRIGGER_CONSUMER_NAME, triggeredEventTypes } from "./automation-trigger.consumer";
 import { validateEventPlatformConfig } from "../core/config";
 import { metricsConsumer, METRICS_CONSUMER_NAME } from "./metrics.consumer";
 import { auditConsumer, AUDIT_CONSUMER_NAME } from "./audit.consumer";
@@ -34,10 +35,34 @@ export function bootstrapEventConsumers(): void {
       EVENT_TYPES.BOOKING_CANCELLED,
       EVENT_TYPES.PAYMENT_SUCCESS,
       EVENT_TYPES.PAYMENT_FAILED,
+      EVENT_TYPES.PARTNER_ONLINE,
+      EVENT_TYPES.PARTNER_OFFLINE,
+      EVENT_TYPES.PARTNER_PAUSED,
+      EVENT_TYPES.PARTNER_RESUMED,
+      EVENT_TYPES.PARTNER_AVAILABILITY_UPDATED,
+      EVENT_TYPES.PARTNER_SERVICE_AREA_UPDATED,
       EVENT_TYPES.PARTNER_DISPATCHED,
       EVENT_TYPES.PARTNER_ARRIVED,
+      EVENT_TYPES.PARTNER_LEAD_CREATED,
+      EVENT_TYPES.PARTNER_APPLICATION_SUBMITTED,
+      EVENT_TYPES.PARTNER_APPLICATION_APPROVED,
+      EVENT_TYPES.PARTNER_ACTIVATED,
     ],
     handler: auditConsumer,
+    maxAttempts: 3,
+  });
+
+  /**
+   * The event → workflow bridge.
+   *
+   * Subscribes to exactly the event types the trigger registry names, so adding an automation is a
+   * change to that registry rather than to this file. Retries and dead-lettering come from the
+   * consumer machinery, unchanged.
+   */
+  registerConsumer({
+    name: AUTOMATION_TRIGGER_CONSUMER_NAME,
+    eventTypes: triggeredEventTypes(),
+    handler: automationTriggerConsumer,
     maxAttempts: 3,
   });
 

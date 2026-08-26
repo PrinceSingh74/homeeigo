@@ -25,6 +25,18 @@ export const providerOnlineSchema = z.object({
   online: z.boolean(),
 });
 
+export const providerPauseSchema = z.object({
+  reason: z.enum(["break", "personal", "travel", "other"]).optional(),
+});
+
+export const providerServiceAreaSchema = z.object({
+  city: z.string().trim().min(1).max(80).optional(),
+  serviceRegions: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
+  serviceRadiusKm: z.number().min(1).max(50).optional(),
+  baseLatitude: z.number().min(-90).max(90).optional(),
+  baseLongitude: z.number().min(-180).max(180).optional(),
+});
+
 export const bookingRejectSchema = z.object({
   reason: z.string().trim().min(3).max(500),
 });
