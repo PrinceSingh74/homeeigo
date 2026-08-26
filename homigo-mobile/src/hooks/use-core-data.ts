@@ -10,7 +10,7 @@ import { coreApi } from "@/services/core/api";
 import { offlineApiMutate } from "@/lib/offline/offline-mutate";
 import { mutateWithOfflineFallback } from "@/lib/offline/sender";
 import { AuthApiError, getErrorMessage } from "@/lib/auth/errors";
-import { useAppStore, type SavedBooking } from "@/lib/store";
+import { useAppStore, type SavedBooking, collapseCustomerBookingStatus, customerTimelineFromBackendStatus } from "@/lib/store";
 import { useAuthStore } from "@/stores/auth-store";
 import { getCachedDeviceCoordinates, type DeviceCoordinates } from "@/hooks/use-device-coordinates";
 import type {
@@ -59,28 +59,16 @@ export function mapBackendBookingToSaved(b: BackendBooking): SavedBooking {
     address: "Selected address",
     total: b.finalAmount ?? b.amount ?? 0,
     addons: b.addons,
-    // Map every backend status (lowercase). rejected MUST be terminal (was wrongly shown as
-    // "confirmed"); en_route means the pro is on the way → in_progress (drives the live tracking UI).
-    status:
-      b.status === "cancelled_by_user" || b.status === "cancelled_by_provider" || b.status === "rejected"
-        ? "cancelled"
-        : b.status === "completed"
-          ? "completed"
-          : b.status === "in_progress" || b.status === "en_route"
-            ? "in_progress"
-            : "confirmed", // pending, accepted, assigned
+    status: collapseCustomerBookingStatus(b.status),
     createdAt: now,
     updatedAt: now,
+    backendStatus: b.status,
     imageKey: b.serviceIcon ?? undefined,
     serviceColor: "#7C3AED",
-    proName: b.providerName ?? "Assigned Pro",
+    proName: b.providerName ?? (b.status === "pending" ? "Matching a pro" : "Assigned Pro"),
     instructions: b.description ?? undefined,
-    timeline: [
-      { id: "1", label: "Booking confirmed", at: now, done: true },
-      { id: "2", label: "Pro assigned", at: now, done: true },
-      { id: "3", label: "On the way", at: "", done: false },
-      { id: "4", label: "Service completed", at: "", done: false },
-    ],
+    paymentStatus: b.paymentStatus,
+    timeline: customerTimelineFromBackendStatus(b.status, now),
   };
 }
 

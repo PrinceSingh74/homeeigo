@@ -59,18 +59,11 @@ import {
   getLocation,
   type Service,
 } from "@/lib/services";
-import {
-  bookUrl,
-  parseBookParams,
-  generateBookingId,
-} from "@/lib/booking-url";
-import {
-  createInitialTimeline,
-  SERVICE_IMAGES,
-  type SavedBooking,
-} from "@/lib/bookings";
+import { bookUrl, parseBookParams } from "@/lib/booking-url";
+import { SERVICE_IMAGES, type SavedBooking } from "@/lib/bookings";
 import { useAppStore } from "@/stores/app-store";
 import {
+  mapBackendBookingToSaved,
   useAddressesQuery,
   useBookingPriceQuoteQuery,
   useCreateAddressMutation,
@@ -421,9 +414,12 @@ function BookPageContent() {
         addonIds,
         couponCode: appliedCoupon || undefined,
       });
-      const now = new Date().toISOString();
+      if (!created.booking?.id) {
+        showToast("Booking could not be confirmed", "error");
+        return;
+      }
       const booking: SavedBooking = {
-        id: created.booking?.id ?? generateBookingId(),
+        ...mapBackendBookingToSaved(created.booking),
         serviceId: svc.id,
         serviceTitle: svc.title,
         serviceName: svc.name,
@@ -431,30 +427,19 @@ function BookPageContent() {
         dateLabel: `${formatDateLabel(scheduledAt)}, ${scheduledAt.getFullYear()}`,
         timeLabel: formatTimeLabel(scheduledAt),
         address: `${address.line1}, ${address.line2}`,
-        total: created.booking?.finalAmount ?? total,
-        addons:
-          created.booking?.addons ??
-          ADDONS.filter((a) => addons.has(a.id)).map((a) => ({ id: a.id, name: a.name, price: a.price })),
-        status: "confirmed",
-        createdAt: now,
-        updatedAt: now,
         imagePath: SERVICE_IMAGES[svc.id] ?? svc.img,
         serviceColor: svc.color,
-        proName: created.booking?.providerName ?? "Assigned Pro",
         instructions: instructions.trim() || undefined,
-        timeline: createInitialTimeline(now),
       };
       addBooking(booking);
       setBookingDone(booking);
-      if (created.booking?.id) {
-        await payForBooking({
-          bookingId: created.booking.id,
-          description: `${svc.title} booking payment`,
-          onVerified: () => {
-            showToast("Payment completed and verified", "success");
-          },
-        });
-      }
+      await payForBooking({
+        bookingId: created.booking.id,
+        description: `${svc.title} booking payment`,
+        onVerified: () => {
+          showToast("Payment completed and verified", "success");
+        },
+      });
       showToast("Booking confirmed securely", "success");
     } catch {
       // mutation handles user-facing error toast

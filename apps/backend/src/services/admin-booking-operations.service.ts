@@ -10,12 +10,15 @@ import { notificationService } from "./notification.service";
 import { sanitizeUserInput } from "../utils/sanitizer";
 import { bookingValidationService } from "./booking-validation.service";
 import { refundOrchestratorService } from "./refund-orchestrator.service";
+import { evaluatePaymentGate, PAYMENT_GATE_REASON } from "./booking-payment-gate";
 
 export type AdminBookingAction =
   | "CANCEL"
   | "REASSIGN"
   | "RESCHEDULE"
   | "FORCE_DISPATCH"
+  /** Dispatching a booking whose payment has not settled. Always carries an admin id and reason. */
+  | "PAYMENT_GATE_OVERRIDE"
   | "MARK_COMPLETE"
   | "REPAIR"
   | "REFUND"
@@ -318,9 +321,48 @@ export class AdminBookingOperationsService {
     providerId: string,
     reason: string,
     ipAddress?: string,
+    /**
+     * Set only when an administrator is deliberately dispatching a booking that has not been paid
+     * for. Absent, this path enforces the same gate as partner accept — administrative access is
+     * not the same thing as an intent to override, and treating it as such would mean the gate
+     * simply did not apply to admins.
+     */
+    overridePaymentGate = false,
   ) {
     const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
     if (!booking) throw new Error("BOOKING_NOT_FOUND");
+
+    /**
+     * Admin assignment is a separate write path to partner commitment.
+     *
+     * The audit that found this recorded it plainly: `accept()` was the only place anyone thought
+     * to guard, and this method reaches ASSIGNED without going near it. Gating one and not the
+     * other leaves the rule true only for the path someone happened to look at.
+     */
+    const gate = evaluatePaymentGate(
+      booking.paymentStatus,
+      overridePaymentGate ? { adminId, reason } : null,
+    );
+    if (!gate.allowed) throw new Error(PAYMENT_GATE_REASON.NOT_SETTLED);
+
+    if (gate.overridden) {
+      /**
+       * Written before the assignment, not after.
+       *
+       * The later gates treat this row as the authorisation itself, so if the assignment succeeded
+       * and the audit write then failed, the booking would be dispatched with no record of who
+       * allowed it — and `start()` would refuse it, stranding the partner.
+       */
+      await this.recordAdminAction(
+        bookingId,
+        adminId,
+        "PAYMENT_GATE_OVERRIDE",
+        reason,
+        ipAddress,
+        `paymentStatus: ${booking.paymentStatus}`,
+        "dispatched unpaid by admin override",
+      );
+    }
 
     const beforeProvider = booking.providerId;
     await prisma.booking.update({
@@ -367,16 +409,47 @@ export class AdminBookingOperationsService {
     if (!booking) throw new Error("BOOKING_NOT_FOUND");
 
     const beforeStatus = booking.status;
-    const updated = await prisma.booking.update({
-      where: { id: bookingId },
-      data: {
-        status: BookingStatus.COMPLETED,
-        completedAt: new Date(),
-      },
-    });
 
-    await this.recordAdminAction(bookingId, adminId, "MARK_COMPLETE", reason, ipAddress, beforeStatus, updated.status);
-    return { booking: updated };
+    // Same completion + earnings path as partner complete — never leave COMPLETED without Earning.
+    if (!booking.providerId) {
+      throw new Error("NO_ASSIGNED_PROVIDER");
+    }
+
+    const { bookingService } = await import("./booking.service");
+    try {
+      const result = await bookingService.complete(
+        booking.providerId,
+        bookingId,
+        0,
+        0,
+        `[Admin] ${reason}`,
+      );
+      await this.recordAdminAction(
+        bookingId,
+        adminId,
+        "MARK_COMPLETE",
+        reason,
+        ipAddress,
+        beforeStatus,
+        result.booking.status,
+      );
+      return { booking: result.booking };
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "COMPLETE_FAILED";
+      if (code === "INVALID_STATUS" && booking.status === BookingStatus.COMPLETED) {
+        await this.recordAdminAction(
+          bookingId,
+          adminId,
+          "MARK_COMPLETE",
+          reason,
+          ipAddress,
+          beforeStatus,
+          booking.status,
+        );
+        return { booking };
+      }
+      throw err;
+    }
   }
 
   async repairBooking(bookingId: string, adminId: string, reason: string, ipAddress?: string) {

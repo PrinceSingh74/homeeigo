@@ -51,11 +51,45 @@ export const SERVICE_IMAGES: Record<string, string> = {
 export function createInitialTimeline(
   now = new Date().toISOString(),
 ): TimelineEvent[] {
+  return customerTimelineFromBackendStatus("pending", now);
+}
+
+/** Presentation collapse only — not a second customer FSM. */
+export function collapseCustomerBookingStatus(raw: string | undefined): BookingStatus {
+  const v = (raw ?? "").toLowerCase().replace(/-/g, "_");
+  if (v === "completed") return "completed";
+  if (v === "in_progress" || v === "en_route") return "in_progress";
+  if (
+    v === "rejected" ||
+    v === "cancelled" ||
+    v.includes("cancel")
+  ) {
+    return "cancelled";
+  }
+  return "confirmed";
+}
+
+/** Customer timeline derived from canonical backend status. */
+export function customerTimelineFromBackendStatus(
+  raw: string | undefined,
+  now = new Date().toISOString(),
+): TimelineEvent[] {
+  const ui = collapseCustomerBookingStatus(raw);
+  const v = (raw ?? "").toLowerCase().replace(/-/g, "_");
+  if (ui === "cancelled") {
+    return [
+      { id: "1", label: "Booking confirmed", at: now, done: true },
+      { id: "cancel", label: "Booking cancelled", at: now, done: true },
+    ];
+  }
+  const assigned = ["accepted", "assigned", "en_route", "in_progress", "completed"].includes(v);
+  const onTheWay = v === "en_route" || v === "in_progress" || v === "completed";
+  const completed = v === "completed";
   return [
     { id: "1", label: "Booking confirmed", at: now, done: true },
-    { id: "2", label: "Pro assigned", at: "", done: false },
-    { id: "3", label: "On the way", at: "", done: false },
-    { id: "4", label: "Service completed", at: "", done: false },
+    { id: "2", label: "Pro assigned", at: assigned ? now : "", done: assigned },
+    { id: "3", label: "On the way", at: onTheWay ? now : "", done: onTheWay },
+    { id: "4", label: "Service completed", at: completed ? now : "", done: completed },
   ];
 }
 

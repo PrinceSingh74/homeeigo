@@ -10,8 +10,9 @@ import { BoundedEventCache } from "@/lib/realtime/bounded-cache";
 function mapBackendStatus(raw: string | undefined): BookingStatus | null {
   if (!raw) return null;
   const v = raw.toLowerCase();
-  if (v === "accepted" || v === "assigned" || v === "en_route") return "confirmed";
-  if (v === "in_progress") return "in_progress";
+  // Must match mapBackendBookingToSaved — en_route is live, not "confirmed".
+  if (v === "in_progress" || v === "en_route") return "in_progress";
+  if (v === "accepted" || v === "assigned" || v === "pending") return "confirmed";
   if (v === "completed") return "completed";
   if (
     v === "rejected" ||
@@ -74,7 +75,7 @@ export function useBookingStatusSubscription({ bookingId, enabled = true }: Opti
 
         if (msg.type === "BOOKING_STATUS" || msg.type === "BOOKING_COMPLETED") {
           const mapped = mapBackendStatus(msg.data?.status);
-          if (mapped) updateBookingStatus(targetBookingId, mapped);
+          if (mapped) updateBookingStatus(targetBookingId, mapped, msg.data?.status);
           void queryClient.invalidateQueries({ queryKey: qk.bookings });
           void queryClient.invalidateQueries({ queryKey: qk.tracking(targetBookingId) });
         }

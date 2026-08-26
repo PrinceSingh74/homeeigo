@@ -74,6 +74,9 @@ export type BackendBooking = {
     id: string;
     name: string;
     rating?: number | null;
+    /** Masked only — raw partner phone never in customer booking payloads. */
+    phoneMasked?: string | null;
+    /** @deprecated Prefer phoneMasked + partner-call; kept for transitional clients. */
     phoneNumber?: string | null;
     profileImage?: string | null;
   } | null;
@@ -86,11 +89,15 @@ export type BackendBooking = {
   status:
     | "pending"
     | "accepted"
+    | "assigned"
+    | "en_route"
     | "in_progress"
     | "completed"
+    | "rejected"
     | "cancelled"
     | "cancelled_by_user"
     | "cancelled_by_provider";
+  service?: { name?: string; icon?: string | null } | null;
   scheduledDate?: string;
   completedAt?: string | null;
   amount?: number;

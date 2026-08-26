@@ -16,7 +16,11 @@ import type {
   BackendNotification,
   BackendTracking,
 } from "@/types/backend";
-import type { SavedBooking } from "@/lib/bookings";
+import {
+  collapseCustomerBookingStatus,
+  customerTimelineFromBackendStatus,
+  type SavedBooking,
+} from "@/lib/bookings";
 
 export const qk = {
   services: ["services"] as const,
@@ -46,38 +50,24 @@ export function mapBackendBookingToSaved(b: BackendBooking): SavedBooking {
   return {
     id: b.id,
     serviceId: b.serviceId ?? "service",
-    serviceTitle: b.serviceName ?? "Service",
-    serviceName: b.serviceName ?? "Service",
+    serviceTitle: b.serviceName ?? b.service?.name ?? "Service",
+    serviceName: b.serviceName ?? b.service?.name ?? "Service",
     packageName: "Standard",
     dateLabel: date.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
     timeLabel: date.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
-    address: "Selected address",
+    address: b.address?.fullAddress ?? "Selected address",
     total: b.finalAmount ?? b.amount ?? 0,
     addons: b.addons,
-    status:
-      b.status === "pending" || b.status === "accepted"
-        ? "confirmed"
-        : b.status === "cancelled_by_user" || b.status === "cancelled_by_provider"
-          ? "cancelled"
-          : b.status === "completed"
-            ? "completed"
-            : b.status === "in_progress"
-              ? "in_progress"
-              : "confirmed",
+    status: collapseCustomerBookingStatus(b.status),
     createdAt: now,
     updatedAt: now,
     backendStatus: b.status,
-    imagePath: b.serviceIcon ?? undefined,
+    imagePath: b.serviceIcon ?? b.service?.icon ?? undefined,
     serviceColor: "#7C3AED",
-    proName: b.providerName ?? "Assigned Pro",
+    proName: b.providerName ?? b.provider?.name ?? (b.status === "pending" ? "Matching a pro" : "Assigned Pro"),
     instructions: b.description ?? undefined,
     paymentStatus: b.paymentStatus,
-    timeline: [
-      { id: "1", label: "Booking confirmed", at: now, done: true },
-      { id: "2", label: "Pro assigned", at: now, done: true },
-      { id: "3", label: "On the way", at: "", done: false },
-      { id: "4", label: "Service completed", at: "", done: false },
-    ],
+    timeline: customerTimelineFromBackendStatus(b.status, now),
   };
 }
 

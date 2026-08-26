@@ -38,16 +38,45 @@ export type SavedBooking = {
   serviceColor: string;
   proName: string;
   instructions?: string;
+  paymentStatus?: string;
+  /** Raw backend status — live-tracking must pick the booking a partner is actually riding for. */
+  backendStatus?: string;
   timeline: TimelineEvent[];
 };
 
-export function createInitialTimeline(now = new Date().toISOString()): TimelineEvent[] {
+export function collapseCustomerBookingStatus(raw: string | undefined): BookingStatus {
+  const v = (raw ?? "").toLowerCase().replace(/-/g, "_");
+  if (v === "completed") return "completed";
+  if (v === "in_progress" || v === "en_route") return "in_progress";
+  if (v === "rejected" || v === "cancelled" || v.includes("cancel")) return "cancelled";
+  return "confirmed";
+}
+
+export function customerTimelineFromBackendStatus(
+  raw: string | undefined,
+  now = new Date().toISOString(),
+): TimelineEvent[] {
+  const ui = collapseCustomerBookingStatus(raw);
+  const v = (raw ?? "").toLowerCase().replace(/-/g, "_");
+  if (ui === "cancelled") {
+    return [
+      { id: "1", label: "Booking confirmed", at: now, done: true },
+      { id: "cancel", label: "Booking cancelled", at: now, done: true },
+    ];
+  }
+  const assigned = ["accepted", "assigned", "en_route", "in_progress", "completed"].includes(v);
+  const onTheWay = v === "en_route" || v === "in_progress" || v === "completed";
+  const completed = v === "completed";
   return [
     { id: "1", label: "Booking confirmed", at: now, done: true },
-    { id: "2", label: "Pro assigned", at: "", done: false },
-    { id: "3", label: "On the way", at: "", done: false },
-    { id: "4", label: "Service completed", at: "", done: false },
+    { id: "2", label: "Pro assigned", at: assigned ? now : "", done: assigned },
+    { id: "3", label: "On the way", at: onTheWay ? now : "", done: onTheWay },
+    { id: "4", label: "Service completed", at: completed ? now : "", done: completed },
   ];
+}
+
+export function createInitialTimeline(now = new Date().toISOString()): TimelineEvent[] {
+  return customerTimelineFromBackendStatus("pending", now);
 }
 
 function patchTimeline(
@@ -119,7 +148,7 @@ interface AppState {
   addBooking: (booking: SavedBooking) => void;
   /** Reconcile the local store with the authoritative server list (prunes stale bookings). */
   syncServerBookings: (serverBookings: SavedBooking[]) => void;
-  updateBookingStatus: (id: string, status: BookingStatus) => void;
+  updateBookingStatus: (id: string, status: BookingStatus, backendStatus?: string) => void;
   getBookingById: (id: string) => SavedBooking | undefined;
   toast: string | null;
   showToast: (message: string) => void;
@@ -187,7 +216,7 @@ export const useAppStore = create<AppState>()(
           return { bookings: unique };
         }),
 
-      updateBookingStatus: (id, status) => {
+      updateBookingStatus: (id, status, backendStatus) => {
         const now = new Date().toISOString();
         set((state) => ({
           bookings: state.bookings.map((b) => {
@@ -198,7 +227,10 @@ export const useAppStore = create<AppState>()(
               updatedAt: now,
               cancelledAt: status === "cancelled" ? now : b.cancelledAt,
               completedAt: status === "completed" ? now : b.completedAt,
-              timeline: patchTimeline(b.timeline, status, now),
+              backendStatus: backendStatus ?? b.backendStatus,
+              timeline: backendStatus
+                ? customerTimelineFromBackendStatus(backendStatus, now)
+                : patchTimeline(b.timeline, status, now),
             };
           }),
         }));

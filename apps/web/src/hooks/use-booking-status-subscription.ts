@@ -12,13 +12,14 @@ import { resolveWsBase } from "@/lib/api-base";
 
 /**
  * Map backend BookingStatus → customer-facing BookingStatus.
- * Backend broadcasts: accepted | rejected | cancelled | in_progress | completed | assigned | en_route
+ * Presentation collapse only — backend remains authoritative.
+ * Backend: pending | accepted | assigned | en_route | in_progress | completed | cancelled*
  */
 function mapBackendStatus(raw: string | undefined): BookingStatus | null {
   if (!raw) return null;
   const v = raw.toLowerCase();
-  if (v === "accepted" || v === "assigned" || v === "en_route") return "confirmed";
-  if (v === "in_progress") return "in_progress";
+  if (v === "in_progress" || v === "en_route") return "in_progress";
+  if (v === "accepted" || v === "assigned" || v === "pending") return "confirmed";
   if (v === "completed") return "completed";
   if (
     v === "rejected" ||
@@ -97,7 +98,7 @@ export function useBookingStatusSubscription({ bookingId, enabled = true }: Opti
         if (msg.type === "BOOKING_STATUS" || msg.type === "BOOKING_COMPLETED") {
           const mapped = mapBackendStatus(msg.data?.status);
           if (mapped) {
-            updateBookingStatus(targetBookingId, mapped);
+            updateBookingStatus(targetBookingId, mapped, msg.data?.status);
           }
           void queryClient.invalidateQueries({ queryKey: qk.bookings });
           void queryClient.invalidateQueries({ queryKey: qk.tracking(targetBookingId) });

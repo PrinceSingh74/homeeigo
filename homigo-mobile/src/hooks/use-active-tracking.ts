@@ -8,15 +8,25 @@ import { getApiBaseUrl, toWsBase } from "@/lib/api-config";
 import { qk, upsertTrackingInCache } from "@/hooks/use-core-data";
 import { BoundedEventCache } from "@/lib/realtime/bounded-cache";
 
+const TRACKABLE_RANK: Record<string, number> = {
+  en_route: 0,
+  in_progress: 1,
+  assigned: 2,
+  accepted: 3,
+};
+
 export function useActiveTracking() {
   const queryClient = useQueryClient();
   const token = useAuthStore((s) => s.accessToken);
   const isAuthenticated = useAuthStore((s) => s.status === "authenticated");
   const bookings = useAppStore((s) => s.bookings);
-  const activeBooking = useMemo(
-    () => bookings.find((b) => b.status === "in_progress" || b.status === "confirmed"),
-    [bookings],
-  );
+  const activeBooking = useMemo(() => {
+    const trackable = bookings
+      .filter((b) => b.backendStatus != null && b.backendStatus in TRACKABLE_RANK)
+      .sort((a, b) => TRACKABLE_RANK[a.backendStatus!]! - TRACKABLE_RANK[b.backendStatus!]!);
+    if (trackable.length) return trackable[0];
+    return bookings.find((b) => b.status === "in_progress" || b.status === "confirmed");
+  }, [bookings]);
   const [lastWsMessage, setLastWsMessage] = useState<string | null>(null);
   const processedEvents = useRef(new BoundedEventCache(500));
   const lastTrackingTs = useRef<number>(0);

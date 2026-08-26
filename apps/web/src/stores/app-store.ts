@@ -5,7 +5,7 @@ import { persist } from "zustand/middleware";
 import type { LocationId } from "@/lib/services";
 import { LOCATIONS } from "@/lib/services";
 import type { BookingStatus, SavedBooking } from "@/lib/bookings";
-import { dedupeBookingsById, patchTimeline } from "@/lib/bookings";
+import { dedupeBookingsById, patchTimeline, customerTimelineFromBackendStatus } from "@/lib/bookings";
 
 export type Toast = {
   id: string;
@@ -47,7 +47,7 @@ type AppState = {
   addBooking: (booking: SavedBooking) => void;
   /** Reconcile the local store with the authoritative server list (prunes stale bookings). */
   syncServerBookings: (serverBookings: SavedBooking[]) => void;
-  updateBookingStatus: (id: string, status: BookingStatus) => void;
+  updateBookingStatus: (id: string, status: BookingStatus, backendStatus?: string) => void;
   getBookingById: (id: string) => SavedBooking | undefined;
   showToast: (message: string, type?: Toast["type"]) => void;
   dismissToast: (id: string) => void;
@@ -95,7 +95,7 @@ export const useAppStore = create<AppState>()(
       syncServerBookings: (serverBookings) =>
         set(() => ({ bookings: dedupeBookingsById(serverBookings) })),
 
-      updateBookingStatus: (id, status) => {
+      updateBookingStatus: (id, status, backendStatus) => {
         const now = new Date().toISOString();
         set((s) => ({
           bookings: s.bookings.map((b) => {
@@ -106,7 +106,10 @@ export const useAppStore = create<AppState>()(
               updatedAt: now,
               cancelledAt: status === "cancelled" ? now : b.cancelledAt,
               completedAt: status === "completed" ? now : b.completedAt,
-              timeline: patchTimeline(b.timeline, status, now),
+              backendStatus: backendStatus ?? b.backendStatus,
+              timeline: backendStatus
+                ? customerTimelineFromBackendStatus(backendStatus, now)
+                : patchTimeline(b.timeline, status, now),
             };
           }),
         }));
