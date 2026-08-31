@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useAuthStore } from "@/stores/auth-store";
 import { KpiCard } from "@/components/KpiCard";
 import {
   EmptyState,
@@ -17,6 +18,10 @@ import { customerName, formatCurrency, formatDate, formatPct } from "@/lib/forma
 import { partnerApi } from "@/services/partner-api";
 import { useDashboardQuery } from "@/screens/hq-work-earnings";
 import { partnerColors } from "@/theme/colors";
+
+function useAuthedQuery() {
+  return useAuthStore((s) => s.hydrated && Boolean(s.accessToken));
+}
 
 function HqShell({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
@@ -54,22 +59,89 @@ export function PerformanceReviewsScreen() {
 }
 
 export function PerformanceScorecardScreen() {
-  const dashboard = useDashboardQuery();
-  const intel = useQuery({ queryKey: ["partner", "intelligence"], queryFn: () => partnerApi.partnerOs.intelligence() });
-  if (dashboard.isLoading) return <HqShell title="Scorecard" subtitle="Performance metrics"><LoadingBlock /></HqShell>;
-  const d = dashboard.data!;
+  const ready = useAuthedQuery();
+  const score = useQuery({ queryKey: ["partner", "score"], queryFn: () => partnerApi.partnerOs.score(), enabled: ready });
+  const history = useQuery({ queryKey: ["partner", "score-history"], queryFn: () => partnerApi.partnerOs.scoreHistory(), enabled: ready });
+  const lifecycle = useQuery({ queryKey: ["partner", "lifecycle"], queryFn: () => partnerApi.partnerOs.lifecycle(), enabled: ready });
+  if (!ready || score.isLoading) return <HqShell title="Score" subtitle="Partner score"><LoadingBlock /></HqShell>;
+  if (score.isError || !score.data) {
+    return (
+      <HqShell title="Score" subtitle="Partner score">
+        <ErrorBlock message="Could not load your score." />
+      </HqShell>
+    );
+  }
+  const d = score.data;
+  const latest = history.data?.items[0];
+  const labels: Record<string, string> = {
+    quality: "Quality",
+    reliability: "Reliability",
+    completion: "Completion",
+    onTime: "On-time",
+    customerSatisfaction: "Customer satisfaction",
+    compliance: "Compliance",
+    safety: "Safety",
+  };
   return (
-    <HqShell title="Scorecard" subtitle="Acceptance, completion, cancellation, response time, rating.">
+    <HqShell title="Score" subtitle="Server-calculated. Not editable on this device.">
       <View style={styles.grid}>
-        <KpiCard label="Rating" value={d.rating.toFixed(1)} />
-        <KpiCard label="Repeat %" value={intel.data ? formatPct(intel.data.repeatCustomerRatePct) : "—"} />
+        <KpiCard label="Score" value={d.overallScore == null ? "—" : `${Math.round(d.overallScore)}`} />
+        <KpiCard label="Band" value={d.band.replace(/_/g, " ")} />
       </View>
       <HqCard>
-        <StatRow label="Acceptance rate" value={formatPct(d.rates.acceptanceRate)} />
-        <StatRow label="Completion rate" value={formatPct(d.rates.completionRate)} />
-        <StatRow label="Response rate" value={formatPct(d.rates.responseRate)} />
-        <StatRow label="On-time rate" value={formatPct(d.rates.onTimeRate)} />
-        <StatRow label="Cancellation rate" value={formatPct(d.rates.cancellationRate)} />
+        <HqMuted>{`Lifecycle ${lifecycle.data?.lifecycleState ?? "—"} · availability ${lifecycle.data?.availability.currentStatus ?? "—"}`}</HqMuted>
+        {Object.entries(d.components).map(([key, c]) => (
+          <StatRow key={key} label={labels[key] ?? key} value={c.value == null ? "Not enough data" : String(Math.round(c.value))} />
+        ))}
+      </HqCard>
+      <HqCard>
+        <HqCardTitle>Why did my score change?</HqCardTitle>
+        {!latest ? (
+          <EmptyState message="No score history yet." />
+        ) : (
+          <>
+            <StatRow label="Change" value={`${latest.previousScore ?? "—"} → ${latest.newScore ?? "—"}`} />
+            {(latest.reasons ?? []).map((r) => (
+              <Text key={r.detail} style={styles.tip}>{r.detail}</Text>
+            ))}
+          </>
+        )}
+      </HqCard>
+    </HqShell>
+  );
+}
+
+export function PerformanceCareerScreen() {
+  const ready = useAuthedQuery();
+  const career = useQuery({ queryKey: ["partner", "career"], queryFn: () => partnerApi.partnerOs.career(), enabled: ready });
+  if (!ready || career.isLoading) return <HqShell title="Career" subtitle="Level and progress"><LoadingBlock /></HqShell>;
+  if (career.isError || !career.data) {
+    return (
+      <HqShell title="Career" subtitle="Level and progress">
+        <ErrorBlock message="Could not load career progress." />
+      </HqShell>
+    );
+  }
+  const d = career.data;
+  return (
+    <HqShell title="Career" subtitle={`${d.currentLevel}${d.nextLevel ? ` · ${d.progressPct}% toward ${d.nextLevel}` : ""}`}>
+      <View style={styles.grid}>
+        <KpiCard label="Level" value={d.currentLevel} />
+        <KpiCard label="Priority boost" value={d.benefitsActive ? `+${d.careerPriorityBoost}` : "Paused"} />
+      </View>
+      <HqCard>
+        <HqCardTitle>Requirements</HqCardTitle>
+        {d.requirements.map((r) => (
+          <StatRow key={r.id} label={`${r.met ? "Done · " : ""}${r.label}`} value={`${r.current}/${r.target}`} />
+        ))}
+      </HqCard>
+      <HqCard>
+        <HqCardTitle>Badges</HqCardTitle>
+        {d.badges.length === 0 ? (
+          <EmptyState message="No badges awarded yet." />
+        ) : (
+          d.badges.map((b) => <StatRow key={b.code} label={b.label} value={b.code} />)
+        )}
       </HqCard>
     </HqShell>
   );
