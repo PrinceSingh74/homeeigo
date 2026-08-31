@@ -109,6 +109,13 @@ function typeValue(value: string) {
     if (chunk) adb(["shell", "input", "text", chunk]);
   }
 }
+function typePassword(value: string) {
+  try {
+    adb(["shell", "input", "keyboard", "text", value.replace(/ /g, "%s")]);
+  } catch {
+    typeValue(value);
+  }
+}
 function openDeepLink(path: string) {
   adb(["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", `homeeigo-partner://${path}`]);
   sleep(3500);
@@ -200,7 +207,7 @@ function driveLogin(): boolean {
   sleep(300);
   tapEditBounds(edits[1]!);
   sleep(200);
-  typeValue(PARTNER.password);
+  typePassword(PARTNER.password);
   sleep(300);
   tapBy("partner-login-submit") || tapBy("Continue to Partner OS") || tapBy(/^Sign in$/i);
   sleep(8000);

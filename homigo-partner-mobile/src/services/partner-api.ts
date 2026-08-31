@@ -5,6 +5,7 @@ import type {
   GeoIntel,
   PartnerAcademy,
   PartnerAttendance,
+  PartnerBooking,
   PartnerBookingsResponse,
   PartnerCompliance,
   PartnerDashboard,
@@ -22,6 +23,9 @@ import type {
   PartnerRankings,
   PartnerReview,
   PartnerRewards,
+  PartnerScorecard,
+  PartnerCareer,
+  PartnerLifecycle,
   PartnerReviewsResponse,
   PartnerServiceHistory,
   PartnerSupportTicket,
@@ -29,6 +33,7 @@ import type {
   PartnerTaxSummary,
   PartnerUser,
   PartnerWellbeing,
+  PartnerOperations,
   ProviderProfile,
   RouteOptimizeResult,
   SurgeZone,
@@ -102,12 +107,52 @@ export const partnerApi = {
       body: { online },
     }),
 
+  operations: () => request<PartnerOperations>("/api/providers/me/operations"),
+
+  pause: (reason?: string) =>
+    request<PartnerOperations>("/api/providers/me/pause", { method: "POST", body: { reason } }),
+
+  resume: () => request<PartnerOperations>("/api/providers/me/resume", { method: "POST" }),
+
+  updateServiceArea: (body: {
+    city?: string;
+    serviceRegions?: string[];
+    serviceRadiusKm?: number;
+    baseLatitude?: number;
+    baseLongitude?: number;
+  }) => request<Record<string, unknown>>("/api/providers/me/service-area", { method: "PUT", body }),
+
   dashboard: () => request<PartnerDashboard>("/api/providers/me/dashboard"),
 
   earnings: (days = 30) => request<PartnerEarningsSummary>("/api/providers/me/earnings", { query: { days } }),
 
   listBookings: (query: { status?: string; page?: number; limit?: number; sortBy?: string } = {}) =>
     request<PartnerBookingsResponse>("/api/providers/me/bookings", { query }),
+
+  getBooking: async (bookingId: string) => {
+    const data = await request<{ booking: PartnerBooking }>(`/api/bookings/${bookingId}`);
+    const b = data.booking;
+    const addr = b.address;
+    return {
+      ...b,
+      amount: b.amount ?? b.finalAmount,
+      completedAt: b.completedAt ?? null,
+      enRouteAt: b.enRouteAt ?? null,
+      arrivedAt: b.arrivedAt ?? null,
+      startedAt: b.startedAt ?? null,
+      service: {
+        id: b.service?.id ?? "",
+        name: b.service?.name ?? "Service",
+        icon: b.service?.icon ?? null,
+        basePrice: b.service?.basePrice ?? b.finalAmount,
+      },
+      address: {
+        fullAddress: addr?.fullAddress ?? "",
+        latitude: addr?.latitude ?? null,
+        longitude: addr?.longitude ?? null,
+      },
+    } satisfies PartnerBooking;
+  },
 
   acceptBooking: (bookingId: string, eta?: number) =>
     request<{ newlyAccepted?: boolean; booking: { id: string; status: string } }>(
@@ -149,17 +194,101 @@ export const partnerApi = {
       { method: "POST", body: { latitude, longitude } },
     ),
 
-  startBooking: (bookingId: string, latitude: number, longitude: number) =>
+  startOtp: (bookingId: string) =>
+    request<{
+      alreadyVerified: boolean;
+      channels: string[];
+      sentTo: { email: string | null; phone: string | null };
+      expiresInSec: number;
+      resendInSec: number;
+    }>(`/api/bookings/${bookingId}/start-otp`, { method: "POST" }),
+
+  startBooking: (bookingId: string, latitude: number, longitude: number, otp?: string) =>
     request<{ booking: { status: string } }>(`/api/bookings/${bookingId}/start`, {
       method: "POST",
-      body: { latitude, longitude },
+      body: { latitude, longitude, ...(otp ? { otp } : {}) },
     }),
 
-  completeBooking: (bookingId: string, latitude: number, longitude: number, notes?: string) =>
+  completeBooking: (
+    bookingId: string,
+    latitude: number,
+    longitude: number,
+    notes?: string,
+    photos?: string[],
+  ) =>
     request<{ booking: { status: string } }>(`/api/bookings/${bookingId}/complete`, {
       method: "POST",
-      body: { latitude, longitude, notes },
+      body: {
+        latitude,
+        longitude,
+        notes,
+        ...(photos?.length ? { photos } : {}),
+      },
     }),
+
+  getJobActions: (bookingId: string) =>
+    request<{
+      stage: string;
+      availableActions: string[];
+      primaryAction: string | null;
+      requiredGates: string[];
+      disabledReasons: Record<string, string>;
+    }>(`/api/bookings/${bookingId}/actions`),
+
+  listEvidence: (bookingId: string) =>
+    request<{
+      evidence: Array<{
+        id: string;
+        stage: string;
+        mediaUrl?: string | null;
+        mediaAccessUrl?: string | null;
+        capturedAt: string;
+        isCurrent: boolean;
+      }>;
+    }>(`/api/bookings/${bookingId}/evidence`),
+
+  uploadEvidence: (
+    bookingId: string,
+    body: {
+      stage: "ARRIVAL" | "START" | "COMPLETION";
+      mediaUrl?: string;
+      photos?: string[];
+      latitude?: number;
+      longitude?: number;
+      clientUploadId?: string;
+      replace?: boolean;
+    },
+  ) => request<{ evidence: { id: string } }>(`/api/bookings/${bookingId}/evidence`, { method: "POST", body }),
+
+  listChat: (bookingId: string, query: { cursor?: string; limit?: number } = {}) =>
+    request<{
+      conversationId: string;
+      messages: Array<{
+        id: string;
+        senderUserId: string;
+        body: string;
+        createdAt: string;
+      }>;
+      nextCursor: string | null;
+    }>(`/api/bookings/${bookingId}/chat`, { query }),
+
+  sendChat: (bookingId: string, body: string, clientMessageId?: string) =>
+    request<{ message: { id: string; body: string }; created: boolean }>(
+      `/api/bookings/${bookingId}/chat`,
+      { method: "POST", body: { body, ...(clientMessageId ? { clientMessageId } : {}) } },
+    ),
+
+  markChatRead: (bookingId: string) =>
+    request<{ marked: number }>(`/api/bookings/${bookingId}/chat/read`, { method: "POST" }),
+
+  getContact: (bookingId: string) =>
+    request<{ phoneMasked: string | null; canCall: boolean }>(`/api/bookings/${bookingId}/contact`),
+
+  initiateCall: (bookingId: string) =>
+    request<{ dialUri: string; phoneMasked: string; expiresInSec: number }>(
+      `/api/bookings/${bookingId}/call`,
+      { method: "POST" },
+    ),
 
   cancelBooking: (bookingId: string, reason: string) =>
     request<unknown>(`/api/bookings/${bookingId}/cancel`, {
@@ -172,7 +301,13 @@ export const partnerApi = {
   walletTransactions: (query: { page?: number; limit?: number } = {}) =>
     request<WalletTransactionsResponse>("/api/wallet/transactions", { query }),
 
-  withdraw: (payload: { amount: number; bankAccountNumber: string; ifscCode: string; accountHolder: string }) =>
+  withdraw: (payload: {
+    amount: number;
+    bankAccountNumber: string;
+    ifscCode: string;
+    accountHolder: string;
+    idempotencyKey?: string;
+  }) =>
     request<{ withdrawal: { id: string; withdrawalNumber: string; amount: number; status: string } }>(
       "/api/wallet/withdraw",
       { method: "POST", body: payload },
@@ -228,6 +363,27 @@ export const partnerApi = {
       }),
     markRead: (id: string) => request<unknown>(`/api/notifications/${id}/read`, { method: "PUT" }),
     remove: (id: string) => request<unknown>(`/api/notifications/${id}`, { method: "DELETE" }),
+  },
+
+  /**
+   * Device push-token lifecycle. Hits the SAME endpoints the customer app already uses —
+   * the server derives userId from the auth token and never trusts a client-supplied id,
+   * so a partner can only ever register/revoke a device against their own account.
+   */
+  devices: {
+    registerPushToken: (body: {
+      deviceId: string;
+      expoPushToken: string;
+      platform: "IOS" | "ANDROID" | "WEB";
+      deviceName?: string;
+      appVersion?: string;
+      osVersion?: string;
+    }) => request<{ device: { id: string; deviceId: string; platform: string } }>("/api/users/me/devices/push-token", {
+      method: "PUT",
+      body,
+    }),
+    revoke: (deviceId: string) =>
+      request<unknown>(`/api/users/me/devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" }),
   },
 
   subscriptions: {
@@ -289,11 +445,34 @@ export const partnerApi = {
     forecast: () => request<PartnerForecast>("/api/providers/me/forecast"),
     intelligence: (days = 90) => request<PartnerIntelligence>("/api/providers/me/intelligence", { query: { days } }),
     rankings: () => request<PartnerRankings>("/api/providers/me/rankings"),
+    score: () => request<PartnerScorecard>("/api/providers/me/score"),
+    scoreHistory: () =>
+      request<{ items: Array<{ previousScore: number | null; newScore: number | null; delta: number | null; reasons: Array<{ detail: string }>; calculatedAt: string }> }>(
+        "/api/providers/me/score/history",
+      ),
+    career: () => request<PartnerCareer>("/api/providers/me/career"),
+    lifecycle: () => request<PartnerLifecycle>("/api/providers/me/lifecycle"),
     academy: () => request<PartnerAcademy>("/api/providers/me/academy"),
     completeAcademyModule: (moduleId: string) =>
       request<unknown>(`/api/providers/me/academy/${moduleId}/complete`, { method: "POST" }),
     compliance: () => request<PartnerCompliance>("/api/providers/me/compliance"),
     wellbeing: () => request<PartnerWellbeing>("/api/providers/me/wellbeing"),
+    updateEmergencyContact: (body: { emergencyContactName?: string; emergencyContactPhone?: string }) =>
+      request<{ emergencyContactName: string | null; emergencyContactPhone: string | null }>(
+        "/api/providers/me/safety/emergency-contact",
+        { method: "PATCH", body },
+      ),
+    triggerSos: (body?: { bookingId?: string; latitude?: number; longitude?: number }) =>
+      request<{ incidentId: string; status: string; created: boolean; hasLocation: boolean }>(
+        "/api/providers/me/safety/sos",
+        { method: "POST", body: body ?? {} },
+      ),
+    reportSafety: (body: { type: string; notes?: string }) =>
+      request<{ incidentId: string; status: string }>("/api/providers/me/safety/report", { method: "POST", body }),
+    safetyIncidents: () =>
+      request<{ incidents: Array<{ id: string; type: string; status: string; createdAt: string }> }>(
+        "/api/providers/me/safety/incidents",
+      ),
     rewards: () => request<PartnerRewards>("/api/providers/me/rewards"),
     serviceHistory: () => request<PartnerServiceHistory>("/api/providers/me/service-history"),
     documents: () => request<{ documents: PartnerDocument[] }>("/api/providers/me/documents"),

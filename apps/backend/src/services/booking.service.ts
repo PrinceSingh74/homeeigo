@@ -2,6 +2,7 @@ import {
   AssignmentAttemptStatus,
   AssignmentJobStatus,
   BookingStatus,
+  PaymentStatus,
   Prisma,
   TrackingStatus,
 } from "@prisma/client";
@@ -12,6 +13,12 @@ import { parsePagination } from "../lib/pagination";
 import { notificationService } from "./notification.service";
 import { emailDeliveryService } from "./email-delivery.service";
 import { bookingValidationService } from "./booking-validation.service";
+import {
+  evaluatePaymentGate,
+  hasAuditedPaymentGateOverride,
+  isSettled,
+  PAYMENT_GATE_REASON,
+} from "./booking-payment-gate";
 import { earningsService } from "./earnings.service";
 import { referralService } from "./referral.service";
 import { hcoinService } from "./hcoin.service";
@@ -27,6 +34,13 @@ import { bookingPricingService, BOOKING_ADDONS } from "./booking-pricing.service
 import { sanitizeUserInput } from "../utils/sanitizer";
 import { recordFinancialMetric } from "../lib/financial-metrics";
 import { toWaitTimeMsBigInt } from "../lib/wait-time-ms";
+import {
+  ACTIVE_FULFILMENT_STATUSES,
+  collectForbiddenPartnerKeys,
+  toCustomerSafePartner,
+  toPartnerSafeAddress,
+  toPartnerSafeCustomer,
+} from "../lib/privacy-policy.engine";
 
 /** Partners may accept shortly after a dispatch timeout while the UI refreshes. */
 const ASSIGN_ACCEPT_GRACE_MS = Number(process.env.ASSIGNMENT_ACCEPT_GRACE_MS || 5 * 60 * 1000);
@@ -35,6 +49,7 @@ import { bookingRefundService } from "./booking-refund.service";
 import { cancellationPolicyService } from "./cancellation-policy.service";
 import { financialLedgerService } from "./financial-ledger.service";
 import { earningsLiveService } from "./earnings-live.service";
+import { partnerIncentivePayoutService } from "./partner-incentive-payout.service";
 import { userPiiService } from "./user-pii.service";
 import { trackingService } from "./tracking.service";
 import { logger } from "../lib/logger";
@@ -301,9 +316,19 @@ export class BookingService {
     // Job creation is awaited (must exist before we return), but the provider
     // fan-out itself must not block the customer's 201 — the assignment cron
     // re-dispatches PENDING jobs, so a failed inline dispatch self-heals.
+    // The previous `.catch(() => undefined)` meant a broken dispatch left no trace anywhere:
+    // the job stayed PENDING with dispatchAttempts still 0, and nothing recorded that this
+    // path had thrown at all.
     if (!body.providerId) {
       await assignmentEngine.createJob(booking.id);
-      void assignmentEngine.dispatchBookingNow(booking.id).catch(() => undefined);
+      void assignmentEngine.dispatchBookingNow(booking.id).catch((err: unknown) => {
+        incCounter("assignment_inline_dispatch_failed_total");
+        logger.error("assignment_inline_dispatch_failed", {
+          bookingId: booking.id,
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
+        });
+      });
     }
 
     // Booking confirmation email (non-blocking)
@@ -384,13 +409,14 @@ export class BookingService {
       bookingNumber: b.bookingNumber,
       user: { id: b.user.id, firstName: b.user.firstName, profileImage: b.user.profileImage },
       provider: b.provider
-        ? {
+        ? toCustomerSafePartner({
             id: b.provider.id,
-            name: `${b.provider.user.firstName} ${b.provider.user.lastName}`,
+            firstName: b.provider.user.firstName,
+            lastName: b.provider.user.lastName,
             rating: b.provider.rating,
             profileImage: b.provider.profileImage,
-            phoneNumber: b.provider.user.phoneNumber,
-          }
+            phone: b.provider.user.phoneNumber,
+          })
         : null,
       service: { id: b.service.id, name: b.service.name, icon: b.service.icon },
       address: await addressPiiService.viewForFulfilment(b.address),
@@ -436,43 +462,73 @@ export class BookingService {
     });
   }
 
+  /**
+   * Offered jobs keep `booking.providerId` null until accept. The dispatched
+   * partner must still be able to GET the booking (evidence, actions, OTP).
+   */
+  private partnerBookingAccessWhere(providerId: string): Prisma.BookingWhereInput {
+    return {
+      OR: [
+        { providerId },
+        { assignmentJob: { currentProviderId: providerId } },
+        {
+          assignmentJob: {
+            attempts: {
+              some: {
+                providerId,
+                status: {
+                  in: [AssignmentAttemptStatus.SENT, AssignmentAttemptStatus.ACCEPTED],
+                },
+              },
+            },
+          },
+        },
+      ],
+    };
+  }
+
   async getById(bookingId: string, userId?: string, providerId?: string) {
     const b = await prisma.booking.findFirst({
       where: {
         id: bookingId,
         ...(userId ? { userId } : {}),
-        ...(providerId ? { providerId } : {}),
+        ...(providerId ? this.partnerBookingAccessWhere(providerId) : {}),
       },
       include: {
         provider: { include: { user: true } },
+        user: true,
         service: true,
         address: true,
         tracking: true,
       },
     });
     if (!b) return null;
-    return {
+
+    const addressRaw = await addressPiiService.viewForFulfilment(b.address);
+    const tracking = b.tracking
+      ? {
+          status: b.tracking.status.toLowerCase(),
+          distance: b.tracking.totalDistance,
+          eta: b.eta,
+        }
+      : null;
+    const shared = {
       id: b.id,
       bookingNumber: b.bookingNumber,
       status: bookingStatusApi(b.status),
-      provider: b.provider
-        ? {
-            id: b.provider.id,
-            name: `${b.provider.user.firstName} ${b.provider.user.lastName}`,
-            rating: b.provider.rating,
-            phoneNumber: b.provider.user.phoneNumber,
-          }
-        : null,
-      service: { name: b.service.name, icon: b.service.icon },
-      address: await addressPiiService.viewForFulfilment(b.address),
+      service: {
+        id: b.service.id,
+        name: b.service.name,
+        icon: b.service.icon,
+        basePrice: b.service.basePrice,
+      },
       scheduledDate: b.scheduledDate,
-      // Lifecycle anchors — the partner UI needs these to decide whether to offer
-      // "On my way" or "I've arrived". Arrival does not change booking status, so
-      // status alone cannot distinguish the two states.
+      completedAt: b.completedAt,
       enRouteAt: b.enRouteAt,
       arrivedAt: b.arrivedAt,
       startedAt: b.startedAt,
       eta: b.eta,
+      amount: b.baseAmount,
       finalAmount: b.finalAmount,
       addons: b.addons ?? undefined,
       paymentStatus: paymentStatusApi(b.paymentStatus),
@@ -480,19 +536,59 @@ export class BookingService {
       refundStatus: b.refundStatus,
       cancelledAt: b.cancelledAt,
       cancellationReason: b.cancellationReason,
-      tracking: b.tracking
-        ? {
-            status: b.tracking.status.toLowerCase(),
-            distance: b.tracking.totalDistance,
-            eta: b.eta,
-          }
+      tracking,
+    };
+
+    if (providerId) {
+      const phone = await userPiiService.resolvePhone(b.user, { actorId: providerId, authorized: true });
+      const privacyCtx = {
+        audience: "partner" as const,
+        purpose: ACTIVE_FULFILMENT_STATUSES.has(String(b.status))
+          ? ("booking_fulfilment" as const)
+          : ("booking_history" as const),
+        bookingId: b.id,
+        bookingStatus: String(b.status),
+        authorizedPartnerId: providerId,
+      };
+      const payload = {
+        ...shared,
+        customer: toPartnerSafeCustomer({
+          firstName: b.user.firstName,
+          lastName: b.user.lastName,
+          profileImage: b.user.profileImage,
+          phone,
+        }),
+        address: toPartnerSafeAddress(addressRaw, privacyCtx),
+      };
+      const leaked = collectForbiddenPartnerKeys(payload);
+      if (leaked.length > 0) {
+        logger.warn("partner_booking_payload_forbidden_keys", { bookingId: b.id, keys: leaked });
+      }
+      return payload;
+    }
+
+    const partnerPhone = b.provider
+      ? await userPiiService.resolvePhone(b.provider.user, { actorId: userId, authorized: true })
+      : null;
+    return {
+      ...shared,
+      provider: b.provider
+        ? toCustomerSafePartner({
+            id: b.provider.id,
+            firstName: b.provider.user.firstName,
+            lastName: b.provider.user.lastName,
+            rating: b.provider.rating,
+            profileImage: b.provider.profileImage,
+            phone: partnerPhone,
+          })
         : null,
+      address: addressRaw,
     };
   }
 
   async listForUser(
     userId: string,
-    query: { status?: string; page?: number; limit?: number; sortBy?: string },
+    query: { status?: string; page?: string | number; limit?: string | number; sortBy?: string },
   ) {
     const { page, limit, skip } = parsePagination(query);
     const where: { userId: string; status?: { in: BookingStatus[] } } = { userId };
@@ -730,6 +826,7 @@ export class BookingService {
           | "INVALID_STATUS"
           | "PROVIDER_UNAVAILABLE"
           | "ALREADY_CLAIMED"
+          | "PAYMENT_NOT_SETTLED"
           | "CAPACITY_LIMIT"
           | "ACCOUNT_RESTRICTED";
       }
@@ -769,6 +866,7 @@ export class BookingService {
               Array<{
                 id: string;
                 status: string;
+                payment_status: string;
                 provider_id: string | null;
                 user_id: string;
                 queued_at: Date | null;
@@ -776,7 +874,7 @@ export class BookingService {
                 service_id: string;
               }>
             >`
-              SELECT id, status, provider_id, user_id, queued_at, scheduled_date, service_id
+              SELECT id, status, payment_status, provider_id, user_id, queued_at, scheduled_date, service_id
               FROM bookings
               WHERE id = ${id}
               FOR UPDATE
@@ -784,6 +882,22 @@ export class BookingService {
             const row = rows[0];
             if (!row) {
               throw new Error("NOT_FOUND");
+            }
+            /**
+             * The money, checked under the same lock as the status.
+             *
+             * Read here rather than before the transaction so the answer cannot change between the
+             * check and the write. `payment_status` rides along in the row already being locked, so
+             * this costs nothing and closes the window where a booking passes the gate and is then
+             * accepted after a refund or a failure lands.
+             *
+             * Partner accept has no override path by design: taking responsibility for dispatching
+             * an unpaid job is an administrative act, and a partner cannot authorise it for
+             * themselves.
+             */
+            const gate = evaluatePaymentGate(row.payment_status as PaymentStatus);
+            if (!gate.allowed) {
+              throw new Error(gate.reason);
             }
             if (row.status !== "PENDING") {
               if (
@@ -908,9 +1022,28 @@ export class BookingService {
           }
         }
         if (error instanceof Error) {
+          // Provider/user slot exclusion → treat as availability conflict (not a dead DB).
+          if (
+            /bookings_provider_slot_excl|bookings_user_slot_excl|exclusion constraint/i.test(
+              error.message,
+            )
+          ) {
+            return { ok: false, error: "PROVIDER_UNAVAILABLE" };
+          }
           if (error.message === "NOT_FOUND") return { ok: false, error: "NOT_FOUND" };
           if (error.message === "ALREADY_CLAIMED") return { ok: false, error: "ALREADY_CLAIMED" };
           if (error.message === "INVALID_STATUS") return { ok: false, error: "INVALID_STATUS" };
+          /**
+           * Reported as its own outcome, never folded into INVALID_STATUS.
+           *
+           * A partner who is told "invalid status" for an unpaid booking will retry, escalate, and
+           * eventually be told the app is broken. "This booking has not been paid for" is a
+           * different fact about a different thing, and the partner app can only say so if the
+           * reason survives the trip out of the service.
+           */
+          if (error.message === PAYMENT_GATE_REASON.NOT_SETTLED) {
+            return { ok: false, error: PAYMENT_GATE_REASON.NOT_SETTLED };
+          }
           if (error.message === "PROVIDER_UNAVAILABLE" || error.message === "OVERLAPPING_BOOKING") {
             return { ok: false, error: "PROVIDER_UNAVAILABLE" };
           }
@@ -1100,7 +1233,15 @@ export class BookingService {
     lng: number,
   ): Promise<
     | { ok: true; newlyTransitioned: boolean; arrivedAt: Date | null }
-    | { ok: false; error: "NOT_FOUND" | "INVALID_STATUS" }
+    | {
+        ok: false;
+        error:
+          | "NOT_FOUND"
+          | "INVALID_STATUS"
+          | "LOCATION_INVALID"
+          | "LOCATION_REQUIRED"
+          | "OUTSIDE_SERVICE_AREA";
+      }
   > {
     const booking = await prisma.booking.findFirst({
       where: { id, providerId },
@@ -1125,6 +1266,32 @@ export class BookingService {
       return { ok: false as const, error: "INVALID_STATUS" };
     }
 
+    const { assertJobProximity } = await import("../lib/job-proximity");
+    const proximity = assertJobProximity({
+      latitude: lat,
+      longitude: lng,
+      jobLatitude: booking.address?.latitude,
+      jobLongitude: booking.address?.longitude,
+      enforceRadius: true,
+    });
+    if (!proximity.ok) {
+      if (booking.address) {
+        void import("./partner-risk.service")
+          .then(({ partnerRiskService }) =>
+            partnerRiskService.evaluateArrival({
+              providerId,
+              bookingId: id,
+              jobLat: booking.address!.latitude,
+              jobLng: booking.address!.longitude,
+              partnerLat: lat,
+              partnerLng: lng,
+            }),
+          )
+          .catch(() => undefined);
+      }
+      return { ok: false as const, error: proximity.error };
+    }
+
     const distanceKm = booking.address
       ? distanceBetweenKm(lat, lng, booking.address.latitude, booking.address.longitude)
       : null;
@@ -1147,18 +1314,104 @@ export class BookingService {
       applied ? "applied" : "duplicate",
     );
 
+    if (applied) {
+      try {
+        const { jobEvidenceService } = await import("./job-evidence.service");
+        await jobEvidenceService.recordStage({
+          bookingId: id,
+          providerId,
+          stage: "ARRIVAL",
+          latitude: lat,
+          longitude: lng,
+          clientUploadId: `arrive:${id}`,
+        });
+      } catch {
+        /* evidence best-effort */
+      }
+    }
+
     const fresh = await prisma.booking.findUnique({ where: { id }, select: { arrivedAt: true } });
     return { ok: true as const, newlyTransitioned: applied, arrivedAt: fresh?.arrivedAt ?? null };
   }
 
   async start(providerId: string, id: string, lat: number, lng: number) {
+    const { assertJobProximity } = await import("../lib/job-proximity");
+    const bookingForGeo = await prisma.booking.findFirst({
+      where: { id, providerId },
+      select: {
+        status: true,
+        address: { select: { latitude: true, longitude: true } },
+      },
+    });
+    if (!bookingForGeo) throw new Error("FORBIDDEN");
+    if (bookingForGeo.status !== "IN_PROGRESS") {
+      const proximity = assertJobProximity({
+        latitude: lat,
+        longitude: lng,
+        jobLatitude: bookingForGeo.address?.latitude,
+        jobLongitude: bookingForGeo.address?.longitude,
+        enforceRadius: true,
+      });
+      if (!proximity.ok) throw new Error(proximity.error);
+    }
+
     const startedAt = new Date();
+    let newlyStarted = true;
     const started = await prisma.$transaction(async (tx) => {
+      /**
+       * Defence in depth, not the primary control.
+       *
+       * accept() and admin assignment are where the gate is meant to bite; by the time a partner
+       * presses start they are already at the address. This exists because three separate write
+       * paths reach service execution and the one thing this incident proved is that a rule
+       * enforced in only some of them is a rule with a hole in it.
+       *
+       * Expressed inside the `where` so the check and the write are one statement — a read followed
+       * by an update could be overtaken by a refund landing in between.
+       */
+      const already = await tx.booking.findFirst({
+        where: { id, providerId, status: "IN_PROGRESS" },
+        include: { user: true },
+      });
+      if (already) {
+        newlyStarted = false;
+        return already;
+      }
+
       const updated = await tx.booking.updateMany({
-        where: { id, providerId, status: { in: ["ACCEPTED", "ASSIGNED", "EN_ROUTE"] } },
+        where: {
+          id,
+          providerId,
+          status: { in: ["ACCEPTED", "ASSIGNED", "EN_ROUTE"] },
+          paymentStatus: PaymentStatus.SUCCESS,
+        },
         data: { status: "IN_PROGRESS", startedAt },
       });
-      if (updated.count === 0) throw new Error("FORBIDDEN");
+      if (updated.count === 0) {
+        /**
+         * Work out which rule refused, rather than reporting them as one thing.
+         *
+         * "FORBIDDEN" for an unpaid booking sends the partner to support to ask why the app is
+         * broken. An administrator may also have already accepted responsibility for this exact
+         * booking, in which case the payment state is not what is standing in the way and the start
+         * must proceed.
+         */
+        const current = await tx.booking.findUnique({
+          where: { id },
+          select: { paymentStatus: true, providerId: true, status: true },
+        });
+        if (current && !isSettled(current.paymentStatus)) {
+          const overridden = await hasAuditedPaymentGateOverride(id, tx);
+          if (!overridden) throw new Error(PAYMENT_GATE_REASON.NOT_SETTLED);
+          const forced = await tx.booking.updateMany({
+            where: { id, providerId, status: { in: ["ACCEPTED", "ASSIGNED", "EN_ROUTE"] } },
+            data: { status: "IN_PROGRESS", startedAt },
+          });
+          if (forced.count === 0) throw new Error("FORBIDDEN");
+        } else {
+          throw new Error("FORBIDDEN");
+        }
+      }
       const booking = await tx.booking.findUnique({
         where: { id },
         include: { user: true },
@@ -1196,7 +1449,7 @@ export class BookingService {
       return booking;
     });
 
-    if (started.userId) {
+    if (newlyStarted && started.userId) {
       await notificationService.createForUser({
         userId: started.userId,
         type: "service_started",
@@ -1214,15 +1467,31 @@ export class BookingService {
     // Fire-and-forget so telemetry can never fail a job start — but the failure is now
     // logged and counted instead of swallowed. The previous `.catch(() => undefined)`
     // meant a broken fallback left no trace anywhere.
-    void this.backfillArrivalFromStart(id, providerId, lat, lng).catch((err: unknown) => {
-      recordEtaJobStartFallback("error");
-      logger.error("eta_job_start_fallback_failed", {
-        bookingId: id,
-        providerId,
-        source: "job_start",
-        error: err instanceof Error ? err.message : String(err),
+    if (newlyStarted) {
+      try {
+        const { jobEvidenceService } = await import("./job-evidence.service");
+        await jobEvidenceService.recordStage({
+          bookingId: id,
+          providerId,
+          stage: "START",
+          latitude: lat,
+          longitude: lng,
+          clientUploadId: `start:${id}`,
+        });
+      } catch {
+        /* evidence best-effort */
+      }
+
+      void this.backfillArrivalFromStart(id, providerId, lat, lng).catch((err: unknown) => {
+        recordEtaJobStartFallback("error");
+        logger.error("eta_job_start_fallback_failed", {
+          bookingId: id,
+          providerId,
+          source: "job_start",
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
-    });
+    }
 
     return started;
   }
@@ -1276,22 +1545,54 @@ export class BookingService {
   async complete(
     providerId: string,
     id: string,
-    _lat: number,
-    _lng: number,
+    lat: number,
+    lng: number,
     notes?: string,
+    opts?: { photos?: string[]; skipSideEffects?: boolean },
   ) {
     const existing = await prisma.booking.findFirst({
       where: { id, providerId },
       include: { service: { select: { name: true } } },
     });
-    if (!existing) return null;
+    if (!existing) throw new Error("FORBIDDEN");
+
+    // Safe retry: already completed for this partner — return current state, never double-pay.
+    if (existing.status === "COMPLETED") {
+      const duration =
+        existing.actualDuration ??
+        (existing.startedAt
+          ? Math.round((existing.completedAt!.getTime() - existing.startedAt.getTime()) / 60000)
+          : existing.estimatedDuration);
+      return { booking: existing, totalDuration: duration ?? 0, newlyCompleted: false as const };
+    }
+
+    if (existing.status !== "IN_PROGRESS") {
+      throw new Error("INVALID_STATUS");
+    }
+
+    void import("./partner-risk.service").then(async ({ partnerRiskService }) => {
+      const addr = await prisma.address.findUnique({
+        where: { id: existing.addressId },
+        select: { latitude: true, longitude: true },
+      });
+      if (!addr) return;
+      await partnerRiskService.evaluateCompletion({
+        providerId,
+        bookingId: id,
+        jobLat: addr.latitude,
+        jobLng: addr.longitude,
+        partnerLat: lat,
+        partnerLng: lng,
+      });
+    }).catch(() => undefined);
+
     const duration = existing.startedAt
       ? Math.round((Date.now() - existing.startedAt.getTime()) / 60000)
       : existing.estimatedDuration;
     const completedAt = new Date();
     const booking = await prisma.$transaction(async (tx) => {
-      const updated = await tx.booking.update({
-        where: { id },
+      const claimed = await tx.booking.updateMany({
+        where: { id, providerId, status: "IN_PROGRESS" },
         data: {
           status: "COMPLETED",
           completedAt,
@@ -1299,6 +1600,14 @@ export class BookingService {
           providerNotes: notes,
         },
       });
+      if (claimed.count === 0) {
+        const raced = await tx.booking.findFirst({
+          where: { id, providerId, status: "COMPLETED" },
+        });
+        if (raced) return raced;
+        throw new Error("INVALID_STATUS");
+      }
+      const updated = await tx.booking.findUniqueOrThrow({ where: { id } });
       if (eventPlatformConfig.outboxEnabled && eventPlatformConfig.bookingEventsEnabled) {
         await emitInTransaction(
           tx,
@@ -1365,11 +1674,37 @@ export class BookingService {
       }
       return updated;
     });
+
+    // Persist completion evidence (GPS + optional media refs) outside the money txn —
+    // evidence failure must not roll back earnings once COMPLETED+Earning committed.
+    try {
+      const { jobEvidenceService } = await import("./job-evidence.service");
+      await jobEvidenceService.recordStage({
+        bookingId: id,
+        providerId,
+        stage: "COMPLETION",
+        latitude: lat,
+        longitude: lng,
+        mediaUrls: opts?.photos,
+        clientUploadId: `complete:${id}`,
+      });
+    } catch {
+      /* evidence is best-effort after money path; list/upload APIs remain available */
+    }
+
+    if (opts?.skipSideEffects) {
+      return { booking, totalDuration: duration ?? 0, newlyCompleted: true as const };
+    }
+
     incCounter("booking_completed_total");
     if (existing.providerId) {
       void partnerOperationsService
         .syncCurrentStatus(existing.providerId)
         .then(() => partnerOperationsService.emitCapacityIfChanged(existing.providerId!))
+        .catch(() => undefined);
+      const pid = existing.providerId;
+      void import("./rating.service")
+        .then(({ ratingService }) => ratingService.updateProviderMetrics(pid))
         .catch(() => undefined);
     }
     await prisma.tracking.updateMany({
@@ -1384,6 +1719,9 @@ export class BookingService {
       if (provider?.userId) {
         void earningsLiveService.broadcastEarningsUpdate(provider.userId).catch(() => undefined);
       }
+      void partnerIncentivePayoutService
+        .evaluateAndCreditIncentives(existing.providerId)
+        .catch(() => undefined);
     }
     if (booking.userId) {
       await notificationService.createForUser({
@@ -1413,7 +1751,7 @@ export class BookingService {
         }
       }
     }
-    return { booking, totalDuration: duration };
+    return { booking, totalDuration: duration ?? 0, newlyCompleted: true as const };
   }
 
   async cancel(
@@ -1554,7 +1892,13 @@ export class BookingService {
         incCounter("booking_cancelled_total", { by: locked.cancelledBy });
         if (quote.refundAmount > 0) recordFinancialMetric("refund_total", 1);
 
-        void assignmentEngine.onBookingCancelled(id).catch(() => undefined);
+        void assignmentEngine.onBookingCancelled(id).catch((err: unknown) => {
+          incCounter("assignment_cancel_cleanup_failed_total");
+          logger.error("assignment_cancel_cleanup_failed", {
+            bookingId: id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
 
         if (quote.refundAmount > 0 && locked.paymentStatus === "SUCCESS") {
           void bookingRefundService

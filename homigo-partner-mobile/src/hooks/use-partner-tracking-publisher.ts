@@ -2,6 +2,7 @@ import * as Location from "expo-location";
 import { useEffect, useRef, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { getApiBaseUrl } from "@/lib/api-config";
+import { rememberJobFix } from "@/lib/job-fix-cache";
 import { useAuthStore } from "@/stores/auth-store";
 
 /**
@@ -59,12 +60,18 @@ export function usePartnerTrackingPublisher(opts: {
         `${wsBase}/ws/tracking/${encodeURIComponent(bookingId)}?token=${encodeURIComponent(token)}`,
       );
       socketRef.current = ws;
-      ws.onopen = () => !cancelled && setConnected(true);
-      ws.onclose = () => !cancelled && setConnected(false);
-      ws.onerror = () => !cancelled && setConnected(false);
+      ws.onopen = () => {
+        if (!cancelled) setConnected(true);
+      };
+      ws.onclose = () => {
+        if (!cancelled) setConnected(false);
+      };
+      ws.onerror = () => {
+        if (!cancelled) setConnected(false);
+      };
 
       watcherRef.current = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.Balanced, timeInterval: minIntervalMs, distanceInterval: 10 },
+        { accuracy: Location.Accuracy.Highest, timeInterval: minIntervalMs, distanceInterval: 5 },
         (pos) => {
           const sock = socketRef.current;
           if (!sock || sock.readyState !== WebSocket.OPEN) return;
@@ -73,6 +80,7 @@ export function usePartnerTrackingPublisher(opts: {
           if (now - lastSentAtRef.current < minIntervalMs) return;
 
           const { latitude, longitude, accuracy, altitude } = pos.coords;
+          rememberJobFix(latitude, longitude);
           const last = lastFixRef.current;
           if (
             last &&
@@ -99,17 +107,25 @@ export function usePartnerTrackingPublisher(opts: {
 
     void start();
 
-    // Streaming from the background would silently fail (or be throttled by the OS)
-    // rather than work, so the watcher is torn down and rebuilt around foreground.
+    let bgTimer: ReturnType<typeof setTimeout> | null = null;
     const sub = AppState.addEventListener("change", (next) => {
       const wasActive = appStateRef.current === "active";
       appStateRef.current = next;
-      if (wasActive && next !== "active") teardown();
-      else if (!wasActive && next === "active" && !cancelled) void start();
+      // uiautomator dumps briefly background the app — do not tear the socket down.
+      if (wasActive && next !== "active") {
+        bgTimer = setTimeout(() => {
+          if (appStateRef.current !== "active" && !cancelled) teardown();
+        }, 4_000);
+      } else if (!wasActive && next === "active") {
+        if (bgTimer) clearTimeout(bgTimer);
+        bgTimer = null;
+        if (!cancelled && !socketRef.current) void start();
+      }
     });
 
     return () => {
       cancelled = true;
+      if (bgTimer) clearTimeout(bgTimer);
       sub.remove();
       teardown();
     };
