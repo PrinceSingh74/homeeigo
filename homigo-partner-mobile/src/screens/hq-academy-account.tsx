@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Linking, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { KpiCard } from "@/components/KpiCard";
 import { EmptyState, HqCard, HqCardTitle, HqMuted, LoadingBlock, ProgressRow, StatRow } from "@/components/HqUi";
 import { PartnerScreen } from "@/components/PartnerScreen";
@@ -460,17 +460,73 @@ export function AccountProfileScreen() {
 export function AccountNotificationsScreen() {
   const qc = useQueryClient();
   const notifications = useQuery({ queryKey: ["partner", "notifications"], queryFn: () => partnerApi.notifications.list({ limit: 30 }) });
+  const prefs = useQuery({
+    queryKey: ["partner", "notification-preferences"],
+    queryFn: () => partnerApi.notifications.preferences(),
+    staleTime: 60_000,
+  });
   const markRead = useMutation({
     mutationFn: (id: string) => partnerApi.notifications.markRead(id),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["partner", "notifications"] }),
   });
+  const setPreference = useMutation({
+    mutationFn: (input: {
+      channel: "IN_APP" | "PUSH" | "EMAIL" | "SMS";
+      category: "TRANSACTIONAL" | "SECURITY" | "OPTIONAL";
+      enabled: boolean;
+    }) => partnerApi.notifications.setPreference(input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["partner", "notification-preferences"] }),
+  });
   if (notifications.isLoading) return <HqShell title="Notifications" subtitle="Alerts"><LoadingBlock /></HqShell>;
+  const optionalCells = (prefs.data?.matrix ?? []).filter((c) => c.category === "OPTIONAL");
+  const CHANNEL_LABEL = { IN_APP: "In-app", PUSH: "Push", EMAIL: "Email", SMS: "SMS" } as const;
   return (
     <HqShell title="Notifications" subtitle="List, mark read, and manage alerts.">
       <HqCard>
+        <HqCardTitle>Optional alerts</HqCardTitle>
+        <HqMuted>Job, payment and security messages are always delivered.</HqMuted>
+        {prefs.isLoading ? (
+          <HqMuted>Loading preferences…</HqMuted>
+        ) : prefs.isError ? (
+          <HqMuted>Could not load preferences. Open this screen again to retry.</HqMuted>
+        ) : optionalCells.length === 0 ? (
+          <HqMuted>Preference controls unavailable.</HqMuted>
+        ) : (
+          optionalCells.map((cell) => (
+            <View key={cell.channel} style={styles.prefRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.notifTitle}>{CHANNEL_LABEL[cell.channel]}</Text>
+                {!cell.available ? (
+                  <Text style={styles.notifMeta}>Not available on this device yet</Text>
+                ) : null}
+              </View>
+              <Switch
+                accessibilityLabel={`${CHANNEL_LABEL[cell.channel]} optional alerts`}
+                value={cell.enabled}
+                disabled={!cell.editable || setPreference.isPending}
+                onValueChange={(enabled) =>
+                  setPreference.mutate({
+                    channel: cell.channel,
+                    category: cell.category,
+                    enabled,
+                  })
+                }
+                trackColor={{ false: partnerColors.line, true: partnerColors.primary }}
+              />
+            </View>
+          ))
+        )}
+      </HqCard>
+      <HqCard>
         <StatRow label="Unread" value={notifications.data?.unreadCount ?? 0} />
         {(notifications.data?.notifications ?? []).map((n) => (
-          <Pressable key={n.id} onPress={() => !n.isRead && markRead.mutate(n.id)} style={styles.notif}>
+          <Pressable
+            key={n.id}
+            accessibilityRole="button"
+            accessibilityLabel={`${n.title}. ${n.message}. ${formatDate(n.createdAt)}. ${n.isRead ? "Read" : "Unread"}`}
+            onPress={() => !n.isRead && markRead.mutate(n.id)}
+            style={styles.notif}
+          >
             <Text style={[styles.notifTitle, !n.isRead && styles.unread]}>{n.title}</Text>
             <Text style={styles.notifBody}>{n.message}</Text>
             <Text style={styles.notifMeta}>{formatDate(n.createdAt)}</Text>
@@ -674,6 +730,7 @@ const styles = StyleSheet.create({
   unread: { color: partnerColors.primary },
   notifBody: { marginTop: 2, fontSize: 12, color: partnerColors.textMuted },
   notifMeta: { marginTop: 4, fontSize: 11, color: partnerColors.textMuted },
+  prefRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, minHeight: 44 },
   input: { borderWidth: 1, borderColor: partnerColors.line, borderRadius: 10, padding: 10, minHeight: 80, textAlignVertical: "top", backgroundColor: "#fff" },
   inviteInput: { borderWidth: 1, borderColor: partnerColors.line, borderRadius: 10, padding: 12, minHeight: 44, backgroundColor: "#fff", marginBottom: 8 },
   benefit: { fontSize: 13, color: partnerColors.text, marginBottom: 6 },

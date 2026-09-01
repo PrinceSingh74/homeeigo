@@ -36,8 +36,13 @@ export function attachEnterpriseMonitor(page: Page): EnterpriseMonitor {
 export const SEED_PARTNER = { email: "partner@homigo.demo", password: "Homigo@123" };
 
 export async function partnerLogin(page: Page) {
+  await page.context().clearCookies();
   await page.goto("/login", { waitUntil: "domcontentloaded" });
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  await page.goto("/login", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#partner-email")).toBeVisible({ timeout: 30_000 });
   await page.locator("#partner-email").click();
   await page.locator("#partner-email").fill("");

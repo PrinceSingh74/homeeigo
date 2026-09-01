@@ -40,11 +40,13 @@ export function attachEnterpriseMonitor(page: Page): EnterpriseMonitor {
 export const SEED_ADMIN = { email: "admin@homigo.demo", password: "Homigo@123" };
 
 export async function adminLogin(page: Page) {
+  await page.context().clearCookies();
   await page.goto("/login", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     localStorage.clear();
     sessionStorage.clear();
   });
+  await page.goto("/login", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#admin-email")).toBeVisible({ timeout: 60_000 });
   await expect(page.locator("#admin-email")).toBeEnabled({ timeout: 30_000 });
   await page.locator("#admin-email").click();
