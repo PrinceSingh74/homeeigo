@@ -18,7 +18,7 @@
   --color-partner-danger: #dc2626;
   --color-partner-text: #0f172a;
   --color-partner-text-secondary: #334155;
-  --color-partner-muted: #64748b;
+  --color-partner-muted: #475569;
   /* AA-legible on white (was #94a3b8 = 2.56 ratio, unreadable as body text). */
   --color-partner-muted-dim: #6b7280;
   --color-partner-line: rgb(59 130 246 / 0.14);
@@ -133,7 +133,9 @@ html.dark .partner-glass {
 }
 
 .partner-glow-btn {
-  box-shadow: var(--shadow-partner-glow);
+  /* Keep the lift without washing the fill — a 35% blue bloom dropped
+     white-on-primary contrast from 4.6:1 to 4.29:1 (WCAG AA miss). */
+  box-shadow: 0 8px 18px rgb(29 78 216 / 0.28);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .partner-glow-btn:hover {
@@ -217,8 +219,8 @@ html.dark .partner-sidebar {
 }
 
 @keyframes badgePulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.08); opacity: 0.85; }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
 }
 
 .badge-pulse {
@@ -267,5 +269,16 @@ html.dark .partner-sidebar {
 @media (min-width: 1280px) {
   .partner-stat-value {
     font-size: 2rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

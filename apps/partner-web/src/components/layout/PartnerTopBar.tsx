@@ -119,7 +119,7 @@ export function PartnerTopBar({ onMenuOpen }: PartnerTopBarProps) {
           >
             <Bell className="h-5 w-5" />
             {bellCount > 0 ? (
-              <span className="badge-pulse absolute right-1 top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-partner-danger px-1 text-[9px] font-bold text-white">
+              <span className="absolute right-1 top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#7f1d1d] px-1 text-[9px] font-bold text-white">
                 {bellCount > 9 ? "9+" : bellCount}
               </span>
             ) : null}

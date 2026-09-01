@@ -180,7 +180,7 @@ export function PartnerSidebar({ mobileOpen, onMobileClose }: PartnerSidebarProp
                                 {badgeLabel}
                               </span>
                             ) : badge > 0 ? (
-                              <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-partner-danger px-1 text-[10px] font-bold text-white">
+                              <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[#7f1d1d] px-1 text-[10px] font-bold text-white">
                                 {badge}
                               </span>
                             ) : null}
@@ -204,7 +204,7 @@ export function PartnerSidebar({ mobileOpen, onMobileClose }: PartnerSidebarProp
           </p>
           <Link
             href="/performance-hq/scorecard"
-            className="partner-glow-btn mt-3 inline-flex h-9 w-full items-center justify-center rounded-lg bg-partner-primary text-[13px] font-semibold text-white"
+            className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-lg bg-[#1d4ed8] text-sm font-bold text-white"
           >
             View scorecard
           </Link>
@@ -215,8 +215,8 @@ export function PartnerSidebar({ mobileOpen, onMobileClose }: PartnerSidebarProp
           onClick={() => setOnline.mutate(!online)}
           disabled={setOnline.isPending}
           className={cn(
-            "flex h-10 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-semibold text-white transition active:scale-[0.98]",
-            online ? "bg-partner-danger" : "bg-partner-success",
+            "flex h-10 w-full items-center justify-center gap-2 rounded-lg text-sm font-bold text-white transition active:scale-[0.98]",
+            online ? "bg-partner-danger" : "bg-[#166534]",
             setOnline.isPending && "opacity-60",
           )}
         >

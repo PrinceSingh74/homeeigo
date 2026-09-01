@@ -206,17 +206,99 @@ export function RewardsBadgesScreen() {
 }
 
 export function RewardsReferralsScreen() {
-  const rewards = useQuery({ queryKey: ["partner", "rewards"], queryFn: () => partnerApi.partnerOs.rewards() });
-  const referrals = useQuery({ queryKey: ["partner", "referrals"], queryFn: () => partnerApi.referrals.summary() });
-  if (rewards.isLoading) return <HqShell title="Referrals" subtitle="Referral program"><LoadingBlock /></HqShell>;
+  const network = useQuery({
+    queryKey: ["partner", "network"],
+    queryFn: () => partnerApi.network.dashboard(),
+  });
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const invite = useMutation({
+    mutationFn: () => partnerApi.network.invite({ name: name.trim(), phone: phone.trim() }),
+    onSuccess: () => {
+      setName("");
+      setPhone("");
+      setFormError(null);
+      void qc.invalidateQueries({ queryKey: ["partner", "network"] });
+    },
+    onError: (err) => setFormError(err instanceof Error ? err.message : "Could not send invite"),
+  });
+  if (network.isLoading) return <HqShell title="Referrals" subtitle="Partner network"><LoadingBlock /></HqShell>;
+  if (network.isError) {
+    return (
+      <HqShell title="Referrals" subtitle="Partner network">
+        <EmptyState message="Could not load your partner network." />
+        <Pressable
+          onPress={() => void network.refetch()}
+          style={styles.outlineBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Retry"
+        >
+          <Text style={styles.outlineBtnText}>Retry</Text>
+        </Pressable>
+      </HqShell>
+    );
+  }
+  const d = network.data!;
   return (
-    <HqShell title="Referrals" subtitle="Referral code, count, balance, and total earned.">
+    <HqShell title="Partner Network" subtitle="Invite partners. Reward after 3 successful jobs and trust gates.">
+      <View style={styles.grid}>
+        <KpiCard label="Code" value={d.code} />
+        <KpiCard label="Invited" value={d.counts.invited ?? 0} />
+        <KpiCard label="Qualified" value={d.counts.qualified ?? 0} />
+        <KpiCard label="Rewards" value={formatCurrency(d.totalRewarded)} />
+      </View>
       <HqCard>
-        <StatRow label="Referral code" value={rewards.data?.referralCode ?? referrals.data?.code ?? "—"} />
-        <StatRow label="Referral count" value={rewards.data?.referralCount ?? referrals.data?.referralCount ?? 0} />
-        <StatRow label="Total earned" value={formatCurrency(referrals.data?.totalEarned ?? 0)} />
-        <StatRow label="Balance" value={formatCurrency(referrals.data?.balance ?? 0)} />
+        <HqCardTitle>Share link</HqCardTitle>
+        <HqMuted>{d.shareUrl}</HqMuted>
       </HqCard>
+      <HqCard>
+        <HqCardTitle>Invite someone</HqCardTitle>
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          placeholder="Full name"
+          accessibilityLabel="Full name"
+          style={styles.inviteInput}
+          autoComplete="name"
+        />
+        <TextInput
+          value={phone}
+          onChangeText={setPhone}
+          placeholder="Mobile"
+          accessibilityLabel="Mobile"
+          keyboardType="phone-pad"
+          style={styles.inviteInput}
+          autoComplete="tel"
+        />
+        {formError ? <Text style={styles.moduleMeta}>{formError}</Text> : null}
+        <Pressable
+          onPress={() => invite.mutate()}
+          disabled={invite.isPending || name.trim().length < 2 || phone.trim().length < 10}
+          style={styles.smallBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Send invite"
+        >
+          <Text style={styles.smallBtnText}>{invite.isPending ? "Sending…" : "Send invite"}</Text>
+        </Pressable>
+      </HqCard>
+      {(d.referrals ?? []).length === 0 ? (
+        <EmptyState message="No referrals yet. Share your code to invite partners." />
+      ) : (
+        <HqCard>
+          <HqCardTitle>Your referrals</HqCardTitle>
+          {d.referrals.map((r) => (
+            <View key={r.id} style={styles.module}>
+              <StatRow
+                label={`${r.name} · ${r.status.replace(/_/g, " ")}`}
+                value={`${r.jobs}/${r.jobTarget} · ${r.qualificationLabel}`}
+              />
+              <Text style={styles.moduleBody}>{r.nextMilestone}</Text>
+            </View>
+          ))}
+        </HqCard>
+      )}
     </HqShell>
   );
 }
@@ -261,7 +343,6 @@ export function WellbeingSosScreen() {
     onError: (err) =>
       setMsg(err instanceof Error ? err.message : "Could not reach operations. Call the hotline."),
   });
-  if (wellbeing.isLoading || wellbeing.isPending) return <HqShell title="SOS" subtitle="Emergency"><LoadingBlock /></HqShell>;
   const phone = wellbeing.data?.sosPhone ?? "112";
   const emName = wellbeing.data?.emergencyContactName;
   const emPhone = wellbeing.data?.emergencyContactPhone;
@@ -269,7 +350,11 @@ export function WellbeingSosScreen() {
     <HqShell title="SOS" subtitle="Hold to arm, then confirm. Operations is notified once.">
       <HqCard>
         <HqCardTitle>Emergency contact</HqCardTitle>
-        <Text style={styles.sosText}>{emName ? `${emName}${emPhone ? ` · ${emPhone}` : ""}` : "Add an emergency contact during onboarding or from this screen."}</Text>
+        {wellbeing.isLoading && !wellbeing.data ? (
+          <LoadingBlock />
+        ) : (
+          <Text style={styles.sosText}>{emName ? `${emName}${emPhone ? ` · ${emPhone}` : ""}` : "Add an emergency contact during onboarding or from this screen."}</Text>
+        )}
         {emPhone ? (
           <Pressable onPress={() => void Linking.openURL(`tel:${emPhone}`)} style={styles.outlineBtn} accessibilityRole="button" accessibilityLabel="Call emergency contact">
             <Text style={styles.outlineBtnText}>Call emergency contact</Text>
@@ -590,6 +675,7 @@ const styles = StyleSheet.create({
   notifBody: { marginTop: 2, fontSize: 12, color: partnerColors.textMuted },
   notifMeta: { marginTop: 4, fontSize: 11, color: partnerColors.textMuted },
   input: { borderWidth: 1, borderColor: partnerColors.line, borderRadius: 10, padding: 10, minHeight: 80, textAlignVertical: "top", backgroundColor: "#fff" },
+  inviteInput: { borderWidth: 1, borderColor: partnerColors.line, borderRadius: 10, padding: 12, minHeight: 44, backgroundColor: "#fff", marginBottom: 8 },
   benefit: { fontSize: 13, color: partnerColors.text, marginBottom: 6 },
   planRow: {
     flexDirection: "row",
