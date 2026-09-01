@@ -2,7 +2,6 @@ import { getApiBaseUrl } from "@/lib/api-config";
 import type {
   DemandForecast,
   DensityZone,
-  GeoIntel,
   PartnerAcademy,
   PartnerAttendance,
   PartnerBooking,
@@ -171,7 +170,16 @@ export const partnerApi = {
    * directly — that is the single-entry rule this platform is built on.
    */
   aiChat: (message: string) =>
-    request<{ content: string; provider: string; model: string; fallbackUsed: boolean }>(
+    request<{
+      content: string;
+      provider: string;
+      model: string;
+      fallbackUsed: boolean;
+      mode?: "llm" | "deterministic_fallback";
+      intent?: string;
+      basis?: string[];
+      recommendation?: string | null;
+    }>(
       "/api/ai/partner",
       { method: "POST", body: { message } },
     ),
@@ -414,6 +422,30 @@ export const partnerApi = {
       }>("/api/referrals/me"),
   },
 
+  network: {
+    dashboard: () =>
+      request<{
+        code: string;
+        shareUrl: string;
+        rewardPerQualified: number;
+        jobTarget: number;
+        counts: Record<string, number>;
+        totalRewarded: number;
+        referrals: Array<{
+          id: string;
+          name: string;
+          status: string;
+          jobs: number;
+          jobTarget: number;
+          qualificationLabel: string;
+          nextMilestone: string;
+          rewardAmount: number | null;
+        }>;
+      }>("/api/providers/me/network"),
+    invite: (body: { name: string; phone: string }) =>
+      request<{ inviteUrl: string; shareUrl: string }>("/api/providers/me/network/invite", { method: "POST", body }),
+  },
+
   support: {
     tickets: () => request<{ tickets: PartnerSupportTicket[]; total: number }>("/api/support/tickets"),
     ticketById: (id: string) => request<{ ticket: PartnerSupportTicketDetail }>(`/api/support/tickets/${id}`),
@@ -424,10 +456,10 @@ export const partnerApi = {
   },
 
   geoIntel: {
-    surge: () => request<GeoIntel<SurgeZone[]>>("/api/geo-intel/surge"),
-    density: () => request<GeoIntel<DensityZone[]>>("/api/geo-intel/provider-density"),
-    zoneScoring: () => request<GeoIntel<ZoneScoring>>("/api/geo-intel/zone-scoring"),
-    demandForecast: (horizon = 24) => request<GeoIntel<DemandForecast>>("/api/geo-intel/demand-forecast", { query: { horizon } }),
+    surge: () => request<SurgeZone[]>("/api/geo-intel/surge"),
+    density: () => request<DensityZone[]>("/api/geo-intel/provider-density"),
+    zoneScoring: () => request<ZoneScoring>("/api/geo-intel/zone-scoring"),
+    demandForecast: (horizon = 24) => request<DemandForecast>("/api/geo-intel/demand-forecast", { query: { horizon } }),
   },
 
   weatherAlerts: (lat: number, lng: number) =>

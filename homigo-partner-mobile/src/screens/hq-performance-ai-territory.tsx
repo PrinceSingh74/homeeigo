@@ -244,11 +244,20 @@ export function AiAssistantScreen() {
  */
 function AiAssistantChat() {
   const [input, setInput] = useState("");
-  const [turns, setTurns] = useState<Array<{ q: string; a: string; offline?: boolean }>>([]);
+  const [turns, setTurns] = useState<Array<{ q: string; a: string; offline?: boolean; basis?: string[] }>>([]);
 
   const ask = useMutation({
     mutationFn: (q: string) => partnerApi.aiChat(q),
-    onSuccess: (res, q) => setTurns((t) => [...t, { q, a: res.content }]),
+    onSuccess: (res, q) =>
+      setTurns((t) => [
+        ...t,
+        {
+          q,
+          a: res.content,
+          offline: res.mode === "deterministic_fallback",
+          basis: res.basis,
+        },
+      ]),
     onError: (_e, q) =>
       setTurns((t) => [
         ...t,
@@ -270,9 +279,14 @@ function AiAssistantChat() {
         <View key={i} style={{ marginBottom: 10 }}>
           <Text style={[styles.tip, { fontWeight: "700" }]}>You: {t.q}</Text>
           <Text style={styles.tip}>{t.a}</Text>
+          {t.basis?.length ? (
+            <Text style={[styles.tip, { fontSize: 11, color: partnerColors.textMuted }]}>
+              Based on: {t.basis.join("; ")}
+            </Text>
+          ) : null}
           {t.offline ? (
             <Text style={[styles.tip, { fontSize: 11, color: partnerColors.textMuted }]}>
-              OFFLINE ANSWER — assistant unavailable
+              VERIFIED SUMMARY — live model unavailable
             </Text>
           ) : null}
         </View>
@@ -285,22 +299,25 @@ function AiAssistantChat() {
           onSubmitEditing={send}
           editable={!ask.isPending}
           placeholder="Ask the assistant…"
+          accessibilityLabel="Ask the partner copilot"
           placeholderTextColor={partnerColors.textMuted}
           style={{
             flex: 1, borderWidth: 1, borderColor: partnerColors.line, borderRadius: 10,
             paddingHorizontal: 12, paddingVertical: 8, color: partnerColors.text,
           }}
         />
-        <Pressable
-          onPress={send}
-          disabled={ask.isPending}
-          style={{
-            backgroundColor: partnerColors.primary, borderRadius: 10,
-            paddingHorizontal: 16, justifyContent: "center", opacity: ask.isPending ? 0.6 : 1,
-          }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "700" }}>Ask</Text>
-        </Pressable>
+          <Pressable
+            onPress={send}
+            disabled={ask.isPending}
+            accessibilityRole="button"
+            accessibilityLabel="Send question"
+            style={{
+              backgroundColor: partnerColors.primary, borderRadius: 10,
+              paddingHorizontal: 16, justifyContent: "center", opacity: ask.isPending ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700" }}>Ask</Text>
+          </Pressable>
       </View>
     </HqCard>
   );
@@ -309,11 +326,11 @@ function AiAssistantChat() {
 export function AiDemandForecastScreen() {
   const forecast = useQuery({ queryKey: ["partner", "geo-demand"], queryFn: () => partnerApi.geoIntel.demandForecast(24) });
   if (forecast.isLoading) return <HqShell title="Demand Forecast" subtitle="24h predictions"><LoadingBlock /></HqShell>;
-  if (forecast.isError) return <HqShell title="Demand Forecast" subtitle="24h predictions"><ErrorBlock message="Demand forecast unavailable." /></HqShell>;
-  const points = forecast.data!.data.points.slice(0, 20);
+  if (forecast.isError || !forecast.data) return <HqShell title="Demand Forecast" subtitle="24h predictions"><ErrorBlock message="Demand forecast unavailable." /></HqShell>;
+  const points = (forecast.data.points ?? []).slice(0, 20);
   return (
     <HqShell title="Demand Forecast" subtitle="24h zone-hour demand predictions.">
-      <KpiCard label="Total predicted" value={Math.round(forecast.data!.data.totalPredicted)} />
+      <KpiCard label="Total predicted" value={Math.round(forecast.data.totalPredicted ?? 0)} />
       <HqCard>
         {points.map((p, i) => (
           <StatRow key={`${p.zone_id}-${p.hour}-${i}`} label={`${p.zone_id} · ${p.hour}`} value={p.predicted.toFixed(1)} />
@@ -352,6 +369,15 @@ export function AiIntelligenceScreen() {
   const zones = useQuery({ queryKey: ["partner", "zones"], queryFn: () => partnerApi.geoIntel.zoneScoring() });
   const dashboard = useDashboardQuery();
   if (surge.isLoading || zones.isLoading) return <HqShell title="Growth Advisor" subtitle="Surge and zones"><LoadingBlock /></HqShell>;
+  if (surge.isError || zones.isError || !zones.data) {
+    return (
+      <HqShell title="Growth Advisor" subtitle="Surge and zones">
+        <ErrorBlock message="Could not load growth intelligence." />
+      </HqShell>
+    );
+  }
+  const surgeZones = Array.isArray(surge.data) ? surge.data : [];
+  const opportunity = zones.data.bestOpportunity ?? zones.data.ranked ?? [];
   return (
     <HqShell title="Growth Advisor" subtitle="Surge radar, zone ranking, and live earnings.">
       {dashboard.data ? (
@@ -362,14 +388,18 @@ export function AiIntelligenceScreen() {
       ) : null}
       <HqCard>
         <HqCardTitle>Top surge zones</HqCardTitle>
-        {(surge.data?.data ?? []).slice(0, 8).map((z) => (
+        {surgeZones.slice(0, 8).map((z) => (
           <StatRow key={z.zoneId} label={z.name} value={`${z.predictedSurge.toFixed(2)}x`} />
         ))}
       </HqCard>
       <HqCard>
-        <HqCardTitle>Best earning zones</HqCardTitle>
-        {(zones.data?.data.bestEarning ?? []).slice(0, 8).map((z) => (
-          <StatRow key={z.zoneId} label={z.name} value={z.compositeScore.toFixed(1)} />
+        <HqCardTitle>Best opportunity zones</HqCardTitle>
+        {opportunity.slice(0, 8).map((z) => (
+          <StatRow
+            key={z.zoneId}
+            label={z.name}
+            value={`D ${z.demand24h} / S ${z.supply} · gap ${z.gap ?? z.demand24h - z.supply}`}
+          />
         ))}
       </HqCard>
     </HqShell>
@@ -408,7 +438,7 @@ export function TerritoryHeatmapScreen() {
   return (
     <HqShell title="Heatmap" subtitle="Interactive surge zones and zone leaderboard.">
       <HqCard>
-        {(surge.data?.data ?? []).map((z) => (
+        {(Array.isArray(surge.data) ? surge.data : []).map((z) => (
           <StatRow
             key={z.zoneId}
             label={`${z.name}${z.city ? ` · ${z.city}` : ""}`}
@@ -426,7 +456,7 @@ export function TerritoryCoverageScreen() {
   return (
     <HqShell title="Coverage Areas" subtitle="Provider density per zone.">
       <HqCard>
-        {(density.data?.data ?? []).map((z) => (
+        {(Array.isArray(density.data) ? density.data : []).map((z) => (
           <StatRow key={z.zoneId} label={z.name} value={`${z.providers} providers · ${z.densityPerKm2.toFixed(2)}/km²`} />
         ))}
       </HqCard>
@@ -437,21 +467,32 @@ export function TerritoryCoverageScreen() {
 export function TerritoryAnalyticsScreen() {
   const zones = useQuery({ queryKey: ["partner", "zones"], queryFn: () => partnerApi.geoIntel.zoneScoring() });
   if (zones.isLoading) return <HqShell title="Territory Analytics" subtitle="Zone scoring"><LoadingBlock /></HqShell>;
-  const z = zones.data!.data;
+  if (zones.isError || !zones.data) {
+    return (
+      <HqShell title="Territory Analytics" subtitle="Zone scoring">
+        <ErrorBlock message="Could not load territory analytics." />
+      </HqShell>
+    );
+  }
+  const z = zones.data;
   return (
     <HqShell title="Territory Analytics" subtitle="Surge zones, demand index, and top territories.">
       <HqCard>
         <HqCardTitle>Top territories</HqCardTitle>
-        {z.ranked.slice(0, 10).map((zone) => (
-          <StatRow key={zone.zoneId} label={zone.name} value={`Score ${zone.compositeScore.toFixed(1)}`} />
+        {(z.ranked ?? []).slice(0, 10).map((zone) => (
+          <StatRow
+            key={zone.zoneId}
+            label={zone.name}
+            value={`D ${zone.demand24h} / S ${zone.supply} · ${zone.opportunityScore ?? zone.compositeScore}`}
+          />
         ))}
       </HqCard>
       <HqCard>
         <HqCardTitle>High risk zones</HqCardTitle>
-        {z.highRisk.length === 0 ? (
+        {(z.highRisk ?? []).length === 0 ? (
           <EmptyState message="No high-risk zones flagged." />
         ) : (
-          z.highRisk.map((zone) => <StatRow key={zone.zoneId} label={zone.name} value={zone.riskScore.toFixed(1)} />)
+          (z.highRisk ?? []).map((zone) => <StatRow key={zone.zoneId} label={zone.name} value={zone.riskScore.toFixed(1)} />)
         )}
       </HqCard>
     </HqShell>
