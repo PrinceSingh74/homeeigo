@@ -12,11 +12,15 @@ import { useRenderProbe, useMountProbe } from "@/lib/render-probe";
 const VALID_SECTIONS: HqSectionId[] = [
   "operations",
   "marketplace",
+  "acquisition",
   "growth",
+  "network",
   "finance",
   "risk",
   "ai",
+  "automation",
   "monitoring",
+  "audit",
   "platform",
 ];
 

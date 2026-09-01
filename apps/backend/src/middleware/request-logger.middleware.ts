@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 import { logger } from "../lib/logger";
 import { resolveRequestId } from "./request-context.middleware";
 import { resolveTraceContext } from "../lib/tracing";
+import { getEventContext } from "../events/core/event-context";
 
 /**
  * Structured per-request access log (Part 8C, additive).
@@ -41,6 +42,7 @@ export const requestLoggerPlugin = new Elysia({ name: "request-logger" })
     const status = typeof set.status === "number" ? set.status : 200;
 
     const trace = resolveTraceContext(request);
+    const ctx = getEventContext();
     const meta = {
       requestId: resolveRequestId(request),
       traceId: trace.traceId,
@@ -49,6 +51,9 @@ export const requestLoggerPlugin = new Elysia({ name: "request-logger" })
       path,
       status,
       ...(durationMs !== undefined ? { durationMs } : {}),
+      ...(ctx.actorId ? { actorId: ctx.actorId } : {}),
+      ...(ctx.partnerId ? { partnerId: ctx.partnerId } : {}),
+      ...(ctx.deviceId ? { deviceId: ctx.deviceId } : {}),
     };
 
     if (status >= 500) logger.error("request.completed", meta);

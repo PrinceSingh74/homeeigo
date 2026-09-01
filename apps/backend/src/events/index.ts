@@ -2,7 +2,7 @@ export { bootstrapEventConsumers } from "./consumers";
 export { emitInTransaction, emitStandalone } from "./core/event-publisher";
 export { emitPaymentSuccessInTransaction, emitPaymentFailedInTransaction } from "./core/payment-outbox";
 export { eventPlatformConfig, validateEventPlatformConfig } from "./core/config";
-export { runWithEventContext, getEventContext, bindEventContextFromRequest, setCausationId } from "./core/event-context";
+export { runWithEventContext, getEventContext, bindEventContextFromRequest, bindActorContext, setCausationId } from "./core/event-context";
 export { startOutboxProcessor, stopOutboxProcessor, processOutboxBatch } from "./core/outbox-processor";
 export {
   startScheduledJobProcessor,

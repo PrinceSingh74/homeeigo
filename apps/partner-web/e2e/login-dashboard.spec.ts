@@ -10,7 +10,7 @@ test.describe("Partner app", () => {
     await page.goto("/login");
     await page.evaluate(() => localStorage.clear());
     await page.reload();
-    await expect(page.getByText(/HOMIGO/i).first()).toBeVisible();
+    await expect(page.locator("#partner-email")).toBeVisible();
 
     await page.locator("#partner-email").fill(SEED_PARTNER.email);
     await page.locator("#partner-password").fill(SEED_PARTNER.password);

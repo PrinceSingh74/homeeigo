@@ -1,5 +1,8 @@
 import { apiRequest, apiRequestBlob, apiRequestText } from "@/lib/api-client";
 import type {
+  ExecutiveBrief,
+  ExecutiveBriefPeriod,
+  ReportScheduleStatus,
   AdminBooking,
   AdminCustomer,
   AdminListBookingsResponse,
@@ -22,6 +25,78 @@ type ListQuery = {
   endDate?: string;
   kyc?: string;
   sort?: string;
+  payment?: string;
+  category?: string;
+  interval?: string;
+  planId?: string;
+};
+
+export type AutomationRegisteredWorkflow = {
+  workflowId: string;
+  version: number;
+  name: string;
+  trigger: string;
+  executionMode: string;
+  certificationStatus: string;
+  riskClass: string | null;
+  stepCount: number;
+  /** Steps the engine refuses rather than runs — ACTION and ESCALATION are not implemented. */
+  unexecutableSteps: Array<{ stepId: string; type: string }>;
+  metadata: Record<string, unknown>;
+};
+
+export type AutomationOverview = {
+  workflows: {
+    registered: AutomationRegisteredWorkflow[];
+    persisted: Array<Record<string, unknown>>;
+  };
+  triggers: Array<{ eventType: string; workflowId: string; subjectType: string }>;
+  triggeredEventTypes: string[];
+  conditions: string[];
+  canonicalEvents: Array<{
+    canonical: string;
+    runtimeType: string;
+    domain: string;
+    producer?: string;
+    producerStatus?: "ACTIVE" | "POLICY_PENDING";
+    notes?: string;
+  }>;
+  quarantined: Array<Record<string, unknown>>;
+  metrics: Record<string, unknown>;
+};
+
+export type AutomationInstance = {
+  id: string;
+  workflowId: string;
+  workflowVersion: number;
+  status: string;
+  executionMode: string;
+  subjectType: string;
+  subjectId: string;
+  stepIndex: number;
+  createdAt: string;
+};
+
+export type AutomationDeadLetter = {
+  id: string;
+  eventId: string;
+  eventType: string;
+  consumerName: string;
+  errorMessage: string | null;
+  attempts: number;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolution: string | null;
+};
+
+export type AutomationOutboxRow = {
+  id: string;
+  eventId: string;
+  eventType: string;
+  status: string;
+  attempts: number;
+  createdAt: string;
+  lastError: string | null;
 };
 
 // --- Geo-Intelligence envelope + data shapes (mirrors GeoIntelligenceService) ---
@@ -51,7 +126,76 @@ export type PendingPartnerDocument = {
     user: { firstName: string | null; lastName: string | null; email: string | null };
   };
 };
-export type ZoneScore = { zoneId: string; name: string; city: string | null; supply: number; demand24h: number; revenue24h: number; earningScore: number; demandScore: number; serviceHealth: number; riskScore: number; compositeScore: number };
+export type AcademyModule = {
+  id: string;
+  slug: string;
+  title: string;
+  contentType: string;
+  contentUrl: string | null;
+  body: string | null;
+  sortOrder: number;
+  isPublished: boolean;
+  categoryIds: string[];
+  createdAt: string;
+  updatedAt: string;
+  stats: { started: number; completed: number; avgScore: number | null };
+  recentCompletions: Array<{
+    providerId: string;
+    name: string;
+    city: string | null;
+    completedAt: string;
+    score: number | null;
+  }>;
+};
+export type AcademyCatalog = {
+  modules: AcademyModule[];
+  summary: {
+    total: number;
+    published: number;
+    drafts: number;
+    completions: number;
+    learners: number;
+    avgScore: number | null;
+    certifiedPartners: number;
+    catalogCategories: string[];
+  };
+};
+export type AcademyModuleInput = {
+  slug: string;
+  title: string;
+  contentType: string;
+  contentUrl?: string;
+  contentBody?: string;
+  sortOrder?: number;
+  isPublished?: boolean;
+  categoryIds?: string[];
+};
+export type AcademyModulePatch = {
+  title?: string;
+  contentType?: string;
+  contentUrl?: string | null;
+  contentBody?: string | null;
+  sortOrder?: number;
+  isPublished?: boolean;
+  categoryIds?: string[];
+};
+export type ZoneScore = {
+  zoneId: string;
+  name: string;
+  city: string | null;
+  supply: number;
+  demand24h: number;
+  revenue24h: number;
+  earningScore: number;
+  demandScore: number;
+  serviceHealth: number;
+  riskScore: number;
+  compositeScore: number;
+  opportunityScore?: number;
+  gap?: number;
+  interpretation?: string;
+  recommendation?: string | null;
+};
 export type ZoneScoring = { ranked: ZoneScore[]; bestEarning: ZoneScore[]; worstService: ZoneScore[]; highRisk: ZoneScore[] };
 export type FraudEvent = { provider_hash: string; booking_id: string | null; implied_kmh: number; jump_meters: number; lat: number; lng: number; ts: string };
 export type FraudData = { suspiciousCount: number; riskScore: number; events: FraudEvent[] };
@@ -95,7 +239,7 @@ export type ProviderDetail = {
   };
   status: {
     isOnline: boolean; onlineSince: string | null; lastSeenAt: string | null;
-    currentStatus: string | null; isActive: boolean; isBanned: boolean; bannedReason: string | null;
+    currentStatus: string | null; lifecycleState?: string; careerLevel?: string; isActive: boolean; isBanned: boolean; bannedReason: string | null;
     workingHours: { start: number; end: number; days: string[] } | null;
   };
   verification: {
@@ -241,6 +385,17 @@ export const adminApi = {
       auth: true,
     }).then((r) => r.data!),
 
+  commandCenterOverview: () =>
+    apiRequest<ApiResponse<CommandCenterOverview>>("/api/admin/command-center/overview", {
+      auth: true,
+    }).then((r) => r.data!),
+
+  auditLogs: (query: AuditLogQuery = {}) =>
+    apiRequest<ApiResponse<AuditLogResult>>("/api/admin/audit", {
+      auth: true,
+      query: { ...query },
+    }).then((r) => r.data!),
+
   // --- Reviews moderation ---
   reviews: {
     list: (query: Record<string, string | number> = {}) =>
@@ -347,6 +502,48 @@ export const adminApi = {
       auth: true,
     }).then((r) => r.data!),
 
+  getProviderScore: (id: string) =>
+    apiRequest<ApiResponse<{
+      overallScore: number | null;
+      band: string;
+      components: Record<string, { value: number | null; weight: number }>;
+      calculatedAt: string;
+      trends: Record<string, { delta: number | null; insufficient: boolean }>;
+    }>>(`/api/admin/providers/${id}/score`, { auth: true }).then((r) => r.data!),
+
+  getProviderCareer: (id: string) =>
+    apiRequest<ApiResponse<{
+      currentLevel: string;
+      nextLevel: string | null;
+      progressPct: number;
+      benefitsActive: boolean;
+      careerPriorityBoost: number;
+      badges: Array<{ code: string; label: string }>;
+    }>>(`/api/admin/providers/${id}/career`, { auth: true }).then((r) => r.data!),
+
+  getProviderLifecycle: (id: string) =>
+    apiRequest<ApiResponse<{
+      lifecycleState: string;
+      allowedTransitions: string[];
+      dispatchEligible: boolean;
+      history: Array<{
+        id: string;
+        previousState: string | null;
+        newState: string;
+        actorType: string;
+        reasonCode: string;
+        reasonText: string | null;
+        createdAt: string;
+      }>;
+    }>>(`/api/admin/providers/${id}/lifecycle`, { auth: true }).then((r) => r.data!),
+
+  transitionProviderLifecycle: (id: string, action: "approve" | "pause" | "review" | "suspend" | "reactivate", reason?: string) =>
+    apiRequest<ApiResponse<unknown>>(`/api/admin/providers/${id}/lifecycle`, {
+      auth: true,
+      method: "POST",
+      body: { action, reason },
+    }),
+
   getProviderIntelligence: (id: string) =>
     apiRequest<
       ApiResponse<{
@@ -367,6 +564,21 @@ export const adminApi = {
     apiRequest<ApiResponse<Record<string, unknown>>>(`/api/admin/bookings/${id}`, {
       auth: true,
     }).then((r) => r.data!),
+
+  /** Job evidence — ADMIN role is allowed on listForBooking. */
+  getBookingEvidence: (id: string) =>
+    apiRequest<
+      ApiResponse<{
+        evidence: Array<{
+          id: string;
+          stage: string;
+          capturedAt: string;
+          isCurrent: boolean;
+          mediaUrl?: string | null;
+          mediaAccessUrl?: string | null;
+        }>;
+      }>
+    >(`/api/bookings/${id}/evidence`, { auth: true }).then((r) => r.data!),
 
   adminCancelBooking: (id: string, reason: string) =>
     apiRequest<ApiResponse<Record<string, unknown>>>(`/api/admin/bookings/${id}/cancel`, {
@@ -480,15 +692,22 @@ export const adminApi = {
     id: string,
     action: VerifyAction,
     notes?: string,
+    targetStep?: string,
   ) =>
     apiRequest<
       ApiResponse<{
-        provider: { id: string; isApproved: boolean; approvalNotes: string | null };
+        provider: {
+          id: string;
+          isApproved: boolean;
+          approvalNotes: string | null;
+          registrationStatus?: string;
+          changesRequestedStep?: string | null;
+        };
       }>
     >(`/api/admin/providers/${id}/verify`, {
       method: "PUT",
       auth: true,
-      body: { action, notes },
+      body: { action, notes, ...(targetStep ? { targetStep } : {}) },
     }).then((r) => r.data!),
 
   banUser: (id: string, action: BanAction, reason?: string) =>
@@ -935,6 +1154,28 @@ export const adminApi = {
       ApiResponse<{ report: Record<string, unknown>; health: Record<string, unknown> }>
     >("/api/admin/finance/reports", { auth: true, query: { period, days } }).then((r) => r.data!),
 
+  /**
+   * Phase-9 executive intelligence (Capability 12).
+   *
+   * ── One request, deliberately ────────────────────────────────────────────────
+   *
+   * The brief is a single call because the backend builds the executive context once and hands it to
+   * every capability that needs it. Nine per-capability calls would rebuild that context nine times
+   * per page load. If a future screen needs only one section, it should slice this response rather
+   * than open a second door.
+   */
+  executiveBrief: (period: ExecutiveBriefPeriod = "daily") =>
+    apiRequest<ApiResponse<ExecutiveBrief>>("/api/admin/intelligence/executive-brief", {
+      auth: true,
+      query: { period },
+    }).then((r) => r.data!),
+
+  /** Scheduled-report status. Every field may legitimately be null — the schedule is UNSET. */
+  reportScheduleStatus: () =>
+    apiRequest<ApiResponse<ReportScheduleStatus>>("/api/admin/intelligence/report-schedule", {
+      auth: true,
+    }).then((r) => r.data!),
+
   financeIntegrity: () =>
     apiRequest<
       ApiResponse<{
@@ -1037,7 +1278,13 @@ export const adminApi = {
   services: {
     list: (query: ListQuery = {}) =>
       apiRequest<
-        ApiResponse<{ services: AdminServiceRow[]; total: number; page: number; limit: number }>
+        ApiResponse<{
+          services: AdminServiceRow[];
+          total: number;
+          page: number;
+          limit: number;
+          summary?: ServiceCatalogSummary;
+        }>
       >("/api/admin/services", { auth: true, query: { ...query } }).then((r) => r.data!),
 
     create: (body: ServiceInput) =>
@@ -1069,10 +1316,11 @@ export const adminApi = {
   },
 
   subscriptions: {
-    listPlans: () =>
-      apiRequest<ApiResponse<{ plans: AdminPlanRow[] }>>("/api/admin/subscriptions/plans", {
-        auth: true,
-      }).then((r) => r.data!.plans),
+    listPlans: (query: ListQuery = {}) =>
+      apiRequest<ApiResponse<{ plans: AdminPlanRow[]; summary: AdminPlanSummary }>>(
+        "/api/admin/subscriptions/plans",
+        { auth: true, query: { ...query } },
+      ).then((r) => r.data!),
 
     createPlan: (body: AdminPlanInput) =>
       apiRequest<ApiResponse<{ plan: AdminPlanRow }>>("/api/admin/subscriptions/plans", {
@@ -1106,12 +1354,23 @@ export const adminApi = {
       }).then((r) => r.data!),
 
     cashbackDashboard: () =>
-      apiRequest<ApiResponse<Record<string, unknown>>>("/api/admin/membership/cashback/dashboard", {
+      apiRequest<ApiResponse<AdminCashbackDashboard>>("/api/admin/membership/cashback/dashboard", {
         auth: true,
       }).then((r) => r.data!),
 
+    cashbackLiability: () =>
+      apiRequest<ApiResponse<AdminCashbackLiability>>("/api/admin/membership/cashback/liability", {
+        auth: true,
+      }).then((r) => r.data!),
+
+    cashbackReports: (query: ListQuery = {}) =>
+      apiRequest<ApiResponse<AdminCashbackReports>>("/api/admin/membership/cashback/reports", {
+        auth: true,
+        query: { ...query },
+      }).then((r) => r.data!),
+
     queueAnalytics: () =>
-      apiRequest<ApiResponse<Record<string, unknown>>>("/api/admin/membership/queue/analytics", {
+      apiRequest<ApiResponse<AdminQueueDesk>>("/api/admin/membership/queue/analytics", {
         auth: true,
       }).then((r) => r.data!),
 
@@ -1119,6 +1378,13 @@ export const adminApi = {
       apiRequest<ApiResponse<Record<string, unknown>>>("/api/admin/membership/insights", {
         auth: true,
       }).then((r) => r.data!),
+
+    matchingAnalytics: () =>
+      apiRequest<ApiResponse<{
+        premiumMatchedBookings: number;
+        totalBookings: number;
+        premiumMatchRatePct: number;
+      }>>("/api/admin/membership/matching/analytics", { auth: true }).then((r) => r.data!),
   },
 
   membershipCoupons: {
@@ -1140,8 +1406,16 @@ export const adminApi = {
         body,
       }).then((r) => r.data!.coupon),
     analytics: () =>
-      apiRequest<ApiResponse<Record<string, unknown>>>("/api/admin/membership/coupons/analytics", {
+      apiRequest<ApiResponse<AdminMembershipCouponAnalytics>>("/api/admin/membership/coupons/analytics", {
         auth: true,
+      }).then((r) => r.data!),
+    exportCsv: () =>
+      apiRequestBlob("/api/admin/membership/coupons/export", { auth: true }),
+    bulkGenerate: (body: AdminMembershipCouponBulkInput) =>
+      apiRequest<ApiResponse<{ codes: string[]; count: number }>>("/api/admin/membership/coupons/bulk", {
+        method: "POST",
+        auth: true,
+        body,
       }).then((r) => r.data!),
   },
 
@@ -1216,6 +1490,21 @@ export const adminApi = {
       apiRequest<ApiResponse<AdminReferralAnalytics>>("/api/admin/referrals/analytics", {
         auth: true,
       }).then((r) => r.data!),
+    partnerOverview: () =>
+      apiRequest<ApiResponse<AdminPartnerReferralOverview>>("/api/admin/partner-referrals/overview", {
+        auth: true,
+      }).then((r) => r.data!),
+    partnerQueue: (query: Record<string, string | number | undefined> = {}) =>
+      apiRequest<ApiResponse<AdminPartnerReferralList>>("/api/admin/partner-referrals/queue", {
+        auth: true,
+        query,
+      }).then((r) => r.data!),
+    partnerAction: (id: string, action: string, reason?: string) =>
+      apiRequest<ApiResponse<unknown>>(`/api/admin/partner-referrals/${id}/action`, {
+        method: "POST",
+        auth: true,
+        body: { action, reason },
+      }),
   },
 
   fraud: {
@@ -1314,6 +1603,24 @@ export const adminApi = {
       }),
   },
 
+  /**
+   * Vision Intelligence admin surface.
+   *
+   * Routed through `apiRequest` with `auth: true` like every other admin call — the page
+   * previously used a bare `fetch()`, which sent no Authorization header and therefore always
+   * got 401 (verified against the running backend), and read fields straight off the response
+   * instead of unwrapping `{ success, data }`, so every stat rendered undefined.
+   */
+  vision: {
+    status: () =>
+      apiRequest<ApiResponse<VisionStatus>>("/api/vision/status", { auth: true }).then((r) => r.data!),
+    purgeExpired: () =>
+      apiRequest<ApiResponse<{ purged: number; failed: number }>>("/api/vision/admin/purge", {
+        method: "POST",
+        auth: true,
+      }).then((r) => r.data!),
+  },
+
   observability: {
     health: () =>
       apiRequest<ApiResponse<ObservabilityHealth>>("/api/admin/observability/health", {
@@ -1362,6 +1669,33 @@ export const adminApi = {
       }).then((r) => r.data!),
   },
 
+  automation: {
+    overview: () =>
+      apiRequest<ApiResponse<AutomationOverview>>("/api/admin/automation/overview", {
+        auth: true,
+      }).then((r) => r.data!),
+    instances: (query: { workflowId?: string; status?: string; limit?: number } = {}) =>
+      apiRequest<ApiResponse<AutomationInstance[]>>("/api/admin/automation/instances", {
+        auth: true,
+        query,
+      }).then((r) => r.data!),
+    deadLetters: (limit = 50) =>
+      apiRequest<ApiResponse<AutomationDeadLetter[]>>("/api/admin/automation/dead-letters", {
+        auth: true,
+        query: { limit },
+      }).then((r) => r.data!),
+    outbox: (query: { status?: string; limit?: number } = {}) =>
+      apiRequest<ApiResponse<AutomationOutboxRow[]>>("/api/admin/automation/outbox", {
+        auth: true,
+        query,
+      }).then((r) => r.data!),
+    replayDeadLetter: (id: string) =>
+      apiRequest<ApiResponse<{ replayed: boolean; reason: string }>>(
+        `/api/admin/automation/dead-letters/${id}/replay`,
+        { method: "POST", auth: true },
+      ).then((r) => r.data!),
+  },
+
   compliance: {
     listRequests: (opts: { limit?: number; status?: string } = {}) =>
       apiRequest<ApiResponse<{ requests: ComplianceRequest[] }>>("/api/compliance/admin/requests", {
@@ -1385,6 +1719,66 @@ export const adminApi = {
       apiRequest<ApiResponse<Record<string, unknown>>>("/api/compliance/admin/retention/report", {
         auth: true,
       }).then((r) => r.data!),
+  },
+
+  trustSafety: {
+    overview: () =>
+      apiRequest<ApiResponse<{ expiring: number; expired: number; restricted: number; openIncidents: number; sosOpen: number; riskReview: number }>>(
+        "/api/admin/trust-safety/overview",
+        { auth: true },
+      ).then((r) => r.data!),
+    compliance: (query: { filter?: string; page?: number } = {}) =>
+      apiRequest<ApiResponse<{ items: Array<Record<string, unknown>>; total: number; page: number }>>(
+        "/api/admin/trust-safety/compliance",
+        { auth: true, query },
+      ).then((r) => r.data!),
+    unrestrict: (providerId: string, reason?: string) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>(`/api/admin/trust-safety/compliance/${providerId}/unrestrict`, {
+        method: "POST",
+        auth: true,
+        body: { reason },
+      }),
+    risk: (query: { level?: string; reviewStatus?: string; page?: number } = {}) =>
+      apiRequest<ApiResponse<{ items: Array<Record<string, unknown>>; total: number }>>("/api/admin/trust-safety/risk", {
+        auth: true,
+        query,
+      }).then((r) => r.data!),
+    riskDetail: (providerId: string) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>(`/api/admin/trust-safety/risk/${providerId}`, { auth: true }).then(
+        (r) => r.data!,
+      ),
+    review: (providerId: string, action: string, notes?: string) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>(`/api/admin/trust-safety/risk/${providerId}/review`, {
+        method: "POST",
+        auth: true,
+        body: { action, notes },
+      }),
+    incidents: (query: { status?: string; type?: string; severity?: string; page?: number } = {}) =>
+      apiRequest<ApiResponse<{ items: Array<Record<string, unknown>>; total: number }>>(
+        "/api/admin/trust-safety/incidents",
+        { auth: true, query },
+      ).then((r) => r.data!),
+    incident: (id: string) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>(`/api/admin/trust-safety/incidents/${id}`, { auth: true }).then(
+        (r) => r.data!,
+      ),
+    assignIncident: (id: string, assignedTo: string) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>(`/api/admin/trust-safety/incidents/${id}/assign`, {
+        method: "POST",
+        auth: true,
+        body: { assignedTo },
+      }),
+    acknowledgeIncident: (id: string) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>(`/api/admin/trust-safety/incidents/${id}/acknowledge`, {
+        method: "POST",
+        auth: true,
+      }),
+    resolveIncident: (id: string, notes: string) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>(`/api/admin/trust-safety/incidents/${id}/resolve`, {
+        method: "POST",
+        auth: true,
+        body: { notes },
+      }),
   },
 
   // Phase 17.4 / 16.4 / 16.3 — operations map, heatmap, geofence management (existing APIs).
@@ -1426,7 +1820,19 @@ export const adminApi = {
   workforceAnalytics: () =>
     apiRequest<ApiResponse<WorkforceAnalytics>>("/api/admin/workforce/analytics", { auth: true }).then((r) => r.data!),
   academyModules: () =>
-    apiRequest<ApiResponse<{ modules: unknown[] }>>("/api/admin/academy/modules", { auth: true }).then((r) => r.data!),
+    apiRequest<ApiResponse<AcademyCatalog>>("/api/admin/academy/modules", { auth: true }).then((r) => r.data!),
+  createAcademyModule: (input: AcademyModuleInput) =>
+    apiRequest<ApiResponse<{ module: AcademyModule }>>("/api/admin/academy/modules", {
+      method: "POST",
+      auth: true,
+      body: input,
+    }).then((r) => r.data!),
+  patchAcademyModule: (id: string, patch: AcademyModulePatch) =>
+    apiRequest<ApiResponse<{ module: AcademyModule }>>(`/api/admin/academy/modules/${id}`, {
+      method: "PATCH",
+      auth: true,
+      body: patch,
+    }).then((r) => r.data!),
   incentiveRules: () =>
     apiRequest<ApiResponse<{ rules: unknown[] }>>("/api/admin/incentives/rules", { auth: true }).then((r) => r.data!),
 
@@ -1448,6 +1854,145 @@ export const adminApi = {
       `/api/admin/providers/${providerId}/documents/${docId}/reject`,
       { method: "PUT", auth: true, body: { reason } },
     ),
+
+  partnerAcquisition: {
+    dashboard: (range: "7d" | "30d" | "90d" = "30d") =>
+      apiRequest<ApiResponse<PartnerAcquisitionDashboard>>("/api/admin/partner-acquisition/dashboard", {
+        auth: true,
+        query: { range },
+      }).then((r) => r.data!),
+    sources: (range: "7d" | "30d" | "90d" = "30d") =>
+      apiRequest<ApiResponse<PartnerLeadSourceMetric[]>>("/api/admin/partner-acquisition/sources", {
+        auth: true,
+        query: { range },
+      }).then((r) => r.data!),
+    listLeads: (query: PartnerLeadListQuery = {}) =>
+      apiRequest<ApiResponse<PartnerLeadListResult>>("/api/admin/partner-acquisition/leads", {
+        auth: true,
+        query: query as Record<string, string | number | undefined>,
+      }).then((r) => r.data!),
+    getLead: (id: string) =>
+      apiRequest<ApiResponse<PartnerLeadDetail>>(`/api/admin/partner-acquisition/leads/${id}`, {
+        auth: true,
+      }).then((r) => r.data!),
+    getLeadTransitions: (id: string) =>
+      apiRequest<ApiResponse<{ current: PartnerLeadStatus; allowed: PartnerLeadStatus[] }>>(
+        `/api/admin/partner-acquisition/leads/${id}/transitions`,
+        { auth: true },
+      ).then((r) => r.data!),
+    checkDuplicates: (body: { phone?: string; email?: string }) =>
+      apiRequest<ApiResponse<{ matches: PartnerDuplicateMatch[] }>>(
+        "/api/admin/partner-acquisition/leads/check-duplicates",
+        { method: "POST", auth: true, body },
+      ).then((r) => r.data!),
+    createLead: (body: PartnerLeadCreateInput) =>
+      apiRequest<ApiResponse<PartnerLead>>(`/api/admin/partner-acquisition/leads`, {
+        method: "POST",
+        auth: true,
+        body,
+      }).then((r) => r.data!),
+    updateStatus: (id: string, body: { status: string; reason?: string }) =>
+      apiRequest<ApiResponse<PartnerLead>>(`/api/admin/partner-acquisition/leads/${id}/status`, {
+        method: "PATCH",
+        auth: true,
+        body,
+      }).then((r) => r.data!),
+    assignLead: (id: string, assignedToAdminId: string) =>
+      apiRequest<ApiResponse<PartnerLead>>(`/api/admin/partner-acquisition/leads/${id}/assign`, {
+        method: "PATCH",
+        auth: true,
+        body: { assignedToAdminId },
+      }).then((r) => r.data!),
+    setFollowUp: (id: string, body: { nextFollowUpAt: string; followUpReason?: string }) =>
+      apiRequest<ApiResponse<PartnerLead>>(`/api/admin/partner-acquisition/leads/${id}/follow-up`, {
+        method: "PATCH",
+        auth: true,
+        body,
+      }).then((r) => r.data!),
+    logActivity: (id: string, body: { type: string; title: string; description?: string }) =>
+      apiRequest<ApiResponse<unknown>>(`/api/admin/partner-acquisition/leads/${id}/activity`, {
+        method: "POST",
+        auth: true,
+        body,
+      }).then((r) => r.data!),
+    updateNotes: (id: string, notes: string) =>
+      apiRequest<ApiResponse<PartnerLead>>(`/api/admin/partner-acquisition/leads/${id}/notes`, {
+        method: "PATCH",
+        auth: true,
+        body: { notes },
+      }).then((r) => r.data!),
+    startApplication: (id: string) =>
+      apiRequest<
+        ApiResponse<{
+          lead: PartnerLead;
+          applicationUrl: string;
+          smsBody: string;
+          inviteExpiresInDays: number;
+        }>
+      >(`/api/admin/partner-acquisition/leads/${id}/start-application`, {
+        method: "POST",
+        auth: true,
+      }).then((r) => r.data!),
+    activationChecklist: (providerId: string) =>
+      apiRequest<ApiResponse<PartnerActivationChecklist>>(
+        `/api/admin/partner-acquisition/applications/${providerId}/checklist`,
+        { auth: true },
+      ).then((r) => r.data!),
+    verifyBackgroundCheck: (providerId: string, notes?: string) =>
+      apiRequest<ApiResponse<PartnerActivationChecklist>>(
+        `/api/admin/partner-acquisition/applications/${providerId}/background-check/verify`,
+        { method: "POST", auth: true, body: { notes } },
+      ).then((r) => r.data!),
+    previewMerge: (primaryId: string, duplicateId: string) =>
+      apiRequest<ApiResponse<PartnerLeadMergePreview>>(
+        `/api/admin/partner-acquisition/leads/${primaryId}/merge-preview`,
+        { auth: true, query: { duplicateId } },
+      ).then((r) => r.data!),
+    markDuplicate: (id: string, body: { duplicateOfLeadId: string; reason: string }) =>
+      apiRequest<ApiResponse<PartnerLead>>(`/api/admin/partner-acquisition/leads/${id}/mark-duplicate`, {
+        method: "POST",
+        auth: true,
+        body,
+      }).then((r) => r.data!),
+    mergeLeads: (
+      id: string,
+      body: { duplicateLeadId: string; reason: string; resolutions?: Record<string, "primary" | "duplicate"> },
+    ) =>
+      apiRequest<ApiResponse<{ primaryLeadId: string; mergedLeadId: string; idempotent: boolean; lead: PartnerLead }>>(
+        `/api/admin/partner-acquisition/leads/${id}/merge`,
+        { method: "POST", auth: true, body },
+      ).then((r) => r.data!),
+    applications: (query: Record<string, string | number | undefined> = {}) =>
+      apiRequest<ApiResponse<PartnerQueueResult<PartnerApplicationRow>>>(
+        "/api/admin/partner-acquisition/applications",
+        { auth: true, query },
+      ).then((r) => r.data!),
+    verification: (query: Record<string, string | number | undefined> = {}) =>
+      apiRequest<ApiResponse<PartnerQueueResult<PartnerVerificationRow>>>(
+        "/api/admin/partner-acquisition/verification",
+        { auth: true, query },
+      ).then((r) => r.data!),
+    approvals: (query: Record<string, string | number | undefined> = {}) =>
+      apiRequest<ApiResponse<PartnerQueueResult<PartnerApprovalRow>>>("/api/admin/partner-acquisition/approvals", {
+        auth: true,
+        query,
+      }).then((r) => r.data!),
+    listSpend: () =>
+      apiRequest<ApiResponse<AcquisitionSpendRow[]>>("/api/admin/partner-acquisition/spend", { auth: true }).then(
+        (r) => r.data!,
+      ),
+    createSpend: (body: AcquisitionSpendInput) =>
+      apiRequest<ApiResponse<AcquisitionSpendRow>>("/api/admin/partner-acquisition/spend", {
+        method: "POST",
+        auth: true,
+        body,
+      }).then((r) => r.data!),
+    deleteSpend: (id: string) =>
+      apiRequest<ApiResponse<{ id: string }>>(`/api/admin/partner-acquisition/spend/${id}`, {
+        method: "DELETE",
+        auth: true,
+      }).then((r) => r.data!),
+  },
 
   heatmap: (params: { gridSize?: number; days?: number } = {}) =>
     apiRequest<ApiResponse<HeatmapData>>("/api/admin/heatmap", { auth: true, query: { ...params } }).then((r) => r.data!),
@@ -1486,9 +2031,10 @@ export const adminApi = {
         auth: true,
       }).then((r) => r.data!),
     me: () =>
-      apiRequest<ApiResponse<{ role?: string; permissions?: string[] }>>("/api/admin/rbac/me", {
-        auth: true,
-      }).then((r) => r.data!),
+      apiRequest<ApiResponse<{ role?: string; permissions?: string[]; userId?: string; adminId?: string }>>(
+        "/api/admin/rbac/me",
+        { auth: true },
+      ).then((r) => r.data!),
   },
 
   // --- Membership time-series (retention / churn per period) ---
@@ -1957,6 +2503,59 @@ export type AdminReferralAnalytics = {
   fraudFlags: { userId: string; name: string; email: string; pendingReferrals: number; reason: string }[];
 };
 
+export type AdminPartnerReferralOverview = {
+  funnel: Record<string, number>;
+  reached: {
+    invited: number;
+    registered: number;
+    verified: number;
+    training: number;
+    active: number;
+    firstJob: number;
+    qualified: number;
+    rewarded: number;
+  };
+  sources: Array<{ source: string; referrals: number }>;
+  topReferrers: Array<{ providerId: string; name: string; referrals: number }>;
+  qualification: Record<string, number>;
+  conversion: {
+    invitedToRegisteredPct: number | null;
+    registeredToActivePct: number | null;
+    qualifiedPct: number | null;
+  };
+  economics: {
+    released: number;
+    releasedCount: number;
+    held: number;
+    pending: number;
+    blocked: number;
+    qualifiedAwaitingReward: number;
+    rewardAmount: number;
+    liabilityEstimate: number;
+  };
+  riskOpen: number;
+};
+
+export type AdminPartnerReferralList = {
+  total: number;
+  page: number;
+  limit: number;
+  items: Array<{
+    id: string;
+    status: string;
+    qualificationStatus: string;
+    reviewStatus: string;
+    successfulJobs: number;
+    campaign: string | null;
+    source: string;
+    signalCount: number;
+    referrer: { id: string; name: string; city: string | null };
+    referred: { id: string | null; name: string; city: string | null; lifecycle: string | null };
+    reward: { status: string; amount: number } | null;
+    createdAt: string;
+  }>;
+};
+
 export type AdminPlanRow = {
   id: string;
   name: string;
@@ -1967,13 +2566,25 @@ export type AdminPlanRow = {
   description: string | null;
   isActive: boolean;
   sortOrder: number;
-  benefits: { id: string; label: string }[];
+  benefits: { id: string; label: string; type?: string | null; value?: number | null }[];
   _count?: { subscriptions: number };
+  activeSubscribers?: number;
+  totalSubscribers?: number;
+};
+export type AdminPlanSummary = {
+  total: number;
+  active: number;
+  inactive: number;
+  liveMembers: number;
+  expiringSoon: number;
+  churnedThisMonth: number;
+  liveMrr: number;
 };
 export type AdminPlanInput = {
   name: string;
   interval: "MONTHLY" | "QUARTERLY" | "YEARLY";
   price: number;
+  tier?: string;
   description?: string;
   benefits?: string[];
   sortOrder?: number;
@@ -1986,13 +2597,132 @@ export type AdminSubscriberRow = {
   autoRenew: boolean;
   cancelledAt: string | null;
   plan: { name: string; interval: string; price: number };
-  user: { firstName: string | null; lastName: string | null; email: string };
+  user: { id?: string; firstName: string | null; lastName: string | null; email: string };
 };
 export type AdminSubscriptionRevenue = {
   totalRevenue: number;
   monthRevenue: number;
   activeSubscribers: number;
   invoiceCount: number;
+};
+
+export type AdminQueueBooking = {
+  bookingId: string;
+  bookingNumber: string;
+  position: number;
+  queuePriority: string;
+  queuePosition: number | null;
+  priorityScore: number | null;
+  estimatedWaitTimeMs: number | null;
+  queuedAt: string | null;
+  waitTimeMs: number | null;
+  user: string;
+  service: string;
+  scheduledDate: string | null;
+};
+
+export type AdminQueueAnalytics = {
+  pendingHigh: number;
+  pendingNormal: number;
+  avgWaitHighMs: number;
+  avgWaitNormalMs: number;
+  historicalAvgWaitHighMs: number;
+  historicalAvgWaitNormalMs: number;
+  totalAssignedHigh: number;
+  totalAssignedNormal: number;
+  queueByMembership: Record<string, number>;
+  averageWaitTimeMs: number;
+};
+
+export type AdminPriorityAnalytics = {
+  priorityServedCount: number;
+  highPriorityBookings: number;
+  normalPriorityBookings: number;
+  premiumSharePct: number;
+};
+
+export type AdminDispatchSnapshot = {
+  queueHealth: {
+    pendingJobs: number;
+    inFlight: number;
+    acceptedJobs: number;
+    exhaustedJobs: number;
+    totalJobs: number;
+  };
+  dispatchMetrics: {
+    dispatchAttempts: number;
+    avgDispatchAttemptsPerJob: number;
+    acceptanceRatePct: number;
+    averageDispatchTimeMs: number;
+    queueWaitTimeMs: number;
+    autoReassignCount: number;
+  };
+  assignmentFunnel: {
+    created: number;
+    dispatched: number;
+    accepted: number;
+    exhausted: number;
+    conversionPct: number;
+  };
+};
+
+export type AdminQueueDesk = {
+  queue: AdminQueueAnalytics;
+  priority: AdminPriorityAnalytics;
+  assignmentQueue: AdminQueueBooking[];
+  dispatch: AdminDispatchSnapshot;
+};
+
+export type AdminCashbackTopUser = {
+  userId: string;
+  name: string;
+  totalCashback: number;
+};
+
+export type AdminCashbackDashboard = {
+  totalCredited: number;
+  totalTransactions: number;
+  thisMonthCredited: number;
+  thisMonthCount: number;
+  pendingLiability: number;
+  pendingCount: number;
+  topUsers: AdminCashbackTopUser[];
+};
+
+export type AdminCashbackPctBucket = {
+  cashbackPct: number;
+  total: number;
+  count: number;
+};
+
+export type AdminCashbackLiability = {
+  netLiability: number;
+  creditedTotal: number;
+  creditedCount: number;
+  reversedTotal: number;
+  reversedCount: number;
+  byCashbackPct: AdminCashbackPctBucket[];
+};
+
+export type AdminCashbackReportRow = {
+  id: string;
+  userId: string;
+  bookingId: string;
+  user: string;
+  email: string;
+  bookingNumber: string;
+  amount: number;
+  cashbackPct: number;
+  settledAmount: number;
+  status: string;
+  createdAt: string;
+};
+
+export type AdminCashbackReports = {
+  reports: AdminCashbackReportRow[];
+  total: number;
+  page: number;
+  totalAmount: number;
 };
 
 export type AdminCampaignRow = {
@@ -2016,9 +2746,15 @@ export type AdminMembershipCouponRow = {
   name: string;
   status: string;
   discountPct: number | null;
+  discountAmount: number | null;
   redemptionCount: number;
+  maxRedemptions: number | null;
+  perUserLimit: number;
   planRestricted: string[];
+  startsAt: string | null;
   expiresAt: string | null;
+  createdAt: string;
+  campaign?: { name: string } | null;
 };
 
 export type AdminMembershipCouponInput = {
@@ -2028,7 +2764,35 @@ export type AdminMembershipCouponInput = {
   planRestricted?: string[];
   maxRedemptions?: number;
   perUserLimit?: number;
+  expiresAt?: string;
   status?: "DRAFT" | "ACTIVE" | "PAUSED" | "ARCHIVED";
+};
+
+export type AdminMembershipCouponBulkInput = {
+  prefix: string;
+  count: number;
+  name: string;
+  discountPct?: number;
+  planRestricted?: string[];
+  status?: "ACTIVE";
+};
+
+export type AdminMembershipCouponAnalytics = {
+  issued: number;
+  active: number;
+  paused: number;
+  draft: number;
+  archived: number;
+  expiredLive: number;
+  redeemed: number;
+  conversionPct: number;
+  avgDiscountPct: number;
+  byPlan: Record<string, number>;
+  revenueImpact: {
+    discountGiven: number;
+    revenueBefore: number;
+    revenueAfter: number;
+  };
 };
 
 export type AdminCampaignInput = {
@@ -2095,9 +2859,22 @@ export type AdminServiceRow = {
   isActive: boolean;
   isFeatured: boolean;
   isPopular: boolean;
+  premiumOnly?: boolean;
   bookingCount: number;
   availableCities: string[];
   createdAt: string;
+  rating?: number | null;
+  reviewCount?: number;
+};
+
+export type ServiceCatalogSummary = {
+  total: number;
+  active: number;
+  inactive: number;
+  featured: number;
+  premium: number;
+  popular: number;
+  categories: Array<{ category: string; count: number }>;
 };
 
 export type ServiceInput = {
@@ -2113,6 +2890,7 @@ export type ServiceInput = {
   icon?: string;
   isActive?: boolean;
   isFeatured?: boolean;
+  premiumOnly?: boolean;
   availableCities?: string[];
 };
 
@@ -2130,6 +2908,19 @@ export type ObservabilityAlert = {
   resolved: boolean;
   createdAt: string;
   resolvedAt: string | null;
+};
+
+/** Shape returned by GET /api/vision/status (verified against the live backend). */
+export type VisionStatus = {
+  observationMode: "REAL_PROVIDER" | "FALLBACK";
+  totalAnalyses: number;
+  recentAnalyses: number;
+  successCount: number;
+  failureCount: number;
+  geminiCount: number;
+  fallbackCount: number;
+  lastAnalysisAt: string | null;
+  averageLatency: number | null;
 };
 
 export type ObservabilityHealth = {
@@ -2194,6 +2985,62 @@ export type LogSearchResult = {
   hasMore: boolean;
 };
 
+export type CommandTile<T> =
+  | { status: "ok"; data: T }
+  | { status: "unauthorized" }
+  | { status: "unavailable"; reason: string };
+
+export type CommandCenterOverview = {
+  generatedAt: string;
+  partners: CommandTile<{ total: number; active: number; suspended: number }>;
+  applications: CommandTile<{ openLeads: number; pendingProviders: number }>;
+  availability: CommandTile<{ online: number; available: number }>;
+  jobs: CommandTile<{ active: number; today: number }>;
+  earnings: CommandTile<{ todayCount: number; todayNet: number }>;
+  payouts: CommandTile<{ pending: number }>;
+  kyc: CommandTile<{ pendingDocs: number; expiring: number }>;
+  risk: CommandTile<{ review: number }>;
+  safety: CommandTile<{ openIncidents: number; sosOpen: number }>;
+  referrals: CommandTile<{ pendingQualification: number }>;
+  automation: CommandTile<{ live: number; shadow: number; outboxPending: number; dlq: number }>;
+};
+
+export type AuditLogQuery = {
+  action?: string;
+  actor?: string;
+  resource?: string;
+  resourceId?: string;
+  traceId?: string;
+  requestId?: string;
+  correlationId?: string;
+  status?: string;
+  startDate?: string;
+  endDate?: string;
+  cursor?: string;
+  limit?: number;
+};
+
+export type AuditLogRow = {
+  id: string;
+  action: string;
+  resource: string;
+  resourceId: string | null;
+  actor: string | null;
+  actorType: string;
+  changesSummary: string | null;
+  status: string;
+  traceId: string;
+  deviceId: string | null;
+  createdAt: string;
+  errorMessage: string | null;
+};
+
+export type AuditLogResult = {
+  items: AuditLogRow[];
+  nextCursor: string | null;
+  hasMore: boolean;
+};
+
 export type ProductionValidationReport = {
   status: "PASS" | "FAIL";
   score: number;
@@ -2237,4 +3084,294 @@ export type ZoneAnalyticsRow = {
 export type ZoneAnalytics = {
   zones: ZoneAnalyticsRow[];
   totals: { zones: number; supply: number; demand: number; revenue: number };
+};
+
+export type PartnerLeadStatus =
+  | "NEW"
+  | "CONTACTED"
+  | "INTERESTED"
+  | "APPLICATION_STARTED"
+  | "APPLICATION_SUBMITTED"
+  | "KYC_PENDING"
+  | "VERIFICATION"
+  | "TRAINING"
+  | "APPROVED"
+  | "ACTIVATED"
+  | "DORMANT"
+  | "REJECTED"
+  | "DUPLICATE"
+  | "INVALID"
+  | "WITHDRAWN";
+
+export type PartnerLeadSource =
+  | "APNA"
+  | "JOBHAI"
+  | "REFERRAL"
+  | "RWA"
+  | "CONTRACTOR"
+  | "LOCAL_SHOP"
+  | "DIRECT"
+  | "SOCIAL"
+  | "CAMPAIGN"
+  | "PARTNER_REFERRAL";
+
+export type PartnerLead = {
+  id: string;
+  source: PartnerLeadSource;
+  sourceCampaign?: string | null;
+  channel?: string | null;
+  name: string;
+  phone: string;
+  email?: string | null;
+  skillInterest?: string | null;
+  city?: string | null;
+  zone?: string | null;
+  status: PartnerLeadStatus;
+  assignedToAdminId?: string | null;
+  nextFollowUpAt?: string | null;
+  followUpReason?: string | null;
+  preferredContactMethod?: string | null;
+  leadScore: number;
+  lastActivityAt?: string | null;
+  notes?: string | null;
+  createdAt: string;
+};
+
+export type PartnerLeadCreateInput = {
+  name: string;
+  phone: string;
+  email?: string;
+  source: PartnerLeadSource;
+  sourceCampaign?: string;
+  channel?: string;
+  skillInterest?: string;
+  city?: string;
+  zone?: string;
+  notes?: string;
+  assignedToAdminId?: string;
+  forceCreate?: boolean;
+  duplicateJustification?: string;
+};
+
+export type PartnerDuplicateMatch = {
+  type: "lead" | "provider" | "user";
+  id: string;
+  name: string;
+  phoneMasked: string;
+  status: string;
+  skill?: string | null;
+  city?: string | null;
+  source?: string | null;
+  lastActivityAt: string | null;
+};
+
+export type PartnerLeadListQuery = {
+  status?: PartnerLeadStatus;
+  source?: PartnerLeadSource;
+  assignedTo?: string;
+  city?: string;
+  zone?: string;
+  skill?: string;
+  campaign?: string;
+  minScore?: number;
+  maxScore?: number;
+  createdFrom?: string;
+  createdTo?: string;
+  lastActivityFrom?: string;
+  lastActivityTo?: string;
+  followUp?: "today" | "overdue" | "upcoming" | "tomorrow" | "none";
+  stalled?: boolean | string;
+  noNextAction?: boolean | string;
+  search?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type PartnerLeadListResult = {
+  leads: PartnerLead[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+export type PartnerLeadDetail = PartnerLead & {
+  activities: Array<{
+    id: string;
+    type: string;
+    title: string;
+    description?: string | null;
+    actorId?: string | null;
+    createdAt: string;
+  }>;
+  statusHistory: Array<{
+    id: string;
+    fromStatus?: PartnerLeadStatus | null;
+    toStatus: PartnerLeadStatus;
+    reason?: string | null;
+    createdAt: string;
+  }>;
+  provider?: { id: string; registrationStatus: string; city?: string | null; serviceCategories: string[] } | null;
+  mergedIntoLeadId?: string | null;
+  duplicateOfLeadId?: string | null;
+  duplicateCandidates?: PartnerDuplicateMatch[];
+};
+
+export type PartnerLeadMergeField = {
+  key: string;
+  label: string;
+  primaryValue: string | null;
+  duplicateValue: string | null;
+  shared: boolean;
+  conflict: boolean;
+  suggested: "primary" | "duplicate";
+  critical: boolean;
+};
+
+export type PartnerLeadMergePreview = {
+  primary: PartnerLead;
+  duplicate: PartnerLead;
+  fields: PartnerLeadMergeField[];
+  conflicts: PartnerLeadMergeField[];
+  blocking: string[];
+  alreadyMerged: boolean;
+};
+
+export type PartnerQueueResult<T> = { items: T[]; total: number; page: number; limit: number };
+export type PartnerApplicationRow = {
+  providerId: string;
+  leadId: string | null;
+  name: string;
+  city: string | null;
+  skill: string | null;
+  source: string | null;
+  registrationStatus: string;
+  leadStatus: string | null;
+  pipeline: string;
+  submittedAt: string | null;
+};
+export type PartnerVerificationRow = {
+  providerId: string;
+  leadId: string | null;
+  name: string;
+  city: string | null;
+  status: string;
+  kyc: string;
+  documents: string;
+  background: string | null;
+  assessment: string;
+};
+export type PartnerApprovalRow = {
+  providerId: string;
+  leadId: string | null;
+  name: string;
+  city: string | null;
+  skill: string | null;
+  registrationStatus: string;
+  status: string;
+  assessmentPassed: boolean;
+  trainingComplete: boolean;
+  submittedAt: string | null;
+  rejectionReason: string | null;
+};
+export type AcquisitionSpendRow = {
+  id: string;
+  source: PartnerLeadSource;
+  campaign?: string | null;
+  periodStart: string;
+  periodEnd: string;
+  amount: number;
+  currency: string;
+  notes?: string | null;
+};
+export type AcquisitionSpendInput = {
+  source: PartnerLeadSource;
+  campaign?: string;
+  periodStart: string;
+  periodEnd: string;
+  amount: number;
+  notes?: string;
+};
+
+export type PartnerLeadSourceMetric = {
+  source: PartnerLeadSource;
+  leads: number;
+  applications: number;
+  kycStarted: number;
+  verified: number;
+  training: number;
+  activated: number;
+  active: number;
+  activationRate: number;
+  applicationRate?: number;
+  spend?: number | null;
+  costPerActivation?: number | null;
+};
+
+export type PartnerAcquisitionDashboard = {
+  range?: "7d" | "30d" | "90d";
+  historyLimited?: boolean;
+  historyNote?: string | null;
+  kpis: {
+    totalLeads: number;
+    newToday: number;
+    applications: number;
+    verified: number;
+    training: number;
+    activated: number;
+    activePartners: number;
+    conversionRate: number;
+    followUpToday: number;
+    followUpOverdue: number;
+    followUpTomorrow?: number;
+    stalled?: number;
+    noNextAction?: number;
+  };
+  kpiDeltas?: { leads: number | null; applications: number | null; activated: number | null; previousPeriodDays: number };
+  trends: {
+    conversion7Day: number;
+    conversion30Day: number;
+    series?: Array<{ date: string; leads: number; applications: number; activated: number }>;
+  };
+  cost?: {
+    available: boolean;
+    spend: number | null;
+    cpl: number | null;
+    costPerApplication: number | null;
+    costPerActivation: number | null;
+    activationRate: number;
+    note: string | null;
+  };
+  funnel: Array<{ key: string; label: string; count: number }>;
+  sources: PartnerLeadSourceMetric[];
+  recentActivity: Array<{
+    id: string;
+    leadId: string;
+    leadName: string;
+    leadStatus: PartnerLeadStatus;
+    type: string;
+    title: string;
+    description?: string | null;
+    createdAt: string;
+  }>;
+};
+
+export type PartnerActivationChecklist = {
+  checks: Record<string, boolean>;
+  items: Array<{
+    key: string;
+    label: string;
+    description: string;
+    category: string;
+    complete: boolean;
+  }>;
+  ready: boolean;
+  missing: string[];
+  missingLabels: string[];
+  completedCount: number;
+  totalCount: number;
+  progressPercent: number;
+  completedModules: number;
+  requiredModules: number;
+  suggestedChangeStep?: string;
+  suggestedChangeStepLabel?: string;
 };

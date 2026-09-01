@@ -3,6 +3,7 @@
  */
 
 import type { AppLogCategory } from "@prisma/client";
+import { getEventContext } from "../events/core/event-context";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -30,6 +31,16 @@ const REDACT_KEYS = new Set([
   "authorization",
   "secret",
   "razorpaysignature",
+  "aadhaar",
+  "aadhar",
+  "pannumber",
+  "bankaccount",
+  "bankaccountnumber",
+  "accountnumber",
+  "ifsc",
+  "cvv",
+  "cardnumber",
+  "kycsecret",
 ]);
 
 export type LogContext = {
@@ -85,7 +96,21 @@ function pushRing(entry: RingEntry): void {
 function emit(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
   if (LEVELS[level] < MIN_LEVEL) return;
 
-  const safeMeta = meta ? redact(meta) : undefined;
+  const ctx = getEventContext();
+  const enriched: Record<string, unknown> = {
+    ...(ctx.requestId || ctx.correlationId
+      ? { requestId: ctx.requestId ?? ctx.correlationId }
+      : {}),
+    ...(ctx.traceId ? { traceId: ctx.traceId } : {}),
+    ...(ctx.actorId ? { actorId: ctx.actorId } : {}),
+    ...(ctx.partnerId ? { partnerId: ctx.partnerId } : {}),
+    ...(ctx.bookingId ? { bookingId: ctx.bookingId } : {}),
+    ...(ctx.eventId ? { eventId: ctx.eventId } : {}),
+    ...(ctx.deviceId ? { deviceId: ctx.deviceId } : {}),
+    ...(meta ?? {}),
+  };
+
+  const safeMeta = Object.keys(enriched).length ? redact(enriched) : undefined;
   const timestamp = new Date().toISOString();
   const category = (safeMeta?.category as AppLogCategory | undefined) ?? "APPLICATION";
 

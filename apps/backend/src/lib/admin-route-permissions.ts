@@ -25,6 +25,7 @@ const M = {
 const rules: RouteRule[] = [
   // Dashboard & analytics
   { methods: M.GET, pattern: /^\/api\/admin\/dashboard$/, resource: "ANALYTICS", action: "READ" },
+  { methods: M.GET, pattern: /^\/api\/admin\/command-center\/overview$/, resource: "ANALYTICS", action: "READ" },
   { methods: M.GET, pattern: /^\/api\/admin\/analytics$/, resource: "ANALYTICS", action: "READ" },
   { methods: M.GET, pattern: /^\/api\/admin\/revenue-report$/, resource: "ANALYTICS", action: "READ" },
   { methods: M.GET, pattern: /^\/api\/admin\/referrals\/analytics$/, resource: "ANALYTICS", action: "READ" },
@@ -44,6 +45,18 @@ const rules: RouteRule[] = [
   { methods: M.GET, pattern: /^\/api\/admin\/cx\/intelligence$/, resource: "ANALYTICS", action: "READ" },
   { methods: M.GET, pattern: /^\/api\/admin\/growth\/intelligence$/, resource: "ANALYTICS", action: "READ" },
   { methods: M.GET, pattern: /^\/api\/admin\/risk\/intelligence$/, resource: "ANALYTICS", action: "READ" },
+  /**
+   * Phase-9 executive intelligence (Capability 12).
+   *
+   * `ANALYTICS`/`READ` is quoted from the four intelligence rules directly above, not chosen:
+   * the brief composes exactly those sources, so it must not be reachable by anyone who could not
+   * have opened them individually. Placed here, among the specific rules, because
+   * `resolveAdminRoutePermission` returns the FIRST match — the five dead `AUDIT_LOGS`/`EXPORT`
+   * rules further down are dead precisely because a broad prefix rule sits above them.
+   */
+  { methods: M.GET, pattern: /^\/api\/admin\/intelligence\/executive-brief$/, resource: "ANALYTICS", action: "READ" },
+  { methods: M.GET, pattern: /^\/api\/admin\/intelligence\/report-schedule$/, resource: "ANALYTICS", action: "READ" },
+  { methods: M.GET, pattern: /^\/api\/admin\/intelligence\/report-recipients$/, resource: "ADMIN_USERS", action: "READ" },
   { methods: M.GET, pattern: /^\/api\/admin\/platform\/intelligence$/, resource: "SETTINGS", action: "READ" },
   { methods: M.PATCH, pattern: /^\/api\/admin\/platform\/flags$/, resource: "SETTINGS", action: "UPDATE" },
   { methods: M.GET, pattern: /^\/api\/admin\/recovery\/status$/, resource: "ANALYTICS", action: "READ" },
@@ -51,21 +64,33 @@ const rules: RouteRule[] = [
   { methods: M.GET, pattern: /^\/api\/admin\/finance\/config/, resource: "PAYMENTS", action: "READ" },
   { methods: M.PATCH, pattern: /^\/api\/admin\/finance\/config/, resource: "PAYMENTS", action: "UPDATE" },
   { methods: M.GET, pattern: /^\/api\/admin\/observability\/health$/, resource: "ANALYTICS", action: "READ" },
+  { methods: M.GET, pattern: /^\/api\/admin\/automation/, resource: "ANALYTICS", action: "READ" },
+  { methods: M.POST, pattern: /^\/api\/admin\/automation\/dead-letters\/[^/]+\/replay$/, resource: "SETTINGS", action: "UPDATE" },
   { methods: M.GET, pattern: /^\/api\/admin\/observability\/email-health$/, resource: "ANALYTICS", action: "READ" },
   // Phase 16.4 / 17.4 — demand heatmap + live operations map.
   { methods: M.GET, pattern: /^\/api\/admin\/heatmap$/, resource: "ANALYTICS", action: "READ" },
   { methods: M.GET, pattern: /^\/api\/admin\/ops-map$/, resource: "ANALYTICS", action: "READ" },
   { methods: M.GET, pattern: /^\/api\/admin\/workforce\/analytics$/, resource: "ANALYTICS", action: "READ" },
+  { methods: M.GET, pattern: /^\/api\/admin\/partner-acquisition/, resource: "ANALYTICS", action: "READ" },
+  { methods: M.POST, pattern: /^\/api\/admin\/partner-acquisition/, resource: "USERS", action: "CREATE" },
+  { methods: M.PATCH, pattern: /^\/api\/admin\/partner-acquisition/, resource: "USERS", action: "UPDATE" },
+  { methods: M.DELETE, pattern: /^\/api\/admin\/partner-acquisition/, resource: "USERS", action: "UPDATE" },
+  { methods: M.GET, pattern: /^\/api\/admin\/partner-referrals/, resource: "ANALYTICS", action: "READ" },
+  { methods: M.POST, pattern: /^\/api\/admin\/partner-referrals/, resource: "USERS", action: "UPDATE" },
   { methods: M.GET, pattern: /^\/api\/admin\/providers\/[^/]+\/intelligence$/, resource: "ANALYTICS", action: "READ" },
   { methods: M.GET, pattern: /^\/api\/admin\/documents\/pending$/, resource: "USERS", action: "READ" },
   { methods: M.PUT, pattern: /^\/api\/admin\/providers\/[^/]+\/documents\/[^/]+\/verify$/, resource: "USERS", action: "APPROVE" },
   { methods: M.GET, pattern: /^\/api\/admin\/academy\/modules$/, resource: "SETTINGS", action: "READ" },
   { methods: M.POST, pattern: /^\/api\/admin\/academy\/modules$/, resource: "SETTINGS", action: "CREATE" },
+  { methods: M.PATCH, pattern: /^\/api\/admin\/academy\/modules\/[^/]+$/, resource: "SETTINGS", action: "UPDATE" },
   { methods: M.GET, pattern: /^\/api\/admin\/incentives\/rules$/, resource: "CAMPAIGNS", action: "READ" },
 
   // Users & providers
   { methods: M.GET, pattern: /^\/api\/admin\/users$/, resource: "USERS", action: "READ" },
   { methods: M.GET, pattern: /^\/api\/admin\/providers$/, resource: "USERS", action: "READ" },
+  { methods: M.GET, pattern: /^\/api\/admin\/providers\/[^/]+$/, resource: "USERS", action: "READ" },
+  { methods: M.GET, pattern: /^\/api\/admin\/providers\/[^/]+\/(score|career|lifecycle)(\/history)?$/, resource: "USERS", action: "READ" },
+  { methods: M.POST, pattern: /^\/api\/admin\/providers\/[^/]+\/lifecycle$/, resource: "USERS", action: "UPDATE" },
   { methods: M.GET, pattern: /^\/api\/admin\/account-deletions$/, resource: "USERS", action: "READ" },
   { methods: M.PUT, pattern: /^\/api\/admin\/users\/[^/]+\/ban$/, resource: "USERS", action: "UPDATE" },
   { methods: M.POST, pattern: /^\/api\/admin\/users\/[^/]+\/force-logout$/, resource: "USERS", action: "FORCE_LOGOUT" },
@@ -143,6 +168,7 @@ const rules: RouteRule[] = [
 
   // Audit logs & exports
   { methods: M.GET, pattern: /^\/api\/admin\/observability\/logs/, resource: "AUDIT_LOGS", action: "READ" },
+  { methods: M.GET, pattern: /^\/api\/admin\/audit$/, resource: "AUDIT_LOGS", action: "READ" },
   { methods: M.GET, pattern: /^\/api\/admin\/finance\/audit-export\//, resource: "AUDIT_LOGS", action: "EXPORT" },
   { methods: M.GET, pattern: /^\/api\/admin\/finance\/reports\/export$/, resource: "AUDIT_LOGS", action: "EXPORT" },
   { methods: M.GET, pattern: /^\/api\/admin\/membership\/analytics\/export$/, resource: "AUDIT_LOGS", action: "EXPORT" },
@@ -167,7 +193,10 @@ const rules: RouteRule[] = [
   // Non-/api/admin scoped routes (P1 RBAC hardening)
   { methods: M.POST, pattern: /^\/api\/payments\/[^/]+\/refund$/, resource: "PAYMENTS", action: "APPROVE" },
   { methods: M.GET, pattern: /^\/api\/v1\/ws\/stats$/, resource: "ANALYTICS", action: "READ" },
-  { methods: M.GET, pattern: /^\/api\/compliance\/admin\/requests$/, resource: "USERS", action: "READ" },
+  { methods: M.GET, pattern: /^\/api\/admin\/trust-safety\//, resource: "DISPUTES", action: "READ" },
+  { methods: M.POST, pattern: /^\/api\/admin\/trust-safety\/incidents\/[^/]+\/(assign|acknowledge|resolve)$/, resource: "DISPUTES", action: "UPDATE" },
+  { methods: M.POST, pattern: /^\/api\/admin\/trust-safety\/risk\/[^/]+\/review$/, resource: "DISPUTES", action: "UPDATE" },
+  { methods: M.POST, pattern: /^\/api\/admin\/trust-safety\/compliance\/[^/]+\/unrestrict$/, resource: "DISPUTES", action: "UPDATE" },
   { methods: M.POST, pattern: /^\/api\/compliance\/admin\/requests\/[^/]+\/approve$/, resource: "DISPUTES", action: "APPROVE" },
   { methods: M.POST, pattern: /^\/api\/compliance\/admin\/requests\/[^/]+\/reject$/, resource: "DISPUTES", action: "REJECT" },
   { methods: M.GET, pattern: /^\/api\/compliance\/admin\/retention\/report$/, resource: "AUDIT_LOGS", action: "READ" },

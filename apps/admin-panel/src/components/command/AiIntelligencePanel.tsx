@@ -171,7 +171,7 @@ function AiIntelligencePanelInner({
           <span className="cmd-city-count">{rows.length}</span>
         </div>
 
-        <ul className="cmd-city-list">
+        <ul className="cmd-city-list" tabIndex={0} aria-label="City telemetry">
           {rows.length ? (
             rows.map((r, i) => {
               const status = statusOf(r.surge);

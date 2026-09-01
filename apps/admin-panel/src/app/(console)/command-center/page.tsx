@@ -17,6 +17,8 @@ import type { CmdZone, LayerKey, FraudPin } from "@/components/command/CommandMa
 import { ExecutiveKpiRibbon } from "@/components/command/ExecutiveKpiRibbon";
 import { AiIntelligencePanel } from "@/components/command/AiIntelligencePanel";
 import { OperationalTimeline } from "@/components/command/OperationalTimeline";
+import { CommandCenterRail } from "@/components/command/CommandCenterRail";
+import { PartnerCommandOverview } from "@/components/command/PartnerCommandOverview";
 import { MapPerformanceBoundary } from "@/components/perf/MapPerformanceBoundary";
 import { MapDOMIsolationBoundary } from "@/components/perf/MapDOMIsolationBoundary";
 import { DeferAfterPaint } from "@/components/perf/DeferAfterPaint";
@@ -95,6 +97,11 @@ export default function CommandCenterPage() {
           </p>
         </div>
       </header>
+
+      <CommandCenterRail />
+      <DeferAfterPaint label="PartnerCommandOverview" fallback={<div className="h-28 rounded-2xl" aria-hidden />}>
+        <PartnerCommandOverview />
+      </DeferAfterPaint>
 
       <ExecutiveKpiRibbon kpis={kpisQ.data?.data ?? null} freshness={kpisQ.data?.freshness} confidence={kpisQ.data?.confidence} />
 

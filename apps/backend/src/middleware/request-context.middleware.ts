@@ -29,16 +29,24 @@ export function resolveRequestId(request: Request): string {
   return `req_${crypto.randomBytes(8).toString("hex")}`;
 }
 
+export function resolveDeviceId(request: Request): string | undefined {
+  const inbound = request.headers.get("x-device-id");
+  if (!inbound?.trim()) return undefined;
+  return inbound.trim().replace(/[^\w.\-:]/g, "").slice(0, 128) || undefined;
+}
+
 export const requestContextPlugin = new Elysia({ name: "request-context" })
   .derive({ as: "global" }, ({ request }) => {
     const requestId = resolveRequestId(request);
+    const deviceId = resolveDeviceId(request);
     const trace = resolveTraceContext(request);
-    bindEventContextFromRequest({ traceId: trace.traceId, requestId });
+    bindEventContextFromRequest({ traceId: trace.traceId, requestId, deviceId });
     return {
       requestId,
       traceId: trace.traceId,
       spanId: trace.spanId,
       parentSpanId: trace.parentSpanId,
+      deviceId,
     };
   })
   .onAfterHandle({ as: "global" }, ({ requestId, traceId, spanId, set, path }) => {

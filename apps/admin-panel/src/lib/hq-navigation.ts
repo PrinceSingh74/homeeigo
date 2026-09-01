@@ -12,6 +12,7 @@ import {
   Users,
   Wrench,
   CalendarCheck,
+  GraduationCap,
   LayoutGrid,
   Crown,
   BarChart3,
@@ -36,24 +37,34 @@ import {
   UserX,
   Bot,
   Brain,
+  Eye,
   Settings,
   TrendingUp,
   Activity,
+  Workflow,
   LineChart,
   Navigation,
   Wallet,
   Mail,
+  ScrollText,
+  Trophy,
+  UserCheck,
+  Network,
 } from "lucide-react";
 
 export type HqSectionId =
   | "executive"
   | "operations"
   | "marketplace"
+  | "acquisition"
   | "growth"
+  | "network"
   | "finance"
   | "risk"
   | "ai"
+  | "automation"
   | "monitoring"
+  | "audit"
   | "platform";
 
 export type NavItem = {
@@ -71,9 +82,20 @@ export type HqSection = {
   description: string;
   accent: string;
   items: readonly NavItem[];
+  /**
+   * Nav-visibility gate, backed by real `AdminResource` values from
+   * `backend/prisma/schema.prisma`'s `AdminResource` enum and the role→resource grants in
+   * `backend/src/services/rbac.service.ts`'s `DEFAULT_ROLES`.
+   *
+   * Finance / Risk / Growth stay gated on the exclusive resources they already used.
+   * Audit HQ is gated on `AUDIT_LOGS` (FINANCE_ADMIN + ANALYTICS_ADMIN already hold READ).
+   * Acquisition / Network / Automation are ungated at nav — the backend still 403s per route;
+   * inventing a resource the enum does not have would hide pages a role can actually open.
+   */
+  requiredAnyResource?: readonly string[];
 };
 
-/** Single source of truth — maps all 52+ routes into 9 Enterprise HQs. */
+/** Single source of truth — Command Center IA mapped onto Enterprise HQs. */
 export const HQ_SECTIONS: readonly HqSection[] = [
   {
     id: "executive",
@@ -91,12 +113,15 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     shortLabel: "Operations",
     emoji: "🚀",
     dashboardHref: "/hq/operations",
-    description: "Mission control, live ops, geo intelligence, and alert routing.",
+    description: "Mission control, live ops, availability, and geo intelligence.",
     accent: "blue",
     items: [
       { href: "/command-center", label: "Command Center", icon: Gauge },
-      { href: "/eta-intelligence", label: "ETA Intelligence", icon: Navigation },
+      { href: "/availability", label: "Availability", icon: UserCheck },
       { href: "/operations", label: "Live Ops", icon: Radio },
+      { href: "/performance", label: "Performance", icon: TrendingUp },
+      { href: "/supply-demand", label: "Supply-Demand", icon: Flame },
+      { href: "/eta-intelligence", label: "ETA Intelligence", icon: Navigation },
       { href: "/workforce", label: "Workforce Analytics", icon: Users },
       { href: "/coverage", label: "Coverage Intelligence", icon: MapPinned },
       { href: "/geospatial", label: "Geo Command", icon: Globe2 },
@@ -113,14 +138,14 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     shortLabel: "Marketplace",
     emoji: "🏪",
     dashboardHref: "/hq/marketplace",
-    description: "Customers, partners, bookings, services, and catalog intelligence.",
+    description: "Customers, partners, jobs, services, and catalog intelligence.",
     accent: "violet",
     items: [
       { href: "/customers", label: "Customers", icon: Users },
       { href: "/vendors", label: "Partners", icon: Wrench },
       { href: "/vendors/documents", label: "Document Review", icon: FileText },
-      { href: "/academy", label: "Partner Academy", icon: LayoutGrid },
-      { href: "/bookings", label: "Bookings", icon: CalendarCheck },
+      { href: "/academy", label: "Training", icon: GraduationCap },
+      { href: "/bookings", label: "Jobs", icon: CalendarCheck },
       { href: "/reviews", label: "Reviews", icon: Star },
       { href: "/services", label: "Services", icon: LayoutGrid },
       { href: "/membership", label: "Membership", icon: Crown },
@@ -131,22 +156,51 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     ],
   },
   {
+    id: "acquisition",
+    label: "Acquisition HQ",
+    shortLabel: "Acquisition",
+    emoji: "🧲",
+    dashboardHref: "/hq/acquisition",
+    description: "Leads, applications, verification, sources, and acquisition analytics.",
+    accent: "violet",
+    items: [
+      { href: "/partner-acquisition", label: "Acquisition", icon: Users },
+      { href: "/partner-acquisition/leads", label: "Leads", icon: Users },
+      { href: "/partner-acquisition/applications", label: "Applications", icon: FileText },
+      { href: "/partner-acquisition/verification", label: "Verification", icon: ShieldCheck },
+      { href: "/partner-acquisition/approvals", label: "Approvals", icon: CheckCircle },
+      { href: "/partner-acquisition/sources", label: "Sources", icon: BarChart3 },
+      { href: "/partner-acquisition/analytics", label: "Analytics", icon: BarChart3 },
+    ],
+  },
+  {
     id: "growth",
     label: "Growth HQ",
     shortLabel: "Growth",
     emoji: "📈",
     dashboardHref: "/hq/growth",
-    description: "Campaigns, retention, referrals, loyalty, and growth analytics.",
+    description: "Campaigns, retention, loyalty, and growth analytics.",
     accent: "emerald",
+    requiredAnyResource: ["CAMPAIGNS", "GIFT_CARDS", "MEMBERSHIPS"],
     items: [
       { href: "/analytics", label: "Analytics", icon: BarChart3 },
       { href: "/membership/analytics", label: "Membership Analytics", icon: LineChart },
       { href: "/campaigns", label: "Campaigns", icon: Megaphone },
-      { href: "/referrals", label: "Referrals", icon: Gift },
+      { href: "/incentives", label: "Incentives", icon: Trophy },
       { href: "/loyalty", label: "Loyalty", icon: Coins },
       { href: "/gift-cards", label: "Gift Cards", icon: Gift },
       { href: "/transfers", label: "Transfers", icon: ArrowLeftRight },
     ],
+  },
+  {
+    id: "network",
+    label: "Network HQ",
+    shortLabel: "Network",
+    emoji: "🕸️",
+    dashboardHref: "/hq/network",
+    description: "Partner referral network — Section 07 canonical surfaces.",
+    accent: "emerald",
+    items: [{ href: "/referrals", label: "Referrals", icon: Network }],
   },
   {
     id: "finance",
@@ -154,10 +208,12 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     shortLabel: "Finance",
     emoji: "💰",
     dashboardHref: "/hq/finance",
-    description: "Revenue, margins, wallets, settlements, and CFO operations.",
+    description: "Revenue, earnings, wallets, settlements, and CFO operations.",
     accent: "yellow",
+    requiredAnyResource: ["PAYMENTS", "WALLET"],
     items: [
       { href: "/finance/dashboard", label: "CFO Dashboard", icon: TrendingUp },
+      { href: "/earnings", label: "Earnings", icon: Wallet },
       { href: "/finance/config", label: "CFO Config", icon: Settings },
       { href: "/finance/reconciliation", label: "Reconciliation", icon: Landmark },
       { href: "/finance/settlement-sync", label: "Settlement Sync", icon: Scale },
@@ -174,32 +230,39 @@ export const HQ_SECTIONS: readonly HqSection[] = [
   },
   {
     id: "risk",
-    label: "Risk & Compliance HQ",
-    shortLabel: "Risk",
+    label: "Trust & Safety HQ",
+    shortLabel: "Trust",
     emoji: "🛡️",
     dashboardHref: "/hq/risk",
-    description: "Fraud, chargebacks, compliance, KYC, and trust operations.",
+    description: "Fraud, KYC, compliance, incidents, and trust operations.",
     accent: "red",
+    requiredAnyResource: ["DISPUTES"],
     items: [
       { href: "/fraud", label: "Fraud Center", icon: ShieldAlert },
+      { href: "/kyc", label: "KYC", icon: ShieldCheck },
       { href: "/finance/chargebacks", label: "Chargebacks", icon: AlertTriangle },
       { href: "/chargebacks", label: "Chargeback Queue", icon: AlertTriangle },
       { href: "/finance/risk", label: "Risk Engine", icon: ShieldAlert },
       { href: "/finance/integrity", label: "Integrity", icon: ShieldCheck },
       { href: "/finance/validation", label: "Validation", icon: CheckCircle },
       { href: "/compliance", label: "Compliance", icon: Scale },
+      { href: "/trust-safety", label: "Trust & Safety", icon: ShieldCheck },
+      { href: "/trust-safety/compliance", label: "Partner Compliance", icon: Scale },
+      { href: "/trust-safety/risk", label: "Partner Risk", icon: ShieldAlert },
+      { href: "/trust-safety/incidents", label: "Safety Incidents", icon: AlertTriangle },
       { href: "/account-deletions", label: "Account Deletions", icon: UserX },
     ],
   },
   {
     id: "ai",
-    label: "AI HQ",
-    shortLabel: "AI",
+    label: "Intelligence HQ",
+    shortLabel: "Intelligence",
     emoji: "🤖",
     dashboardHref: "/hq/ai",
-    description: "AI systems, forecasting, demand prediction, and smart allocation.",
+    description: "AI insights, forecasting, demand prediction, and smart allocation.",
     accent: "cyan",
     items: [
+      { href: "/ai-insights", label: "AI Insights", icon: Brain },
       { href: "/ai-brain", label: "AI Brain Console", icon: Brain },
       { href: "/ai-brain/context", label: "Context Explorer", icon: Layers },
       { href: "/ai-brain/memory", label: "Memory Explorer", icon: Database },
@@ -207,7 +270,21 @@ export const HQ_SECTIONS: readonly HqSection[] = [
       { href: "/ai-brain/timeline", label: "Activity Timeline", icon: Clock },
       { href: "/ai-brain/tools", label: "Enterprise Tool Center", icon: Wrench },
       { href: "/ai-brain/approvals", label: "High-Risk Approvals", icon: ShieldAlert },
+      { href: "/vision", label: "Vision Analytics", icon: Eye },
       { href: "/ai", label: "AI Systems", icon: Bot },
+    ],
+  },
+  {
+    id: "automation",
+    label: "Automation HQ",
+    shortLabel: "Automation",
+    emoji: "⚙️",
+    dashboardHref: "/hq/automation",
+    description: "Workflows, events, outbox, DLQ, and Section 09 governance.",
+    accent: "cyan",
+    items: [
+      { href: "/automation", label: "Automation Center", icon: Workflow },
+      { href: "/automation/events", label: "Event Explorer", icon: Activity },
     ],
   },
   {
@@ -222,7 +299,19 @@ export const HQ_SECTIONS: readonly HqSection[] = [
       { href: "/observability", label: "Observability", icon: Activity },
       { href: "/observability/alerts", label: "Ops Alerts", icon: AlertTriangle },
       { href: "/observability/email", label: "Email Health", icon: Mail },
+      { href: "/observability/logs", label: "Log Search", icon: FileText },
     ],
+  },
+  {
+    id: "audit",
+    label: "Audit HQ",
+    shortLabel: "Audit",
+    emoji: "📜",
+    dashboardHref: "/hq/audit",
+    description: "Enterprise audit explorer — actor, entity, request, and correlation.",
+    accent: "zinc",
+    requiredAnyResource: ["AUDIT_LOGS"],
+    items: [{ href: "/audit", label: "Audit Explorer", icon: ScrollText }],
   },
   {
     id: "platform",
@@ -230,12 +319,11 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     shortLabel: "Platform",
     emoji: "⚙️",
     dashboardHref: "/hq/platform",
-    description: "Settings, migrations, reports, support, and engineering controls.",
+    description: "Settings, migrations, support, and engineering controls.",
     accent: "zinc",
     items: [
       { href: "/settings", label: "Settings", icon: Settings },
       { href: "/finance/migrations", label: "Migrations", icon: Database },
-      { href: "/finance/reports", label: "Exports & Reports", icon: FileText },
       { href: "/support", label: "Support", icon: Headphones },
     ],
   },
@@ -243,21 +331,23 @@ export const HQ_SECTIONS: readonly HqSection[] = [
 
 const ALL_HREFS = HQ_SECTIONS.flatMap((s) => s.items.map((i) => i.href));
 
-/** Resolve which HQ owns the current pathname. */
+/** Resolve which HQ owns the current pathname. Longest href match wins. */
 export function resolveHqSection(pathname: string): HqSection {
   if (pathname.startsWith("/hq/")) {
     const slug = pathname.split("/")[2] as HqSectionId | undefined;
     const match = HQ_SECTIONS.find((s) => s.id === slug);
     if (match) return match;
   }
+  let best: { section: HqSection; len: number } | null = null;
   for (const section of HQ_SECTIONS) {
     for (const item of section.items) {
-      if (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)) {
-        return section;
-      }
+      const hit = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+      if (!hit) continue;
+      const len = item.href === "/" ? 1 : item.href.length;
+      if (!best || len > best.len) best = { section, len };
     }
   }
-  return HQ_SECTIONS[0];
+  return best?.section ?? HQ_SECTIONS[0];
 }
 
 export function isNavItemActive(pathname: string, href: string): boolean {

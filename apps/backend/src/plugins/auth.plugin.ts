@@ -5,6 +5,7 @@ import prisma from "../lib/prisma";
 import { incCounter } from "../lib/metrics";
 import type { UserRole } from "@prisma/client";
 import { partnerRegistrationService } from "../services/partner-registration.service";
+import { bindActorContext } from "../events/core/event-context";
 
 const jwtService = new JWTService();
 
@@ -66,6 +67,11 @@ export function createAuthPlugin(pluginName = "auth-plugin") {
           isBanned: user.isBanned,
           isActive: user.isActive,
         };
+        bindActorContext({
+          actorId: user.id,
+          actorType: user.role === "ADMIN" ? "admin" : user.role === "VENDOR" ? "partner" : "customer",
+          partnerId: user.provider?.id,
+        });
       }
     }
 

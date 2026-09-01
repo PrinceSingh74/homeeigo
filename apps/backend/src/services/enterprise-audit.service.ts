@@ -81,6 +81,26 @@ function retentionExpiry(category: RetentionCategory): Date {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }
 
+function sanitizeAuditError(message: string | null): string | null {
+  if (!message) return null;
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("password") ||
+    lower.includes("otp") ||
+    lower.includes("token") ||
+    lower.includes("secret") ||
+    lower.includes("prisma") ||
+    lower.includes("sql") ||
+    lower.includes("e:\\") ||
+    lower.includes("c:\\") ||
+    lower.includes("/usr/") ||
+    lower.includes("node_modules")
+  ) {
+    return "error_redacted";
+  }
+  return message.slice(0, 240);
+}
+
 export class EnterpriseAuditService {
   async log(entry: EnterpriseAuditInput): Promise<string | null> {
     const traceId = entry.traceId ?? crypto.randomUUID();
@@ -155,24 +175,79 @@ export class EnterpriseAuditService {
     action?: string;
     actor?: string;
     resource?: string;
+    resourceId?: string;
+    traceId?: string;
+    status?: EnterpriseAuditStatus;
     startDate?: Date;
     endDate?: Date;
+    cursor?: string;
     limit?: number;
   }) {
     const prisma = await getPrisma();
-    return prisma.enterpriseAuditLog.findMany({
+    const take = Math.min(Math.max(filters.limit ?? 50, 1), 200);
+    const createdAt: Prisma.DateTimeFilter = {};
+    if (filters.startDate) createdAt.gte = filters.startDate;
+    if (filters.endDate) createdAt.lte = filters.endDate;
+    if (filters.cursor) {
+      const cursorDate = new Date(filters.cursor);
+      if (!Number.isNaN(cursorDate.getTime())) createdAt.lt = cursorDate;
+    }
+
+    const rows = await prisma.enterpriseAuditLog.findMany({
       where: {
-        action: filters.action,
-        actor: filters.actor,
-        resource: filters.resource,
-        createdAt: {
-          gte: filters.startDate,
-          lte: filters.endDate,
-        },
+        action: filters.action
+          ? { contains: filters.action, mode: "insensitive" }
+          : undefined,
+        actor: filters.actor
+          ? { contains: filters.actor, mode: "insensitive" }
+          : undefined,
+        resource: filters.resource
+          ? { contains: filters.resource, mode: "insensitive" }
+          : undefined,
+        resourceId: filters.resourceId || undefined,
+        traceId: filters.traceId || undefined,
+        status: filters.status,
+        createdAt: Object.keys(createdAt).length ? createdAt : undefined,
+        isArchived: false,
       },
-      take: Math.min(filters.limit ?? 100, 500),
+      take: take + 1,
       orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        action: true,
+        resource: true,
+        resourceId: true,
+        actor: true,
+        actorType: true,
+        changesSummary: true,
+        status: true,
+        traceId: true,
+        deviceId: true,
+        createdAt: true,
+        errorMessage: true,
+      },
     });
+
+    const hasMore = rows.length > take;
+    const page = hasMore ? rows.slice(0, take) : rows;
+    return {
+      items: page.map((row) => ({
+        id: row.id,
+        action: row.action,
+        resource: row.resource,
+        resourceId: row.resourceId,
+        actor: row.actor,
+        actorType: row.actorType,
+        changesSummary: row.changesSummary,
+        status: row.status,
+        traceId: row.traceId,
+        deviceId: row.deviceId,
+        createdAt: row.createdAt.toISOString(),
+        errorMessage: sanitizeAuditError(row.errorMessage),
+      })),
+      nextCursor: hasMore ? page[page.length - 1]?.createdAt.toISOString() ?? null : null,
+      hasMore,
+    };
   }
 }
 
@@ -191,7 +266,21 @@ export function securityEventRetention(action: string): RetentionCategory {
   ) {
     return "PAYMENT_EVENTS";
   }
-  if (action.includes("LEDGER") || action.includes("WALLET") || action.includes("HCoin")) {
+  // Matched case-INSENSITIVELY and against the credit side as well as the debit side.
+  //
+  // Two defects lived here. `includes("HCoin")` could never match: every real event name is
+  // upper-case (`HCOIN_EARNED`, `HCOIN_REDEEMED`, ...), so HCoin ledger activity silently fell
+  // through to SYSTEM_LOGS. And only debits carried a keyword — `WALLET_DEBIT` was retained for
+  // 10 years while the credits that put the money there (`PARTNER_INCENTIVE_CREDITED`,
+  // `REFERRAL_COMMISSION_CREDITED`) and executed adjustments (`FINANCIAL_ADJUSTMENT_*`) were
+  // discarded after 1. Financial records must outlive a single year, and one half of a ledger
+  // entry must never be retained differently from the other.
+  const upper = action.toUpperCase();
+  if (
+    ["LEDGER", "WALLET", "HCOIN", "INCENTIVE", "COMMISSION", "FINANCIAL", "REFERRAL"].some((term) =>
+      upper.includes(term),
+    )
+  ) {
     return "FINANCIAL_LEDGER";
   }
   if (action.includes("ENCRYPT") || action.includes("DECRYPT") || action.includes("ADMIN")) {

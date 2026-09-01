@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { DataTable, StatusBadge } from "@/components/ui/DataTable";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ActivationChecklistPanel } from "@/components/acquisition/ActivationChecklistPanel";
 import { adminApi, type ProviderDetail } from "@/services/admin-api";
 import { useVerifyProviderMutation } from "@/hooks/use-admin-data";
 import { formatDate, inr } from "@/lib/format";
@@ -55,6 +56,46 @@ export default function VendorDetailPage() {
   const verifyMut = useVerifyProviderMutation();
 
   const d = data as ProviderDetail | undefined;
+
+  const checklistQuery = useQuery({
+    queryKey: ["admin", "activation-checklist", id],
+    queryFn: () => adminApi.partnerAcquisition.activationChecklist(id),
+    enabled: !!id && !!d && !d.verification.isApproved,
+    staleTime: 15_000,
+  });
+
+  const scoreQuery = useQuery({
+    queryKey: ["admin", "provider-score", id],
+    queryFn: () => adminApi.getProviderScore(id),
+    enabled: !!id,
+    staleTime: 30_000,
+  });
+  const careerQuery = useQuery({
+    queryKey: ["admin", "provider-career", id],
+    queryFn: () => adminApi.getProviderCareer(id),
+    enabled: !!id,
+    staleTime: 30_000,
+  });
+  const lifecycleQuery = useQuery({
+    queryKey: ["admin", "provider-lifecycle", id],
+    queryFn: () => adminApi.getProviderLifecycle(id),
+    enabled: !!id,
+    staleTime: 15_000,
+  });
+  const [lifecycleAction, setLifecycleAction] = useState<"pause" | "review" | "suspend" | "reactivate" | null>(null);
+  const lifecycleMut = useMutation({
+    mutationFn: (action: "pause" | "review" | "suspend" | "reactivate") =>
+      adminApi.transitionProviderLifecycle(id, action, `Admin ${action}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin", "provider-lifecycle", id] });
+      void qc.invalidateQueries({ queryKey: ["admin", "provider-detail", id] });
+      void qc.invalidateQueries({ queryKey: ["admin", "provider-career", id] });
+      setLifecycleAction(null);
+    },
+    onError: (err) => setMutErr(getErrorMessage(err)),
+  });
+
+  const activationReady = d?.verification.isApproved || checklistQuery.data?.ready === true;
 
   if (isLoading) {
     return (
@@ -114,10 +155,29 @@ export default function VendorDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           {!d.verification.isApproved ? (
-            <button type="button" onClick={() => setConfirm("approve")} disabled={verifyMut.isPending}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-60">
-              <BadgeCheck className="h-4 w-4" /> Approve partner
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setConfirm("reject")}
+                disabled={verifyMut.isPending}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/40 px-4 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-500/10 disabled:opacity-60"
+              >
+                <BadgeX className="h-4 w-4" /> Reject application
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirm("approve")}
+                disabled={verifyMut.isPending || !activationReady}
+                title={
+                  !activationReady
+                    ? `Complete activation checklist first: ${checklistQuery.data?.missingLabels.join(", ") ?? "loading…"}`
+                    : undefined
+                }
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <BadgeCheck className="h-4 w-4" /> Activate partner
+              </button>
+            </>
           ) : (
             <button type="button" onClick={() => setConfirm("reject")} disabled={verifyMut.isPending}
               className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/40 px-4 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-500/10 disabled:opacity-60">
@@ -129,7 +189,108 @@ export default function VendorDetailPage() {
 
       {mutErr ? <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">{mutErr}</div> : null}
 
-      {/* ── Top KPI strip ── */}
+      <nav aria-label="Partner command surfaces" className="flex flex-wrap gap-2">
+        {[
+          { href: `/trust-safety/risk/${d.id}`, label: "Risk" },
+          { href: "/availability", label: "Availability" },
+          { href: "/bookings", label: "Jobs" },
+          { href: "/performance", label: "Performance" },
+          { href: "/earnings", label: "Earnings" },
+          { href: "/kyc", label: "KYC" },
+          { href: "/referrals", label: "Referrals" },
+          { href: "/support", label: "Support" },
+          { href: `/audit?resourceId=${encodeURIComponent(d.id)}`, label: "Audit" },
+        ].map((l) => (
+          <Link
+            key={l.href}
+            href={l.href}
+            className="rounded-full border border-[var(--color-biz-line)] px-3 py-1 text-[11px] font-semibold text-[var(--color-biz-muted)] transition hover:border-[var(--color-biz-accent)]/40 hover:text-[var(--color-biz-text)]"
+          >
+            {l.label}
+          </Link>
+        ))}
+      </nav>
+
+      {!d.verification.isApproved ? (
+        <ActivationChecklistPanel
+          providerId={d.id}
+          providerName={d.profile.name}
+          isApproved={d.verification.isApproved}
+          checklist={checklistQuery.data}
+          isLoading={checklistQuery.isLoading}
+          onRefresh={() => {
+            void checklistQuery.refetch();
+            void refetch();
+          }}
+        />
+      ) : null}
+
+      <section className="biz-card p-5">
+        <h2 className="mb-4 flex items-center gap-2 font-semibold">
+          <Star className="h-4 w-4 text-[var(--color-biz-accent)]" /> Score, career &amp; lifecycle
+        </h2>
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-[var(--color-biz-muted)]">Partner score</p>
+            <p className="mt-1 text-3xl font-bold tabular-nums">
+              {scoreQuery.isLoading ? "…" : scoreQuery.data?.overallScore == null ? "—" : Math.round(scoreQuery.data.overallScore)}
+              <span className="text-base font-medium text-[var(--color-biz-muted)]">/100</span>
+            </p>
+            <p className="text-xs text-[var(--color-biz-muted)]">{scoreQuery.data?.band?.replace(/_/g, " ") ?? "Loading"}</p>
+            <dl className="mt-3 space-y-1 text-xs">
+              {scoreQuery.data
+                ? Object.entries(scoreQuery.data.components).map(([k, v]) => (
+                    <div key={k} className="flex justify-between gap-2">
+                      <dt className="capitalize">{k.replace(/([A-Z])/g, " $1")}</dt>
+                      <dd className="tabular-nums">{v.value == null ? "n/a" : Math.round(v.value)}</dd>
+                    </div>
+                  ))
+                : null}
+            </dl>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-[var(--color-biz-muted)]">Career</p>
+            <p className="mt-1 text-xl font-bold">{careerQuery.data?.currentLevel ?? d.status.careerLevel ?? "—"}</p>
+            <p className="text-xs text-[var(--color-biz-muted)]">
+              {careerQuery.data?.nextLevel
+                ? `${careerQuery.data.progressPct}% toward ${careerQuery.data.nextLevel}`
+                : "Top level or loading"}
+            </p>
+            <p className="mt-2 text-xs">
+              Boost {careerQuery.data?.benefitsActive ? `+${careerQuery.data.careerPriorityBoost}` : "restricted"}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-[var(--color-biz-muted)]">Lifecycle</p>
+            <p className="mt-1 text-xl font-bold">{lifecycleQuery.data?.lifecycleState ?? d.status.lifecycleState ?? "—"}</p>
+            <p className="text-xs text-[var(--color-biz-muted)]">
+              Availability: {d.status.currentStatus ?? "—"} {d.status.isOnline ? "· online" : "· offline"}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(["pause", "review", "suspend", "reactivate"] as const).map((action) => (
+                <button
+                  key={action}
+                  type="button"
+                  className="rounded-lg border border-[var(--color-biz-line)] px-3 py-1.5 text-xs font-semibold capitalize disabled:opacity-50"
+                  disabled={lifecycleMut.isPending}
+                  onClick={() => setLifecycleAction(action)}
+                >
+                  {action}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        {(lifecycleQuery.data?.history.length ?? 0) > 0 ? (
+          <ol className="mt-4 max-h-40 space-y-1 overflow-auto text-xs text-[var(--color-biz-muted)]">
+            {lifecycleQuery.data!.history.slice(0, 8).map((h) => (
+              <li key={h.id}>
+                {h.previousState ?? "—"} → {h.newState} · {h.actorType} · {h.reasonCode} · {relTime(h.createdAt)}
+              </li>
+            ))}
+          </ol>
+        ) : null}
+      </section>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile icon={TrendingUp} label="Total earnings" value={inr(d.earnings.totalEarnings, true)} sub={`Wallet ${inr(d.earnings.walletBalance, true)}`} />
         <StatTile icon={Activity} label="Jobs completed" value={`${d.metrics.completedBookings}`} sub={`${d.metrics.totalBookings} lifetime · ${d.metrics.rejectedBookings} rejected`} />
@@ -282,26 +443,67 @@ export default function VendorDetailPage() {
 
       <ConfirmDialog
         open={!!confirm}
-        title={confirm === "approve" ? "Approve this partner?" : "Revoke approval?"}
-        description={confirm === "approve"
-          ? `${d.profile.name} will be approved and can sign in to the partner app.`
-          : `${d.profile.name} will be rejected and cannot sign in as a partner.`}
-        confirmLabel={confirm === "approve" ? "Approve partner" : "Revoke"}
+        title={
+          confirm === "approve"
+            ? "Activate this partner?"
+            : d.verification.isApproved
+              ? "Revoke approval?"
+              : "Reject this application?"
+        }
+        description={
+          confirm === "approve"
+            ? activationReady
+              ? `${d.profile.name} has passed all activation checks and will be approved to sign in.`
+              : `Activation blocked — complete checklist items first: ${checklistQuery.data?.missingLabels.join(", ") ?? "unknown"}`
+            : d.verification.isApproved
+              ? `${d.profile.name}'s approval will be revoked. They cannot operate as a partner until re-approved.`
+              : `${d.profile.name} will be rejected and cannot sign in as a partner. Use Request Changes if they can fix gaps.`
+        }
+        confirmLabel={
+          confirm === "approve"
+            ? "Activate partner"
+            : d.verification.isApproved
+              ? "Revoke"
+              : "Reject application"
+        }
         destructive={confirm === "reject"}
-        reasonLabel="Notes (optional)"
-        reasonRequired={false}
+        reasonLabel={confirm === "reject" && !d.verification.isApproved ? "Rejection reason" : "Notes (optional)"}
+        reasonRequired={confirm === "reject" && !d.verification.isApproved}
+        reasonPlaceholder={
+          confirm === "reject" && !d.verification.isApproved
+            ? "e.g. Failed compliance review, duplicate identity"
+            : undefined
+        }
         isLoading={verifyMut.isPending}
         onClose={() => setConfirm(null)}
         onConfirm={async (notes) => {
-          if (!confirm) return;
+          if (!confirm || (confirm === "approve" && !activationReady)) return;
+          if (confirm === "reject" && !d.verification.isApproved && !notes?.trim()) {
+            setMutErr("Please enter a rejection reason.");
+            return;
+          }
           setMutErr(null);
           try {
             await verifyMut.mutateAsync({ providerId: d.id, action: confirm, notes });
             await qc.invalidateQueries({ queryKey: ["admin", "provider-detail", id] });
+            await qc.invalidateQueries({ queryKey: ["admin", "activation-checklist", id] });
             setConfirm(null);
           } catch (e) {
             setMutErr(getErrorMessage(e));
           }
+        }}
+      />
+      <ConfirmDialog
+        open={!!lifecycleAction}
+        title={`${lifecycleAction ?? "Lifecycle"} this partner?`}
+        description="This changes program lifecycle only. Availability, jobs, wallet, and compliance records stay intact. Suspended partners stop receiving new jobs."
+        confirmLabel={lifecycleAction ? lifecycleAction[0]!.toUpperCase() + lifecycleAction.slice(1) : "Confirm"}
+        destructive={lifecycleAction === "suspend"}
+        isLoading={lifecycleMut.isPending}
+        onClose={() => setLifecycleAction(null)}
+        onConfirm={() => {
+          if (!lifecycleAction) return;
+          lifecycleMut.mutate(lifecycleAction);
         }}
       />
     </div>

@@ -210,7 +210,7 @@ function CommandMapInner({
 
   return (
     <div className={`relative ${className}`}>
-      <div ref={divRef} className="h-full w-full" aria-label="India operations command map" />
+      <div ref={divRef} className="h-full w-full" role="img" aria-label="India operations command map" />
       {!loaded ? (
         <div className="absolute inset-0 flex items-center justify-center text-sm" style={{ background: "var(--cmd-card)", color: "var(--cmd-muted)" }}>Loading command map…</div>
       ) : null}

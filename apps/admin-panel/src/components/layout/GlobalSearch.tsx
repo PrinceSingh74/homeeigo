@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Wrench, CalendarCheck, Users, Loader2, CornerDownLeft } from "lucide-react";
+import { Search, Wrench, CalendarCheck, Users, Loader2, CornerDownLeft, UserPlus } from "lucide-react";
 import { adminApi } from "@/services/admin-api";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 
-type Item = { kind: "vendor" | "booking" | "customer"; id: string; title: string; sub: string; href: string };
+type Item = { kind: "vendor" | "booking" | "customer" | "lead"; id: string; title: string; sub: string; href: string };
 
 /**
  * Global command-search across vendors, bookings and customers. Queries all
@@ -65,6 +65,12 @@ export function GlobalSearch() {
     enabled,
     staleTime: 30_000,
   });
+  const leads = useQuery({
+    queryKey: ["gsearch", "leads", q],
+    queryFn: () => adminApi.partnerAcquisition.listLeads({ search: q, limit: 5 }),
+    enabled,
+    staleTime: 30_000,
+  });
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = [];
@@ -74,10 +80,18 @@ export function GlobalSearch() {
       out.push({ kind: "booking", id: b.id, title: b.bookingNumber ?? b.id.slice(0, 8), sub: `${b.service} · ${b.user} · ${b.status}`, href: `/bookings/${b.id}` });
     for (const c of customers.data?.users ?? [])
       out.push({ kind: "customer", id: c.id, title: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email, sub: `${c.email} · ${c.totalBookings} bookings`, href: `/customers?q=${encodeURIComponent(c.email)}` });
+    for (const lead of leads.data?.leads ?? [])
+      out.push({
+        kind: "lead",
+        id: lead.id,
+        title: lead.name || "Lead",
+        sub: `${lead.status} · ${lead.city ?? lead.source ?? "lead"}`,
+        href: `/partner-acquisition/leads/${lead.id}`,
+      });
     return out;
-  }, [vendors.data, bookings.data, customers.data]);
+  }, [vendors.data, bookings.data, customers.data, leads.data]);
 
-  const loading = enabled && (vendors.isFetching || bookings.isFetching || customers.isFetching);
+  const loading = enabled && (vendors.isFetching || bookings.isFetching || customers.isFetching || leads.isFetching);
 
   useEffect(() => setActive(0), [q]);
 
@@ -101,6 +115,7 @@ export function GlobalSearch() {
 
   const groups: { label: string; icon: typeof Wrench; kind: Item["kind"] }[] = [
     { label: "Partners", icon: Wrench, kind: "vendor" },
+    { label: "Leads", icon: UserPlus, kind: "lead" },
     { label: "Bookings", icon: CalendarCheck, kind: "booking" },
     { label: "Customers", icon: Users, kind: "customer" },
   ];
@@ -115,10 +130,10 @@ export function GlobalSearch() {
         onChange={(e) => { setValue(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
-        placeholder="Search partners, bookings, customers…"
+        placeholder="Search partners, bookings, customers, leads…"
         className="w-full rounded-lg border border-[var(--color-biz-line)] bg-[var(--color-biz-bg)]/70 py-2 pl-9 pr-14 text-sm shadow-[inset_0_1px_2px_rgb(2_4_10_/_0.4)] outline-none transition-colors placeholder:text-[var(--color-biz-faint)] focus:border-[rgb(61_126_255_/_0.5)] focus:shadow-[inset_0_1px_2px_rgb(2_4_10_/_0.4),0_0_0_3px_rgb(61_126_255_/_0.12)]"
       />
-      <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-[var(--color-biz-line)] bg-[var(--color-biz-elevated)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-biz-faint)] md:block">
+      <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-[var(--color-biz-line)] bg-[var(--color-biz-elevated)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-biz-muted)] md:block">
         ⌘K
       </kbd>
 

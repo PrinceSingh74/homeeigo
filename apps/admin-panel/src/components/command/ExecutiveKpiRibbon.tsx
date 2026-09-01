@@ -120,7 +120,7 @@ function ExecutiveKpiRibbonInner({
     kpis.refundRate <= 10 ? "good" : kpis.refundRate <= 30 ? "warn" : "bad";
 
   return (
-    <div className="cmd-kpi-ribbon">
+    <div className="cmd-kpi-ribbon" tabIndex={0} role="region" aria-label="Live operations KPIs">
       <div className="cmd-card cmd-kpi-brand">
         <Icon3D icon={Radio} tone="success" size="sm" />
         <div className="min-w-0 leading-tight">

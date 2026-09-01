@@ -2,6 +2,7 @@
 
 import { memo, useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import { Bell, Loader2, LogOut, Moon, Sun } from "lucide-react";
 import {
   useAdminProvidersQuery,
@@ -11,7 +12,8 @@ import {
 } from "@/hooks/use-admin-data";
 import { useRenderProbe, useMountProbe } from "@/lib/render-probe";
 import { useAdminStore, useAdminUserName } from "@/stores/admin-store";
-import { resolveHqSection } from "@/lib/hq-navigation";
+import { resolveHqSection, isNavItemActive } from "@/lib/hq-navigation";
+import { commandSurfaceForPath } from "@/lib/command-center-ia";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
 
 /**
@@ -105,9 +107,29 @@ export const AdminTopBar = memo(function AdminTopBar() {
         >
           {hq.emoji}
         </span>
-        <p className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-biz-muted)]">
-          {hq.label}
-        </p>
+        <nav aria-label="Breadcrumb" className="min-w-0">
+          <ol className="flex min-w-0 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-biz-muted)]">
+            <li className="truncate">
+              <Link href={hq.dashboardHref} className="hover:text-[var(--color-biz-text)]">
+                {hq.shortLabel}
+              </Link>
+            </li>
+            {(() => {
+              const surface = commandSurfaceForPath(pathname);
+              const item = hq.items.find((i) => isNavItemActive(pathname, i.href) && i.href !== hq.dashboardHref);
+              const leaf = surface?.label ?? item?.label;
+              if (!leaf || pathname === hq.dashboardHref || pathname === "/") return null;
+              return (
+                <>
+                  <li aria-hidden>/</li>
+                  <li className="truncate text-[var(--color-biz-text)]" aria-current="page">
+                    {leaf}
+                  </li>
+                </>
+              );
+            })()}
+          </ol>
+        </nav>
       </div>
       <GlobalSearch />
       <div className="ml-4 flex items-center gap-3">

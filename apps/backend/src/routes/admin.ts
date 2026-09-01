@@ -65,7 +65,15 @@ import { validate } from "../middleware/validation.middleware";
 import { idParamSchema } from "../schemas/common.schema";
 import { adminRbacPlugin } from "../middleware/admin-rbac";
 import { rbacService } from "../services/rbac.service";
+import { academyAdminService } from "../services/academy-admin.service";
 import { tokenRevocationService } from "../services/token-revocation.service";
+import { adminPartnerAcquisitionRoutes } from "./admin-partner-acquisition";
+import { adminPartnerReferralRoutes } from "./admin-partner-referral";
+import { adminTrustSafetyRoutes } from "./admin-trust-safety";
+import { adminIntelligenceRoutes } from "./admin-intelligence";
+import { adminAutomationRoutes } from "./admin-automation";
+import { enterpriseAuditService } from "../services/enterprise-audit.service";
+import { commandCenterOverviewService } from "../services/command-center-overview.service";
 
 const createServiceBody = t.Object({
   name: t.String({ minLength: 2, maxLength: 120 }),
@@ -114,6 +122,30 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     const data = await adminService.dashboard();
     return { success: true, data };
   })
+  .get("/command-center/overview", async ({ adminContext }) => {
+    const data = await commandCenterOverviewService.getOverview(adminContext!);
+    return { success: true, data };
+  })
+  .get("/audit", async ({ query }) => {
+    const q = sanitizeQueryStrings(query as Record<string, string>);
+    const allowedStatus = ["SUCCESS", "FAILURE", "DENIED", "PARTIAL"] as const;
+    const status = allowedStatus.includes(q.status as (typeof allowedStatus)[number])
+      ? (q.status as (typeof allowedStatus)[number])
+      : undefined;
+    const data = await enterpriseAuditService.getAuditLogs({
+      action: q.action || undefined,
+      actor: q.actor || undefined,
+      resource: q.resource || undefined,
+      resourceId: q.resourceId || q.entityId || undefined,
+      traceId: q.traceId || q.requestId || q.correlationId || undefined,
+      status,
+      startDate: q.startDate ? new Date(q.startDate) : undefined,
+      endDate: q.endDate ? new Date(q.endDate) : undefined,
+      cursor: q.cursor || undefined,
+      limit: q.limit ? Number(q.limit) : 50,
+    });
+    return { success: true, data };
+  })
   .get("/users", async ({ query }) => {
     const data = await adminService.listUsers(sanitizeQueryStrings(query as Record<string, string>));
     return { success: true, data };
@@ -132,6 +164,77 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     }
     return { success: true, data: detail };
   })
+  .get("/providers/:id/score", async ({ params, set }) => {
+    const { partnerScoreService } = await import("../services/partner-score.service");
+    const data = await partnerScoreService.getCurrent(params.id);
+    if (!data) {
+      set.status = 404;
+      return { success: false, error: "Provider not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data };
+  })
+  .get("/providers/:id/score/history", async ({ params, query }) => {
+    const { partnerScoreService } = await import("../services/partner-score.service");
+    const data = await partnerScoreService.getHistory(params.id, query as Record<string, string | undefined>);
+    return { success: true, data };
+  })
+  .get("/providers/:id/career", async ({ params, set }) => {
+    const { partnerCareerService } = await import("../services/partner-career.service");
+    const data = await partnerCareerService.getCurrent(params.id);
+    if (!data) {
+      set.status = 404;
+      return { success: false, error: "Provider not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data };
+  })
+  .get("/providers/:id/career/history", async ({ params, query }) => {
+    const { partnerCareerService } = await import("../services/partner-career.service");
+    const data = await partnerCareerService.getHistory(params.id, query as Record<string, string | undefined>);
+    return { success: true, data };
+  })
+  .get("/providers/:id/lifecycle", async ({ params, set }) => {
+    const { partnerLifecycleService } = await import("../services/partner-lifecycle.service");
+    const [current, history] = await Promise.all([
+      partnerLifecycleService.getCurrent(params.id),
+      partnerLifecycleService.getHistory(params.id, { limit: "30" }),
+    ]);
+    if (!current) {
+      set.status = 404;
+      return { success: false, error: "Provider not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: { ...current, history: history.items } };
+  })
+  .post(
+    "/providers/:id/lifecycle",
+    async ({ params, body, requireAdminContext, set }) => {
+      const admin = requireAdminContext();
+      const { partnerLifecycleService } = await import("../services/partner-lifecycle.service");
+      const action = body.action as "approve" | "pause" | "review" | "suspend" | "reactivate";
+      const result = await partnerLifecycleService.adminAction(
+        params.id,
+        action,
+        { actorType: "ADMIN", actorId: admin.userId },
+        body.reason,
+      );
+      if (result && "error" in result && result.error) {
+        set.status = result.error === "INVALID_TRANSITION" ? 409 : result.error === "NOT_FOUND" ? 404 : 400;
+        return { success: false, error: result.error, code: result.error };
+      }
+      return { success: true, data: result && "data" in result ? result.data : result };
+    },
+    {
+      body: t.Object({
+        action: t.Union([
+          t.Literal("approve"),
+          t.Literal("pause"),
+          t.Literal("review"),
+          t.Literal("suspend"),
+          t.Literal("reactivate"),
+        ]),
+        reason: t.Optional(t.String()),
+      }),
+    },
+  )
   // Geofence CRUD consolidated to the single authoritative surface at /api/geo/geofences
   // (routes/geo.ts, requireRole ADMIN). Removed the duplicate here to avoid two surfaces.
   // Phase 16.4 — demand/supply heatmap (Float-grid aggregation; live geospatial analytics).
@@ -298,32 +401,68 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
   }, { body: t.Object({ reason: t.String({ minLength: 3 }) }) })
   .put(
     "/providers/:id/verify",
-    async ({ params: rawParams, body: raw, requireAuth }) => {
+    async ({ params: rawParams, body: raw, requireAuth, set }) => {
       const params = validate(idParamSchema, rawParams);
       const body = parseBody(adminVerifyProviderSchema, raw, { notes: { maxLen: 2000 } });
       const admin = requireAuth();
-      const provider = await adminService.verifyProvider(
-        params.id,
-        body.action,
-        body.notes,
-        admin.userId,
-      );
-      return {
-        success: true,
-        message: `Provider ${body.action === "approve" ? "approved" : "rejected"} successfully`,
-        data: {
-          provider: {
-            id: provider.id,
-            isApproved: provider.isApproved,
-            approvalNotes: provider.approvalNotes,
+      try {
+        const provider = await adminService.verifyProvider(
+          params.id,
+          body.action,
+          body.notes,
+          admin.userId,
+          body.targetStep ? { targetStep: body.targetStep } : undefined,
+        );
+        const actionLabel =
+          body.action === "approve"
+            ? "approved"
+            : body.action === "reject"
+              ? "rejected"
+              : "sent back for changes";
+        return {
+          success: true,
+          message: `Provider ${actionLabel} successfully`,
+          data: {
+            provider: {
+              id: provider.id,
+              isApproved: provider.isApproved,
+              approvalNotes: provider.approvalNotes,
+              registrationStatus: provider.registrationStatus,
+              changesRequestedStep: provider.changesRequestedStep,
+            },
           },
-        },
-      };
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Verification failed";
+        if (message.startsWith("ACTIVATION_BLOCKED:")) {
+          set.status = 400;
+          return {
+            success: false,
+            error: message.replace("ACTIVATION_BLOCKED:", ""),
+            code: "ACTIVATION_BLOCKED",
+          };
+        }
+        if (message.startsWith("VALIDATION:")) {
+          set.status = 400;
+          return {
+            success: false,
+            error: message.replace("VALIDATION:", ""),
+            code: "VALIDATION_ERROR",
+          };
+        }
+        set.status = message === "Provider not found" ? 404 : 500;
+        return { success: false, error: message, code: "VERIFY_FAILED" };
+      }
     },
     {
       body: t.Object({
-        action: t.Union([t.Literal("approve"), t.Literal("reject")]),
+        action: t.Union([
+          t.Literal("approve"),
+          t.Literal("reject"),
+          t.Literal("request_changes"),
+        ]),
         notes: t.Optional(t.String()),
+        targetStep: t.Optional(t.String()),
       }),
     },
   )
@@ -1228,9 +1367,9 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     return { success: true, message: "Service deleted" };
   })
   // ===== Subscriptions =====
-  .get("/subscriptions/plans", async () => {
-    const plans = await subscriptionService.adminListPlans();
-    return { success: true, data: { plans } };
+  .get("/subscriptions/plans", async ({ query }) => {
+    const data = await subscriptionService.adminListPlans(sanitizeQueryStrings(query as Record<string, string>));
+    return { success: true, data };
   })
   .post(
     "/subscriptions/plans",
@@ -1272,7 +1411,9 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     },
   )
   .get("/subscriptions/subscribers", async ({ query }) => {
-    const data = await subscriptionService.adminSubscribers(query as Record<string, string>);
+    const data = await subscriptionService.adminSubscribers(
+      sanitizeQueryStrings(query as Record<string, string>),
+    );
     return { success: true, data };
   })
   .get("/subscriptions/revenue", async () => {
@@ -1316,7 +1457,7 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     return { success: true, data };
   })
   .get("/membership/cashback/reports", async ({ query }) => {
-    const data = await cashbackService.adminReports(query as Record<string, string>);
+    const data = await cashbackService.adminReports(sanitizeQueryStrings(query as Record<string, string>));
     return { success: true, data };
   })
   .get("/membership/queue/analytics", async () => {
@@ -1912,13 +2053,22 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     try {
       await rbacService.enforcePermission(admin, "USERS", "APPROVE");
       const { documentUploadService } = await import("../services/document-upload.service");
-      const doc = await documentUploadService.verifyDocument(params.docId, admin.adminId, body?.notes);
+      const doc = await documentUploadService.verifyDocument(params.docId, admin.adminId, body?.notes, {
+        expiryDate: body?.expiryDate ? new Date(body.expiryDate) : undefined,
+        issuer: body?.issuer,
+        issueDate: body?.issueDate ? new Date(body.issueDate) : undefined,
+      });
       return { success: true, data: { document: doc } };
     } catch (err) {
       set.status = 403;
       return { success: false, error: err instanceof Error ? err.message : "Failed" };
     }
-  }, { body: t.Optional(t.Object({ notes: t.Optional(t.String()) })) })
+  }, { body: t.Optional(t.Object({
+    notes: t.Optional(t.String()),
+    expiryDate: t.Optional(t.String()),
+    issuer: t.Optional(t.String()),
+    issueDate: t.Optional(t.String()),
+  })) })
   .put("/providers/:id/documents/:docId/reject", async ({ params, adminContext, set, body }) => {
     const admin = adminContext!;
     try {
@@ -1939,8 +2089,8 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     const admin = adminContext!;
     try {
       await rbacService.enforcePermission(admin, "SETTINGS", "READ");
-      const modules = await prisma.partnerAcademyModule.findMany({ orderBy: { sortOrder: "asc" } });
-      return { success: true, data: { modules } };
+      const data = await academyAdminService.listCatalog();
+      return { success: true, data };
     } catch (err) {
       set.status = 403;
       return { success: false, error: err instanceof Error ? err.message : "Failed" };
@@ -1950,22 +2100,12 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     const admin = adminContext!;
     try {
       await rbacService.enforcePermission(admin, "SETTINGS", "CREATE");
-      const module = await prisma.partnerAcademyModule.create({
-        data: {
-          slug: payload.slug,
-          title: payload.title,
-          contentType: payload.contentType,
-          contentUrl: payload.contentUrl,
-          body: payload.contentBody,
-          sortOrder: payload.sortOrder ?? 0,
-          isPublished: payload.isPublished ?? false,
-          categoryIds: payload.categoryIds ?? [],
-        },
-      });
+      const module = await academyAdminService.createModule(payload);
       return { success: true, data: { module } };
     } catch (err) {
-      set.status = 403;
-      return { success: false, error: err instanceof Error ? err.message : "Failed" };
+      const msg = err instanceof Error ? err.message : "Failed";
+      set.status = msg === "Title is required" ? 400 : 403;
+      return { success: false, error: msg };
     }
   }, {
     body: t.Object({
@@ -1974,6 +2114,33 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
       contentType: t.String(),
       contentUrl: t.Optional(t.String()),
       contentBody: t.Optional(t.String()),
+      sortOrder: t.Optional(t.Number()),
+      isPublished: t.Optional(t.Boolean()),
+      categoryIds: t.Optional(t.Array(t.String())),
+    }),
+  })
+  .patch("/academy/modules/:id", async ({ adminContext, set, params, body: payload }) => {
+    const admin = adminContext!;
+    try {
+      await rbacService.enforcePermission(admin, "SETTINGS", "UPDATE");
+      const module = await academyAdminService.patchModule(params.id, payload);
+      if (!module) {
+        set.status = 404;
+        return { success: false, error: "Module not found", code: "NOT_FOUND" };
+      }
+      return { success: true, data: { module } };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed";
+      set.status = msg === "Title is required" ? 400 : 403;
+      return { success: false, error: msg };
+    }
+  }, {
+    params: t.Object({ id: t.String() }),
+    body: t.Object({
+      title: t.Optional(t.String()),
+      contentType: t.Optional(t.String()),
+      contentUrl: t.Optional(t.Union([t.String(), t.Null()])),
+      contentBody: t.Optional(t.Union([t.String(), t.Null()])),
       sortOrder: t.Optional(t.Number()),
       isPublished: t.Optional(t.Boolean()),
       categoryIds: t.Optional(t.Array(t.String())),
@@ -1989,4 +2156,9 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
       set.status = 403;
       return { success: false, error: err instanceof Error ? err.message : "Failed" };
     }
-  });
+  })
+  .use(adminPartnerAcquisitionRoutes)
+  .use(adminPartnerReferralRoutes)
+  .use(adminTrustSafetyRoutes)
+  .use(adminIntelligenceRoutes)
+  .use(adminAutomationRoutes);
