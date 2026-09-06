@@ -34,6 +34,9 @@ test.describe("Partner journey", () => {
     await page.goto("/route-center", { waitUntil: "networkidle" });
     await expect(page).toHaveURL(/\/route-center/, { timeout: 30_000 });
 
-    await page.screenshot({ path: "e2e/__artifacts__/journey-partner.png", fullPage: true });
+    await page.screenshot({
+      path: `e2e/__artifacts__/journey-partner-${Date.now()}.png`,
+      fullPage: true,
+    });
   });
 });

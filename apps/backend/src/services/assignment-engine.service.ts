@@ -28,12 +28,56 @@ const BROADCAST_DISPATCH = process.env.ASSIGNMENT_BROADCAST !== "false";
 const BROADCAST_FANOUT = Number(process.env.ASSIGNMENT_BROADCAST_FANOUT || 25);
 const LOCK_KEY = "assignment:processor";
 const LOCK_TTL_SEC = 25;
+/** Interactive tx must survive pool wait under connection_limit=8; Prisma default timeout is 5s. */
+const TX_OPTS = { maxWait: 20_000, timeout: 30_000 } as const;
+/**
+ * Burst `booking.create` fire-and-forget dispatch used to spawn one interactive tx per
+ * booking with no cap. Twenty concurrent creates (chaos-10) exhausts the documented
+ * pool-8 contract (P2024). Semantics unchanged: 201 still returns immediately; cron
+ * still heals PENDING jobs. Only in-flight fan-out is bounded.
+ */
+const MAX_INLINE_DISPATCH = 2;
 
 /**
  * Automatic provider dispatch engine — drains the priority queue, notifies
  * providers, tracks responses, and auto-reassigns on reject/timeout.
  */
 export class AssignmentEngine {
+  private inlineSlots = MAX_INLINE_DISPATCH;
+  private readonly inlineWaiters: Array<() => void> = [];
+
+  private async acquireInlineSlot(): Promise<void> {
+    if (this.inlineSlots > 0) {
+      this.inlineSlots -= 1;
+      return;
+    }
+    await new Promise<void>((resolve) => this.inlineWaiters.push(resolve));
+  }
+
+  private releaseInlineSlot(): void {
+    const next = this.inlineWaiters.shift();
+    if (next) next();
+    else this.inlineSlots += 1;
+  }
+
+  /**
+   * Non-blocking dispatch for booking create / reject. At most MAX_INLINE_DISPATCH
+   * run at once so a create burst cannot saturate connection_limit=8.
+   */
+  dispatchBookingNowBackground(bookingId: string): void {
+    void this.acquireInlineSlot()
+      .then(() => this.dispatchBookingNow(bookingId))
+      .catch((err: unknown) => {
+        incCounter("assignment_inline_dispatch_failed_total");
+        logger.error("assignment_inline_dispatch_failed", {
+          bookingId,
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
+        });
+      })
+      .finally(() => this.releaseInlineSlot());
+  }
+
   /** Create a dispatch job when a booking enters the queue without a provider. */
   async createJob(bookingId: string) {
     const existing = await prisma.assignmentJob.findUnique({ where: { bookingId } });
@@ -71,11 +115,22 @@ export class AssignmentEngine {
 
     let processed = 0;
     let dispatched = 0;
+    // Leave headroom before lock TTL so finally{releaseLock} always runs under dirty-queue load
+    // (combined suite can otherwise run past LOCK_TTL / test timeouts and leak the in-memory lock).
+    const tickDeadlineMs = Date.now() + Math.max(5_000, (LOCK_TTL_SEC - 5) * 1000);
     try {
       await this.handleTimeouts();
 
       const queue = await bookingPriorityService.getAssignmentQueue(MAX_DISPATCH_PER_TICK);
       for (const item of queue) {
+        if (Date.now() >= tickDeadlineMs) {
+          logger.warn("assignment_process_queue_tick_deadline", {
+            processed,
+            dispatched,
+            remaining: queue.length,
+          });
+          break;
+        }
         const job = await prisma.assignmentJob.findUnique({ where: { bookingId: item.bookingId } });
         if (!job) {
           await this.createJob(item.bookingId);
@@ -109,6 +164,11 @@ export class AssignmentEngine {
          * the more chances it has had to be the one that aborts everyone behind it.
          */
         try {
+          // Extend TTL only while we still own the key. acquireLock is SET NX and
+          // must not be used here — it cannot refresh Redis EX, and the in-memory
+          // fallback would re-take a lock another tick (or a test reset) already dropped.
+          const stillLeader = await redisClient.refreshLock(LOCK_KEY, token, LOCK_TTL_SEC);
+          if (!stillLeader) break;
           const sent = await this.dispatchToNextProvider(activeJob.id);
           processed++;
           if (sent) dispatched++;
@@ -122,6 +182,16 @@ export class AssignmentEngine {
           });
         }
       }
+    } catch (err) {
+      // Pool exhaustion (P2024) during queue load / timeout handling must not crash the tick —
+      // cron retries; aborting mid-suite under connection_limit=8 left chaos-10 uncaught.
+      incCounter("assignment_dispatch_tick_error_total");
+      logger.error("assignment_process_queue_failed", {
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
+        processed,
+        dispatched,
+      });
     } finally {
       await redisClient.releaseLock(LOCK_KEY, token);
     }
@@ -206,7 +276,7 @@ export class AssignmentEngine {
         await tx.assignmentAudit.create({
           data: { jobId: job.id, action: "TIMEOUT", details: JSON.stringify({ bookingId: job.bookingId, expiredAllOffers: true }) },
         });
-      });
+      }, TX_OPTS);
     }
   }
 
@@ -292,6 +362,13 @@ export class AssignmentEngine {
 
       try {
         await prisma.$transaction(async (tx) => {
+          const stillThere = await tx.assignmentJob.findUnique({
+            where: { id: jobId },
+            select: { id: true },
+          });
+          if (!stillThere) {
+            throw new Error("SKIP_OFFER:JOB_GONE");
+          }
           const blocked = await partnerOperationsService.assertOfferEligible(tx, provider.id, {
             latitude: lat,
             longitude: lng,
@@ -319,7 +396,7 @@ export class AssignmentEngine {
               }),
             );
           }
-        });
+        }, TX_OPTS);
       } catch (err) {
         if (err instanceof Error && err.message.startsWith("SKIP_OFFER:")) continue;
         // Already offered to this provider for this job — skip, keep broadcasting.
@@ -452,7 +529,7 @@ export class AssignmentEngine {
       await tx.assignmentAudit.create({
         data: { jobId: job.id, action: "ACCEPT", details: JSON.stringify({ providerId, broadcast: BROADCAST_DISPATCH }) },
       });
-    });
+    }, TX_OPTS);
 
     incCounter("dispatch_success_total");
     incCounter("booking_assigned_total");
@@ -496,7 +573,7 @@ export class AssignmentEngine {
       await tx.assignmentAudit.create({
         data: { jobId: job.id, action: "REJECT", details: JSON.stringify({ providerId, reason }) },
       });
-    });
+    }, TX_OPTS);
     void this.refreshProviderAcceptanceRate(providerId);
   }
 
@@ -535,7 +612,7 @@ export class AssignmentEngine {
       await tx.assignmentAudit.create({
         data: { jobId: job.id, action: "CANCEL", details: JSON.stringify({ bookingId }) },
       });
-    });
+    }, TX_OPTS);
   }
 
   private async audit(jobId: string, action: string, details: Record<string, unknown>) {
@@ -560,13 +637,49 @@ export class AssignmentEngine {
       }),
     ]);
     const total = accepted + rejected;
-    const rate = total > 0 ? Math.round((accepted / total) * 10000) / 100 : 100;
+
+    /**
+     * An empty 30-day window means "no evidence", and that is not 100%.
+     *
+     * This previously wrote `100` whenever the window held no terminal attempts — so a provider who
+     * went quiet for a month was re-scored as a *perfect* acceptor the moment they were dispatched
+     * to again. Against a platform-wide acceptance rate of 7.5%, and with only 16 of 54 providers
+     * having ever accepted anything, 100 is the most misleading value the column can hold. It is
+     * read by the admin provider list, ETA intelligence and partner context.
+     *
+     * The column is `NOT NULL DEFAULT 0`, so it cannot represent "unknown" — writing 0 instead
+     * would be the same fabrication pointing the other way ("this provider always refuses"). The
+     * honest action with no evidence is to write nothing and leave the last real measurement in
+     * place, which is what this does.
+     *
+     * The deeper issue — that `acceptance_rate` cannot distinguish UNKNOWN from 0% or 100% — needs
+     * a nullable column and every consumer taught to handle it. That is a schema change with a wide
+     * blast radius, recorded as a follow-up rather than made as a side effect here.
+     */
+    if (total === 0) {
+      logger.debug("provider_acceptance_rate_no_evidence", {
+        category: "APPLICATION",
+        providerId,
+        windowDays: 30,
+      });
+      return;
+    }
+
+    const rate = Math.round((accepted / total) * 10000) / 100;
     await prisma.provider
       .update({
         where: { id: providerId },
         data: { acceptanceRate: rate, rejectedBookings: rejected },
       })
-      .catch(() => {});
+      .catch((err) => {
+        // Was swallowed silently. A stale acceptance rate shown to an admin as current is the
+        // failure mode this whole line of work exists to prevent, so the miss is now visible.
+        logger.warn("provider_acceptance_rate_update_failed", {
+          category: "APPLICATION",
+          providerId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
   }
 
   /** Admin dispatch metrics + assignment funnel. */

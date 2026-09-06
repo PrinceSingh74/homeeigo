@@ -6,6 +6,7 @@ import {
   WithdrawalStatus,
 } from "@prisma/client";
 import prisma from "../lib/prisma";
+import { logger } from "../lib/logger";
 
 /**
  * The global client or a transaction handle. Both expose the model methods this service reads
@@ -13,13 +14,17 @@ import prisma from "../lib/prisma";
  */
 type PrismaLike = typeof prisma | Prisma.TransactionClient;
 import { nextWalletTxnNumber } from "../lib/booking-number";
+import { deriveFinanceState } from "../lib/partner-finance-fsm";
 import { razorpayService } from "./razorpay.service";
 import { AuditLogService } from "./audit-log.service";
 import { financialLedgerService } from "./financial-ledger.service";
 import { financialTransactionManager } from "./financial-transaction-manager.service";
 import { recordFinancialMetric } from "../lib/financial-metrics";
+import { CREDITED_EARNING_WHERE } from "../lib/earning-settlement";
 import { decryptWithdrawalBankFields } from "./sensitive-data.service";
 import { providerWalletReservationService } from "./provider-wallet-reservation.service";
+import { buildPartnerPayoutProcessingEvent, buildPartnerPayoutPaidEvent, buildPartnerPayoutFailedEvent } from "../events/catalog/partner.events";
+import { emitPartnerEvent } from "../events/core/partner-event-emit";
 
 export interface EarningCalculation {
   bookingAmount: number;
@@ -230,6 +235,16 @@ export class EarningsService {
         include: { provider: true },
       });
       if (!withdrawal) throw new Error("Withdrawal not found");
+      await emitPartnerEvent(
+        buildPartnerPayoutProcessingEvent({
+          providerId: withdrawal.providerId,
+          withdrawalId: withdrawal.id,
+          withdrawalNumber: withdrawal.withdrawalNumber,
+          amount: withdrawal.amount,
+          netAmount: withdrawal.netAmount,
+        }),
+        tx,
+      );
       return { blocked: false, withdrawal };
     });
 
@@ -332,16 +347,81 @@ export class EarningsService {
           data: { status: WithdrawalStatus.COMPLETED, completedAt: new Date(), razorpayStatus: "processed" },
         }),
     });
+    /**
+     * The wallet transaction for a withdrawal is created at PROCESSING time with
+     * `walletBalanceAfter === walletBalanceBefore`, because at that point the amount is RESERVED,
+     * not deducted -- no movement has happened yet, and the row is PENDING so the
+     * `wallet_balance_consistency` check does not apply to it.
+     *
+     * Consuming the reservation is the moment the deduction becomes real. Flipping the row to
+     * COMPLETED without refreshing its closing balance left a row claiming a 150 withdrawal that
+     * moved the balance from 800 to 800, and the check constraint correctly rejected it -- which
+     * is why `completeProviderPayout` threw instead of completing the payout.
+     *
+     * The closing balance is READ BACK from the provider rather than computed as
+     * `before - amount`: a derived figure would satisfy the constraint by construction and so
+     * would defeat the only thing checking that the ledger matches the wallet.
+     */
+    const balanceBeforeConsume = await prisma.provider.findUnique({
+      where: { id: existing.providerId },
+      select: { walletBalance: true, walletBalancePaise: true },
+    });
     await providerWalletReservationService.consumeReservation(withdrawalId, undefined);
+    const balanceAfterConsume = await prisma.provider.findUnique({
+      where: { id: existing.providerId },
+      select: { walletBalance: true, walletBalancePaise: true },
+    });
+
+    const movementObserved =
+      balanceBeforeConsume != null &&
+      balanceAfterConsume != null &&
+      Math.abs(
+        balanceBeforeConsume.walletBalance - balanceAfterConsume.walletBalance - existing.amount,
+      ) < 0.005;
+
+    if (!movementObserved) {
+      // No deduction was observed for this completion (an already-consumed reservation, or a
+      // balance that moved by something other than this amount). Recording a snapshot here would
+      // be inventing a movement that did not happen, so the balances are left as they are and the
+      // discrepancy is surfaced instead of buried.
+      logger.warn("withdrawal_completion_no_wallet_movement", {
+        category: "FINANCIAL",
+        withdrawalId,
+        providerId: existing.providerId,
+        expectedAmount: existing.amount,
+        balanceBefore: balanceBeforeConsume?.walletBalance ?? null,
+        balanceAfter: balanceAfterConsume?.walletBalance ?? null,
+      });
+    }
+
     await prisma.walletTransaction.updateMany({
       where: { referenceId: withdrawalId, referenceType: "withdrawal" },
-      data: { status: WalletTxnStatus.COMPLETED, completedAt: new Date() },
+      data:
+        movementObserved && balanceBeforeConsume && balanceAfterConsume
+          ? {
+              status: WalletTxnStatus.COMPLETED,
+              completedAt: new Date(),
+              walletBalanceBefore: balanceBeforeConsume.walletBalance,
+              walletBalanceBeforePaise: balanceBeforeConsume.walletBalancePaise,
+              walletBalanceAfter: balanceAfterConsume.walletBalance,
+              walletBalanceAfterPaise: balanceAfterConsume.walletBalancePaise,
+            }
+          : { status: WalletTxnStatus.COMPLETED, completedAt: new Date() },
     });
     await prisma.payoutAttempt.create({
       data: { withdrawalId, attemptNo: 99, status: "SUCCESS", razorpayPayoutId: w.razorpayPayoutId },
     }).catch(() => undefined);
     recordFinancialMetric("provider_payout_total", 1);
     recordFinancialMetric("payout_total", 1);
+    void emitPartnerEvent(
+      buildPartnerPayoutPaidEvent({
+        providerId: w.providerId,
+        withdrawalId: w.id,
+        withdrawalNumber: w.withdrawalNumber,
+        amount: w.amount,
+        netAmount: w.netAmount,
+      }),
+    ).catch(() => undefined);
     return w;
   }
 
@@ -384,6 +464,16 @@ export class EarningsService {
     recordFinancialMetric("provider_payout_failed_total", 1);
     recordFinancialMetric("payout_failed_total", 1);
     recordFinancialMetric("payout_reversal_total", 1);
+    void emitPartnerEvent(
+      buildPartnerPayoutFailedEvent({
+        providerId: existing.providerId,
+        withdrawalId: existing.id,
+        withdrawalNumber: existing.withdrawalNumber,
+        amount: existing.amount,
+        netAmount: existing.netAmount,
+        failureReason: reason,
+      }),
+    ).catch(() => undefined);
     return { handled: true, reason: "PAYOUT_FAILED" };
   }
 
@@ -443,12 +533,16 @@ export class EarningsService {
         _sum: { amount: true },
       }),
       prisma.earning.aggregate({
-        where: { providerId },
+        where: { providerId, ...CREDITED_EARNING_WHERE },
         _sum: { netEarning: true, grossAmount: true },
       }),
       this.listProviderWithdrawals(providerId, 50),
       prisma.earning.findMany({
-        where: { providerId, createdAt: { gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) } },
+        where: {
+          providerId,
+          createdAt: { gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) },
+          ...CREDITED_EARNING_WHERE,
+        },
         select: { netEarning: true, createdAt: true },
       }),
     ]);
@@ -464,7 +558,17 @@ export class EarningsService {
       ["REQUESTED", "APPROVED", "PROCESSING"].includes(w.status),
     );
 
+    const financeState = deriveFinanceState({
+      earningExists: lifetimeEarnings > 0 || currentBalance > 0,
+      settlementStatus: "CREDITED",
+      availableBalance,
+      reservedBalance: provider.reservedBalance,
+      withdrawalStatus: nextPending?.status ?? null,
+    });
+
     return {
+      axis: "FINANCE" as const,
+      financeState,
       currentBalance,
       availableBalance,
       pendingBalance,
@@ -493,7 +597,7 @@ export class EarningsService {
     startDate.setDate(startDate.getDate() - days);
 
     const earnings = await prisma.earning.findMany({
-      where: { providerId, createdAt: { gte: startDate } },
+      where: { providerId, createdAt: { gte: startDate }, ...CREDITED_EARNING_WHERE },
       select: { grossAmount: true, commission: true, netEarning: true },
     });
 

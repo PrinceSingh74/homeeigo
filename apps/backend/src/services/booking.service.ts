@@ -31,6 +31,7 @@ import { incCounter } from "../lib/metrics";
 import { membershipCouponService } from "./membership-coupon.service";
 import { cashbackService } from "./cashback.service";
 import { bookingPricingService, BOOKING_ADDONS } from "./booking-pricing.service";
+import { isBookingTransitionAllowed } from "../middleware/conflict";
 import { sanitizeUserInput } from "../utils/sanitizer";
 import { recordFinancialMetric } from "../lib/financial-metrics";
 import { toWaitTimeMsBigInt } from "../lib/wait-time-ms";
@@ -262,13 +263,14 @@ export class BookingService {
 
           return created;
         },
-        { isolationLevel: "Serializable" },
+        { isolationLevel: "Serializable", maxWait: 30_000, timeout: 45_000 },
           );
           break;
         } catch (error) {
           if (error instanceof Prisma.PrismaClientKnownRequestError) {
             if (this.isRetryableBookingTxError(error) && attempt < MAX_BOOKING_TX_RETRIES - 1) {
-              await new Promise((r) => setTimeout(r, 5 * (attempt + 1)));
+              // Exponential backoff — tight 5ms loops amplify P2024 under connection_limit=8.
+              await new Promise((r) => setTimeout(r, 40 * 2 ** attempt + Math.random() * 40));
               continue;
             }
           }
@@ -289,6 +291,9 @@ export class BookingService {
       }
       if (this.isBookingScheduleConflict(error)) {
         return { error: "PROVIDER_UNAVAILABLE" as const };
+      }
+      if (isRetryablePrismaError(error) || isPrismaConnectionExhausted(error)) {
+        return { error: "POOL_BUSY" as const };
       }
       throw error;
     }
@@ -321,14 +326,7 @@ export class BookingService {
     // path had thrown at all.
     if (!body.providerId) {
       await assignmentEngine.createJob(booking.id);
-      void assignmentEngine.dispatchBookingNow(booking.id).catch((err: unknown) => {
-        incCounter("assignment_inline_dispatch_failed_total");
-        logger.error("assignment_inline_dispatch_failed", {
-          bookingId: booking.id,
-          error: err instanceof Error ? err.message : String(err),
-          stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
-        });
-      });
+      assignmentEngine.dispatchBookingNowBackground(booking.id);
     }
 
     // Booking confirmation email (non-blocking)
@@ -712,23 +710,23 @@ export class BookingService {
       });
 
       if (notifyProviderId) {
-        void prisma.provider
-          .findUnique({ where: { id: notifyProviderId }, select: { userId: true } })
-          .then((provider) => {
-            if (!provider?.userId) return;
-            return notificationService.createForUser({
-              userId: provider.userId,
-              type: "SYSTEM",
-              title: "Booking rescheduled",
-              message: `Customer rescheduled to ${scheduled.toLocaleString("en-IN", {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}`,
-              referenceId: id,
-              referenceType: "booking",
-            });
-          })
-          .catch(() => undefined);
+        const provider = await prisma.provider.findUnique({
+          where: { id: notifyProviderId },
+          select: { userId: true },
+        });
+        if (provider?.userId) {
+          await notificationService.createForUser({
+            userId: provider.userId,
+            type: "SYSTEM",
+            title: "Booking rescheduled",
+            message: `Customer rescheduled to ${scheduled.toLocaleString("en-IN", {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}`,
+            referenceId: id,
+            referenceType: "booking",
+          });
+        }
       }
       return { ok: true as const };
     } catch (error) {
@@ -771,7 +769,13 @@ export class BookingService {
   }
 
   private isRetryableBookingTxError(error: Prisma.PrismaClientKnownRequestError): boolean {
-    if (error.code === "P2034" || error.code === "P2010" || error.code === "P2024" || error.code === "P2037") {
+    if (
+      error.code === "P2034" ||
+      error.code === "P2010" ||
+      error.code === "P2024" ||
+      error.code === "P2028" ||
+      error.code === "P2037"
+    ) {
       return true;
     }
     if (error.code === "P2002") {
@@ -1147,7 +1151,7 @@ export class BookingService {
       });
     }
 
-    void assignmentEngine.dispatchBookingNow(id).catch(() => undefined);
+    assignmentEngine.dispatchBookingNowBackground(id);
     return { ok: true as const };
   }
 
@@ -1345,6 +1349,14 @@ export class BookingService {
     });
     if (!bookingForGeo) throw new Error("FORBIDDEN");
     if (bookingForGeo.status !== "IN_PROGRESS") {
+      if (
+        !isBookingTransitionAllowed(
+          bookingForGeo.status as BookingStatus,
+          BookingStatus.IN_PROGRESS,
+        )
+      ) {
+        throw new Error("FORBIDDEN");
+      }
       const proximity = assertJobProximity({
         latitude: lat,
         longitude: lng,
@@ -1566,7 +1578,12 @@ export class BookingService {
       return { booking: existing, totalDuration: duration ?? 0, newlyCompleted: false as const };
     }
 
-    if (existing.status !== "IN_PROGRESS") {
+    if (
+      !isBookingTransitionAllowed(
+        existing.status as BookingStatus,
+        BookingStatus.COMPLETED,
+      )
+    ) {
       throw new Error("INVALID_STATUS");
     }
 
@@ -1670,6 +1687,21 @@ export class BookingService {
             breakdown.bonus,
             breakdown.deduction,
           );
+          const earningRow = await tx.earning.findUnique({ where: { bookingId: id } });
+          if (earningRow) {
+            const { buildPartnerEarningsPostedEvent } = await import("../events/catalog/partner.events");
+            const { emitPartnerEvent } = await import("../events/core/partner-event-emit");
+            await emitPartnerEvent(
+              buildPartnerEarningsPostedEvent({
+                providerId: existing.providerId,
+                bookingId: id,
+                earningId: earningRow.id,
+                netEarning: breakdown.netEarning,
+                grossAmount: breakdown.bookingAmount,
+              }),
+              tx,
+            );
+          }
         }
       }
       return updated;
@@ -1722,6 +1754,9 @@ export class BookingService {
       void partnerIncentivePayoutService
         .evaluateAndCreditIncentives(existing.providerId)
         .catch(() => undefined);
+      void import("./partner-referral.service").then(({ partnerReferralService }) =>
+        partnerReferralService.onJobCompleted(existing.providerId!, id),
+      ).catch(() => undefined);
     }
     if (booking.userId) {
       await notificationService.createForUser({

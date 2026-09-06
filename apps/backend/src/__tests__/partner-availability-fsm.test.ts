@@ -4,6 +4,8 @@ import {
   canPartnerAction,
   deriveOperationalStatus,
   isDispatchEligibleStatus,
+  toCanonicalAvailability,
+  OPERATIONAL_STATES,
 } from "../lib/partner-availability-fsm";
 import { computeCapacity } from "../lib/partner-capacity";
 import {
@@ -16,9 +18,10 @@ import {
   parseHmToMinutes,
   zonedDayBounds,
 } from "../lib/partner-ops-clock";
+import { AVAILABILITY_STATES } from "../lib/partner-four-axis";
 
 describe("partner availability FSM", () => {
-  test("derives SUSPENDED for banned or inactive", () => {
+  test("banned / inactive never become an availability value", () => {
     expect(
       deriveOperationalStatus({
         isBanned: true,
@@ -30,19 +33,9 @@ describe("partner availability FSM", () => {
         hasAccepted: false,
         hasOpenOffer: false,
       }),
-    ).toBe("suspended");
-    expect(
-      deriveOperationalStatus({
-        isBanned: false,
-        isActive: false,
-        isOnline: true,
-        pausedAt: null,
-        hasInProgress: false,
-        hasEnRoute: false,
-        hasAccepted: false,
-        hasOpenOffer: false,
-      }),
-    ).toBe("suspended");
+    ).toBe("available");
+    expect(OPERATIONAL_STATES).not.toContain("suspended");
+    expect(toCanonicalAvailability("suspended")).toBe("OFFLINE");
   });
 
   test("PAUSED beats job phase", () => {
@@ -60,7 +53,39 @@ describe("partner availability FSM", () => {
     ).toBe("paused");
   });
 
-  test("OFFLINE even with an active job (job continues)", () => {
+  test("compliance restriction does not overwrite availability", () => {
+    expect(
+      deriveOperationalStatus({
+        isBanned: false,
+        isActive: true,
+        isOnline: true,
+        pausedAt: null,
+        hasInProgress: false,
+        hasEnRoute: false,
+        hasAccepted: false,
+        hasOpenOffer: false,
+        complianceRestricted: true,
+      }),
+    ).toBe("available");
+  });
+
+  test("compliance restriction does not overwrite in-progress job projection", () => {
+    expect(
+      deriveOperationalStatus({
+        isBanned: false,
+        isActive: true,
+        isOnline: true,
+        pausedAt: null,
+        hasInProgress: true,
+        hasEnRoute: false,
+        hasAccepted: false,
+        hasOpenOffer: false,
+        complianceRestricted: true,
+      }),
+    ).toBe("on_job");
+  });
+
+  test("OFFLINE even with an active job (job continues on the job axis)", () => {
     expect(
       deriveOperationalStatus({
         isBanned: false,
@@ -88,28 +113,40 @@ describe("partner availability FSM", () => {
     };
     expect(deriveOperationalStatus({ ...base, hasInProgress: true, hasOpenOffer: true })).toBe("on_job");
     expect(deriveOperationalStatus({ ...base, hasEnRoute: true })).toBe("en_route");
-    expect(deriveOperationalStatus({ ...base, hasAccepted: true })).toBe("accepting_job");
+    expect(deriveOperationalStatus({ ...base, hasAccepted: true })).toBe("accepting");
     expect(deriveOperationalStatus({ ...base, hasOpenOffer: true })).toBe("offered");
     expect(deriveOperationalStatus(base)).toBe("available");
   });
 
-  test("rejects OFFLINE → implicit ON_JOB and SUSPENDED → AVAILABLE", () => {
-    expect(canPartnerAction("go_online", "suspended")).toBe(false);
+  test("rejects ON_JOB → go_online; pause only from live availability", () => {
     expect(canPartnerAction("go_online", "on_job")).toBe(false);
     expect(canPartnerAction("go_online", "offline")).toBe(true);
     expect(canPartnerAction("pause", "available")).toBe(true);
     expect(canPartnerAction("pause", "offline")).toBe(false);
     expect(canPartnerAction("resume", "paused")).toBe(true);
-    expect(() => assertPartnerAction("go_online", "suspended")).toThrow(/ACCOUNT_RESTRICTED/);
     expect(() => assertPartnerAction("go_online", "on_job")).toThrow(/INVALID_TRANSITION/);
   });
 
-  test("dispatch-eligible statuses exclude paused/offline/suspended", () => {
+  test("dispatch-eligible statuses exclude paused/offline", () => {
     expect(isDispatchEligibleStatus("available")).toBe(true);
     expect(isDispatchEligibleStatus("on_job")).toBe(true);
     expect(isDispatchEligibleStatus("paused")).toBe(false);
     expect(isDispatchEligibleStatus("offline")).toBe(false);
-    expect(isDispatchEligibleStatus("suspended")).toBe(false);
+    expect(isDispatchEligibleStatus("accepting_job")).toBe(true);
+  });
+
+  test("canonical availability vocab matches the lock", () => {
+    expect([...AVAILABILITY_STATES]).toEqual([
+      "OFFLINE",
+      "AVAILABLE",
+      "OFFERED",
+      "ACCEPTING",
+      "EN_ROUTE",
+      "ON_JOB",
+      "PAUSED",
+    ]);
+    expect(toCanonicalAvailability("accepting_job")).toBe("ACCEPTING");
+    expect(toCanonicalAvailability("accepting")).toBe("ACCEPTING");
   });
 });
 
@@ -187,8 +224,7 @@ describe("working days / hours / breaks", () => {
       workingHoursEnd: "18:00",
       timezone: "Asia/Kolkata",
     };
-    // Monday 10:00 IST = Sunday 20:30-ish UTC previous... pick a known Monday IST instant.
-    const mondayIst = new Date("2026-08-24T04:30:00.000Z"); // 10:00 IST Monday
+    const mondayIst = new Date("2026-08-24T04:30:00.000Z");
     expect(isWithinWorkingWindow(schedule, mondayIst)).toBe(true);
     const sundayIst = new Date("2026-08-23T04:30:00.000Z");
     expect(isWithinWorkingWindow(schedule, sundayIst)).toBe(false);
@@ -203,14 +239,14 @@ describe("working days / hours / breaks", () => {
       breakWindows: [{ start: "13:00", end: "14:00" }],
       timezone: "Asia/Kolkata",
     };
-    const inBreak = new Date("2026-08-22T07:40:00.000Z"); // 13:10 IST Saturday
+    const inBreak = new Date("2026-08-22T07:40:00.000Z");
     expect(isInBreakWindow(schedule, inBreak)).toBe(true);
-    const afterBreak = new Date("2026-08-22T08:30:00.000Z"); // 14:00 IST
+    const afterBreak = new Date("2026-08-22T08:30:00.000Z");
     expect(isInBreakWindow(schedule, afterBreak)).toBe(false);
   });
 
   test("zoned day bounds are midnight IST, not UTC", () => {
-    const noonIst = new Date("2026-08-22T06:30:00.000Z"); // 12:00 IST 22 Aug
+    const noonIst = new Date("2026-08-22T06:30:00.000Z");
     const { start, end } = zonedDayBounds("Asia/Kolkata", noonIst);
     expect(start.toISOString()).toBe("2026-08-21T18:30:00.000Z");
     expect(end.toISOString()).toBe("2026-08-22T18:30:00.000Z");

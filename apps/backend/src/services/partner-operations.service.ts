@@ -24,9 +24,11 @@ import {
   assertPartnerAction,
   deriveOperationalStatus,
   normalizePauseReason,
+  toCanonicalAvailability,
   type OperationalState,
   type PauseReason,
 } from "../lib/partner-availability-fsm";
+import { canonicalizeLifecycle, isDispatchEligibleLifecycle, isLifecycleBlockingOnline } from "../lib/partner-lifecycle-fsm";
 import {
   computeCapacity,
   MAX_JOBS_PER_DAY,
@@ -63,6 +65,8 @@ const TODAY_QUOTA_STATUSES: BookingStatus[] = [...CONCURRENT_STATUSES, BookingSt
 export type ReadinessBlocker = { code: string; message: string };
 
 export type PartnerOperationsSnapshot = {
+  axis: "AVAILABILITY";
+  availabilityState: import("../lib/partner-four-axis").PartnerAvailabilityState;
   operationalStatus: OperationalState;
   uiOnline: boolean;
   isOnline: boolean;
@@ -107,25 +111,88 @@ function parseOpsError(err: unknown): never {
   throw err;
 }
 
+const ACCOUNT_RESTRICTED_MSG = "Your account is currently unavailable for job assignments. Contact Support.";
+
+function isAccountRestricted(provider: {
+  isBanned: boolean;
+  isActive: boolean;
+  lifecycleState: string;
+  user?: { isBanned: boolean };
+}): boolean {
+  if (provider.isBanned || provider.user?.isBanned || !provider.isActive) return true;
+  return canonicalizeLifecycle(provider.lifecycleState) === "SUSPENDED";
+}
+
+/** Interactive tx must survive pool wait under connection_limit=8; Prisma default timeout is 5s. */
+const TX_OPTS = { maxWait: 20_000, timeout: 30_000 } as const;
 
 export class PartnerOperationsService {
   async loadJobFlags(providerId: string) {
+    const map = await this.loadJobFlagsMap([providerId]);
+    return (
+      map.get(providerId) ?? {
+        hasInProgress: false,
+        hasEnRoute: false,
+        hasAccepted: false,
+        hasOpenOffer: false,
+      }
+    );
+  }
+
+  /** One grouped query set for a page of providers — no N×4 count fan-out. */
+  async loadJobFlagsMap(providerIds: string[]) {
+    const empty = () => ({
+      hasInProgress: false,
+      hasEnRoute: false,
+      hasAccepted: false,
+      hasOpenOffer: false,
+    });
+    const map = new Map(providerIds.map((id) => [id, empty()]));
+    if (providerIds.length === 0) return map;
+
     const [inProgress, enRoute, accepted, openOffer] = await Promise.all([
-      prisma.booking.count({ where: { providerId, status: BookingStatus.IN_PROGRESS } }),
-      prisma.booking.count({ where: { providerId, status: BookingStatus.EN_ROUTE } }),
-      prisma.booking.count({
-        where: { providerId, status: { in: [BookingStatus.ACCEPTED, BookingStatus.ASSIGNED] } },
+      prisma.booking.groupBy({
+        by: ["providerId"],
+        where: { providerId: { in: providerIds }, status: BookingStatus.IN_PROGRESS },
+        _count: { _all: true },
       }),
-      prisma.assignmentAttempt.count({
-        where: { providerId, status: AssignmentAttemptStatus.SENT },
+      prisma.booking.groupBy({
+        by: ["providerId"],
+        where: { providerId: { in: providerIds }, status: BookingStatus.EN_ROUTE },
+        _count: { _all: true },
+      }),
+      prisma.booking.groupBy({
+        by: ["providerId"],
+        where: {
+          providerId: { in: providerIds },
+          status: { in: [BookingStatus.ACCEPTED, BookingStatus.ASSIGNED] },
+        },
+        _count: { _all: true },
+      }),
+      prisma.assignmentAttempt.groupBy({
+        by: ["providerId"],
+        where: { providerId: { in: providerIds }, status: AssignmentAttemptStatus.SENT },
+        _count: { _all: true },
       }),
     ]);
-    return {
-      hasInProgress: inProgress > 0,
-      hasEnRoute: enRoute > 0,
-      hasAccepted: accepted > 0,
-      hasOpenOffer: openOffer > 0,
-    };
+
+    for (const row of inProgress) {
+      const flags = row.providerId ? map.get(row.providerId) : undefined;
+      if (flags) flags.hasInProgress = row._count._all > 0;
+    }
+    for (const row of enRoute) {
+      const flags = row.providerId ? map.get(row.providerId) : undefined;
+      if (flags) flags.hasEnRoute = row._count._all > 0;
+    }
+    for (const row of accepted) {
+      const flags = row.providerId ? map.get(row.providerId) : undefined;
+      if (flags) flags.hasAccepted = row._count._all > 0;
+    }
+    for (const row of openOffer) {
+      const flags = map.get(row.providerId);
+      if (flags) flags.hasOpenOffer = row._count._all > 0;
+    }
+    return map;
   }
 
   async loadCapacityMap(providerIds: string[], at = new Date()): Promise<Map<string, CapacitySnapshot>> {
@@ -204,12 +271,25 @@ export class PartnerOperationsService {
     city: string | null;
     baseLatitude: number | null;
     baseLongitude: number | null;
+    complianceRestricted?: boolean;
+    lifecycleState?: string;
   }): { ready: boolean; blockers: ReadinessBlocker[] } {
     const blockers: ReadinessBlocker[] = [];
-    if (provider.isBanned || !provider.isActive) {
+    if (provider.lifecycleState && provider.lifecycleState !== "ACTIVE") {
+      blockers.push({
+        code: "LIFECYCLE_NOT_ACTIVE",
+        message:
+          provider.lifecycleState === "UNDER_REVIEW" || provider.lifecycleState === "SUSPENDED"
+            ? "Your account is not available for new jobs. Existing jobs are unaffected."
+            : "Complete partner activation before going online.",
+      });
+    }
+    if (provider.isBanned || !provider.isActive || provider.complianceRestricted) {
       blockers.push({
         code: "ACCOUNT_RESTRICTED",
-        message: "Your account is currently unavailable for job assignments. Contact Support.",
+        message: provider.complianceRestricted
+          ? "A required document has expired. Update it to go online and receive new jobs."
+          : "Your account is currently unavailable for job assignments. Contact Support.",
       });
     }
     if (!provider.isApproved) {
@@ -243,8 +323,6 @@ export class PartnerOperationsService {
 
     const [flags, capacity] = await Promise.all([this.loadJobFlags(providerId), this.loadCapacityFor(providerId)]);
     const operationalStatus = deriveOperationalStatus({
-      isBanned: provider.isBanned || provider.user.isBanned,
-      isActive: provider.isActive,
       isOnline: provider.isOnline,
       pausedAt: provider.pausedAt,
       ...flags,
@@ -273,16 +351,16 @@ export class PartnerOperationsService {
       ? provider.serviceRegions.join(" · ")
       : provider.city ?? "Not set";
 
+    const restricted = isAccountRestricted(provider);
     return {
+      axis: "AVAILABILITY",
+      availabilityState: toCanonicalAvailability(operationalStatus),
       operationalStatus,
-      uiOnline: provider.isOnline && operationalStatus !== "suspended",
+      uiOnline: provider.isOnline && !restricted,
       isOnline: provider.isOnline,
       isPaused: operationalStatus === "paused",
-      isSuspended: operationalStatus === "suspended",
-      suspendedMessage:
-        operationalStatus === "suspended"
-          ? "Your account is currently unavailable for job assignments. Contact Support."
-          : null,
+      isSuspended: restricted,
+      suspendedMessage: restricted ? ACCOUNT_RESTRICTED_MSG : null,
       pauseReason: provider.pauseReason,
       pausedAt: provider.pausedAt?.toISOString() ?? null,
       onlineSince: provider.onlineSince?.toISOString() ?? null,
@@ -313,8 +391,6 @@ export class PartnerOperationsService {
     if (!provider) throw new NotFoundError("Provider");
     const flags = await this.loadJobFlags(providerId);
     const status = deriveOperationalStatus({
-      isBanned: provider.isBanned || provider.user.isBanned,
-      isActive: provider.isActive,
       isOnline: provider.isOnline,
       pausedAt: provider.pausedAt,
       ...flags,
@@ -342,6 +418,7 @@ export class PartnerOperationsService {
         is_banned: boolean;
         is_active: boolean;
         is_approved: boolean;
+        lifecycle_state: string;
         max_concurrent_jobs: number;
         max_jobs_per_day: number | null;
         working_days: string[];
@@ -355,7 +432,7 @@ export class PartnerOperationsService {
         base_longitude: number | null;
       }>
     >`
-      SELECT id, is_online, paused_at, is_banned, is_active, is_approved,
+      SELECT id, is_online, paused_at, is_banned, is_active, is_approved, lifecycle_state,
              max_concurrent_jobs, max_jobs_per_day, working_days, working_hours_start,
              working_hours_end, break_windows, timezone, service_radius_km, service_regions,
              base_latitude, base_longitude
@@ -366,6 +443,7 @@ export class PartnerOperationsService {
     const row = rows[0];
     if (!row) return "NOT_FOUND";
     if (row.is_banned || !row.is_active) return "ACCOUNT_RESTRICTED";
+    if (!isDispatchEligibleLifecycle(row.lifecycle_state)) return "ACCOUNT_RESTRICTED";
     if (!row.is_approved) return "APPROVAL_PENDING";
     if (!row.is_online) return "OFFLINE";
     if (row.paused_at) return "PAUSED";
@@ -486,8 +564,6 @@ export class PartnerOperationsService {
     if (!provider) throw new NotFoundError("Provider");
     const flags = await this.loadJobFlags(providerId);
     const from = deriveOperationalStatus({
-      isBanned: provider.isBanned || provider.user.isBanned,
-      isActive: provider.isActive,
       isOnline: provider.isOnline,
       pausedAt: provider.pausedAt,
       ...flags,
@@ -495,7 +571,9 @@ export class PartnerOperationsService {
 
     try {
       if (online) {
-        if (from === "suspended") opsError("Your account is currently unavailable for job assignments. Contact Support.", "ACCOUNT_RESTRICTED", 403);
+        if (isAccountRestricted(provider) || isLifecycleBlockingOnline(provider.lifecycleState)) {
+          opsError(ACCOUNT_RESTRICTED_MSG, "ACCOUNT_RESTRICTED", 403);
+        }
         if (provider.isOnline && !provider.pausedAt) {
           return this.snapshot(providerId);
         }
@@ -540,7 +618,7 @@ export class PartnerOperationsService {
             : buildPartnerOfflineEvent({ providerId, offlineAt: now }),
         );
       }
-    });
+    }, TX_OPTS);
     logger.info("partner.availability.transition", {
       providerId,
       from,
@@ -558,13 +636,12 @@ export class PartnerOperationsService {
     if (!provider) throw new NotFoundError("Provider");
     const flags = await this.loadJobFlags(providerId);
     const from = deriveOperationalStatus({
-      isBanned: provider.isBanned || provider.user.isBanned,
-      isActive: provider.isActive,
       isOnline: provider.isOnline,
       pausedAt: provider.pausedAt,
       ...flags,
     });
     try {
+      if (isAccountRestricted(provider)) opsError(ACCOUNT_RESTRICTED_MSG, "ACCOUNT_RESTRICTED", 403);
       assertPartnerAction("pause", from);
     } catch (err) {
       parseOpsError(err);
@@ -579,7 +656,7 @@ export class PartnerOperationsService {
       if (eventPlatformConfig.outboxEnabled && eventPlatformConfig.partnerEventsEnabled) {
         await emitInTransaction(tx, buildPartnerPausedEvent({ providerId, pausedAt: now, reason }));
       }
-    });
+    }, TX_OPTS);
     logger.info("partner.availability.transition", { providerId, from, to: "paused", action: "pause", reason });
     return this.snapshot(providerId);
   }
@@ -592,13 +669,14 @@ export class PartnerOperationsService {
     if (!provider) throw new NotFoundError("Provider");
     const flags = await this.loadJobFlags(providerId);
     const from = deriveOperationalStatus({
-      isBanned: provider.isBanned || provider.user.isBanned,
-      isActive: provider.isActive,
       isOnline: provider.isOnline,
       pausedAt: provider.pausedAt,
       ...flags,
     });
     try {
+      if (isAccountRestricted(provider) || isLifecycleBlockingOnline(provider.lifecycleState)) {
+        opsError(ACCOUNT_RESTRICTED_MSG, "ACCOUNT_RESTRICTED", 403);
+      }
       assertPartnerAction("resume", from);
     } catch (err) {
       parseOpsError(err);
@@ -619,7 +697,7 @@ export class PartnerOperationsService {
       if (eventPlatformConfig.outboxEnabled && eventPlatformConfig.partnerEventsEnabled) {
         await emitInTransaction(tx, buildPartnerResumedEvent({ providerId, resumedAt: now }));
       }
-    });
+    }, TX_OPTS);
     logger.info("partner.availability.transition", { providerId, from, to: "available", action: "resume" });
     return this.syncCurrentStatus(providerId).then(() => this.snapshot(providerId));
   }
@@ -707,7 +785,7 @@ export class PartnerOperationsService {
         );
       }
       return row;
-    });
+    }, TX_OPTS);
     logger.info("partner.availability.updated", { providerId });
     return updated;
   }
@@ -778,7 +856,7 @@ export class PartnerOperationsService {
         );
       }
       return row;
-    });
+    }, TX_OPTS);
     logger.info("partner.service_area.updated", { providerId });
     return { ...updated, coverageZones };
   }
@@ -816,7 +894,7 @@ export class PartnerOperationsService {
           utilization: next.utilization,
         }),
       );
-    });
+    }, TX_OPTS);
     logger.info("partner.capacity.changed", {
       providerId,
       currentJobs: next.currentJobs,
@@ -842,7 +920,9 @@ export class PartnerOperationsService {
     if (query.status === "online") and.push({ isOnline: true });
     if (query.status === "offline") and.push({ isOnline: false });
     if (query.status === "paused") and.push({ pausedAt: { not: null } });
-    if (query.status === "suspended") and.push({ OR: [{ isBanned: true }, { isActive: false }] });
+    if (query.status === "suspended" || query.status === "account_restricted") {
+      and.push({ OR: [{ isBanned: true }, { isActive: false }, { lifecycleState: "SUSPENDED" }] });
+    }
     if (query.zone) and.push({ serviceRegions: { has: query.zone } });
     if (query.skill) and.push({ serviceCategories: { has: query.skill } });
     if (query.search?.trim()) {
@@ -872,14 +952,18 @@ export class PartnerOperationsService {
       prisma.provider.count({ where }),
     ]);
 
-    const capMap = await this.loadCapacityMap(rows.map((r) => r.id));
-    const flagsList = await Promise.all(rows.map((r) => this.loadJobFlags(r.id)));
+    const ids = rows.map((r) => r.id);
+    const capMap = await this.loadCapacityMap(ids);
+    const flagsMap = await this.loadJobFlagsMap(ids);
 
-    let items = rows.map((p, i) => {
-      const flags = flagsList[i]!;
+    let items = rows.map((p) => {
+      const flags = flagsMap.get(p.id) ?? {
+        hasInProgress: false,
+        hasEnRoute: false,
+        hasAccepted: false,
+        hasOpenOffer: false,
+      };
       const status = deriveOperationalStatus({
-        isBanned: p.isBanned || p.user.isBanned,
-        isActive: p.isActive,
         isOnline: p.isOnline,
         pausedAt: p.pausedAt,
         ...flags,
@@ -924,7 +1008,7 @@ export class PartnerOperationsService {
 
     if (query.capacity === "full") items = items.filter((i) => i.availableSlots <= 0);
     if (query.capacity === "available") items = items.filter((i) => i.availableSlots > 0);
-    if (query.status && !["online", "offline", "paused", "suspended"].includes(query.status)) {
+    if (query.status && !["online", "offline", "paused", "suspended", "account_restricted", "available", "offered", "accepting", "en_route", "on_job"].includes(query.status)) {
       items = items.filter((i) => i.status === query.status);
     }
 

@@ -7,6 +7,8 @@ import { geofenceService } from "./geofence.service";
 import { partnerOperationsService } from "./partner-operations.service";
 import { isInBreakWindow, isWithinWorkingWindow } from "../lib/partner-ops-clock";
 import { MIN_SERVICE_RADIUS_KM } from "../lib/partner-capacity";
+import { careerPriorityBoost } from "../lib/partner-career-policy";
+import { DISPATCH_LIFECYCLE_WHERE } from "../lib/partner-four-axis";
 
 export interface MatchingRequest {
   serviceId: string;
@@ -39,6 +41,7 @@ export interface ProviderMatch {
   availability: boolean;
   profileImage: string | null;
   premiumBoost?: number;
+  careerPriorityBoost?: number;
 }
 
 const MAX_DISTANCE_DEFAULT_KM = 50;
@@ -193,7 +196,9 @@ export class MatchingService {
         isActive: true,
         isApproved: true,
         isBanned: false,
+        complianceRestricted: false,
         pausedAt: null,
+        ...DISPATCH_LIFECYCLE_WHERE,
         user: { isBanned: false },
         ...(options.onlyOnline ? { isOnline: true } : {}),
         ...(options.exclude && options.exclude.length > 0
@@ -278,8 +283,13 @@ export class MatchingService {
       if (provider.isOnline) premiumBoost += 3;
     }
 
+    const careerBoost = careerPriorityBoost(provider.careerLevel, {
+      lifecycleState: provider.lifecycleState,
+      complianceRestricted: provider.complianceRestricted,
+    });
+
     const totalScore = round1(
-      ratingScore + distanceScore + availabilityScore + responseScore + completionScore + premiumBoost,
+      ratingScore + distanceScore + availabilityScore + responseScore + completionScore + premiumBoost + careerBoost,
     );
 
     return {
@@ -303,6 +313,7 @@ export class MatchingService {
       availability: availabilityScore > 0,
       profileImage: provider.profileImage,
       premiumBoost: isPremiumCustomer ? round1(premiumBoost) : undefined,
+      careerPriorityBoost: careerBoost > 0 ? careerBoost : undefined,
     };
   }
 

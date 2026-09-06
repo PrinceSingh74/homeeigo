@@ -1,0 +1,25 @@
+---
+description: Never mix Partner lifecycle, Availability, Job, and Finance state machines
+globs: apps/backend/src/lib/partner-*.ts,apps/backend/src/services/partner-*.ts,apps/backend/src/lib/job-action-policy.ts,apps/partner-web/src/lib/job-action-policy.ts,homigo-partner-mobile/src/lib/job-action-policy.ts
+alwaysApply: true
+---
+
+# Partner OS four-axis lock
+
+Never store or compare Partner, Availability, Job, and Finance states as one enum.
+
+```
+PARTNER lifecycle
+     ├─ AVAILABILITY
+     └─ JOB
+          └─ FINANCE
+```
+
+- **Lifecycle:** `APPLIED → VERIFIED → TRAINING → ACTIVE → PAUSED → UNDER_REVIEW → SUSPENDED → REACTIVATED`
+- **Availability:** `OFFLINE → AVAILABLE → OFFERED → ACCEPTING → EN_ROUTE → ON_JOB → PAUSED`
+- **Job:** `OFFERED → ACCEPTED → EN_ROUTE → ARRIVED → STARTED → IN_PROGRESS → COMPLETED`
+- **Finance:** `EARNING_POSTED → PENDING → AVAILABLE → WITHDRAWAL_REQUESTED → PROCESSING → PAID`
+
+`PAUSED`, `OFFERED`, `EN_ROUTE`, `AVAILABLE` are homonyms. Lifecycle `SUSPENDED` is not availability. Job `COMPLETED` is not money. Source: `apps/backend/src/lib/partner-four-axis.ts`.
+
+Allowed: lifecycle ACTIVE gates dispatch; job COMPLETED may post finance. Forbidden: writing one axis from another, or using `EARNINGS_POSTED` as a job stage.
