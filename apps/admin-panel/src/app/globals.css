@@ -428,9 +428,8 @@ html[data-theme="light"] *::-webkit-scrollbar-thumb:hover {
   transform: translateY(-1px);
 }
 
-.biz-page-enter {
-  animation: biz-page-enter 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
+/* Page content must paint on the first frame. A fade-from-opacity-0 hid the
+   already-rendered shell for 320ms on every navigation. */
 
 .biz-skeleton {
   background: linear-gradient(
