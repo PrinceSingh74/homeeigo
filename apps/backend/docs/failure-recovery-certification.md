@@ -2,19 +2,19 @@
 
 **Overall verdict:** PASS
 
-**Executed:** 2026-06-26T12:21:00.532Z
-**Run ID:** `recovery-mquwgm2a`
+**Executed:** 2026-09-06T12:51:12.740Z
+**Run ID:** `recovery-mtpt8qpg`
 **Command:** `bun test src/__tests__/failure-recovery-certification.test.ts`
 
 | Phase | Scenario | Verdict | Evidence | Metrics |
 |-------|----------|---------|----------|---------|
-| P1 | Database reconnect | **PASS** | Reconnected in 38ms, SELECT 1 succeeded | {"recoveryMs":38} |
-| P1 | Mid-tx rollback + booking recovery | **PASS** | Rollback clean; new booking cmquwgn1d002ztzo0iycwtde0 | — |
+| P1 | Database reconnect | **PASS** | Reconnected in 114ms, SELECT 1 succeeded | {"recoveryMs":114} |
+| P1 | Mid-tx rollback + booking recovery | **PASS** | Rollback clean; new booking cmtpt8szi01fctzxcp87hbs4l | — |
 | P1 | Redis fail-open | **PASS** | Redis unavailable — in-memory fallback active, process healthy | {"redisAvailable":0} |
 | P2 | Invalid refresh rejected | **PASS** | Invalid refresh token returned success=false | {"jwtFailures":0} |
 | P2 | Valid refresh rotation | **PASS** | New access+refresh tokens issued | — |
 | P4 | Wallet idempotent addMoney | **PASS** | Single pending txn; same razorpay order; ledger imbalance=0 | {"txnCount":1,"ledgerImbalance":0} |
-| P4 | Booking atomic create | **PASS** | Booking cmquwgn8x003btzo0tx7qyxk1 with service+address FKs intact | — |
+| P4 | Booking atomic create | **PASS** | Booking cmtpt8ti001frtzxcvg4m8j0u with service+address FKs intact | — |
 | P7 | Recovery metrics emit | **PASS** | jwt_refresh_total, redis_reconnect_total, ux_signal_total increment | — |
 
 ## Acceptance criteria

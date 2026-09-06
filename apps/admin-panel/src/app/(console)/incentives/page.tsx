@@ -42,6 +42,7 @@ export default function IncentivesPage() {
         tone="warning"
         title="Incentives"
         subtitle="Canonical Partner OS bonus rules. Payouts still run through the Section 04 incentive engine — this page does not credit wallets."
+        as="h1"
       />
       {q.isError ? (
         <div className="biz-glass-panel p-4" role="alert">

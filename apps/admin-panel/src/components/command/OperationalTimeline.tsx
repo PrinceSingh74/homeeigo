@@ -34,7 +34,12 @@ function OperationalTimelineInner({ fraud, surge }: { fraud?: FraudData; surge?:
   const events = useMemo(() => buildEvents(fraud, surge), [fraud, surge]);
 
   return (
-    <div className="cmd-card cmd-timeline">
+    <div
+      className="cmd-card cmd-timeline"
+      role="region"
+      aria-label="Live operational events"
+      tabIndex={0}
+    >
       <span className="flex shrink-0 items-center gap-2 pr-1 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--cmd-muted)" }}>
         <Icon3D icon={Activity} tone="cyan" size="sm" /> Live Ops
       </span>

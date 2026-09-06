@@ -63,6 +63,7 @@ function AuditExplorerInner() {
         tone="cyan"
         title="Audit Explorer"
         subtitle="Actor, action, entity, request/correlation ID. Passwords, OTP, tokens, and bank numbers are never shown."
+        as="h1"
       />
       <div className="biz-glass-panel grid gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <input value={action} onChange={(e) => { setAction(e.target.value); setCursor(undefined); }} placeholder="Action" aria-label="Filter action" className="min-h-11 rounded-xl border border-[var(--color-biz-line)] bg-transparent px-3 text-sm" />

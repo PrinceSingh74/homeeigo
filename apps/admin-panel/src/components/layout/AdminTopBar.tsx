@@ -161,7 +161,7 @@ export const AdminTopBar = memo(function AdminTopBar() {
           >
             <Bell className="h-5 w-5" />
             {unreadCount > 0 ? (
-              <span className="absolute -right-0.5 -top-0.5 flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[var(--color-biz-accent)] px-1 text-[9px] font-bold text-white">
+              <span className="absolute -right-0.5 -top-0.5 flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[#1e40af] px-1 text-[10px] font-bold text-white">
                 {unreadCount > 9 ? "9+" : unreadCount}
               </span>
             ) : null}

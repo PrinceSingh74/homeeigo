@@ -17,10 +17,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <RouteTransitionTracker />
       <AdminRoutePrefetch />
       <HqSidebar />
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <MobileHqNav />
         <AdminTopBar />
-        <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6 xl:p-8">{children}</main>
+        <main
+          tabIndex={0}
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-auto p-4 md:p-6 xl:p-8 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-biz-accent)]"
+        >
+          {children}
+        </main>
       </div>
     </div>
   );
