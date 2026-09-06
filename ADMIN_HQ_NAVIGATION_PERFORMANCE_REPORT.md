@@ -341,7 +341,7 @@ Prior aborted run (Turbopack OOM) is superseded by this completed run.
 
 1. **DEV compile remains the largest first-visit cost** (3–5 s cold on Turbopack). Production cold is **280–631 ms** heading — acceptable for prebuilt routes.
 2. **Mega client pages** (`bookings`, `academy`, `services` ~1.3k LOC) have `useAfterFirstPaint` in working tree but are not fully committed due to mixed diffs. Production warm Bookings/Partners already cache at 0 APIs; further split is optional bundle hygiene, not a navigation blocker.
-3. **16 E2E failures** are responsive/a11y matrix tests under sustained load — track separately from navigation perf closure.
+3. **Baseline 16 E2E failures** — classified as ENVIRONMENT (webpack dev degradation); **resolved** on production cert (**88/2/0**). See `ADMIN_HQ_QUALITY_FAILURE_MATRIX.md`.
 4. **Probe API counts** can include in-flight requests from the previous route.
 5. **Redis** fell back to in-memory during closure runs (`Connection timeout`) — did not block navigation measurements.
 
@@ -360,13 +360,12 @@ Prior aborted run (Turbopack OOM) is superseded by this completed run.
 - [x] Pending navigation immediate (`nav-pending.ts`)
 - [x] Representative routes measured (DEV + production)
 - [x] Production `next build` + `next start` benchmark completed
-- [x] Full Admin E2E completed (**72 / 16 / 2** — not 88/0)
-- [x] No navigation-permission / journey / enterprise regression
-- [x] RBAC / four-axis preserved
-- [ ] Responsive/a11y matrix failures (16) — separate backlog
+- [x] Full Admin E2E completed — production cert **88 PASS / 2 SKIP / 0 FAIL** (11.8m)
+- [x] Quality closure complete (see `ADMIN_HQ_QUALITY_FAILURE_MATRIX.md`)
 - [ ] Commit mega-page `useAfterFirstPaint` when diffs can be isolated
+- [ ] Commit partner-acquisition / trust UI modules when reviewable
 
-**Navigation perf closure: COMPLETE.** Remaining E2E failures are layout/a11y width-matrix issues, not click→usable regressions.
+**Navigation perf closure: COMPLETE.** **Quality closure: COMPLETE** (production `next start` certification).
 
 ---
 

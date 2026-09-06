@@ -1,23 +1,9 @@
 import { test, expect } from "@playwright/test";
-
-const SEED_ADMIN = {
-  email: "admin@homigo.demo",
-  password: "Homigo@123",
-};
-
-async function loginAsAdmin(page: import("@playwright/test").Page): Promise<void> {
-  await page.goto("/login");
-  await page.locator("#admin-email").fill(SEED_ADMIN.email);
-  await page.locator("#admin-password").fill(SEED_ADMIN.password);
-  await page.getByRole("button", { name: /enter business hq/i }).click();
-  await expect(
-    page.getByRole("heading", { name: /Executive HQ|business overview/i }),
-  ).toBeVisible({ timeout: 30_000 });
-}
+import { adminLogin } from "./enterprise/fixtures";
 
 test.describe("Enterprise Tool Center", () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsAdmin(page);
+    await adminLogin(page);
   });
 
   test("loads all Phase 5 admin sections without JS errors", async ({ page }) => {

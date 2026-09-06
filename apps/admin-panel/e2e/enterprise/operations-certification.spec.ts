@@ -52,7 +52,7 @@ test.describe("Enterprise Operations Certification", () => {
 
   test("admin login + dashboard", async ({ page, monitor }) => {
     await adminLogin(page);
-    await expect(page.getByRole("heading", { name: /business overview/i })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: /Executive HQ|business overview/i })).toBeVisible({ timeout: 30_000 });
     const dash = page.waitForResponse((r) => r.url().includes("/api/admin/dashboard") && r.ok(), { timeout: 30_000 });
     await page.goto("/");
     await dash;
@@ -76,11 +76,39 @@ test.describe("Enterprise Operations Certification", () => {
   });
 
   test("payout batch workflow (API + UI)", async ({ page, monitor }) => {
-    const create = await api(token, "POST", "/api/admin/finance/payouts/batch", {
-      withdrawalIds: [seed.withdrawalId],
-    });
-    expect(create.ok).toBe(true);
-    const batchId = (create.json.data as { batch: { id: string } }).batch.id;
+    // Prefer ops-seed withdrawal; if already batched (DUPLICATE_BATCH), pick another eligible row.
+    const listed = await api(token, "GET", "/api/admin/finance/payouts");
+    expect(listed.ok, JSON.stringify(listed.json)).toBe(true);
+    const data = listed.json.data as {
+      queue?: Array<{ id?: string; status?: string }>;
+      payouts?: Array<{ id?: string; status?: string }>;
+    };
+    const eligible = [...(data.queue ?? []), ...(data.payouts ?? [])].filter((w) =>
+      /REQUESTED|APPROVED/i.test(String(w.status ?? "")),
+    );
+    const ordered = [
+      ...eligible.filter((w) => w.id === seed.withdrawalId),
+      ...eligible.filter((w) => w.id !== seed.withdrawalId),
+      { id: seed.withdrawalId, status: "APPROVED" },
+    ];
+    let batchId: string | undefined;
+    let lastErr = "";
+    for (const w of ordered) {
+      if (!w.id) continue;
+      const create = await api(token, "POST", "/api/admin/finance/payouts/batch", {
+        withdrawalIds: [w.id],
+      });
+      if (create.ok) {
+        batchId = (create.json.data as { batch: { id: string } }).batch.id;
+        break;
+      }
+      lastErr = JSON.stringify(create.json);
+      // Stale seed already in a batch — continue searching.
+      if (!/DUPLICATE_BATCH/i.test(lastErr)) {
+        expect(create.ok, lastErr).toBe(true);
+      }
+    }
+    expect(batchId, `no unused withdrawal for batch; last=${lastErr}`).toBeTruthy();
 
     await api(token, "POST", `/api/admin/finance/payouts/batch/${batchId}/submit`, {});
     const approverToken = await loginToken(seed.approverEmail, seed.approverPassword);
@@ -144,20 +172,33 @@ test.describe("Enterprise Operations Certification", () => {
       return;
     }
 
-    const slot = new Date(Date.now() + 72 * 3_600_000).toISOString();
-    const createRes = await fetch(`${API}/api/bookings`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${await customerToken()}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        serviceId: seed.serviceId,
-        scheduledDate: slot,
-        addressId: seed.addressId,
-      }),
-    });
-    const created = (await createRes.json()) as { data?: { booking?: { id: string } } };
+    let createRes: Response | null = null;
+    let created: {
+      success?: boolean;
+      data?: { booking?: { id: string } };
+      error?: string;
+      code?: string;
+    } = {};
+
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const slot = new Date(Date.now() + (73 + attempt * 24 + Math.floor(Math.random() * 12)) * 3_600_000).toISOString();
+      createRes = await fetch(`${API}/api/bookings`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${await customerToken()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          serviceId: seed.serviceId,
+          scheduledDate: slot,
+          addressId: seed.addressId,
+        }),
+      });
+      created = (await createRes.json()) as typeof created;
+      if (createRes.ok || created.code !== "PROVIDER_UNAVAILABLE") break;
+    }
+
+    expect(createRes?.ok, created.error ?? created.code ?? JSON.stringify(created)).toBe(true);
     const bookingId = created.data?.booking?.id;
     expect(bookingId).toBeTruthy();
 
