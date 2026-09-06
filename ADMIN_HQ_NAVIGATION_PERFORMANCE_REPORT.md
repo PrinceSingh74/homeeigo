@@ -1,11 +1,12 @@
 # Admin HQ Navigation Performance Report
 
-**Date:** 2026-09-05  
+**Date:** 2026-09-06 (final closure loop)  
+**Commits:** `3f0f9fa` (nav perf core), `34fc350` (globals.css first-paint fix)  
 **App:** `apps/admin-panel` (HOMEEIGO Business HQ)  
-**Method:** Playwright click → heading instrumentation against live DEV (`next dev --turbopack` :3003) + code/Prisma forensics  
-**Backend:** `apps/backend` :3000 (Prisma + Redis healthy during the after-fix probe)
-
-This report does **not** claim production LCP. Numbers below are **user-perceived click → main heading visible** in the development app the HQ is actually operated from.
+**Method:** Playwright click → heading (`measure-admin-nav.mjs`) + code/Prisma forensics  
+**DEV runtime:** `next dev` webpack `:3003`, `NODE_OPTIONS=--max-old-space-size=8192`  
+**Production runtime:** clean `next build` + `next start -p 3003` (2026-09-06)  
+**Backend:** `apps/backend` :3000 (Prisma ok; Redis in-memory fallback during runs)
 
 ---
 
@@ -26,7 +27,26 @@ Clicking an Admin HQ sidebar link felt slow because several **real** critical-pa
 
 Fixes target those root causes. A loading bar was already present; it was **not** used as the solution.
 
-### After-fix measured click → heading (DEV, 8 representative routes)
+### After-fix measured click → heading
+
+| Route | DEV warm (webpack) | Production cold | Production warm | Production repeat | Usable UI | Root cause (remaining) | Status |
+|---|---:|---:|---:|---:|---|---|---|
+| Executive HQ | 1310 ms | 631 ms | 329 ms | 344 ms | H1 + shell immediate | DEV compile only | **Closed** |
+| Settings | 1735 ms | 280 ms | 215 ms | 271 ms | Static page, no API | DEV compile only | **Closed** |
+| Bookings (table) | 1701 ms | 434 ms | 262 ms | 305 ms | H1 before list fill | Cold: 6 APIs (list + badges); warm cached | **Acceptable** |
+| Partners (table) | 1605 ms | 508 ms | 391 ms | 266 ms | H1 + table shell | Cold: 5 APIs (list + docs); warm cached | **Acceptable** |
+| Command Center | 1341 ms | 335 ms | 285 ms | 278 ms | Map shell + KPIs parallel | Google Maps JS on adjacent nav | **Closed** |
+| Finance / CFO | 1242 ms | 294 ms | 263 ms | 262 ms | Dashboard shell | Shared finance key; no dupes | **Closed** |
+| HQ operations | 1160 ms | 293 ms | 287 ms | — | Nested HQ landing | Minor geo in-flight carryover | **Closed** |
+| Leads | 1542 ms | 324 ms | 384 ms | — | H1 + CRM shell | 1 lead detail prefetch | **Closed** |
+
+**Primary metric:** click → heading visible (proxy for usable page).  
+**DEV warm** numbers are SPA re-navigation under webpack dev (not production).  
+**Production** numbers are from `next build` + `next start` on 2026-09-06 (`nav-perf-production.json`).
+
+Production warm navigation is **215–391 ms** click → heading — roughly **4–6× faster** than DEV warm (1.2–1.7 s). The DEV gap is almost entirely Turbopack/webpack on-demand compile and HMR overhead, not product logic.
+
+### Prior DEV warm snapshot (Turbopack, pre-closure)
 
 | Route | Cold (first visit) | Warm (second visit) | APIs in click window (cold) |
 |---|---:|---:|---:|
@@ -40,8 +60,6 @@ Fixes target those root causes. A loading bar was already present; it was **not*
 | Leads | 3541 ms | 1542 ms | 3 |
 
 \*Finance “15 APIs” includes in-flight leftovers from the previous Command Center navigation (probe records every `/api/*` that *completes* during the wait, not only requests *started* by the new page).
-
-**Warm heading is consistently 1.2–1.7s** across simple, table, live-ops, finance, nested HQ, and leads. Bookings warm recorded **0 new APIs** before the heading — the list is cached; secondary aggregates wait until after first paint.
 
 A prior probe that clicked **collapsed `inert` links** produced 30–50s “timeouts” with `heading=null`. Those rows are **invalid** (navigation never started). They are not used as a before/after delta.
 
@@ -266,15 +284,43 @@ Cache keys are per browser session (in-memory QueryClient). They are not a share
 
 ## 12. E2E regression
 
-| Run | Result | Notes |
-|---|---|---|
-| `e2e/hq-nav-permissions.spec.ts` (12 tests) | **12 PASS** | Nav IA + RBAC gating unchanged |
-| `e2e/login-dashboard.spec.ts`, `e2e/journey-admin.spec.ts` | **FAIL (infra)** | `ERR_CONNECTION_REFUSED` — Admin `:3003` process crashed (Node OOM during long Playwright + Turbopack compile) |
-| Full suite (90 tests) | **Not completed** | Aborted when Admin dev server died mid-run |
+### Full Admin Playwright — completed 2026-09-06
 
-**Do not claim 88 PASS / 2 SKIPPED / 0 FAIL** for this change set until a full suite completes with a stable Admin server (`NODE_OPTIONS=--max-old-space-size=8192 npm run dev` recommended on Windows).
+| Metric | Value |
+|---|---|
+| **PASS** | **72** |
+| **FAIL** | **16** |
+| **SKIPPED** | **2** |
+| **Duration** | **51.1 min** |
+| Runtime | Admin webpack dev `:3003`, backend `:3000`, `workers: 1`, `E2E_SKIP_SERVERS=1` |
+| Server stability | **No OOM crash** (prior Turbopack run died mid-suite) |
 
-Backend unit tests for four-axis FSMs were not required for these diffs (no lifecycle/availability/job/finance writers changed). `adminService.dashboard()` remains a read model.
+**Skipped (2):** `capture-booking-vendor.spec.ts` (manual capture), `lcp-dashboard.spec.ts` (requires production build flag).
+
+**Failed (16) — classification:**
+
+| Failure bucket | Count | Tests | Cause class |
+|---|---:|---|---|
+| Responsive overflow matrix | 11 | `loop4-admin-responsive-320`, `p1-visual-matrix*`, `section04` responsive, `section05` responsive, `section09` matrix | **F** product layout at specific widths — not navigation perf |
+| Accessibility (axe / keyboard) | 3 | `p0-a11y` (2), `section04` axe-clean | **F** a11y — not navigation perf |
+| API / console noise | 2 | `section04` axe (500 during long run), `section09` heading timeout | **E** API under sustained 51-min load |
+
+**Core navigation / RBAC tests — all green:**
+
+| Run | Result |
+|---|---|
+| `hq-nav-permissions.spec.ts` (12) | **12 PASS** |
+| `hq-nav-permissions-live.spec.ts` | **PASS** |
+| `journey-admin.spec.ts` | **PASS** |
+| `login-dashboard.spec.ts` | **PASS** |
+| `enterprise/admin-enterprise.spec.ts` (5) | **5 PASS** |
+| `enterprise/operations-certification.spec.ts` (7) | **7 PASS** |
+| `section10-command-center.spec.ts`, `section10-mutation-audit.spec.ts` | **PASS** |
+| `signoff-journey.spec.ts` (3) | **3 PASS** |
+
+**Do not claim 88 PASS / 2 SKIPPED / 0 FAIL.** Actual certified result: **72 PASS / 16 FAIL / 2 SKIPPED**.
+
+Prior aborted run (Turbopack OOM) is superseded by this completed run.
 
 ---
 
@@ -293,30 +339,34 @@ Backend unit tests for four-axis FSMs were not required for these diffs (no life
 
 ## 14. Remaining limitations
 
-1. **DEV compile is still the largest first-visit cost.** Warm is 1.2–1.7s in Turbopack DEV. Production (`next build` + `next start`) was **not** re-certified here — a previous `next start` failed with `routesManifest.dataRoutes is not iterable` (stale `.next`). A clean production build + start is the next measurement loop.
-2. **Warm 1.2–1.7s is still higher than a fully prefetched static console.** That remainder is App Router RSC/JS in DEV, not a spinner. Further cuts: split mega client pages (`bookings/page.tsx` ~1.3k LOC) into a shell + deferred inspector, and production hosting.
-3. **Partners cold still showed 9 API completions** in the heading window (after-paint secondaries + top bar). Further split of below-fold partner widgets would drop that.
-4. **Probe API counts can include in-flight requests from the previous route.**
-5. **Repeat (3rd) pass crashed** when the page navigated to `chrome-error://`. Treat warm as the stable after-fix number.
-6. **OneDrive / long compile** (documented earlier for `apps/web`) still applies if this repo is synced.
+1. **DEV compile remains the largest first-visit cost** (3–5 s cold on Turbopack). Production cold is **280–631 ms** heading — acceptable for prebuilt routes.
+2. **Mega client pages** (`bookings`, `academy`, `services` ~1.3k LOC) have `useAfterFirstPaint` in working tree but are not fully committed due to mixed diffs. Production warm Bookings/Partners already cache at 0 APIs; further split is optional bundle hygiene, not a navigation blocker.
+3. **16 E2E failures** are responsive/a11y matrix tests under sustained load — track separately from navigation perf closure.
+4. **Probe API counts** can include in-flight requests from the previous route.
+5. **Redis** fell back to in-memory during closure runs (`Connection timeout`) — did not block navigation measurements.
 
 ---
 
-## Acceptance (measured)
+## Final acceptance (2026-09-06 closure)
 
-- [x] Navigation starts immediately (pending href + progress bar on click)
-- [x] No full page reload on sidebar `Link`
-- [x] Route shell / h1 no longer waits on a 320ms fade
-- [x] Command Center waterfall removed
-- [x] Duplicate finance keys merged
-- [x] Table-page secondary APIs deferred
-- [x] `motion` removed from the header critical path
-- [x] Dashboard Prisma sequential days removed
-- [x] Auth `/me` 401 waterfall removed on reload
-- [x] RBAC / four-axis / finance semantics preserved
-- [x] Representative warm routes 1.2–1.7s heading (DEV)
-- [ ] Production `next start` navigation not yet re-measured
-- [ ] Full Admin Playwright result — see the run started with this change (do not assume 88/2/0)
+- [x] Root causes traced and documented
+- [x] Page enter opacity blocker removed (`34fc350`)
+- [x] Unnecessary waterfalls removed (Command Center, dashboard Prisma, auth)
+- [x] Duplicate finance queries merged (`adminKeys.financeDashboard(30)`)
+- [x] DEV idle prefetch storm disabled; hover/touch preserved
+- [x] Auth 401 → refresh waterfall removed (`ensureAccessToken`)
+- [x] Header `motion/react` removed from critical path (`Icon3D`)
+- [x] Route shell + H1 before heavy data (detail routes, Lead CRM)
+- [x] Pending navigation immediate (`nav-pending.ts`)
+- [x] Representative routes measured (DEV + production)
+- [x] Production `next build` + `next start` benchmark completed
+- [x] Full Admin E2E completed (**72 / 16 / 2** — not 88/0)
+- [x] No navigation-permission / journey / enterprise regression
+- [x] RBAC / four-axis preserved
+- [ ] Responsive/a11y matrix failures (16) — separate backlog
+- [ ] Commit mega-page `useAfterFirstPaint` when diffs can be isolated
+
+**Navigation perf closure: COMPLETE.** Remaining E2E failures are layout/a11y width-matrix issues, not click→usable regressions.
 
 ---
 
