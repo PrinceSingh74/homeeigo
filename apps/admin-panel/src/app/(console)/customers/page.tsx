@@ -40,6 +40,7 @@ import {
   useBanUserMutation,
 } from "@/hooks/use-admin-data";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useAfterFirstPaint } from "@/hooks/use-after-first-paint";
 import { adminApi } from "@/services/admin-api";
 import { formatDate, formatNumber, inr } from "@/lib/format";
 import { getErrorMessage } from "@/lib/api-error";
@@ -346,7 +347,8 @@ function FilterGroup({ label, children }: { label: string; children: ReactNode }
 }
 
 export default function CustomersPage() {
-  const dashboard = useAdminDashboardQuery();
+  const secondary = useAfterFirstPaint();
+  const dashboard = useAdminDashboardQuery({ enabled: secondary });
   const searchRef = useRef<HTMLInputElement>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState(() =>
@@ -372,7 +374,10 @@ export default function CustomersPage() {
   );
 
   const { data, isLoading, isFetching, isError, refetch } = useAdminCustomersQuery(params);
-  const bannedQ = useAdminCustomersQuery({ page: 1, limit: 1, status: "banned", badge: true });
+  const bannedQ = useAdminCustomersQuery(
+    { page: 1, limit: 1, status: "banned", badge: true },
+    { enabled: secondary },
+  );
   const banMutation = useBanUserMutation();
   const logoutMutation = useMutation({
     mutationFn: (vars: { userId: string; reason?: string }) => adminApi.forceLogoutUser(vars.userId, vars.reason),
@@ -382,21 +387,25 @@ export default function CustomersPage() {
     queryKey: ["hq", "customers", "cx"],
     queryFn: () => adminApi.cxIntelligence(30),
     staleTime: 120_000,
+    enabled: secondary,
   });
   const kpisQ = useQuery({
     queryKey: ["hq", "customers", "exec-kpis"],
     queryFn: () => adminApi.geoIntel.execKpis(),
     staleTime: 60_000,
+    enabled: secondary,
   });
   const growthQ = useQuery({
     queryKey: ["hq", "customers", "growth"],
     queryFn: () => adminApi.growthIntelligence(30),
     staleTime: 120_000,
+    enabled: secondary,
   });
   const insightsQ = useQuery({
     queryKey: ["hq", "marketplace", "insights"],
     queryFn: () => adminApi.subscriptions.insights(),
     staleTime: 120_000,
+    enabled: secondary,
   });
   const profileQ = useQuery({
     queryKey: ["customer-intel", selectedId],
@@ -798,7 +807,7 @@ export default function CustomersPage() {
                           </p>
                           <p className="mt-1 text-xs text-[var(--color-biz-muted)]">
                             {formatNumber(u.totalBookings)} bookings
-                            {(u.walletBalance ?? 0) > 0 ? ` · ${inr(u.walletBalance, true)} wallet` : ""}
+                            {(u.walletBalance ?? 0) > 0 ? ` · ${inr(u.walletBalance ?? 0, true)} wallet` : ""}
                           </p>
                         </div>
                       </button>

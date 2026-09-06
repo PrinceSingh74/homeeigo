@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { DataTable, StatusBadge } from "@/components/ui/DataTable";
-import { useAdminBookingsQuery, useAdminDashboardQuery } from "@/hooks/use-admin-data";
+import { adminKeys, useAdminBookingsQuery, useAdminDashboardQuery } from "@/hooks/use-admin-data";
 import { inr } from "@/lib/format";
 import { DashboardDOMBoundary } from "@/components/perf/DashboardDOMBoundary";
 import { useRenderProbe, useMountProbe } from "@/lib/render-probe";
@@ -30,6 +30,7 @@ import { ViewModeSwitcher } from "@/components/hq/ViewModeSwitcher";
 import { HqQuickLinkGrid } from "@/components/hq/HqQuickLinkGrid";
 import { ExecutiveBriefs } from "@/components/hq/ExecutiveBriefs";
 import { ExecutiveCoveragePanel } from "@/components/hq/ExecutiveCoveragePanel";
+import { DeferAfterPaint } from "@/components/perf/DeferAfterPaint";
 import { Icon3D } from "@/components/hq/Icon3D";
 import { HQ_SECTIONS } from "@/lib/hq-navigation";
 import { adminApi } from "@/services/admin-api";
@@ -49,6 +50,19 @@ const AdminDashboardCharts = dynamic(
 
 const ExecutiveGeoPanel = dynamic(
   () => import("@/components/hq/ExecutiveGeoPanel").then((m) => m.ExecutiveGeoPanel),
+  { ssr: false },
+);
+
+/**
+ * Phase-9 executive brief (Capability 12).
+ *
+ * Mounted below the fold, beside the existing intelligence panel rather than replacing it: that one
+ * shows headline figures from finance and geo-intelligence, this one shows where every figure came
+ * from, how fresh it is, and what is known to be wrong with it. Lazy like its neighbours, because it
+ * assembles nine sources server-side and must not sit in the first paint.
+ */
+const ExecutiveIntelligenceBrief = dynamic(
+  () => import("@/components/hq/ExecutiveIntelligenceBrief").then((m) => m.ExecutiveIntelligenceBrief),
   { ssr: false },
 );
 
@@ -79,7 +93,7 @@ export default function ExecutiveHqPage() {
   const [viewMode, setViewMode] = useState<ExecutiveViewMode>("default");
   const dashboard = useAdminDashboardQuery();
   const finance = useQuery({
-    queryKey: ["admin", "finance", "dashboard", "executive"],
+    queryKey: adminKeys.financeDashboard(30),
     queryFn: () => adminApi.financeDashboard(30),
     staleTime: 120_000,
     refetchInterval: false,
@@ -203,7 +217,12 @@ export default function ExecutiveHqPage() {
         <AiBriefingPanel stats={stats} isLoading={dashboard.isLoading} />
       </div>
 
-      <ExecutiveCoveragePanel />
+      <DeferAfterPaint
+        label="ExecutiveCoveragePanel"
+        fallback={<div className="biz-skeleton h-40 rounded-2xl" aria-hidden />}
+      >
+        <ExecutiveCoveragePanel />
+      </DeferAfterPaint>
 
       <section className="biz-glass-panel p-6">
         <div className="exec-section-head">
@@ -219,6 +238,7 @@ export default function ExecutiveHqPage() {
       <DashboardDOMBoundary label="below-fold" fallback={null} rootMargin="-420px 0px 0px 0px">
         <div className="space-y-8">
           <ExecutiveIntelligencePanel />
+          <ExecutiveIntelligenceBrief />
           <ExecutiveGeoPanel />
           <AdminDashboardCharts
             bookingsByDay={bookingsByDay}

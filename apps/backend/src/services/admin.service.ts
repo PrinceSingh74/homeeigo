@@ -7,11 +7,23 @@ import { userPiiService } from "./user-pii.service";
 import { emailDeliveryService } from "./email-delivery.service";
 import { RefreshTokenService } from "./refresh-token.service";
 import { JWTService } from "./jwt.service";
+import { partnerAcquisitionEvents } from "./partner-acquisition-events.service";
+import { partnerLeadService } from "./partner-lead.service";
+import { partnerOnboardingService } from "./partner-onboarding.service";
+import { onboardingStepLabel } from "./partner-lead-state-machine";
+import { CREDITED_EARNING_WHERE } from "../lib/earning-settlement";
 
 const refreshTokenService = new RefreshTokenService(prisma, new JWTService());
 
 export class AdminService {
   async dashboard() {
+    const days = 7;
+    const rangeStart = new Date();
+    rangeStart.setDate(rangeStart.getDate() - (days - 1));
+    rangeStart.setHours(0, 0, 0, 0);
+    const rangeEnd = new Date();
+    rangeEnd.setHours(23, 59, 59, 999);
+
     const [
       totalUsers,
       totalProviders,
@@ -21,6 +33,7 @@ export class AdminService {
       monthRevenue,
       ratingAgg,
       onlineProviders,
+      recentBookings,
     ] = await Promise.all([
       prisma.user.count({ where: { role: "CUSTOMER" } }),
       prisma.provider.count(),
@@ -36,26 +49,43 @@ export class AdminService {
       }),
       prisma.provider.aggregate({ _avg: { rating: true } }),
       prisma.provider.count({ where: { isOnline: true } }),
+      prisma.booking.findMany({
+        where: { createdAt: { gte: rangeStart, lte: rangeEnd } },
+        select: { createdAt: true, paymentStatus: true, finalAmount: true },
+      }),
     ]);
 
-    const days = 7;
     const bookingsByDay: { date: string; count: number }[] = [];
     const revenueByDay: { date: string; revenue: number }[] = [];
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const start = new Date(d.setHours(0, 0, 0, 0));
-      const end = new Date(d.setHours(23, 59, 59, 999));
-      const dateStr = start.toISOString().slice(0, 10);
-      const [count, rev] = await Promise.all([
-        prisma.booking.count({ where: { createdAt: { gte: start, lte: end } } }),
-        prisma.booking.aggregate({
-          where: { createdAt: { gte: start, lte: end }, paymentStatus: "SUCCESS" },
-          _sum: { finalAmount: true },
-        }),
-      ]);
+      /**
+       * The label must be read off `d` before it is mutated into a UTC boundary, and from its
+       * local calendar fields — not `start.toISOString()`. The server's process timezone is IST
+       * (UTC+5:30): local midnight for "today" is 18:30 UTC the previous day, so slicing the ISO
+       * string labelled every bucket one calendar day early. The counts underneath were always
+       * correct — `start`/`end` genuinely bound the local day being queried — only the label was
+       * wrong, which is exactly the failure mode that stays invisible until someone checks today's
+       * date against the chart and finds today missing.
+       */
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const start = new Date(d);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(d);
+      end.setHours(23, 59, 59, 999);
+      const startMs = start.getTime();
+      const endMs = end.getTime();
+      let count = 0;
+      let revenue = 0;
+      for (const row of recentBookings) {
+        const t = row.createdAt.getTime();
+        if (t < startMs || t > endMs) continue;
+        count += 1;
+        if (row.paymentStatus === "SUCCESS") revenue += row.finalAmount ?? 0;
+      }
       bookingsByDay.push({ date: dateStr, count });
-      revenueByDay.push({ date: dateStr, revenue: rev._sum.finalAmount ?? 0 });
+      revenueByDay.push({ date: dateStr, revenue });
     }
 
     return {
@@ -196,7 +226,7 @@ export class AdminService {
         serviceCategories: p.serviceCategories,
         city: p.city,
         experienceYears: p.experienceYears,
-        registeredAt: p.registeredAt.toISOString(),
+        registeredAt: p.registeredAt?.toISOString() ?? p.createdAt.toISOString(),
         rejectionReason: p.rejectionReason,
         totalEarnings: p.totalEarnings,
         createdAt: p.createdAt.toISOString().slice(0, 10),
@@ -219,14 +249,32 @@ export class AdminService {
   async listBookings(query: Record<string, string | undefined>) {
     const { page, limit, skip } = parsePagination(query);
     const where: Record<string, unknown> = {};
+
+    const LIVE_STATUSES = ["PENDING", "ACCEPTED", "ASSIGNED", "EN_ROUTE", "IN_PROGRESS"] as const;
+    const CANCELLED_STATUSES = ["CANCELLED_BY_USER", "CANCELLED_BY_PROVIDER", "REJECTED"] as const;
+    const UNPAID = ["PENDING", "INITIATED", "PROCESSING"] as const;
+    const REFUNDED = ["REFUNDED", "PARTIALLY_REFUNDED", "REFUNDING"] as const;
+
     if (query.status && query.status !== "all") {
-      where.status = query.status.toUpperCase();
+      const lane = query.status.toLowerCase();
+      if (lane === "live") where.status = { in: [...LIVE_STATUSES] };
+      else if (lane === "cancelled" || lane === "canceled") where.status = { in: [...CANCELLED_STATUSES] };
+      else where.status = query.status.toUpperCase();
     }
+
+    if (query.payment && query.payment !== "all") {
+      const pay = query.payment.toLowerCase();
+      if (pay === "paid") where.paymentStatus = "SUCCESS";
+      else if (pay === "unpaid" || pay === "open") where.paymentStatus = { in: [...UNPAID] };
+      else if (pay === "refunded") where.paymentStatus = { in: [...REFUNDED] };
+    }
+
     if (query.startDate || query.endDate) {
       where.createdAt = {};
       if (query.startDate) (where.createdAt as { gte?: Date }).gte = new Date(query.startDate);
       if (query.endDate) (where.createdAt as { lte?: Date }).lte = new Date(query.endDate);
     }
+
     if (query.search) {
       const term = sanitizeUserInput(query.search, 100);
       where.OR = [
@@ -234,20 +282,53 @@ export class AdminService {
         { id: { contains: term, mode: "insensitive" } },
         { user: { firstName: { contains: term, mode: "insensitive" } } },
         { user: { lastName: { contains: term, mode: "insensitive" } } },
+        { provider: { businessName: { contains: term, mode: "insensitive" } } },
+        { provider: { user: { firstName: { contains: term, mode: "insensitive" } } } },
+        { provider: { user: { lastName: { contains: term, mode: "insensitive" } } } },
+        { service: { name: { contains: term, mode: "insensitive" } } },
       ];
     }
+
+    const sort = (query.sort ?? "recent").toLowerCase();
+    const orderBy =
+      sort === "amount"
+        ? { finalAmount: "desc" as const }
+        : sort === "scheduled"
+          ? { scheduledDate: "asc" as const }
+          : { createdAt: "desc" as const };
 
     const [rows, total] = await Promise.all([
       prisma.booking.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: "desc" },
-        include: {
-          user: true,
-          provider: { include: { user: true } },
-          service: true,
-          rating: true,
+        orderBy,
+        select: {
+          id: true,
+          bookingNumber: true,
+          userId: true,
+          providerId: true,
+          status: true,
+          paymentStatus: true,
+          finalAmount: true,
+          scheduledDate: true,
+          createdAt: true,
+          completedAt: true,
+          cancelledAt: true,
+          eta: true,
+          premiumMatched: true,
+          queuePriority: true,
+          user: { select: { firstName: true, lastName: true } },
+          provider: {
+            select: {
+              id: true,
+              businessName: true,
+              user: { select: { firstName: true, lastName: true } },
+            },
+          },
+          service: { select: { name: true } },
+          rating: { select: { stars: true } },
+          address: { select: { city: true } },
         },
       }),
       prisma.booking.count({ where }),
@@ -257,20 +338,40 @@ export class AdminService {
       bookings: rows.map((b) => ({
         id: b.id,
         bookingNumber: b.bookingNumber,
-        user: `${b.user.firstName} ${b.user.lastName}`,
-        provider: b.provider ? `${b.provider.user.firstName} ${b.provider.user.lastName}` : "—",
+        userId: b.userId,
+        providerId: b.providerId,
+        user: `${b.user.firstName} ${b.user.lastName}`.trim() || "Customer",
+        provider: b.provider
+          ? b.provider.businessName ||
+            `${b.provider.user.firstName} ${b.provider.user.lastName}`.trim() ||
+            "Partner"
+          : "Unassigned",
         service: b.service.name,
         amount: b.finalAmount,
         status: b.status.toLowerCase(),
-        rating: b.rating?.stars,
-        completedAt: b.completedAt,
+        paymentStatus: b.paymentStatus.toLowerCase(),
+        rating: b.rating?.stars ?? null,
+        scheduledDate: b.scheduledDate.toISOString(),
+        createdAt: b.createdAt.toISOString(),
+        completedAt: b.completedAt?.toISOString() ?? null,
+        cancelledAt: b.cancelledAt?.toISOString() ?? null,
+        city: b.address.city,
+        eta: b.eta,
+        premiumMatched: b.premiumMatched,
+        queuePriority: b.queuePriority.toLowerCase(),
       })),
       total,
       page,
     };
   }
 
-  async verifyProvider(id: string, action: "approve" | "reject", notes?: string, adminUserId?: string) {
+  async verifyProvider(
+    id: string,
+    action: "approve" | "reject" | "request_changes",
+    notes?: string,
+    adminUserId?: string,
+    options?: { targetStep?: string },
+  ) {
     const existing = await prisma.provider.findUnique({
       where: { id },
       include: { user: true },
@@ -278,6 +379,52 @@ export class AdminService {
     if (!existing) throw new Error("Provider not found");
 
     const safeNotes = notes ? sanitizeUserInput(notes, 2000) : undefined;
+
+    if (action === "request_changes") {
+      const { targetStep } = await partnerOnboardingService.requestProviderChanges(
+        id,
+        adminUserId ?? "system",
+        safeNotes ?? "",
+        options?.targetStep,
+      );
+
+      const p = await prisma.provider.findUniqueOrThrow({ where: { id } });
+
+      const partnerEmail = await userPiiService.resolveEmail(existing.user, {
+        actorId: adminUserId,
+        authorized: true,
+      });
+      if (partnerEmail) {
+        emailDeliveryService.sendPartnerChangesRequested(
+          partnerEmail,
+          existing.user.firstName,
+          onboardingStepLabel(targetStep),
+          safeNotes,
+        );
+      }
+
+      const lead = await prisma.partnerLead.findFirst({ where: { providerId: id } });
+      if (lead && adminUserId) {
+        await partnerLeadService
+          .syncFromProviderDecision(lead.id, "request_changes", adminUserId, safeNotes, {
+            targetStep,
+          })
+          .catch(() => undefined);
+      }
+
+      await partnerAcquisitionEvents.emitApplicationChangesRequested(
+        id,
+        adminUserId ?? "system",
+        targetStep,
+        safeNotes,
+      );
+
+      return p;
+    }
+
+    if (action === "approve" && !existing.isApproved) {
+      await partnerOnboardingService.assertReadyForActivation(id);
+    }
 
     const data =
       action === "approve"
@@ -291,8 +438,6 @@ export class AdminService {
             rejectedAt: null,
             rejectionReason: null,
             adminApprovedBy: adminUserId,
-            backgroundCheckStatus: "CLEARED" as const,
-            backgroundCheckDate: new Date(),
           }
         : {
             isApproved: false,
@@ -340,6 +485,20 @@ export class AdminService {
       } else {
         emailDeliveryService.sendPartnerRejection(partnerEmail, existing.user.firstName, safeNotes);
       }
+    }
+
+    const lead = await prisma.partnerLead.findFirst({ where: { providerId: id } });
+    if (lead && adminUserId) {
+      await partnerLeadService.syncFromProviderDecision(lead.id, action, adminUserId, safeNotes).catch(() => undefined);
+    }
+
+    if (action === "approve") {
+      await partnerAcquisitionEvents.emitApplicationApproved(id, adminUserId ?? "system");
+      await partnerAcquisitionEvents.emitPartnerActivated(id, lead?.id);
+      const { partnerLifecycleService } = await import("./partner-lifecycle.service");
+      await partnerLifecycleService.onApplicationApproved(id, adminUserId).catch(() => undefined);
+    } else {
+      await partnerAcquisitionEvents.emitApplicationRejected(id, adminUserId ?? "system", safeNotes);
     }
 
     return p;
@@ -434,6 +593,8 @@ export class AdminService {
         onlineSince: p.onlineSince?.toISOString() ?? null,
         lastSeenAt: p.lastSeenAt?.toISOString() ?? null,
         currentStatus: p.currentStatus,
+        lifecycleState: p.lifecycleState,
+        careerLevel: p.careerLevel,
         isActive: p.isActive,
         isBanned: p.isBanned,
         bannedReason: p.bannedReason,
@@ -561,7 +722,7 @@ export class AdminService {
         _sum: { finalAmount: true },
       }),
       prisma.earning.aggregate({
-        where: { createdAt: { gte: start, lte: end } },
+        where: { createdAt: { gte: start, lte: end }, ...CREDITED_EARNING_WHERE },
         _sum: { commission: true, netEarning: true, grossAmount: true },
       }),
     ]);
@@ -590,7 +751,7 @@ export class AdminService {
     // so map earning -> booking -> serviceId). This replaces the frontend's
     // previous `revenue * 0.18` estimate with the actual recorded commission.
     const periodEarnings = await prisma.earning.findMany({
-      where: { createdAt: { gte: start, lte: end }, bookingId: { not: null } },
+      where: { createdAt: { gte: start, lte: end }, bookingId: { not: null }, ...CREDITED_EARNING_WHERE },
       select: { bookingId: true, commission: true, netEarning: true },
     });
     const earningBookingIds = periodEarnings

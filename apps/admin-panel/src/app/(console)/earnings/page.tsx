@@ -6,11 +6,12 @@ import { CommandCenterRail } from "@/components/command/CommandCenterRail";
 import { useQuery } from "@tanstack/react-query";
 import { StatTile } from "@/components/hq/primitives";
 import { adminApi } from "@/services/admin-api";
+import { adminKeys } from "@/hooks/use-admin-data";
 import { inr } from "@/lib/format";
 
 export default function EarningsPage() {
   const dash = useQuery({
-    queryKey: ["admin", "finance-dashboard", 30],
+    queryKey: adminKeys.financeDashboard(30),
     queryFn: () => adminApi.financeDashboard(30),
     staleTime: 60_000,
   });

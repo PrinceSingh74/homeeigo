@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { AdminApiError, getErrorMessage } from "@/lib/api-error";
-import { configureApiClient } from "@/lib/api-client";
+import { configureApiClient, ensureAccessToken } from "@/lib/api-client";
 import { adminAuthApi } from "@/services/auth-api";
 import { setSentryUser } from "@/lib/sentry";
 import type { CurrentUser } from "@/types/admin";
@@ -68,6 +68,15 @@ export const useAdminStore = create<AdminState>()(
         }
 
         try {
+          // accessToken is session-only. Refresh first so /me is not a guaranteed 401
+          // → refresh → /me waterfall on every full reload.
+          if (!get().accessToken) {
+            const refreshed = await ensureAccessToken();
+            if (!refreshed) {
+              get().clearSession();
+              return;
+            }
+          }
           const user = await adminAuthApi.me();
           if (user.role !== "ADMIN") {
             get().clearSession();

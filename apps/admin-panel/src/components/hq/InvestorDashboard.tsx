@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { TrendingUp, IndianRupee, Repeat, Target, Users, Wrench, Flame, Wallet } from "lucide-react";
 import { adminApi } from "@/services/admin-api";
-import { useAdminDashboardQuery } from "@/hooks/use-admin-data";
+import { adminKeys, useAdminDashboardQuery } from "@/hooks/use-admin-data";
 import { inr, formatNumber } from "@/lib/format";
 import { GlassPanel } from "./GlassPanel";
 import { StatTile, DataUnavailable, SectionHeading } from "./primitives";
@@ -20,12 +20,12 @@ function num(v: unknown, d = 0): number {
 export function InvestorDashboard() {
   const dashboard = useAdminDashboardQuery();
   const finance = useQuery({
-    queryKey: ["hq", "investor", "finance"],
+    queryKey: adminKeys.financeDashboard(30),
     queryFn: () => adminApi.financeDashboard(30),
     staleTime: 120_000,
   });
   const unit = useQuery({
-    queryKey: ["hq", "investor", "unit"],
+    queryKey: adminKeys.financeUnit(30),
     queryFn: () => adminApi.financeUnitEconomics(30),
     staleTime: 120_000,
   });

@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { adminApi } from "@/services/admin-api";
-import { useAdminDashboardQuery } from "@/hooks/use-admin-data";
+import { adminKeys, useAdminDashboardQuery } from "@/hooks/use-admin-data";
+import { useAfterFirstPaint } from "@/hooks/use-after-first-paint";
 import { inr, formatNumber } from "@/lib/format";
 import { GlassPanel } from "./GlassPanel";
 import { HqLoading } from "./primitives";
@@ -40,20 +41,23 @@ export function ExecutiveBriefs() {
   const [brief, setBrief] = useState<BriefId>("morning");
 
   const dashboard = useAdminDashboardQuery();
+  const secondary = useAfterFirstPaint();
   const finance = useQuery({
-    queryKey: ["hq", "exec", "brief-finance"],
+    queryKey: adminKeys.financeDashboard(30),
     queryFn: () => adminApi.financeDashboard(30),
     staleTime: 120_000,
   });
   const reports = useQuery({
-    queryKey: ["hq", "exec", "brief-reports"],
+    queryKey: adminKeys.financeReports,
     queryFn: () => adminApi.financeReports(),
     staleTime: 120_000,
+    enabled: secondary,
   });
   const unit = useQuery({
-    queryKey: ["hq", "exec", "brief-unit"],
+    queryKey: adminKeys.financeUnit(30),
     queryFn: () => adminApi.financeUnitEconomics(30),
     staleTime: 120_000,
+    enabled: secondary,
   });
 
   const stats = dashboard.data?.stats;

@@ -13,6 +13,8 @@ import {
   type HqSectionId,
 } from "@/lib/hq-navigation";
 import { useMountProbe, useRenderProbe } from "@/lib/render-probe";
+import { usePendingHref } from "@/lib/nav-pending";
+import { useAdminPermissions } from "@/hooks/use-admin-permissions";
 
 const STORAGE_KEY = "homigo-hq-nav-expanded";
 
@@ -118,8 +120,10 @@ const HqSectionBlock = memo(function HqSectionBlock({
       <div
         className={cn(
           "grid transition-all duration-200 ease-out",
-          expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+          expanded ? "grid-rows-[1fr] opacity-100" : "pointer-events-none invisible grid-rows-[0fr] opacity-0",
         )}
+        aria-hidden={!expanded}
+        inert={!expanded}
       >
         <div className="overflow-hidden">
           <div className="space-y-0.5 py-1 pl-2">
@@ -157,7 +161,9 @@ export const HqSidebar = memo(function HqSidebar() {
   useRenderProbe("HqSidebar");
   useMountProbe("HqSidebar");
   const pathname = usePathname();
-  const activeSection = resolveHqSection(pathname).id;
+  const pendingHref = usePendingHref();
+  const visualPath = pendingHref ?? pathname;
+  const activeSection = resolveHqSection(visualPath).id;
 
   const [expanded, setExpanded] = useState<Set<HqSectionId>>(() => new Set([activeSection]));
 
@@ -195,7 +201,16 @@ export const HqSidebar = memo(function HqSidebar() {
     });
   }, []);
 
-  const sections = useMemo(() => HQ_SECTIONS, []);
+  const { hasAnyResource, isUnresolved } = useAdminPermissions();
+  const sections = useMemo(() => {
+    // Fail open while permissions are unresolved (loading/error) — this list is a
+    // discoverability aid, not the security boundary; every linked route enforces its own
+    // real permission check server-side regardless of what the sidebar shows.
+    if (isUnresolved) return HQ_SECTIONS;
+    return HQ_SECTIONS.filter(
+      (s) => !s.requiredAnyResource || hasAnyResource(s.requiredAnyResource),
+    );
+  }, [hasAnyResource, isUnresolved]);
 
   return (
     <aside
@@ -227,7 +242,7 @@ export const HqSidebar = memo(function HqSidebar() {
               emoji={section.emoji}
               dashboardHref={section.dashboardHref}
               items={section.items}
-              pathname={pathname}
+              pathname={visualPath}
               expanded={expanded.has(section.id)}
               onToggle={onToggle}
             />
@@ -239,7 +254,7 @@ export const HqSidebar = memo(function HqSidebar() {
         <div className="flex items-center gap-2">
           <span className="biz-live-dot" aria-hidden />
           <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--color-biz-muted)]">
-            {sections.reduce((n, s) => n + s.items.length, 0)} routes · 9 HQs · Live
+            {sections.reduce((n, s) => n + s.items.length, 0)} routes · {sections.length} HQs · Live
           </p>
         </div>
       </div>

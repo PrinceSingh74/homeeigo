@@ -100,7 +100,15 @@ export default function VendorDetailPage() {
   if (isLoading) {
     return (
       <div className="mx-auto max-w-7xl space-y-6">
-        <div className="biz-skeleton h-8 w-64 rounded-lg" />
+        <div className="flex items-start gap-3">
+          <Link href="/vendors" className="mt-1 rounded-lg border border-[var(--color-biz-line)] p-2">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold">Partner</h1>
+            <p className="text-sm text-[var(--color-biz-muted)]">Loading profile…</p>
+          </div>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => <div key={i} className="biz-skeleton h-28 rounded-2xl" />)}
         </div>

@@ -6,11 +6,14 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { HQ_SECTIONS, isNavItemActive, resolveHqSection } from "@/lib/hq-navigation";
+import { usePendingHref } from "@/lib/nav-pending";
 
 export const MobileHqNav = memo(function MobileHqNav() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  const current = resolveHqSection(pathname);
+  const pendingHref = usePendingHref();
+  const visualPath = pendingHref ?? pathname;
+  const current = resolveHqSection(visualPath);
 
   return (
     <div className="border-b border-[var(--color-biz-line)] bg-[var(--color-biz-surface)] lg:hidden">
@@ -46,7 +49,7 @@ export const MobileHqNav = memo(function MobileHqNav() {
                     onClick={() => setOpen(false)}
                     className={cn(
                       "block rounded-lg px-3 py-2 text-sm",
-                      pathname === section.dashboardHref
+                      visualPath === section.dashboardHref
                         ? "bg-[var(--color-biz-accent-dim)] text-[var(--color-biz-accent)]"
                         : "text-[var(--color-biz-muted)]",
                     )}
@@ -62,7 +65,7 @@ export const MobileHqNav = memo(function MobileHqNav() {
                     onClick={() => setOpen(false)}
                     className={cn(
                       "block rounded-lg px-3 py-2 text-sm",
-                      isNavItemActive(pathname, item.href)
+                      isNavItemActive(visualPath, item.href)
                         ? "bg-[var(--color-biz-accent-dim)] text-[var(--color-biz-accent)]"
                         : "text-[var(--color-biz-muted)]",
                     )}

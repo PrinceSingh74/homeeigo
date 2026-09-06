@@ -4,11 +4,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Landmark, TrendingUp, Wallet } from "lucide-react";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { adminApi } from "@/services/admin-api";
+import { adminKeys } from "@/hooks/use-admin-data";
 import { inr } from "@/lib/format";
 
 export default function FinanceDashboardPage() {
   const { data, isLoading } = useQuery({
-    queryKey: ["admin", "finance", "dashboard"],
+    queryKey: adminKeys.financeDashboard(30),
     queryFn: () => adminApi.financeDashboard(30),
   });
 

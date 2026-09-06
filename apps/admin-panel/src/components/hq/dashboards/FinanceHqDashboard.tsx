@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { TrendingUp, Wallet, Landmark, IndianRupee, Percent, CreditCard, Flame, Settings } from "lucide-react";
 import { adminApi } from "@/services/admin-api";
+import { adminKeys } from "@/hooks/use-admin-data";
 import { inr } from "@/lib/format";
 import { GlassPanel } from "../GlassPanel";
 import { StatTile, DataUnavailable, SectionHeading, SparkBars, MeterBar } from "../primitives";
@@ -16,12 +17,12 @@ function num(v: unknown, d = 0): number {
 
 export function FinanceHqDashboard() {
   const dash = useQuery({
-    queryKey: ["hq", "finance", "dashboard"],
+    queryKey: adminKeys.financeDashboard(30),
     queryFn: () => adminApi.financeDashboard(30),
     staleTime: 120_000,
   });
   const unit = useQuery({
-    queryKey: ["hq", "finance", "unit-economics"],
+    queryKey: adminKeys.financeUnit(30),
     queryFn: () => adminApi.financeUnitEconomics(30),
     staleTime: 120_000,
   });

@@ -34,7 +34,12 @@ export const adminKeys = {
   services: (params: AdminListParams) => ["admin", "services", params] as const,
   servicesAll: ["admin", "services"] as const,
   opsMap: ["admin", "ops-map"] as const,
+  financeDashboard: (days = 30) => ["admin", "finance", "dashboard", days] as const,
+  financeUnit: (days = 30) => ["admin", "finance", "unit-economics", days] as const,
+  financeReports: ["admin", "finance", "reports"] as const,
 };
+
+type QueryGate = { enabled?: boolean };
 
 export type AdminListParams = {
   page?: number;
@@ -43,6 +48,9 @@ export type AdminListParams = {
   status?: string;
   kyc?: string;
   sort?: string;
+  category?: string;
+  interval?: string;
+  planId?: string;
   /** Top-bar badge counts — long cache, WS-invalidated. */
   badge?: boolean;
 };
@@ -50,6 +58,7 @@ export type AdminListParams = {
 export type AdminBookingsParams = AdminListParams & {
   startDate?: string;
   endDate?: string;
+  payment?: string;
   /** When false, disables background polling (overview widgets). Default true. */
   poll?: boolean;
 };
@@ -58,33 +67,36 @@ export type AdminBookingsParams = AdminListParams & {
 /* Queries                                                                    */
 /* ------------------------------------------------------------------------- */
 
-export function useAdminDashboardQuery() {
+export function useAdminDashboardQuery(options?: QueryGate) {
   return useQuery({
     queryKey: adminKeys.dashboard,
     queryFn: () => adminApi.dashboard(),
     staleTime: 60_000,
     refetchInterval: DASHBOARD_POLL_MS,
     refetchIntervalInBackground: false,
+    enabled: options?.enabled,
   });
 }
 
-export function useAdminOpsMapQuery(refetchInterval = OPS_MAP_POLL_MS) {
+export function useAdminOpsMapQuery(refetchInterval = OPS_MAP_POLL_MS, options?: QueryGate) {
   return useQuery({
     queryKey: adminKeys.opsMap,
     queryFn: () => adminApi.opsMap(),
     staleTime: 30_000,
     refetchInterval,
     refetchIntervalInBackground: false,
+    enabled: options?.enabled,
   });
 }
 
-export function useAdminCustomersQuery(params: AdminListParams) {
+export function useAdminCustomersQuery(params: AdminListParams, options?: QueryGate) {
   return useQuery({
     queryKey: adminKeys.customers(params),
     queryFn: () => adminApi.listUsers(params),
     staleTime: params.badge ? TOPBAR_BADGE_STALE_MS : 20_000,
     refetchInterval: false,
     placeholderData: (prev) => prev,
+    enabled: options?.enabled,
   });
 }
 
@@ -144,35 +156,42 @@ export function useMarkAllAdminNotificationsReadMutation() {
   });
 }
 
-export function useAdminProvidersQuery(params: AdminListParams) {
+export function useAdminProvidersQuery(params: AdminListParams, options?: QueryGate) {
   return useQuery({
     queryKey: adminKeys.providers(params),
     queryFn: () => adminApi.listProviders(params),
     staleTime: params.badge ? TOPBAR_BADGE_STALE_MS : 20_000,
     refetchInterval: false,
     placeholderData: (prev) => prev,
+    enabled: options?.enabled,
   });
 }
 
-export function useAdminBookingsQuery(params: AdminBookingsParams) {
-  const poll = params.poll !== false;
+export function useAdminBookingsQuery(params: AdminBookingsParams, options?: QueryGate) {
+  const { poll: pollFlag, ...query } = params;
+  const poll = pollFlag !== false;
   return useQuery({
     queryKey: adminKeys.bookings(params),
-    queryFn: () => adminApi.listBookings(params),
+    queryFn: () => adminApi.listBookings(query),
     staleTime: 30_000,
     placeholderData: (prev) => prev,
     refetchInterval: poll ? BOOKINGS_LIST_POLL_MS : false,
     refetchIntervalInBackground: false,
-    notifyOnChangeProps: ["data", "error", "isLoading", "isPending"],
+    notifyOnChangeProps: ["data", "error", "isLoading", "isPending", "isFetching", "isError"],
+    enabled: options?.enabled,
   });
 }
 
-export function useAdminAnalyticsQuery(range: { startDate?: string; endDate?: string }) {
+export function useAdminAnalyticsQuery(
+  range: { startDate?: string; endDate?: string },
+  options?: QueryGate,
+) {
   return useQuery({
     queryKey: adminKeys.analytics(range),
     queryFn: () => adminApi.analytics(range),
     staleTime: 60_000,
     placeholderData: (prev) => prev,
+    enabled: options?.enabled,
   });
 }
 
@@ -180,13 +199,13 @@ export function useAdminAnalyticsQuery(range: { startDate?: string; endDate?: st
 /* Mutations — optimistic where it matters (verify, ban)                      */
 /* ------------------------------------------------------------------------- */
 
-type VerifyVars = { providerId: string; action: VerifyAction; notes?: string };
+type VerifyVars = { providerId: string; action: VerifyAction; notes?: string; targetStep?: string };
 
 export function useVerifyProviderMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (vars: VerifyVars) =>
-      adminApi.verifyProvider(vars.providerId, vars.action, vars.notes),
+      adminApi.verifyProvider(vars.providerId, vars.action, vars.notes, vars.targetStep),
     onMutate: async ({ providerId, action }) => {
       await qc.cancelQueries({ queryKey: adminKeys.providersAll });
       const snapshots = qc.getQueriesData<AdminListProvidersResponse>({
@@ -283,6 +302,7 @@ export function useAdminServicesQuery(params: AdminListParams) {
     queryKey: adminKeys.services(params),
     queryFn: () => adminApi.services.list(params),
     staleTime: 15_000,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -322,13 +342,13 @@ export function useDeleteServiceMutation() {
 
 // ===== Subscriptions / Membership =====
 const subKeys = {
-  plans: ["admin", "sub", "plans"] as const,
+  plans: (p: AdminListParams) => ["admin", "sub", "plans", p] as const,
   revenue: ["admin", "sub", "revenue"] as const,
   subscribers: (p: AdminListParams) => ["admin", "sub", "subscribers", p] as const,
 };
 
-export function useAdminPlansQuery() {
-  return useQuery({ queryKey: subKeys.plans, queryFn: () => adminApi.subscriptions.listPlans() });
+export function useAdminPlansQuery(params: AdminListParams = {}) {
+  return useQuery({ queryKey: subKeys.plans(params), queryFn: () => adminApi.subscriptions.listPlans(params) });
 }
 
 export function useAdminRevenueQuery() {
@@ -346,7 +366,10 @@ export function useCreatePlanMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: AdminPlanInput) => adminApi.subscriptions.createPlan(body),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "sub"] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin", "sub"] });
+      void qc.invalidateQueries({ queryKey: ["admin", "membership"] });
+    },
   });
 }
 
@@ -355,7 +378,10 @@ export function useUpdatePlanMutation() {
   return useMutation({
     mutationFn: (vars: { id: string; body: Partial<AdminPlanInput> & { isActive?: boolean } }) =>
       adminApi.subscriptions.updatePlan(vars.id, vars.body),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "sub"] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin", "sub"] });
+      void qc.invalidateQueries({ queryKey: ["admin", "membership"] });
+    },
   });
 }
 

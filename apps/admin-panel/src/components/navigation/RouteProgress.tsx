@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { markPendingHref } from "@/lib/nav-pending";
 
 type ProgressState = "idle" | "active" | "done";
 
@@ -29,6 +30,7 @@ export function RouteProgress() {
       try {
         const url = new URL(href, window.location.origin);
         if (url.pathname === window.location.pathname) return; // same page — nothing to load
+        markPendingHref(url.pathname);
       } catch {
         return;
       }
@@ -41,6 +43,7 @@ export function RouteProgress() {
 
   // Route committed → snap to 100% and fade out.
   useEffect(() => {
+    markPendingHref(null);
     if (stateRef.current !== "active") return;
     setState("done");
     const t = setTimeout(() => setState("idle"), 260);

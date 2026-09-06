@@ -25,8 +25,12 @@ const IDLE_BATCH_SIZE = 8;
 export function AdminRoutePrefetch() {
   const router = useRouter();
 
-  // Warm ALL nav routes on idle, in small batches so we never burst the network.
+  // Production: warm nav routes on idle, in small batches.
+  // Dev: skip the idle sweep — Turbopack compiling 80+ routes starves the click
+  // the user just made. Hover/touch prefetch below still warms intent.
   useEffect(() => {
+    if (process.env.NODE_ENV !== "production") return;
+
     const routes = [...new Set([...PRIORITY_ROUTES, ...getAllNavHrefs()])];
     let cursor = 0;
     let cancelled = false;

@@ -31,6 +31,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { MeterBar, StatTile } from "@/components/hq/primitives";
 import { SectionHead } from "@/components/hq/SectionHead";
+import { ActivationChecklistPanel } from "@/components/acquisition/ActivationChecklistPanel";
 import { Icon3D, type Icon3DTone } from "@/components/hq/Icon3D";
 import { IsoBarChart } from "@/components/hq/IsoBarChart";
 import { GlassRing3D } from "@/components/hq/GlassRing3D";
@@ -40,6 +41,7 @@ import {
   useVerifyProviderMutation,
 } from "@/hooks/use-admin-data";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useAfterFirstPaint } from "@/hooks/use-after-first-paint";
 import { adminApi } from "@/services/admin-api";
 import { formatDate, formatNumber, inr } from "@/lib/format";
 import { getErrorMessage } from "@/lib/api-error";
@@ -313,7 +315,8 @@ function FilterGroup({ label, children }: { label: string; children: ReactNode }
 }
 
 export default function VendorsPage() {
-  const dashboard = useAdminDashboardQuery();
+  const secondary = useAfterFirstPaint();
+  const dashboard = useAdminDashboardQuery({ enabled: secondary });
   const searchRef = useRef<HTMLInputElement>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState(() =>
@@ -339,23 +342,29 @@ export default function VendorsPage() {
   );
 
   const { data, isLoading, isFetching, isError, refetch } = useAdminProvidersQuery(params);
-  const applicationsQ = useAdminProvidersQuery({ page: 1, limit: 1, status: "applications", badge: true });
+  const applicationsQ = useAdminProvidersQuery(
+    { page: 1, limit: 1, status: "applications", badge: true },
+    { enabled: secondary },
+  );
   const verifyMutation = useVerifyProviderMutation();
 
   const docsQ = useQuery({
     queryKey: ["admin", "documents", "pending"],
     queryFn: () => adminApi.pendingDocuments(),
     staleTime: 30_000,
+    enabled: secondary,
   });
   const workforceQ = useQuery({
     queryKey: ["admin", "workforce"],
     queryFn: () => adminApi.workforceAnalytics(),
     staleTime: 30_000,
+    enabled: secondary,
   });
   const academyQ = useQuery({
     queryKey: ["admin", "academy"],
     queryFn: () => adminApi.academyModules(),
     staleTime: 120_000,
+    enabled: secondary,
   });
   const detailQ = useQuery({
     queryKey: ["admin", "provider-detail", selectedId],
@@ -369,6 +378,12 @@ export default function VendorsPage() {
     enabled: !!selectedId,
     staleTime: 60_000,
   });
+  const checklistQ = useQuery({
+    queryKey: ["admin", "activation-checklist", selectedId],
+    queryFn: () => adminApi.partnerAcquisition.activationChecklist(selectedId!),
+    enabled: !!selectedId,
+    staleTime: 15_000,
+  });
 
   const [confirmTarget, setConfirmTarget] = useState<{
     provider: AdminProvider;
@@ -378,6 +393,7 @@ export default function VendorsPage() {
 
   const partners = data?.providers ?? [];
   const selected = partners.find((p) => p.id === selectedId) ?? null;
+  const activationReady = selected?.isApproved || checklistQ.data?.ready === true;
   const filtersOn = Boolean(debouncedSearch) || statusFilter !== "all" || kycFilter !== "all" || sort !== "recent";
 
   useEffect(() => {
@@ -960,19 +976,40 @@ export default function VendorsPage() {
                     {copied === "id" ? "Copied" : "ID"}
                   </button>
                 </div>
+
+                {!selected.isApproved ? (
+                  <ActivationChecklistPanel
+                    compact
+                    providerId={selected.id}
+                    providerName={selected.name}
+                    isApproved={selected.isApproved}
+                    checklist={checklistQ.data}
+                    isLoading={checklistQ.isLoading}
+                    onRefresh={() => void checklistQ.refetch()}
+                  />
+                ) : null}
               </div>
 
               <div className="cu-dock__actions">
                 {!selected.isApproved ? (
-                  <button
-                    type="button"
-                    className="biz-btn w-full justify-center text-[var(--color-biz-success)]"
-                    disabled={verifyMutation.isPending}
-                    onClick={() => setConfirmTarget({ provider: selected, action: "approve" })}
-                  >
-                    <BadgeCheck size={14} />
-                    Approve partner
-                  </button>
+                  <>
+                    {checklistQ.data && !checklistQ.data.ready ? (
+                      <p className="mb-2 text-[11px] leading-relaxed text-amber-400">
+                        Activation blocked · {checklistQ.data.progressPercent}% ready ·{" "}
+                        {checklistQ.data.missingLabels.slice(0, 3).join(", ")}
+                        {checklistQ.data.missingLabels.length > 3 ? "…" : ""}
+                      </p>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="biz-btn w-full justify-center text-[var(--color-biz-success)]"
+                      disabled={verifyMutation.isPending || !activationReady}
+                      onClick={() => setConfirmTarget({ provider: selected, action: "approve" })}
+                    >
+                      <BadgeCheck size={14} />
+                      Activate partner
+                    </button>
+                  </>
                 ) : (
                   <button
                     type="button"
@@ -1156,15 +1193,17 @@ export default function VendorsPage() {
 
       <ConfirmDialog
         open={!!confirmTarget}
-        title={confirmTarget?.action === "approve" ? "Approve this partner?" : "Revoke approval?"}
+        title={confirmTarget?.action === "approve" ? "Activate this partner?" : "Revoke approval?"}
         description={
           confirmTarget
             ? confirmTarget.action === "approve"
-              ? `${confirmTarget.provider.name} will be approved and can sign in to the partner dashboard.`
+              ? activationReady
+                ? `${confirmTarget.provider.name} has passed all activation checks and will be approved.`
+                : `Activation blocked — open Full file to complete checklist: ${checklistQ.data?.missingLabels.join(", ") ?? "loading…"}`
               : `${confirmTarget.provider.name} will be rejected and cannot sign in as a partner.`
             : undefined
         }
-        confirmLabel={confirmTarget?.action === "approve" ? "Approve partner" : "Revoke"}
+        confirmLabel={confirmTarget?.action === "approve" ? "Activate partner" : "Revoke"}
         destructive={confirmTarget?.action === "reject"}
         reasonLabel="Notes (optional)"
         reasonRequired={false}
@@ -1174,7 +1213,7 @@ export default function VendorsPage() {
         isLoading={verifyMutation.isPending}
         onClose={() => setConfirmTarget(null)}
         onConfirm={async (notes) => {
-          if (!confirmTarget) return;
+          if (!confirmTarget || (confirmTarget.action === "approve" && !activationReady)) return;
           setMutationError(null);
           try {
             await verifyMutation.mutateAsync({

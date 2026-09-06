@@ -48,13 +48,12 @@ export default function CommandCenterPage() {
   // Live data — WS invalidates on ops events; polls are slow safety nets.
   const poll = { staleTime: 60_000, refetchIntervalInBackground: false } as const;
   const kpisQ = useQuery({ queryKey: ["ci-kpis"], queryFn: () => adminApi.geoIntel.execKpis(), ...poll, refetchInterval: COMMAND_KPI_POLL_MS });
-  const geoReady = kpisQ.isSuccess;
-  const surgeQ = useQuery({ queryKey: ["ci-surge"], queryFn: () => adminApi.geoIntel.surge(), ...poll, enabled: geoReady, refetchInterval: COMMAND_GEO_POLL_MS });
-  const densityQ = useQuery({ queryKey: ["ci-density"], queryFn: () => adminApi.geoIntel.density(), ...poll, enabled: geoReady, refetchInterval: COMMAND_GEO_POLL_MS });
-  const zonesQ = useQuery({ queryKey: ["ci-zones"], queryFn: () => adminApi.geoIntel.zoneScoring(), ...poll, enabled: geoReady, refetchInterval: COMMAND_GEO_POLL_MS });
-  const fraudQ = useQuery({ queryKey: ["ci-fraud"], queryFn: () => adminApi.geoIntel.fraud(50), ...poll, enabled: geoReady, refetchInterval: COMMAND_GEO_POLL_MS });
-  const revQ = useQuery({ queryKey: ["ci-rev"], queryFn: () => adminApi.geoIntel.revenueForecast(), ...poll, enabled: geoReady, refetchInterval: COMMAND_REVENUE_POLL_MS });
-  const demandQ = useQuery({ queryKey: ["ci-demand"], queryFn: () => adminApi.geoIntel.demandForecast(24), ...poll, enabled: geoReady, refetchInterval: COMMAND_DEMAND_POLL_MS });
+  const surgeQ = useQuery({ queryKey: ["ci-surge"], queryFn: () => adminApi.geoIntel.surge(), ...poll, refetchInterval: COMMAND_GEO_POLL_MS });
+  const densityQ = useQuery({ queryKey: ["ci-density"], queryFn: () => adminApi.geoIntel.density(), ...poll, refetchInterval: COMMAND_GEO_POLL_MS });
+  const zonesQ = useQuery({ queryKey: ["ci-zones"], queryFn: () => adminApi.geoIntel.zoneScoring(), ...poll, refetchInterval: COMMAND_GEO_POLL_MS });
+  const fraudQ = useQuery({ queryKey: ["ci-fraud"], queryFn: () => adminApi.geoIntel.fraud(50), ...poll, refetchInterval: COMMAND_GEO_POLL_MS });
+  const revQ = useQuery({ queryKey: ["ci-rev"], queryFn: () => adminApi.geoIntel.revenueForecast(), ...poll, refetchInterval: COMMAND_REVENUE_POLL_MS });
+  const demandQ = useQuery({ queryKey: ["ci-demand"], queryFn: () => adminApi.geoIntel.demandForecast(24), ...poll, refetchInterval: COMMAND_DEMAND_POLL_MS });
 
   // Merge density (positions) + zone-scoring + surge into the map's per-zone records.
   const zones: CmdZone[] = useMemo(() => {

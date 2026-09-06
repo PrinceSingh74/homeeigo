@@ -5,9 +5,9 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   // Allow dev assets when opening admin via LAN IP (e.g. http://10.71.97.32:3003).
-  allowedDevOrigins: ["10.*.*.*", "172.*.*.*", "192.168.*.*"],
+  allowedDevOrigins: ["127.0.0.1", "localhost", "10.*.*.*", "172.*.*.*", "192.168.*.*"],
   experimental: {
-    optimizePackageImports: ["lucide-react"],
+    optimizePackageImports: ["lucide-react", "motion"],
   },
   outputFileTracingRoot: path.join(__dirname, "../../"),
   // Same-origin API proxy (see apps/web/next.config.js): browser calls `/api/*` on this

@@ -37,6 +37,12 @@ async function parseJson<T>(res: Response): Promise<ApiResponse<T>> {
   }
 }
 
+export async function ensureAccessToken(): Promise<boolean> {
+  if (clientConfig?.getAccessToken()) return true;
+  if (!clientConfig?.getRefreshToken()) return false;
+  return coordinatedRefresh(refreshAccessToken);
+}
+
 async function refreshAccessToken(): Promise<boolean> {
   if (!clientConfig) return false;
   const refreshToken = clientConfig.getRefreshToken();
