@@ -19,6 +19,7 @@ export function ServiceAreaWorkspace() {
   const qc = useQueryClient();
   const toast = useToastStore((s) => s.showToast);
   const mapRef = useRef<HTMLDivElement>(null);
+  const [mapHost, setMapHost] = useState<HTMLDivElement | null>(null);
   const mapObj = useRef<{ panTo: (p: { lat: number; lng: number }) => void } | null>(null);
   const marker = useRef<{
     setPosition: (p: { lat: number; lng: number }) => void;
@@ -74,9 +75,10 @@ export function ServiceAreaWorkspace() {
       Marker: new (opts: Record<string, unknown>) => NonNullable<typeof marker.current>;
       Circle: new (opts: Record<string, unknown>) => NonNullable<typeof circle.current>;
     } | undefined;
-    if (!maps.loaded || !mapRef.current || !g) return;
+    const host = mapHost ?? mapRef.current;
+    if (!maps.loaded || !host || !g) return;
     const start = { lat: lat ?? 28.57, lng: lng ?? 77.32 };
-    const map = new g.Map(mapRef.current, {
+    const map = new g.Map(host, {
       center: start,
       zoom: 12,
       mapTypeControl: false,
@@ -102,7 +104,7 @@ export function ServiceAreaWorkspace() {
       const pos = marker.current?.getPosition();
       if (pos) void applyPoint(pos.lat(), pos.lng());
     });
-  }, [maps.loaded, applyPoint]);
+  }, [maps.loaded, applyPoint, mapHost]);
 
   useEffect(() => {
     if (lat == null || lng == null) return;
@@ -196,7 +198,15 @@ export function ServiceAreaWorkspace() {
             <LocateFixed className="h-4 w-4" /> Current location
           </PartnerButton>
         </div>
-        <div ref={mapRef} className="h-[360px] w-full bg-partner-bg-secondary sm:h-[420px]" role="img" aria-label="Service area map" />
+        <div
+          ref={(el) => {
+            mapRef.current = el;
+            setMapHost(el);
+          }}
+          className="h-[360px] w-full bg-partner-bg-secondary sm:h-[420px]"
+          role="img"
+          aria-label="Service area map"
+        />
         {!maps.loaded ? (
           <p className="px-4 py-3 text-xs text-partner-muted">Map loading — you can still search and save areas.</p>
         ) : null}
