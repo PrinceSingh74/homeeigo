@@ -74,6 +74,20 @@ export const partnerApi = {
     demandForecast: (horizon = 24) => apiRequest<GeoIntel<DemandForecast>>("/api/geo-intel/demand-forecast", { auth: true, query: { horizon } }),
     eta: (fromLat: number, fromLng: number, toLat: number, toLng: number) =>
       apiRequest<GeoIntel<EtaResult>>("/api/geo-intel/eta", { auth: true, query: { fromLat, fromLng, toLat, toLng } }),
+    /** Server-side driving route (Google → OSRM). Avoids client Directions billing errors. */
+    route: (from: { lat: number; lng: number }, to: { lat: number; lng: number }) =>
+      apiRequest<
+        ApiResponse<{
+          polyline: string | null;
+          distanceKm: number;
+          durationMin: number;
+          etaMinutes: number;
+          source: string;
+        }>
+      >("/api/geo/route", {
+        auth: true,
+        query: { fromLat: from.lat, fromLng: from.lng, toLat: to.lat, toLng: to.lng },
+      }).then((r) => r.data!),
   },
 
   /* ----------------- Provider profile + online toggle ----------------- */

@@ -29,8 +29,9 @@ function isNullIsland(lat: number, lng: number): boolean {
 }
 
 /**
- * Soft GPS for en-route (may fall back); strict for arrive/start (never 0,0).
- * Prefers the live tracking publisher cache, then last-known, then a short watch.
+ * Soft GPS for en-route (may fall back); arrive/start still prefer live GPS
+ * but never block the tap — the server owns proximity (and may bypass it for
+ * pinned demo partners).
  */
 export async function getJobCoords(mode: "soft" | "strict" = "soft"): Promise<JobCoords> {
   const e2e = getE2eGeoOverride();
@@ -49,9 +50,6 @@ export async function getJobCoords(mode: "soft" | "strict" = "soft"): Promise<Jo
       "Location permission",
     );
     if (status !== "granted") {
-      if (mode === "strict") {
-        throw new Error("Location permission is required. Enable GPS and move closer to the job.");
-      }
       return {
         latitude: 0,
         longitude: 0,
@@ -99,18 +97,12 @@ export async function getJobCoords(mode: "soft" | "strict" = "soft"): Promise<Jo
       return { latitude: watched.coords.latitude, longitude: watched.coords.longitude };
     }
 
-    if (mode === "strict") {
-      throw new Error("Valid GPS coordinates are required. Move outdoors and try again.");
-    }
     return {
       latitude: 0,
       longitude: 0,
       warning: "GPS unavailable — using fallback coords.",
     };
-  } catch (err) {
-    if (mode === "strict") {
-      throw err instanceof Error ? err : new Error("GPS unavailable. Enable location and try again.");
-    }
+  } catch {
     return {
       latitude: 0,
       longitude: 0,

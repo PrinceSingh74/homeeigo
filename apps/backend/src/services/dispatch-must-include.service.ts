@@ -39,3 +39,12 @@ export async function resolveMustIncludeProviderIds(user: CustomerEmailFields): 
   }
   return ids;
 }
+
+export async function isMustIncludePinnedProvider(
+  customer: CustomerEmailFields | null | undefined,
+  providerId: string,
+): Promise<boolean> {
+  if (!customer) return false;
+  const ids = await resolveMustIncludeProviderIds(customer);
+  return ids.includes(providerId);
+}

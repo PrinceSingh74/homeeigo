@@ -31,7 +31,7 @@ export type LiveTelemetry = {
  * - HOMEEIGO rider photo marker in a branded puck + rotating heading cone
  *   (scooter flips to face its direction of travel, Uber/Zomato style)
  * - 60 fps eased interpolation between fixes
- * - Traffic-aware Directions route: exact road polyline + direction arrows, tinted by congestion
+ * - Road route via /api/geo/route (OSRM when Cloud billing is off)
  * - Exact Google route distance + traffic ETA surfaced via `onRoute`
  * - Real speed/heading surfaced via `onTelemetry` (Kalman velocity)
  * - Map JS deferred until visible (LCP), with a premium static preview
@@ -528,45 +528,11 @@ function homePinIcon(g: any) {
 }
 
 /**
- * Once Google denies Directions (billing disabled on the Cloud project →
- * REQUEST_DENIED), stop asking: every retry logs an unavoidable console error
- * (Google logs it internally) and can never succeed. We fall back to the
- * BACKEND route proxy (/api/geo/route → Google server key or keyless OSRM),
- * which returns the same encoded road polyline — the customer still sees the
- * real route on the map.
- *
- * The denial is remembered in localStorage so page reloads skip Google
- * entirely (zero console noise). It auto-expires so once billing IS enabled,
- * Google takes over again within a few hours without any code change.
+ * Road routing goes through /api/geo/route (Google server key or OSRM).
+ * Client-side DirectionsService is not used — it requires Cloud billing and
+ * Google logs REQUEST_DENIED as console.error (Next.js runtime overlay).
  */
-let directionsUnavailable = false;
 let fallbackRouteInFlight = false;
-
-const DIRECTIONS_DENIED_KEY = "homigo:directions-denied-until";
-const DIRECTIONS_RETRY_MS = 6 * 60 * 60 * 1000;
-
-function isDirectionsDenied(): boolean {
-  if (directionsUnavailable) return true;
-  try {
-    const until = Number(window.localStorage.getItem(DIRECTIONS_DENIED_KEY) ?? 0);
-    if (Date.now() < until) {
-      directionsUnavailable = true;
-      return true;
-    }
-  } catch {
-    /* storage unavailable (private mode) — fall through to a live attempt */
-  }
-  return false;
-}
-
-function markDirectionsDenied(): void {
-  directionsUnavailable = true;
-  try {
-    window.localStorage.setItem(DIRECTIONS_DENIED_KEY, String(Date.now() + DIRECTIONS_RETRY_MS));
-  } catch {
-    /* best-effort */
-  }
-}
 
 /** Last resort when even the backend has no route: dashed straight-line path. */
 function drawStraightLine(
@@ -644,9 +610,9 @@ async function drawServerRoute(
 }
 
 /**
- * Draw a traffic-aware route (provider → destination) with the exact road polyline,
- * repeated direction arrows, and a colour tint reflecting congestion. Reports the exact
- * Google route distance + traffic ETA via `onRoute`.
+ * Draw a road route via the backend proxy. Client-side DirectionsService is
+ * never called — it requires Cloud billing and Google logs REQUEST_DENIED as
+ * console.error, which Next.js surfaces as a runtime overlay.
  */
 function drawRoute(
   g: any,
@@ -656,65 +622,7 @@ function drawRoute(
   destination: LatLng,
   onRoute?: (info: RouteInfo) => void,
 ) {
-  if (isDirectionsDenied()) {
-    void drawServerRoute(g, map, lineRef, origin, destination, onRoute);
-    return;
-  }
-  new g.maps.DirectionsService().route(
-    {
-      origin,
-      destination,
-      travelMode: g.maps.TravelMode.DRIVING,
-      provideRouteAlternatives: false,
-      drivingOptions: { departureTime: new Date(), trafficModel: "bestguess" },
-    },
-    (res: any, status: string) => {
-      // REQUEST_DENIED = key/billing problem — remember it so reloads skip Google.
-      if (status === "REQUEST_DENIED") {
-        markDirectionsDenied();
-        void drawServerRoute(g, map, lineRef, origin, destination, onRoute);
-        return;
-      }
-      if (status !== "OK" || !res?.routes?.[0]) return;
-      const route = res.routes[0];
-      const leg = route.legs?.[0];
-      const path = route.overview_path as Array<{ lat: () => number; lng: () => number }>;
-
-      // Congestion = traffic duration / free-flow duration.
-      const base = leg?.duration?.value ?? 0;
-      const traffic = leg?.duration_in_traffic?.value ?? base;
-      const ratio = base > 0 ? traffic / base : 1;
-      const level: RouteInfo["trafficLevel"] = ratio > 1.4 ? "heavy" : ratio > 1.15 ? "moderate" : "light";
-      const color = level === "heavy" ? "#ef4444" : level === "moderate" ? "#f59e0b" : "#22c55e";
-
-      if (lineRef.current) lineRef.current.setMap(null);
-      lineRef.current = new g.maps.Polyline({
-        map,
-        path,
-        geodesic: true,
-        strokeColor: color,
-        strokeOpacity: 0.9,
-        strokeWeight: 6,
-        icons: [
-          {
-            icon: { path: g.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2.4, fillColor: "#ffffff", fillOpacity: 1, strokeColor: color, strokeWeight: 1 },
-            offset: "0%",
-            repeat: "90px",
-          },
-        ],
-        zIndex: 5,
-      });
-
-      onRoute?.({
-        distanceKm: leg?.distance?.value ? Math.round((leg.distance.value / 1000) * 10) / 10 : 0,
-        distanceText: leg?.distance?.text ?? "",
-        etaMin: Math.max(1, Math.round((traffic || base) / 60)),
-        durationText: leg?.duration_in_traffic?.text ?? leg?.duration?.text ?? "",
-        withTraffic: Boolean(leg?.duration_in_traffic),
-        trafficLevel: level,
-      });
-    },
-  );
+  void drawServerRoute(g, map, lineRef, origin, destination, onRoute);
 }
 
 /** Dark, low-chrome basemap so the route + branded marker pop (Uber/Tesla aesthetic). */

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  applyMustIncludeProximityBypass,
   canBypassMustIncludeBlock,
   canonicalDispatchEmail,
   mergeMustIncludeFront,
@@ -41,8 +42,33 @@ describe("dispatch must-include pins", () => {
   test("offline/radius blocks are bypassable; lifecycle is not", () => {
     expect(canBypassMustIncludeBlock("OFFLINE")).toBe(true);
     expect(canBypassMustIncludeBlock("OUTSIDE_SERVICE_AREA")).toBe(true);
+    expect(canBypassMustIncludeBlock("LOCATION_INVALID")).toBe(true);
+    expect(canBypassMustIncludeBlock("LOCATION_REQUIRED")).toBe(true);
     expect(canBypassMustIncludeBlock("STALE_PRESENCE")).toBe(true);
     expect(canBypassMustIncludeBlock("ACCOUNT_RESTRICTED")).toBe(false);
     expect(canBypassMustIncludeBlock("APPROVAL_PENDING")).toBe(false);
+  });
+
+  test("pinned arrive/start substitutes job coords when GPS is missing", () => {
+    const job = { jobLatitude: 28.61, jobLongitude: 77.2 };
+    const bypassed = applyMustIncludeProximityBypass({
+      ok: false,
+      error: "LOCATION_INVALID",
+      pinned: true,
+      latitude: 0,
+      longitude: 0,
+      ...job,
+    });
+    expect(bypassed).toEqual({ ok: true, latitude: 28.61, longitude: 77.2 });
+
+    const blocked = applyMustIncludeProximityBypass({
+      ok: false,
+      error: "LOCATION_INVALID",
+      pinned: false,
+      latitude: 0,
+      longitude: 0,
+      ...job,
+    });
+    expect(blocked).toEqual({ ok: false, error: "LOCATION_INVALID" });
   });
 });

@@ -27,11 +27,45 @@ export const MUST_INCLUDE_BYPASS_BLOCKS = new Set([
   "OUTSIDE_WORKING_HOURS",
   "BREAK_ACTIVE",
   "OUTSIDE_SERVICE_AREA",
+  "LOCATION_REQUIRED",
   "NO_CAPACITY",
   "CAPACITY_LIMIT",
   "CONFLICT",
   "SKILL_MISMATCH",
 ]);
+
+/**
+ * When a pinned partner's GPS is missing or outside the arrival radius,
+ * substitute the job address so Arrive/Start can proceed. Unpinned partners
+ * still fail with the original proximity error.
+ */
+export function applyMustIncludeProximityBypass(opts: {
+  ok: boolean;
+  error?: string | null;
+  pinned: boolean;
+  latitude: number;
+  longitude: number;
+  jobLatitude?: number | null;
+  jobLongitude?: number | null;
+}): { ok: true; latitude: number; longitude: number } | { ok: false; error: string } {
+  if (opts.ok) return { ok: true, latitude: opts.latitude, longitude: opts.longitude };
+  const code = opts.error ?? "LOCATION_REQUIRED";
+  if (!opts.pinned || !canBypassMustIncludeBlock(code)) {
+    return { ok: false, error: code };
+  }
+  const jobLat = opts.jobLatitude;
+  const jobLng = opts.jobLongitude;
+  if (
+    jobLat != null &&
+    jobLng != null &&
+    Number.isFinite(jobLat) &&
+    Number.isFinite(jobLng) &&
+    !(jobLat === 0 && jobLng === 0)
+  ) {
+    return { ok: true, latitude: jobLat, longitude: jobLng };
+  }
+  return { ok: true, latitude: opts.latitude, longitude: opts.longitude };
+}
 
 export function canonicalDispatchEmail(email: string): string {
   return normalizeEmail(email)

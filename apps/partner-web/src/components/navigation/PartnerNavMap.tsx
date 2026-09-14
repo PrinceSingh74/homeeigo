@@ -4,6 +4,7 @@
 import { memo, useEffect, useRef } from "react";
 import { useGoogleMapsLoader } from "@/hooks/use-google-maps-loader";
 import { GpsKalmanFilter } from "@/lib/kalman-gps";
+import { fetchServerRoute, paintRoutePolyline } from "@/lib/draw-server-route";
 
 type LatLng = { lat: number; lng: number };
 
@@ -271,40 +272,39 @@ function drawRoute(
   cbs: { onRoute?: (r: NavRoute) => void; onStep?: (s: NavStep | null) => void; onGuidance?: (g: NavGuidance) => void },
   onDone?: () => void,
 ) {
-  new g.maps.DirectionsService().route(
-    { origin, destination: dest, travelMode: g.maps.TravelMode.DRIVING, drivingOptions: { departureTime: new Date(), trafficModel: "bestguess" } },
-    (res: any, status: string) => {
-      onDone?.();
-      if (status !== "OK" || !res?.routes?.[0]) return;
-      const route = res.routes[0], leg = route.legs?.[0];
-      const base = leg?.duration?.value ?? 0, traffic = leg?.duration_in_traffic?.value ?? base;
-      const ratio = base > 0 ? traffic / base : 1;
-      const level: NavRoute["trafficLevel"] = ratio > 1.4 ? "heavy" : ratio > 1.15 ? "moderate" : "light";
-      const color = level === "heavy" ? "#ef4444" : level === "moderate" ? "#f59e0b" : "#22c55e";
-      if (lineRef.current) lineRef.current.setMap(null);
-      lineRef.current = new g.maps.Polyline({ map, path: route.overview_path, geodesic: true, strokeColor: color, strokeOpacity: 0.9, strokeWeight: 6, icons: [{ icon: { path: g.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2.4, fillColor: "#fff", fillOpacity: 1, strokeColor: color, strokeWeight: 1 }, offset: "0%", repeat: "90px" }], zIndex: 5 });
-
-      // Fresh route ⇒ fresh step list; guidance restarts from step 0.
-      const steps = leg?.steps ?? [];
-      gStepsRef.current = steps;
+  void (async () => {
+    try {
+      const route = await fetchServerRoute(origin, dest);
+      paintRoutePolyline(g, map, lineRef, route.path, route.path.length === 2);
+      const gPath = route.path.map((p) => ({ lat: () => p.lat, lng: () => p.lng }));
+      gStepsRef.current = [
+        {
+          path: gPath,
+          end_location: { lat: () => dest.lat, lng: () => dest.lng },
+        },
+      ];
       stepIdxRef.current = 0;
-      navStepsRef.current = steps.map((s: any): NavStep => ({
-        instruction: String(s.instructions ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
-        maneuver: s.maneuver || "straight",
-        distanceText: s.distance?.text ?? "",
-        distanceM: s.distance?.value ?? 0,
-      }));
+      navStepsRef.current = [
+        {
+          instruction: "Head to the job",
+          maneuver: "straight",
+          distanceText: route.distanceKm ? `${route.distanceKm} km` : "",
+          distanceM: Math.round(route.distanceKm * 1000),
+        },
+      ];
       cbs.onStep?.(navStepsRef.current[0] ?? null);
       cbs.onRoute?.({
-        distanceKm: leg?.distance?.value ? Math.round((leg.distance.value / 1000) * 10) / 10 : 0,
-        distanceText: leg?.distance?.text ?? "",
-        etaMin: Math.max(1, Math.round((traffic || base) / 60)),
-        durationText: leg?.duration_in_traffic?.text ?? leg?.duration?.text ?? "",
-        trafficLevel: level,
-        summary: String(route.summary ?? ""),
+        distanceKm: route.distanceKm,
+        distanceText: route.distanceKm ? `${route.distanceKm} km` : "",
+        etaMin: route.etaMin,
+        durationText: `${route.durationMin} min`,
+        trafficLevel: "light",
+        summary: "",
       });
-    },
-  );
+    } finally {
+      onDone?.();
+    }
+  })();
 }
 
 /** Min straight-line metres from a point to a step polyline (vertex-sampled — ample for 50 m gates). */

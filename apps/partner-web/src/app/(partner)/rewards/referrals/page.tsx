@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Trophy } from "lucide-react";
 import { HqPageShell } from "@/components/hq/HqPageShell";
 import { usePartnerNetworkInviteMutation, usePartnerNetworkQuery } from "@/hooks/use-partner-os";
+import { copyToClipboard } from "@/lib/clipboard";
 import type { PartnerNetworkReferral } from "@/services/partner-api";
 
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
@@ -65,11 +66,17 @@ export default function RewardsReferralsPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   async function copyShare() {
     if (!data?.shareUrl) return;
-    await navigator.clipboard.writeText(data.shareUrl);
+    const ok = await copyToClipboard(data.shareUrl);
+    if (!ok) {
+      setCopyError("Could not copy the link. Select it above and copy manually.");
+      return;
+    }
+    setCopyError(null);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   }
@@ -120,6 +127,11 @@ export default function RewardsReferralsPage() {
               </button>
               <p className="self-center text-sm text-partner-muted">₹{data.rewardPerQualified} after qualification</p>
             </div>
+            {copyError ? (
+              <p className="mt-2 text-sm text-red-600" role="alert">
+                {copyError}
+              </p>
+            ) : null}
           </section>
 
           <section className="partner-card p-5">

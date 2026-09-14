@@ -4,6 +4,8 @@
 import { memo, useEffect, useRef } from "react";
 import { useGoogleMapsLoader, mapsLoadErrorHint } from "@/hooks/use-google-maps-loader";
 import { GpsKalmanFilter } from "@/lib/kalman-gps";
+import { decodePolyline } from "@/lib/polyline";
+import { adminApi } from "@/services/admin-api";
 
 type LatLng = { lat: number; lng: number };
 
@@ -216,29 +218,59 @@ export const AdminLiveTrackingMap = memo(function AdminLiveTrackingMap({
 });
 
 function drawRoute(g: any, map: any, lineRef: any, origin: LatLng, dest: LatLng, onRoute?: (r: AdminRouteInfo) => void) {
-  new g.maps.DirectionsService().route(
-    { origin, destination: dest, travelMode: g.maps.TravelMode.DRIVING, drivingOptions: { departureTime: new Date(), trafficModel: "bestguess" } },
-    (res: any, status: string) => {
-      if (status !== "OK" || !res?.routes?.[0]) return;
-      const route = res.routes[0], leg = route.legs?.[0];
-      const base = leg?.duration?.value ?? 0, traffic = leg?.duration_in_traffic?.value ?? base;
-      const ratio = base > 0 ? traffic / base : 1;
-      const level: AdminRouteInfo["trafficLevel"] = ratio > 1.4 ? "heavy" : ratio > 1.15 ? "moderate" : "light";
-      const color = level === "heavy" ? "#ef4444" : level === "moderate" ? "#f59e0b" : "#22c55e";
-      if (lineRef.current) lineRef.current.setMap(null);
-      lineRef.current = new g.maps.Polyline({
-        map, path: route.overview_path, geodesic: true, strokeColor: color, strokeOpacity: 0.9, strokeWeight: 5,
-        icons: [{ icon: { path: g.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2.2, fillColor: "#fff", fillOpacity: 1, strokeColor: color, strokeWeight: 1 }, offset: "0%", repeat: "90px" }],
-        zIndex: 5,
-      });
-      onRoute?.({
-        distanceKm: leg?.distance?.value ? Math.round((leg.distance.value / 1000) * 10) / 10 : 0,
-        distanceText: leg?.distance?.text ?? "",
-        etaMin: Math.max(1, Math.round((traffic || base) / 60)),
-        trafficLevel: level,
-      });
-    },
-  );
+  void (async () => {
+    let path: LatLng[] = [origin, dest];
+    let distanceKm = 0;
+    let etaMin = 1;
+    try {
+      const route = await adminApi.geoRoute(origin, dest);
+      const decoded = decodePolyline(route.polyline);
+      if (decoded.length >= 2) path = decoded;
+      distanceKm = route.distanceKm;
+      etaMin = Math.max(1, Math.round(route.etaMinutes || route.durationMin));
+    } catch {
+      /* straight-line fallback */
+    }
+    if (lineRef.current) lineRef.current.setMap(null);
+    lineRef.current = new g.maps.Polyline({
+      map,
+      path,
+      geodesic: true,
+      strokeColor: "#22c55e",
+      strokeOpacity: path.length === 2 ? 0 : 0.9,
+      strokeWeight: 5,
+      icons:
+        path.length === 2
+          ? [
+              {
+                icon: { path: "M 0,-1 0,1", strokeOpacity: 0.8, strokeColor: "#34d399", scale: 3 },
+                offset: "0",
+                repeat: "14px",
+              },
+            ]
+          : [
+              {
+                icon: {
+                  path: g.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                  scale: 2.2,
+                  fillColor: "#fff",
+                  fillOpacity: 1,
+                  strokeColor: "#22c55e",
+                  strokeWeight: 1,
+                },
+                offset: "0%",
+                repeat: "90px",
+              },
+            ],
+      zIndex: 5,
+    });
+    onRoute?.({
+      distanceKm,
+      distanceText: distanceKm ? `${distanceKm} km` : "",
+      etaMin,
+      trafficLevel: "light",
+    });
+  })();
 }
 
 /* ---------------- HOMEEIGO rider marker system (same design as customer/partner) ---------------- */

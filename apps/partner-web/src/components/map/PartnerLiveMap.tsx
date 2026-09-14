@@ -4,6 +4,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { mapsLoadErrorHint, useGoogleMapsLoader } from "@/hooks/use-google-maps-loader";
 import { useGeolocationWatcher } from "@/hooks/use-geolocation-watcher";
+import { drawServerRoute } from "@/lib/draw-server-route";
 
 type LatLng = { lat: number; lng: number };
 
@@ -34,7 +35,7 @@ export const PartnerLiveMap = memo(function PartnerLiveMap({
   const mapRef = useRef<any>(null);
   const meRef = useRef<any>(null);
   const destRef = useRef<any>(null);
-  const dirRef = useRef<any>(null);
+  const lineRef = useRef<any>(null);
   const lastRoute = useRef("");
 
   const me: LatLng | null = coords ? { lat: coords.latitude, lng: coords.longitude } : null;
@@ -59,12 +60,6 @@ export const PartnerLiveMap = memo(function PartnerLiveMap({
         gestureHandling: "greedy",
         clickableIcons: false,
         styles: [{ elementType: "geometry", stylers: [{ color: "#0a1628" }] }],
-      });
-      dirRef.current = new g.maps.DirectionsRenderer({
-        map: mapRef.current,
-        suppressMarkers: true,
-        preserveViewport: true,
-        polylineOptions: { strokeColor: "#22c55e", strokeWeight: 5, strokeOpacity: 0.9 },
       });
       setInitError(null);
     } catch (e) {
@@ -106,21 +101,11 @@ export const PartnerLiveMap = memo(function PartnerLiveMap({
       } else {
         mapRef.current.panTo(me);
       }
-      if (destination && dirRef.current) {
+      if (destination) {
         const key = `${me.lat.toFixed(3)},${me.lng.toFixed(3)}`;
         if (key !== lastRoute.current) {
           lastRoute.current = key;
-          new g.maps.DirectionsService().route(
-            {
-              origin: me,
-              destination,
-              travelMode: g.maps.TravelMode.DRIVING,
-              drivingOptions: { departureTime: new Date() },
-            },
-            (res: any, status: string) => {
-              if (status === "OK" && res) dirRef.current.setDirections(res);
-            },
-          );
+          void drawServerRoute(g, mapRef.current, lineRef, me, destination);
         }
       }
     } catch (e) {

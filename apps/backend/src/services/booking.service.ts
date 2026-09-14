@@ -27,8 +27,8 @@ import { bookingPriorityService } from "./booking-priority.service";
 import { addressPiiService } from "./address-pii.service";
 import { assignmentEngine } from "./assignment-engine.service";
 import { partnerOperationsService } from "./partner-operations.service";
-import { resolveMustIncludeProviderIds } from "./dispatch-must-include.service";
-import { canBypassMustIncludeBlock } from "../lib/dispatch-must-include";
+import { resolveMustIncludeProviderIds, isMustIncludePinnedProvider } from "./dispatch-must-include.service";
+import { applyMustIncludeProximityBypass, canBypassMustIncludeBlock } from "../lib/dispatch-must-include";
 import { incCounter } from "../lib/metrics";
 import { membershipCouponService } from "./membership-coupon.service";
 import { cashbackService } from "./cashback.service";
@@ -1278,6 +1278,7 @@ export class BookingService {
         enRouteAt: true,
         assignedAt: true,
         eta: true,
+        userId: true,
         address: { select: { city: true, latitude: true, longitude: true } },
         service: { select: { category: true } },
       },
@@ -1301,26 +1302,43 @@ export class BookingService {
       jobLongitude: booking.address?.longitude,
       enforceRadius: true,
     });
+    let arriveLat = lat;
+    let arriveLng = lng;
     if (!proximity.ok) {
-      if (booking.address) {
-        void import("./partner-risk.service")
-          .then(({ partnerRiskService }) =>
-            partnerRiskService.evaluateArrival({
-              providerId,
-              bookingId: id,
-              jobLat: booking.address!.latitude,
-              jobLng: booking.address!.longitude,
-              partnerLat: lat,
-              partnerLng: lng,
-            }),
-          )
-          .catch(() => undefined);
+      const customer = await prisma.user.findUnique({ where: { id: booking.userId } });
+      const pinned = await isMustIncludePinnedProvider(customer, providerId);
+      const bypass = applyMustIncludeProximityBypass({
+        ok: false,
+        error: proximity.error,
+        pinned,
+        latitude: lat,
+        longitude: lng,
+        jobLatitude: booking.address?.latitude,
+        jobLongitude: booking.address?.longitude,
+      });
+      if (!bypass.ok) {
+        if (booking.address) {
+          void import("./partner-risk.service")
+            .then(({ partnerRiskService }) =>
+              partnerRiskService.evaluateArrival({
+                providerId,
+                bookingId: id,
+                jobLat: booking.address!.latitude,
+                jobLng: booking.address!.longitude,
+                partnerLat: lat,
+                partnerLng: lng,
+              }),
+            )
+            .catch(() => undefined);
+        }
+        return { ok: false as const, error: proximity.error };
       }
-      return { ok: false as const, error: proximity.error };
+      arriveLat = bypass.latitude;
+      arriveLng = bypass.longitude;
     }
 
     const distanceKm = booking.address
-      ? distanceBetweenKm(lat, lng, booking.address.latitude, booking.address.longitude)
+      ? distanceBetweenKm(arriveLat, arriveLng, booking.address.latitude, booking.address.longitude)
       : null;
 
     const applied = await trackingService.recordArrival({
@@ -1348,8 +1366,8 @@ export class BookingService {
           bookingId: id,
           providerId,
           stage: "ARRIVAL",
-          latitude: lat,
-          longitude: lng,
+          latitude: arriveLat,
+          longitude: arriveLng,
           clientUploadId: `arrive:${id}`,
         });
       } catch {
@@ -1367,10 +1385,13 @@ export class BookingService {
       where: { id, providerId },
       select: {
         status: true,
+        userId: true,
         address: { select: { latitude: true, longitude: true } },
       },
     });
     if (!bookingForGeo) throw new Error("FORBIDDEN");
+    let startLat = lat;
+    let startLng = lng;
     if (bookingForGeo.status !== "IN_PROGRESS") {
       if (
         !isBookingTransitionAllowed(
@@ -1387,7 +1408,22 @@ export class BookingService {
         jobLongitude: bookingForGeo.address?.longitude,
         enforceRadius: true,
       });
-      if (!proximity.ok) throw new Error(proximity.error);
+      if (!proximity.ok) {
+        const customer = await prisma.user.findUnique({ where: { id: bookingForGeo.userId } });
+        const pinned = await isMustIncludePinnedProvider(customer, providerId);
+        const bypass = applyMustIncludeProximityBypass({
+          ok: false,
+          error: proximity.error,
+          pinned,
+          latitude: lat,
+          longitude: lng,
+          jobLatitude: bookingForGeo.address?.latitude,
+          jobLongitude: bookingForGeo.address?.longitude,
+        });
+        if (!bypass.ok) throw new Error(proximity.error);
+        startLat = bypass.latitude;
+        startLng = bypass.longitude;
+      }
     }
 
     const startedAt = new Date();
@@ -1458,14 +1494,14 @@ export class BookingService {
         create: {
           bookingId: id,
           status: TrackingStatus.IN_PROGRESS,
-          startLatitude: lat,
-          startLongitude: lng,
+          startLatitude: startLat,
+          startLongitude: startLng,
           actualStartTime: startedAt,
         },
         update: {
           status: TrackingStatus.IN_PROGRESS,
-          startLatitude: lat,
-          startLongitude: lng,
+          startLatitude: startLat,
+          startLongitude: startLng,
           actualStartTime: startedAt,
         },
       });
@@ -1509,15 +1545,15 @@ export class BookingService {
           bookingId: id,
           providerId,
           stage: "START",
-          latitude: lat,
-          longitude: lng,
+          latitude: startLat,
+          longitude: startLng,
           clientUploadId: `start:${id}`,
         });
       } catch {
         /* evidence best-effort */
       }
 
-      void this.backfillArrivalFromStart(id, providerId, lat, lng).catch((err: unknown) => {
+      void this.backfillArrivalFromStart(id, providerId, startLat, startLng).catch((err: unknown) => {
         recordEtaJobStartFallback("error");
         logger.error("eta_job_start_fallback_failed", {
           bookingId: id,
