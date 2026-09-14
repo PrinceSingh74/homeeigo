@@ -2,11 +2,11 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { IndianRupee, Users, Megaphone, Gift, TrendingUp, Target } from "lucide-react";
+import { Gift, IndianRupee, LineChart, Megaphone, Percent, Share2, ShieldCheck, Target, TrendingUp, Users } from "lucide-react";
 import { adminApi } from "@/services/admin-api";
-import { inr, formatNumber } from "@/lib/format";
+import { formatNumber, humanizeKey, inr } from "@/lib/format";
 import { GlassPanel } from "../GlassPanel";
-import { StatTile, MeterBar, SparkBars, DataUnavailable, SectionHeading } from "../primitives";
+import { DataUnavailable, MeterBar, SectionHeading, SparkBars, StatTile } from "../primitives";
 
 function num(v: unknown, d = 0): number {
   const n = Number(v);
@@ -58,7 +58,7 @@ export function GrowthHqDashboard() {
     const upgradeFunnel = (m.upgradeFunnel ?? {}) as Record<string, unknown>;
     const keys = Object.keys(upgradeFunnel);
     if (keys.length === 0) return [];
-    return keys.map((k) => ({ label: k, value: num(upgradeFunnel[k]) }));
+    return keys.map((k) => ({ label: humanizeKey(k), value: num(upgradeFunnel[k]) }));
   }, [m.upgradeFunnel]);
 
   const cohortBars = useMemo(() => {
@@ -67,60 +67,101 @@ export function GrowthHqDashboard() {
   }, [m.cohorts]);
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile
-          label="ROAS"
-          value={g?.roas.value != null ? `${g.roas.value.toFixed(2)}x` : "—"}
-          sub={g?.roas.spendSource === "missing" ? "set MARKETING_SPEND_MONTHLY" : `spend ${inr(g?.roas.marketingSpend ?? 0)}`}
+    <div className="space-y-8">
+      <section>
+        <SectionHeading
+          title="Growth efficiency"
+          hint="30-day ROAS, payback, referral return"
           icon={TrendingUp}
-          loading={growth.isLoading}
-          tone={g?.roas.value != null && g.roas.value >= 1 ? "success" : "default"}
+          iconTone="success"
         />
-        <StatTile
-          label="Payback"
-          value={g?.paybackMonths.value != null ? `${g.paybackMonths.value.toFixed(1)} mo` : "—"}
-          sub="CAC / contribution"
-          icon={Target}
-          loading={growth.isLoading}
-        />
-        <StatTile
-          label="Referral ROI"
-          value={g?.referralRoi.roiPct != null ? `${g.referralRoi.roiPct.toFixed(0)}%` : "—"}
-          sub={g ? `GMV ${inr(g.referralRoi.referredGmv, true)}` : undefined}
-          icon={Gift}
-          loading={growth.isLoading}
-        />
-        <StatTile label="Attribution channels" value={g ? String(g.attribution.channels.length) : "—"} sub={g?.attribution.touchTablePopulated ? "touch table live" : "referral/coupon fallback"} icon={Megaphone} loading={growth.isLoading} />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatTile
+            label="ROAS"
+            value={g?.roas.value != null ? `${g.roas.value.toFixed(2)}x` : "—"}
+            sub={
+              g?.roas.spendSource === "missing"
+                ? "Set MARKETING_SPEND_MONTHLY to compute"
+                : `Spend ${inr(g?.roas.marketingSpend ?? 0)}`
+            }
+            icon={TrendingUp}
+            loading={growth.isLoading}
+            tone={g?.roas.value != null && g.roas.value >= 1 ? "success" : "default"}
+          />
+          <StatTile
+            label="Payback"
+            value={g?.paybackMonths.value != null ? `${g.paybackMonths.value.toFixed(1)} mo` : "—"}
+            sub="Months to recover CAC"
+            icon={Target}
+            loading={growth.isLoading}
+          />
+          <StatTile
+            label="Referral ROI"
+            value={g?.referralRoi.roiPct != null ? `${g.referralRoi.roiPct.toFixed(0)}%` : "—"}
+            sub={g ? `Referred GMV ${inr(g.referralRoi.referredGmv, true)}` : undefined}
+            icon={Gift}
+            loading={growth.isLoading}
+          />
+          <StatTile
+            label="Attribution channels"
+            value={g ? String(g.attribution.channels.length) : "—"}
+            sub={g?.attribution.touchTablePopulated ? "Touch table live" : "Referral/coupon fallback"}
+            icon={Megaphone}
+            loading={growth.isLoading}
+          />
+        </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile
-          label="CAC"
-          value={cac > 0 ? inr(cac) : "—"}
-          sub={cac > 0 ? "per new customer (30d)" : "set MARKETING_SPEND_MONTHLY"}
+      <section>
+        <SectionHeading
+          title="Unit economics"
+          hint="What it costs to win a customer vs what they return"
           icon={IndianRupee}
-          loading={unit.isLoading}
-          tone="accent"
+          iconTone="cyan"
         />
-        <StatTile label="Avg LTV" value={inr(ltv)} sub="lifetime value" icon={TrendingUp} loading={unit.isLoading} tone="success" />
-        <StatTile
-          label="LTV : CAC"
-          value={ratio > 0 ? `${ratio.toFixed(1)}x` : "—"}
-          sub={ratio >= 3 ? "healthy (≥3x)" : ratio > 0 ? "below target" : "n/a"}
-          icon={Target}
-          loading={unit.isLoading}
-          tone={ratio >= 3 ? "success" : ratio > 0 ? "danger" : "default"}
-        />
-        <StatTile label="Contribution Margin" value={`${contributionMargin.toFixed(1)}%`} sub={`Revenue efficiency ${revenueEfficiency.toFixed(0)}%`} icon={IndianRupee} loading={unit.isLoading} />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatTile
+            label="CAC"
+            value={cac > 0 ? inr(cac) : "—"}
+            sub={cac > 0 ? "Per new customer (30d)" : "Set MARKETING_SPEND_MONTHLY"}
+            icon={IndianRupee}
+            loading={unit.isLoading}
+            tone="accent"
+          />
+          <StatTile
+            label="Avg LTV"
+            value={inr(ltv)}
+            sub="Lifetime value"
+            icon={TrendingUp}
+            loading={unit.isLoading}
+            tone="success"
+          />
+          <StatTile
+            label="LTV : CAC"
+            value={ratio > 0 ? `${ratio.toFixed(1)}x` : "—"}
+            sub={ratio >= 3 ? "Healthy (≥3x)" : ratio > 0 ? "Below 3x target" : "n/a"}
+            icon={Target}
+            loading={unit.isLoading}
+            tone={ratio >= 3 ? "success" : ratio > 0 ? "danger" : "default"}
+          />
+          <StatTile
+            label="Contribution margin"
+            value={`${contributionMargin.toFixed(1)}%`}
+            sub={`Revenue efficiency ${revenueEfficiency.toFixed(0)}%`}
+            icon={IndianRupee}
+            loading={unit.isLoading}
+          />
+        </div>
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <GlassPanel className="p-5">
-          <SectionHeading title="Membership Upgrade Funnel" hint="live" />
+          <SectionHeading title="Membership upgrade funnel" hint="live" icon={LineChart} iconTone="cyan" />
           {membership.isLoading ? (
             <div className="space-y-2">
-              {[1, 2, 3].map((i) => <div key={i} className="biz-skeleton h-6 w-full rounded" />)}
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="biz-skeleton h-6 w-full rounded" />
+              ))}
             </div>
           ) : funnelStages.length > 0 ? (
             <div className="space-y-3">
@@ -135,9 +176,13 @@ export function GrowthHqDashboard() {
         </GlassPanel>
 
         <GlassPanel className="p-5">
-          <SectionHeading title="Retention & Cohorts" hint="last 12 cohorts" />
+          <SectionHeading title="Retention & cohorts" hint="last 12 cohorts" icon={ShieldCheck} iconTone="success" />
           <div className="mb-4">
-            <MeterBar label="Overall retention rate" value={retentionPct} tone={retentionPct >= 70 ? "success" : "danger"} />
+            <MeterBar
+              label="Overall retention rate"
+              value={retentionPct}
+              tone={retentionPct >= 70 ? "success" : "danger"}
+            />
           </div>
           {cohortBars.length > 0 ? (
             <SparkBars data={cohortBars} label="Cohort retention %" color="var(--color-biz-success)" />
@@ -149,18 +194,53 @@ export function GrowthHqDashboard() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <GlassPanel className="p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <Megaphone className="h-4 w-4 text-[var(--color-biz-accent)]" />
-            <h2 className="text-sm font-semibold">Campaign Performance</h2>
-          </div>
+          <SectionHeading title="Campaign performance" hint="redemptions vs collected revenue" icon={Megaphone} />
           {campaigns.isLoading ? (
             <div className="biz-skeleton h-24 w-full rounded" />
           ) : campaigns.data ? (
             <div className="grid grid-cols-2 gap-3">
-              <StatTile label="Redemptions" value={formatNumber(num((campaigns.data as Record<string, unknown>).totalRedemptions ?? (campaigns.data as Record<string, unknown>).redemptions))} />
-              <StatTile label="Discount Given" value={inr(num((campaigns.data as Record<string, unknown>).totalDiscount ?? (campaigns.data as Record<string, unknown>).discountGiven))} />
-              <StatTile label="Revenue Impact" value={inr(num((campaigns.data as Record<string, unknown>).revenueAfter ?? (campaigns.data as Record<string, unknown>).revenue))} />
-              <StatTile label="Conversion Impact" value={`${num((campaigns.data as Record<string, unknown>).conversionImpactPct).toFixed(1)}%`} tone="success" />
+              <StatTile
+                label="Redemptions"
+                value={formatNumber(
+                  num(
+                    (campaigns.data as Record<string, unknown>).totalRedemptions ??
+                      (campaigns.data as Record<string, unknown>).redemptions,
+                  ),
+                )}
+                icon={Megaphone}
+                embedded
+              />
+              <StatTile
+                label="Discount given"
+                value={inr(
+                  num(
+                    (campaigns.data as Record<string, unknown>).totalDiscount ??
+                      (campaigns.data as Record<string, unknown>).discountGiven,
+                  ),
+                )}
+                icon={Percent}
+                tone="accent"
+                embedded
+              />
+              <StatTile
+                label="Revenue after"
+                value={inr(
+                  num(
+                    (campaigns.data as Record<string, unknown>).revenueAfter ??
+                      (campaigns.data as Record<string, unknown>).revenue,
+                  ),
+                )}
+                icon={IndianRupee}
+                tone="success"
+                embedded
+              />
+              <StatTile
+                label="Conversion lift"
+                value={`${num((campaigns.data as Record<string, unknown>).conversionImpactPct).toFixed(1)}%`}
+                icon={TrendingUp}
+                tone="success"
+                embedded
+              />
             </div>
           ) : (
             <DataUnavailable title="No campaign analytics" reason="Campaign analytics endpoint returned no data." />
@@ -168,24 +248,34 @@ export function GrowthHqDashboard() {
         </GlassPanel>
 
         <GlassPanel className="p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <Gift className="h-4 w-4 text-[var(--color-biz-accent)]" />
-            <h2 className="text-sm font-semibold">Referral Program</h2>
-          </div>
+          <SectionHeading title="Referral program" hint="qualified referrals and commission paid" icon={Users} iconTone="success" />
           {referrals.isLoading ? (
             <div className="biz-skeleton h-24 w-full rounded" />
           ) : referrals.data ? (
             <>
               <div className="mb-3 grid grid-cols-2 gap-3">
-                <StatTile label="Qualified" value={formatNumber(num(r.qualified ?? r.qualifiedReferrals))} icon={Users} />
-                <StatTile label="Commission Paid" value={inr(num(r.commissionPaid ?? r.totalCommissionPaid))} icon={IndianRupee} />
+                <StatTile
+                  label="Qualified"
+                  value={formatNumber(num(r.qualified ?? r.qualifiedReferrals))}
+                  icon={Users}
+                  embedded
+                />
+                <StatTile
+                  label="Commission paid"
+                  value={inr(num(r.commissionPaid ?? r.totalCommissionPaid))}
+                  icon={IndianRupee}
+                  embedded
+                />
               </div>
               {leaderboard.length > 0 ? (
                 <div className="space-y-1.5">
                   {leaderboard.slice(0, 4).map((l, i) => (
-                    <div key={i} className="flex items-center justify-between rounded-lg bg-[var(--color-biz-bg)] px-3 py-1.5 text-xs">
+                    <div
+                      key={i}
+                      className="flex items-center justify-between rounded-lg bg-[var(--color-biz-bg)] px-3 py-2 text-xs"
+                    >
                       <span className="truncate">{String(l.name ?? l.userName ?? `Referrer ${i + 1}`)}</span>
-                      <span className="font-semibold tabular-nums">{formatNumber(num(l.count ?? l.referrals))}</span>
+                      <span className="biz-num font-semibold">{formatNumber(num(l.count ?? l.referrals))}</span>
                     </div>
                   ))}
                 </div>
@@ -199,33 +289,44 @@ export function GrowthHqDashboard() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <GlassPanel className="p-5">
-          <SectionHeading title="Attribution Engine" hint="30d" />
+          <SectionHeading title="Attribution" hint="30-day channel mix" icon={Share2} iconTone="cyan" />
           {growth.isLoading ? (
             <div className="biz-skeleton h-24 w-full rounded" />
           ) : g && g.attribution.channels.length > 0 ? (
             <div className="space-y-1.5">
               {g.attribution.channels.map((ch) => (
-                <div key={ch.channel} className="flex items-center justify-between rounded-lg bg-[var(--color-biz-bg)] px-3 py-2 text-xs">
-                  <span className="capitalize">{ch.channel}</span>
-                  <span className="font-semibold tabular-nums">{inr(ch.revenue)} · {ch.touches} touches</span>
+                <div
+                  key={ch.channel}
+                  className="flex items-center justify-between rounded-lg bg-[var(--color-biz-bg)] px-3 py-2 text-xs"
+                >
+                  <span className="capitalize">{humanizeKey(ch.channel)}</span>
+                  <span className="biz-num font-semibold">
+                    {inr(ch.revenue)} · {ch.touches} touches
+                  </span>
                 </div>
               ))}
             </div>
           ) : (
-            <DataUnavailable title="No attribution touches" reason={g?.attribution.note ?? "Ingest UTM/channel data into marketing_attribution_touches."} />
+            <DataUnavailable
+              title="No attribution touches"
+              reason={g?.attribution.note ?? "Ingest UTM/channel data into marketing_attribution_touches."}
+            />
           )}
         </GlassPanel>
 
         <GlassPanel className="p-5">
-          <SectionHeading title="Campaign ROI" hint="cost from campaigns.cost" />
+          <SectionHeading title="Campaign ROI" hint="uses campaign.cost vs redemption revenue" icon={Target} iconTone="warning" />
           {growth.isLoading ? (
             <div className="biz-skeleton h-24 w-full rounded" />
           ) : g && g.campaignRoi.length > 0 ? (
             <div className="space-y-1.5">
               {g.campaignRoi.slice(0, 6).map((c) => (
-                <div key={c.code} className="flex items-center justify-between rounded-lg bg-[var(--color-biz-bg)] px-3 py-2 text-xs">
+                <div
+                  key={c.code}
+                  className="flex items-center justify-between rounded-lg bg-[var(--color-biz-bg)] px-3 py-2 text-xs"
+                >
                   <span className="truncate">{c.name || c.code}</span>
-                  <span className="font-semibold tabular-nums">{c.roi != null ? `${c.roi.toFixed(0)}%` : "—"}</span>
+                  <span className="biz-num font-semibold">{c.roi != null ? `${c.roi.toFixed(0)}%` : "—"}</span>
                 </div>
               ))}
             </div>

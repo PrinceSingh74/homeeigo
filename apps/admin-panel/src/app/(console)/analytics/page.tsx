@@ -4,21 +4,31 @@ import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  AlertTriangle,
+  BarChart3,
   CalendarDays,
   CheckCircle2,
   Database,
   Loader2,
+  Percent,
   RefreshCw,
+  Repeat,
   TrendingUp,
   UserPlus,
-  Users,
+  Wallet,
   XCircle,
 } from "lucide-react";
 import { KpiCard } from "@/components/ui/KpiCard";
+import { GrowthPage } from "@/components/growth/GrowthPage";
+import { Field } from "@/components/ui/Field";
+import { Panel } from "@/components/ui/Panel";
 import { AnalyticsPerformanceBoundary } from "@/components/perf/AnalyticsPerformanceBoundary";
+import { Icon3D } from "@/components/hq/Icon3D";
 import { useAdminAnalyticsQuery, useAdminDashboardQuery } from "@/hooks/use-admin-data";
 import { adminApi } from "@/services/admin-api";
 import { daysAgoIso, formatNumber, formatPercent, inr, todayIso } from "@/lib/format";
+import { AdminApiError, getApiLoadHint, getErrorMessage } from "@/lib/api-error";
+import { cn } from "@/lib/cn";
 
 const AdminAnalyticsCharts = dynamic(
   () =>
@@ -29,9 +39,9 @@ const AdminAnalyticsCharts = dynamic(
 );
 
 const PRESETS = [
-  { id: "7d", label: "7d", days: 7 },
-  { id: "30d", label: "30d", days: 30 },
-  { id: "90d", label: "90d", days: 90 },
+  { id: "7d", label: "7 days", days: 7 },
+  { id: "30d", label: "30 days", days: 30 },
+  { id: "90d", label: "90 days", days: 90 },
 ] as const;
 
 type PresetId = (typeof PRESETS)[number]["id"] | "custom";
@@ -48,11 +58,19 @@ export default function AnalyticsPage() {
     return { startDate: daysAgoIso(days - 1), endDate: todayIso() };
   }, [preset, customStart, customEnd]);
 
-  const { data, isLoading, isFetching, isError, refetch } = useAdminAnalyticsQuery(range);
+  const { data, isLoading, isFetching, isError, error, refetch } = useAdminAnalyticsQuery(range);
+  const analyticsHint = isError ? getApiLoadHint(error) : null;
   const pipeline = useQuery({
     queryKey: ["data-pipeline-health"],
-    queryFn: () => adminApi.dataPipeline.health(),
+    queryFn: async () => {
+      const result = await adminApi.dataPipeline.health();
+      if (!result?.pipeline) {
+        throw new Error("Pipeline health payload missing");
+      }
+      return result;
+    },
     staleTime: 60_000,
+    retry: 1,
   });
   const overview = data?.overview;
   const dailyBookings = dashboard.data?.charts.bookingsByDay ?? [];
@@ -65,111 +83,123 @@ export default function AnalyticsPage() {
   const cancellationRate =
     overview && overview.totalBookings > 0 ? overview.cancelledBookings / overview.totalBookings : 0;
 
-  return (
-    <div className="mx-auto max-w-7xl space-y-4">
-      <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold">
-          Analytics
-          <span className="mt-1 block text-sm font-normal text-[var(--color-biz-muted)]">
-            Revenue, conversion, top services
-          </span>
-        </h1>
-        <div className="flex flex-wrap gap-1.5">
-          {PRESETS.map((p) => (
-            <button
-              type="button"
-              key={p.id}
-              onClick={() => setPreset(p.id)}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                preset === p.id
-                  ? "bg-[var(--color-biz-accent-dim)] text-[var(--color-biz-accent)]"
-                  : "border border-[var(--color-biz-line)] hover:bg-[var(--color-biz-elevated)]"
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
+  const rangeActions = (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <div className="biz-segment">
+        {PRESETS.map((p) => (
           <button
             type="button"
-            onClick={() => setPreset("custom")}
-            className={`flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${
-              preset === "custom"
-                ? "bg-[var(--color-biz-accent-dim)] text-[var(--color-biz-accent)]"
-                : "border border-[var(--color-biz-line)] hover:bg-[var(--color-biz-elevated)]"
-            }`}
+            key={p.id}
+            onClick={() => setPreset(p.id)}
+            className={cn("biz-segment-btn", preset === p.id && "is-active")}
           >
-            <CalendarDays className="h-3 w-3" />
-            Custom
+            {p.label}
           </button>
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            className="rounded-md border border-[var(--color-biz-line)] p-1.5 text-[var(--color-biz-muted)] hover:bg-[var(--color-biz-elevated)] disabled:opacity-60"
-            aria-label="Refresh"
-          >
-            {isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-          </button>
-        </div>
-      </header>
+        ))}
+        <button
+          type="button"
+          onClick={() => setPreset("custom")}
+          className={cn("biz-segment-btn inline-flex items-center gap-1", preset === "custom" && "is-active")}
+        >
+          <CalendarDays className="h-3 w-3" />
+          Custom
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={() => void refetch()}
+        disabled={isFetching}
+        className="biz-btn p-2"
+        aria-label="Refresh"
+      >
+        {isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  );
 
+  return (
+    <GrowthPage
+      icon={BarChart3}
+      title="Analytics"
+      subtitle="Revenue, job completion, new customers, and service mix for the selected window. Numbers come from live bookings — not estimates."
+      actions={rangeActions}
+    >
       {preset === "custom" ? (
-        <div className="biz-card flex flex-wrap items-end gap-3 p-4">
-          <label className="text-[10px] font-semibold uppercase text-[var(--color-biz-muted)]">
-            From
+        <div className="biz-card flex flex-wrap items-end gap-4 p-4">
+          <Field label="From" className="w-44">
             <input
               type="date"
               value={customStart}
               max={customEnd}
               onChange={(e) => setCustomStart(e.target.value)}
-              className="mt-1 block rounded-lg border border-[var(--color-biz-line)] bg-[var(--color-biz-bg)] py-2 px-3 text-sm"
+              className="biz-input"
             />
-          </label>
-          <label className="text-[10px] font-semibold uppercase text-[var(--color-biz-muted)]">
-            To
+          </Field>
+          <Field label="To" className="w-44">
             <input
               type="date"
               value={customEnd}
               min={customStart}
               max={todayIso()}
               onChange={(e) => setCustomEnd(e.target.value)}
-              className="mt-1 block rounded-lg border border-[var(--color-biz-line)] bg-[var(--color-biz-bg)] py-2 px-3 text-sm"
+              className="biz-input"
             />
-          </label>
+          </Field>
         </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Revenue" value={isLoading ? "—" : inr(overview?.totalRevenue ?? 0, true)} icon={TrendingUp} />
+      <div className="biz-kpi-grid">
         <KpiCard
-          label="Completed"
-          value={isLoading ? "—" : formatNumber(overview?.completedBookings ?? 0)}
-          sub={overview ? formatPercent(completionRate) + " completion" : undefined}
+          label="Revenue"
+          value={isLoading || isError ? "—" : inr(overview?.totalRevenue ?? 0, true)}
+          sub="Completed job value"
+          icon={TrendingUp}
+          loading={isLoading || isError}
+        />
+        <KpiCard
+          label="Completed jobs"
+          value={isLoading || isError ? "—" : formatNumber(overview?.completedBookings ?? 0)}
+          sub={overview ? `${formatPercent(completionRate)} completion` : undefined}
           icon={CheckCircle2}
           accent="green"
+          loading={isLoading || isError}
         />
         <KpiCard
           label="Cancellations"
-          value={isLoading ? "—" : formatNumber(overview?.cancelledBookings ?? 0)}
-          sub={overview ? formatPercent(cancellationRate) + " rate" : undefined}
+          value={isLoading || isError ? "—" : formatNumber(overview?.cancelledBookings ?? 0)}
+          sub={overview ? `${formatPercent(cancellationRate)} of bookings` : undefined}
           icon={XCircle}
           accent="red"
+          loading={isLoading || isError}
         />
         <KpiCard
-          label="New users"
-          value={isLoading ? "—" : formatNumber(data?.userMetrics.newUsers ?? 0)}
+          label="New customers"
+          value={isLoading || isError ? "—" : formatNumber(data?.userMetrics.newUsers ?? 0)}
           sub={data ? `${formatNumber(data.userMetrics.activeUsers)} active` : undefined}
           icon={UserPlus}
+          loading={isLoading || isError}
         />
       </div>
 
       {isError ? (
-        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-          Failed to load analytics.{" "}
-          <button type="button" onClick={() => void refetch()} className="underline">
+        <div className="biz-glass-panel flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between" role="alert">
+          <div className="flex min-w-0 items-start gap-3">
+            <Icon3D icon={AlertTriangle} size="sm" tone="danger" />
+            <div>
+              <p className="text-sm font-semibold">{getErrorMessage(error, "Failed to load analytics.")}</p>
+              <p className="mt-1 text-xs leading-relaxed text-[var(--color-biz-muted)]">
+                {analyticsHint ??
+                  "This page loads GET /api/admin/analytics for the selected dates. Empty bookings would show zeros — this banner means the request itself failed."}
+                {error instanceof AdminApiError && error.code === "FORBIDDEN"
+                  ? " Analytics needs ANALYTICS:READ. Seeing Growth HQ (campaigns / gift cards) is a different grant."
+                  : null}
+              </p>
+            </div>
+          </div>
+          <button type="button" onClick={() => void refetch()} className="biz-btn shrink-0 text-xs">
             Retry
           </button>
-        </p>
+        </div>
       ) : null}
 
       <AnalyticsPerformanceBoundary label="AdminAnalyticsCharts">
@@ -183,55 +213,72 @@ export default function AnalyticsPage() {
         />
       </AnalyticsPerformanceBoundary>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3.5 sm:grid-cols-3">
         <KpiCard
           label="Platform commission"
-          value={isLoading ? "—" : inr(overview?.platformCommission ?? 0, true)}
-          icon={TrendingUp}
+          value={isLoading || isError ? "—" : inr(overview?.platformCommission ?? 0, true)}
+          sub="Homeeigo take"
+          icon={Percent}
           accent="green"
+          loading={isLoading || isError}
         />
         <KpiCard
-          label="Provider payouts"
-          value={isLoading ? "—" : inr(overview?.providerPayouts ?? 0, true)}
-          icon={Users}
+          label="Partner payouts"
+          value={isLoading || isError ? "—" : inr(overview?.providerPayouts ?? 0, true)}
+          sub="Earnings posted to partners"
+          icon={Wallet}
           accent="amber"
+          loading={isLoading || isError}
         />
         <KpiCard
           label="Repeat booking rate"
-          value={isLoading ? "—" : formatPercent(data?.userMetrics.repeatBookingRate ?? 0)}
-          icon={Users}
+          value={isLoading || isError ? "—" : formatPercent(data?.userMetrics.repeatBookingRate ?? 0)}
+          sub="Customers who booked again"
+          icon={Repeat}
           accent="green"
+          loading={isLoading || isError}
         />
       </div>
 
-      <section className="rounded-lg border border-[var(--color-biz-line)] bg-[var(--color-biz-surface)] p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <Database className="h-4 w-4 text-[var(--color-biz-accent)]" />
-          <h2 className="text-sm font-semibold">ML Data Pipeline</h2>
-        </div>
+      <Panel
+        title="ML data pipeline"
+        hint="Freshness of training datasets feeding forecasting and allocation"
+        icon={Database}
+        iconTone="cyan"
+      >
         {pipeline.isLoading ? (
-          <p className="text-xs text-[var(--color-biz-muted)]">Loading pipeline health…</p>
+          <p className="text-sm text-[var(--color-biz-muted)]">Loading pipeline health…</p>
         ) : pipeline.isError ? (
-          <p className="text-xs text-red-500">Pipeline health unavailable</p>
+          <p className="text-sm text-[var(--color-biz-danger)]">Pipeline health unavailable</p>
         ) : (
-          <div className="grid gap-2 sm:grid-cols-3 text-xs">
+          <div className="grid gap-4 sm:grid-cols-3">
             <div>
-              <span className="text-[var(--color-biz-muted)]">Fresh datasets</span>
-              <p className="font-medium">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-biz-muted)]">
+                Fresh datasets
+              </p>
+              <p className="biz-num mt-1 text-lg font-semibold">
                 {pipeline.data?.pipeline.freshness ?? 0} / {pipeline.data?.pipeline.totalDatasets ?? 0}
               </p>
             </div>
             <div>
-              <span className="text-[var(--color-biz-muted)]">Quality score</span>
-              <p className="font-medium">{formatPercent(pipeline.data?.pipeline.qualityScore ?? 0)}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-biz-muted)]">
+                Quality score
+              </p>
+              <p className="biz-num mt-1 text-lg font-semibold">
+                {Number(pipeline.data?.pipeline.qualityScore ?? 0).toFixed(0)}%
+              </p>
             </div>
             <div>
-              <span className="text-[var(--color-biz-muted)]">MLOps</span>
-              <p className="font-medium">{String(pipeline.data?.pipeline.mlops?.status ?? "—")}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-biz-muted)]">
+                MLOps
+              </p>
+              <p className="mt-1 text-lg font-semibold capitalize">
+                {String(pipeline.data?.pipeline.mlops?.status ?? "—")}
+              </p>
             </div>
           </div>
         )}
-      </section>
-    </div>
+      </Panel>
+    </GrowthPage>
   );
 }

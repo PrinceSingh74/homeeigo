@@ -4,11 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Building2, ChevronDown } from "lucide-react";
+import { Building2, ChevronDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Icon3D } from "@/components/hq/Icon3D";
 import {
   HQ_SECTIONS,
   isNavItemActive,
+  navItemHint,
   resolveHqSection,
   type HqSectionId,
 } from "@/lib/hq-navigation";
@@ -24,39 +26,48 @@ const NavLink = memo(function NavLink({
   icon: Icon,
   active,
   nested,
+  hint,
+  icon3d,
 }: {
   href: string;
   label: string;
   icon: (typeof HQ_SECTIONS)[number]["items"][number]["icon"];
   active: boolean;
   nested?: boolean;
+  hint?: string;
+  icon3d?: boolean;
 }) {
   return (
     <Link
       href={href}
       prefetch
+      title={hint}
       className={cn(
-        "group relative flex items-center gap-2.5 rounded-lg text-[13px] font-medium transition-all duration-200",
-        nested ? "h-9 px-3" : "h-10 px-3",
+        "group relative flex items-center gap-2.5 rounded-lg text-[13px] transition-all duration-200",
+        nested ? (icon3d ? "h-10 px-2.5" : "h-9 px-3") : "h-10 px-3",
         active
-          ? "bg-[var(--color-biz-accent-dim)] text-[var(--color-biz-text)]"
-          : "text-[var(--color-biz-muted)] hover:bg-[var(--color-biz-elevated)] hover:text-[var(--color-biz-text)]",
+          ? "bg-[var(--color-biz-accent-dim)] font-semibold text-[var(--color-biz-text)]"
+          : "font-medium text-[var(--color-biz-muted)] hover:bg-[var(--color-biz-elevated)] hover:text-[var(--color-biz-text)]",
       )}
     >
       {active ? (
         <span
-          className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-[var(--color-biz-accent)]"
+          className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-[var(--color-biz-accent)]"
           aria-hidden
         />
       ) : null}
-      <Icon
-        className={cn(
-          "h-4 w-4 shrink-0 transition-colors",
-          active
-            ? "text-[var(--color-biz-accent)]"
-            : "text-[var(--color-biz-faint)] group-hover:text-[var(--color-biz-muted)]",
-        )}
-      />
+      {icon3d ? (
+        <Icon3D icon={Icon} size="sm" tone={active ? "success" : "default"} />
+      ) : (
+        <Icon
+          className={cn(
+            "h-4 w-4 shrink-0 transition-colors",
+            active
+              ? "text-[var(--color-biz-accent)]"
+              : "text-[var(--color-biz-faint)] group-hover:text-[var(--color-biz-muted)]",
+          )}
+        />
+      )}
       <span className="truncate">{label}</span>
     </Link>
   );
@@ -67,6 +78,7 @@ const HqSectionBlock = memo(function HqSectionBlock({
   label,
   emoji,
   dashboardHref,
+  description,
   items,
   pathname,
   expanded,
@@ -76,6 +88,7 @@ const HqSectionBlock = memo(function HqSectionBlock({
   label: string;
   emoji: string;
   dashboardHref: string;
+  description: string;
   items: (typeof HQ_SECTIONS)[number]["items"];
   pathname: string;
   expanded: boolean;
@@ -83,12 +96,14 @@ const HqSectionBlock = memo(function HqSectionBlock({
 }) {
   const isActiveSection = resolveHqSection(pathname).id === sectionId;
   const hasActiveChild = items.some((item) => isNavItemActive(pathname, item.href));
+  const use3d = sectionId === "growth";
 
   return (
     <div className="mb-0.5" data-hq-section={sectionId}>
       <button
         type="button"
         onClick={() => onToggle(sectionId)}
+        title={description}
         className={cn(
           "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold tracking-tight transition-all duration-200",
           isActiveSection
@@ -97,17 +112,21 @@ const HqSectionBlock = memo(function HqSectionBlock({
         )}
         aria-expanded={expanded}
       >
-        <span
-          className={cn(
-            "flex h-6 w-6 items-center justify-center rounded-md text-sm leading-none transition-colors",
-            isActiveSection
-              ? "bg-[var(--color-biz-accent-dim)] ring-1 ring-inset ring-[rgb(61_126_255_/_0.25)]"
-              : "bg-[var(--color-biz-elevated)]",
-          )}
-          aria-hidden
-        >
-          {emoji}
-        </span>
+        {use3d ? (
+          <Icon3D icon={TrendingUp} size="sm" tone={isActiveSection ? "success" : "default"} />
+        ) : (
+          <span
+            className={cn(
+              "flex h-6 w-6 items-center justify-center rounded-md text-sm leading-none transition-colors",
+              isActiveSection
+                ? "bg-[var(--color-biz-accent-dim)] ring-1 ring-inset ring-[rgb(61_126_255_/_0.25)]"
+                : "bg-[var(--color-biz-elevated)]",
+            )}
+            aria-hidden
+          >
+            {emoji}
+          </span>
+        )}
         <span className="min-w-0 flex-1 truncate">{label}</span>
         <ChevronDown
           className={cn(
@@ -126,7 +145,11 @@ const HqSectionBlock = memo(function HqSectionBlock({
         inert={!expanded}
       >
         <div className="overflow-hidden">
-          <div className="space-y-0.5 py-1 pl-2">
+          <div className="relative space-y-0.5 py-1 pl-3">
+            <span
+              className="absolute bottom-1 left-[11px] top-1 w-px bg-[var(--color-biz-line)]"
+              aria-hidden
+            />
             {dashboardHref !== "/" ? (
               <NavLink
                 href={dashboardHref}
@@ -134,6 +157,8 @@ const HqSectionBlock = memo(function HqSectionBlock({
                 icon={Building2}
                 active={pathname === dashboardHref}
                 nested
+                hint={description}
+                icon3d={use3d}
               />
             ) : null}
             {items.map((item) => (
@@ -144,6 +169,8 @@ const HqSectionBlock = memo(function HqSectionBlock({
                 icon={item.icon}
                 active={isNavItemActive(pathname, item.href)}
                 nested
+                hint={navItemHint(item.href)}
+                icon3d={use3d}
               />
             ))}
           </div>
@@ -241,6 +268,7 @@ export const HqSidebar = memo(function HqSidebar() {
               label={section.shortLabel}
               emoji={section.emoji}
               dashboardHref={section.dashboardHref}
+              description={section.description}
               items={section.items}
               pathname={visualPath}
               expanded={expanded.has(section.id)}

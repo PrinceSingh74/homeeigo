@@ -4,7 +4,7 @@ import { memo } from "react";
 import { Info, Loader2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { Icon3D } from "./Icon3D";
+import { Icon3D, type Icon3DTone } from "./Icon3D";
 
 /** Small metric tile used across HQ dashboards. */
 export const StatTile = memo(function StatTile({
@@ -36,9 +36,9 @@ export const StatTile = memo(function StatTile({
           : "text-[var(--color-biz-text)]";
 
   return (
-    <div className={cn(embedded ? "flex h-full flex-col bg-[var(--color-biz-surface)] p-5" : "biz-glass-panel biz-kpi p-5", className)}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-biz-muted)]">
+    <div className={cn(embedded ? "flex h-full min-w-0 flex-col overflow-hidden bg-[var(--color-biz-surface)] p-5" : "biz-glass-panel biz-kpi min-w-0 overflow-hidden p-5", className)}>
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-biz-muted)]">
           {label}
         </span>
         {Icon ? (
@@ -49,10 +49,10 @@ export const StatTile = memo(function StatTile({
           />
         ) : null}
       </div>
-      <p data-stat-value className={cn("mt-2 text-2xl font-bold tabular-nums tracking-tight", toneClass)}>
+      <p data-stat-value className={cn("mt-2 min-w-0 truncate text-[clamp(1.15rem,1.7vw,1.5rem)] font-bold leading-tight tabular-nums tracking-tight", toneClass)}>
         {loading ? "—" : value}
       </p>
-      {sub ? <p className="mt-1 text-xs text-[var(--color-biz-muted)]">{sub}</p> : null}
+      {sub ? <p className="mt-1 min-w-0 truncate text-xs text-[var(--color-biz-muted)]">{sub}</p> : null}
     </div>
   );
 });
@@ -185,17 +185,25 @@ export const HqLoading = memo(function HqLoading({ label = "Loading live data…
 export const SectionHeading = memo(function SectionHeading({
   title,
   hint,
+  icon: Icon,
+  iconTone = "default",
 }: {
   title: string;
   hint?: string;
+  icon?: LucideIcon;
+  iconTone?: Icon3DTone;
 }) {
   return (
-    <div className="mb-2 flex items-baseline justify-between gap-3">
-      <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-biz-muted)]">
-        <span className="h-3 w-0.5 rounded-full bg-[var(--color-biz-accent)]" aria-hidden />
-        {title}
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <h2 className="flex min-w-0 items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-biz-muted)]">
+        {Icon ? (
+          <Icon3D icon={Icon} size="sm" tone={iconTone} />
+        ) : (
+          <span className="h-3 w-0.5 rounded-full bg-[var(--color-biz-accent)]" aria-hidden />
+        )}
+        <span className="truncate">{title}</span>
       </h2>
-      {hint ? <span className="text-[10px] text-[var(--color-biz-faint)]">{hint}</span> : null}
+      {hint ? <span className="shrink-0 text-[10px] text-[var(--color-biz-faint)]">{hint}</span> : null}
     </div>
   );
 });

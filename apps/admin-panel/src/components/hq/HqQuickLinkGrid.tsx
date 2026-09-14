@@ -41,10 +41,10 @@ export const HqQuickLinkGrid = memo(function HqQuickLinkGrid({
             <Icon3D icon={link.icon} tone="default" size="md" />
             <ArrowUpRight className="h-4 w-4 shrink-0 text-[var(--color-biz-muted)] opacity-0 transition group-hover:opacity-100" />
           </div>
-          <p className="mt-4 text-sm font-semibold leading-none">{link.label}</p>
-          {link.description ? (
-            <p className="mt-2 line-clamp-2 min-h-[2rem] text-xs leading-relaxed text-[var(--color-biz-muted)]">{link.description}</p>
-          ) : null}
+          <p className="mt-4 text-sm font-semibold leading-snug">{link.label}</p>
+          <p className="mt-2 line-clamp-2 min-h-[2rem] text-xs leading-relaxed text-[var(--color-biz-muted)]">
+            {link.description ?? "Open this workspace"}
+          </p>
         </Link>
       ))}
     </div>

@@ -13,6 +13,24 @@ export function formatNumber(value: number): string {
   return Number(value || 0).toLocaleString("en-IN");
 }
 
+/** Compact human wait — never dumps raw milliseconds into a KPI tile. */
+export function formatWait(ms?: number | null, compact = true): string {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";
+  if (ms < 45_000) return compact ? "<1m" : "under 1m";
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remM = minutes % 60;
+  if (hours < 24) {
+    if (compact || remM === 0) return `${hours}h`;
+    return `${hours}h ${remM}m`;
+  }
+  const days = Math.floor(hours / 24);
+  const remH = hours % 24;
+  if (!compact && remH > 0 && days < 14) return `${days}d ${remH}h`;
+  return `${days}d`;
+}
+
 export function formatPercent(ratio: number, fractionDigits = 1): string {
   return `${(ratio * 100).toFixed(fractionDigits)}%`;
 }
@@ -28,6 +46,29 @@ export function formatDate(iso?: string | null): string {
   } catch {
     return iso;
   }
+}
+
+export function formatDateTime(iso?: string | null): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("en-IN", {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+export function humanizeKey(value: string): string {
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^\w/, (c) => c.toUpperCase());
 }
 
 export function todayIso(): string {

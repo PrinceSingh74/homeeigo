@@ -1,6 +1,7 @@
 import { memo } from "react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Icon3D, type Icon3DTone } from "@/components/hq/Icon3D";
 
 export const KpiCard = memo(function KpiCard({
   label,
@@ -17,39 +18,29 @@ export const KpiCard = memo(function KpiCard({
   accent?: "amber" | "green" | "red";
   loading?: boolean;
 }) {
-  const chipClass =
-    accent === "green"
-      ? "biz-icon-chip biz-icon-chip--success"
-      : accent === "red"
-        ? "biz-icon-chip biz-icon-chip--danger"
-        : accent === "amber"
-          ? "biz-icon-chip biz-icon-chip--warning"
-          : "biz-icon-chip";
+  const tone: Icon3DTone =
+    accent === "green" ? "success" : accent === "red" ? "danger" : accent === "amber" ? "warning" : "default";
 
   return (
-    <div className="biz-glass-panel biz-kpi p-5">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-biz-muted)]">
+    <div className="biz-glass-panel biz-kpi min-w-0 overflow-hidden p-5">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <p className="min-w-0 text-[11px] font-semibold uppercase leading-snug tracking-[0.12em] text-[var(--color-biz-muted)]">
           {label}
         </p>
-        {Icon ? (
-          <span className={chipClass}>
-            <Icon className="h-4 w-4" />
-          </span>
-        ) : null}
+        {Icon ? <Icon3D icon={Icon} size="sm" tone={tone} /> : null}
       </div>
       <p
         data-stat-value
         className={cn(
-          "mt-2 text-[1.75rem] font-bold leading-9 tracking-tight",
+          "biz-num mt-3 min-w-0 truncate text-[clamp(1.25rem,1.8vw,1.65rem)] font-bold leading-none tracking-tight",
           loading && "text-[var(--color-biz-faint)]",
         )}
       >
-        {loading ? "…" : value}
+        {loading ? "—" : value}
       </p>
-      {sub && !loading && (
-        <p className="mt-1 text-xs text-[var(--color-biz-muted)]">{sub}</p>
-      )}
+      {sub && !loading ? (
+        <p className="mt-2 min-w-0 text-xs leading-snug text-[var(--color-biz-muted)]">{sub}</p>
+      ) : null}
     </div>
   );
 });

@@ -25,23 +25,23 @@ export function Pagination({
   const nextDisabled = page >= pageCount || isFetching;
 
   return (
-    <div className={cn("flex items-center justify-between gap-3 border-t border-[var(--color-biz-line)] px-4 py-3 text-xs text-[var(--color-biz-muted)]", className)}>
+    <div
+      className={cn(
+        "flex flex-col gap-2 border-t border-[var(--color-biz-line)] px-4 py-3 text-xs text-[var(--color-biz-muted)] sm:flex-row sm:items-center sm:justify-between",
+        className,
+      )}
+    >
       <span>
-        Showing <span className="font-medium text-[var(--color-biz-text)]">{from}</span>–
-        <span className="font-medium text-[var(--color-biz-text)]">{to}</span> of
-        <span className="font-medium text-[var(--color-biz-text)]"> {total}</span>
+        Showing <span className="biz-num font-semibold text-[var(--color-biz-text)]">{from}</span>–
+        <span className="biz-num font-semibold text-[var(--color-biz-text)]">{to}</span> of
+        <span className="biz-num font-semibold text-[var(--color-biz-text)]"> {total}</span>
       </span>
       <div className="flex items-center gap-1.5">
         <button
           type="button"
           disabled={prevDisabled}
           onClick={() => onPageChange(Math.max(1, page - 1))}
-          className={cn(
-            "flex items-center gap-1 rounded-md border border-[var(--color-biz-line)] px-2 py-1 transition",
-            prevDisabled
-              ? "opacity-40"
-              : "hover:bg-[var(--color-biz-elevated)] hover:text-[var(--color-biz-text)]",
-          )}
+          className="biz-btn px-2 py-1 text-xs disabled:opacity-40"
         >
           <ChevronLeft className="h-3.5 w-3.5" />
           Prev
@@ -53,12 +53,7 @@ export function Pagination({
           type="button"
           disabled={nextDisabled}
           onClick={() => onPageChange(Math.min(pageCount, page + 1))}
-          className={cn(
-            "flex items-center gap-1 rounded-md border border-[var(--color-biz-line)] px-2 py-1 transition",
-            nextDisabled
-              ? "opacity-40"
-              : "hover:bg-[var(--color-biz-elevated)] hover:text-[var(--color-biz-text)]",
-          )}
+          className="biz-btn px-2 py-1 text-xs disabled:opacity-40"
         >
           Next
           <ChevronRight className="h-3.5 w-3.5" />

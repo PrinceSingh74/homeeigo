@@ -34,6 +34,9 @@ export function getApiLoadHint(error: unknown): string | null {
   if (error instanceof AdminApiError && error.status === 0) {
     return "Backend API unreachable. Ensure apps/backend is running on port 3000 and set NEXT_PUBLIC_API_URL in admin-panel .env.local if needed.";
   }
+  if (error instanceof AdminApiError && error.status >= 500) {
+    return "The admin app on 3003 only proxies to the backend. Confirm apps/backend is running on port 3000 and the database is up.";
+  }
   if (message.includes("database") || message.includes("docker") || message.includes("db:migrate")) {
     return "Database is down or migrations are pending. Run docker compose up -d and bun run db:migrate in apps/backend, then restart the backend once (avoid duplicate servers on port 3000).";
   }
@@ -41,7 +44,7 @@ export function getApiLoadHint(error: unknown): string | null {
     return "Session expired. Sign out and log in again.";
   }
   if (message.includes("forbidden") || message.includes("permission")) {
-    return "Your admin role may not have finance access. Ask a super-admin to grant permissions.";
+    return "Your admin role is missing permission for this request. Ask a super-admin to grant the required resource.";
   }
   return null;
 }

@@ -3,10 +3,12 @@
 import { notFound, useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useMemo } from "react";
-import { getHqSection, type HqSectionId } from "@/lib/hq-navigation";
+import { TrendingUp } from "lucide-react";
+import { getHqSection, navItemHint, type HqSectionId } from "@/lib/hq-navigation";
 import { HqLandingShell } from "@/components/hq/HqLandingShell";
 import { HqQuickLinkGrid } from "@/components/hq/HqQuickLinkGrid";
 import { SectionHeading } from "@/components/hq/primitives";
+import { GrowthWorkspaceRail } from "@/components/growth/GrowthWorkspaceRail";
 import { useRenderProbe, useMountProbe } from "@/lib/render-probe";
 
 const VALID_SECTIONS: HqSectionId[] = [
@@ -69,7 +71,13 @@ export default function HqLandingPage() {
   }
 
   const quickLinks = useMemo(
-    () => section.items.map((item) => ({ href: item.href, label: item.label, icon: item.icon })),
+    () =>
+      section.items.map((item) => ({
+        href: item.href,
+        label: item.label,
+        icon: item.icon,
+        description: navItemHint(item.href),
+      })),
     [section.items],
   );
 
@@ -96,17 +104,27 @@ export default function HqLandingPage() {
     }
   }, [sectionId]);
 
+  const isGrowth = sectionId === "growth";
+
   return (
     <HqLandingShell
       emoji={section.emoji}
+      icon={isGrowth ? TrendingUp : undefined}
+      iconTone={isGrowth ? "success" : "default"}
       title={section.label}
       subtitle={section.description}
       className={sectionId === "marketplace" ? "max-w-[1600px]" : undefined}
     >
+      {isGrowth ? <GrowthWorkspaceRail /> : null}
       {Dashboard}
 
       <section>
-        <SectionHeading title="Quick access" hint={`${section.items.length} tools`} />
+        <SectionHeading
+          title="Quick access"
+          hint={`${section.items.length} tools`}
+          icon={isGrowth ? TrendingUp : undefined}
+          iconTone="success"
+        />
         <HqQuickLinkGrid links={quickLinks} columns={section.items.length > 6 ? 3 : 2} />
       </section>
     </HqLandingShell>

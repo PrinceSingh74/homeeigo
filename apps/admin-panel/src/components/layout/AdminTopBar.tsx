@@ -99,7 +99,7 @@ export const AdminTopBar = memo(function AdminTopBar() {
   }
 
   return (
-    <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-biz-line)] bg-[var(--color-biz-surface)]/80 px-4 py-3 backdrop-blur-md md:px-6">
+    <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-biz-line)] bg-[var(--color-biz-surface)]/90 px-4 py-2.5 backdrop-blur-md md:px-6">
       <div className="mr-4 hidden min-w-0 items-center gap-2 sm:flex">
         <span
           className="flex h-6 w-6 items-center justify-center rounded-md bg-[var(--color-biz-elevated)] text-xs ring-1 ring-inset ring-[var(--color-biz-line)]"
@@ -108,10 +108,10 @@ export const AdminTopBar = memo(function AdminTopBar() {
           {hq.emoji}
         </span>
         <nav aria-label="Breadcrumb" className="min-w-0">
-          <ol className="flex min-w-0 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-biz-muted)]">
+          <ol className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-[var(--color-biz-muted)]">
             <li className="truncate">
               <Link href={hq.dashboardHref} className="hover:text-[var(--color-biz-text)]">
-                {hq.shortLabel}
+                {hq.label}
               </Link>
             </li>
             {(() => {
@@ -122,7 +122,7 @@ export const AdminTopBar = memo(function AdminTopBar() {
               return (
                 <>
                   <li aria-hidden>/</li>
-                  <li className="truncate text-[var(--color-biz-text)]" aria-current="page">
+                  <li className="truncate font-semibold text-[var(--color-biz-text)]" aria-current="page">
                     {leaf}
                   </li>
                 </>
