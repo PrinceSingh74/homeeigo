@@ -1,5 +1,6 @@
 import prisma from "../lib/prisma";
 import { formatAddress } from "../lib/format";
+import { getPrismaErrorCode } from "../lib/prisma-errors";
 import { sanitizeUserInput } from "../utils/sanitizer";
 import { addressPiiService } from "./address-pii.service";
 
@@ -144,17 +145,34 @@ export class AddressService {
   }
 
   async remove(userId: string, id: string) {
-    const count = await prisma.address.count({ where: { userId } });
-    if (count <= 1) return { error: "ONLY_ADDRESS" as const };
     const addr = await prisma.address.findFirst({ where: { id, userId } });
     if (!addr) return { error: "NOT_FOUND" as const };
-    await prisma.address.delete({ where: { id } });
-    if (addr.isDefault) {
-      const next = await prisma.address.findFirst({ where: { userId } });
-      if (next) {
-        await prisma.address.update({ where: { id: next.id }, data: { isDefault: true } });
-        await prisma.user.update({ where: { id: userId }, data: { defaultAddressId: next.id } });
-      }
+
+    // Bookings keep a required FK to Address — never delete a used location.
+    const bookingCount = await prisma.booking.count({ where: { addressId: id } });
+    if (bookingCount > 0) return { error: "ADDRESS_IN_USE" as const };
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.user.updateMany({
+          where: { id: userId, defaultAddressId: id },
+          data: { defaultAddressId: null },
+        });
+        await tx.address.delete({ where: { id } });
+        if (addr.isDefault) {
+          const next = await tx.address.findFirst({
+            where: { userId },
+            orderBy: { createdAt: "desc" },
+          });
+          if (next) {
+            await tx.address.update({ where: { id: next.id }, data: { isDefault: true } });
+            await tx.user.update({ where: { id: userId }, data: { defaultAddressId: next.id } });
+          }
+        }
+      });
+    } catch (error) {
+      if (getPrismaErrorCode(error) === "P2003") return { error: "ADDRESS_IN_USE" as const };
+      throw error;
     }
     return { ok: true as const };
   }

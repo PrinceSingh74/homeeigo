@@ -9,7 +9,9 @@ import prisma from "../lib/prisma";
 import { logger } from "../lib/logger";
 import { redisClient } from "../lib/redis";
 import { bookingPriorityService } from "./booking-priority.service";
-import { matchingService } from "./matching.service";
+import { matchingService, type ProviderMatch } from "./matching.service";
+import { resolveMustIncludeProviderIds } from "./dispatch-must-include.service";
+import { canBypassMustIncludeBlock, mergeMustIncludeFront } from "../lib/dispatch-must-include";
 import { createWsEnvelope, pushToUser } from "./notification-hub";
 import { notificationService } from "./notification.service";
 import { incCounter } from "../lib/metrics";
@@ -318,9 +320,15 @@ export class AssignmentEngine {
       maxResults: 15,
     });
 
-    const eligible = matches
+    const mustIncludeIds = new Set(
+      (await resolveMustIncludeProviderIds(booking.user)).filter((id) => !excluded.includes(id)),
+    );
+    const mustIncludeMatches = [...mustIncludeIds].map((providerId) => mustIncludeMatch(providerId));
+
+    const ranked = matches
       .filter((m) => !excluded.includes(m.providerId))
       .sort((a, b) => b.totalScore - a.totalScore);
+    const eligible = mergeMustIncludeFront(ranked, mustIncludeMatches);
 
     if (eligible.length === 0) {
       /**
@@ -348,9 +356,15 @@ export class AssignmentEngine {
     // request. The booking stays PENDING (providerId null) during the offer window; the FIRST
     // provider to accept claims it under the Serializable accept + slot-exclusion lock
     // (resolveAcceptingProvider). Legacy single-offer when ASSIGNMENT_BROADCAST=false.
+    // A customer pin (must-include) always broadcasts so nearby partners still see the job.
     const now = new Date();
     const timeoutAt = new Date(now.getTime() + DISPATCH_TIMEOUT_MS);
-    const targets = BROADCAST_DISPATCH ? eligible.slice(0, BROADCAST_FANOUT) : eligible.slice(0, 1);
+    const broadcast = BROADCAST_DISPATCH || mustIncludeIds.size > 0;
+    const pinned = eligible.filter((m) => mustIncludeIds.has(m.providerId));
+    const others = eligible.filter((m) => !mustIncludeIds.has(m.providerId));
+    const targets = broadcast
+      ? [...pinned, ...others.slice(0, Math.max(0, BROADCAST_FANOUT - pinned.length))]
+      : eligible.slice(0, 1);
 
     const offeredProviderIds: string[] = [];
     for (const candidate of targets) {
@@ -375,7 +389,16 @@ export class AssignmentEngine {
             scheduledDate: booking.scheduledDate,
           });
           if (blocked) {
-            throw new Error(`SKIP_OFFER:${blocked}`);
+            const pinnedOffer = mustIncludeIds.has(provider.id) && canBypassMustIncludeBlock(blocked);
+            if (!pinnedOffer) {
+              incCounter("final_revalidation_failures", { reason: blocked });
+              throw new Error(`SKIP_OFFER:${blocked}`);
+            }
+            logger.info("dispatch_must_include_offer_bypass", {
+              jobId,
+              providerId: provider.id,
+              reason: blocked,
+            });
           }
           await tx.assignmentAttempt.create({
             data: { jobId, providerId: provider.id, status: AssignmentAttemptStatus.SENT, dispatchedAt: now },
@@ -765,6 +788,29 @@ export class AssignmentEngine {
       },
     };
   }
+}
+
+function mustIncludeMatch(providerId: string): ProviderMatch {
+  return {
+    providerId,
+    name: "Preferred partner",
+    rating: 0,
+    totalReviews: 0,
+    distance: 0,
+    eta: 0,
+    totalScore: 10_000,
+    scoreBreakdown: {
+      ratingScore: 0,
+      distanceScore: 0,
+      availabilityScore: 20,
+      responseScore: 0,
+      completionScore: 0,
+    },
+    isOnline: true,
+    availableNow: true,
+    availabilityLabel: "Available now",
+    availability: true,
+  };
 }
 
 function isProviderSlotConflict(err: unknown): boolean {

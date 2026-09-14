@@ -269,6 +269,10 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
                 ? "Another professional already accepted this job"
                 : result.error === "INVALID_STATUS"
                   ? "This booking can no longer be accepted"
+                  : result.error === "STALE_LOCATION"
+                    ? "Your GPS is outdated. Enable location and try Accept again."
+                    : result.error === "STALE_PRESENCE"
+                      ? "Go online, wait a few seconds, then try Accept again."
                   : "Cannot accept booking";
         return {
           success: false,

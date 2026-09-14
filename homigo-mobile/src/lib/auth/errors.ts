@@ -14,11 +14,17 @@ export class AuthApiError extends Error {
   }
 }
 
+const AUTH_ERROR_COPY: Record<string, string> = {
+  ONLY_ADDRESS: "Add another address before removing this one.",
+  ADDRESS_IN_USE: "This address is linked to a booking, so it can't be removed.",
+};
+
 export function getErrorMessage(error: unknown, fallback = "Something went wrong. Please try again."): string {
   if (error instanceof AuthApiError) {
     if (error.status === 0) {
       return error.message;
     }
+    if (error.code && AUTH_ERROR_COPY[error.code]) return AUTH_ERROR_COPY[error.code];
     if (error.details?.length) return error.details.join(". ");
     return error.message;
   }

@@ -197,9 +197,13 @@ const usersApp = new Elysia({ prefix: "/api/users" })
   .delete("/addresses/:id", async ({ requireAuth, params, set }) => {
     const { userId } = requireAuth();
     const result = await addressService.remove(userId, params.id);
-    if (result.error === "ONLY_ADDRESS") {
-      set.status = 400;
-      return { success: false, error: "Cannot delete the only address", code: "ONLY_ADDRESS" };
+    if (result.error === "ADDRESS_IN_USE") {
+      set.status = 409;
+      return {
+        success: false,
+        error: "This address is linked to a booking, so it can't be removed.",
+        code: "ADDRESS_IN_USE",
+      };
     }
     if (result.error === "NOT_FOUND") {
       set.status = 404;

@@ -85,7 +85,7 @@ export function SavedAddresses() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (!addr.isDefault) void setDefault.mutateAsync(addr.id);
+                    if (!addr.isDefault) setDefault.mutate(addr.id);
                   }}
                   className="absolute right-3 top-3 inline-flex items-center gap-1 text-xs font-semibold text-muted hover:text-emerald-600"
                   aria-label={addr.isDefault ? "Default address" : "Set as default"}
@@ -115,8 +115,9 @@ export function SavedAddresses() {
                 <div className="mt-2 flex justify-end">
                   <button
                     type="button"
-                    onClick={() => void remove.mutateAsync(addr.id)}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted hover:text-error"
+                    onClick={() => remove.mutate(addr.id)}
+                    disabled={remove.isPending}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted hover:text-error disabled:opacity-50"
                   >
                     <MoreVertical size={12} />
                     Remove

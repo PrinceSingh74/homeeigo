@@ -27,6 +27,8 @@ import { bookingPriorityService } from "./booking-priority.service";
 import { addressPiiService } from "./address-pii.service";
 import { assignmentEngine } from "./assignment-engine.service";
 import { partnerOperationsService } from "./partner-operations.service";
+import { resolveMustIncludeProviderIds } from "./dispatch-must-include.service";
+import { canBypassMustIncludeBlock } from "../lib/dispatch-must-include";
 import { incCounter } from "../lib/metrics";
 import { membershipCouponService } from "./membership-coupon.service";
 import { cashbackService } from "./cashback.service";
@@ -832,7 +834,9 @@ export class BookingService {
           | "ALREADY_CLAIMED"
           | "PAYMENT_NOT_SETTLED"
           | "CAPACITY_LIMIT"
-          | "ACCOUNT_RESTRICTED";
+          | "ACCOUNT_RESTRICTED"
+          | "STALE_LOCATION"
+          | "STALE_PRESENCE";
       }
   > {
     const pre = await prisma.booking.findUnique({
@@ -933,7 +937,24 @@ export class BookingService {
 
             const capacityBlock = await partnerOperationsService.assertAcceptEligible(tx, assignedProviderId);
             if (capacityBlock) {
-              throw new Error(capacityBlock);
+              const customer = await tx.user.findUnique({ where: { id: row.user_id } });
+              const pinned =
+                Boolean(customer) &&
+                canBypassMustIncludeBlock(capacityBlock) &&
+                (await resolveMustIncludeProviderIds(customer!)).includes(assignedProviderId);
+              if (!pinned) {
+                throw new Error(capacityBlock);
+              }
+              if (capacityBlock === "STALE_LOCATION" || capacityBlock === "STALE_PRESENCE") {
+                const now = new Date();
+                await tx.partnerPresence.updateMany({
+                  where: { providerId: assignedProviderId },
+                  data: {
+                    ...(capacityBlock === "STALE_LOCATION" ? { lastLocationAt: now } : {}),
+                    ...(capacityBlock === "STALE_PRESENCE" ? { lastHeartbeatAt: now, lastSeenAt: now } : {}),
+                  },
+                });
+              }
             }
 
             const acceptedAt = new Date();
@@ -1053,6 +1074,8 @@ export class BookingService {
           }
           if (error.message === "CAPACITY_LIMIT") return { ok: false, error: "CAPACITY_LIMIT" };
           if (error.message === "ACCOUNT_RESTRICTED") return { ok: false, error: "ACCOUNT_RESTRICTED" };
+          if (error.message === "STALE_LOCATION") return { ok: false, error: "STALE_LOCATION" };
+          if (error.message === "STALE_PRESENCE") return { ok: false, error: "STALE_PRESENCE" };
         }
         throw error;
       }
