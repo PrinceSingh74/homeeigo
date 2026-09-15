@@ -5,13 +5,14 @@ import { memo } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { Icon3D } from "./Icon3D";
+import { Icon3D, type Icon3DTone } from "./Icon3D";
 
 export type QuickLink = {
   href: string;
   label: string;
   description?: string;
   icon: LucideIcon;
+  tone?: Icon3DTone;
 };
 
 export const HqQuickLinkGrid = memo(function HqQuickLinkGrid({
@@ -38,7 +39,7 @@ export const HqQuickLinkGrid = memo(function HqQuickLinkGrid({
           className="biz-hq-link-card group h-full"
         >
           <div className="flex items-start justify-between gap-2">
-            <Icon3D icon={link.icon} tone="default" size="md" />
+            <Icon3D icon={link.icon} tone={link.tone ?? "default"} size="md" />
             <ArrowUpRight className="h-4 w-4 shrink-0 text-[var(--color-biz-muted)] opacity-0 transition group-hover:opacity-100" />
           </div>
           <p className="mt-4 text-sm font-semibold leading-snug">{link.label}</p>

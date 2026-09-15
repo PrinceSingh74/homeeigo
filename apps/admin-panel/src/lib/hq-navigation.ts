@@ -30,6 +30,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   LineChart,
+  Magnet,
   Mail,
   MapPinned,
   Megaphone,
@@ -38,6 +39,7 @@ import {
   Navigation,
   Network,
   Radio,
+  Rocket,
   RotateCcw,
   Scale,
   ScrollText,
@@ -45,6 +47,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Star,
+  Store,
   TrendingUp,
   Trophy,
   UserCheck,
@@ -54,6 +57,7 @@ import {
   Workflow,
   Wrench,
 } from "lucide-react";
+import type { Icon3DTone } from "@/components/hq/Icon3D";
 
 export type HqSectionId =
   | "executive"
@@ -81,6 +85,8 @@ export type HqSection = {
   label: string;
   shortLabel: string;
   emoji: string;
+  icon: LucideIcon;
+  iconTone: Icon3DTone;
   dashboardHref: string;
   description: string;
   accent: string;
@@ -105,6 +111,8 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     label: "Executive HQ",
     shortLabel: "Executive",
     emoji: "👑",
+    icon: Crown,
+    iconTone: "gold",
     dashboardHref: "/",
     description: "Board-ready intelligence, revenue pulse, and platform health.",
     accent: "amber",
@@ -115,6 +123,8 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     label: "Operations HQ",
     shortLabel: "Operations",
     emoji: "🚀",
+    icon: Rocket,
+    iconTone: "default",
     dashboardHref: "/hq/operations",
     description: "Mission control, live ops, availability, and geo intelligence.",
     accent: "blue",
@@ -140,6 +150,8 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     label: "Marketplace HQ",
     shortLabel: "Marketplace",
     emoji: "🏪",
+    icon: Store,
+    iconTone: "violet",
     dashboardHref: "/hq/marketplace",
     description: "Customers, partners, jobs, services, and catalog intelligence.",
     accent: "violet",
@@ -163,6 +175,8 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     label: "Acquisition HQ",
     shortLabel: "Acquisition",
     emoji: "🧲",
+    icon: Magnet,
+    iconTone: "indigo",
     dashboardHref: "/hq/acquisition",
     description: "Leads, applications, verification, sources, and acquisition analytics.",
     accent: "violet",
@@ -181,6 +195,8 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     label: "Growth HQ",
     shortLabel: "Growth",
     emoji: "📈",
+    icon: TrendingUp,
+    iconTone: "success",
     dashboardHref: "/hq/growth",
     description:
       "Revenue pulse, membership conversion, campaigns, loyalty, gift cards, and wallet transfers — live numbers with a clear meaning on every tile.",
@@ -201,6 +217,8 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     label: "Network HQ",
     shortLabel: "Network",
     emoji: "🕸️",
+    icon: Network,
+    iconTone: "cyan",
     dashboardHref: "/hq/network",
     description: "Partner referral network — Section 07 canonical surfaces.",
     accent: "emerald",
@@ -211,6 +229,8 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     label: "Finance HQ",
     shortLabel: "Finance",
     emoji: "💰",
+    icon: Landmark,
+    iconTone: "warning",
     dashboardHref: "/hq/finance",
     description: "Revenue, earnings, wallets, settlements, and CFO operations.",
     accent: "yellow",
@@ -237,6 +257,8 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     label: "Trust & Safety HQ",
     shortLabel: "Trust",
     emoji: "🛡️",
+    icon: ShieldCheck,
+    iconTone: "danger",
     dashboardHref: "/hq/risk",
     description: "Fraud, KYC, compliance, incidents, and trust operations.",
     accent: "red",
@@ -262,6 +284,8 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     label: "Intelligence HQ",
     shortLabel: "Intelligence",
     emoji: "🤖",
+    icon: Brain,
+    iconTone: "violet",
     dashboardHref: "/hq/ai",
     description: "AI insights, forecasting, demand prediction, and smart allocation.",
     accent: "cyan",
@@ -290,6 +314,8 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     label: "Automation HQ",
     shortLabel: "Automation",
     emoji: "⚙️",
+    icon: Workflow,
+    iconTone: "slate",
     dashboardHref: "/hq/automation",
     description: "Workflows, events, outbox, DLQ, and Section 09 governance.",
     accent: "cyan",
@@ -303,6 +329,8 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     label: "Monitoring HQ",
     shortLabel: "Monitoring",
     emoji: "📡",
+    icon: Activity,
+    iconTone: "orange",
     dashboardHref: "/hq/monitoring",
     description: "Backend health, logs, metrics, tracing, and disaster recovery.",
     accent: "orange",
@@ -318,6 +346,8 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     label: "Audit HQ",
     shortLabel: "Audit",
     emoji: "📜",
+    icon: ScrollText,
+    iconTone: "slate",
     dashboardHref: "/hq/audit",
     description: "Enterprise audit explorer — actor, entity, request, and correlation.",
     accent: "zinc",
@@ -329,6 +359,8 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     label: "Platform HQ",
     shortLabel: "Platform",
     emoji: "⚙️",
+    icon: Settings,
+    iconTone: "slate",
     dashboardHref: "/hq/platform",
     description: "Settings, migrations, support, and engineering controls.",
     accent: "zinc",

@@ -3,7 +3,6 @@
 import { notFound, useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useMemo } from "react";
-import { TrendingUp } from "lucide-react";
 import { getHqSection, navItemHint, type HqSectionId } from "@/lib/hq-navigation";
 import { HqLandingShell } from "@/components/hq/HqLandingShell";
 import { HqQuickLinkGrid } from "@/components/hq/HqQuickLinkGrid";
@@ -76,9 +75,10 @@ export default function HqLandingPage() {
         href: item.href,
         label: item.label,
         icon: item.icon,
+        tone: section.iconTone,
         description: navItemHint(item.href),
       })),
-    [section.items],
+    [section.items, section.iconTone],
   );
 
   const Dashboard = useMemo(() => {
@@ -109,8 +109,8 @@ export default function HqLandingPage() {
   return (
     <HqLandingShell
       emoji={section.emoji}
-      icon={isGrowth ? TrendingUp : undefined}
-      iconTone={isGrowth ? "success" : "default"}
+      icon={section.icon}
+      iconTone={section.iconTone}
       title={section.label}
       subtitle={section.description}
       className={sectionId === "marketplace" ? "max-w-[1600px]" : undefined}
@@ -122,8 +122,8 @@ export default function HqLandingPage() {
         <SectionHeading
           title="Quick access"
           hint={`${section.items.length} tools`}
-          icon={isGrowth ? TrendingUp : undefined}
-          iconTone="success"
+          icon={section.icon}
+          iconTone={section.iconTone}
         />
         <HqQuickLinkGrid links={quickLinks} columns={section.items.length > 6 ? 3 : 2} />
       </section>

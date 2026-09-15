@@ -1243,6 +1243,36 @@ html[data-theme="light"] .biz-brief-focus {
   --icon3d-extrude: #7f1d1d;
 }
 
+.biz-icon-3d--gold {
+  --icon3d-ink: #fffbeb;
+  --icon3d-face: linear-gradient(145deg, #ffe9a3 0%, #eab308 48%, #a16207 100%);
+  --icon3d-extrude: #713f12;
+}
+
+.biz-icon-3d--violet {
+  --icon3d-ink: #f5f3ff;
+  --icon3d-face: linear-gradient(145deg, #d8b4fe 0%, #8b5cf6 48%, #6d28d9 100%);
+  --icon3d-extrude: #4c1d95;
+}
+
+.biz-icon-3d--indigo {
+  --icon3d-ink: #eef2ff;
+  --icon3d-face: linear-gradient(145deg, #a5b4fc 0%, #6366f1 48%, #4338ca 100%);
+  --icon3d-extrude: #312e81;
+}
+
+.biz-icon-3d--orange {
+  --icon3d-ink: #fff7ed;
+  --icon3d-face: linear-gradient(145deg, #fdba74 0%, #f97316 48%, #c2410c 100%);
+  --icon3d-extrude: #9a3412;
+}
+
+.biz-icon-3d--slate {
+  --icon3d-ink: #f8fafc;
+  --icon3d-face: linear-gradient(145deg, #cbd5e1 0%, #64748b 48%, #334155 100%);
+  --icon3d-extrude: #1e293b;
+}
+
 /* Clear 2D charts */
 .biz-chart2d {
   position: relative;

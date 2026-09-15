@@ -4,9 +4,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Building2, ChevronDown, TrendingUp } from "lucide-react";
+import { Building2, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { Icon3D } from "@/components/hq/Icon3D";
+import { Icon3D, type Icon3DTone } from "@/components/hq/Icon3D";
 import {
   HQ_SECTIONS,
   isNavItemActive,
@@ -27,7 +27,7 @@ const NavLink = memo(function NavLink({
   active,
   nested,
   hint,
-  icon3d,
+  tone,
 }: {
   href: string;
   label: string;
@@ -35,7 +35,7 @@ const NavLink = memo(function NavLink({
   active: boolean;
   nested?: boolean;
   hint?: string;
-  icon3d?: boolean;
+  tone: Icon3DTone;
 }) {
   return (
     <Link
@@ -44,7 +44,7 @@ const NavLink = memo(function NavLink({
       title={hint}
       className={cn(
         "group relative flex items-center gap-2.5 rounded-lg text-[13px] transition-all duration-200",
-        nested ? (icon3d ? "h-10 px-2.5" : "h-9 px-3") : "h-10 px-3",
+        nested ? "h-10 px-2.5" : "h-10 px-3",
         active
           ? "bg-[var(--color-biz-accent-dim)] font-semibold text-[var(--color-biz-text)]"
           : "font-medium text-[var(--color-biz-muted)] hover:bg-[var(--color-biz-elevated)] hover:text-[var(--color-biz-text)]",
@@ -56,18 +56,7 @@ const NavLink = memo(function NavLink({
           aria-hidden
         />
       ) : null}
-      {icon3d ? (
-        <Icon3D icon={Icon} size="sm" tone={active ? "success" : "default"} />
-      ) : (
-        <Icon
-          className={cn(
-            "h-4 w-4 shrink-0 transition-colors",
-            active
-              ? "text-[var(--color-biz-accent)]"
-              : "text-[var(--color-biz-faint)] group-hover:text-[var(--color-biz-muted)]",
-          )}
-        />
-      )}
+      <Icon3D icon={Icon} size="sm" tone={active ? tone : "default"} />
       <span className="truncate">{label}</span>
     </Link>
   );
@@ -76,7 +65,8 @@ const NavLink = memo(function NavLink({
 const HqSectionBlock = memo(function HqSectionBlock({
   sectionId,
   label,
-  emoji,
+  icon: Icon,
+  iconTone,
   dashboardHref,
   description,
   items,
@@ -86,7 +76,8 @@ const HqSectionBlock = memo(function HqSectionBlock({
 }: {
   sectionId: HqSectionId;
   label: string;
-  emoji: string;
+  icon: (typeof HQ_SECTIONS)[number]["icon"];
+  iconTone: Icon3DTone;
   dashboardHref: string;
   description: string;
   items: (typeof HQ_SECTIONS)[number]["items"];
@@ -96,7 +87,6 @@ const HqSectionBlock = memo(function HqSectionBlock({
 }) {
   const isActiveSection = resolveHqSection(pathname).id === sectionId;
   const hasActiveChild = items.some((item) => isNavItemActive(pathname, item.href));
-  const use3d = sectionId === "growth";
 
   return (
     <div className="mb-0.5" data-hq-section={sectionId}>
@@ -105,28 +95,14 @@ const HqSectionBlock = memo(function HqSectionBlock({
         onClick={() => onToggle(sectionId)}
         title={description}
         className={cn(
-          "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold tracking-tight transition-all duration-200",
+          "flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-[13px] font-semibold tracking-tight transition-all duration-200",
           isActiveSection
             ? "bg-[var(--color-biz-glass)] text-[var(--color-biz-text)] ring-1 ring-inset ring-[var(--color-biz-line)]"
             : "text-[var(--color-biz-muted)] hover:bg-[var(--color-biz-elevated)] hover:text-[var(--color-biz-text)]",
         )}
         aria-expanded={expanded}
       >
-        {use3d ? (
-          <Icon3D icon={TrendingUp} size="sm" tone={isActiveSection ? "success" : "default"} />
-        ) : (
-          <span
-            className={cn(
-              "flex h-6 w-6 items-center justify-center rounded-md text-sm leading-none transition-colors",
-              isActiveSection
-                ? "bg-[var(--color-biz-accent-dim)] ring-1 ring-inset ring-[rgb(61_126_255_/_0.25)]"
-                : "bg-[var(--color-biz-elevated)]",
-            )}
-            aria-hidden
-          >
-            {emoji}
-          </span>
-        )}
+        <Icon3D icon={Icon} size="sm" tone={iconTone} />
         <span className="min-w-0 flex-1 truncate">{label}</span>
         <ChevronDown
           className={cn(
@@ -158,7 +134,7 @@ const HqSectionBlock = memo(function HqSectionBlock({
                 active={pathname === dashboardHref}
                 nested
                 hint={description}
-                icon3d={use3d}
+                tone={iconTone}
               />
             ) : null}
             {items.map((item) => (
@@ -170,7 +146,7 @@ const HqSectionBlock = memo(function HqSectionBlock({
                 active={isNavItemActive(pathname, item.href)}
                 nested
                 hint={navItemHint(item.href)}
-                icon3d={use3d}
+                tone={iconTone}
               />
             ))}
           </div>
@@ -266,7 +242,8 @@ export const HqSidebar = memo(function HqSidebar() {
               key={section.id}
               sectionId={section.id}
               label={section.shortLabel}
-              emoji={section.emoji}
+              icon={section.icon}
+              iconTone={section.iconTone}
               dashboardHref={section.dashboardHref}
               description={section.description}
               items={section.items}

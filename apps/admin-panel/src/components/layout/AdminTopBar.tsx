@@ -15,6 +15,7 @@ import { useAdminStore, useAdminUserName } from "@/stores/admin-store";
 import { resolveHqSection, isNavItemActive } from "@/lib/hq-navigation";
 import { commandSurfaceForPath } from "@/lib/command-center-ia";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
+import { Icon3D } from "@/components/hq/Icon3D";
 
 /**
  * Lightweight top bar with:
@@ -101,12 +102,7 @@ export const AdminTopBar = memo(function AdminTopBar() {
   return (
     <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-biz-line)] bg-[var(--color-biz-surface)]/90 px-4 py-2.5 backdrop-blur-md md:px-6">
       <div className="mr-4 hidden min-w-0 items-center gap-2 sm:flex">
-        <span
-          className="flex h-6 w-6 items-center justify-center rounded-md bg-[var(--color-biz-elevated)] text-xs ring-1 ring-inset ring-[var(--color-biz-line)]"
-          aria-hidden
-        >
-          {hq.emoji}
-        </span>
+        <Icon3D icon={hq.icon} size="sm" tone={hq.iconTone} />
         <nav aria-label="Breadcrumb" className="min-w-0">
           <ol className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-[var(--color-biz-muted)]">
             <li className="truncate">

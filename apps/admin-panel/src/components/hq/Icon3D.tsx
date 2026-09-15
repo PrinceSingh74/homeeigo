@@ -4,7 +4,17 @@ import { memo } from "react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-export type Icon3DTone = "default" | "cyan" | "success" | "warning" | "danger";
+export type Icon3DTone =
+  | "default"
+  | "cyan"
+  | "success"
+  | "warning"
+  | "danger"
+  | "gold"
+  | "violet"
+  | "indigo"
+  | "orange"
+  | "slate";
 export type Icon3DSize = "sm" | "md" | "lg";
 
 export const Icon3D = memo(function Icon3D({
