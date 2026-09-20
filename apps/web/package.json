@@ -8,6 +8,7 @@
     "dev:lan": "next dev -p 3001 -H 0.0.0.0 --turbopack",
     "dev:fresh": "node -e \"try{require('fs').rmSync('.next',{recursive:true,force:true})}catch(e){}\" && next dev -p 3001 --turbopack",
     "build": "next build",
+    "postbuild": "node ../../scripts/check-instrumentation-edge.mjs && node ../../scripts/check-frontend-perf-guards.mjs --app . && node ../../scripts/check-bundle-budget.mjs --app .",
     "start": "next start -p 3001",
     "lint": "next lint",
     "type-check": "tsc --noEmit",

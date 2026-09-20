@@ -34,6 +34,9 @@ const nextConfig = {
     // Serve modern formats first (P1 asset optimization): AVIF (~50% smaller than JPEG),
     // then WebP, falling back to the original. Next/Image handles responsive srcset + lazy.
     formats: ["image/avif", "image/webp"],
+    // Next 16 requires every `quality` passed to next/image to be listed. 75 is the
+    // framework default; 90/92/95 are used by catalog tiles and the AI hero.
+    qualities: [75, 90, 92, 95],
     remotePatterns: [
       { protocol: "https", hostname: "via.placeholder.com" },
       { protocol: "https", hostname: "images.unsplash.com" },
