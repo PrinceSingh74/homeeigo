@@ -4,11 +4,27 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 /**
- * Predictive navigation (Phase 1 + 3). Warms a route's RSC payload the moment the user shows INTENT
- * — `pointerover` (mouse hover, ~100–300ms before the click) and `touchstart` (mobile, fires ~80ms
- * before the click) on any internal link. By the time the click lands, the RSC + route chunks are
- * cached, so the commit is instant instead of paying the ~600ms cold network fetch (the measured
- * 77–96%-idle bottleneck). Each route is prefetched once (deduped); the handlers are cheap.
+ * Only warm the primary tabs. Prefetching every in-viewport service URL
+ * (`/services/vehicle-care/...`) made Turbopack compile dozens of catch-all
+ * routes at once, so Home ↔ Services waited 10–120s in the compiler queue.
+ */
+const PREFETCH_ALLOW = new Set([
+  "/",
+  "/services",
+  "/bookings",
+  "/wallet",
+  "/profile",
+  "/ai",
+  "/book",
+  "/membership",
+  "/login",
+  "/providers",
+  "/support",
+]);
+
+/**
+ * Predictive navigation. Warms a route's RSC the moment the user shows intent
+ * — pointerover / touchstart — so the click can commit from cache.
  */
 export function PredictivePrefetch() {
   const router = useRouter();
@@ -18,6 +34,7 @@ export function PredictivePrefetch() {
     const warm = (href: string | null | undefined) => {
       if (!href || !href.startsWith("/") || href.startsWith("//")) return;
       const path = href.split(/[?#]/)[0];
+      if (!PREFETCH_ALLOW.has(path)) return;
       if (done.current.has(path)) return;
       done.current.add(path);
       try {
@@ -30,7 +47,6 @@ export function PredictivePrefetch() {
       const a = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
       if (a && a.target !== "_blank") warm(a.getAttribute("href"));
     };
-    // pointerover bubbles (pointerenter does not) → one document listener covers every link.
     document.addEventListener("pointerover", onIntent, { capture: true });
     document.addEventListener("touchstart", onIntent, { capture: true, passive: true });
     return () => {

@@ -1,6 +1,5 @@
 import { RouteLoadingSkeleton } from "@/components/ui/RouteLoadingSkeleton";
 
-/** Shown while a sibling tab (Home / Services / Bookings) is still fetching RSC. */
-export default function AuroraNavLoading() {
+export default function AppShellLoading() {
   return <RouteLoadingSkeleton label="Loading page…" />;
 }

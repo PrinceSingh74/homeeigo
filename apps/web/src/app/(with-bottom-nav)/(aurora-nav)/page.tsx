@@ -5,10 +5,6 @@ import { HeroSectionServer } from "@/components/home/HeroSectionServer";
 import { ServiceCategoriesServer } from "@/components/home/ServiceCategoriesServer";
 import { CategoryShowcase } from "@/components/home/CategoryShowcase";
 import { ReviewsSectionServer } from "@/components/home/ReviewsSectionServer";
-import {
-  fetchServicesCatalog,
-  fetchStatsOverview,
-} from "@/lib/server-api";
 import { pageMainBottom } from "@/lib/page-layout";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { WeatherWarningBanner } from "@/components/weather/WeatherWarningBanner";
@@ -18,6 +14,8 @@ const HomeSearchBar = dynamic(
   () => import("@/components/SearchBar").then((m) => ({ default: m.SearchBar })),
   { loading: () => <div className="mx-auto h-16 max-w-content animate-pulse rounded-2xl bg-surface/40 px-4" /> },
 );
+
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "HOMEEIGO — Book Trusted Home Services Online",
@@ -36,12 +34,7 @@ const ORGANIZATION_JSONLD = {
   sameAs: [],
 };
 
-export default async function Home() {
-  const [stats, catalog] = await Promise.all([
-    fetchStatsOverview(),
-    fetchServicesCatalog(),
-  ]);
-
+export default function Home() {
   return (
     <main className={cn("bg-transparent", pageMainBottom)}>
       {/* Whole-page canvas — EXACT Services-page hero background applied across
@@ -56,10 +49,10 @@ export default async function Home() {
       <div className="px-4 pt-3">
         <WeatherWarningBanner />
       </div>
-      <HeroSectionServer stats={stats} />
+      <HeroSectionServer stats={null} />
       <HomeSearchBar />
       <div id="services">
-        <ServiceCategoriesServer services={catalog?.services ?? null} />
+        <ServiceCategoriesServer services={null} />
       </div>
       <div id="recommended">
         <CategoryShowcase />

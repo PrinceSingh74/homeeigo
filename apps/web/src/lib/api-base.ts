@@ -42,8 +42,10 @@ export function resolveApiBase(): string {
     return resolved;
   }
 
-  // SSR (on the dev machine): backend is local unless env override is set.
-  const resolved = env ?? `http://localhost:${API_PORT}`;
+  // SSR (on the dev machine): talk to the backend directly.
+  // 127.0.0.1 avoids Windows localhost → IPv6 (::1) stalls of ~2.5s per fetch,
+  // which blocked every App Router transition that awaited catalog/stats.
+  const resolved = env ?? `http://127.0.0.1:${API_PORT}`;
   if (!_loggedApiBase) {
     _loggedApiBase = true;
     console.log("API_BASE", resolved);

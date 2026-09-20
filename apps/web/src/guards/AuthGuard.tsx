@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { AuroraBackground } from "@/components/AuroraBackground";
 import { buildLoginUrl, isAuthRoute, isProtectedRoute } from "@/lib/auth/routes";
@@ -19,7 +19,6 @@ function AuthGuardFallback() {
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
-  const searchParams = useSearchParams();
   const status = useAuthStore((s) => s.status);
   const user = useAuthStore((s) => s.user);
 
@@ -31,17 +30,20 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isInitializing) return;
 
+    const search = typeof window !== "undefined" ? window.location.search : "";
+    const params = new URLSearchParams(search);
+
     if (protectedRoute && !isAuthenticated) {
-      const returnUrl = `${pathname}${searchParams?.toString() ? `?${searchParams.toString()}` : ""}`;
+      const returnUrl = `${pathname}${search}`;
       router.replace(buildLoginUrl(returnUrl));
       return;
     }
 
     if (authRoute && isAuthenticated) {
-      const returnUrl = searchParams?.get("returnUrl");
+      const returnUrl = params.get("returnUrl");
       router.replace(returnUrl && returnUrl.startsWith("/") ? returnUrl : "/");
     }
-  }, [isInitializing, isAuthenticated, protectedRoute, authRoute, pathname, router, searchParams]);
+  }, [isInitializing, isAuthenticated, protectedRoute, authRoute, pathname, router]);
 
   if (isInitializing && (protectedRoute || authRoute)) {
     return <AuthGuardFallback />;

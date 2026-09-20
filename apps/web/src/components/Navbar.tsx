@@ -26,10 +26,7 @@ export function Navbar() {
   const openOverlay = useAppStore((s) => s.openOverlay);
 
   return (
-    <motion.header
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+    <header
       className="fixed inset-x-0 top-0 z-50 w-full border-b border-white/55 glass dark:glass-dark dark:border-white/10 shadow-e2 pt-[env(safe-area-inset-top,0px)] backdrop-saturate-200"
       style={{ ["--navbar-h" as string]: NAVBAR_HEIGHT }}
     >
@@ -47,6 +44,7 @@ export function Navbar() {
         {/* Logo */}
         <Link
           href="/"
+          prefetch
           className="flex min-w-0 shrink-0 items-center gap-1.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary/60 sm:gap-2"
           aria-label="HOMEEIGO home"
         >
@@ -80,6 +78,7 @@ export function Navbar() {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch
                 className={cn(
                   "inline-flex items-center gap-1.5 whitespace-nowrap",
                   navLinkClass(active),
@@ -130,6 +129,7 @@ export function Navbar() {
 
           <Link
             href="/profile"
+            prefetch
             aria-label="Open profile"
             className="ml-0.5 shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 rounded-full"
           >
@@ -143,7 +143,7 @@ export function Navbar() {
           </Link>
         </div>
       </nav>
-    </motion.header>
+    </header>
   );
 }
 

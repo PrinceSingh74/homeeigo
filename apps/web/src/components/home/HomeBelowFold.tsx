@@ -14,37 +14,37 @@ function SectionFallback() {
 
 const AccountSummaryStrip = dynamic(
   () => import("@/components/AccountSummaryStrip").then((m) => m.AccountSummaryStrip),
-  { loading: () => <SectionFallback /> },
+  { ssr: false, loading: () => <SectionFallback /> },
 );
 
 const FeatureBanner = dynamic(
   () => import("@/components/FeatureBanner").then((m) => m.FeatureBanner),
-  { loading: () => <SectionFallback /> },
+  { ssr: false, loading: () => <SectionFallback /> },
 );
 
 const OffersSection = dynamic(
   () => import("@/components/OffersSection").then((m) => m.OffersSection),
-  { loading: () => <SectionFallback /> },
+  { ssr: false, loading: () => <SectionFallback /> },
 );
 
 const TrustSection = dynamic(
   () => import("@/components/TrustSection").then((m) => m.TrustSection),
-  { loading: () => <SectionFallback /> },
+  { ssr: false, loading: () => <SectionFallback /> },
 );
 
 const PremiumSection = dynamic(
   () => import("@/components/PremiumSection").then((m) => m.PremiumSection),
-  { loading: () => <SectionFallback /> },
+  { ssr: false, loading: () => <SectionFallback /> },
 );
 
 const LiveTrackingSection = dynamic(
   () => import("@/components/LiveTrackingSection").then((m) => m.LiveTrackingSection),
-  { loading: () => <SectionFallback /> },
+  { ssr: false, loading: () => <SectionFallback /> },
 );
 
 const FinalCtaSection = dynamic(
   () => import("@/components/FinalCtaSection").then((m) => m.FinalCtaSection),
-  { loading: () => <SectionFallback /> },
+  { ssr: false, loading: () => <SectionFallback /> },
 );
 
 /** Below-fold homepage sections — wallet/tracking/realtime stay client-only and lazy. */
