@@ -82,9 +82,24 @@ export function useStatsOverview() {
 export function useServicesQuery() {
   return useQuery({
     queryKey: qk.services,
-    // Full catalog (backend caps limit at 100). The default page size of 20 would
-    // hide marketplace services from the book page's service picker.
-    queryFn: () => coreApi.services.list("?limit=100"),
+    // The API caps a page at 100 and sorts by popularity, so a newly published
+    // SKU sits past page 1. Walk every page or the book picker never lists it.
+    queryFn: async () => {
+      const first = await coreApi.services.list("?limit=100&page=1");
+      const limit = first.limit > 0 ? first.limit : 100;
+      const pages = Math.min(20, Math.max(1, Math.ceil((first.total || first.services.length) / limit)));
+      if (pages === 1) return first;
+      const rest = await Promise.all(
+        Array.from({ length: pages - 1 }, (_, i) => coreApi.services.list(`?limit=100&page=${i + 2}`)),
+      );
+      const seen = new Set<string>();
+      const services = [first, ...rest].flatMap((p) => p.services).filter((s) => {
+        if (seen.has(s.id)) return false;
+        seen.add(s.id);
+        return true;
+      });
+      return { ...first, services, page: 1, limit: services.length };
+    },
     staleTime: 10 * 60_000, // catalog changes rarely; was refetching every nav
   });
 }

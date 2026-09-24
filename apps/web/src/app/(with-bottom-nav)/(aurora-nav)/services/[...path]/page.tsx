@@ -3,6 +3,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import {
   CATEGORY_BY_ID,
   allServicePaths,
+  type CategoryId,
   serviceRedirects,
   buildCatalog,
   categoryHref,
@@ -18,13 +19,21 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://homigo.app";
 type Params = { path: string[] };
 
 /**
- * Every canonical category, audience and service page is prerendered (ISR).
- * Unknown paths are a true 404 (dynamicParams = false): an on-demand render
- * would stream a 200 shell (the root loading.tsx Suspense boundary) before
- * notFound() could set the status. Legacy / cross-listed URLs never reach this
- * page — next.config.js redirects() answers them with a 308.
+ * Canonical category, audience and curated service pages are prerendered (ISR).
+ * An admin-published SKU that is not in the static taxonomy (for example
+ * /services/home-help/spa) is rendered on demand. Any other unknown path is a
+ * true 404. Legacy / cross-listed URLs never reach this page — next.config.js
+ * redirects() answers them with a 308.
  */
-export const dynamicParams = false;
+export const dynamicParams = true;
+
+function publishedExtra(path: string[]): { category: CategoryId; slug: string } | null {
+  const [rawCategory, rawSlug, ...rest] = path.map((s) => decodeURIComponent(s).toLowerCase());
+  if (!rawCategory || !rawSlug || rest.length) return null;
+  if (!CATEGORY_BY_ID.has(rawCategory as CategoryId)) return null;
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(rawSlug)) return null;
+  return { category: rawCategory as CategoryId, slug: rawSlug };
+}
 
 export function generateStaticParams(): Params[] {
   // Taxonomy only — awaiting the live catalog here blocked the first visit to
@@ -48,7 +57,17 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
 
   // Defensive: routing already 308s/404s these (next.config redirects, dynamicParams).
   if (resolved.kind === "redirect") permanentRedirect(resolved.to);
-  if (resolved.kind === "not-found") notFound();
+  if (resolved.kind === "not-found") {
+    const extra = publishedExtra(path);
+    if (!extra) notFound();
+    const cat = CATEGORY_BY_ID.get(extra.category)!;
+    const name = extra.slug.replace(/-/g, " ").replace(/(^|\s)([a-z])/g, (_, gap: string, ch: string) => gap + ch.toUpperCase());
+    return {
+      title: `${name} — ${cat.name}`,
+      description: `${name} at home with ${cat.name}.`,
+      alternates: { canonical: `/services/${extra.category}/${extra.slug}` },
+    };
+  }
 
   if (resolved.kind === "category") {
     const c = resolved.category.def;
@@ -88,8 +107,11 @@ export default async function ServicesPathRoute({ params }: { params: Promise<Pa
   switch (resolved.kind) {
     case "redirect":
       permanentRedirect(resolved.to);
-    case "not-found":
-      notFound();
+    case "not-found": {
+      const extra = publishedExtra(path);
+      if (!extra) notFound();
+      return <ServiceDetail initialServices={null} slug={extra.slug} detail={null} />;
+    }
     case "category":
       return (
         <>

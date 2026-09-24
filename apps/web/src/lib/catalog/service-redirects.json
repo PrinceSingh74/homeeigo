@@ -1,0 +1,858 @@
+[
+  {
+    "source": "/services/ac-cleaning",
+    "destination": "/services/appliance-care/ac-cleaning"
+  },
+  {
+    "source": "/services/ac-repair",
+    "destination": "/services/appliance-care/ac-repair"
+  },
+  {
+    "source": "/services/ac-service",
+    "destination": "/services/appliance-care/ac-service"
+  },
+  {
+    "source": "/services/after-party-express-clean",
+    "destination": "/services/event-occasion/after-party-express-clean"
+  },
+  {
+    "source": "/services/appliance-care/fridge-cleaning",
+    "destination": "/services/home-cleaning/fridge-cleaning"
+  },
+  {
+    "source": "/services/appliance-installation",
+    "destination": "/services/appliance-care/appliance-installation"
+  },
+  {
+    "source": "/services/appointment-assistance",
+    "destination": "/services/senior-care/appointment-assistance"
+  },
+  {
+    "source": "/services/balcony-cleaning",
+    "destination": "/services/home-cleaning/balcony-cleaning"
+  },
+  {
+    "source": "/services/basic-pet-grooming",
+    "destination": "/services/pet-care/basic-pet-grooming"
+  },
+  {
+    "source": "/services/bathroom-cleaning",
+    "destination": "/services/home-cleaning/bathroom-cleaning"
+  },
+  {
+    "source": "/services/beard-shaving",
+    "destination": "/services/beauty/beard-shaving"
+  },
+  {
+    "source": "/services/beauty-beard-shaving",
+    "destination": "/services/beauty/beard-shaving"
+  },
+  {
+    "source": "/services/beauty-bleach-detan",
+    "destination": "/services/beauty/bleach-detan"
+  },
+  {
+    "source": "/services/beauty-bridal-wedding",
+    "destination": "/services/beauty/bridal-wedding"
+  },
+  {
+    "source": "/services/beauty-cleanup",
+    "destination": "/services/beauty/cleanup"
+  },
+  {
+    "source": "/services/beauty-draping",
+    "destination": "/services/beauty/draping"
+  },
+  {
+    "source": "/services/beauty-facial-skin",
+    "destination": "/services/beauty/facial-skin"
+  },
+  {
+    "source": "/services/beauty-gentle-grooming",
+    "destination": "/services/beauty/gentle-grooming"
+  },
+  {
+    "source": "/services/beauty-gentle-skin-care",
+    "destination": "/services/beauty/gentle-skin-care"
+  },
+  {
+    "source": "/services/beauty-grooming-packages",
+    "destination": "/services/beauty/grooming-packages"
+  },
+  {
+    "source": "/services/beauty-hair-colour",
+    "destination": "/services/beauty/hair-colour"
+  },
+  {
+    "source": "/services/beauty-hair-styling",
+    "destination": "/services/beauty/hair-styling"
+  },
+  {
+    "source": "/services/beauty-hair-treatments",
+    "destination": "/services/beauty/hair-treatments"
+  },
+  {
+    "source": "/services/beauty-haircut-styling",
+    "destination": "/services/beauty/haircut-styling"
+  },
+  {
+    "source": "/services/beauty-head-foot-care",
+    "destination": "/services/beauty/head-foot-care"
+  },
+  {
+    "source": "/services/beauty-head-massage",
+    "destination": "/services/beauty/head-massage"
+  },
+  {
+    "source": "/services/beauty-makeup",
+    "destination": "/services/beauty/makeup"
+  },
+  {
+    "source": "/services/beauty-manicure-pedicure",
+    "destination": "/services/beauty/manicure-pedicure"
+  },
+  {
+    "source": "/services/beauty-nails",
+    "destination": "/services/beauty/nails"
+  },
+  {
+    "source": "/services/beauty-occasion-styling",
+    "destination": "/services/beauty/occasion-styling"
+  },
+  {
+    "source": "/services/beauty-relaxation",
+    "destination": "/services/beauty/relaxation"
+  },
+  {
+    "source": "/services/beauty-spa-massage",
+    "destination": "/services/beauty/spa-massage"
+  },
+  {
+    "source": "/services/beauty-threading",
+    "destination": "/services/beauty/threading"
+  },
+  {
+    "source": "/services/beauty-waxing",
+    "destination": "/services/beauty/waxing"
+  },
+  {
+    "source": "/services/beauty/boys/basic-grooming",
+    "destination": "/services/beauty/gentle-grooming?for=boys"
+  },
+  {
+    "source": "/services/beauty/boys/gentle-grooming",
+    "destination": "/services/beauty/gentle-grooming?for=boys"
+  },
+  {
+    "source": "/services/beauty/boys/hair",
+    "destination": "/services/beauty/haircut-styling?for=boys"
+  },
+  {
+    "source": "/services/beauty/boys/hair-styling",
+    "destination": "/services/beauty/hair-styling?for=boys"
+  },
+  {
+    "source": "/services/beauty/boys/haircut",
+    "destination": "/services/beauty/haircut-styling?for=boys"
+  },
+  {
+    "source": "/services/beauty/boys/haircut-styling",
+    "destination": "/services/beauty/haircut-styling?for=boys"
+  },
+  {
+    "source": "/services/beauty/boys/salon-at-home",
+    "destination": "/services/beauty/salon-at-home?for=boys"
+  },
+  {
+    "source": "/services/beauty/boys/styling",
+    "destination": "/services/beauty/hair-styling?for=boys"
+  },
+  {
+    "source": "/services/beauty/girls/basic-grooming",
+    "destination": "/services/beauty/gentle-grooming?for=girls"
+  },
+  {
+    "source": "/services/beauty/girls/gentle-grooming",
+    "destination": "/services/beauty/gentle-grooming?for=girls"
+  },
+  {
+    "source": "/services/beauty/girls/hair",
+    "destination": "/services/beauty/haircut-styling?for=girls"
+  },
+  {
+    "source": "/services/beauty/girls/hair-styling",
+    "destination": "/services/beauty/hair-styling?for=girls"
+  },
+  {
+    "source": "/services/beauty/girls/haircut",
+    "destination": "/services/beauty/haircut-styling?for=girls"
+  },
+  {
+    "source": "/services/beauty/girls/haircut-styling",
+    "destination": "/services/beauty/haircut-styling?for=girls"
+  },
+  {
+    "source": "/services/beauty/girls/occasion-styling",
+    "destination": "/services/beauty/occasion-styling?for=girls"
+  },
+  {
+    "source": "/services/beauty/girls/salon-at-home",
+    "destination": "/services/beauty/salon-at-home?for=girls"
+  },
+  {
+    "source": "/services/beauty/girls/styling",
+    "destination": "/services/beauty/hair-styling?for=girls"
+  },
+  {
+    "source": "/services/beauty/men/beard-shaving",
+    "destination": "/services/beauty/beard-shaving?for=men"
+  },
+  {
+    "source": "/services/beauty/men/bleach-detan",
+    "destination": "/services/beauty/bleach-detan?for=men"
+  },
+  {
+    "source": "/services/beauty/men/cleanup",
+    "destination": "/services/beauty/cleanup?for=men"
+  },
+  {
+    "source": "/services/beauty/men/detan",
+    "destination": "/services/beauty/bleach-detan?for=men"
+  },
+  {
+    "source": "/services/beauty/men/facial",
+    "destination": "/services/beauty/facial-skin?for=men"
+  },
+  {
+    "source": "/services/beauty/men/facial-cleanup",
+    "destination": "/services/beauty/facial-skin?for=men"
+  },
+  {
+    "source": "/services/beauty/men/facial-skin",
+    "destination": "/services/beauty/facial-skin?for=men"
+  },
+  {
+    "source": "/services/beauty/men/grooming-packages",
+    "destination": "/services/beauty/grooming-packages?for=men"
+  },
+  {
+    "source": "/services/beauty/men/hair",
+    "destination": "/services/beauty/haircut-styling?for=men"
+  },
+  {
+    "source": "/services/beauty/men/hair-colour",
+    "destination": "/services/beauty/hair-colour?for=men"
+  },
+  {
+    "source": "/services/beauty/men/haircut",
+    "destination": "/services/beauty/haircut-styling?for=men"
+  },
+  {
+    "source": "/services/beauty/men/haircut-styling",
+    "destination": "/services/beauty/haircut-styling?for=men"
+  },
+  {
+    "source": "/services/beauty/men/head-massage",
+    "destination": "/services/beauty/head-massage?for=men"
+  },
+  {
+    "source": "/services/beauty/men/manicure-pedicure",
+    "destination": "/services/beauty/manicure-pedicure?for=men"
+  },
+  {
+    "source": "/services/beauty/men/salon-at-home",
+    "destination": "/services/beauty/salon-at-home?for=men"
+  },
+  {
+    "source": "/services/beauty/senior-men/beard-shaving",
+    "destination": "/services/beauty/beard-shaving?for=senior-men"
+  },
+  {
+    "source": "/services/beauty/senior-men/gentle-skin-care",
+    "destination": "/services/beauty/gentle-skin-care?for=senior-men"
+  },
+  {
+    "source": "/services/beauty/senior-men/hair",
+    "destination": "/services/beauty/haircut-styling?for=senior-men"
+  },
+  {
+    "source": "/services/beauty/senior-men/haircut",
+    "destination": "/services/beauty/haircut-styling?for=senior-men"
+  },
+  {
+    "source": "/services/beauty/senior-men/haircut-styling",
+    "destination": "/services/beauty/haircut-styling?for=senior-men"
+  },
+  {
+    "source": "/services/beauty/senior-men/manicure-pedicure",
+    "destination": "/services/beauty/manicure-pedicure?for=senior-men"
+  },
+  {
+    "source": "/services/beauty/senior-men/relaxation",
+    "destination": "/services/beauty/relaxation?for=senior-men"
+  },
+  {
+    "source": "/services/beauty/senior-men/salon-at-home",
+    "destination": "/services/beauty/salon-at-home?for=senior-men"
+  },
+  {
+    "source": "/services/beauty/senior-women/gentle-skin-care",
+    "destination": "/services/beauty/gentle-skin-care?for=senior-women"
+  },
+  {
+    "source": "/services/beauty/senior-women/hair",
+    "destination": "/services/beauty/haircut-styling?for=senior-women"
+  },
+  {
+    "source": "/services/beauty/senior-women/haircut",
+    "destination": "/services/beauty/haircut-styling?for=senior-women"
+  },
+  {
+    "source": "/services/beauty/senior-women/haircut-styling",
+    "destination": "/services/beauty/haircut-styling?for=senior-women"
+  },
+  {
+    "source": "/services/beauty/senior-women/head-foot-care",
+    "destination": "/services/beauty/head-foot-care?for=senior-women"
+  },
+  {
+    "source": "/services/beauty/senior-women/manicure-pedicure",
+    "destination": "/services/beauty/manicure-pedicure?for=senior-women"
+  },
+  {
+    "source": "/services/beauty/senior-women/relaxation",
+    "destination": "/services/beauty/relaxation?for=senior-women"
+  },
+  {
+    "source": "/services/beauty/senior-women/salon-at-home",
+    "destination": "/services/beauty/salon-at-home?for=senior-women"
+  },
+  {
+    "source": "/services/beauty/women/bleach-detan",
+    "destination": "/services/beauty/bleach-detan?for=women"
+  },
+  {
+    "source": "/services/beauty/women/bridal-wedding",
+    "destination": "/services/beauty/bridal-wedding?for=women"
+  },
+  {
+    "source": "/services/beauty/women/cleanup",
+    "destination": "/services/beauty/cleanup?for=women"
+  },
+  {
+    "source": "/services/beauty/women/detan",
+    "destination": "/services/beauty/bleach-detan?for=women"
+  },
+  {
+    "source": "/services/beauty/women/draping",
+    "destination": "/services/beauty/draping?for=women"
+  },
+  {
+    "source": "/services/beauty/women/facial",
+    "destination": "/services/beauty/facial-skin?for=women"
+  },
+  {
+    "source": "/services/beauty/women/facial-cleanup",
+    "destination": "/services/beauty/facial-skin?for=women"
+  },
+  {
+    "source": "/services/beauty/women/facial-skin",
+    "destination": "/services/beauty/facial-skin?for=women"
+  },
+  {
+    "source": "/services/beauty/women/hair",
+    "destination": "/services/beauty/haircut-styling?for=women"
+  },
+  {
+    "source": "/services/beauty/women/hair-colour",
+    "destination": "/services/beauty/hair-colour?for=women"
+  },
+  {
+    "source": "/services/beauty/women/hair-treatments",
+    "destination": "/services/beauty/hair-treatments?for=women"
+  },
+  {
+    "source": "/services/beauty/women/haircut",
+    "destination": "/services/beauty/haircut-styling?for=women"
+  },
+  {
+    "source": "/services/beauty/women/haircut-styling",
+    "destination": "/services/beauty/haircut-styling?for=women"
+  },
+  {
+    "source": "/services/beauty/women/makeup",
+    "destination": "/services/beauty/makeup?for=women"
+  },
+  {
+    "source": "/services/beauty/women/manicure-pedicure",
+    "destination": "/services/beauty/manicure-pedicure?for=women"
+  },
+  {
+    "source": "/services/beauty/women/nails",
+    "destination": "/services/beauty/nails?for=women"
+  },
+  {
+    "source": "/services/beauty/women/salon-at-home",
+    "destination": "/services/beauty/salon-at-home?for=women"
+  },
+  {
+    "source": "/services/beauty/women/spa-massage",
+    "destination": "/services/beauty/spa-massage?for=women"
+  },
+  {
+    "source": "/services/beauty/women/threading",
+    "destination": "/services/beauty/threading?for=women"
+  },
+  {
+    "source": "/services/beauty/women/waxing",
+    "destination": "/services/beauty/waxing?for=women"
+  },
+  {
+    "source": "/services/bike-cleaning",
+    "destination": "/services/vehicle-care/bike-cleaning"
+  },
+  {
+    "source": "/services/bleach-detan",
+    "destination": "/services/beauty/bleach-detan"
+  },
+  {
+    "source": "/services/bridal-wedding",
+    "destination": "/services/beauty/bridal-wedding"
+  },
+  {
+    "source": "/services/car-deep-cleaning",
+    "destination": "/services/vehicle-care/car-deep-cleaning"
+  },
+  {
+    "source": "/services/car-interior-cleaning",
+    "destination": "/services/vehicle-care/car-interior-cleaning"
+  },
+  {
+    "source": "/services/car-surface-cleaning",
+    "destination": "/services/vehicle-care/car-surface-cleaning"
+  },
+  {
+    "source": "/services/carpet-shampooing",
+    "destination": "/services/home-cleaning/carpet-shampooing"
+  },
+  {
+    "source": "/services/chimney-cleaning",
+    "destination": "/services/appliance-care/chimney-cleaning"
+  },
+  {
+    "source": "/services/cleanup",
+    "destination": "/services/beauty/cleanup"
+  },
+  {
+    "source": "/services/companion-support",
+    "destination": "/services/senior-care/companion-support"
+  },
+  {
+    "source": "/services/curtain-care",
+    "destination": "/services/laundry-fabric/curtain-care"
+  },
+  {
+    "source": "/services/curtain-rod-installation",
+    "destination": "/services/home-maintenance/curtain-rod-installation"
+  },
+  {
+    "source": "/services/custom-service-request",
+    "destination": "/services/special-services/custom-service-request"
+  },
+  {
+    "source": "/services/daily-assistance",
+    "destination": "/services/senior-care/daily-assistance"
+  },
+  {
+    "source": "/services/decluttering-assistance",
+    "destination": "/services/home-help/decluttering-assistance"
+  },
+  {
+    "source": "/services/deep-cleaning",
+    "destination": "/services/home-cleaning/deep-home-cleaning"
+  },
+  {
+    "source": "/services/deep-home-cleaning",
+    "destination": "/services/home-cleaning/deep-home-cleaning"
+  },
+  {
+    "source": "/services/document-pickup-drop",
+    "destination": "/services/executive-concierge/document-pickup-drop"
+  },
+  {
+    "source": "/services/draping",
+    "destination": "/services/beauty/draping"
+  },
+  {
+    "source": "/services/driver-on-demand",
+    "destination": "/services/executive-concierge/driver-on-demand"
+  },
+  {
+    "source": "/services/dusting-wiping",
+    "destination": "/services/home-help/dusting-wiping"
+  },
+  {
+    "source": "/services/electrician",
+    "destination": "/services/home-maintenance/electrician"
+  },
+  {
+    "source": "/services/errand-runner",
+    "destination": "/services/executive-concierge/errand-runner"
+  },
+  {
+    "source": "/services/event-occasion/home-setup-assistance",
+    "destination": "/services/special-services/home-setup-assistance"
+  },
+  {
+    "source": "/services/event-occasion/packing-unpacking",
+    "destination": "/services/home-help/packing-unpacking"
+  },
+  {
+    "source": "/services/fabric-upholstery-care",
+    "destination": "/services/laundry-fabric/fabric-upholstery-care"
+  },
+  {
+    "source": "/services/facade-cleaning",
+    "destination": "/services/specialized-care/facade-cleaning"
+  },
+  {
+    "source": "/services/facial-skin",
+    "destination": "/services/beauty/facial-skin"
+  },
+  {
+    "source": "/services/fan-cleaning",
+    "destination": "/services/home-cleaning/fan-cleaning"
+  },
+  {
+    "source": "/services/fasade-cleaning",
+    "destination": "/services/specialized-care/facade-cleaning"
+  },
+  {
+    "source": "/services/festival-home-preparation",
+    "destination": "/services/event-occasion/festival-home-preparation"
+  },
+  {
+    "source": "/services/floor-cleaning",
+    "destination": "/services/home-cleaning/floor-cleaning"
+  },
+  {
+    "source": "/services/fridge-cleaning",
+    "destination": "/services/home-cleaning/fridge-cleaning"
+  },
+  {
+    "source": "/services/furniture-assembly",
+    "destination": "/services/home-maintenance/furniture-assembly"
+  },
+  {
+    "source": "/services/general-handyman",
+    "destination": "/services/home-maintenance/general-handyman"
+  },
+  {
+    "source": "/services/gentle-grooming",
+    "destination": "/services/beauty/gentle-grooming"
+  },
+  {
+    "source": "/services/gentle-skin-care",
+    "destination": "/services/beauty/gentle-skin-care"
+  },
+  {
+    "source": "/services/geyser-service",
+    "destination": "/services/appliance-care/geyser-service"
+  },
+  {
+    "source": "/services/glass-surface-cleaning",
+    "destination": "/services/home-cleaning/glass-surface-cleaning"
+  },
+  {
+    "source": "/services/grocery-assistance",
+    "destination": "/services/senior-care/grocery-assistance"
+  },
+  {
+    "source": "/services/grocery-essentials-pickup",
+    "destination": "/services/executive-concierge/grocery-essentials-pickup"
+  },
+  {
+    "source": "/services/grooming-packages",
+    "destination": "/services/beauty/grooming-packages"
+  },
+  {
+    "source": "/services/hair-colour",
+    "destination": "/services/beauty/hair-colour"
+  },
+  {
+    "source": "/services/hair-styling",
+    "destination": "/services/beauty/hair-styling"
+  },
+  {
+    "source": "/services/hair-treatments",
+    "destination": "/services/beauty/hair-treatments"
+  },
+  {
+    "source": "/services/haircut-styling",
+    "destination": "/services/beauty/haircut-styling"
+  },
+  {
+    "source": "/services/head-foot-care",
+    "destination": "/services/beauty/head-foot-care"
+  },
+  {
+    "source": "/services/head-massage",
+    "destination": "/services/beauty/head-massage"
+  },
+  {
+    "source": "/services/home-concierge",
+    "destination": "/services/executive-concierge/home-concierge"
+  },
+  {
+    "source": "/services/home-help/ironing-folding",
+    "destination": "/services/laundry-fabric/ironing-folding"
+  },
+  {
+    "source": "/services/home-help/laundry",
+    "destination": "/services/laundry-fabric/laundry"
+  },
+  {
+    "source": "/services/home-move-assistance",
+    "destination": "/services/special-services/home-move-assistance"
+  },
+  {
+    "source": "/services/home-organization",
+    "destination": "/services/home-help/home-organization"
+  },
+  {
+    "source": "/services/home-painting",
+    "destination": "/services/home-maintenance/home-painting"
+  },
+  {
+    "source": "/services/home-setup-assistance",
+    "destination": "/services/special-services/home-setup-assistance"
+  },
+  {
+    "source": "/services/home-visit-support",
+    "destination": "/services/senior-care/home-visit-support"
+  },
+  {
+    "source": "/services/hospital-companion",
+    "destination": "/services/senior-care/hospital-companion"
+  },
+  {
+    "source": "/services/hourly-bookings",
+    "destination": "/services/home-help/hourly-home-help"
+  },
+  {
+    "source": "/services/hourly-home-help",
+    "destination": "/services/home-help/hourly-home-help"
+  },
+  {
+    "source": "/services/ironing-folding",
+    "destination": "/services/laundry-fabric/ironing-folding"
+  },
+  {
+    "source": "/services/kitchen-cabinet-cleaning",
+    "destination": "/services/home-cleaning/kitchen-cabinet-cleaning"
+  },
+  {
+    "source": "/services/kitchen-cleaning",
+    "destination": "/services/home-cleaning/kitchen-cleaning"
+  },
+  {
+    "source": "/services/kitchen-prep",
+    "destination": "/services/home-help/kitchen-prep"
+  },
+  {
+    "source": "/services/laundry",
+    "destination": "/services/laundry-fabric/laundry"
+  },
+  {
+    "source": "/services/makeup",
+    "destination": "/services/beauty/makeup"
+  },
+  {
+    "source": "/services/manicure-pedicure",
+    "destination": "/services/beauty/manicure-pedicure"
+  },
+  {
+    "source": "/services/mattress-sanitization",
+    "destination": "/services/home-cleaning/mattress-sanitization"
+  },
+  {
+    "source": "/services/medicine-pickup",
+    "destination": "/services/senior-care/medicine-pickup"
+  },
+  {
+    "source": "/services/minor-carpentry",
+    "destination": "/services/home-maintenance/minor-carpentry"
+  },
+  {
+    "source": "/services/move-in-move-out-cleaning",
+    "destination": "/services/home-cleaning/move-in-move-out-cleaning"
+  },
+  {
+    "source": "/services/nails",
+    "destination": "/services/beauty/nails"
+  },
+  {
+    "source": "/services/occasion-styling",
+    "destination": "/services/beauty/occasion-styling"
+  },
+  {
+    "source": "/services/office-assistant",
+    "destination": "/services/executive-concierge/office-assistant"
+  },
+  {
+    "source": "/services/packing-unpacking",
+    "destination": "/services/home-help/packing-unpacking"
+  },
+  {
+    "source": "/services/personal-assistance",
+    "destination": "/services/executive-concierge/personal-assistance"
+  },
+  {
+    "source": "/services/personal-driver",
+    "destination": "/services/executive-concierge/personal-driver"
+  },
+  {
+    "source": "/services/pest-control",
+    "destination": "/services/specialized-care/pest-control"
+  },
+  {
+    "source": "/services/pet-care-visits",
+    "destination": "/services/pet-care/pet-care-visits"
+  },
+  {
+    "source": "/services/pet-cleaning",
+    "destination": "/services/pet-care/pet-cleaning"
+  },
+  {
+    "source": "/services/pet-feeding",
+    "destination": "/services/pet-care/pet-feeding"
+  },
+  {
+    "source": "/services/pet-sitting",
+    "destination": "/services/pet-care/pet-sitting"
+  },
+  {
+    "source": "/services/pet-walking",
+    "destination": "/services/pet-care/pet-walking"
+  },
+  {
+    "source": "/services/plant-care",
+    "destination": "/services/specialized-care/plant-care"
+  },
+  {
+    "source": "/services/plumbing",
+    "destination": "/services/home-maintenance/plumbing-repair"
+  },
+  {
+    "source": "/services/plumbing-repair",
+    "destination": "/services/home-maintenance/plumbing-repair"
+  },
+  {
+    "source": "/services/post-event-cleanup",
+    "destination": "/services/event-occasion/post-event-cleanup"
+  },
+  {
+    "source": "/services/pre-party-express-clean",
+    "destination": "/services/event-occasion/pre-party-express-clean"
+  },
+  {
+    "source": "/services/property-care-visits",
+    "destination": "/services/special-services/property-care-visits"
+  },
+  {
+    "source": "/services/relaxation",
+    "destination": "/services/beauty/relaxation"
+  },
+  {
+    "source": "/services/rental-turnover-services",
+    "destination": "/services/special-services/rental-turnover-services"
+  },
+  {
+    "source": "/services/salon-at-home",
+    "destination": "/services/beauty/salon-at-home"
+  },
+  {
+    "source": "/services/sanitization",
+    "destination": "/services/specialized-care/sanitization"
+  },
+  {
+    "source": "/services/senior-wellness-support",
+    "destination": "/services/senior-care/senior-wellness-support"
+  },
+  {
+    "source": "/services/small-appliance-care",
+    "destination": "/services/appliance-care/small-appliance-care"
+  },
+  {
+    "source": "/services/sofa-deep-cleaning",
+    "destination": "/services/home-cleaning/sofa-deep-cleaning"
+  },
+  {
+    "source": "/services/spa-massage",
+    "destination": "/services/beauty/spa-massage"
+  },
+  {
+    "source": "/services/specialized-surface-care",
+    "destination": "/services/specialized-care/specialized-surface-care"
+  },
+  {
+    "source": "/services/steam-ironing",
+    "destination": "/services/laundry-fabric/steam-ironing"
+  },
+  {
+    "source": "/services/sweeping-mopping",
+    "destination": "/services/home-help/sweeping-mopping"
+  },
+  {
+    "source": "/services/threading",
+    "destination": "/services/beauty/threading"
+  },
+  {
+    "source": "/services/utensil-washing",
+    "destination": "/services/home-help/utensils"
+  },
+  {
+    "source": "/services/utensils",
+    "destination": "/services/home-help/utensils"
+  },
+  {
+    "source": "/services/vacation-home-check",
+    "destination": "/services/special-services/vacation-home-check"
+  },
+  {
+    "source": "/services/vehicle-detailing",
+    "destination": "/services/vehicle-care/vehicle-detailing"
+  },
+  {
+    "source": "/services/vet-visit-assistance",
+    "destination": "/services/pet-care/vet-visit-assistance"
+  },
+  {
+    "source": "/services/wall-mounting",
+    "destination": "/services/home-maintenance/wall-mounting"
+  },
+  {
+    "source": "/services/wardrobe-cleaning",
+    "destination": "/services/home-cleaning/wardrobe-cleaning"
+  },
+  {
+    "source": "/services/washing-assistance",
+    "destination": "/services/laundry-fabric/washing-assistance"
+  },
+  {
+    "source": "/services/washing-machine-care",
+    "destination": "/services/appliance-care/washing-machine-care"
+  },
+  {
+    "source": "/services/water-tank-cleaning",
+    "destination": "/services/specialized-care/water-tank-cleaning"
+  },
+  {
+    "source": "/services/waxing",
+    "destination": "/services/beauty/waxing"
+  },
+  {
+    "source": "/services/window-cleaning",
+    "destination": "/services/home-cleaning/window-cleaning"
+  }
+]
