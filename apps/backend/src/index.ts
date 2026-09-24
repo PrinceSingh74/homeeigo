@@ -12,6 +12,7 @@ import { userRoutes } from "./routes/users";
 import { servicesRoutes } from "./routes/services";
 import { statsRoutes } from "./routes/stats";
 import { providersRoutes } from "./routes/providers";
+import { adminServiceSkillRoutes, partnerServiceSkillRoutes } from "./routes/partner-service-skills.routes";
 import { bookingsRoutes } from "./routes/bookings";
 import { paymentsRoutes } from "./routes/payments";
 import { ratingsRoutes } from "./routes/ratings";
@@ -187,6 +188,8 @@ const app = new Elysia()
   .use(servicesRoutes)
   .use(statsRoutes)
   .use(providersRoutes)
+  .use(partnerServiceSkillRoutes)
+  .use(adminServiceSkillRoutes)
   .use(bookingsRoutes)
   .use(paymentsRoutes)
   .use(ratingsRoutes)

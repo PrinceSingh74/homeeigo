@@ -51,7 +51,7 @@ const SERVICE_SLUG_TO_PARTNER_SLUGS: Record<string, string[]> = {
   "after-party-express-clean": ["cleaning"],
 };
 
-function resolvePartnerRegistrationSlugs(category: string, serviceSlug: string): string[] {
+export function resolvePartnerRegistrationSlugs(category: string, serviceSlug: string): string[] {
   const slugs = new Set<string>([category, serviceSlug]);
 
   for (const s of SERVICE_SLUG_TO_PARTNER_SLUGS[serviceSlug] ?? []) {

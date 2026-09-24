@@ -95,6 +95,9 @@ const rules: RouteRule[] = [
   { methods: M.PUT, pattern: /^\/api\/admin\/users\/[^/]+\/ban$/, resource: "USERS", action: "UPDATE" },
   { methods: M.POST, pattern: /^\/api\/admin\/users\/[^/]+\/force-logout$/, resource: "USERS", action: "FORCE_LOGOUT" },
   { methods: M.PUT, pattern: /^\/api\/admin\/providers\/[^/]+\/verify$/, resource: "USERS", action: "UPDATE" },
+  { methods: M.GET, pattern: /^\/api\/admin\/providers\/[^/]+\/service-skills$/, resource: "USERS", action: "READ" },
+  { methods: M.GET, pattern: /^\/api\/admin\/service-skill-requests$/, resource: "USERS", action: "READ" },
+  { methods: M.POST, pattern: /^\/api\/admin\/providers\/[^/]+\/services\/[^/]+\/(approve|suspend|revoke)$/, resource: "USERS", action: "APPROVE" },
   { methods: M.POST, pattern: /^\/api\/admin\/fraud\/users\/[^/]+\/blacklist$/, resource: "USERS", action: "UPDATE" },
 
   // Bookings

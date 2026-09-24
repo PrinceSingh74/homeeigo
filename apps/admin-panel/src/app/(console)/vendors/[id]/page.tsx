@@ -12,6 +12,7 @@ import {
 import { DataTable, StatusBadge } from "@/components/ui/DataTable";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ActivationChecklistPanel } from "@/components/acquisition/ActivationChecklistPanel";
+import { PartnerServiceSkills } from "@/components/vendors/PartnerServiceSkills";
 import { adminApi, type ProviderDetail } from "@/services/admin-api";
 import { useVerifyProviderMutation } from "@/hooks/use-admin-data";
 import { formatDate, inr } from "@/lib/format";
@@ -232,6 +233,8 @@ export default function VendorDetailPage() {
           }}
         />
       ) : null}
+
+      <PartnerServiceSkills providerId={d.id} />
 
       <section className="biz-card p-5">
         <h2 className="mb-4 flex items-center gap-2 font-semibold">

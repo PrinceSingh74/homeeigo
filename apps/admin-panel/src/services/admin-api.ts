@@ -379,6 +379,40 @@ export type AdminReviewsResponse = {
   stats: { averageRating: number | null; totalReviews: number };
 };
 
+export type PartnerServiceSkillCard = {
+  serviceId: string;
+  name: string;
+  slug: string;
+  category: string;
+  lane: "performing" | "pending" | "suspended" | "revoked" | "available";
+  capabilityId: number | null;
+  source: string | null;
+  requestedAt: string | null;
+  requestNote: string | null;
+};
+
+export type PartnerServiceSkillBoard = {
+  approvalWorkflow: boolean;
+  performing: PartnerServiceSkillCard[];
+  pending: PartnerServiceSkillCard[];
+  suspended: PartnerServiceSkillCard[];
+  revoked: PartnerServiceSkillCard[];
+  available: PartnerServiceSkillCard[];
+};
+
+export type PendingServiceSkillRequest = {
+  capabilityId: number;
+  providerId: string;
+  partnerName: string;
+  city: string | null;
+  serviceId: string;
+  serviceName: string;
+  serviceSlug: string;
+  category: string;
+  requestedAt: string;
+  requestNote: string | null;
+};
+
 export const adminApi = {
   dashboard: () =>
     apiRequest<ApiResponse<DashboardData>>("/api/admin/dashboard", {
@@ -516,6 +550,19 @@ export const adminApi = {
     apiRequest<ApiResponse<ProviderDetail>>(`/api/admin/providers/${id}`, {
       auth: true,
     }).then((r) => r.data!),
+
+  serviceSkills: {
+    board: (providerId: string) =>
+      apiRequest<ApiResponse<PartnerServiceSkillBoard>>(`/api/admin/providers/${providerId}/service-skills`, { auth: true }).then((r) => r.data!),
+    queue: () =>
+      apiRequest<ApiResponse<{ requests: PendingServiceSkillRequest[] }>>("/api/admin/service-skill-requests", { auth: true }).then((r) => r.data!),
+    decide: (providerId: string, serviceId: string, action: "approve" | "suspend" | "revoke", reason?: string) =>
+      apiRequest<ApiResponse<{ row: unknown }>>(`/api/admin/providers/${providerId}/services/${serviceId}/${action}`, {
+        method: "POST",
+        auth: true,
+        body: reason ? { reason } : {},
+      }).then((r) => r.data!),
+  },
 
   getProviderScore: (id: string) =>
     apiRequest<ApiResponse<{

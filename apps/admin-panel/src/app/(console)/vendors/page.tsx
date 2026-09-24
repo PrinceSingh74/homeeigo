@@ -57,6 +57,7 @@ type SortKey = "recent" | "earnings" | "rating" | "jobs";
 const JUMPS = [
   { href: "/hq/marketplace", label: "Marketplace HQ" },
   { href: "/vendors/documents", label: "Document Review" },
+  { href: "/vendors/skills", label: "Service skills" },
   { href: "/academy", label: "Academy" },
   { href: "/workforce", label: "Workforce" },
   { href: "/operations", label: "Live Ops" },

@@ -56,6 +56,7 @@ export const PARTNER_HQ_NAV: PartnerNavSection[] = [
     icon: ClipboardList,
     items: [
       { href: "/work-hq", label: "Live Status", icon: ClipboardList },
+      { href: "/work-hq/services", label: "My Services", icon: ClipboardList },
       { href: "/requests", label: "Requests", icon: ClipboardList },
       { href: "/requests", label: "Bookings", icon: Calendar },
       { href: "/route-center", label: "Route Center", icon: Route },

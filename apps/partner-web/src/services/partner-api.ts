@@ -53,6 +53,27 @@ export type CityCoverageSummary = {
   coverageScore: number;
 };
 
+export type PartnerServiceSkillCard = {
+  serviceId: string;
+  name: string;
+  slug: string;
+  category: string;
+  lane: "performing" | "pending" | "suspended" | "revoked" | "available";
+  capabilityId: number | null;
+  source: string | null;
+  requestedAt: string | null;
+  requestNote: string | null;
+};
+
+export type PartnerServiceSkillBoard = {
+  approvalWorkflow: boolean;
+  performing: PartnerServiceSkillCard[];
+  pending: PartnerServiceSkillCard[];
+  suspended: PartnerServiceSkillCard[];
+  revoked: PartnerServiceSkillCard[];
+  available: PartnerServiceSkillCard[];
+};
+
 export const partnerApi = {
   /* ----------------- Navigation telemetry (fire-and-forget) ----------- */
   navTelemetry: (body: { type: "session" | "reroute" | "arrival" | "pickup" | "drop"; latencyMs?: number; gpsAccuracy?: number; etaErrorMin?: number }) =>
@@ -95,6 +116,22 @@ export const partnerApi = {
     apiRequest<ApiResponse<{ provider: ProviderProfile }>>("/api/providers/me", {
       auth: true,
     }).then((r) => r.data!.provider),
+
+  serviceSkills: () =>
+    apiRequest<ApiResponse<PartnerServiceSkillBoard>>("/api/providers/me/service-skills", { auth: true }).then((r) => r.data!),
+
+  requestServiceSkill: (serviceId: string, note?: string) =>
+    apiRequest<ApiResponse<{ row: { id?: number }; changed: boolean }>>("/api/providers/me/capabilities/services", {
+      method: "POST",
+      auth: true,
+      body: { serviceId, ...(note ? { note } : {}) },
+    }).then((r) => r.data!),
+
+  withdrawServiceSkill: (capabilityId: number) =>
+    apiRequest<ApiResponse<{ deleted: true }>>(`/api/providers/me/capabilities/services/${capabilityId}`, {
+      method: "DELETE",
+      auth: true,
+    }).then((r) => r.data!),
 
   /** Weather warnings at the partner's current location (safety + ETA impact). */
   weatherAlerts: (lat: number, lng: number) =>
