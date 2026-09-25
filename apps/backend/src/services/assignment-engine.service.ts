@@ -20,8 +20,11 @@ import { eventPlatformConfig } from "../events/core/config";
 import { emitInTransaction } from "../events/core/event-publisher";
 import { buildPartnerDispatchedEvent } from "../events/catalog/partner.events";
 import { partnerOperationsService } from "./partner-operations.service";
+import { offerRequiresLivePresence } from "../lib/scheduled-offer-presence";
 
 const DISPATCH_TIMEOUT_MS = Number(process.env.ASSIGNMENT_DISPATCH_TIMEOUT_MS || 300_000);
+/** How long a far-ahead appointment stays on the partner's request list. */
+const SCHEDULED_OFFER_TIMEOUT_MS = 72 * 60 * 60 * 1000;
 const MAX_DISPATCH_PER_TICK = Number(process.env.ASSIGNMENT_MAX_PER_TICK || 10);
 // Broadcast dispatch: offer a booking to ALL eligible providers at once (first to accept wins)
 // instead of a single sequential offer — so every qualified partner sees it in their requests
@@ -358,7 +361,11 @@ export class AssignmentEngine {
     // (resolveAcceptingProvider). Legacy single-offer when ASSIGNMENT_BROADCAST=false.
     // A customer pin (must-include) always broadcasts so nearby partners still see the job.
     const now = new Date();
-    const timeoutAt = new Date(now.getTime() + DISPATCH_TIMEOUT_MS);
+    const untilSlotMs = booking.scheduledDate.getTime() - now.getTime();
+    const offerWindowMs = offerRequiresLivePresence(booking.scheduledDate, now)
+      ? DISPATCH_TIMEOUT_MS
+      : Math.min(SCHEDULED_OFFER_TIMEOUT_MS, Math.max(DISPATCH_TIMEOUT_MS, untilSlotMs - 2 * 60 * 60 * 1000));
+    const timeoutAt = new Date(now.getTime() + offerWindowMs);
     const broadcast = BROADCAST_DISPATCH || mustIncludeIds.size > 0;
     const pinned = eligible.filter((m) => mustIncludeIds.has(m.providerId));
     const others = eligible.filter((m) => !mustIncludeIds.has(m.providerId));
