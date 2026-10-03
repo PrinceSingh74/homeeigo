@@ -1,70 +1,66 @@
 # HOMEEIGO current engineering state
 
-Updated: 2026-10-03 (closure loop, pass 2)
+Updated: 2026-10-03 (closure loop, pass 3)
 
 ## CURRENT PHASE
 
-Phase 1 (LEDGER) closed with evidence. Phases 2-5 re-measured earlier in this loop (see RESULTS). Next: fresh production builds + artifact scan, then git classification and the logically complete commit. ENGINEERING OPEN.
+Phases 1-8 and 5-7 closed with evidence. Git at `20f3389` (5 commits on `cursor/stage-e-step-13-certification`). Clean worktree `D:\homigo-clean` @ same HEAD. Local staging backend container running on `:3010`. Full 31-section report and certification matrix still in progress.
 
 ## CURRENT ISSUE
 
-None open in the ledger. Commit and clean checkout are not done. Staging exists only as a local Docker data plane (no deployed backend yet).
+Staging `/ready` returns **401** (process up, `/health` 200). Likely staging-safety / payment-env / maintenance authorization — inspect response body before calling LIVE. Clean-checkout full backend suite: **4226 pass / 1 fail** on `homigo_clean_test` before object-storage + portability fixes; **0 fail** on targeted re-runs after `a16637e`. A full clean-tree re-run after `20f3389` not repeated (43 min).
 
-## ROOT CAUSE
+## ROOT CAUSE (ledger — closed)
 
-homigo_db (persistent dev/"production-shaped" database): WALLET_LIABILITY_MISMATCH of ₹32 was two duplicate journals: JE-00001397 (`wallet_topup:` journal posted for an H-Coin redemption that already had `hcoin_redeemed:`; +₹168) and JE-00001467 (`wallet_debit:` journal posted for a tip that already had `booking_tip:`; −₹200). Both code paths were already fixed in earlier sessions; the history still carried the duplicates.
+homigo_db ₹32: duplicate journals JE-00001397 (+₹168) and JE-00001467 (−₹200). Reversed JE-00001559/JE-00001560 after pg_dump backup. homigo_test drift: fixture hard-deletes left orphan journals; `purgeFixtureJournals` in adversarial cleanup + `test:setup` now applies financial-purge opt-out to the database `DATABASE_URL` names (not hardcoded `homigo_test`).
 
-homigo_test: drift (₹300 / ₹4,820 / ₹55 per full run, 173 orphan wallet journals) is fixture residue. Suites hard-delete fixture users and providers (allowed only on the test database); wallet rows cascade away, their journals stay. Production account deletion is a soft delete and the financial_history_delete_guard refuses ledger deletes outside the test database, so the invariant holds in production. The detector was right.
+## CHANGES (this loop)
 
-## CHANGES
-
-- `apps/backend/scripts/reverse-journal.ts` (new): targeted mirror-image ADJUSTMENT reversal of one journal, dry-run by default, reason ≥ 20 chars, idempotency `reversal:<journalId>`, refuses to reverse a reversal.
-- homigo_db: backup `backups/homigo_db-pre-ledger-reversal-20261003-144932.dump` (72,729,940 bytes, 2083 TOC entries) taken first; reversals JE-00001559 and JE-00001560 posted. No clearing journal, no history edits, no deletions.
-- `apps/backend/src/__tests__/helpers/adversarial-fixtures.ts`: `purgeFixtureJournals(userIds)` removes the fixture's own journals (by `reference_id`: wallet txns, bookings, payments, H-Coin txns, gift cards, withdrawals, incentive payouts, referral rewards) before the referenced rows are deleted; called from `cleanupAdversarialFixtures`. Exported for suites with bespoke cleanups; `booking-payment-integrity.integration.test.ts` now calls it for its own customers.
-- `deploy/local-staging/deploy-backend.ps1` + `backend.env.example` (new): build/migrate/deploy/rollback/status for a real backend image on the local staging data plane; `.gitignore` excludes the generated `backend.env`.
-
-## TESTS
-
-- `bun --env-file=.env run scripts/diagnose-wallet-liability.ts` on homigo_db: all three invariant deltas ₹0.00 (was ₹32). Re-run idempotent.
-- homigo_test rebuilt with `test:setup -- --reset`, then 10 money-heavy suites (financial-ledger, booking-tip-ledger, money-matrix, p0-financial-races, gift-card-void-refund, admin-partial-refund, booking-payment-integrity, enterprise-complete, incentive-batch-evaluation, earnings-live-aggregation): 122 pass / 0 fail. CUSTOMER_WALLET ledger drift 0.00 after the run (was ₹2,500 before the fixture fix on the same subset). Residue: PROVIDER_PAYABLE ₹647 and HCOIN ₹2 from 14 provider-side journals left by suites that delete providers directly (not through the helper). Test-database only.
-- `release-blocker-elimination.test.ts` in isolation: 10 pass, 250 concurrent creates 8.6 s, 500 creates 18.9 s. Run-1 timeout at 60 s was CPU contention from six parallel tsc processes, not a product regression. No timeout raised.
-- `data-archival-failure-injection.inject.ts` 6 pass; `event-bus.inject.ts` 7 pass.
-- 14 ledger-related suites (`financialIntegrity|HCOIN_LIABILITY|PROVIDER_PAYABLE` references): 201 pass / 0 fail.
-- Backend `tsc --noEmit` after the helper edit: exit 0.
+| Commit | Summary |
+|--------|---------|
+| `ec20c7c` | Source: reverse-journal, fixture journal purge, local staging deploy script, consolidated app/mobile/deploy |
+| `c6dcb5e` | Docs/evidence + `CURRENT-STATE.md` |
+| `2591052` | `test:setup` DATABASE_URL-scoped DB create/drop + purge opt-out |
+| `bca11ed` | Register 201 both paths; guard tests use `.env.example` when `.env` absent |
+| `a16637e` | Object-storage S3 key prefix from `DATABASE_URL` db name |
+| `20f3389` | Dockerfile copies `analytics/` (fixes staging boot) |
+| + PS deploy script ASCII fix | |
 
 ## RESULTS
 
-Lint, four app trees, eslint src --max-warnings 0: PASS (re-measured this loop).
-Typecheck exit 0: backend, customer web, admin, partner web, customer mobile, partner mobile (re-measured this loop).
-Backend full `bun test --max-concurrency 1` run 1 this loop: 4226 pass, 14 skip, 1 fail (the contention timeout above, cleared in isolation).
-Concurrency 10/50/100 same-provider: exactly one winner (previous pass; repeat cold/warm pending in Phase 5).
-Fresh production builds, bundle guard, artifact scan: previous pass; to be re-run on the committed tree.
-
-## LEDGER
-
-homigo_db: PASS (₹0 drift, root-caused, audited reversals, backup on disk).
-homigo_test: fixture residue reduced and explained; not a product invariant failure. Detector unchanged.
-
-## DATA SAFETY
-
-Test runs this loop used `cmd /c "set NODE_ENV=test&& ..."`; `.env.test` targets `localhost:5433/homigo_test`. homigo_db was written exactly once (two reversal journals) after a verified pg_dump. No production database exists.
+| Gate | Status | Evidence |
+|------|--------|----------|
+| homigo_db ledger | **PASS** | All invariant deltas ₹0.00 after reversals |
+| Lint (web/partner/admin) | **PASS** | `--max-warnings 0` / `next lint` |
+| Lint (backend clean tree) | **BLOCKED** | Use `bunx eslint` from `apps/backend` (PATH) |
+| Typecheck ×6 (clean @ HEAD) | **PASS** | After `prisma generate` + `.env.test` |
+| Concurrency 10/50/100 broadcast | **PASS** | cold+warm, exactly one winner |
+| Same-partner accept 50/100 | **PASS** | wave2 suite cold+warm |
+| Production builds `.next-prod` | **PASS** | web/partner/admin |
+| Bundle guard | **PASS** | 183.9 / 183.2 / 221.7 kB shared (budgets unchanged) |
+| Artifact secret scan | **PASS** | No private keys/sk_live/AKIA; Maps keys are `NEXT_PUBLIC_*` only |
+| `release-env` | **EXPECTED FAIL** | No production API/site URL (EXTERNAL gate) |
+| Backend suite (main homigo_test) | **PASS** | 4226+ after isolation fixes; inject 6+7 |
+| Backend suite (clean homigo_clean_test) | **INCONCLUSIVE** | 4226/1 before last fixes; inject PASS |
+| Security spot (payment-env, staging-safety, refresh cookies) | **PASS** | 34 tests + loopback ×3 |
+| Local staging Docker | **PARTIAL** | Image `homigo/backend:20f3389`, migrate +37 applied, health 200, ready 401 |
+| GCP Cloud staging/prod | **EXTERNAL** | Billing disabled, Cloud SQL SUSPENDED |
 
 ## GIT
 
-Branch cursor/stage-e-step-13-certification, HEAD 78757da. Not committed. Scratch moved to %TEMP%\homigo-closure\scratch (retry-*.ps1, run-bun140-suites.ps1, .drift.sql, .migval-*). Dirty tree still to be classified; do not `git add .`.
+Branch `cursor/stage-e-step-13-certification`, HEAD `20f3389`. Working tree clean except `?? homigo-partner-mobile/android/app/debug.keystore` (intentionally untracked).
 
 ## STAGING
 
-Local Docker data plane only (postgres 5434, redis 6380, 37 pending migrations). Backend image not yet built/deployed. Cloud staging: EXTERNAL (GCP project billing disabled, Cloud SQL SUSPENDED).
+Data plane: `homigo-staging-postgres` / `-redis` (healthy). Backend: `homigo-staging-backend` on host `:3010`. Migrations: 148 applied. `deploy/local-staging/backend.env` present (gitignored).
 
 ## PRODUCTION
 
-NOT RUN. No production target exists (EXTERNAL).
-
-## EXTERNAL
-
-Production API URL, keystores, managed Postgres PITR, managed Redis, S3/IAM, DNS/TLS, Sentry, Razorpay browser payment, Twilio, Resend, Maps, GCP billing.
+NOT RUN. No deploy target.
 
 ## NEXT EXACT ACTION
 
-Phase 6/7: `NEXT_DIST_DIR=.next-prod` production builds for web/partner/admin + bundle guard + artifact secret scan. Then Phase 8-10: classify the dirty tree, commit source set and docs separately. Then clean worktree.
+1. Read `/ready` body on `:3010`; fix staging env until ready 200 or document authorized degradation.  
+2. Re-run full backend suite on `D:\homigo-clean` @ `20f3389` (or CI) for reproducible PASS.  
+3. Staging smoke scripts with `API_URL=http://127.0.0.1:3010`; backup/restore/rollback on local staging.  
+4. Publish final certification matrix + 31-section report.
