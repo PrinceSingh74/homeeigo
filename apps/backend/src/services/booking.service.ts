@@ -1301,6 +1301,16 @@ export class BookingService {
             referenceType: "booking",
           });
         }
+      } else if (isSettled(existing.paymentStatus)) {
+        // The search that already ran used the old slot. A customer who moves a paid, unassigned
+        // booking into a partner's working window would otherwise sit on that empty result until
+        // the 15-minute supply backoff — reschedule never started a new search.
+        // Measured HOMIGO-20261003-00017: Sunday 17:30 IST → Monday 13:00 IST, Rahul matched, zero offers.
+        await prisma.assignmentJob.updateMany({
+          where: { bookingId: id },
+          data: { lastDispatchedAt: null },
+        });
+        assignmentEngine.dispatchBookingNowBackground(id);
       }
       return { ok: true as const, reschedulePolicy: rescheduleDecision };
     } catch (error) {

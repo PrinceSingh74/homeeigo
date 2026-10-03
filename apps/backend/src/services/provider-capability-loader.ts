@@ -13,6 +13,7 @@
 import type { DataOrigin, Prisma } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { isBusinessRow } from "../lib/analytics-scope";
+import { isMarketplaceSeedAccount } from "../lib/data-provenance";
 import { loadHydratedCatalog } from "../lib/service-catalog-store";
 import { resolveServiceMatchTokens, serviceCategoryMatchWhere, type ServiceMatchTokens } from "../lib/service-match";
 import { isFeatureEnabled } from "./feature-flag.service";
@@ -298,6 +299,12 @@ export function capabilityRejections(
   legacyOffersService: boolean,
   now: Date = new Date(),
   providerOrigin?: DataOrigin | null,
+  /**
+   * Set only for a seed/demo partner being considered for a real customer's job after the strict
+   * pool produced nobody. Their capability rows (often NULL provenance, inherited from the partner)
+   * must be visible. Suite-labelled rows stay invisible.
+   */
+  opts?: { seedVisible?: boolean },
 ): CapabilityRejection[] {
   return evaluateCapabilityGates({
     requirements: ctx.requirements,
@@ -307,7 +314,9 @@ export function capabilityRejections(
     serviceCapability: ctx.mode,
     legacyOffersService,
     bookingIsBusiness: ctx.bookingIsBusiness,
-    isBusinessOrigin: isBusinessRow,
+    isBusinessOrigin: opts?.seedVisible
+      ? (origin) => isBusinessRow(origin) || origin === "SYNTHETIC" || origin === "INFERRED_SYNTHETIC"
+      : isBusinessRow,
     now,
     providerOrigin,
   });
@@ -329,13 +338,16 @@ export async function recheckProviderCapability(
   now: Date = new Date(),
 ): Promise<{ reason: MatchingRejectionReason; detail: string } | null> {
   const [owner, rows] = await Promise.all([
-    db.provider.findUnique({ where: { id: providerId }, select: { user: { select: { dataOrigin: true } } } }),
+    db.provider.findUnique({ where: { id: providerId }, select: { user: { select: { dataOrigin: true, email: true } } } }),
     loadCapabilityRowsFor(providerId, db),
   ]);
-  if (owner && isBusinessRow(owner.user.dataOrigin) !== ctx.bookingIsBusiness) {
+  const origin = owner?.user.dataOrigin ?? null;
+  // A seed/demo partner may accept a real customer's job. A suite fixture still cannot.
+  const seedForBusinessBooking = Boolean(ctx.bookingIsBusiness && owner && isMarketplaceSeedAccount(owner.user.email));
+  if (owner && isBusinessRow(origin) !== ctx.bookingIsBusiness && !seedForBusinessBooking) {
     return { reason: "PROVENANCE_INVALID", detail: ctx.bookingIsBusiness ? "non_business_provider" : "business_provider" };
   }
-  const rejected = capabilityRejections(rows, ctx, true, now, owner?.user.dataOrigin ?? null);
+  const rejected = capabilityRejections(rows, ctx, true, now, origin, seedForBusinessBooking ? { seedVisible: true } : undefined);
   return rejected[0] ?? null;
 }
 

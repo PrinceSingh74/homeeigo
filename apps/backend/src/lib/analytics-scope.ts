@@ -38,6 +38,35 @@ export const NON_BUSINESS_ORIGINS: DataOrigin[] = [
   "INFERRED_SYNTHETIC",
 ];
 
+/**
+ * Origins created by automated suites. A paid customer job must never be offered to one of these.
+ * `@homigo.demo` seed accounts are also not in this list. They stay out of the strict pool
+ * (`isBusinessRow` is false) and are considered only by the paid-dispatch widening pass, and only
+ * when the address is the seed domain (`isMarketplaceSeedAccount`). RFC 2606 fixture addresses
+ * share the INFERRED_SYNTHETIC label and must not be offered a real customer's job.
+ * Measured 2026-10-03: every paid booking exhausted with zero offers because the only on-duty
+ * partner was a seed account (`HOMIGO-20261003-00013`).
+ */
+export const AUTOMATED_SUITE_ORIGINS: DataOrigin[] = [
+  "FIXTURE",
+  "TEST",
+  "CERTIFICATION",
+  "INFERRED_FIXTURE",
+  "INFERRED_TEST",
+  "INFERRED_CERTIFICATION",
+];
+
+/**
+ * Candidate filter used only after the strict (same-provenance) pool produced nobody who can take
+ * the job. Real and unclassified partners stay eligible, and so does a seed/demo partner who is
+ * actually on duty. Suite fixtures stay out.
+ */
+export function dispatchFallbackWhere(): Prisma.UserWhereInput {
+  return {
+    OR: [{ dataOrigin: null }, { dataOrigin: { notIn: AUTOMATED_SUITE_ORIGINS } }],
+  };
+}
+
 export type AnalyticsPopulation =
   /** Default. Real business activity plus unclassified history. */
   | "BUSINESS"

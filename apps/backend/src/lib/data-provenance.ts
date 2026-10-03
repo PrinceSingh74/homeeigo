@@ -161,6 +161,18 @@ export function classifyUserEmail(email: string | null | undefined): Classificat
 }
 
 /**
+ * The application's own marketplace seed (`@homigo.demo`), as opposed to a suite fixture that
+ * happens to share the INFERRED_SYNTHETIC label (RFC 2606 addresses such as `@adv.test`).
+ *
+ * A paid customer job may fall back to a seed account when no same-provenance partner can take it.
+ * A fixture account must never receive that job — the two labels are the same column value, so the
+ * domain is the distinction.
+ */
+export function isMarketplaceSeedAccount(email: string | null | undefined): boolean {
+  return classifyUserEmail(email)?.ruleId === "user.seed-domain";
+}
+
+/**
  * Evidence that one harness run produced the account, the booking and the refund together.
  */
 export type SameRunEvidence = {

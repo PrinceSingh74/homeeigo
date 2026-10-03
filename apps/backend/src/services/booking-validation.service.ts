@@ -9,6 +9,7 @@ import { loadHydratedCatalog } from "../lib/service-catalog-store";
 import { assertBookable } from "../lib/service-domain";
 import { incCounter } from "../lib/metrics";
 import { isAppointmentWithinWorkingWindow } from "../lib/partner-ops-clock";
+import { MATCHING_MAX_DISTANCE_KM, matchingService, providerDispatchDistanceKm } from "./matching.service";
 import {
   evaluateServiceTimeRules,
   type ServiceTimeConfig,
@@ -115,9 +116,13 @@ export class BookingValidationService {
         await this.checkDistance(request.providerId, request.addressId),
       );
     } else {
-      pushIssue(errors, this.validateScheduledDate(request.scheduledDate));
+      const scheduleIssue = this.validateScheduledDate(request.scheduledDate);
+      pushIssue(errors, scheduleIssue);
       const userOverlap = await this.detectUserOverlap(request.userId, request.scheduledDate, request.slotDurationMinutes);
       if (userOverlap) errors.push(userOverlap);
+      if (!scheduleIssue && !userOverlap) {
+        pushIssue(errors, await this.validateBroadcastStaffable(request));
+      }
     }
 
     push(errors, "AMOUNT_INVALID", this.validateAmount(request.amount));
@@ -153,6 +158,53 @@ export class BookingValidationService {
     }
     if (!request.providerId) return this.validateScheduledDate(request.scheduledDate);
     return this.validateBookingDetails(request.providerId, request.scheduledDate, request.slotDurationMinutes);
+  }
+
+  /**
+   * A broadcast booking names no partner, so create used to take payment for a slot dispatch can
+   * never fill (a Sunday appointment against a partner who works Monday–Friday). When coordinates
+   * exist, refuse unless some qualified partner is within the dispatch radius AND the whole
+   * appointment fits their working window. Nobody qualified, or nobody within range, is left to
+   * dispatch — blocking those would refuse the first booking of a service that has no local partner.
+   */
+  private async validateBroadcastStaffable(request: ValidationRequest): Promise<ValidationIssue | null> {
+    const address = await prisma.address.findFirst({
+      where: { id: request.addressId, userId: request.userId },
+      select: { latitude: true, longitude: true },
+    });
+    const lat = address?.latitude;
+    const lng = address?.longitude;
+    if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+    const pool = await matchingService.providersReachableForAddress(request.serviceId, request.userId, { lat, lng });
+    if (pool.length === 0) return null;
+
+    const inRange = pool.filter((p) => {
+      const km = providerDispatchDistanceKm(p, lat, lng);
+      return km != null && km <= MATCHING_MAX_DISTANCE_KM;
+    });
+    const duration = request.slotDurationMinutes ?? 0;
+    const workable = inRange.filter((p) =>
+      isAppointmentWithinWorkingWindow(
+        {
+          workingDays: p.workingDays,
+          workingHoursStart: p.workingHoursStart,
+          workingHoursEnd: p.workingHoursEnd,
+          timezone: p.timezone,
+        },
+        request.scheduledDate,
+        duration,
+      ),
+    );
+    // Nobody nearby: leave the booking to dispatch. Refusing here would block a service whose only
+    // qualified partners are in another city, including test bookings that have no local supply.
+    // The failure this exists for is the other one — a partner IS nearby and does not work then.
+    if (inRange.length === 0 || workable.length > 0) return null;
+    return {
+      code: "SCHEDULE_NOT_ALLOWED",
+      reason: "OUTSIDE_WORKING_HOURS",
+      message: "No professional near you works at this time. Please choose another slot.",
+    };
   }
 
   /** Convenience formatter that joins error messages for legacy throw-based call sites. */

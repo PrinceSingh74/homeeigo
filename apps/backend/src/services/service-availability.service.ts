@@ -111,15 +111,19 @@ class ServiceAvailabilityService {
     }
 
     // Serviceability: the same coverage rule booking create applies, when an address is given.
+    let jobPoint: { lat: number; lng: number } | null = null;
     if (input.addressId) {
       const address = await prisma.address.findFirst({
         where: { id: input.addressId, ...(input.userId ? { userId: input.userId } : {}) },
-        select: { city: true, zipCode: true },
+        select: { city: true, zipCode: true, latitude: true, longitude: true },
       });
       if (!address) return { ok: false, error: "ADDRESS_NOT_FOUND" };
       if (!coverageAllowsAddress(service, cfg, { city: address.city, zipCode: address.zipCode }).ok) {
         incCounter("availability_requests_total", { outcome: "not_covered" });
         return { ok: false, error: "SERVICE_NOT_AVAILABLE" };
+      }
+      if (address.latitude != null && address.longitude != null && Number.isFinite(address.latitude) && Number.isFinite(address.longitude)) {
+        jobPoint = { lat: address.latitude, lng: address.longitude };
       }
     }
 
@@ -138,7 +142,7 @@ class ServiceAvailabilityService {
       durationMinutes: occupancyMinutes,
     });
 
-    const providers = await this.providerWindows(input.serviceId, input.providerId, input.userId);
+    const providers = await this.providerWindows(input.serviceId, input.providerId, input.userId, jobPoint);
     const busy = providers.length > 0 ? await this.reservedWindows(providers.map((p) => p.id), grid, occupancyMinutes) : new Map();
     // Create refuses a booking that overlaps one the customer already holds (OVERLAPPING_BOOKING,
     // bookings_user_slot_excl). This projection used to offer those times anyway, so the customer
@@ -256,7 +260,12 @@ class ServiceAvailabilityService {
     };
   }
 
-  private async providerWindows(serviceId: string, providerId?: string, customerId?: string): Promise<ProviderWindow[]> {
+  private async providerWindows(
+    serviceId: string,
+    providerId?: string,
+    customerId?: string,
+    jobPoint?: { lat: number; lng: number } | null,
+  ): Promise<ProviderWindow[]> {
     /**
      * Phase 11: a customer-chosen partner goes through the SAME filter as the general projection —
      * population, compliance restriction, dispatch lifecycle, pause, service offering and the
@@ -265,7 +274,11 @@ class ServiceAvailabilityService {
      * or paused partner that booking would then refuse.
      */
     // W2-D4: the same partner population matching would use for this customer.
-    const candidates = await matchingService.qualifiedProvidersForService(serviceId, customerId, providerId ? [providerId] : undefined);
+    // No address: the strict population, same as dispatch's candidate query. With an address,
+    // a partner in another city must not keep a slot open that nobody near the customer can work.
+    const candidates = jobPoint
+      ? await matchingService.providersReachableForAddress(serviceId, customerId, jobPoint, providerId ? [providerId] : undefined)
+      : await matchingService.qualifiedProvidersForService(serviceId, customerId, providerId ? [providerId] : undefined);
     return candidates.map((p) => ({
       id: p.id,
       workingDays: p.workingDays,

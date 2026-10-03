@@ -20,6 +20,7 @@ import {
   SAME_RUN_WINDOW_MS,
   classifyRefundReason,
   classifyUserEmail,
+  isMarketplaceSeedAccount,
   type Classification,
   classifyBookingNumber,
 } from "../lib/data-provenance";
@@ -132,6 +133,8 @@ describe("provenance — users", () => {
     // scripts/ensure-demo-users.ts, section03-seed-live-job.ts and section05-live-cert.ts create
     // accounts on homigo.demo; the domain is also undelegated. The rule is that exact domain.
     expect(classifyUserEmail("partner@homigo.demo")?.ruleId).toBe("user.seed-domain");
+    expect(isMarketplaceSeedAccount("partner@homigo.demo")).toBe(true);
+    expect(isMarketplaceSeedAccount("vendor@adv.test")).toBe(false);
     expect(classifyUserEmail("live-customer-s03live-x@HOMIGO.DEMO")?.origin).toBe("INFERRED_SYNTHETIC");
     // ...not every ".demo", and not a mailbox that merely mentions the word.
     expect(classifyUserEmail("someone@acme.demo")).toBeNull();

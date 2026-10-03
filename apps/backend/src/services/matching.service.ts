@@ -1,5 +1,6 @@
 import { BookingStatus, Prisma } from "@prisma/client";
-import { analyticsSqlPredicate, analyticsWhere, isBusinessRow } from "../lib/analytics-scope";
+import { analyticsSqlPredicate, analyticsWhere, dispatchFallbackWhere, isBusinessRow } from "../lib/analytics-scope";
+import { isMarketplaceSeedAccount } from "../lib/data-provenance";
 import prisma from "../lib/prisma";
 import { distanceKm, etaMinutes } from "../lib/geo";
 import {
@@ -122,7 +123,25 @@ export interface MatchingDiagnostics {
   serviceOffered: boolean;
 }
 
-const MAX_DISTANCE_DEFAULT_KM = 50;
+/** Same bound dispatch, the slot grid and broadcast create use. A partner farther than this is not offered the job. */
+export const MATCHING_MAX_DISTANCE_KM = 50;
+const MAX_DISTANCE_DEFAULT_KM = MATCHING_MAX_DISTANCE_KM;
+
+/** Distance from the job to the partner's live position, or their saved base when they have not pinged. */
+export function providerDispatchDistanceKm(
+  provider: {
+    currentLocation?: { latitude: number; longitude: number } | null;
+    baseLatitude: number | null;
+    baseLongitude: number | null;
+  },
+  lat: number,
+  lng: number,
+): number | null {
+  const loc = provider.currentLocation;
+  const originLat = loc?.latitude ?? provider.baseLatitude;
+  const originLng = loc?.longitude ?? provider.baseLongitude;
+  return originLat != null && originLng != null ? distanceKm(lat, lng, originLat, originLng) : null;
+}
 const CONFLICT_WINDOW_MS = 2 * 60 * 60 * 1000;
 
 type ProviderForMatching = Awaited<ReturnType<MatchingService["loadCandidates"]>>[number];
@@ -160,7 +179,14 @@ export class MatchingService {
    */
   private async runMatching(
     request: MatchingRequest,
-    opts: { persist: boolean; record: boolean; previewMode?: ServiceCapabilityMode; includeOffline?: boolean },
+    opts: {
+      persist: boolean;
+      record: boolean;
+      previewMode?: ServiceCapabilityMode;
+      includeOffline?: boolean;
+      /** Set only by the paid-dispatch widening pass. Prevents a second widening. */
+      populationOverride?: Prisma.UserWhereInput;
+    },
   ): Promise<MatchingDiagnostics> {
     // A capability-mode preview exists only for the read-only diagnostics. Dispatch (`persist`)
     // always runs in the mode the feature flag says; `findBestProviders` cannot pass a preview.
@@ -180,7 +206,7 @@ export class MatchingService {
     } = request;
 
     const [population, gate, matchTokens, service] = await Promise.all([
-      this.candidatePopulation(request.customerId),
+      opts.populationOverride ?? this.candidatePopulation(request.customerId),
       loadServiceGateContext(serviceId, request.customerId, prisma, opts.previewMode ? { mode: opts.previewMode } : {}),
       resolveServiceMatchTokens(serviceId),
       prisma.service.findUnique({ where: { id: serviceId }, select: { isActive: true } }),
@@ -191,6 +217,7 @@ export class MatchingService {
     const serviceOffered = service?.isActive === true;
     const providers = serviceOffered ? await this.loadCandidates(serviceId, { onlyOnline: !opts.includeOffline, population, gate, matchTokens }) : [];
     if (!serviceOffered && opts.record) incCounter("matching_service_not_offered_total");
+    const widen = () => this.runMatching(request, { ...opts, populationOverride: dispatchFallbackWhere() });
     const finish = (matches: ProviderMatch[], rejections: MatchingRejection[]): MatchingDiagnostics => {
       const latencyMs = Math.round((performance.now() - startedAt) * 10) / 10;
       const counts = countRejections(rejections);
@@ -207,11 +234,18 @@ export class MatchingService {
           counts,
           latencyMs,
           serviceCapabilityMode: gate.mode,
+          population: opts.populationOverride ? "widened" : "strict",
         });
       }
       return { matches, rejections, counts, latencyMs, candidateCount: providers.length, serviceCapabilityMode: gate.mode, serviceOffered };
     };
-    if (providers.length === 0) return finish([], []);
+    // Strict SQL can be empty (every skilled partner is a seed account) or full of partners the
+    // gates then refuse. Either way a real customer's paid job gets one wider pass before we
+    // report nobody. The wider pass does not run when the strict pass already has a match.
+    if (providers.length === 0) {
+      if (!opts.populationOverride && serviceOffered && gate.bookingIsBusiness) return widen();
+      return finish([], []);
+    }
 
     const entitlements = request.customerId
       ? await entitlementService.resolve(request.customerId)
@@ -248,8 +282,11 @@ export class MatchingService {
     for (const p of providers) {
       const capacityFull = capacityMap.get(p.id)?.capacityFull ?? false;
       const rawDistance = jobLocated ? this.rawDistanceKm(p, latitude, longitude) : null;
+      // Seed/demo partners stay provenance-blocked on the strict pass. On the widened pass they
+      // may take a real customer's job; suite fixtures are not in that pass at all.
+      const seedDispatch = Boolean(opts.populationOverride) && gate.bookingIsBusiness && isMarketplaceSeedAccount(p.user.email);
       const rejected = evaluateMatchingGates({
-        providerIsBusiness: isBusinessRow(p.user.dataOrigin),
+        providerIsBusiness: seedDispatch ? true : isBusinessRow(p.user.dataOrigin),
         bookingIsBusiness: gate.bookingIsBusiness,
         capability: capabilityRejections(
           capabilityMap.get(p.id) ?? EMPTY_CAPABILITY_ROWS,
@@ -257,6 +294,7 @@ export class MatchingService {
           this.legacyOffersService(p.serviceCategories, matchTokens, gate),
           now,
           p.user.dataOrigin,
+          seedDispatch ? { seedVisible: true } : undefined,
         ),
         notAvailable: availabilityGate(this.scheduleOf(p), scheduledDate, now),
         location: !jobLocated
@@ -285,6 +323,10 @@ export class MatchingService {
 
     matches.sort(compareRankedProviders);
     const available = matches.slice(0, maxResults);
+
+    if (available.length === 0 && !opts.populationOverride && serviceOffered && gate.bookingIsBusiness) {
+      return widen();
+    }
 
     if (opts.persist && request.customerId && available.length > 0) {
       void this.persistMatchScores({
@@ -344,10 +386,7 @@ export class MatchingService {
   }
 
   private rawDistanceKm(provider: ProviderForMatching, lat: number, lng: number): number | null {
-    const loc = provider.currentLocation;
-    const originLat = loc?.latitude ?? provider.baseLatitude;
-    const originLng = loc?.longitude ?? provider.baseLongitude;
-    return originLat != null && originLng != null ? distanceKm(lat, lng, originLat, originLng) : null;
+    return providerDispatchDistanceKm(provider, lat, lng);
   }
 
   private scheduleOf(provider: ProviderForMatching) {
@@ -521,17 +560,83 @@ export class MatchingService {
       resolveServiceMatchTokens(serviceId),
     ]);
     const candidates = await this.loadCandidates(serviceId, { population, gate, matchTokens, only });
-    if (candidates.length === 0) return candidates;
     // Phase 11: the provenance + capability gates dispatch applies. Presence, capacity and distance
     // are job-time facts and stay with dispatch; a slot must not be backed by a partner whose
     // credentials dispatch would refuse.
-    const rows = await loadCapabilityRows(candidates.map((p) => p.id));
+    const rows = candidates.length > 0 ? await loadCapabilityRows(candidates.map((p) => p.id)) : new Map();
     const now = new Date();
-    return candidates.filter(
+    const strict = candidates.filter(
       (p) =>
         isBusinessRow(p.user.dataOrigin) === gate.bookingIsBusiness &&
         capabilityRejections(rows.get(p.id) ?? EMPTY_CAPABILITY_ROWS, gate, this.legacyOffersService(p.serviceCategories, matchTokens, gate), now, p.user.dataOrigin).length === 0,
     );
+    // Same widening as dispatch: a real customer whose strict pool cannot do the service may be
+    // backed by an on-duty seed/demo partner. A fixture customer never reaches this branch.
+    if (strict.length > 0 || !gate.bookingIsBusiness) return strict;
+    return this.marketplaceSeedProviders(serviceId, gate, matchTokens, only, candidates.map((p) => p.id));
+  }
+
+  /**
+   * Seed-domain partners (`@homigo.demo`) who can do the service, for a real customer's job whose
+   * strict pool cannot. Fixture addresses are not included. Callers that already have a match must
+   * not call this — a real partner must not lose the job to a seed account.
+   */
+  private async marketplaceSeedProviders(
+    serviceId: string,
+    gate: ServiceGateContext,
+    matchTokens: ServiceMatchTokens | null,
+    only: string[] | undefined,
+    excludeIds: string[],
+  ) {
+    if (!gate.bookingIsBusiness) return [];
+    const widened = await this.loadCandidates(serviceId, { population: dispatchFallbackWhere(), gate, matchTokens, only });
+    const seen = new Set(excludeIds);
+    const extra = widened.filter((p) => !seen.has(p.id) && isMarketplaceSeedAccount(p.user.email));
+    if (extra.length === 0) return [];
+    const now = new Date();
+    const extraRows = await loadCapabilityRows(extra.map((p) => p.id));
+    return extra.filter(
+      (p) =>
+        capabilityRejections(
+          extraRows.get(p.id) ?? EMPTY_CAPABILITY_ROWS,
+          gate,
+          this.legacyOffersService(p.serviceCategories, matchTokens, gate),
+          now,
+          p.user.dataOrigin,
+          { seedVisible: true },
+        ).length === 0,
+    );
+  }
+
+  /**
+   * Who may back a slot or a broadcast checkout at this address.
+   *
+   * A partner in another city must not keep a Sunday open when someone near the address works
+   * weekdays only. Seed accounts are added only when nobody in the strict pool is within the
+   * dispatch radius. With no coordinates, or with nobody nearby at all, the strict list is returned
+   * unchanged.
+   */
+  async providersReachableForAddress(
+    serviceId: string,
+    customerId: string | undefined,
+    point: { lat: number; lng: number } | null,
+    only?: string[],
+  ) {
+    const strict = await this.qualifiedProvidersForService(serviceId, customerId, only);
+    if (!point) return strict;
+    const nearby = (list: typeof strict) =>
+      list.filter((p) => {
+        const km = providerDispatchDistanceKm(p, point.lat, point.lng);
+        return km != null && km <= MATCHING_MAX_DISTANCE_KM;
+      });
+    const strictNearby = nearby(strict);
+    if (strictNearby.length > 0) return strictNearby;
+    const [gate, matchTokens] = await Promise.all([
+      loadServiceGateContext(serviceId, customerId),
+      resolveServiceMatchTokens(serviceId),
+    ]);
+    const seedNearby = nearby(await this.marketplaceSeedProviders(serviceId, gate, matchTokens, only, strict.map((p) => p.id)));
+    return seedNearby.length > 0 ? seedNearby : strict;
   }
 
   private async loadCandidates(
@@ -570,7 +675,7 @@ export class MatchingService {
         ...(Object.keys(idFilter).length > 0 ? { id: idFilter } : {}),
       },
       include: {
-        user: { select: { firstName: true, lastName: true, isBanned: true, dataOrigin: true } },
+        user: { select: { firstName: true, lastName: true, isBanned: true, dataOrigin: true, email: true } },
         currentLocation: true,
       },
       orderBy: [{ rating: "desc" }, { completionRate: "desc" }],

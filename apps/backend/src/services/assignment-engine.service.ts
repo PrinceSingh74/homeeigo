@@ -28,6 +28,15 @@ import { loadServiceGateContext } from "./provider-capability-loader";
 import { offerRequiresLivePresence } from "../lib/scheduled-offer-presence";
 
 const DISPATCH_TIMEOUT_MS = Number(process.env.ASSIGNMENT_DISPATCH_TIMEOUT_MS || 300_000);
+/**
+ * A paid job whose slot is further out than this is not burned toward EXHAUSTED when nobody can
+ * take it yet. Measured 2026-10-03: five empty passes exhausted a paid booking in ~90 seconds,
+ * so the partner who came online later never saw it. Inside this horizon the old counting stays,
+ * because an uncounted near-term miss occupies the queue forever.
+ */
+const SUPPLY_WAIT_HORIZON_MS = 2 * 60 * 60 * 1000;
+/** How long a far-future paid job waits before dispatch searches again. Keeps it off every cron tick. */
+const SUPPLY_RETRY_MS = 15 * 60 * 1000;
 /** How long a far-ahead appointment stays on the partner's request list. */
 const SCHEDULED_OFFER_TIMEOUT_MS = 72 * 60 * 60 * 1000;
 const MAX_DISPATCH_PER_TICK = Number(process.env.ASSIGNMENT_MAX_PER_TICK || 10);
@@ -153,6 +162,14 @@ export class AssignmentEngine {
     let job = await prisma.assignmentJob.findUnique({ where: { bookingId } });
     if (!job) job = await this.createJob(bookingId);
 
+    if (job.status === AssignmentJobStatus.EXHAUSTED) {
+      const reopened = await this.reopenIfPaidAndStillWaiting(job.id, bookingId);
+      if (reopened) {
+        const refreshed = await prisma.assignmentJob.findUnique({ where: { id: job.id } });
+        if (refreshed) job = refreshed;
+      }
+    }
+
     if (
       job.status !== AssignmentJobStatus.PENDING &&
       job.status !== AssignmentJobStatus.REASSIGNED &&
@@ -178,6 +195,7 @@ export class AssignmentEngine {
     const tickDeadlineMs = Date.now() + Math.max(5_000, (LOCK_TTL_SEC - 5) * 1000);
     try {
       await this.handleTimeouts();
+      await this.reopenWaitingPaidJobs();
 
       const queue = await bookingPriorityService.getAssignmentQueue(MAX_DISPATCH_PER_TICK, { dispatchableOnly: true });
       for (const item of queue) {
@@ -204,6 +222,16 @@ export class AssignmentEngine {
         }
         if (activeJob.dispatchAttempts >= activeJob.maxAttempts) {
           await this.exhaustJob(activeJob.id);
+          continue;
+        }
+        // A paid job hours away was already searched and is waiting for a partner to come on duty.
+        // Searching it again on every tick would fill the tick and starve jobs that are due now.
+        const scheduledMs = item.scheduledDate instanceof Date ? item.scheduledDate.getTime() : new Date(item.scheduledDate).getTime();
+        if (
+          scheduledMs - Date.now() > SUPPLY_WAIT_HORIZON_MS &&
+          activeJob.lastDispatchedAt &&
+          Date.now() - activeJob.lastDispatchedAt.getTime() < SUPPLY_RETRY_MS
+        ) {
           continue;
         }
 
@@ -250,6 +278,54 @@ export class AssignmentEngine {
       await redisClient.releaseLock(LOCK_KEY, token);
     }
     return { processed, dispatched };
+  }
+
+  /**
+   * Paid bookings that were exhausted while the slot was still hours away go back to PENDING so
+   * dispatch can offer them once a partner is actually on duty. A job inside the two-hour horizon
+   * stays exhausted: that one needs a person, not another silent retry.
+   */
+  private async reopenWaitingPaidJobs(): Promise<void> {
+    const horizon = new Date(Date.now() + SUPPLY_WAIT_HORIZON_MS);
+    const jobs = await prisma.assignmentJob.findMany({
+      where: {
+        status: AssignmentJobStatus.EXHAUSTED,
+        booking: {
+          status: BookingStatus.PENDING,
+          paymentStatus: "SUCCESS",
+          providerId: null,
+          scheduledDate: { gt: horizon },
+        },
+      },
+      select: { id: true, bookingId: true },
+      take: 25,
+    });
+    for (const job of jobs) {
+      await this.reopenIfPaidAndStillWaiting(job.id, job.bookingId);
+    }
+  }
+
+  private async reopenIfPaidAndStillWaiting(jobId: string, bookingId: string): Promise<boolean> {
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { status: true, providerId: true, paymentStatus: true, scheduledDate: true },
+    });
+    if (
+      !booking ||
+      booking.status !== BookingStatus.PENDING ||
+      booking.providerId ||
+      !isSettled(booking.paymentStatus) ||
+      booking.scheduledDate.getTime() - Date.now() <= SUPPLY_WAIT_HORIZON_MS
+    ) {
+      return false;
+    }
+    const updated = await prisma.assignmentJob.updateMany({
+      where: { id: jobId, status: AssignmentJobStatus.EXHAUSTED },
+      data: { status: AssignmentJobStatus.PENDING, dispatchAttempts: 0, timeoutAt: null, currentProviderId: null },
+    });
+    if (updated.count === 0) return false;
+    await this.audit(jobId, "REOPENED_WAITING", { bookingId, reason: "paid_future_supply" });
+    return true;
   }
 
   /**
@@ -552,7 +628,25 @@ export class AssignmentEngine {
        * FIFO and no other eviction, enough of these accumulate to starve every booking behind them.
        * EXHAUSTED does not cancel the booking — it only stops silent retry and raises an ops alert
        * for manual reassignment, so counting this path is safe.
+       *
+       * That counting is for a job that is due soon. A paid job more than two hours out is not
+       * out of supply forever — the partner may still come on duty — so it is audited and retried
+       * on a backoff instead of being exhausted in the first couple of minutes.
        */
+      const waitingForSupply = booking.scheduledDate.getTime() - Date.now() > SUPPLY_WAIT_HORIZON_MS;
+      if (waitingForSupply) {
+        await prisma.assignmentJob.update({
+          where: { id: jobId },
+          data: { lastDispatchedAt: new Date() },
+        });
+        await this.audit(jobId, "NO_PROVIDER", {
+          serviceId: booking.serviceId,
+          matchCount: matches.length,
+          excludedCount: excluded.length,
+          waiting: true,
+        });
+        return false;
+      }
       await prisma.assignmentJob.update({
         where: { id: jobId },
         data: { dispatchAttempts: { increment: 1 } },
