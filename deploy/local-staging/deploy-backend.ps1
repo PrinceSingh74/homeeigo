@@ -34,7 +34,7 @@ $envFile = Join-Path $PSScriptRoot "backend.env"
 
 function Require-Tag { if (-not $Tag) { throw "-Tag <git sha> is required for $Action" } }
 function Require-EnvFile {
-  if (-not (Test-Path $envFile)) { throw "missing $envFile — copy backend.env.example and fill in staging-only secrets" }
+  if (-not (Test-Path $envFile)) { throw "missing $envFile - copy backend.env.example and fill in staging-only secrets" }
   $names = (Get-Content $envFile | Where-Object { $_ -match '^[A-Z_0-9]+=' } | ForEach-Object { ($_ -split '=', 2)[0] })
   foreach ($k in 'DATABASE_URL', 'REDIS_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET', 'ENCRYPTION_KEY', 'OTP_SECRET', 'APP_ENV') {
     if ($names -notcontains $k) { throw "backend.env is missing $k" }
