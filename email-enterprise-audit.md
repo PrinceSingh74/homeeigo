@@ -1,6 +1,6 @@
 # Email Enterprise Audit
 
-**Generated:** 2026-07-03T10:36:40.616Z  
+**Generated:** 2026-09-21T07:18:30.873Z  
 **Runtime:** GET /ready → email.configured = **false**
 
 ## Provider Status
@@ -11,7 +11,7 @@
 | Circuit breaker | CLOSED |
 | Outbound queue | async in-process with retry (3x) |
 | Bounce handling | Redis suppression + Resend webhook |
-| Delivery audit | EmailLog with sent/failed/queued/bounced (63 rows) |
+| Delivery audit | EmailLog with sent/failed/queued/bounced (1204 rows) |
 
 ## Email Type Matrix
 
@@ -43,27 +43,42 @@
 ```json
 [
   {
+    "type": "registration_otp",
+    "status": "logged",
+    "count": 283
+  },
+  {
     "type": "approval",
     "status": "logged",
     "count": 38
   },
   {
-    "type": "booking_confirmation",
+    "type": "email_verification",
     "status": "sent",
     "count": 1
   },
   {
-    "type": "registration_otp",
-    "status": "logged",
-    "count": 19
+    "type": "payment_receipt",
+    "status": "sent",
+    "count": 15
   },
   {
     "type": "booking_completed",
     "status": "sent",
-    "count": 1
+    "count": 116
+  },
+  {
+    "type": "welcome",
+    "status": "sent",
+    "count": 33
   },
   {
     "type": "booking_assigned",
+    "status": "sent",
+    "count": 262
+  },
+  {
+    "type": "partner_rejection",
     "status": "sent",
     "count": 1
   },
@@ -71,11 +86,36 @@
     "type": "new_partner_registration",
     "status": "logged",
     "count": 3
+  },
+  {
+    "type": "password_reset",
+    "status": "sent",
+    "count": 6
+  },
+  {
+    "type": "partner_approval",
+    "status": "sent",
+    "count": 6
+  },
+  {
+    "type": "invoice",
+    "status": "sent",
+    "count": 15
+  },
+  {
+    "type": "admin_alert",
+    "status": "sent",
+    "count": 90
+  },
+  {
+    "type": "booking_confirmation",
+    "status": "sent",
+    "count": 335
   }
 ]
 ```
 
-Total rows: 63 — statuses: sent, failed, queued, bounced tracked in EmailLog.
+Total rows: 1204 — statuses: sent, failed, queued, bounced tracked in EmailLog.
 
 ## Rate Limits (endpoint-level)
 
@@ -92,7 +132,7 @@ Total rows: 63 — statuses: sent, failed, queued, bounced tracked in EmailLog.
 Runtime probe (service layer):
 ```json
 {
-  "timestamp": "2026-07-03T10:36:41.101Z",
+  "timestamp": "2026-09-21T07:18:31.728Z",
   "configured": false,
   "provider": "console",
   "circuitBreaker": {
@@ -103,8 +143,8 @@ Runtime probe (service layer):
     "queue": "async in-process (non-blocking)",
     "retryPolicy": "3 attempts, exponential backoff",
     "bounceHandling": true,
-    "total": 63,
-    "sent": 3,
+    "total": 1204,
+    "sent": 880,
     "failed": 0,
     "queued": 0,
     "bounced": 0,
@@ -125,10 +165,7 @@ Runtime probe (service layer):
       "fraud_alert"
     ],
     "partial": [
-      "invoice",
-      "membership_purchase",
-      "referral_reward",
-      "gift_card"
+      "otp"
     ],
     "smsOnly": [
       "otp"
@@ -136,27 +173,42 @@ Runtime probe (service layer):
   },
   "byType": [
     {
+      "type": "registration_otp",
+      "status": "logged",
+      "count": 283
+    },
+    {
       "type": "approval",
       "status": "logged",
       "count": 38
     },
     {
-      "type": "booking_confirmation",
+      "type": "email_verification",
       "status": "sent",
       "count": 1
     },
     {
-      "type": "registration_otp",
-      "status": "logged",
-      "count": 19
+      "type": "payment_receipt",
+      "status": "sent",
+      "count": 15
     },
     {
       "type": "booking_completed",
       "status": "sent",
-      "count": 1
+      "count": 116
+    },
+    {
+      "type": "welcome",
+      "status": "sent",
+      "count": 33
     },
     {
       "type": "booking_assigned",
+      "status": "sent",
+      "count": 262
+    },
+    {
+      "type": "partner_rejection",
       "status": "sent",
       "count": 1
     },
@@ -164,64 +216,68 @@ Runtime probe (service layer):
       "type": "new_partner_registration",
       "status": "logged",
       "count": 3
+    },
+    {
+      "type": "password_reset",
+      "status": "sent",
+      "count": 6
+    },
+    {
+      "type": "partner_approval",
+      "status": "sent",
+      "count": 6
+    },
+    {
+      "type": "invoice",
+      "status": "sent",
+      "count": 15
+    },
+    {
+      "type": "admin_alert",
+      "status": "sent",
+      "count": 90
+    },
+    {
+      "type": "booking_confirmation",
+      "status": "sent",
+      "count": 335
     }
   ],
   "recent": [
     {
-      "id": "cmr4sqfoz00attzs0w31vz17t",
-      "to": "ec***@homigo.test",
-      "emailType": "booking_completed",
-      "status": "sent",
-      "createdAt": "2026-07-03T10:34:20.531Z"
-    },
-    {
-      "id": "cmr4sqewh00a0tzs0g7gg2sdt",
-      "to": "ec***@homigo.test",
-      "emailType": "booking_assigned",
-      "status": "sent",
-      "createdAt": "2026-07-03T10:34:19.506Z"
-    },
-    {
-      "id": "cmr4sqe5x009vtzs0kv5hdkfx",
-      "to": "ec***@homigo.test",
+      "id": "cmu9xu6yi00letz10f8kvv1i0",
+      "to": "ss***@gmail.com",
       "emailType": "booking_confirmation",
       "status": "sent",
-      "createdAt": "2026-07-03T10:34:18.550Z"
+      "createdAt": "2026-09-20T14:55:11.802Z"
     },
     {
-      "id": "cmqukropj017atztkiihzo4de",
-      "to": "st***@homigo.test",
-      "emailType": "registration_otp",
-      "status": "logged",
-      "createdAt": "2026-06-26T06:53:40.183Z"
+      "id": "cmu9xpwvh00ijtz10l7uaahst",
+      "to": "pr***@gmail.com",
+      "emailType": "booking_completed",
+      "status": "sent",
+      "createdAt": "2026-09-20T14:51:52.108Z"
     },
     {
-      "id": "cmqukkcmc008etz3c7t9o4oer",
-      "to": "st***@homigo.test",
-      "emailType": "registration_otp",
-      "status": "logged",
-      "createdAt": "2026-06-26T06:47:57.924Z"
+      "id": "cmu9hqoe200k7tzd8i41ew4qr",
+      "to": "pr***@gmail.com",
+      "emailType": "booking_confirmation",
+      "status": "sent",
+      "createdAt": "2026-09-20T07:24:33.914Z"
     },
     {
-      "id": "cmqukg76x00ahtzkozw8zhize",
-      "to": "st***@homigo.test",
-      "emailType": "registration_otp",
-      "status": "logged",
-      "createdAt": "2026-06-26T06:44:44.265Z"
+      "id": "cmu8d4ev701aktzu0ci3puqbl",
+      "to": "pr***@gmail.com",
+      "emailType": "booking_assigned",
+      "status": "sent",
+      "createdAt": "2026-09-19T12:27:30.500Z"
     },
     {
-      "id": "cmqtzhmpe006otztcxtb9o3np",
-      "to": "st***@homigo.test",
-      "emailType": "registration_otp",
-      "status": "logged",
-      "createdAt": "2026-06-25T20:57:59.091Z"
-    },
-    {
-      "id": "cmqteltx800y2tzn4r0ndd6ly",
-      "to": "st***@homigo.test",
-      "emailType": "registration_otp",
-      "status": "logged",
-      "createdAt": "2
+      "id": "cmu8d36lw017wtzu08j871a1b",
+      "to": "pr***@gmail.com",
+      "emailType": "booking_confirmation",
+      "status": "sent",
+  
 ```
 
 ## Verdict

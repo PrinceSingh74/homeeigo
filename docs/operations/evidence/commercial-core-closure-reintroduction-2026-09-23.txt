@@ -1,0 +1,108 @@
+HOMEEIGO — Final closure: authority-invariant reintroduction proof
+2026-09-23. Isolated copy D:/homigo-w2-scratch/backend against homigo_test.
+D:/homigo/apps/backend was not modified by this run; every patched file was restored
+byte-identically (cmp) and the baseline re-run after the last restore.
+
+12 defects, one at a time, across the six scenarios named in the closure pass.
+Result: 12 CAUGHT, 0 missed (F5b required a coverage gap to be closed first — see below).
+
+  F1   the migration loses PROVIDER_NO_SHOW                       CAUGHT
+  F1b  the migration grows an ALTER TABLE ... DROP COLUMN         CAUGHT
+  F2   a customer can cancel a started job (O3b bypassed)         CAUGHT  (structural + integration)
+  F2b  the cancel route falls through to success on an unknown
+       refusal — a customer told 'cancelled successfully'         CAUGHT
+  F2c  the quote reports every tier as self-serve                 CAUGHT
+  F3   reference geography starts deciding sellability (O5)       CAUGHT
+  F4   the late-reschedule fee reads 0 instead of unconfigured    CAUGHT
+  F4b  the fee tier is decided from the CLIENT's requested slot   CAUGHT
+  F5   a wallet-funded refund stops crediting the wallet (O7)     CAUGHT
+  F5b  a wallet PAYMENT ROW is routed to the gateway              CAUGHT (after the gap below)
+  F6   any price inside the min-max range is accepted (O8)        CAUGHT
+  F6b  the booking schema accepts caller-supplied add-on prices   CAUGHT
+
+------------------------------------------------------------------------------
+THE GAP F5b EXPOSED, and how it was closed
+
+On the first run F5b was NOT CAUGHT. The reason is worth recording rather than patching over:
+a wallet-paid booking has NO `payments` row at all — the wallet checkout writes paymentMethod
+onto the BOOKING — so the fixture never reached the branch that reads a payment row's own
+method. That branch is not dead code: homigo_db holds two payments rows with
+payment_method='wallet'.
+
+Hand-writing such a row into a fixture is exactly the 'shape production cannot produce' that
+`payWithRealWallet` exists to prevent, so the branch is held by a STRUCTURAL assertion that
+says so in its own comment, rather than by a behavioural test pretending to cover it.
+F5b re-run against that assertion: CAUGHT.
+
+------------------------------------------------------------------------------
+SEPARATELY, in place (no isolated copy needed):
+
+  partner-web job-action mirror — the short-circuit on the three terminal statuses was
+  removed, `job-action-mirror-parity.test.ts` failed (1 fail / 6 pass), the file was restored
+  byte-identically and the suite returned to 7 pass / 0 fail. apps/partner-web has no unit-test
+  runner of its own; that parity suite is its executable regression protection.
+
+------------------------------------------------------------------------------
+FULL LOG
+
+== GOOD (baseline must be green, or every DEFECT result below is meaningless)
+   [GOOD PA CS] pass=28 fail=0
+== F1
+   [DEFECT PA] pass=22 fail=1
+   => CAUGHT
+   restored prisma/migrations/20260923120000_no_show_states/migration.sql (byte-identical)
+== F1b
+   [DEFECT PA] pass=22 fail=1
+   => CAUGHT
+   restored prisma/migrations/20260923120000_no_show_states/migration.sql (byte-identical)
+== F2
+   [DEFECT PA CS] pass=27 fail=1
+   => CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+== F2b
+   [DEFECT PA] pass=22 fail=1
+   => CAUGHT
+   restored src/routes/bookings.ts (byte-identical)
+== F2c
+   [DEFECT PA] pass=22 fail=1
+   => CAUGHT
+   restored src/services/cancellation-policy.service.ts (byte-identical)
+== F3
+   [DEFECT PA] pass=21 fail=2
+   => CAUGHT
+   restored src/lib/service-catalog-config.ts (byte-identical)
+== F4
+   [DEFECT PA] pass=21 fail=2
+   => CAUGHT
+   restored src/lib/reschedule-policy.ts (byte-identical)
+== F4b
+   [DEFECT PA] pass=22 fail=1
+   => CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+== F5
+   [DEFECT CS] pass=3 fail=2
+   => CAUGHT
+   restored src/services/booking-refund.service.ts (byte-identical)
+== F5b
+   [DEFECT CS] pass=5 fail=0
+   => NOT CAUGHT
+   restored src/services/booking-refund.service.ts (byte-identical)
+== F6
+   [DEFECT PA] pass=22 fail=1
+   => CAUGHT
+   restored src/lib/service-catalog-config.ts (byte-identical)
+== F6b
+   [DEFECT PA] pass=22 fail=1
+   => CAUGHT
+   restored src/schemas/booking.schema.ts (byte-identical)
+== RESTORED (must match the baseline exactly)
+   identical: src/services/cancellation-policy.service.ts
+   identical: src/services/booking.service.ts
+   identical: src/lib/service-catalog-config.ts
+   identical: src/lib/reschedule-policy.ts
+   identical: src/services/booking-refund.service.ts
+   identical: src/routes/bookings.ts
+   identical: src/schemas/booking.schema.ts
+   identical: prisma/migrations/20260923120000_no_show_states/migration.sql
+   [RESTORED PA CS] pass=28 fail=0
+== SUMMARY caught=11 missed=1

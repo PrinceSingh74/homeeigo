@@ -1,0 +1,41 @@
+{
+ "steps": [
+  {
+   "name": "facade: version 4; API view has no equipment line",
+   "ok": true
+  },
+  {
+   "name": "facade page: no 'access equipment', no method/certification claim",
+   "ok": true,
+   "detail": {
+    "sec": "What you need before we arrive\nHave this ready at your home\n\nSociety permission for work on the building exterior\n\nBefore your professional arrives\n\nWork on the building exterior needs your society's or building manager's permission — please arrange it before the visit.\n\nOur professional assesses safe access before starting; areas that cannot be reached safely are not covered\n\nWhen the service starts\n\nOur professional assesses safe access before starting; areas that cannot be reached safely are not covered.\n\nAccess to running water\n\nBefore your professional arrives\n\nPlease keep a tap available for cleaning and rinsing.\n\nA working power socket near the work area\n\nBefore your professional arri"
+   }
+  },
+  {
+   "name": "facade page: states society permission + safe-access assessment + exclusion of unreachable areas",
+   "ok": true
+  },
+  {
+   "name": "facade page: the only 'We'll bring' items are cleaning products (nothing else promised)",
+   "ok": true
+  },
+  {
+   "name": "dusting-wiping page: customer copy unchanged (your supplies + tools), no provenance text",
+   "ok": true
+  },
+  {
+   "name": "window-cleaning page: interior-only scope with assessment preserved",
+   "ok": true
+  },
+  {
+   "name": "no provenance/internal text on any page or services response",
+   "ok": true,
+   "detail": {
+    "leaks": []
+   }
+  }
+ ],
+ "leaks": [],
+ "consoleErrors": [],
+ "passed": "7/7"
+}

@@ -1,6 +1,6 @@
 # Observability Hardening
 
-**Generated:** 2026-07-03T10:36:40.616Z
+**Generated:** 2026-09-21T07:18:30.873Z
 
 ## Stack Status (runtime probes)
 
@@ -13,7 +13,7 @@
 
 ## Alert Coverage
 
-Total alert rules loaded: **55**
+Total alert rules loaded: **112**
 
 | Required Alert | Present |
 |----------------|---------|

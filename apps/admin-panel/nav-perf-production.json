@@ -1,0 +1,689 @@
+{
+  "at": "2026-09-06T18:06:52.378Z",
+  "base": "http://127.0.0.1:3003",
+  "cold": [
+    {
+      "route": "Executive HQ",
+      "href": "/",
+      "from": "/",
+      "headingMs": 631,
+      "headingErr": null,
+      "path": "/",
+      "commitMs": 644,
+      "navTracker": {
+        "from": "/settings",
+        "to": "/",
+        "commitMs": 34,
+        "paintMs": 55,
+        "at": 1788718012991
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Settings",
+      "href": "/settings",
+      "from": "/",
+      "headingMs": 280,
+      "headingErr": null,
+      "path": "/settings",
+      "commitMs": 266,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 29,
+        "paintMs": 45,
+        "at": 1788718013710
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Bookings (table)",
+      "href": "/bookings",
+      "from": "/settings",
+      "headingMs": 434,
+      "headingErr": null,
+      "path": "/bookings",
+      "commitMs": 445,
+      "navTracker": {
+        "from": "/settings",
+        "to": "/bookings",
+        "commitMs": 172,
+        "paintMs": 248,
+        "at": 1788718014563
+      },
+      "apiCount": 6,
+      "apiMs": -1,
+      "slowestApi": [
+        {
+          "method": "GET",
+          "path": "/api/admin/bookings?page=1&limit=20",
+          "status": 200,
+          "start": 1788718014505.623,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/bookings?page=1&limit=1&status=cancelled",
+          "status": 200,
+          "start": 1788718014595.2559,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/bookings?page=1&limit=1&status=live",
+          "status": 200,
+          "start": 1788718014591.229,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/workforce/analytics",
+          "status": 200,
+          "start": 1788718014635.845,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/geo-intel/exec-kpis",
+          "status": 200,
+          "start": 1788718014620.066,
+          "duration": -1
+        }
+      ],
+      "dupes": []
+    },
+    {
+      "route": "Partners (table)",
+      "href": "/vendors",
+      "from": "/bookings",
+      "headingMs": 508,
+      "headingErr": null,
+      "path": "/vendors",
+      "commitMs": 494,
+      "navTracker": {
+        "from": "/settings",
+        "to": "/bookings",
+        "commitMs": 172,
+        "paintMs": 248,
+        "at": 1788718014563
+      },
+      "apiCount": 5,
+      "apiMs": -1,
+      "slowestApi": [
+        {
+          "method": "GET",
+          "path": "/api/admin/ops-map",
+          "status": 200,
+          "start": 1788718014599.6968,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/providers?page=1&limit=20",
+          "status": 200,
+          "start": 1788718015434.132,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/academy/modules",
+          "status": 200,
+          "start": 1788718015536.267,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/documents/pending",
+          "status": 200,
+          "start": 1788718015535.9941,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/providers?page=1&limit=1&status=applications&badge=true",
+          "status": 200,
+          "start": 1788718015535.2312,
+          "duration": -1
+        }
+      ],
+      "dupes": []
+    },
+    {
+      "route": "Command Center (live ops)",
+      "href": "/command-center",
+      "from": "/vendors",
+      "headingMs": 335,
+      "headingErr": null,
+      "path": "/command-center",
+      "commitMs": 357,
+      "navTracker": {
+        "from": "/vendors",
+        "to": "/command-center",
+        "commitMs": 30,
+        "paintMs": 69,
+        "at": 1788718016185
+      },
+      "apiCount": 6,
+      "apiMs": -1,
+      "slowestApi": [
+        {
+          "method": "GET",
+          "path": "/api/geo-intel/exec-kpis",
+          "status": 200,
+          "start": 1788718016148.833,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/geo-intel/zone-scoring",
+          "status": 200,
+          "start": 1788718016159.006,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/geo-intel/provider-density",
+          "status": 200,
+          "start": 1788718016158.73,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/geo-intel/surge",
+          "status": 200,
+          "start": 1788718016158.42,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/geo-intel/revenue-forecast",
+          "status": 200,
+          "start": 1788718016161.4832,
+          "duration": -1
+        }
+      ],
+      "dupes": []
+    },
+    {
+      "route": "Finance dashboard",
+      "href": "/finance/dashboard",
+      "from": "/command-center",
+      "headingMs": 294,
+      "headingErr": null,
+      "path": "/finance/dashboard",
+      "commitMs": 295,
+      "navTracker": {
+        "from": "/command-center",
+        "to": "/finance/dashboard",
+        "commitMs": 43,
+        "paintMs": 62,
+        "at": 1788718016948
+      },
+      "apiCount": 5,
+      "apiMs": -1,
+      "slowestApi": [
+        {
+          "method": "GET",
+          "path": "/maps/api/js?key=<redacted-maps-key>&loading=async&v=weekly",
+          "status": 200,
+          "start": 1788718016300.881,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/maps-api-v3/api/js/66/3d/main.js",
+          "status": 200,
+          "start": 1788718017041.333,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/maps-api-v3/api/js/66/3d/geometry.js",
+          "status": 200,
+          "start": 1788718017252.038,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/maps-api-v3/api/js/66/3d/log.js",
+          "status": 200,
+          "start": 1788718017246.557,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/maps-api-v3/api/js/66/3d/marker.js",
+          "status": 200,
+          "start": 1788718017251.165,
+          "duration": -1
+        }
+      ],
+      "dupes": []
+    },
+    {
+      "route": "HQ landing (nested)",
+      "href": "/hq/operations",
+      "from": "/finance/dashboard",
+      "headingMs": 293,
+      "headingErr": null,
+      "path": "/hq/operations",
+      "commitMs": 295,
+      "navTracker": {
+        "from": "/finance/dashboard",
+        "to": "/hq/operations",
+        "commitMs": 46,
+        "paintMs": 72,
+        "at": 1788718017650
+      },
+      "apiCount": 7,
+      "apiMs": -1,
+      "slowestApi": [
+        {
+          "method": "GET",
+          "path": "/maps-api-v3/api/js/66/3d/map.js",
+          "status": 200,
+          "start": 1788718017250.268,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/maps-api-v3/api/js/66/3d/common.js",
+          "status": 200,
+          "start": 1788718017243.262,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/maps/api/mapsjs/gen_204?csp_test=true",
+          "status": 200,
+          "start": 1788718017242.5671,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/maps-api-v3/api/js/66/3d/util.js",
+          "status": 200,
+          "start": 1788718017245.753,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/geo-intel/demand-forecast?horizon=24",
+          "status": 200,
+          "start": 1788718016165.947,
+          "duration": -1
+        }
+      ],
+      "dupes": []
+    },
+    {
+      "route": "Leads",
+      "href": "/partner-acquisition/leads",
+      "from": "/hq/operations",
+      "headingMs": 324,
+      "headingErr": null,
+      "path": "/partner-acquisition/leads",
+      "commitMs": 329,
+      "navTracker": {
+        "from": "/hq/operations",
+        "to": "/partner-acquisition/leads",
+        "commitMs": 40,
+        "paintMs": 60,
+        "at": 1788718018372
+      },
+      "apiCount": 4,
+      "apiMs": -1,
+      "slowestApi": [
+        {
+          "method": "GET",
+          "path": "/api/geo-intel/fraud?limit=50",
+          "status": 200,
+          "start": 1788718016159.468,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/partner-acquisition/leads?page=1&limit=50",
+          "status": 200,
+          "start": 1788718018361.599,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/rbac/admins",
+          "status": 200,
+          "start": 1788718018362.112,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/partner-acquisition/leads/cmt8jgbj402dmtz60bzzx5824",
+          "status": 200,
+          "start": 1788718018585.721,
+          "duration": -1
+        }
+      ],
+      "dupes": []
+    }
+  ],
+  "warm": [
+    {
+      "route": "Executive HQ",
+      "href": "/",
+      "from": "/partner-acquisition/leads",
+      "headingMs": 329,
+      "headingErr": null,
+      "path": "/",
+      "commitMs": 329,
+      "navTracker": {
+        "from": "/partner-acquisition/leads",
+        "to": "/",
+        "commitMs": 46,
+        "paintMs": 71,
+        "at": 1788718019120
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Settings",
+      "href": "/settings",
+      "from": "/",
+      "headingMs": 215,
+      "headingErr": null,
+      "path": "/settings",
+      "commitMs": 212,
+      "navTracker": {
+        "from": "/partner-acquisition/leads",
+        "to": "/",
+        "commitMs": 46,
+        "paintMs": 71,
+        "at": 1788718019120
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Bookings (table)",
+      "href": "/bookings",
+      "from": "/settings",
+      "headingMs": 262,
+      "headingErr": null,
+      "path": "/bookings",
+      "commitMs": 282,
+      "navTracker": {
+        "from": "/settings",
+        "to": "/bookings",
+        "commitMs": 41,
+        "paintMs": 71,
+        "at": 1788718020459
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Partners (table)",
+      "href": "/vendors",
+      "from": "/bookings",
+      "headingMs": 391,
+      "headingErr": null,
+      "path": "/vendors",
+      "commitMs": 392,
+      "navTracker": {
+        "from": "/settings",
+        "to": "/bookings",
+        "commitMs": 41,
+        "paintMs": 71,
+        "at": 1788718020459
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Command Center (live ops)",
+      "href": "/command-center",
+      "from": "/vendors",
+      "headingMs": 285,
+      "headingErr": null,
+      "path": "/command-center",
+      "commitMs": 323,
+      "navTracker": {
+        "from": "/vendors",
+        "to": "/command-center",
+        "commitMs": 40,
+        "paintMs": 52,
+        "at": 1788718021966
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Finance dashboard",
+      "href": "/finance/dashboard",
+      "from": "/command-center",
+      "headingMs": 263,
+      "headingErr": null,
+      "path": "/finance/dashboard",
+      "commitMs": 262,
+      "navTracker": {
+        "from": "/vendors",
+        "to": "/command-center",
+        "commitMs": 40,
+        "paintMs": 52,
+        "at": 1788718021966
+      },
+      "apiCount": 3,
+      "apiMs": -1,
+      "slowestApi": [
+        {
+          "method": "GET",
+          "path": "/maps-api-v3/api/js/66/3d/poly.js",
+          "status": 200,
+          "start": 1788718021999.422,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/maps-api-v3/api/js/66/3d/onion.js",
+          "status": 200,
+          "start": 1788718022056.078,
+          "duration": -1
+        },
+        {
+          "method": "POST",
+          "path": "/api/4511531256971264/envelope/?sentry_version=7&sentry_key=a9fde1dd34e76c6e80c33762d325af52&sentry_client=sentry.javascript.nextjs%2F10.58.0",
+          "status": 429,
+          "start": 1788718022683.3071,
+          "duration": -1
+        }
+      ],
+      "dupes": []
+    },
+    {
+      "route": "HQ landing (nested)",
+      "href": "/hq/operations",
+      "from": "/finance/dashboard",
+      "headingMs": 287,
+      "headingErr": null,
+      "path": "/hq/operations",
+      "commitMs": 288,
+      "navTracker": {
+        "from": "/command-center",
+        "to": "/finance/dashboard",
+        "commitMs": 39,
+        "paintMs": 58,
+        "at": 1788718022727
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Leads",
+      "href": "/partner-acquisition/leads",
+      "from": "/hq/operations",
+      "headingMs": 384,
+      "headingErr": null,
+      "path": "/partner-acquisition/leads",
+      "commitMs": 393,
+      "navTracker": {
+        "from": "/hq/operations",
+        "to": "/partner-acquisition/leads",
+        "commitMs": 118,
+        "paintMs": 187,
+        "at": 1788718024219
+      },
+      "apiCount": 1,
+      "apiMs": -1,
+      "slowestApi": [
+        {
+          "method": "GET",
+          "path": "/maps-api-v3/api/js/66/3d/controls.js",
+          "status": 200,
+          "start": 1788718023994.216,
+          "duration": -1
+        }
+      ],
+      "dupes": []
+    }
+  ],
+  "repeat": [
+    {
+      "route": "Executive HQ",
+      "href": "/",
+      "from": "/partner-acquisition/leads",
+      "headingMs": 344,
+      "headingErr": null,
+      "path": "/",
+      "commitMs": 384,
+      "navTracker": {
+        "from": "/partner-acquisition/leads",
+        "to": "/",
+        "commitMs": 95,
+        "paintMs": 135,
+        "at": 1788718024983
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Settings",
+      "href": "/settings",
+      "from": "/",
+      "headingMs": 271,
+      "headingErr": null,
+      "path": "/settings",
+      "commitMs": 270,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 34,
+        "paintMs": 46,
+        "at": 1788718025713
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Bookings (table)",
+      "href": "/bookings",
+      "from": "/settings",
+      "headingMs": 305,
+      "headingErr": null,
+      "path": "/bookings",
+      "commitMs": 319,
+      "navTracker": {
+        "from": "/settings",
+        "to": "/bookings",
+        "commitMs": 76,
+        "paintMs": 109,
+        "at": 1788718026414
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Partners (table)",
+      "href": "/vendors",
+      "from": "/bookings",
+      "headingMs": 266,
+      "headingErr": null,
+      "path": "/vendors",
+      "commitMs": 263,
+      "navTracker": {
+        "from": "/bookings",
+        "to": "/vendors",
+        "commitMs": 39,
+        "paintMs": 62,
+        "at": 1788718027117
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Command Center (live ops)",
+      "href": "/command-center",
+      "from": "/vendors",
+      "headingMs": 278,
+      "headingErr": null,
+      "path": "/command-center",
+      "commitMs": 303,
+      "navTracker": {
+        "from": "/vendors",
+        "to": "/command-center",
+        "commitMs": 71,
+        "paintMs": 88,
+        "at": 1788718027817
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Finance dashboard",
+      "href": "/finance/dashboard",
+      "from": "/command-center",
+      "headingMs": 262,
+      "headingErr": null,
+      "path": "/finance/dashboard",
+      "commitMs": 262,
+      "navTracker": {
+        "from": "/command-center",
+        "to": "/finance/dashboard",
+        "commitMs": 40,
+        "paintMs": 52,
+        "at": 1788718028482
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    }
+  ]
+}

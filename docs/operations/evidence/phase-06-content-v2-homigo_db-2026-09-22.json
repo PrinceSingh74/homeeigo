@@ -1,0 +1,588 @@
+{
+  "proposal": "2026-09-22.final.2",
+  "contentHash": "e5de61b925f25aeeed88dff838189ad534c08707d3e2928749f45b56d82749a0",
+  "target": "live",
+  "database": "homigo_db",
+  "mode": "apply",
+  "at": "2026-09-22T14:58:58.286Z",
+  "actor": "(super admin, redacted)",
+  "items": [
+    {
+      "code": "cleaning-solutions",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "bathroom-descaler",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "kitchen-degreaser",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "glass-cleaner",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "upholstery-shampoo",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "carpet-shampoo",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "laundry-detergent",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "garbage-bags",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "car-care-products",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "pest-treatment-products",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "paint-and-primer",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "masking-and-drop-sheets",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "ac-coil-cleaner",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "ac-refrigerant-gas",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "spare-parts-and-fittings",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "fan-dust-covers",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "salon-products",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "food-safe-hygiene-kit",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "household-cleaning-supplies",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "dishwashing-supplies",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "ingredients-and-menu",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "packing-material",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "pot-and-potting-mix",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "vacuum-cleaner",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "mop-and-bucket",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "step-ladder",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "upholstery-cleaning-machine",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "carpet-shampoo-machine",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "uv-sanitising-unit",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "glass-cleaning-kit",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "car-cleaning-kit",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "pest-application-equipment",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "painting-tools",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "ac-service-tools",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "electrician-toolkit",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "plumbing-toolkit",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "gardening-tools",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "salon-kit",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "household-cleaning-tools",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "running-water-access",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "power-socket-access",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "access-to-all-areas",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "loose-items-put-away",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "adult-present",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "society-permission-external-work",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "vehicle-access-and-parking",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "fridge-emptied-and-off",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "bed-linen-removed",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "furniture-away-from-walls",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "paint-shade-confirmed",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "room-ventilation",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "drying-time-allowed",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "pest-treatment-preparation",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "ac-units-accessible",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "switchboard-access",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "water-shutoff-access",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "garments-sorted",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "wardrobe-valuables-removed",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "fragile-items-identified",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "priorities-shared",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "allergies-disclosed",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "lit-space-with-chair",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "windows-reachable-from-inside",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "window-access",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "balcony-cleared",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "items-below-fans-covered",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "leftovers-put-away",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "plants-accessible",
+      "action": "SKIP_IDENTICAL"
+    },
+    {
+      "code": "safe-access-assessed-on-site",
+      "action": "UPDATE"
+    }
+  ],
+  "services": [
+    {
+      "service": "deep-cleaning",
+      "action": "SKIP_IDENTICAL",
+      "detail": "10 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "bathroom-cleaning",
+      "action": "SKIP_IDENTICAL",
+      "detail": "4 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "kitchen-cleaning",
+      "action": "SKIP_IDENTICAL",
+      "detail": "4 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "kitchen-cabinet-cleaning",
+      "action": "SKIP_IDENTICAL",
+      "detail": "4 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "fridge-cleaning",
+      "action": "SKIP_IDENTICAL",
+      "detail": "3 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "fan-cleaning",
+      "action": "SKIP_IDENTICAL",
+      "detail": "5 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "sofa-deep-cleaning",
+      "action": "SKIP_IDENTICAL",
+      "detail": "7 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "carpet-shampooing",
+      "action": "SKIP_IDENTICAL",
+      "detail": "7 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "mattress-sanitization",
+      "action": "SKIP_IDENTICAL",
+      "detail": "4 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "wardrobe-cleaning",
+      "action": "SKIP_IDENTICAL",
+      "detail": "5 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "window-cleaning",
+      "action": "SKIP_IDENTICAL",
+      "detail": "6 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "balcony-cleaning",
+      "action": "SKIP_IDENTICAL",
+      "detail": "5 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "dusting-wiping",
+      "action": "SUPERSEDE",
+      "detail": "stored content equals the superseded artifact; 3 assignments replace 3",
+      "version": [
+        3,
+        4
+      ]
+    },
+    {
+      "service": "sweeping-mopping",
+      "action": "SUPERSEDE",
+      "detail": "stored content equals the superseded artifact; 4 assignments replace 4",
+      "version": [
+        3,
+        4
+      ]
+    },
+    {
+      "service": "utensil-washing",
+      "action": "SUPERSEDE",
+      "detail": "stored content equals the superseded artifact; 2 assignments replace 2",
+      "version": [
+        3,
+        4
+      ]
+    },
+    {
+      "service": "kitchen-prep",
+      "action": "SKIP_IDENTICAL",
+      "detail": "4 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "packing-unpacking",
+      "action": "SUPERSEDE",
+      "detail": "stored content equals the superseded artifact; 4 assignments replace 4",
+      "version": [
+        3,
+        4
+      ]
+    },
+    {
+      "service": "hourly-bookings",
+      "action": "SUPERSEDE",
+      "detail": "stored content equals the superseded artifact; 3 assignments replace 3",
+      "version": [
+        3,
+        4
+      ]
+    },
+    {
+      "service": "laundry",
+      "action": "SKIP_IDENTICAL",
+      "detail": "2 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "ironing-folding",
+      "action": "SKIP_IDENTICAL",
+      "detail": "1 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "pre-party-express-clean",
+      "action": "SKIP_IDENTICAL",
+      "detail": "6 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "after-party-express-clean",
+      "action": "SKIP_IDENTICAL",
+      "detail": "5 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "car-surface-cleaning",
+      "action": "SKIP_IDENTICAL",
+      "detail": "6 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "pest-control",
+      "action": "SKIP_IDENTICAL",
+      "detail": "5 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "plant-care",
+      "action": "SUPERSEDE",
+      "detail": "stored content equals the superseded artifact; 4 assignments replace 4",
+      "version": [
+        3,
+        4
+      ]
+    },
+    {
+      "service": "fasade-cleaning",
+      "action": "SUPERSEDE",
+      "detail": "stored content equals the superseded artifact; 6 assignments replace 7",
+      "version": [
+        3,
+        4
+      ]
+    },
+    {
+      "service": "salon-at-home",
+      "action": "SKIP_IDENTICAL",
+      "detail": "4 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "home-painting",
+      "action": "SKIP_IDENTICAL",
+      "detail": "9 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "ac-service",
+      "action": "SKIP_IDENTICAL",
+      "detail": "8 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "electrician",
+      "action": "SKIP_IDENTICAL",
+      "detail": "4 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    },
+    {
+      "service": "plumbing",
+      "action": "SKIP_IDENTICAL",
+      "detail": "5 assignments already match",
+      "version": [
+        3,
+        3
+      ]
+    }
+  ],
+  "supersedes": {
+    "version": "2026-09-22.final",
+    "contentHash": "c19f8ab1ab12b5070465c7edcda4b20f9d6bc95b1b1b4d0acb0c61b305250b06"
+  },
+  "retired": [
+    {
+      "code": "access-equipment-assessed-on-site",
+      "action": "ARCHIVED"
+    }
+  ],
+  "ownerDecisions": [
+    {
+      "service": "home-painting, ac-service, electrician, plumbing",
+      "decision": "Paint, refrigerant gas and spare parts are truthfully shown as not included and confirmed on site, but the quote → customer approval → payment chain is not in the app."
+    },
+    {
+      "service": "fasade-cleaning",
+      "decision": "No work-at-height method is defined. Only society permission and an on-site safety assessment are asserted; no equipment is guaranteed."
+    }
+  ]
+}

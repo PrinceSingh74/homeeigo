@@ -1,0 +1,197 @@
+[
+    {
+        "name":  "be.section03-job-action",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "be.section03-proximity",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "be.section04-incentive",
+        "status":  "FAIL",
+        "exit":  3
+    },
+    {
+        "name":  "be.section04-withdraw",
+        "status":  "FAIL",
+        "exit":  3
+    },
+    {
+        "name":  "be.section05-trust-pure",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "be.section05-trust-int",
+        "status":  "FAIL",
+        "exit":  3
+    },
+    {
+        "name":  "be.section07-referral",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "be.section08-ai",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "be.section09-closure",
+        "status":  "FAIL",
+        "exit":  3
+    },
+    {
+        "name":  "be.section09-events",
+        "status":  "FAIL",
+        "exit":  3
+    },
+    {
+        "name":  "pw.section03-lifecycle",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "pw.section03-job",
+        "status":  "FAIL",
+        "exit":  1
+    },
+    {
+        "name":  "pw.section03-live",
+        "status":  "FAIL",
+        "exit":  1
+    },
+    {
+        "name":  "pw.section03-a11y",
+        "status":  "FAIL",
+        "exit":  1
+    },
+    {
+        "name":  "pw.section04-finance",
+        "status":  "FAIL",
+        "exit":  1
+    },
+    {
+        "name":  "pw.section04-a11y",
+        "status":  "FAIL",
+        "exit":  1
+    },
+    {
+        "name":  "pw.section05-trust",
+        "status":  "FAIL",
+        "exit":  1
+    },
+    {
+        "name":  "pw.section05-a11y",
+        "status":  "FAIL",
+        "exit":  1
+    },
+    {
+        "name":  "pw.section06",
+        "status":  "FAIL",
+        "exit":  1
+    },
+    {
+        "name":  "pw.section07",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "pw.section08",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "pw.section09",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "pw.p0-onboarding",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "pw.p0-a11y",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "pw.p2-availability",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "ad.section04",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "ad.section05",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "ad.section07",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "ad.section09",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "ad.p0-a11y",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "ad.p0-start",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "ad.p1-ia",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "ad.p1-visual",
+        "status":  "FAIL",
+        "exit":  1
+    },
+    {
+        "name":  "ad.p1-visual-remaining",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "ad.p2-availability",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "ad.p2-orphaned",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "web.section04",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "web.section05",
+        "status":  "PASS",
+        "exit":  0
+    },
+    {
+        "name":  "web.section09",
+        "status":  "PASS",
+        "exit":  0
+    }
+]

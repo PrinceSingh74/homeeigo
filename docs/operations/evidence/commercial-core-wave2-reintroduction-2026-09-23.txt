@@ -1,0 +1,138 @@
+Commercial Core Wave 2 (Phase 07/08) — defect reintroduction matrix
+Run: 2026-09-23, isolated copy D:/homigo-w2-scratch/backend, homigo_test only.
+Harness: scratchpad/proofW2.sh + w2-patches.cjs (V7b appended after V7 proved masked).
+
+== GOOD (baseline must be green, or every DEFECT result below is meaningless)
+   [GOOD A U I] pass=38 fail=0
+
+== V1
+      patched src/lib/service-availability.ts — S1: civil dates back to UTC — a 00:30 IST blackout slot escapes again
+   [DEFECT A I] pass=20 fail=6
+      (fail) civil dates are the business timezone's, not the server's or UTC's > 00:30 IST on the 25th is the 25th (UTC says the 24th) [0.47ms]
+      (fail) civil dates are the business timezone's, not the server's or UTC's > 23:59 IST stays on its own date; 00:00 IST is the next [0.19ms]
+      (fail) civil dates are the business timezone's, not the server's or UTC's > another IANA zone is honoured when passed [0.09ms]
+   => CAUGHT
+   restored src/lib/service-availability.ts (byte-identical)
+
+== V2
+      patched src/lib/service-availability.ts — S2: the hard 30-day cap overrides the service's configured advance window
+   [DEFECT A I] pass=24 fail=2
+      (fail) rules and reason codes > advance window: the CONFIGURED value is honoured beyond 30 days (the old hard cap ignored it) [0.88ms]
+      (fail) create — the refusal names the rule > a service configured for a 60-day horizon can be booked 45 days out [261.80ms]
+   => CAUGHT
+   restored src/lib/service-availability.ts (byte-identical)
+
+== V3
+      patched src/lib/partner-ops-clock.ts — S3: the working window is judged on the appointment's first minute only
+   [DEFECT U I] pass=24 fail=5
+      (fail) the whole appointment must fit the partner's window, not just its first minute > a 3-hour job starting 17:30 is refused although 17:30 is inside 09:00–18:00 [3.75ms]
+      (fail) the whole appointment must fit the partner's window, not just its first minute > the same job earlier in the day fits, and ending exactly at close is allowed [0.62ms]
+      (fail) the whole appointment must fit the partner's window, not just its first minute > an appointment longer than the window itself fits no day, however its endpoints land [0.23ms]
+   => CAUGHT
+   restored src/lib/partner-ops-clock.ts (byte-identical)
+
+== V3b
+      patched src/lib/partner-ops-clock.ts — S3 guard only: an appointment longer than the window itself is allowed through
+   [DEFECT U] pass=11 fail=1
+      (fail) the whole appointment must fit the partner's window, not just its first minute > an appointment longer than the window itself fits no day, however its endpoints land [0.41ms]
+   => CAUGHT
+   restored src/lib/partner-ops-clock.ts (byte-identical)
+
+== V4
+      patched src/services/booking.service.ts — S4: reschedule drops the schedule verdict (the pre-check runs but never refuses)
+   [DEFECT I] pass=14 fail=3
+      (fail) reschedule runs the same rules > a confirmed booking can no longer be moved into the past [438.53ms]
+      (fail) reschedule runs the same rules > a reschedule onto a blackout date is refused; a legal one still succeeds [424.77ms]
+      (fail) reschedule runs the same rules > a reschedule outside the partner's hours is refused [393.77ms]
+   => CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+
+== V5
+      patched src/services/booking.service.ts — S5: create collapses every rule back into the generic address message
+   [DEFECT I] pass=13 fail=4
+      (fail) create — the refusal names the rule > lead time: refused with SCHEDULE_NOT_ALLOWED / LEAD_TIME_NOT_MET and copy about notice [278.73ms]
+      (fail) create — the refusal names the rule > blackout is the IST calendar day: 00:30 IST on a blacked-out date is refused [175.15ms]
+      (fail) create — the refusal names the rule > a service configured for a 60-day horizon can be booked 45 days out [484.67ms]
+   => CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+
+== V6
+      patched src/services/admin-booking-operations.service.ts — S6: admin reschedule loses its status guard (a COMPLETED booking can be moved)
+   [DEFECT I] pass=16 fail=1
+      (fail) reschedule runs the same rules > an admin cannot reschedule a COMPLETED booking, and its date is untouched [397.81ms]
+   => CAUGHT
+   restored src/services/admin-booking-operations.service.ts (byte-identical)
+
+== V7
+      patched src/services/booking.service.ts — S7: customer reschedule reverts to the deny-list that omitted REJECTED
+   [DEFECT I] pass=17 fail=0
+   => NOT CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+
+== V8
+      patched src/services/booking-pricing.service.ts — S8: the quote stops checking coverage (a priced quote for an unserviceable address)
+   [DEFECT I] pass=16 fail=1
+      (fail) quote — serviceability is answered when the price is asked > a quote for an address outside the service's cities is refused, not priced [114.07ms]
+   => CAUGHT
+   restored src/services/booking-pricing.service.ts (byte-identical)
+
+== V9
+      patched src/services/admin-booking-operations.service.ts — S6b: admin reschedule writes without an audit actor
+   [DEFECT I] pass=16 fail=1
+      (fail) reschedule runs the same rules > an admin reschedule of a live booking is recorded with the admin as the actor [316.51ms]
+   => CAUGHT
+   restored src/services/admin-booking-operations.service.ts (byte-identical)
+
+== V10
+      patched src/lib/service-availability.ts — S1b: same-day compares with the server's local calendar again
+   [DEFECT A] pass=8 fail=1
+      (fail) rules and reason codes > same-day is judged on the IST calendar: 23:00 IST today is same-day, 00:30 IST tomorrow is not [0.47ms]
+   => CAUGHT
+   restored src/lib/service-availability.ts (byte-identical)
+
+== RESTORED (must match the baseline exactly)
+   identical: src/lib/service-availability.ts
+   identical: src/lib/partner-ops-clock.ts
+   identical: src/services/booking-validation.service.ts
+   identical: src/services/booking.service.ts
+   identical: src/services/admin-booking-operations.service.ts
+   identical: src/services/booking-pricing.service.ts
+   [RESTORED A U I] pass=38 fail=0
+
+== SUMMARY caught=10 missed=1
+
+--- V7b (added after V7 showed the outer layer alone is masked) ---
+== V7b
+      patched src/services/booking.service.ts — S7 both layers: pre-check AND in-transaction check revert to the deny-list
+   [DEFECT I] pass=16 fail=1
+      (fail) reschedule runs the same rules > a REJECTED booking cannot be rescheduled by the customer [505.91ms]
+   => CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+
+
+================================================================================
+BROWSER VERIFICATION — isolated stack (web :3011 -> backend :3100 -> homigo_test)
+Backend /health reported "isolatedDatabase":true before the run; the user's own
+servers (:3000 live, :3001 web) were left running and untouched, and the isolated
+web build used its own dist dir (.next-p0708, removed afterwards).
+
+{
+  "steps": {
+    "login": 200,
+    "oldSecuredClaimPresent": false,
+    "newHonestCopyPresent": true,
+    "bookingStatus": 400,
+    "bookingCode": "SCHEDULE_NOT_ALLOWED",
+    "bookingReason": "LEAD_TIME_NOT_MET",
+    "bookingError": "This service needs at least 48 hours' notice. Please choose a later slot.",
+    "mentionsSavedAddress": false,
+    "toastShowsRule": true
+  }
+}
+
+Screenshot: the schedule step renders "We'll confirm this slot when you place the
+booking." in place of the former "Great! Fastest available slot secured."
+
+Test-database changes made for this run were reverted afterwards: the two service
+catalog_config availability keys removed, data_origin restored, and the seeded
+fixtures deleted (0 rows matching the run tag remain).

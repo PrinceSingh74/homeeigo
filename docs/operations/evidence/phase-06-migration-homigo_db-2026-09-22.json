@@ -1,0 +1,71 @@
+{
+  "phase": "06",
+  "migration": "20260922100000_service_requirements",
+  "target": "localhost:5433/homigo_db",
+  "appliedAt": "2026-09-22T11:33:15.053Z",
+  "backup": {
+    "file": "homigo_2026-09-22T11-29-52-400Z.dump",
+    "sourceDatabase": "homigo_db",
+    "sha256": "07fb8fd676c59f2d4c7362f7c76c9e67901353286b5fdcf6a0fabdf725884b3f",
+    "ageHours": 0.02
+  },
+  "restoreDrill": {
+    "scratch": "homigo_dr_scratch",
+    "users": 885,
+    "bookings": 707,
+    "rtoSeconds": 33.59,
+    "result": "PASS"
+  },
+  "preflight": {
+    "pre": {
+      "checks": 12,
+      "result": "PASS"
+    },
+    "post": {
+      "checks": 33,
+      "result": "PASS"
+    }
+  },
+  "bookingSlots": {
+    "pre": {
+      "count": 113,
+      "sha256": "92257cba1424942c2bbcd5e33e00f3f44f6def80acaf3d97cb8ea2fa67f2b4a6"
+    },
+    "post": {
+      "count": 113,
+      "sha256": "92257cba1424942c2bbcd5e33e00f3f44f6def80acaf3d97cb8ea2fa67f2b4a6"
+    }
+  },
+  "bookingSnapshots": {
+    "pre": {
+      "count": 707,
+      "md5": "27f31ec3aa0b91c75b6640cc561e2e7d"
+    },
+    "post": {
+      "count": 707,
+      "md5": "27f31ec3aa0b91c75b6640cc561e2e7d"
+    }
+  },
+  "financialFingerprints": {
+    "bookings": "707/82b791e3",
+    "payments": "421/d5d7cef7",
+    "refunds": "339/c64ec836",
+    "ledger": "2303/8089ba66",
+    "snapshots": "707/460f80a4",
+    "services": "66/8d412355",
+    "identicalBeforeAfter": true
+  },
+  "schemaDrift": "OK (35 protected objects)",
+  "phase06Tables": {
+    "items": 0,
+    "assignments": 0
+  },
+  "liveRuntime": {
+    "backendRestart": false,
+    "pickedUpVia": "to_regclass recheck (60s)",
+    "tableScansAfter": 79,
+    "customerDetail": "200, preparation.empty=true, no requirements in catalogConfig"
+  },
+  "notVerifiedLive": "admin catalogue create/archive round-trip (no admin credential available to the agent; proven on homigo_test browser 6/6 + integration)",
+  "readiness": "31/31 services OWNER_INPUT_REQUIRED (materials, equipment, preconditions); invalid 0"
+}

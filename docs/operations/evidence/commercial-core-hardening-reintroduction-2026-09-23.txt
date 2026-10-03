@@ -1,0 +1,106 @@
+HOMEEIGO — Hardening pass: authority + observability reintroduction proof
+2026-09-23. Isolated copy D:/homigo-w2-scratch/backend.
+D:/homigo/apps/backend was not modified by this run; every patched file was restored
+byte-identically (cmp) and the baseline re-run after the last restore.
+
+15 defects, one at a time. Result: 15 CAUGHT, 0 missed.
+
+  O6 — the late-reschedule fee
+    H1   the fee stops being capped at what was captured            CAUGHT
+    H1b  25% becomes a literal in the maths instead of the policy   CAUGHT
+    H1c  a negative subtotal is no longer clamped                   CAUGHT
+    H2   a FROZEN policy is ignored — history gets re-priced        CAUGHT
+    H2b  a malformed snapshot is trusted instead of refused         CAUGHT
+    H2c  booking create stops freezing the policy                   CAUGHT
+    H3   the tier is taken from the CLIENT's requested slot         CAUGHT
+    H3b  the fee base switches to a caller-visible amount           CAUGHT
+
+  O8 — parts pricing authority
+    H4   an add-on with no approved price is priced at zero         CAUGHT
+
+  O4 — eligibility
+    H5   the readiness gate stops being called from the booking     CAUGHT
+    H5b  the quote path grows its OWN coverage rule                 CAUGHT
+
+  Observability controls
+    H6   the ML gauge is dropped along with the log                 CAUGHT
+    H6b  an unserviceable platform is downgraded to serviceable     CAUGHT
+    H7   matching stops gating on presence                          CAUGHT
+    H8   the presence sweep writes a heartbeat to quieten itself    CAUGHT
+
+------------------------------------------------------------------------------
+FULL LOG
+
+== GOOD (baseline must be green, or every DEFECT result below is meaningless)
+   [GOOD PA O4 RW] pass=66 fail=0
+== H1
+   [DEFECT PA] pass=36 fail=2
+   => CAUGHT
+   restored src/lib/reschedule-policy.ts (byte-identical)
+== H1b
+   [DEFECT PA] pass=33 fail=5
+   => CAUGHT
+   restored src/lib/reschedule-policy.ts (byte-identical)
+== H1c
+   [DEFECT PA] pass=37 fail=1
+   => CAUGHT
+   restored src/lib/reschedule-policy.ts (byte-identical)
+== H2
+   [DEFECT PA] pass=37 fail=1
+   => CAUGHT
+   restored src/lib/reschedule-policy.ts (byte-identical)
+== H2b
+   [DEFECT PA] pass=37 fail=1
+   => CAUGHT
+   restored src/lib/reschedule-policy.ts (byte-identical)
+== H2c
+   [DEFECT PA] pass=37 fail=1
+   => CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+== H3
+   [DEFECT PA] pass=37 fail=1
+   => CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+== H3b
+   [DEFECT PA] pass=37 fail=1
+   => CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+== H4
+   [DEFECT PA] pass=35 fail=3
+   => CAUGHT
+   restored src/lib/service-catalog-config.ts (byte-identical)
+== H5
+   [DEFECT O4] pass=20 fail=1
+   => CAUGHT
+   restored src/services/booking-validation.service.ts (byte-identical)
+== H5b
+   [DEFECT O4] pass=20 fail=1
+   => CAUGHT
+   restored src/services/booking-pricing.service.ts (byte-identical)
+== H6
+   [DEFECT RW] pass=6 fail=1
+   => CAUGHT
+   restored src/services/ml-platform-health.service.ts (byte-identical)
+== H6b
+   [DEFECT RW] pass=6 fail=1
+   => CAUGHT
+   restored src/services/ml-platform-health.service.ts (byte-identical)
+== H7
+   [DEFECT RW] pass=6 fail=1
+   => CAUGHT
+   restored src/services/matching.service.ts (byte-identical)
+== H8
+   [DEFECT RW] pass=6 fail=1
+   => CAUGHT
+   restored src/services/partner-presence-monitor.service.ts (byte-identical)
+== RESTORED (must match the baseline exactly)
+   identical: src/lib/reschedule-policy.ts
+   identical: src/services/booking.service.ts
+   identical: src/lib/service-catalog-config.ts
+   identical: src/services/ml-platform-health.service.ts
+   identical: src/services/matching.service.ts
+   identical: src/services/booking-validation.service.ts
+   identical: src/services/partner-presence-monitor.service.ts
+   identical: src/services/booking-pricing.service.ts
+   [RESTORED PA O4 RW] pass=66 fail=0
+== SUMMARY caught=15 missed=0

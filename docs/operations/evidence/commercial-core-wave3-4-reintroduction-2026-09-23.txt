@@ -1,0 +1,188 @@
+HOMEEIGO — Commercial Core Wave 3 + Wave 4 defect reintroduction proof
+Run: 2026-09-23. Isolated copy D:/homigo-w2-scratch/backend against homigo_test.
+D:/homigo/apps/backend was never modified by this run; every patched file was restored
+byte-identically (cmp) and the baseline re-run after the last restore.
+
+36 defects reintroduced one at a time. 35 caught, 1 not caught (T6, explained below).
+
+== GOOD (baseline must be green, or every DEFECT result below is meaningless)
+   [GOOD U S I E R X V G N NI L] pass=116 fail=0
+== P1
+   [DEFECT I] pass=6 fail=7
+   => CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+== P1b
+   [DEFECT I] pass=9 fail=4
+   => CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+== P1c
+   [DEFECT I] pass=12 fail=1
+   => CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+== P1d
+   [DEFECT I] pass=12 fail=1
+   => CAUGHT
+   restored src/services/booking-idempotency.service.ts (byte-identical)
+== P1e
+   [DEFECT I] pass=7 fail=6
+   => CAUGHT
+   restored src/services/booking-idempotency.service.ts (byte-identical)
+== P2
+   [DEFECT U S] pass=14 fail=6
+   => CAUGHT
+   restored src/services/cancellation-policy.service.ts (byte-identical)
+== P2b
+   [DEFECT S] pass=5 fail=1
+   => CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+== P2c
+   [DEFECT U] pass=12 fail=2
+   => CAUGHT
+   restored src/services/cancellation-policy.service.ts (byte-identical)
+== P3
+   [DEFECT U] pass=12 fail=2
+   => CAUGHT
+   restored src/services/cancellation-policy.service.ts (byte-identical)
+== P3b
+   [DEFECT U] pass=13 fail=1
+   => CAUGHT
+   restored src/services/cancellation-policy.service.ts (byte-identical)
+== P4
+   [DEFECT E] pass=4 fail=1
+   => CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+== P4b
+   [DEFECT E] pass=4 fail=1
+   => CAUGHT
+   restored src/services/admin-booking-operations.service.ts (byte-identical)
+== P5
+   [DEFECT R] pass=6 fail=1
+   => CAUGHT
+   restored src/services/payment.service.ts (byte-identical)
+== P5b
+   [DEFECT R] pass=6 fail=1
+   => CAUGHT
+   restored src/services/payment.service.ts (byte-identical)
+== P5c
+   [DEFECT R] pass=6 fail=1
+   => CAUGHT
+   restored src/services/payment.service.ts (byte-identical)
+== P6
+   [DEFECT S] pass=5 fail=1
+   => CAUGHT
+   restored src/services/booking.service.ts (byte-identical)
+== T1
+   [DEFECT X] pass=10 fail=1
+   => CAUGHT
+   restored src/services/booking-payment-expiry.service.ts (byte-identical)
+== T1b
+   [DEFECT X] pass=10 fail=1
+   => CAUGHT
+   restored src/services/booking-payment-expiry.service.ts (byte-identical)
+== T2
+   [DEFECT X] pass=10 fail=1
+   => CAUGHT
+   restored src/services/booking-payment-expiry.service.ts (byte-identical)
+== T3
+   [DEFECT X] pass=10 fail=1
+   => CAUGHT
+   restored src/services/booking-payment-expiry.service.ts (byte-identical)
+== T4
+   [DEFECT X] pass=10 fail=1
+   => CAUGHT
+   restored src/services/booking-payment-expiry.service.ts (byte-identical)
+== T5
+   [DEFECT X] pass=9 fail=2
+   => CAUGHT
+   restored src/services/payment.service.ts (byte-identical)
+== T6
+   [DEFECT X] pass=11 fail=0
+   => NOT CAUGHT
+   restored src/services/booking-payment-expiry.service.ts (byte-identical)
+== T6b
+   [DEFECT X] pass=10 fail=1
+   => CAUGHT
+   restored src/services/booking-payment-expiry.service.ts (byte-identical)
+== A1
+   [DEFECT V] pass=9 fail=2
+   => CAUGHT
+   restored src/services/service-availability.service.ts (byte-identical)
+== A2
+   [DEFECT V] pass=10 fail=1
+   => CAUGHT
+   restored src/services/service-availability.service.ts (byte-identical)
+== A3
+   [DEFECT V] pass=9 fail=2
+   => CAUGHT
+   restored src/services/service-availability.service.ts (byte-identical)
+== G1
+   [DEFECT G] pass=10 fail=4
+   => CAUGHT
+   restored src/lib/slot-grid.ts (byte-identical)
+== G2
+   [DEFECT G] pass=7 fail=7
+   => CAUGHT
+   restored src/lib/slot-grid.ts (byte-identical)
+== N1
+   [DEFECT N NI] pass=24 fail=2
+   => CAUGHT
+   restored src/lib/no-show-policy.ts (byte-identical)
+== N2
+   [DEFECT N NI] pass=24 fail=2
+   => CAUGHT
+   restored src/lib/no-show-policy.ts (byte-identical)
+== N3
+   [DEFECT N] pass=10 fail=4
+   => CAUGHT
+   restored src/lib/no-show-policy.ts (byte-identical)
+== N4
+   [DEFECT N NI] pass=22 fail=4
+   => CAUGHT
+   restored src/lib/no-show-policy.ts (byte-identical)
+== N5
+   [DEFECT NI] pass=10 fail=2
+   => CAUGHT
+   restored src/services/booking-no-show.service.ts (byte-identical)
+== N6
+   [DEFECT NI] pass=11 fail=1
+   => CAUGHT
+   restored src/services/booking-no-show.service.ts (byte-identical)
+== N7
+   [DEFECT NI] pass=10 fail=2
+   => CAUGHT
+   restored src/services/booking-no-show.service.ts (byte-identical)
+== RESTORED (must match the baseline exactly)
+   identical: src/lib/service-availability.ts
+   identical: src/lib/partner-ops-clock.ts
+   identical: src/services/booking-validation.service.ts
+   identical: src/services/booking.service.ts
+   identical: src/services/admin-booking-operations.service.ts
+   identical: src/services/booking-pricing.service.ts
+   identical: src/lib/no-show-policy.ts
+   identical: src/services/booking-no-show.service.ts
+   identical: src/services/booking-payment-expiry.service.ts
+   [RESTORED U S I E R X V G N NI L] pass=116 fail=0
+== SUMMARY caught=35 missed=1
+
+------------------------------------------------------------------------------
+NOT CAUGHT — T6, and why it is reported rather than hidden
+
+T6 widens the TTL sweep's candidate query to include past-dated bookings, but leaves the
+in-transaction date guard in place. The guard refuses them, so no test fails. T6b removes BOTH
+layers and is caught. The defence in depth is real; the outer layer alone is not independently
+covered, which is stated here rather than presented as a clean sweep.
+
+------------------------------------------------------------------------------
+NO-SHOW (N1-N7) — what each defect was, and what failed
+
+  N1  customer no-show no longer needs arrival evidence      2 suites failed
+  N2  the 15-minute grace is ignored                         2 suites failed
+  N3  the fee stops being capped at what was captured        4 tests failed
+  N4  a provider no-show starts charging the customer        4 tests failed
+  N5  a customer can declare their own no-show               2 tests failed
+  N6  a partner can report their own absence away            1 test failed
+  N7  settlement reads the payments row instead of the
+      cross-tender refund authority (the wallet-paid bug)    2 tests failed
+
+All seven caught. Every patched file restored byte-identically afterwards, and the 11-suite
+baseline re-ran at 116 pass / 0 fail after the last restore.

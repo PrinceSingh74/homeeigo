@@ -1,6 +1,6 @@
 # Real Traffic Certification
 
-**Generated:** 2026-07-03T10:36:40.616Z  
+**Generated:** 2026-09-21T07:18:30.873Z  
 **Method:** Ecosystem enterprise certification (live DB + HTTP, no mocks)
 
 ## Customer Journey Trace
@@ -16,7 +16,7 @@
 | Completion | POST complete | booking.service | Booking COMPLETED | in-app | WS | **PASS** |
 | Review | POST /api/ratings | rating.service | Rating | — | — | Not in eco cert run |
 
-## Ecosystem Certification (runtime 2026-07-03)
+## Ecosystem Certification (runtime 2026-09-21)
 
 ```
 17/17 steps PASS

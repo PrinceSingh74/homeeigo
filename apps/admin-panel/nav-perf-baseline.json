@@ -1,0 +1,720 @@
+{
+  "at": "2026-09-05T10:17:07.096Z",
+  "base": "http://127.0.0.1:3003",
+  "cold": [
+    {
+      "route": "Executive HQ",
+      "href": "/",
+      "from": "/",
+      "headingMs": 1660,
+      "headingErr": null,
+      "path": "/",
+      "commitMs": 1772,
+      "navTracker": null,
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Settings",
+      "href": "/settings",
+      "from": "/",
+      "headingMs": 31334,
+      "headingErr": null,
+      "path": "/settings",
+      "commitMs": 31289,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 29990,
+        "paintMs": 30107,
+        "at": 1788603460598
+      },
+      "apiCount": 5,
+      "apiMs": -1,
+      "slowestApi": [
+        {
+          "method": "GET",
+          "path": "/api/admin/dashboard",
+          "status": 200,
+          "start": 1788603420922.207,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/finance/reports?period=monthly",
+          "status": 200,
+          "start": 1788603423929.1538,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/finance/analytics/unit-economics?days=30",
+          "status": 200,
+          "start": 1788603423935.625,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/bookings?page=1&limit=6",
+          "status": 200,
+          "start": 1788603420956.418,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/coverage/intelligence",
+          "status": 200,
+          "start": 1788603424181.358,
+          "duration": -1
+        }
+      ],
+      "dupes": []
+    },
+    {
+      "route": "Bookings (table)",
+      "href": "/bookings",
+      "from": "/settings",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Bookings/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53348,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 29990,
+        "paintMs": 30107,
+        "at": 1788603460598
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Partners (table)",
+      "href": "/vendors",
+      "from": "/bookings",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Partner Network/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53595,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 29990,
+        "paintMs": 30107,
+        "at": 1788603460598
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Customers (table)",
+      "href": "/customers",
+      "from": "/vendors",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Customer Ledger/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53761,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 29990,
+        "paintMs": 30107,
+        "at": 1788603460598
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Command Center (live ops)",
+      "href": "/command-center",
+      "from": "/customers",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Command Center/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 54086,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 29990,
+        "paintMs": 30107,
+        "at": 1788603460598
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Finance dashboard",
+      "href": "/finance/dashboard",
+      "from": "/command-center",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /CFO Dashboard/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 54857,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 29990,
+        "paintMs": 30107,
+        "at": 1788603460598
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "HQ landing (nested)",
+      "href": "/hq/operations",
+      "from": "/finance/dashboard",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Operations HQ/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 57046,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 29990,
+        "paintMs": 30107,
+        "at": 1788603460598
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Leads",
+      "href": "/partner-acquisition/leads",
+      "from": "/hq/operations",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Lead CRM/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 61535,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 29990,
+        "paintMs": 30107,
+        "at": 1788603460598
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Analytics",
+      "href": "/analytics",
+      "from": "/partner-acquisition/leads",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Analytics/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 54180,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 29990,
+        "paintMs": 30107,
+        "at": 1788603460598
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Earnings (finance hub)",
+      "href": "/earnings",
+      "from": "/analytics",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Earnings/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 54170,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 29990,
+        "paintMs": 30107,
+        "at": 1788603460598
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Incentives",
+      "href": "/incentives",
+      "from": "/earnings",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Incentive/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 54144,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 29990,
+        "paintMs": 30107,
+        "at": 1788603460598
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    }
+  ],
+  "warm": [
+    {
+      "route": "Executive HQ",
+      "href": "/",
+      "from": "/incentives",
+      "headingMs": 17524,
+      "headingErr": null,
+      "path": "/",
+      "commitMs": 17576,
+      "navTracker": {
+        "from": "/settings",
+        "to": "/",
+        "commitMs": 15706,
+        "paintMs": 15841,
+        "at": 1788604037747
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Settings",
+      "href": "/settings",
+      "from": "/",
+      "headingMs": 4986,
+      "headingErr": null,
+      "path": "/settings",
+      "commitMs": 4969,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4402,
+        "paintMs": 4459,
+        "at": 1788604043803
+      },
+      "apiCount": 5,
+      "apiMs": -1,
+      "slowestApi": [
+        {
+          "method": "GET",
+          "path": "/api/admin/finance/dashboard?days=30",
+          "status": 200,
+          "start": 1788604037632.7588,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/bookings?page=1&limit=6",
+          "status": 200,
+          "start": 1788604037660.5308,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/finance/reports?period=monthly",
+          "status": 200,
+          "start": 1788604038262.5889,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/finance/analytics/unit-economics?days=30",
+          "status": 200,
+          "start": 1788604038282.513,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/coverage/intelligence",
+          "status": 200,
+          "start": 1788604038338.1191,
+          "duration": -1
+        }
+      ],
+      "dupes": []
+    },
+    {
+      "route": "Bookings (table)",
+      "href": "/bookings",
+      "from": "/settings",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Bookings/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53327,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4402,
+        "paintMs": 4459,
+        "at": 1788604043803
+      },
+      "apiCount": 1,
+      "apiMs": -1,
+      "slowestApi": [
+        {
+          "method": "GET",
+          "path": "/api/admin/dashboard",
+          "status": 200,
+          "start": 1788604037626.229,
+          "duration": -1
+        }
+      ],
+      "dupes": []
+    },
+    {
+      "route": "Partners (table)",
+      "href": "/vendors",
+      "from": "/bookings",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Partner Network/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53356,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4402,
+        "paintMs": 4459,
+        "at": 1788604043803
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Customers (table)",
+      "href": "/customers",
+      "from": "/vendors",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Customer Ledger/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53448,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4402,
+        "paintMs": 4459,
+        "at": 1788604043803
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Command Center (live ops)",
+      "href": "/command-center",
+      "from": "/customers",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Command Center/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53398,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4402,
+        "paintMs": 4459,
+        "at": 1788604043803
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Finance dashboard",
+      "href": "/finance/dashboard",
+      "from": "/command-center",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /CFO Dashboard/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53520,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4402,
+        "paintMs": 4459,
+        "at": 1788604043803
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "HQ landing (nested)",
+      "href": "/hq/operations",
+      "from": "/finance/dashboard",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Operations HQ/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 54067,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4402,
+        "paintMs": 4459,
+        "at": 1788604043803
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Leads",
+      "href": "/partner-acquisition/leads",
+      "from": "/hq/operations",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Lead CRM/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53533,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4402,
+        "paintMs": 4459,
+        "at": 1788604043803
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Analytics",
+      "href": "/analytics",
+      "from": "/partner-acquisition/leads",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Analytics/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53548,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4402,
+        "paintMs": 4459,
+        "at": 1788604043803
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Earnings (finance hub)",
+      "href": "/earnings",
+      "from": "/analytics",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Earnings/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53204,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4402,
+        "paintMs": 4459,
+        "at": 1788604043803
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Incentives",
+      "href": "/incentives",
+      "from": "/earnings",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Incentive/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53535,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4402,
+        "paintMs": 4459,
+        "at": 1788604043803
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    }
+  ],
+  "repeat": [
+    {
+      "route": "Executive HQ",
+      "href": "/",
+      "from": "/incentives",
+      "headingMs": 3903,
+      "headingErr": null,
+      "path": "/",
+      "commitMs": 3910,
+      "navTracker": {
+        "from": "/settings",
+        "to": "/",
+        "commitMs": 3284,
+        "paintMs": 3451,
+        "at": 1788604588328
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Settings",
+      "href": "/settings",
+      "from": "/",
+      "headingMs": 5012,
+      "headingErr": null,
+      "path": "/settings",
+      "commitMs": 4998,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4598,
+        "paintMs": 4636,
+        "at": 1788604593970
+      },
+      "apiCount": 6,
+      "apiMs": -1,
+      "slowestApi": [
+        {
+          "method": "GET",
+          "path": "/api/admin/finance/dashboard?days=30",
+          "status": 200,
+          "start": 1788604588181.7988,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/bookings?page=1&limit=6",
+          "status": 200,
+          "start": 1788604588194.183,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/finance/analytics/unit-economics?days=30",
+          "status": 200,
+          "start": 1788604588632.0022,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/admin/finance/reports?period=monthly",
+          "status": 200,
+          "start": 1788604588626.2952,
+          "duration": -1
+        },
+        {
+          "method": "GET",
+          "path": "/api/coverage/intelligence",
+          "status": 200,
+          "start": 1788604588636.6628,
+          "duration": -1
+        }
+      ],
+      "dupes": []
+    },
+    {
+      "route": "Bookings (table)",
+      "href": "/bookings",
+      "from": "/settings",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Bookings/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53145,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4598,
+        "paintMs": 4636,
+        "at": 1788604593970
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Partners (table)",
+      "href": "/vendors",
+      "from": "/bookings",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Partner Network/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53080,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4598,
+        "paintMs": 4636,
+        "at": 1788604593970
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Command Center (live ops)",
+      "href": "/command-center",
+      "from": "/vendors",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /Command Center/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53204,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4598,
+        "paintMs": 4636,
+        "at": 1788604593970
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    },
+    {
+      "route": "Finance dashboard",
+      "href": "/finance/dashboard",
+      "from": "/command-center",
+      "headingMs": null,
+      "headingErr": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /CFO Dashboard/i }).first() to be visible\n",
+      "path": "/settings",
+      "commitMs": 53105,
+      "navTracker": {
+        "from": "/",
+        "to": "/settings",
+        "commitMs": 4598,
+        "paintMs": 4636,
+        "at": 1788604593970
+      },
+      "apiCount": 0,
+      "apiMs": 0,
+      "slowestApi": [],
+      "dupes": []
+    }
+  ]
+}

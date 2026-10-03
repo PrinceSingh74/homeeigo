@@ -1,0 +1,59 @@
+== GOOD
+   [GOOD C U I] pass=68 fail=0
+
+== S1
+      patched scripts/data/phase-06-requirement-content-final.ts — safety hold bypass: facade status forced to READY
+   [DEFECT C] pass=32 fail=2
+      (fail) final content passes the engine > 31/31 live services covered, 0 errors, 0 warnings, one blocking confirmation [48.43ms]
+      (fail) final content passes the engine > holds are explicit: every SEPARATE_QUOTE item lives on a COMMERCIAL_HOLD service; SAFETY_HOLD content only on a SAFETY_HOLD service [6.54ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== S2
+      patched scripts/data/phase-06-requirement-content-final.ts — unsupported equipment claim: access equipment brought and included on facade
+   [DEFECT C] pass=32 fail=2
+      (fail) final content passes the engine > 31/31 live services covered, 0 errors, 0 warnings, one blocking confirmation [34.71ms]
+      (fail) safety holds are structural, not labels (S1–S4) > the live facade customer view promises no equipment at all [4.26ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== S3
+      patched scripts/data/phase-06-requirement-content-final.ts — unsafe method claim in partner copy
+   [DEFECT C] pass=33 fail=1
+      (fail) final content passes the engine > 31/31 live services covered, 0 errors, 0 warnings, one blocking confirmation [45.80ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== S4
+      patched scripts/data/phase-06-requirement-content-final.ts — customer safety copy stops stating the assessment
+   [DEFECT C] pass=32 fail=2
+      (fail) final content passes the engine > 31/31 live services covered, 0 errors, 0 warnings, one blocking confirmation [25.60ms]
+      (fail) safety holds are structural, not labels (S1–S4) > the live facade customer view promises no equipment at all [1.76ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== A1
+      patched scripts/data/phase-06-requirement-content-final.ts — A1 provenance overwritten (home-help supplies relabelled EXISTING_AUTHORITATIVE)
+   [DEFECT C] pass=32 fail=2
+      (fail) final content passes the engine > 31/31 live services covered, 0 errors, 0 warnings, one blocking confirmation [33.91ms]
+      (fail) A1–A3 provenance (promoted under the owner's Phase 06 authorization) > exactly the 8 assumption lines are OWNER_APPROVED with the promotion reason in meta and in the audit note; ids kept [1.17ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== A2
+      patched scripts/data/phase-06-requirement-content-final.ts — A2 provenance overwritten (repotting line loses its promotion trace)
+   [DEFECT C] pass=32 fail=2
+      (fail) final content passes the engine > 31/31 live services covered, 0 errors, 0 warnings, one blocking confirmation [35.03ms]
+      (fail) A1–A3 provenance (promoted under the owner's Phase 06 authorization) > exactly the 8 assumption lines are OWNER_APPROVED with the promotion reason in meta and in the audit note; ids kept [0.77ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== A3
+      patched scripts/lib/requirement-content-validator.ts — A3 provenance overwritten + engine rule removed (engine layer)
+   [DEFECT C] pass=33 fail=1
+      (fail) A1–A3 provenance (promoted under the owner's Phase 06 authorization) > A1/A2/A3 provenance overwrite: an assumption line relabelled as another provenance is refused [11.25ms]
+   => CAUGHT
+   restored scripts/lib/requirement-content-validator.ts (byte-identical)
+
+== RESTORED
+   [RESTORED C U I] pass=68 fail=0

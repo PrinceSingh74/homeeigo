@@ -1,0 +1,121 @@
+== GOOD
+   [GOOD C U I] pass=58 fail=0
+
+== R1
+      patched scripts/data/phase-06-requirement-content-final.ts — responsibility inversion (vacuum becomes customer-provided)
+   [DEFECT C] pass=21 fail=3
+      (fail) final content passes the engine > 31/31 live services covered, 0 errors, 0 warnings, one blocking confirmation [53.37ms]
+      (fail) every rule fires on a bad input > R2 chargeability inversion: customer-provided item marked INCLUDED is refused by the schema; professional item with no charge semantics is refused by the engine [35.19ms]
+      (fail) every rule fires on a bad input > R5 copy/data mismatch in both directions and money in a separately quoted line [32.49ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== R2
+      patched scripts/data/phase-06-requirement-content-final.ts — chargeability inversion (refrigerant gas becomes INCLUDED)
+   [DEFECT C] pass=23 fail=1
+      (fail) every rule fires on a bad input > R5 copy/data mismatch in both directions and money in a separately quoted line [56.00ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== R3
+      patched scripts/data/phase-06-requirement-content-final.ts — hidden customer requirement (shut-off obligation only in partner text)
+   [DEFECT C] pass=23 fail=1
+      (fail) final content passes the engine > 31/31 live services covered, 0 errors, 0 warnings, one blocking confirmation [53.12ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== R4
+      patched src/lib/service-requirements.ts — partner brief drops equipment
+   [DEFECT C U] pass=42 fail=2
+      (fail) projections of the final content (the same functions the booking uses) > R4: every item the professional brings is in the partner brief; every customer item reaches the partner as 'customer provides' or a precondition [2.69ms]
+      (fail) projections > snapshot: immutable record without internal notes; partner brief comes from it [1.01ms]
+   => CAUGHT
+   restored src/lib/service-requirements.ts (byte-identical)
+
+== R5
+      patched scripts/data/phase-06-requirement-content-final.ts — copy/data mismatch (customer tools described as 'we bring')
+   [DEFECT C] pass=23 fail=1
+      (fail) final content passes the engine > 31/31 live services covered, 0 errors, 0 warnings, one blocking confirmation [47.62ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== R6
+      patched src/lib/service-requirements.ts — conditional add-on requirement never resolves
+   [DEFECT U] pass=16 fail=4
+      (fail) resolveServiceRequirements > conditional add-on requirement appears only with the add-on, tagged with its source and charge add-on [0.66ms]
+      (fail) resolveServiceRequirements > two add-ons needing the same item → one requirement (deduplicated by item); differing ones → conflict [7.08ms]
+      (fail) projections > customer view: grouped, labelled, translated — never partner instructions, internal notes or enums [17.14ms]
+   => CAUGHT
+   restored src/lib/service-requirements.ts (byte-identical)
+
+== R7
+      patched scripts/data/phase-06-requirement-content-final.ts — duplicate requirement allowed (same item twice)
+   [DEFECT C] pass=23 fail=1
+      (fail) final content passes the engine > 31/31 live services covered, 0 errors, 0 warnings, one blocking confirmation [44.94ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== R8
+      patched scripts/data/phase-06-requirement-content-final.ts — conflicting assignment allowed (same item, customer vs professional)
+   [DEFECT C] pass=20 fail=4
+      (fail) final content passes the engine > 31/31 live services covered, 0 errors, 0 warnings, one blocking confirmation [54.73ms]
+      (fail) projections of the final content (the same functions the booking uses) > R4: every item the professional brings is in the partner brief; every customer item reaches the partner as 'customer provides' or a precondition [0.86ms]
+      (fail) projections of the final content (the same functions the booking uses) > customer view and partner brief carry no provenance, enum or partner-only text; the snapshot drops internal notes [0.92ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== R9
+      patched src/services/catalog.service.ts — historical snapshot mutated on version update
+   [DEFECT I] pass=13 fail=1
+      (fail) Phase 06 — requirements end to end > versioning: changing the requirements bumps the service version; the booking keeps its snapshot [330.19ms]
+   => CAUGHT
+   restored src/services/catalog.service.ts (byte-identical)
+
+== R10
+      patched src/lib/service-requirements.ts — inactive requirement exposed (resolver ignores active)
+   [DEFECT U I] pass=33 fail=1
+      (fail) Phase 06 — requirements end to end > an inactive assignment and an archived item are never exposed; archiving an item in active use is refused [363.93ms]
+   => CAUGHT
+   restored src/lib/service-requirements.ts (byte-identical)
+
+== R11
+      patched scripts/data/phase-06-requirement-content-final.ts — unsafe requirement hidden (switchboard isolation downgraded to advice)
+   [DEFECT C] pass=23 fail=1
+      (fail) final content passes the engine > 31/31 live services covered, 0 errors, 0 warnings, one blocking confirmation [28.68ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== R12
+      patched scripts/data/phase-06-requirement-content-final.ts — chargeable without a commercial path (gas CHARGEABLE via a non-existent add-on)
+   [DEFECT C] pass=18 fail=6
+      (fail) final content passes the engine > 31/31 live services covered, 0 errors, 0 warnings, one blocking confirmation [33.11ms]
+      (fail) final content passes the engine > nothing asserts a quantity, a chargeable price path or a condition on option-less services [0.75ms]
+      (fail) projections of the final content (the same functions the booking uses) > R4: every item the professional brings is in the partner brief; every customer item reaches the partner as 'customer provides' or a precondition [6.27ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== R13
+      patched scripts/lib/requirement-content-apply-plan.ts — owner-edited assignment overwritten (refusal branch removed)
+   [DEFECT C] pass=23 fail=1
+      (fail) apply planning (R13 owner edits, R14 version discipline) > a service the owner edited is refused unless overwrite is explicit [2.00ms]
+   => CAUGHT
+   restored scripts/lib/requirement-content-apply-plan.ts (byte-identical)
+
+== R14
+      patched src/services/catalog.service.ts — version not bumped on a requirement change
+   [DEFECT I] pass=12 fail=2
+      (fail) Phase 06 — requirements end to end > a consistent configuration saves: rows synced in the same version, unrelated config preserved, audited [138.45ms]
+      (fail) Phase 06 — requirements end to end > versioning: changing the requirements bumps the service version; the booking keeps its snapshot [139.35ms]
+   => CAUGHT
+   restored src/services/catalog.service.ts (byte-identical)
+
+== R15
+      patched scripts/data/phase-06-requirement-content-final.ts — internal/provenance token leaks into partner copy
+   [DEFECT C] pass=22 fail=2
+      (fail) final content passes the engine > 31/31 live services covered, 0 errors, 0 warnings, one blocking confirmation [40.64ms]
+      (fail) projections of the final content (the same functions the booking uses) > customer view and partner brief carry no provenance, enum or partner-only text; the snapshot drops internal notes [0.58ms]
+   => CAUGHT
+   restored scripts/data/phase-06-requirement-content-final.ts (byte-identical)
+
+== RESTORED
+   [RESTORED C U I] pass=58 fail=0

@@ -1,17 +1,18 @@
 {
-  "generatedAt": "2026-07-03T10:36:40.616Z",
+  "generatedAt": "2026-09-21T07:18:30.873Z",
   "health": {
     "ok": true,
     "status": 200,
     "body": {
       "status": "ok",
       "message": "HOMIGO Backend is running!",
-      "timestamp": "2026-07-03T10:36:40.712Z",
-      "environment": "development",
+      "timestamp": "2026-09-21T07:18:31.006Z",
+      "environment": "dev",
       "services": {
         "database": "ok",
         "redis": "ok"
-      }
+      },
+      "isolatedDatabase": false
     }
   },
   "ready": {
@@ -19,8 +20,8 @@
     "status": 200,
     "body": {
       "status": "ready",
-      "timestamp": "2026-07-03T10:36:40.686Z",
-      "environment": "development",
+      "timestamp": "2026-09-21T07:18:30.946Z",
+      "environment": "dev",
       "checks": {
         "database": {
           "status": "healthy",
@@ -28,13 +29,13 @@
         },
         "redis": {
           "status": "healthy",
-          "latencyMs": 4,
+          "latencyMs": 3,
           "topology": "standalone"
         },
         "memory": {
           "status": "healthy",
-          "rssMb": 260,
-          "heapUsedMb": 55
+          "rssMb": 160,
+          "heapUsedMb": 54
         },
         "integrations": {
           "razorpay": {
@@ -54,14 +55,23 @@
             "accessExpiry": "1h",
             "refreshExpiry": "30d"
           }
+        },
+        "boot": {
+          "status": "healthy",
+          "degradations": []
+        },
+        "events": {
+          "outboxEnabled": true,
+          "consumersEnabled": true,
+          "status": "consistent"
         }
       }
     }
   },
   "emailConfigured": false,
-  "integrityScore": 100,
+  "integrityScore": 92,
   "emailHealth": {
-    "timestamp": "2026-07-03T10:36:41.101Z",
+    "timestamp": "2026-09-21T07:18:31.728Z",
     "configured": false,
     "provider": "console",
     "circuitBreaker": {
@@ -72,8 +82,8 @@
       "queue": "async in-process (non-blocking)",
       "retryPolicy": "3 attempts, exponential backoff",
       "bounceHandling": true,
-      "total": 63,
-      "sent": 3,
+      "total": 1204,
+      "sent": 880,
       "failed": 0,
       "queued": 0,
       "bounced": 0,
@@ -94,10 +104,7 @@
         "fraud_alert"
       ],
       "partial": [
-        "invoice",
-        "membership_purchase",
-        "referral_reward",
-        "gift_card"
+        "otp"
       ],
       "smsOnly": [
         "otp"
@@ -105,27 +112,42 @@
     },
     "byType": [
       {
+        "type": "registration_otp",
+        "status": "logged",
+        "count": 283
+      },
+      {
         "type": "approval",
         "status": "logged",
         "count": 38
       },
       {
-        "type": "booking_confirmation",
+        "type": "email_verification",
         "status": "sent",
         "count": 1
       },
       {
-        "type": "registration_otp",
-        "status": "logged",
-        "count": 19
+        "type": "payment_receipt",
+        "status": "sent",
+        "count": 15
       },
       {
         "type": "booking_completed",
         "status": "sent",
-        "count": 1
+        "count": 116
+      },
+      {
+        "type": "welcome",
+        "status": "sent",
+        "count": 33
       },
       {
         "type": "booking_assigned",
+        "status": "sent",
+        "count": 262
+      },
+      {
+        "type": "partner_rejection",
         "status": "sent",
         "count": 1
       },
@@ -133,148 +155,173 @@
         "type": "new_partner_registration",
         "status": "logged",
         "count": 3
+      },
+      {
+        "type": "password_reset",
+        "status": "sent",
+        "count": 6
+      },
+      {
+        "type": "partner_approval",
+        "status": "sent",
+        "count": 6
+      },
+      {
+        "type": "invoice",
+        "status": "sent",
+        "count": 15
+      },
+      {
+        "type": "admin_alert",
+        "status": "sent",
+        "count": 90
+      },
+      {
+        "type": "booking_confirmation",
+        "status": "sent",
+        "count": 335
       }
     ],
     "recent": [
       {
-        "id": "cmr4sqfoz00attzs0w31vz17t",
-        "to": "ec***@homigo.test",
-        "emailType": "booking_completed",
-        "status": "sent",
-        "createdAt": "2026-07-03T10:34:20.531Z"
-      },
-      {
-        "id": "cmr4sqewh00a0tzs0g7gg2sdt",
-        "to": "ec***@homigo.test",
-        "emailType": "booking_assigned",
-        "status": "sent",
-        "createdAt": "2026-07-03T10:34:19.506Z"
-      },
-      {
-        "id": "cmr4sqe5x009vtzs0kv5hdkfx",
-        "to": "ec***@homigo.test",
+        "id": "cmu9xu6yi00letz10f8kvv1i0",
+        "to": "ss***@gmail.com",
         "emailType": "booking_confirmation",
         "status": "sent",
-        "createdAt": "2026-07-03T10:34:18.550Z"
+        "createdAt": "2026-09-20T14:55:11.802Z"
       },
       {
-        "id": "cmqukropj017atztkiihzo4de",
-        "to": "st***@homigo.test",
-        "emailType": "registration_otp",
-        "status": "logged",
-        "createdAt": "2026-06-26T06:53:40.183Z"
+        "id": "cmu9xpwvh00ijtz10l7uaahst",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_completed",
+        "status": "sent",
+        "createdAt": "2026-09-20T14:51:52.108Z"
       },
       {
-        "id": "cmqukkcmc008etz3c7t9o4oer",
-        "to": "st***@homigo.test",
-        "emailType": "registration_otp",
-        "status": "logged",
-        "createdAt": "2026-06-26T06:47:57.924Z"
+        "id": "cmu9hqoe200k7tzd8i41ew4qr",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_confirmation",
+        "status": "sent",
+        "createdAt": "2026-09-20T07:24:33.914Z"
       },
       {
-        "id": "cmqukg76x00ahtzkozw8zhize",
-        "to": "st***@homigo.test",
-        "emailType": "registration_otp",
-        "status": "logged",
-        "createdAt": "2026-06-26T06:44:44.265Z"
+        "id": "cmu8d4ev701aktzu0ci3puqbl",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_assigned",
+        "status": "sent",
+        "createdAt": "2026-09-19T12:27:30.500Z"
       },
       {
-        "id": "cmqtzhmpe006otztcxtb9o3np",
-        "to": "st***@homigo.test",
-        "emailType": "registration_otp",
-        "status": "logged",
-        "createdAt": "2026-06-25T20:57:59.091Z"
+        "id": "cmu8d36lw017wtzu08j871a1b",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_confirmation",
+        "status": "sent",
+        "createdAt": "2026-09-19T12:26:33.138Z"
       },
       {
-        "id": "cmqteltx800y2tzn4r0ndd6ly",
-        "to": "st***@homigo.test",
-        "emailType": "registration_otp",
-        "status": "logged",
-        "createdAt": "2026-06-25T11:13:23.127Z"
+        "id": "cmu85s58f00h5tz8430b60een",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_completed",
+        "status": "sent",
+        "createdAt": "2026-09-19T09:02:00.829Z"
       },
       {
-        "id": "cmq92nify03mptzcckxvjtjue",
-        "to": "st***@homigo.test",
-        "emailType": "approval",
-        "status": "logged",
-        "createdAt": "2026-06-11T05:43:22.655Z"
+        "id": "cmu85on6z00chtz844zqaqxwe",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_assigned",
+        "status": "sent",
+        "createdAt": "2026-09-19T08:59:17.483Z"
       },
       {
-        "id": "cmq91t6ew023ztzccakiklf9v",
-        "to": "st***@homigo.test",
-        "emailType": "approval",
-        "status": "logged",
-        "createdAt": "2026-06-11T05:19:47.384Z"
+        "id": "cmu85nh4e009gtz84oqwm5mb4",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_confirmation",
+        "status": "sent",
+        "createdAt": "2026-09-19T08:58:22.958Z"
       },
       {
-        "id": "cmq7v8x331y2btz7glnwfwu8z",
-        "to": "st***@homigo.test",
-        "emailType": "approval",
-        "status": "logged",
-        "createdAt": "2026-06-10T09:28:18.300Z"
+        "id": "cmu82ie5200xztzdcg2k558tc",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_completed",
+        "status": "sent",
+        "createdAt": "2026-09-19T07:30:26.966Z"
       },
       {
-        "id": "cmq7p97tk0a1ltzhk8phrjmqx",
-        "to": "st***@homigo.test",
-        "emailType": "approval",
-        "status": "logged",
-        "createdAt": "2026-06-10T06:40:34.520Z"
+        "id": "cmu82hnzd00tatzdctycf1tue",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_assigned",
+        "status": "sent",
+        "createdAt": "2026-09-19T07:29:53.065Z"
       },
       {
-        "id": "cmq7p7gpk09zdtzhk747qn0e7",
-        "to": "st***@homigo.test",
-        "emailType": "registration_otp",
-        "status": "logged",
-        "createdAt": "2026-06-10T06:39:12.728Z"
+        "id": "cmu82gpp900ohtzdcvpkjyn28",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_confirmation",
+        "status": "sent",
+        "createdAt": "2026-09-19T07:29:08.638Z"
       },
       {
-        "id": "cmq7muirh00bitzhksj4x7r4l",
-        "to": "st***@homigo.test",
-        "emailType": "registration_otp",
-        "status": "logged",
-        "createdAt": "2026-06-10T05:33:09.629Z"
+        "id": "cmu82eufy00gctzdcm2hhqzpf",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_completed",
+        "status": "sent",
+        "createdAt": "2026-09-19T07:27:41.467Z"
       },
       {
-        "id": "cmq7msrgf004utzhkqkc6a7f5",
-        "to": "ad***@adv.test",
-        "emailType": "approval",
-        "status": "logged",
-        "createdAt": "2026-06-10T05:31:47.583Z"
+        "id": "cmu82cqow00aqtzdc30gw4u1t",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_assigned",
+        "status": "sent",
+        "createdAt": "2026-09-19T07:26:03.297Z"
       },
       {
-        "id": "cmq6b34dk03hztzy4ju8oo3tr",
-        "to": "st***@homigo.test",
-        "emailType": "registration_otp",
-        "status": "logged",
-        "createdAt": "2026-06-09T07:16:09.320Z"
+        "id": "cmu82bvtv0083tzdc5i1grtvf",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_confirmation",
+        "status": "sent",
+        "createdAt": "2026-09-19T07:25:23.299Z"
       },
       {
-        "id": "cmq6b29gs03gwtzy495pnkrz8",
-        "to": "st***@homigo.test",
-        "emailType": "registration_otp",
-        "status": "logged",
-        "createdAt": "2026-06-09T07:15:29.261Z"
+        "id": "cmu6wqsri00ittzzkrb8fr6ep",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_completed",
+        "status": "sent",
+        "createdAt": "2026-09-18T12:01:15.294Z"
       },
       {
-        "id": "cmq6b1j1203g1tzy4pltxd7kg",
-        "to": "pa***@homigo.demo",
-        "emailType": "approval",
-        "status": "logged",
-        "createdAt": "2026-06-09T07:14:54.998Z"
+        "id": "cmu6woxf700extzzk5z6yc0eg",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_assigned",
+        "status": "sent",
+        "createdAt": "2026-09-18T11:59:48.020Z"
       },
       {
-        "id": "cmq5edxnj00fgtz9893jiqomg",
-        "to": "st***@homigo.test",
-        "emailType": "registration_otp",
-        "status": "logged",
-        "createdAt": "2026-06-08T16:00:46.496Z"
+        "id": "cmu6wnorw00d7tzzko1j3de2l",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_confirmation",
+        "status": "sent",
+        "createdAt": "2026-09-18T11:58:50.156Z"
       },
       {
-        "id": "cmq5ecb3n00c2tz982k40fehu",
-        "to": "st***@homigo.test",
-        "emailType": "registration_otp",
-        "status": "logged",
-        "createdAt": "2026-06-08T15:59:30.611Z"
+        "id": "cmu6rah7q00jotznsgafkz833",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_completed",
+        "status": "sent",
+        "createdAt": "2026-09-18T09:28:35.750Z"
+      },
+      {
+        "id": "cmu6r8xu200fctznsxxqgp1d6",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_assigned",
+        "status": "sent",
+        "createdAt": "2026-09-18T09:27:23.979Z"
+      },
+      {
+        "id": "cmu6r81a400cwtznsr2hdysqw",
+        "to": "pr***@gmail.com",
+        "emailType": "booking_confirmation",
+        "status": "sent",
+        "createdAt": "2026-09-18T09:26:41.783Z"
       }
     ],
     "rateLimits": {
@@ -292,12 +339,12 @@
       "scenario": "health",
       "concurrency": 100,
       "totalRequests": 300,
-      "durationMs": 766,
-      "throughput": 391.64,
+      "durationMs": 807,
+      "throughput": 371.75,
       "errorRate": 0,
-      "p50": 209,
-      "p95": 422,
-      "p99": 422,
+      "p50": 246,
+      "p95": 516,
+      "p99": 518,
       "errors": 0,
       "authenticated": false
     },
@@ -305,12 +352,12 @@
       "scenario": "booking",
       "concurrency": 100,
       "totalRequests": 300,
-      "durationMs": 3385,
-      "throughput": 88.63,
+      "durationMs": 1417,
+      "throughput": 211.71,
       "errorRate": 0,
-      "p50": 988,
-      "p95": 1624,
-      "p99": 1959,
+      "p50": 457,
+      "p95": 750,
+      "p99": 790,
       "errors": 0,
       "authenticated": true
     },
@@ -318,23 +365,23 @@
       "scenario": "health",
       "concurrency": 1000,
       "totalRequests": 3000,
-      "durationMs": 6633,
-      "throughput": 452.28,
+      "durationMs": 2698,
+      "throughput": 1111.93,
       "errorRate": 0,
-      "p50": 1905,
-      "p95": 2940,
-      "p99": 3182,
+      "p50": 756,
+      "p95": 1225,
+      "p99": 1232,
       "errors": 0,
       "authenticated": false
     }
   },
   "redis": {
     "status": "healthy",
-    "latencyMs": 10
+    "latencyMs": 3
   },
   "dbPool": {
-    "total": 16,
-    "idle": 15,
+    "total": 32,
+    "idle": 31,
     "active": 1,
     "longIdleTxn": 0
   },
@@ -342,11 +389,11 @@
   "grafanaOk": true,
   "gaps": 1,
   "scores": {
-    "productionReadiness": 88,
+    "productionReadiness": 84,
     "securityReadiness": 100,
     "scalabilityReadiness": 75,
     "mobileReadiness": 88,
-    "enterpriseGrade": 88,
+    "enterpriseGrade": 86,
     "certification": "PASS"
   }
 }

@@ -1,0 +1,89 @@
+== GOOD
+   [GOOD G P] pass=17 fail=0
+
+== W1
+      patched src/services/gift-card.service.ts — D1: void also credits the wallet after the gateway refund (the double credit)
+   [DEFECT G] pass=6 fail=2
+      (fail) gift card void — refund to the original payment, exactly once > void refunds the balance to the gateway once, credits the wallet NEVER, reverses the purchase journal [269.48ms]
+      (fail) gift card void — refund to the original payment, exactly once > concurrent voids: one completion, one journal, every gateway call carries the same idempotency key [184.30ms]
+   => CAUGHT
+   restored src/services/gift-card.service.ts (byte-identical)
+
+== W2
+      patched src/services/gift-card.service.ts — D1: gateway refund sent without the per-card idempotency key
+   [DEFECT G] pass=5 fail=3
+      (fail) gift card void — refund to the original payment, exactly once > void refunds the balance to the gateway once, credits the wallet NEVER, reverses the purchase journal [202.26ms]
+      (fail) gift card void — refund to the original payment, exactly once > concurrent voids: one completion, one journal, every gateway call carries the same idempotency key [141.12ms]
+      (fail) gift card void — refund to the original payment, exactly once > unknown gateway outcome keeps the reservation (redeem blocked); the retry resumes with the same key and amount [136.05ms]
+   => CAUGHT
+   restored src/services/gift-card.service.ts (byte-identical)
+
+== W3
+      patched src/services/gift-card.service.ts — D1: no reservation — balance not zeroed while the refund is in flight
+   [DEFECT G] pass=7 fail=1
+      (fail) gift card void — refund to the original payment, exactly once > unknown gateway outcome keeps the reservation (redeem blocked); the retry resumes with the same key and amount [37.38ms]
+   => CAUGHT
+   restored src/services/gift-card.service.ts (byte-identical)
+
+== W4
+      patched src/services/payment.service.ts — D2: split retry re-issues the gateway order for the full total
+   [DEFECT P] pass=7 fail=2
+      (fail) D2 — a failed split retried stays a split > split → gateway leg fails → initiateSplit again → NEW order for the remainder only; capture debits the wallet share once [507.48ms]
+      (fail) D2 — a failed split retried stays a split > the generic create-order retry of a failed split also charges only the remainder [275.70ms]
+   => CAUGHT
+   restored src/services/payment.service.ts (byte-identical)
+
+== W5
+      patched src/services/payment.service.ts — D3: capture on a replaced order falls through to PAYMENT_NOT_FOUND
+   [DEFECT P] pass=6 fail=3
+      (fail) D3 — capture on a replaced order > late capture on the OLD order of an unsettled payment is settled (rebound to the order actually paid) [232.21ms]
+      (fail) D3 — capture on a replaced order > a SECOND capture (customer paid both orders) is never settled — it raises a CRITICAL orphan alert [299.91ms]
+      (fail) D3 — capture on a replaced order > a capture on a replaced order with a different amount is not settled; it is alerted [178.37ms]
+   => CAUGHT
+   restored src/services/payment.service.ts (byte-identical)
+
+== W6
+      patched src/services/payment.service.ts — D3: a second capture on a replaced order is settled instead of alerted
+   [DEFECT P] pass=8 fail=1
+      (fail) D3 — capture on a replaced order > a SECOND capture (customer paid both orders) is never settled — it raises a CRITICAL orphan alert [45000.50ms]
+   => CAUGHT
+   restored src/services/payment.service.ts (byte-identical)
+
+== W7a
+      patched src/services/refund-ledger-sync.service.ts — D4 outer layer only: pre-check again requires razorpayRefundId === refundId
+   [DEFECT P] pass=9 fail=0
+   => NOT CAUGHT
+   restored src/services/refund-ledger-sync.service.ts (byte-identical)
+
+== W7b
+      patched src/services/refund-ledger-sync.service.ts — D4 inner layer only: no journal re-check under the payment lock
+   [DEFECT P] pass=8 fail=1
+      (fail) D4 — each gateway refund is counted exactly once > six concurrent deliveries of one refund are counted once [363.66ms]
+   => CAUGHT
+   restored src/services/refund-ledger-sync.service.ts (byte-identical)
+
+== W7c
+      patched src/services/refund-ledger-sync.service.ts — D4 both layers reverted (the original defect)
+   [DEFECT P] pass=7 fail=2
+      (fail) D4 — each gateway refund is counted exactly once > refund A, refund B, then a replay of A → refunded 500, not 800; status PARTIALLY_REFUNDED [366.24ms]
+      (fail) D4 — each gateway refund is counted exactly once > six concurrent deliveries of one refund are counted once [374.12ms]
+   => CAUGHT
+   restored src/services/refund-ledger-sync.service.ts (byte-identical)
+
+== W8
+      patched src/services/webhook-dedup.service.ts — dedup: P2002 of a concurrent first delivery escapes (500)
+   [DEFECT P] pass=8 fail=1
+      (fail) webhook dedup — one processor per event > concurrent first deliveries: exactly one PROCESS, the rest SKIP, none throw [19.81ms]
+   => CAUGHT
+   restored src/services/webhook-dedup.service.ts (byte-identical)
+
+== W9
+      patched src/services/webhook-dedup.service.ts — dedup: unconditional takeover — two retries both process
+   [DEFECT P] pass=8 fail=1
+      (fail) webhook dedup — one processor per event > concurrent retries of a FAILED event: exactly one RETRY [67.28ms]
+   => CAUGHT
+   restored src/services/webhook-dedup.service.ts (byte-identical)
+
+== RESTORED
+/c/Users/KAPIIS~1/AppData/Local/Temp/claude/d--homigo/ca2823eb-3824-4118-8dc1-b8dd30fa2d41/scratchpad/proofW1.sh: line 37: syntax error near unexpected token `done'
+/c/Users/KAPIIS~1/AppData/Local/Temp/claude/d--homigo/ca2823eb-3824-4118-8dc1-b8dd30fa2d41/scratchpad/proofW1.sh: line 37: `for f in src/services/gift-card.service.ts src/services/payment.service.ts src/services/refund-ledger-sync.service.ts src/services/webhook-dedup.service.ts; done'

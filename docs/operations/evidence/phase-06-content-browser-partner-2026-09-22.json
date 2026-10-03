@@ -1,0 +1,100 @@
+{
+ "steps": [
+  {
+   "name": "1 partner login",
+   "ok": true,
+   "detail": {
+    "status": 200,
+    "url": "/"
+   }
+  },
+  {
+   "name": "2 job detail renders 'Job preparation' from the booking snapshot",
+   "ok": true,
+   "detail": {
+    "prep": "Job preparation\n\nMATERIALS TO BRING\n\nPest treatment products (applied as per label)\n\nHandling: Handle, store and apply strictly per the product label; keep the label available for the customer.\n\nCustomer was told: Applied as per the product label.\n\nEQUIPMENT TO BRING\n\nSprayer and application equipment\n\nCUSTOMER PRECONDITIONS\n\nHome prepared for pest treatment\n\nConfirmed by the customer\n\nConfirm the preparation on arrival; do not treat occupied rooms. Tell the customer the re-entry time for the product used, per its label.\n\nCustomer was told: Please cover food, utensils and pet bowls, and keep people and pets away from treated areas during the treatment and for the time the professional advises afterwards.\n\nAccess to every area included in the service\n\nVerify on arrival\n\nCustomer was told: Please unlock storerooms, lofts and the cabinets under sinks — treatment covers the areas we can reac"
+   }
+  },
+  {
+   "name": "3 materials + equipment to bring (treatment products, application equipment) with the handling note",
+   "ok": true
+  },
+  {
+   "name": "4 partner instructions shown (do not treat occupied rooms; re-entry per label)",
+   "ok": true
+  },
+  {
+   "name": "5 preconditions carry the right check: preparation CONFIRMED by the customer, access VERIFIED on arrival, 'customer was told' shown",
+   "ok": true
+  },
+  {
+   "name": "6 internal provenance / notes never reach the partner (page + API)",
+   "ok": true,
+   "detail": {
+    "leaks": []
+   }
+  }
+ ],
+ "consoleErrors": [],
+ "leaks": [],
+ "unexpected": [],
+ "apiSummary": [
+  [
+   "POST /api/auth/login 200",
+   1
+  ],
+  [
+   "GET /api/user/me 200",
+   2
+  ],
+  [
+   "GET /api/providers/me/operations 200",
+   2
+  ],
+  [
+   "GET /api/providers/me/presence 200",
+   2
+  ],
+  [
+   "POST /api/providers/me/presence/heartbeat 200",
+   2
+  ],
+  [
+   "POST /api/auth/refresh 200",
+   1
+  ],
+  [
+   "GET /api/notifications 200",
+   2
+  ],
+  [
+   "GET /api/providers/me 200",
+   1
+  ],
+  [
+   "GET /api/providers/me/bookings 200",
+   4
+  ],
+  [
+   "GET /api/providers/me/dashboard 200",
+   1
+  ],
+  [
+   "GET /api/bookings/cmucocv0w009otzw063265kw7/actions 200",
+   1
+  ],
+  [
+   "GET /api/bookings/cmucocv0w009otzw063265kw7/evidence 200",
+   1
+  ],
+  [
+   "GET /api/bookings/cmucocv0w009otzw063265kw7/chat 200",
+   1
+  ],
+  [
+   "POST /api/bookings/cmucocv0w009otzw063265kw7/chat/read 200",
+   3
+  ]
+ ],
+ "passed": "6/6"
+}

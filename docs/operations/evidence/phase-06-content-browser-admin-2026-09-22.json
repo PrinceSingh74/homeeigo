@@ -1,0 +1,114 @@
+{
+ "steps": [
+  {
+   "name": "1 admin login",
+   "ok": true,
+   "detail": {
+    "url": "/"
+   }
+  },
+  {
+   "name": "2 requirements tab lists the 10 finalised assignments with kind + catalogue name",
+   "ok": true,
+   "detail": {
+    "rows": 10
+   }
+  },
+  {
+   "name": "3 admin sees provenance in the internal note, the partner instruction, and the shared catalogue picker",
+   "ok": true,
+   "detail": {
+    "internal": "[OWNER_APPROVED 2026-09-22.final] Why: All-purpose surfaces and floors across th",
+    "partnerVal": "Confirm a usable tap on arrival before unpacking.",
+    "options": 71
+   }
+  },
+  {
+   "name": "4 saving one note bumps the version once; only that note changed; variants/add-ons/other requirements intact",
+   "ok": true,
+   "detail": {
+    "status": 200,
+    "v": [
+     3,
+     4
+    ]
+   }
+  },
+  {
+   "name": "5 the editor never sends server-owned requirementItems back",
+   "ok": true
+  },
+  {
+   "name": "6 a stale editor tab gets 409 and the other admin's change survives",
+   "ok": true,
+   "detail": {
+    "other": 200,
+    "stale": 409,
+    "shown": "Service code deep-cleaning (permanent) · version 4 · last updated 22/09/2026, 18:31:37"
+   }
+  }
+ ],
+ "consoleErrors": [
+  "Failed to load resource: the server responded with a status of 409 (Conflict)"
+ ],
+ "unexpected": [],
+ "apiSummary": [
+  [
+   "POST /api/auth/login 200",
+   1
+  ],
+  [
+   "GET /api/user/me 200",
+   3
+  ],
+  [
+   "POST /api/auth/refresh 200",
+   2
+  ],
+  [
+   "GET /api/admin/rbac/me 200",
+   2
+  ],
+  [
+   "GET /api/notifications 200",
+   2
+  ],
+  [
+   "GET /api/admin/users 200",
+   2
+  ],
+  [
+   "GET /api/admin/service-categories 200",
+   3
+  ],
+  [
+   "GET /api/admin/providers 200",
+   2
+  ],
+  [
+   "GET /api/admin/requirement-items 200",
+   3
+  ],
+  [
+   "GET /api/admin/services 200",
+   5
+  ],
+  [
+   "GET /api/admin/analytics 200",
+   2
+  ],
+  [
+   "GET /api/admin/services/cmq67k4ac0000tznkxgqhmxuw/versions 200",
+   3
+  ],
+  [
+   "PUT /api/admin/services/cmq67k4ac0000tznkxgqhmxuw 200",
+   1
+  ],
+  [
+   "PUT /api/admin/services/cmq67k4ac0000tznkxgqhmxuw 409 VERSION_CONFLICT",
+   1
+  ]
+ ],
+ "passed": "6/6"
+}

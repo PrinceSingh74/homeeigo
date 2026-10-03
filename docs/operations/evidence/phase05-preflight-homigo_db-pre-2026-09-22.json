@@ -1,0 +1,121 @@
+{
+  "mode": "pre",
+  "target": "localhost:5433/homigo_db",
+  "at": "2026-09-21T18:48:18.772Z",
+  "pending": [],
+  "phase05": [
+    {
+      "migration": "20260919090000_service_catalog_config",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260920120000_service_domain",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260920130000_service_variants_addons",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921120000_data_provenance",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921140000_live_only_check_and_column_alignment",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921150000_service_identity_taxonomy",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921160000_service_addon_dependencies",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921170000_service_pricing_integrity",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921180000_duration_aware_partner_slot",
+      "onDisk": true,
+      "applied": true
+    }
+  ],
+  "destructivePending": [],
+  "bookingSlots": {
+    "count": 113,
+    "sha256": "92257cba1424942c2bbcd5e33e00f3f44f6def80acaf3d97cb8ea2fa67f2b4a6"
+  },
+  "backup": {
+    "file": "homigo_2026-09-21T17-25-45-164Z.dump",
+    "sourceDatabase": "homigo_db",
+    "sha256": "a8ae1a1f2bdd7ebb56d0e7abdda97e471945e023d357d34722dcef51ed23036d",
+    "ageHours": 1.37
+  },
+  "checks": [
+    {
+      "name": "read-only session",
+      "status": "PASS",
+      "detail": "all checks run inside one READ ONLY transaction"
+    },
+    {
+      "name": "target identity",
+      "status": "PASS",
+      "detail": "connected to localhost:5433/homigo_db (confirmed by --confirm-db)"
+    },
+    {
+      "name": "migration history matches the schema",
+      "status": "PASS",
+      "detail": "132 applied rows"
+    },
+    {
+      "name": "no failed migration rows",
+      "status": "PASS",
+      "detail": "136 history rows"
+    },
+    {
+      "name": "no applied migration missing on disk (drift)",
+      "status": "PASS",
+      "detail": "every applied migration exists in this release"
+    },
+    {
+      "name": "applied migrations unedited (checksum)",
+      "status": "FAIL",
+      "detail": "edited after apply: 20260529114745_part_6a_realtime_tracking, 20260529120000_add_partner_registration, 20260608120000_membership_premium_engine, 20260608140000_referral_fraud_engine, 20260608210000_financial_ledger, 20260608240000_finance_ops_10_finalization, 20260609120000_p3_admin_rbac, 20260609140000_p3_token_security, 20260609160000_p3_gift_card_campaign_security, 20260609180000_p4_encryption_audit, 20260609200000_p4_retention_compliance, 20260609220000_p0_p1_concurrency_rbac, 20260609230000_legacy_admin_rbac_hardening, 20260609240000_booking_slot_exclusion_wallet_atomic, 20260609250000_wallet_pending_hardening, 20260609260000_money_paise_dual_write, 20260609280000_money_paise_full_dual_write, 20260609300000_journal_entry_number_sequence, 20260610000000_saved_payment_methods, 20260610120000_enterprise_db_hardening, 20260610140000_address_pii_encryption, 20260612000000_assignment_one_sent_per_job, 20260612140000_support_ticket_messages, 20260612160000_enterprise_operations, 20260616120000_assignment_broadcast_dispatch, 20260617100000_settlement_pending_status, 20260703140000_finance_config, 20260703150000_enterprise_os_v6, 20260704100000_add_coverage_requests, 20260818090000_automation_shadow_mode, 20260818140000_automation_certification, 20260818160000_shadow_evidence_source, 20260819090000_notification_channel_in_app, 20260819120000_partner_acquisition_onboarding, 20260819180000_partner_acquisition_automation_live, 20260819200000_partner_changes_requested, 20260819210000_partner_changes_requested_automation, 20260819220000_provider_registered_at_on_submit, 20260820090000_p1_p2_acquisition_completion, 20260821060000_certification_authorization_and_void, 20260822060000_partner_operations_availability, 20260822120000_shadow_evidence_source_index, 20260824090000_service_interval_policies, 20260824120000_vision_pipeline, 20260824130000_assignment_attempt_unique_dedup, 20260824140000_provider_service_categories_not_null, 20260824180000_section03_job_evidence_chat, 20260825120000_provider_array_columns_not_null"
+    },
+    {
+      "name": "pending migrations are strictly newer than applied (order)",
+      "status": "PASS",
+      "detail": "newest applied: 20260921180000_duration_aware_partner_slot"
+    },
+    {
+      "name": "pending set",
+      "status": "INFO",
+      "detail": "none — schema is current"
+    },
+    {
+      "name": "destructive / data-changing statements pending",
+      "status": "PASS",
+      "detail": "none"
+    },
+    {
+      "name": "existing partner windows fingerprinted",
+      "status": "INFO",
+      "detail": "113 bookings with a partner window · sha256 92257cba1424942c…"
+    },
+    {
+      "name": "verified backup",
+      "status": "PASS",
+      "detail": "homigo_2026-09-21T17-25-45-164Z.dump · of homigo_db · sha256 a8ae1a1f2bdd7ebb… matches sidecar · 1.4 h old"
+    }
+  ]
+}

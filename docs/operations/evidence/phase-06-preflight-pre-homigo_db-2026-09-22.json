@@ -1,0 +1,139 @@
+{
+  "mode": "pre",
+  "target": "localhost:5433/homigo_db",
+  "at": "2026-09-22T11:31:26.078Z",
+  "pending": [
+    "20260922100000_service_requirements"
+  ],
+  "phase05": [
+    {
+      "migration": "20260919090000_service_catalog_config",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260920120000_service_domain",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260920130000_service_variants_addons",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921120000_data_provenance",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921140000_live_only_check_and_column_alignment",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921150000_service_identity_taxonomy",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921160000_service_addon_dependencies",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921170000_service_pricing_integrity",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921180000_duration_aware_partner_slot",
+      "onDisk": true,
+      "applied": true
+    }
+  ],
+  "phase06": [
+    {
+      "migration": "20260922100000_service_requirements",
+      "onDisk": true,
+      "applied": false
+    }
+  ],
+  "destructivePending": [],
+  "bookingSlots": {
+    "count": 113,
+    "sha256": "92257cba1424942c2bbcd5e33e00f3f44f6def80acaf3d97cb8ea2fa67f2b4a6"
+  },
+  "bookingSnapshots": {
+    "count": 707,
+    "md5": "27f31ec3aa0b91c75b6640cc561e2e7d"
+  },
+  "backup": {
+    "file": "homigo_2026-09-22T11-29-52-400Z.dump",
+    "sourceDatabase": "homigo_db",
+    "sha256": "07fb8fd676c59f2d4c7362f7c76c9e67901353286b5fdcf6a0fabdf725884b3f",
+    "ageHours": 0.02
+  },
+  "checks": [
+    {
+      "name": "read-only session",
+      "status": "PASS",
+      "detail": "all checks run inside one READ ONLY transaction"
+    },
+    {
+      "name": "target identity",
+      "status": "PASS",
+      "detail": "connected to localhost:5433/homigo_db (confirmed by --confirm-db)"
+    },
+    {
+      "name": "migration history matches the schema",
+      "status": "PASS",
+      "detail": "132 applied rows"
+    },
+    {
+      "name": "no failed migration rows",
+      "status": "PASS",
+      "detail": "136 history rows"
+    },
+    {
+      "name": "no applied migration missing on disk (drift)",
+      "status": "PASS",
+      "detail": "every applied migration exists in this release"
+    },
+    {
+      "name": "applied migrations unedited (checksum)",
+      "status": "PASS",
+      "detail": "every applied checksum matches its file"
+    },
+    {
+      "name": "pending migrations are strictly newer than applied (order)",
+      "status": "PASS",
+      "detail": "newest applied: 20260921180000_duration_aware_partner_slot"
+    },
+    {
+      "name": "pending set",
+      "status": "INFO",
+      "detail": "1: 20260922100000_service_requirements"
+    },
+    {
+      "name": "destructive / data-changing statements pending",
+      "status": "PASS",
+      "detail": "none"
+    },
+    {
+      "name": "existing partner windows fingerprinted",
+      "status": "INFO",
+      "detail": "113 bookings with a partner window · sha256 92257cba1424942c…"
+    },
+    {
+      "name": "booking snapshots fingerprinted (Phase 06)",
+      "status": "INFO",
+      "detail": "707 bookings · md5 27f31ec3aa0b91c7…"
+    },
+    {
+      "name": "verified backup",
+      "status": "PASS",
+      "detail": "homigo_2026-09-22T11-29-52-400Z.dump · of homigo_db · sha256 07fb8fd676c59f2d… matches sidecar · 0.0 h old"
+    }
+  ]
+}

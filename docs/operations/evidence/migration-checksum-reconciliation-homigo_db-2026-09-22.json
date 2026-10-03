@@ -1,0 +1,55 @@
+{
+  "target": "localhost:5433/homigo_db",
+  "at": "2026-09-22T04:35:03.121Z",
+  "catalogProof": "IDENTICAL",
+  "rows": [
+    {
+      "id": "2c4738b5-1675-4681-b6be-9cd4962ceeae",
+      "migration": "20260529114745_part_6a_realtime_tracking",
+      "from": "81fd1a356196263acec49e062e90a6fc90278b89fa8600703bd9ac746ba7e2cc",
+      "to": "09661ddf71792768b8e0bb0d4c2d6eb4c7b172b80e46a273e7360a49cce6e369"
+    },
+    {
+      "id": "1734a785-9193-4c12-8d81-3856520cf8c4",
+      "migration": "20260529120000_add_partner_registration",
+      "from": "5686ed2591aa8070c31e5c19ec29675bde805c9877fd9872c0fa3e4c55f598d9",
+      "to": "3ec68a859ed5a1a84d1e7c6484916048b68271a657f8225904b778a74603d45b"
+    },
+    {
+      "id": "fc71a5ca-5660-4002-9d89-8ebc838f4590",
+      "migration": "20260608120000_membership_premium_engine",
+      "from": "f0f6b64db9135476ba119e014adabe169dd5e2cdb51f7868c292142dcc51d40e",
+      "to": "64860c0cf7ada4340e40e5d86bb57f8e66459ed906a2c89b92dcbad97ccf8624"
+    },
+    {
+      "id": "0721e27a-6866-483c-a756-ad29c62580f4",
+      "migration": "20260608140000_referral_fraud_engine",
+      "from": "cb4f3819382bf5a580635a0b77999502220e09b7e40bac32d56e7a9afd7f04a2",
+      "to": "3b5d52343243d2afd701776c95bae965f9fd62c62354f26c1236a10fc5cf7230"
+    },
+    {
+      "id": "fa5c78b1-38f7-46e3-b7b9-36f9971f60f0",
+      "migration": "20260608210000_financial_ledger",
+      "from": "6e336f97d0e1c81219f9d7362be2374020509e50bd6cc6c245bed682163739c1",
+      "to": "4e8daa6c928a1e9f0a9df98352bbc374dc347b655eb97ff5a8be4b9ece8b5b10"
+    },
+    {
+      "id": "2e48d012-4f2d-4ac0-863f-c3c37376177e",
+      "migration": "20260609280000_money_paise_full_dual_write",
+      "from": "8cc3be72421bfb49091fbee18176a8be7b525531475ef91b940346b3dc24b2d5",
+      "to": "70cc9e4a60a802d27da95a0c4bfc2e5d19cc5bf0b141b0db0a47b7991ad416fd"
+    },
+    {
+      "id": "d761bbae-7643-4ad5-80a7-b2f3d7bdcf22",
+      "migration": "20260616120000_assignment_broadcast_dispatch",
+      "from": "manual-broadcast",
+      "to": "d19280820dd3de6af3052ef452197f9b2095be3d2f02a491202459559de775eb"
+    },
+    {
+      "id": "2714c258-91b7-4f5b-bc8f-698487f1acdb",
+      "migration": "20260824130000_assignment_attempt_unique_dedup",
+      "from": "73056d9dcb41a8af0c8f84759d9bb1158fad003d7c6f3cc44a6db7d4382b29f5",
+      "to": "cc0057642c0441ab1436de3c9aa1f66670a4acb99f9d1dbf167075cbd24bcdba"
+    }
+  ]
+}

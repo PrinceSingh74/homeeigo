@@ -1,0 +1,81 @@
+HOMEEIGO — Final closure regression matrix (2026-09-23)
+
+GATE                    RESULT       DETAIL
+----------------------  -----------  --------------------------------------------------------------
+targeted suites         PASS         policy-authority-invariants 25/25; phase09-controlled-stop 5/5;
+                                     phase09-no-show 17/17; phase09-no-show-api 11/11;
+                                     job-action-mirror-parity 9/9; section03-job-action-policy 15/15;
+                                     phase15-advanced-intelligence 55/55
+backend full            FLAKY        3254 pass / 1 fail / 272 files / 864.56s.
+                                     The single failure is production-blocker-final.test.ts: its
+                                     beforeAll reconciles the ledger (backfillLimit 3000) on a 120s
+                                     budget and hit 120001ms under full-run contention. Run alone it
+                                     completes in 28.58s, 5/5. Classified FLAKY, not PASS, and NOT
+                                     muted: homigo_test now holds ~16.4k journal entries, ~35.2k
+                                     ledger entries and ~25.9k bookings, so the budget is being
+                                     approached from below as the database grows. The next
+                                     occurrence may not be a flake.
+                                     Earlier full runs today: 3193/0, 3213/1, 3215/2, 3220/0.
+client typechecks       PASS         apps/web, apps/partner-web, apps/admin-panel, homigo-mobile,
+                                     homigo-partner-mobile — all tsc --noEmit clean.
+browser                 PARTIAL      Customer web :3001 renders: "/" 200 with content, "/bookings"
+                                     correctly redirects an anonymous visitor to /login. No console
+                                     errors beyond the expected unauthenticated 401s and the
+                                     /api/vitals beacon abort.
+                                     NOT covered: the booking-detail modal changes. That needs an
+                                     authenticated session against a NON-live backend, and the only
+                                     backend running is on homigo_db. -> OPERATOR_ACTION.
+                                     partner-web :3002 and admin :3003 were not running.
+                                     -> ENVIRONMENTAL.
+runtime smoke           PASS         Against the running backend (isolatedDatabase:false), read-only:
+                                     POST /api/bookings/:id/no-show            401
+                                     POST /api/bookings/:id/provider-no-show   401
+                                     POST /api/admin/bookings/:id/no-show      401
+                                     GET  /api/bookings/cancellation-policy -> in_progress carries
+                                     selfServe:false, the other tiers carry none.
+concurrency             PASS         Within the full run: capacity-concurrency-decision,
+                                     document-numbers.concurrency, p0-financial-races,
+                                     release-concurrency.integration, service-domain-concurrency,
+                                     token-revocation-concurrency — all green.
+reintroduction          PASS         12 of 12 authority defects caught (F1..F6b), every file restored
+                                     byte-identically, baseline re-green at 28/28 afterwards.
+                                     Plus the partner-web mirror proof run in place: guard failed on
+                                     the defect, file restored byte-identically, suite back to green.
+live migration          BLOCKED      20260923120000_no_show_states refused twice by the permission
+                                     layer as a production deploy. Not worked around.
+                                     -> OPERATOR_ACTION.
+
+----------------------------------------------------------------------------------------------
+LIVE DATABASE INTEGRITY — measured, not assumed
+
+The pre-closure snapshot (07:44 UTC) and the post-closure snapshot (09:40 UTC) are NOT identical,
+and the difference is reported rather than smoothed over:
+
+                      before    after
+  bookings              709       712    (+3)
+  payments              423       426    (+3)
+  journal_entries       987       995    (+8)
+  ledger_entries       2325      2345   (+20)
+  wallet_transactions    59        60    (+1)
+  users                 885       885
+  tables                225       225
+  BookingStatus values   10        10
+  applied migrations    136       136
+
+What those three bookings are: HOMIGO-20260923-00001/2/3, created 09:15, 09:22 and 09:35 UTC by one
+real customer through the app, paid by razorpay, two COMPLETED and one PENDING-with-payment-SUCCESS.
+Everything this session ran against homigo_db was read-only SQL or an unauthenticated HTTP probe
+that was refused with 401; none of it can create a booking, let alone carry one to COMPLETED.
+The consistent reading is ordinary use of the running app while this work proceeded.
+
+What did NOT change, which is the part that matters here:
+
+  * no schema object changed — tables, enum values and applied migrations are all identical, so the
+    blocked migration did not apply by some other route;
+  * no PRE-EXISTING booking was modified: rows created before 07:44 UTC with updated_at after it = 0;
+  * no booking is EXPIRED (0), and the two no-show statuses cannot exist — asking for them returns
+    `invalid input value for enum "BookingStatus"`, which is itself proof the migration has not run.
+
+The PAYMENT_PENDING_TTL sweep is live on that backend and correctly left the new PENDING booking
+alone: its payment_status is SUCCESS, and the sweep only considers PENDING bookings whose payment is
+still PENDING/INITIATED/PROCESSING.

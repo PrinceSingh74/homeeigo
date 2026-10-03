@@ -1,0 +1,441 @@
+{
+  "database": "homigo_db",
+  "reason": "Owner decision 2026-09-21: withdraw script-derived Premium tier (1.5x/1.6x base) until business sets tier prices",
+  "appliedAt": "2026-09-21T17:25:55.339Z",
+  "services": [
+    {
+      "serviceCode": "ac-service",
+      "basePrice": 599,
+      "before": {
+        "minPrice": 599,
+        "maxPrice": 898,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 599,
+        "maxPrice": 599,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "after-party-express-clean",
+      "basePrice": 549,
+      "before": {
+        "minPrice": 549,
+        "maxPrice": 824,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 549,
+        "maxPrice": 549,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "balcony-cleaning",
+      "basePrice": 199,
+      "before": {
+        "minPrice": 199,
+        "maxPrice": 298,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 199,
+        "maxPrice": 199,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "bathroom-cleaning",
+      "basePrice": 399,
+      "before": {
+        "minPrice": 399,
+        "maxPrice": 598,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 399,
+        "maxPrice": 399,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "car-surface-cleaning",
+      "basePrice": 299,
+      "before": {
+        "minPrice": 299,
+        "maxPrice": 448,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 299,
+        "maxPrice": 299,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "carpet-shampooing",
+      "basePrice": 649,
+      "before": {
+        "minPrice": 649,
+        "maxPrice": 974,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 649,
+        "maxPrice": 649,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "deep-cleaning",
+      "basePrice": 899,
+      "before": {
+        "minPrice": 899,
+        "maxPrice": 1348,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 899,
+        "maxPrice": 899,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "dusting-wiping",
+      "basePrice": 149,
+      "before": {
+        "minPrice": 149,
+        "maxPrice": 224,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 149,
+        "maxPrice": 149,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "electrician",
+      "basePrice": 399,
+      "before": {
+        "minPrice": 399,
+        "maxPrice": 598,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 399,
+        "maxPrice": 399,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "fan-cleaning",
+      "basePrice": 149,
+      "before": {
+        "minPrice": 149,
+        "maxPrice": 238,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 149,
+        "maxPrice": 149,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "fasade-cleaning",
+      "basePrice": 600,
+      "before": {
+        "minPrice": 600,
+        "maxPrice": 900,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 600,
+        "maxPrice": 600,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "fridge-cleaning",
+      "basePrice": 349,
+      "before": {
+        "minPrice": 349,
+        "maxPrice": 558,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 349,
+        "maxPrice": 349,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "home-painting",
+      "basePrice": 2499,
+      "before": {
+        "minPrice": 2499,
+        "maxPrice": 3748,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 2499,
+        "maxPrice": 2499,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "hourly-bookings",
+      "basePrice": 199,
+      "before": {
+        "minPrice": 199,
+        "maxPrice": 318,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 199,
+        "maxPrice": 199,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "ironing-folding",
+      "basePrice": 149,
+      "before": {
+        "minPrice": 149,
+        "maxPrice": 224,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 149,
+        "maxPrice": 149,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "kitchen-cabinet-cleaning",
+      "basePrice": 399,
+      "before": {
+        "minPrice": 399,
+        "maxPrice": 638,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 399,
+        "maxPrice": 399,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "kitchen-cleaning",
+      "basePrice": 249,
+      "before": {
+        "minPrice": 249,
+        "maxPrice": 374,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 249,
+        "maxPrice": 249,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "kitchen-prep",
+      "basePrice": 299,
+      "before": {
+        "minPrice": 299,
+        "maxPrice": 478,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 299,
+        "maxPrice": 299,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "laundry",
+      "basePrice": 199,
+      "before": {
+        "minPrice": 199,
+        "maxPrice": 298,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 199,
+        "maxPrice": 199,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "mattress-sanitization",
+      "basePrice": 899,
+      "before": {
+        "minPrice": 899,
+        "maxPrice": 1348,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 899,
+        "maxPrice": 899,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "packing-unpacking",
+      "basePrice": 499,
+      "before": {
+        "minPrice": 499,
+        "maxPrice": 798,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 499,
+        "maxPrice": 499,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "pest-control",
+      "basePrice": 1299,
+      "before": {
+        "minPrice": 1299,
+        "maxPrice": 1948,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 1299,
+        "maxPrice": 1299,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "plant-care",
+      "basePrice": 199,
+      "before": {
+        "minPrice": 199,
+        "maxPrice": 298,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 199,
+        "maxPrice": 199,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "plumbing",
+      "basePrice": 449,
+      "before": {
+        "minPrice": 449,
+        "maxPrice": 674,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 449,
+        "maxPrice": 449,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "pre-party-express-clean",
+      "basePrice": 549,
+      "before": {
+        "minPrice": 549,
+        "maxPrice": 824,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 549,
+        "maxPrice": 549,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "salon-at-home",
+      "basePrice": 699,
+      "before": {
+        "minPrice": 699,
+        "maxPrice": 1048,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 699,
+        "maxPrice": 699,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "sofa-deep-cleaning",
+      "basePrice": 499,
+      "before": {
+        "minPrice": 499,
+        "maxPrice": 748,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 499,
+        "maxPrice": 499,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "sweeping-mopping",
+      "basePrice": 179,
+      "before": {
+        "minPrice": 179,
+        "maxPrice": 268,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 179,
+        "maxPrice": 179,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "utensil-washing",
+      "basePrice": 149,
+      "before": {
+        "minPrice": 149,
+        "maxPrice": 238,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 149,
+        "maxPrice": 149,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "wardrobe-cleaning",
+      "basePrice": 999,
+      "before": {
+        "minPrice": 999,
+        "maxPrice": 1498,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 999,
+        "maxPrice": 999,
+        "version": 2
+      }
+    },
+    {
+      "serviceCode": "window-cleaning",
+      "basePrice": 299,
+      "before": {
+        "minPrice": 299,
+        "maxPrice": 478,
+        "version": 1
+      },
+      "after": {
+        "minPrice": 299,
+        "maxPrice": 299,
+        "version": 2
+      }
+    }
+  ]
+}

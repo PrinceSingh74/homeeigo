@@ -1,0 +1,281 @@
+{
+ "steps": [
+  {
+   "name": "detail deep-cleaning: every structured label and note is on the page; no empty group heading; no generic prep",
+   "ok": true,
+   "detail": {
+    "missing": [],
+    "missingNotes": [],
+    "emptyShown": []
+   }
+  },
+  {
+   "name": "detail ac-service: every structured label and note is on the page; no empty group heading; no generic prep",
+   "ok": true,
+   "detail": {
+    "missing": [],
+    "missingNotes": [],
+    "emptyShown": []
+   }
+  },
+  {
+   "name": "detail car-surface-cleaning: every structured label and note is on the page; no empty group heading; no generic prep",
+   "ok": true,
+   "detail": {
+    "missing": [],
+    "missingNotes": [],
+    "emptyShown": []
+   }
+  },
+  {
+   "name": "detail salon-at-home: every structured label and note is on the page; no empty group heading; no generic prep",
+   "ok": true,
+   "detail": {
+    "missing": [],
+    "missingNotes": [],
+    "emptyShown": []
+   }
+  },
+  {
+   "name": "detail hourly-bookings: every structured label and note is on the page; no empty group heading; no generic prep",
+   "ok": true,
+   "detail": {
+    "missing": [],
+    "missingNotes": [],
+    "emptyShown": []
+   }
+  },
+  {
+   "name": "detail pest-control: every structured label and note is on the page; no empty group heading; no generic prep",
+   "ok": true,
+   "detail": {
+    "missing": [],
+    "missingNotes": [],
+    "emptyShown": []
+   }
+  },
+  {
+   "name": "detail ironing-folding: every structured label and note is on the page; no empty group heading; no generic prep",
+   "ok": true,
+   "detail": {
+    "missing": [],
+    "missingNotes": [],
+    "emptyShown": []
+   }
+  },
+  {
+   "name": "detail fasade-cleaning: every structured label and note is on the page; no empty group heading; no generic prep",
+   "ok": true,
+   "detail": {
+    "missing": [],
+    "missingNotes": [],
+    "emptyShown": []
+   }
+  },
+  {
+   "name": "detail plumbing: every structured label and note is on the page; no empty group heading; no generic prep",
+   "ok": true,
+   "detail": {
+    "missing": [],
+    "missingNotes": [],
+    "emptyShown": []
+   }
+  },
+  {
+   "name": "detail sweeping-mopping: every structured label and note is on the page; no empty group heading; no generic prep",
+   "ok": true,
+   "detail": {
+    "missing": [],
+    "missingNotes": [],
+    "emptyShown": []
+   }
+  },
+  {
+   "name": "login",
+   "ok": true
+  },
+  {
+   "name": "pest-control /book: quote carries one blocking confirmation with the health warning; checkbox rendered unchecked",
+   "ok": true,
+   "detail": {
+    "beforeBooking": [
+     "Food covered; people and pets away from treated areas as advised"
+    ]
+   }
+  },
+  {
+   "name": "unconfirmed: client blocks, names the item, sends nothing",
+   "ok": true
+  },
+  {
+   "name": "backend refuses without attestation: 400 REQUIREMENTS_NOT_CONFIRMED",
+   "ok": true,
+   "detail": {
+    "status": 400,
+    "code": "REQUIREMENTS_NOT_CONFIRMED"
+   }
+  },
+  {
+   "name": "confirmed: 201 with requirementAttestations, no price in the request",
+   "ok": true,
+   "detail": {
+    "status": 201,
+    "body": "{\"serviceId\":\"cmq67k4bh0005tznkfpbib6ax\",\"scheduledDate\":\"2026-09-25T07:30:00.000Z\",\"addressId\":\"cmucnel3n002dtzv8bj5zam8u\",\"paymentMethod\":\"razorpay\",\"packagePrice\":1299,\"addonIds\":[],\"quoteToken\":\"e"
+   }
+  },
+  {
+   "name": "customer booking view = what they were told (snapshot)",
+   "ok": true,
+   "detail": {
+    "groups": {
+     "weBring": [
+      "Treatment products",
+      "Application equipment"
+     ],
+     "youProvide": [],
+     "shared": [],
+     "beforeArrival": [
+      "Access to all the areas to be covered",
+      "An adult available at home during the visit"
+     ],
+     "beforeBooking": [
+      "Food covered; people and pets away from treated areas as advised"
+     ],
+     "optional": [],
+     "empty": false
+    }
+   }
+  },
+  {
+   "name": "ac-service /book: gas + parts shown as 'Not included — quoted separately', no amount, no checkbox",
+   "ok": true,
+   "detail": {
+    "ac": "Before we arrive\n\nHAVE THIS READY\n\nClear access to the indoor and outdoor AC units · Before your professional arrives\nPlease clear the space below the indoor unit and a safe path to the outdoor unit.\nA working power socket near the work area · Before your professional arrives\nPlease keep a working power socket free near the work area.\nAccess to running water · Before your professional arrives\nPlea"
+   }
+  },
+  {
+   "name": "no internal, enum, partner-only or undefined text on any customer page or response",
+   "ok": true,
+   "detail": {
+    "leaks": []
+   }
+  }
+ ],
+ "consoleErrors": [],
+ "leaks": [],
+ "services": {
+  "deep-cleaning": {
+   "labels": 10,
+   "groups": {
+    "weBring": 6,
+    "youProvide": 0,
+    "shared": 0,
+    "beforeArrival": 4,
+    "beforeBooking": 0,
+    "optional": 0
+   }
+  },
+  "ac-service": {
+   "labels": 8,
+   "groups": {
+    "weBring": 2,
+    "youProvide": 0,
+    "shared": 0,
+    "beforeArrival": 4,
+    "beforeBooking": 0,
+    "optional": 2
+   }
+  },
+  "car-surface-cleaning": {
+   "labels": 6,
+   "groups": {
+    "weBring": 3,
+    "youProvide": 0,
+    "shared": 0,
+    "beforeArrival": 3,
+    "beforeBooking": 0,
+    "optional": 0
+   }
+  },
+  "salon-at-home": {
+   "labels": 4,
+   "groups": {
+    "weBring": 2,
+    "youProvide": 0,
+    "shared": 0,
+    "beforeArrival": 2,
+    "beforeBooking": 0,
+    "optional": 0
+   }
+  },
+  "hourly-bookings": {
+   "labels": 3,
+   "groups": {
+    "weBring": 0,
+    "youProvide": 1,
+    "shared": 0,
+    "beforeArrival": 2,
+    "beforeBooking": 0,
+    "optional": 0
+   }
+  },
+  "pest-control": {
+   "labels": 5,
+   "groups": {
+    "weBring": 2,
+    "youProvide": 0,
+    "shared": 0,
+    "beforeArrival": 2,
+    "beforeBooking": 1,
+    "optional": 0
+   }
+  },
+  "ironing-folding": {
+   "labels": 1,
+   "groups": {
+    "weBring": 0,
+    "youProvide": 0,
+    "shared": 0,
+    "beforeArrival": 1,
+    "beforeBooking": 0,
+    "optional": 0
+   }
+  },
+  "fasade-cleaning": {
+   "labels": 7,
+   "groups": {
+    "weBring": 2,
+    "youProvide": 0,
+    "shared": 0,
+    "beforeArrival": 5,
+    "beforeBooking": 0,
+    "optional": 0
+   }
+  },
+  "plumbing": {
+   "labels": 5,
+   "groups": {
+    "weBring": 1,
+    "youProvide": 0,
+    "shared": 0,
+    "beforeArrival": 3,
+    "beforeBooking": 0,
+    "optional": 1
+   }
+  },
+  "sweeping-mopping": {
+   "labels": 4,
+   "groups": {
+    "weBring": 0,
+    "youProvide": 2,
+    "shared": 0,
+    "beforeArrival": 2,
+    "beforeBooking": 0,
+    "optional": 0
+   }
+  }
+ },
+ "bookingId": "cmucocv0w009otzw063265kw7",
+ "unexpected": [],
+ "passed": "18/18"
+}

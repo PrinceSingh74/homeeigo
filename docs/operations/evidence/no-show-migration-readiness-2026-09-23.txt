@@ -1,0 +1,67 @@
+HOMEEIGO — 20260923120000_no_show_states
+
+STATUS: MIGRATION_READY_FOR_AUTHORIZED_EXECUTION
+        (NOT applied. `prisma migrate deploy` was refused by the permission layer as a
+         production deploy, twice. The refusal was not worked around.)
+
+Re-verified 2026-09-23, immediately before the refused attempt:
+
+1. TARGET
+   postgresql://***:***@localhost:5433/homigo_db   (container homigo-postgres, user postgres)
+   Prisma resolves the same datasource: "PostgreSQL database homigo_db, schema public at
+   localhost:5433".
+
+2. MIGRATION CONTENT — the whole file, comments aside:
+       ALTER TYPE "BookingStatus" ADD VALUE IF NOT EXISTS 'CUSTOMER_NO_SHOW';
+       ALTER TYPE "BookingStatus" ADD VALUE IF NOT EXISTS 'PROVIDER_NO_SHOW';
+   Keyword census of the file: 2 x "ALTER TYPE". No CREATE, DROP, TRUNCATE, DELETE, UPDATE,
+   INSERT, and no ALTER TABLE. One file in the directory (a second .sql would be silently
+   ignored by Prisma, so this was checked rather than assumed).
+
+3. PENDING COUNT — exactly one:
+       not yet applied: 20260923120000_no_show_states
+   `20260817090000_notification_delivery_claim` is reported as "not found locally". Benign:
+   commit 0a86cd2 renamed it to 20260817110000_... so it would run after the table it alters
+   exists, and BOTH rows are present in _prisma_migrations — the SQL is applied.
+
+4. ENUM BEFORE (10 values)
+   ACCEPTED ASSIGNED CANCELLED_BY_PROVIDER CANCELLED_BY_USER COMPLETED EN_ROUTE EXPIRED
+   IN_PROGRESS PENDING REJECTED
+
+5. ROW COUNTS BEFORE
+   bookings=709 payments=423 journal_entries=987 ledger_entries=2325 wallet_transactions=59
+   users=885 tables=225 enum_values=10 migrations=136
+
+6. BACKUP (rollback point)
+   backups/homigo_db-pre-noshow-20260923-131427.sql
+   bytes=306,998,987
+   sha256=efbaf8eb5dabc75d755e3e8db94b94dbe94eda44181e941063737e31eda47841
+   223 CREATE TABLE statements; "PostgreSQL database dump complete" marker present;
+   the bookings COPY block contains exactly 709 rows, matching live.
+
+TO EXECUTE (operator, from apps/backend):
+       bunx prisma migrate deploy
+
+AFTER EXECUTION, verify: the two enum values exist; row counts 1-5 above unchanged except
+enum_values 10 -> 12 and migrations 136 -> 137; no other schema object altered; then the
+no-show endpoints end to end.
+
+------------------------------------------------------------------------------
+RUNTIME EVIDENCE that the code side is live and guarded (read-only probes, 2026-09-23)
+
+Against the running backend on :3000 (health reports isolatedDatabase:false, i.e. homigo_db).
+Unauthenticated probes only — they are refused before any database write:
+
+  POST /api/bookings/<id>/no-show                 -> 401
+  POST /api/bookings/<id>/provider-no-show        -> 401
+  POST /api/admin/bookings/<id>/no-show           -> 401
+
+So all three routes are mounted and guarded. An AUTHENTICATED call would reach the database and
+fail, because the enum values are not there yet — which is exactly what the pending migration adds.
+
+O3b is visible on the same runtime, read-only:
+
+  GET /api/bookings/cancellation-policy
+    free        feePercent 0    selfServe (absent = true)
+    late        feePercent 25   selfServe (absent = true)
+    in_progress feePercent 50   selfServe FALSE

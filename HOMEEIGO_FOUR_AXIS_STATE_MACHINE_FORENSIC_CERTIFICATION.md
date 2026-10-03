@@ -352,6 +352,23 @@ No live four-axis UI collapse found. Native mobile **NOT RUN**.
 
 ---
 
+## Phase 1 Presence Revalidation (2026-09-07 closure loop)
+
+| Suite | Result | Environment |
+|---|---|---|
+| Presence unit 8/8 | **PASS** | Docker `oven/bun:1.3`, `homigo-ci-pg` |
+| Presence integration 14/14 | **PASS** | Same |
+| FSM 51/51 | **PASS** (1.51s) | Same |
+| Orthogonality 12/12 | **PASS**, MONEY_DRIFT=0 | Same (`p13ax-mtr3ppd9`) |
+
+**Infrastructure fix:** `partner_presence` migration applied to `homigo-ci-pg`; `setup-test-db.ts` now includes `20260907120000_partner_presence_foundation` in `LATE_ADDITIVE`.
+
+**Windows Bun 1.3.14:** isolated runs **BLOCKED** (segfault/silent exit) — Docker Linux is authoritative for this loop.
+
+Docs: `docs/HOMEEIGO_PRESENCE_FOUNDATION_CERTIFICATION.md`, `docs/PRESENCE_ARCHITECTURE_BASELINE.md`.
+
+---
+
 ## Final decision
 
 **IMPLEMENTATION ALIGNED = YES**  

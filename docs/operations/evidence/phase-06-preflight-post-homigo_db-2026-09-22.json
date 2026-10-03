@@ -1,0 +1,236 @@
+{
+  "mode": "post",
+  "target": "localhost:5433/homigo_db",
+  "at": "2026-09-22T11:33:15.053Z",
+  "pending": [],
+  "phase05": [
+    {
+      "migration": "20260919090000_service_catalog_config",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260920120000_service_domain",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260920130000_service_variants_addons",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921120000_data_provenance",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921140000_live_only_check_and_column_alignment",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921150000_service_identity_taxonomy",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921160000_service_addon_dependencies",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921170000_service_pricing_integrity",
+      "onDisk": true,
+      "applied": true
+    },
+    {
+      "migration": "20260921180000_duration_aware_partner_slot",
+      "onDisk": true,
+      "applied": true
+    }
+  ],
+  "phase06": [
+    {
+      "migration": "20260922100000_service_requirements",
+      "onDisk": true,
+      "applied": true
+    }
+  ],
+  "destructivePending": [],
+  "bookingSlots": {
+    "count": 113,
+    "sha256": "92257cba1424942c2bbcd5e33e00f3f44f6def80acaf3d97cb8ea2fa67f2b4a6"
+  },
+  "bookingSnapshots": {
+    "count": 707,
+    "md5": "27f31ec3aa0b91c75b6640cc561e2e7d"
+  },
+  "checks": [
+    {
+      "name": "read-only session",
+      "status": "PASS",
+      "detail": "all checks run inside one READ ONLY transaction"
+    },
+    {
+      "name": "target identity",
+      "status": "PASS",
+      "detail": "connected to localhost:5433/homigo_db (confirmed by --confirm-db)"
+    },
+    {
+      "name": "migration history matches the schema",
+      "status": "PASS",
+      "detail": "133 applied rows"
+    },
+    {
+      "name": "no failed migration rows",
+      "status": "PASS",
+      "detail": "137 history rows"
+    },
+    {
+      "name": "no applied migration missing on disk (drift)",
+      "status": "PASS",
+      "detail": "every applied migration exists in this release"
+    },
+    {
+      "name": "applied migrations unedited (checksum)",
+      "status": "PASS",
+      "detail": "every applied checksum matches its file"
+    },
+    {
+      "name": "pending migrations are strictly newer than applied (order)",
+      "status": "PASS",
+      "detail": "newest applied: 20260922100000_service_requirements"
+    },
+    {
+      "name": "nothing left pending",
+      "status": "PASS",
+      "detail": "every migration in this release is applied"
+    },
+    {
+      "name": "column services.data_origin",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "column services.partner_slot_policy",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "column services.service_code",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "column bookings.slot_duration_minutes",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "column bookings.provider_slot_start",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "column bookings.provider_slot_end",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "constraint bookings_provider_slot_excl",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "constraint bookings_user_slot_excl",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "constraint services_price_paise_precision",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "constraint booking_completed_requires_timestamp",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "slot trigger is duration-aware (D1)",
+      "status": "PASS",
+      "detail": "bookings_sync_conflict_slots uses COALESCE(NEW.slot_duration_minutes, 0)"
+    },
+    {
+      "name": "slot trigger attached",
+      "status": "PASS",
+      "detail": "1 trigger(s) call it"
+    },
+    {
+      "name": "table service_requirement_items",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "table service_requirements",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "constraint service_requirement_items_code_key",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "constraint service_requirements_service_code_key",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "constraint service_requirements_customer_charge_check",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "constraint service_requirements_chargeable_check",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "constraint service_requirements_blocking_check",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "name": "used catalogue items cannot be deleted (FK RESTRICT)",
+      "status": "PASS",
+      "detail": "confdeltype=r"
+    },
+    {
+      "name": "Phase 06 tables start empty (nothing seeded)",
+      "status": "PASS",
+      "detail": "items=0 assignments=0"
+    },
+    {
+      "name": "service provenance",
+      "status": "INFO",
+      "detail": "INFERRED_FIXTURE=35 · NULL(commercial)=31"
+    },
+    {
+      "name": "FIXED-slot services (laundry turnaround)",
+      "status": "INFO",
+      "detail": "ironing-folding, laundry, wardrobe-cleaning"
+    },
+    {
+      "name": "existing partner windows unchanged (D1)",
+      "status": "PASS",
+      "detail": "113 windows byte-identical to --pre"
+    },
+    {
+      "name": "booking snapshots unchanged (Phase 06)",
+      "status": "PASS",
+      "detail": "707 snapshots byte-identical to --pre"
+    }
+  ]
+}

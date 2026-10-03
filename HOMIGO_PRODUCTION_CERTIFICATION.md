@@ -1,7 +1,7 @@
 # HOMIGO Production Certification
 
-**Generated:** 2026-07-03T10:36:40.616Z  
-**Prior:** Enterprise Ready 92% → **Production Certification 88%**  
+**Generated:** 2026-09-21T07:18:30.873Z  
+**Prior:** Enterprise Ready 92% → **Production Certification 84%**  
 **Method:** Runtime probes only — no fabricated metrics
 
 ---
@@ -12,27 +12,27 @@
 
 | Dimension | Score |
 |-----------|------:|
-| Production Readiness | **88%** |
+| Production Readiness | **84%** |
 | Security | **100%** |
 | Scalability | **75%** |
 | Mobile Readiness | **88%** |
-| Enterprise Grade | **88%** |
+| Enterprise Grade | **86%** |
 
 | Sub-domain | Score |
 |------------|------:|
 | Architecture | 95% |
 | Operational | 82% |
 | Performance | 80% |
-| Recovery | 95% |
+| Recovery | 70% |
 
 ## Runtime Evidence Summary
 
 - GET /health → 200 (db=ok)
 - GET /ready → 200 (email=false)
-- Financial integrity → 100/100
+- Financial integrity → 92/100
 - Security adversarial → 15/15 PASS
 - Ecosystem journey → 17/17 PASS
-- Load 100 VU booking p95 → 1624ms @ 0% errors
+- Load 100 VU booking p95 → 750ms @ 0% errors
 
 ## Blockers
 
@@ -74,4 +74,4 @@
 
 ---
 
-**Production Readiness: 88%** | **Certification: PASS**
+**Production Readiness: 84%** | **Certification: PASS**

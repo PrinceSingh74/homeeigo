@@ -11,7 +11,7 @@ Three **independent frontends** share one **backend** (Bun + Elysia + PostgreSQL
 | **Business HQ (Admin)** | `apps/admin-panel` | admin.homigo.com | 3003 — poora company: vendors, GMV, fraud, payouts |
 | API | `apps/backend` | api.homigo.com | 3000 |
 
-Mobile: `apps/mobile` (customer), `homigo-mobile` / future `mobile-partner`.
+Mobile: `homigo-mobile` (customer), `homigo-partner-mobile` (partner). Both are Expo apps at the repo root.
 
 ## Separation rules
 
