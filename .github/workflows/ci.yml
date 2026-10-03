@@ -148,10 +148,10 @@ jobs:
         with:
           node-version: 20
 
-      # Backend lint currently reports 102 pre-existing errors (mostly no-unused-vars), so it
-      # runs in report-only mode: the gate exists and every PR shows the output, but it does not
-      # turn CI red for violations that predate it. Flipping `continue-on-error` to false is a
-      # one-line change once that backlog is cleared — tracked as P2-12.
+      # Backend lint is now a BLOCKING gate. The P2-12 backlog (102 pre-existing errors, mostly
+      # no-unused-vars) that forced report-only mode is cleared: measured 2026-10-03,
+      # `bunx eslint src --max-warnings 0` in apps/backend exits 0. `--max-warnings 0` is explicit
+      # here so a new warning cannot accumulate into the next backlog.
       #
       # NOTE: the `lint` script itself was broken before this job existed — it passed `--ext ts`,
       # a flag ESLint 9+ removed, so `npm run lint` failed instantly with a usage error and the
@@ -161,10 +161,9 @@ jobs:
         run: |
           bun install
           bunx prisma generate
-      - name: Backend lint (report-only — see P2-12)
+      - name: Backend lint
         working-directory: apps/backend
-        continue-on-error: true
-        run: bun run lint
+        run: bunx eslint src --max-warnings 0
 
       # The three Next apps lint clean (warnings only) today, so these ARE blocking gates —
       # they protect a currently-green state rather than papering over a backlog.
