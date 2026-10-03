@@ -93,7 +93,7 @@ export default function HCoinExpiryPage() {
 
       <div className="rounded-xl border border-[var(--color-biz-line)] p-4">
         <h2 className="mb-3 font-semibold">Expiry runs</h2>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Expiry runs table">
           <table className="w-full text-left text-sm">
             <thead className="text-[var(--color-biz-muted)]">
               <tr>

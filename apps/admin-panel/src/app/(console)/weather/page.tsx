@@ -20,6 +20,7 @@ import {
 import { StatTile } from "@/components/hq/primitives";
 import { SectionHead } from "@/components/hq/SectionHead";
 import { Icon3D, type Icon3DTone } from "@/components/hq/Icon3D";
+import { OperationsWorkspaceRail, OpsEyebrow } from "@/components/operations/OperationsWorkspaceRail";
 import { IsoBarChart } from "@/components/hq/IsoBarChart";
 import { adminApi, type WeatherCity } from "@/services/admin-api";
 import { formatNumber } from "@/lib/format";
@@ -270,6 +271,7 @@ export default function WeatherCenterPage() {
         <div className="flex min-w-0 items-start gap-4">
           <Icon3D icon={CloudSun} tone={watch.length ? "warning" : "cyan"} size="lg" />
           <div className="min-w-0">
+            <OpsEyebrow />
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <h1 className="biz-display text-[1.75rem] font-bold leading-none tracking-tight">Weather Center</h1>
               <span className="cmd-live-pill">
@@ -288,6 +290,8 @@ export default function WeatherCenterPage() {
           Refresh
         </button>
       </header>
+
+      <OperationsWorkspaceRail />
 
       {weather.isLoading ? (
         <div className="flex items-center justify-center py-24 text-[var(--color-biz-muted)]">

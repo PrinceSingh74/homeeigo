@@ -5,9 +5,11 @@
  * Usage: bun run scripts/ensure-demo-users.ts
  */
 import "../src/load-env";
+import { requireDeclaredTarget } from "./lib/script-target";
 import { KycStatus, PrismaClient, UserRole } from "@prisma/client";
 import prisma from "../src/lib/prisma";
 import { resolvePrismaDatasourceUrl } from "../src/lib/database-url";
+requireDeclaredTarget({ label: "ensure-demo-users" });
 
 /** Bypass PII auto-encrypt extension — demo accounts use plaintext email for reliable local login. */
 const rawPrisma = new PrismaClient({
@@ -17,6 +19,7 @@ import { normalizeEmail, normalizePhone } from "../src/lib/pii-normalize";
 import { PasswordService } from "../src/services/password.service";
 import { rbacService } from "../src/services/rbac.service";
 import { userPiiService } from "../src/services/user-pii.service";
+import { financialLedgerService } from "../src/services/financial-ledger.service";
 
 const DEMO_PASSWORD = "Homigo@123";
 
@@ -76,6 +79,8 @@ async function upsertDemoUser(demo: (typeof DEMOS)[number]) {
   if (!user) {
     user = await rawPrisma.user.create({
       data: {
+        // Demo accounts are fixtures: born classified so they never count as business (Phase A, 2026-09-24).
+        dataOrigin: "FIXTURE",
         firstName: demo.firstName,
         lastName: demo.lastName,
         password: passwordHash,
@@ -93,6 +98,17 @@ async function upsertDemoUser(demo: (typeof DEMOS)[number]) {
         ...pii,
       },
     });
+    if (demo.role === UserRole.CUSTOMER) {
+      await financialLedgerService.recordJournal(
+        financialLedgerService.journalForFixtureOpeningBalance({
+          idempotencyKey: `fixture_wallet:${user.id}`,
+          referenceId: user.id,
+          referenceType: "fixture_user",
+          creditAccount: "CUSTOMER_WALLET",
+          amount: 5000,
+        }),
+      );
+    }
     console.log(`Created ${demo.email} (${demo.role})`);
     return user;
   }
@@ -151,6 +167,9 @@ async function ensurePartnerProvider(userId: string) {
         serviceCategories: categories,
         isApproved: true,
         isActive: true,
+        // Approved + active is ACTIVE (the 20260829140000 backfill rule); APPLIED keeps the demo
+        // partner out of DISPATCHABLE_PROVIDER_WHERE, so no slot or offer could ever reach it.
+        lifecycleState: "ACTIVE",
         isOnline: true,
         registrationStatus: "APPROVED",
         rating: 4.95,
@@ -173,6 +192,7 @@ async function ensurePartnerProvider(userId: string) {
       isApproved: true,
       isOnline: true,
       isActive: true,
+      lifecycleState: "ACTIVE",
       rating: 4.95,
       totalReviews: 500,
       completionRate: 99,

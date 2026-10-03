@@ -1,4 +1,4 @@
-import { CommissionStatus, FraudAlertStatus, FraudEventType, FraudRiskLevel } from "@prisma/client";
+import { CommissionStatus, FraudEventType, FraudRiskLevel } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { fraudSignalService } from "./fraud-signal.service";
 import { fraudRiskService } from "./fraud-risk.service";

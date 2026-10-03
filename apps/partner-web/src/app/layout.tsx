@@ -3,6 +3,7 @@ import { Inter, Inter_Tight, Space_Grotesk, JetBrains_Mono } from "next/font/goo
 import { PartnerProviders } from "@/components/providers/PartnerProviders";
 import { PartnerAuthGuard } from "@/components/auth/PartnerAuthGuard";
 import { PartnerRealtimeBridge } from "@/components/realtime/PartnerRealtimeBridge";
+import { PartnerPresenceHeartbeat } from "@/components/realtime/PartnerPresenceHeartbeat";
 import { PartnerRoutePrefetch } from "@/components/navigation/PartnerRoutePrefetch";
 import { RouteProgress } from "@/components/navigation/RouteProgress";
 import { Toaster } from "@/components/ui/Toaster";
@@ -59,6 +60,7 @@ export default function RootLayout({
           <PartnerRoutePrefetch />
           <PartnerAuthGuard>{children}</PartnerAuthGuard>
           <PartnerRealtimeBridge />
+          <PartnerPresenceHeartbeat />
           <Toaster />
         </PartnerProviders>
       </body>

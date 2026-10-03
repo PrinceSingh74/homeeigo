@@ -134,7 +134,7 @@ export function buildBookingAssignedEvent(input: {
   serviceId: string;
   assignedAt: Date;
   eta?: number | null;
-  actorType?: "partner" | "system";
+  actorType?: "partner" | "system" | "admin";
   actorId?: string;
 }): HomigoEvent<BookingAssignedPayload> {
   return envelope(
@@ -220,5 +220,151 @@ export function buildBookingCancelledEvent(input: {
     correlationId: input.bookingId,
     actorType: input.actorType ?? (input.cancelledBy === "user" ? "customer" : "partner"),
     actorId: input.actorId,
+  });
+}
+
+export type BookingChatMessageSentPayload = {
+  bookingId: string;
+  messageId: string;
+  senderUserId: string;
+  createdAt: string;
+};
+
+export type FieldEvidenceCreatedPayload = {
+  bookingId: string;
+  evidenceId: string;
+  providerId: string;
+  stage: string;
+  createdAt: string;
+};
+
+export function buildBookingChatMessageSentEvent(input: {
+  bookingId: string;
+  messageId: string;
+  senderUserId: string;
+  createdAt: Date;
+}): HomigoEvent<BookingChatMessageSentPayload> {
+  return envelope(
+    EVENT_TYPES.BOOKING_CHAT_MESSAGE_SENT,
+    EVENT_SOURCES.BOOKING,
+    input.bookingId,
+    {
+      bookingId: input.bookingId,
+      messageId: input.messageId,
+      senderUserId: input.senderUserId,
+      createdAt: input.createdAt.toISOString(),
+    },
+    { correlationId: input.bookingId, actorType: "partner", actorId: input.senderUserId },
+  );
+}
+
+export function buildFieldEvidenceCreatedEvent(input: {
+  bookingId: string;
+  evidenceId: string;
+  providerId: string;
+  stage: string;
+  createdAt: Date;
+}): HomigoEvent<FieldEvidenceCreatedPayload> {
+  return envelope(
+    EVENT_TYPES.FIELD_EVIDENCE_CREATED,
+    EVENT_SOURCES.BOOKING,
+    input.bookingId,
+    {
+      bookingId: input.bookingId,
+      evidenceId: input.evidenceId,
+      providerId: input.providerId,
+      stage: input.stage,
+      createdAt: input.createdAt.toISOString(),
+    },
+    { correlationId: input.bookingId, actorType: "partner", actorId: input.providerId },
+  );
+}
+
+export type BookingRescheduledPayload = {
+  bookingId: string;
+  userId: string;
+  providerId: string | null;
+  /** The appointment being left and the one being taken, both canonical instants. */
+  previousScheduledAt: string;
+  scheduledAt: string;
+  rescheduledAt: string;
+  /**
+   * §45 / O6 — the fee decision this move was taken under, from the policy FROZEN on the booking.
+   * Carried on the event so support and analytics can answer "what was this customer told, and
+   * under which terms" without re-deriving it from a policy that may since have changed.
+   * Absent on an admin move, which is not subject to the customer late fee.
+   */
+  reschedulePolicy?: {
+    version: string;
+    disposition: string;
+    feeBps: number;
+    feeAmountPaise: number;
+  };
+};
+
+/**
+ * Emitted by the ONE reschedule path (customer and admin) inside the same transaction as the write,
+ * so a consumer can never see a schedule change that did not commit — or miss one that did.
+ */
+export function buildBookingRescheduledEvent(input: {
+  bookingId: string;
+  userId: string;
+  providerId: string | null;
+  previousScheduledAt: Date;
+  scheduledAt: Date;
+  actorType: "customer" | "partner" | "admin";
+  actorId?: string;
+  reschedulePolicy?: BookingRescheduledPayload["reschedulePolicy"];
+}): HomigoEvent<BookingRescheduledPayload> {
+  return envelope(EVENT_TYPES.BOOKING_RESCHEDULED, EVENT_SOURCES.BOOKING, input.bookingId, {
+    bookingId: input.bookingId,
+    userId: input.userId,
+    providerId: input.providerId,
+    previousScheduledAt: input.previousScheduledAt.toISOString(),
+    scheduledAt: input.scheduledAt.toISOString(),
+    rescheduledAt: new Date().toISOString(),
+    ...(input.reschedulePolicy ? { reschedulePolicy: input.reschedulePolicy } : {}),
+  }, {
+    correlationId: input.bookingId,
+    actorType: input.actorType,
+    actorId: input.actorId,
+  });
+}
+
+export type BookingPaymentExpiredPayload = {
+  bookingId: string;
+  userId: string;
+  providerId: string | null;
+  scheduledAt: string;
+  /** The window that closed, so a consumer never has to guess which policy produced this. */
+  ttlMinutes: number;
+  previousPaymentStatus: string;
+  expiredAt: string;
+};
+
+/**
+ * Emitted in the same transaction as the expiry, so a consumer cannot see a released slot without
+ * the event, nor the event without the release.
+ */
+export function buildBookingPaymentExpiredEvent(input: {
+  bookingId: string;
+  userId: string;
+  providerId: string | null;
+  scheduledAt: Date;
+  ttlMinutes: number;
+  previousPaymentStatus: string;
+}): HomigoEvent<BookingPaymentExpiredPayload> {
+  return envelope(EVENT_TYPES.BOOKING_PAYMENT_EXPIRED, EVENT_SOURCES.BOOKING, input.bookingId, {
+    bookingId: input.bookingId,
+    userId: input.userId,
+    providerId: input.providerId,
+    scheduledAt: input.scheduledAt.toISOString(),
+    ttlMinutes: input.ttlMinutes,
+    previousPaymentStatus: input.previousPaymentStatus,
+    expiredAt: new Date().toISOString(),
+  }, {
+    correlationId: input.bookingId,
+    // No person did this: the window closed.
+    actorType: "system",
   });
 }

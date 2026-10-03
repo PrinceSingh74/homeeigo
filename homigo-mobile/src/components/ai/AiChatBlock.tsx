@@ -259,7 +259,7 @@ export function AiChatBlock({ messages, isThinking, onSend, onReset }: Props) {
 
       <AiGlassCard shadow="hero" glow pad={14}>
         {/* Scrollable message area */}
-        <ScrollView
+        <ScrollView keyboardShouldPersistTaps="handled"
           ref={scrollRef}
           style={styles.msgArea}
           contentContainerStyle={styles.msgContent}

@@ -18,36 +18,46 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import {
   ArrowLeft,
-  Bell,
   MapPin,
   ChevronDown,
   Check,
   Star,
-  Sparkles,
   Lock,
-  Flame,
   Scissors,
   Calendar,
   Clock,
+  Tag,
+  Wallet,
+  AlertTriangle,
 } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles, gradients } from "@/lib/colors";
-import {
-  ADDONS,
-  BOOKING_TIMES,
-  popularPackageIndex,
-  getLocation,
-} from "@/lib/services";
-import { useCatalogServices, getServiceIndexFromCatalog } from "@/hooks/use-catalog";
+import { BOOKING_TIMES, popularPackageIndex } from "@/lib/services";
+import { useBookableServices } from "@/hooks/use-catalog";
+import { findServiceIndex } from "@/lib/requested-service";
 import {
   useAddressesQuery,
   useCreateBookingMutation,
-  useCreateAddressMutation,
+  useWalletBalanceQuery,
   mapBackendBookingToSaved,
 } from "@/hooks/use-core-data";
-import { useBookingPayment, type BookingPaymentState } from "@/hooks/use-booking-payment";
+import {
+  useBookingPayment,
+  type BookingPaymentResult,
+  type BookingPaymentState,
+} from "@/hooks/use-booking-payment";
 import { preloadRazorpayCheckout } from "@/hooks/use-razorpay-checkout";
-import { buildAddressCreatePayload } from "@/lib/addresses";
+import { useBookingPriceQuote, useServiceability } from "@/hooks/use-booking-quote";
+import {
+  buildBookingSelection,
+  couponErrorMessage,
+  formatInr,
+  quoteErrorMessage,
+  quoteLines,
+  selectionKey,
+  selectionToBookingFields,
+} from "@/lib/booking-quote";
+import { useAddressPickStore } from "@/lib/address-pick-store";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import {
   defaultScheduledSlot,
@@ -63,13 +73,18 @@ import {
   sameCalendarDay,
 } from "@/lib/booking-datetime";
 import { getErrorMessage, AuthApiError } from "@/lib/auth/errors";
-import { calculateTotal } from "@/lib/booking";
 import { getServiceImage } from "@/lib/service-assets";
 import { useAppStore } from "@/lib/store";
 import { createBookStyles } from "@/lib/book-styles";
-import { radius, type as typo } from "@/lib/typography";
+import { radius, spacing, type as typo } from "@/lib/typography";
 import { Button } from "@/components/Button";
-import { LocationSheet } from "@/components/booking/LocationSheet";
+import {
+  BookingAddressSheet,
+  ServiceabilityLine,
+  toSelectedAddress,
+  type AddressSeed,
+  type SelectedAddress,
+} from "@/components/booking/BookingAddressSheet";
 import { BookingSuccessModal } from "@/components/booking/BookingSuccessModal";
 import { BookingSectionHeader } from "@/components/booking/BookingSectionHeader";
 
@@ -118,25 +133,48 @@ export default function BookScreen() {
   const scheduleY = useRef(0);
   const summaryY = useRef(0);
 
-  const locationId = useAppStore((s) => s.locationId);
-  const activePromo = useAppStore((s) => s.activePromo);
   const setActivePromo = useAppStore((s) => s.setActivePromo);
   const showToast = useAppStore((s) => s.showToast);
-  const { services: catalogServices } = useCatalogServices();
-  const { data: addressData } = useAddressesQuery();
+  const requestedService = params.service ? String(params.service) : null;
+  const {
+    services: catalogServices,
+    isLoading: catalogLoading,
+    requestedMissing,
+  } = useBookableServices(requestedService);
+  const addressesQuery = useAddressesQuery();
+  const addressData = addressesQuery.data;
   const createBooking = useCreateBookingMutation();
-  const { payForBooking } = useBookingPayment();
-  const createAddress = useCreateAddressMutation();
+  const { payForBooking, payWithWallet } = useBookingPayment();
+  const walletQuery = useWalletBalanceQuery();
+  const picked = useAddressPickStore((s) => s.picked);
+  const setPicked = useAddressPickStore((s) => s.setPicked);
 
-  const initialIdx = params.service
-    ? getServiceIndexFromCatalog(catalogServices, String(params.service))
-    : 0;
-  const initialPkg = params.package
-    ? Number(params.package)
-    : popularPackageIndex(catalogServices[initialIdx] ?? catalogServices[0]!);
+  const initialIdx = requestedService ? Math.max(0, findServiceIndex(catalogServices, requestedService)) : 0;
+  // On a cold start (deep link, notification) the catalogue is still empty on the first render.
+  const initialService = catalogServices[initialIdx] ?? catalogServices[0];
+  const initialPkg = params.package ? Number(params.package) : initialService ? popularPackageIndex(initialService) : 0;
 
   const [serviceIdx, setServiceIdx] = useState(initialIdx);
+  /** Phase 06: blocking requirements the customer confirmed (the server refuses the booking without them). */
+  const [attested, setAttested] = useState<string[]>([]);
   const [pkgIdx, setPkgIdx] = useState(initialPkg);
+
+  // The catalogue — and the requested service, when it is not in the first page and is fetched on
+  // its own — can arrive after the first render. Settle the selection once, when it does; after that
+  // (or once the customer picks) nothing here changes it again.
+  const selectionSettled = useRef(false);
+  useEffect(() => {
+    if (selectionSettled.current || catalogServices.length === 0) return;
+    const i = requestedService ? findServiceIndex(catalogServices, requestedService) : 0;
+    if (i < 0) return;
+    selectionSettled.current = true;
+    setServiceIdx(i);
+    setPkgIdx(params.package ? Number(params.package) : popularPackageIndex(catalogServices[i]!));
+  }, [catalogServices, requestedService]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (requestedMissing) showToast("That service isn't available to book right now. Please pick one below.");
+  }, [requestedMissing]); // eslint-disable-line react-hooks/exhaustive-deps
   const [scheduledAt, setScheduledAt] = useState(() => defaultScheduledSlot());
   const [manualDateStr, setManualDateStr] = useState(() =>
     toYmdLocal(defaultScheduledSlot()),
@@ -147,22 +185,38 @@ export default function BookScreen() {
   const [androidPicker, setAndroidPicker] = useState<"date" | "time" | null>(null);
   const [iosPicker, setIosPicker] = useState<"date" | "time" | null>(null);
   const [iosDraft, setIosDraft] = useState(() => defaultScheduledSlot());
-  const [addons, setAddons] = useState<Set<number>>(new Set());
+  const [addons, setAddons] = useState<Set<string>>(new Set());
+  const [audience, setAudience] = useState<string | null>(null);
+  const [variantId, setVariantId] = useState<string | null>(null);
+  const [quantity, setQuantity] = useState<number | null>(null);
   const [instructions, setInstructions] = useState("");
-  const [locationOpen, setLocationOpen] = useState(false);
+  const [couponInput, setCouponInput] = useState(() => (params.promo ? String(params.promo) : ""));
+  const [appliedCoupon, setAppliedCoupon] = useState(() => (params.promo ? String(params.promo).trim() : ""));
+  const [useWallet, setUseWallet] = useState(false);
+  // The service address: chosen by the customer, never invented (no default city / coordinates).
+  const [address, setAddress] = useState<SelectedAddress | null>(null);
+  const [addressSheetOpen, setAddressSheetOpen] = useState(false);
+  const [pickedSeed, setPickedSeed] = useState<AddressSeed | null>(null);
+  const awaitingPick = useRef(false);
   const [confirming, setConfirming] = useState(false);
   const [flowStep, setFlowStep] = useState(1);
   // Narrates the confirm → pay → verify sequence on the footer button so the user is
   // never left staring at one opaque spinner while Razorpay is being prepared.
   const [checkoutStage, setCheckoutStage] = useState<CheckoutStage>("idle");
   const [paymentState, setPaymentState] = useState<BookingPaymentState>("pending");
+  const [paymentNote, setPaymentNote] = useState<string | null>(null);
+  const [canPay, setCanPay] = useState(true);
+  const [paidVia, setPaidVia] = useState("Razorpay");
   const [successBooking, setSuccessBooking] = useState<
     import("@/lib/store").SavedBooking | null
   >(null);
 
-  const svc = catalogServices[serviceIdx] ?? catalogServices[0]!;
-  const selected = svc.packages[pkgIdx] ?? svc.packages[0];
-  const loc = getLocation(locationId);
+  const svc = catalogServices[serviceIdx] ?? catalogServices[0];
+  const selected = svc?.packages[pkgIdx] ?? svc?.packages[0];
+  const addonCatalog = svc?.addons ?? [];
+  const variantCatalog = (svc?.variants ?? []).filter((v) =>
+    audience && v.audiences?.length ? v.audiences.includes(audience) : true,
+  );
 
   const quickDays = useMemo(() => {
     const arr: Date[] = [];
@@ -187,23 +241,102 @@ export default function BookScreen() {
   }, [scheduledAt]);
 
   useEffect(() => {
-    if (params.promo) {
-      setActivePromo(String(params.promo));
-      showToast(`Promo ${params.promo} applied`);
-    }
+    // A promo link only pre-fills the coupon; whether it applies is the server quote's answer.
+    if (params.promo) setActivePromo(String(params.promo));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.promo]);
 
-  const addonTotal = useMemo(
-    () => [...addons].reduce((s, i) => s + ADDONS[i].price, 0),
-    [addons],
+  // Default to the customer's default (or first) saved address that has real coordinates.
+  useEffect(() => {
+    if (address || !addressData?.addresses?.length) return;
+    const list = addressData.addresses;
+    const def = list.find((a) => a.isDefault);
+    const pick = [def, ...list]
+      .map((a) => (a ? toSelectedAddress(a) : null))
+      .find((a): a is SelectedAddress => a != null);
+    if (pick) setAddress(pick);
+  }, [address, addressData?.addresses]);
+
+  // A result from the map/autocomplete picker comes back through the pick store.
+  useEffect(() => {
+    if (!picked || !awaitingPick.current) return;
+    awaitingPick.current = false;
+    setPickedSeed({
+      latitude: picked.latitude,
+      longitude: picked.longitude,
+      formattedAddress: picked.formattedAddress,
+      city: picked.city,
+      state: picked.state,
+      postalCode: picked.postalCode,
+    });
+    setPicked(null);
+    setAddressSheetOpen(true);
+  }, [picked, setPicked]);
+
+  // Drop add-ons the newly selected service doesn't offer.
+  useEffect(() => {
+    const known = new Set(addonCatalog.map((a) => a.id));
+    setAddons((prev) => {
+      const next = new Set([...prev].filter((id) => known.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [addonCatalog]);
+
+  const addressCoords = useMemo(
+    () => (address ? { latitude: address.latitude, longitude: address.longitude } : null),
+    [address],
   );
-  // Match the server price exactly: baseAmount = selected package price + add-ons.
-  // (Was calculateTotal(svc.priceFrom) — ignored both the tier AND add-ons, so the
-  // summary under-charged vs what the backend actually bills.)
-  const pricing = useMemo(
-    () => calculateTotal(selected.price + addonTotal),
-    [selected.price, addonTotal],
+  const serviceability = useServiceability(addressCoords, svc?.category);
+
+  // Selection → server quote. The quote is priced at the chosen address (weather surge), exactly
+  // as POST /api/bookings prices it from that address.
+  const selection = useMemo(
+    () =>
+      svc && (selected || svc.quantityRule || variantId)
+        ? buildBookingSelection({
+            serviceId: svc.id,
+            quantityRule: svc.quantityRule,
+            quantity: quantity ?? undefined,
+            packagePrice: selected?.price,
+            variantId,
+            audience,
+            addonIds: [...addons],
+            couponCode: appliedCoupon,
+            addressId: address?.id ?? null,
+            coords: addressCoords,
+          })
+        : null,
+    [svc, selected, addons, appliedCoupon, address?.id, addressCoords, quantity, variantId, audience],
   );
+  const priceQuote = useBookingPriceQuote(selection);
+  const quote = priceQuote.quote;
+  const couponProblem = appliedCoupon && quote?.couponError ? couponErrorMessage(quote.couponError) : null;
+  const walletBalance = walletQuery.data?.balance ?? 0;
+
+  /** Why the confirm button is disabled, in the customer's words (null = can confirm). */
+  const blocker: string | null = !svc
+    ? "Loading services…"
+    : svc.audiences?.length && !audience
+      ? "Choose who this service is for."
+    : svc.variants?.length && !variantId
+      ? "This option is unavailable for this service."
+    : !selected && !svc.quantityRule && !svc.variants?.length
+      ? "This service has no bookable package right now."
+    : svc.comingSoon
+      ? "This service is coming soon — it can't be booked yet."
+      : !address
+        ? "Choose the address for this service."
+        : serviceability.state === "unserviceable"
+          ? "We don't serve this address yet."
+          : serviceability.state === "checking"
+            ? "Checking your address…"
+            : priceQuote.error
+              ? quoteErrorMessage(priceQuote.error)
+              : !priceQuote.ready
+                ? "Calculating your price…"
+                : couponProblem
+                  ? `${couponProblem} Remove it to continue.`
+                  : null;
 
   const currentStep = successBooking || confirming ? 3 : flowStep;
 
@@ -213,9 +346,13 @@ export default function BookScreen() {
 
   const selectService = (i: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    selectionSettled.current = true;
     setServiceIdx(i);
     setPkgIdx(popularPackageIndex(catalogServices[i]!));
-    setAddons(new Set());
+    setAddons(new Set<string>());
+    setAudience(null);
+    setVariantId(null);
+    setQuantity(null);
     setFlowStep(1);
     showToast(`${catalogServices[i]!.title} selected`);
   };
@@ -297,46 +434,66 @@ export default function BookScreen() {
     );
     setIosPicker(null);
   };
-  const toggleAddon = (i: number) => {
+  const toggleAddon = (id: string) => {
     Haptics.selectionAsync();
     setAddons((prev) => {
       const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
-  const applyAiPackage = () => {
-    const rec = popularPackageIndex(svc);
-    selectPackage(rec);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    showToast("AI picked Standard — best for 2BHK");
+  const applyCoupon = () => {
+    const code = couponInput.trim();
+    Haptics.selectionAsync();
+    setAppliedCoupon(code);
+    if (code) setActivePromo(code);
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon("");
+    setCouponInput("");
+    setActivePromo(null);
+  };
+
+  const openAddressSearch = (notice?: string) => {
+    if (notice) showToast(notice);
+    setAddressSheetOpen(false);
+    awaitingPick.current = true;
+    router.push("/address/picker");
   };
 
   /**
    * Opens Razorpay for an already-created booking and reports whether money actually
    * moved. Never throws: an unpaid booking is a state the UI has to show, not a crash.
    */
-  async function runCheckout(bookingId: string): Promise<BookingPaymentState> {
+  async function runCheckout(bookingId: string, title: string): Promise<BookingPaymentState> {
+    let outcome: BookingPaymentResult;
+    const payViaWallet = useWallet && walletBalance > 0;
     try {
-      const outcome = await payForBooking({
+      const opts = {
         bookingId,
-        amount: pricing.total,
-        description: `${svc.title} booking`,
-        onPhase: (phase) =>
+        description: `${title} booking`,
+        onPhase: (phase: "creating-order" | "checkout" | "verifying") =>
           setCheckoutStage(phase === "creating-order" ? "order" : phase),
-        onVerified: () =>
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
-      });
-      if (outcome.status === "paid") return "paid";
-      showToast(
-        outcome.status === "dismissed"
-          ? "Payment cancelled — your slot is held, pay anytime."
-          : outcome.message,
-      );
+      };
+      outcome = payViaWallet ? await payWithWallet(opts) : await payForBooking(opts);
     } catch (error) {
-      showToast(getErrorMessage(error, "Could not start payment. You can pay later."));
+      outcome = { status: "failed", message: getErrorMessage(error, "Could not start payment. You can pay later.") };
+    }
+    if (outcome.status === "paid") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setPaidVia(payViaWallet ? "Wallet" : "Razorpay");
+      setPaymentNote(outcome.note ?? null);
+      return "paid";
+    }
+    if (outcome.status === "dismissed") {
+      setPaymentNote("Payment cancelled — nothing was charged. Your booking is saved; pay anytime from My Bookings.");
+    } else {
+      setPaymentNote(outcome.message);
+      if (outcome.code === "BOOKING_NOT_PAYABLE") setCanPay(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
     return "pending";
   }
@@ -346,7 +503,7 @@ export default function BookScreen() {
     if (!successBooking || confirming) return;
     setConfirming(true);
     try {
-      const state = await runCheckout(successBooking.id);
+      const state = await runCheckout(successBooking.id, successBooking.serviceTitle);
       setPaymentState(state);
       if (state === "paid") showToast("Payment confirmed");
     } finally {
@@ -357,46 +514,46 @@ export default function BookScreen() {
 
   async function confirmBooking() {
     if (confirming) return;
+    if (blocker || !svc || !address || !selection || !quote) {
+      if (blocker) showToast(blocker);
+      return;
+    }
+    // Only the quote priced for exactly this selection may be confirmed.
+    if (priceQuote.key !== selectionKey(selection)) {
+      showToast("Your price is being updated — please wait a moment.");
+      return;
+    }
     // Backend rejects past slots ("Booking date must be in the future") — catch it here
     // with a clear message instead of a failed request.
     if (scheduledAt.getTime() <= Date.now()) {
       showToast("That time has already passed — please pick a future slot.");
       return;
     }
+    const mustConfirm = quote.requirements?.beforeBooking ?? [];
+    const unconfirmed = mustConfirm.filter((r) => !attested.includes(r.code));
+    if (unconfirmed.length) {
+      showToast(`Please confirm: ${unconfirmed.map((r) => r.label).join(", ")}`);
+      return;
+    }
+    const quotedTotal = quote.finalAmount;
     setConfirming(true);
     setCheckoutStage("booking");
+    setPaymentNote(null);
+    setCanPay(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     try {
-      let addressId = addressData?.addresses?.find((a) => a.isDefault)?.id
-        ?? addressData?.addresses?.[0]?.id;
-
-      if (!addressId) {
-        const created = await createAddress.mutateAsync(
-          buildAddressCreatePayload({
-            line1: loc.label,
-            line2: `${loc.city}, ${loc.pin}`,
-            label: "Home",
-            latitude: 28.4595,
-            longitude: 77.0266,
-          }),
-        );
-        if (created.queued) {
-          showToast("You're offline — booking saved and will sync when connected");
-          return;
-        }
-        addressId = created.address.id;
-      }
-
       const result = await createBooking.mutateAsync({
-        serviceId: svc.id,
-        addressId,
+        // The same selection ids that were quoted — never an amount. The server re-prices it.
+        ...selectionToBookingFields(selection),
+        addressId: address.id,
         scheduledDate: scheduledAt.toISOString(),
         description: instructions.trim() || undefined,
         paymentMethod: "razorpay",
-        // Server re-prices from its own catalog — these are selections, not amounts.
-        packagePrice: selected.price,
-        addonIds: [...addons].map((i) => ADDONS[i]!.id),
         ...(params.providerId ? { providerId: String(params.providerId) } : {}),
+        // The signed quote: if the price moved, the server refuses (PRICE_CHANGED) instead of
+        // charging a total the customer did not see.
+        ...(quote.quoteToken ? { quoteToken: quote.quoteToken } : {}),
+        ...(mustConfirm.length ? { requirementAttestations: mustConfirm.map((r) => r.code).filter((code) => attested.includes(code)) } : {}),
       });
 
       if (result.queued) {
@@ -406,9 +563,19 @@ export default function BookScreen() {
 
       if (result.booking) {
         const saved = mapBackendBookingToSaved(result.booking);
-        saved.address = `${loc.label}, ${loc.pin}`;
-        saved.total = pricing.total;
-        saved.packageName = selected.name;
+        saved.address = address.text;
+        // The create response nests the name under service.name; use the catalogue entry booked.
+        saved.serviceId = svc.id;
+        saved.serviceTitle = svc.title;
+        saved.serviceName = svc.name;
+        saved.packageName = selected?.name ?? saved.packageName;
+        // saved.total is the server's booking amount. If it moved since the quote (e.g. a
+        // membership benefit was used elsewhere in between), say so instead of hiding it.
+        if (!saved.total) saved.total = quotedTotal; // response without an amount: the server quote
+        else if (Math.abs(saved.total - quotedTotal) >= 0.01) {
+          showToast(`Final price updated to ${formatInr(saved.total)} by the server.`);
+          void priceQuote.refetch();
+        }
 
         // Payment runs BEFORE the success sheet: showing "You're all set" while
         // Razorpay is still open (or was cancelled) tells the user a lie, and on
@@ -416,7 +583,7 @@ export default function BookScreen() {
         if (Platform.OS === "web") {
           setPaymentState("pending");
         } else {
-          setPaymentState(await runCheckout(result.booking.id));
+          setPaymentState(await runCheckout(result.booking.id, svc.title));
         }
         setSuccessBooking(saved);
       }
@@ -427,12 +594,33 @@ export default function BookScreen() {
       showToast(
         expired
           ? "Your session expired — please sign out and sign in again."
-          : getErrorMessage(error, "Could not create booking. Please try again."),
+          : quoteErrorMessage(error),
       );
+      // The server refused this selection — re-quote so the screen shows what it will accept.
+      void priceQuote.refetch();
     } finally {
       setConfirming(false);
       setCheckoutStage("idle");
     }
+  }
+
+  // While the requested service is still being resolved, show the loading state rather than
+  // briefly offering whichever service happens to be first.
+  if (!svc || catalogLoading) {
+    return (
+      <AuthGuard title="Sign in to book a service">
+        <SafeAreaView style={[styles.root, { backgroundColor: c.bg, alignItems: "center", justifyContent: "center", padding: 24 }]}>
+          <Text style={[typo.body, { color: c.textSecondary, textAlign: "center" }]}>
+            {catalogLoading ? "Loading services…" : "Services couldn't be loaded. Check your connection and try again."}
+          </Text>
+          {!catalogLoading ? (
+            <Pressable onPress={() => router.back()} style={{ marginTop: spacing.lg }} accessibilityRole="button">
+              <Text style={{ color: c.primary, fontWeight: "700" }}>Go back</Text>
+            </Pressable>
+          ) : null}
+        </SafeAreaView>
+      </AuthGuard>
+    );
   }
 
   const imgSource = getServiceImage(svc.imageKey);
@@ -488,39 +676,45 @@ export default function BookScreen() {
             ))}
           </View>
         </View>
-        <Pressable
-          style={[styles.iconBtn, { backgroundColor: c.cardBg, borderColor: c.border }]}
-          accessibilityLabel="Notifications"
-        >
-          <Bell size={18} color={c.text} />
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>3</Text>
-          </View>
-        </Pressable>
+        <View style={localStyles.iconBtnSpacer} />
       </View>
 
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
       >
         <Pressable
-          onPress={() => setLocationOpen(true)}
-          style={[styles.locBtn, { backgroundColor: c.cardBg, borderColor: c.border }]}
+          onPress={() => setAddressSheetOpen(true)}
+          style={[
+            styles.locBtn,
+            { backgroundColor: c.cardBg, borderColor: address ? c.border : c.primary },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={address ? `Service address: ${address.text}. Change` : "Choose service address"}
         >
           <MapPin size={18} color={c.primary} />
-          <Text style={[styles.locText, { color: c.text }]} numberOfLines={1}>
-            {loc.label}
+          <Text style={[styles.locText, { color: address ? c.text : c.primary }]} numberOfLines={1}>
+            {address
+              ? `${address.label} · ${address.text}`
+              : addressesQuery.isLoading
+                ? "Loading your addresses…"
+                : "Choose where you need the service"}
           </Text>
           <ChevronDown size={16} color={c.textSecondary} />
         </Pressable>
+        {address ? (
+          <View style={localStyles.gapBelow}>
+            <ServiceabilityLine state={serviceability} c={c} />
+          </View>
+        ) : null}
 
         <BookingSectionHeader
           step={1}
           title="Pick a service"
           subtitle="Tap a category — prices update instantly"
         />
-        <ScrollView
+        <ScrollView keyboardShouldPersistTaps="handled"
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.svcStrip}
@@ -585,15 +779,12 @@ export default function BookScreen() {
             <Image source={imgSource} style={styles.heroImg} resizeMode="contain" />
           )}
           <View style={styles.heroText}>
-            <View style={styles.bestSeller}>
-              <Text style={styles.bestSellerText}>Best Seller</Text>
-            </View>
             <Text style={styles.heroTitle}>{svc.title}</Text>
             <Text style={styles.heroSub}>{svc.tagline}</Text>
             <View style={styles.ratingRow}>
               <Star size={14} color="#D4AF37" fill="#D4AF37" />
               <Text style={styles.ratingText}>
-                {svc.rating} ({svc.reviews})
+                {svc.rating === "New" ? "New" : `${svc.rating} (${svc.reviews})`}
               </Text>
             </View>
           </View>
@@ -604,7 +795,96 @@ export default function BookScreen() {
           title="Choose your package"
           subtitle="Includes verified pro, tools & satisfaction guarantee"
         />
-        {svc.packages.map((p, i) => {
+        {svc.audiences?.length ? (
+          <View style={{ gap: 8, marginBottom: 12 }}>
+            <Text style={[styles.pkgName, { color: c.text }]}>Who is this for?</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {svc.audiences.map((item) => {
+                const active = audience === item;
+                return (
+                  <Pressable
+                    key={item}
+                    onPress={() => {
+                      setAudience(item);
+                      setVariantId(null);
+                    }}
+                    style={[
+                      styles.selectPill,
+                      active ? { backgroundColor: c.primary } : { borderWidth: 1, borderColor: c.primary },
+                    ]}
+                  >
+                    <Text style={[styles.selectPillText, { color: active ? "#fff" : c.primary }]}>{item}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+        {svc.variants?.length ? (
+          variantCatalog.length ? (
+            variantCatalog.map((v) => {
+              const active = variantId === v.id;
+              return (
+                <Pressable
+                  key={v.id}
+                  onPress={() => setVariantId(v.id)}
+                  style={[
+                    styles.pkgCard,
+                    {
+                      backgroundColor: c.cardBg,
+                      borderColor: active ? c.primary : c.border,
+                      borderWidth: active ? 2 : 1,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.pkgName, { color: c.text }]}>{v.name}</Text>
+                  <Text style={[styles.pkgPrice, { color: c.text }]}>₹{v.price}</Text>
+                </Pressable>
+              );
+            })
+          ) : (
+            <Text style={[styles.pkgTag, { color: c.textSecondary }]}>
+              This option is unavailable for this service.
+            </Text>
+          )
+        ) : null}
+        {svc.quantityRule ? (
+          <View style={[styles.pkgCard, { backgroundColor: c.cardBg, borderColor: c.border, borderWidth: 1 }]}>
+            <Text style={[styles.pkgName, { color: c.text }]}>
+              {quantity ?? quote?.selection?.quantity ?? svc.quantityRule.default ?? svc.quantityRule.min}{" "}
+              {quote?.selection?.unitLabel ?? svc.quantityRule.unitLabel ?? "unit(s)"}
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 8 }}>
+              <Pressable
+                onPress={() => {
+                  const min = svc.quantityRule!.min;
+                  const step = svc.quantityRule!.step && svc.quantityRule!.step > 0 ? svc.quantityRule!.step : 1;
+                  const current = quantity ?? svc.quantityRule!.default ?? min;
+                  setQuantity(Math.max(min, current - step));
+                }}
+                style={[styles.selectPill, { borderWidth: 1, borderColor: c.primary }]}
+              >
+                <Text style={[styles.selectPillText, { color: c.primary }]}>-</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  const min = svc.quantityRule!.min;
+                  const max = svc.quantityRule!.max ?? 99;
+                  const step = svc.quantityRule!.step && svc.quantityRule!.step > 0 ? svc.quantityRule!.step : 1;
+                  const current = quantity ?? svc.quantityRule!.default ?? min;
+                  setQuantity(Math.min(max, current + step));
+                }}
+                style={[styles.selectPill, { backgroundColor: c.primary }]}
+              >
+                <Text style={[styles.selectPillText, { color: "#fff" }]}>+</Text>
+              </Pressable>
+            </View>
+            <Text style={[styles.pkgTag, { color: c.textSecondary }]}>
+              Priced by quantity — the exact amount is in your price summary below.
+            </Text>
+          </View>
+        ) : null}
+        {!svc.quantityRule && !svc.variants?.length && svc.packages.map((p, i) => {
           const active = i === pkgIdx;
           return (
             <Pressable
@@ -777,44 +1057,26 @@ export default function BookScreen() {
               );
             })}
           </View>
-          <View style={[styles.slotBanner, { backgroundColor: c.success + "18" }]}>
-            <Check size={16} color={c.success} />
-            <Text style={[styles.slotBannerText, { color: c.success }]}>
-              Great! Fastest available slot secured.
+          <View style={[styles.slotBanner, { backgroundColor: c.primary + "12" }]}>
+            <Clock size={16} color={c.primary} />
+            <Text style={[styles.slotBannerText, { color: c.text }]}>
+              {formatDateLabel(scheduledAt)} · {formatTimeLabel(scheduledAt)} — a professional is
+              assigned after you book.
             </Text>
-            <Flame size={14} color={c.warning} />
           </View>
         </View>
 
-        <LinearGradient
-          colors={isDark ? ["#06140e", "#0a2018"] : ["#ECFDF5", "#F0FDFA"]}
-          style={styles.aiCard}
-        >
-          <View style={styles.aiHeader}>
-            <Sparkles size={18} color={c.teal} />
-            <Text style={[styles.aiTitle, { color: c.text }]}>AI Recommendation</Text>
-          </View>
-          <Text style={[styles.aiBody, { color: c.textSecondary }]}>
-            Best for 2BHK — Standard deep cleaning
-          </Text>
-          <Pressable
-            onPress={applyAiPackage}
-            style={[styles.aiBtn, { backgroundColor: c.cardBg }]}
-          >
-            <Text style={[styles.aiBtnText, { color: c.text }]}>Looks good 👍</Text>
-          </Pressable>
-        </LinearGradient>
 
         <BookingSectionHeader
           title="Add-ons (optional)"
           subtitle="Boost your service with extras"
         />
-        {ADDONS.map((a, i) => {
-          const on = addons.has(i);
+        {addonCatalog.map((a) => {
+          const on = addons.has(a.id);
           return (
             <Pressable
-              key={a.name}
-              onPress={() => toggleAddon(i)}
+              key={a.id}
+              onPress={() => toggleAddon(a.id)}
               style={[styles.addonRow, { backgroundColor: c.cardBg, borderColor: c.border }]}
             >
               <View
@@ -830,7 +1092,9 @@ export default function BookScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.addonTitle, { color: c.text }]}>{a.name}</Text>
-                <Text style={[styles.addonDesc, { color: c.textSecondary }]}>{a.desc}</Text>
+                {a.desc ? (
+                  <Text style={[styles.addonDesc, { color: c.textSecondary }]}>{a.desc}</Text>
+                ) : null}
               </View>
               <Text style={[styles.addonPrice, { color: c.primary }]}>+₹{a.price}</Text>
             </Pressable>
@@ -859,22 +1123,162 @@ export default function BookScreen() {
           <BookingSectionHeader
             step={4}
             title="Review & confirm"
-            subtitle="No charge until service is complete"
+            subtitle="Price confirmed by our server — you pay after you confirm"
           />
           <View style={[styles.summary, { backgroundColor: c.cardBg, borderColor: c.border }]}>
-            <SummaryRow label="Service price" value={`₹${selected.price}`} c={c} />
-            {addonTotal > 0 ? (
-              <SummaryRow label={`Add-ons (${addons.size})`} value={`+₹${addonTotal}`} c={c} />
+            {/* Coupon — validated and priced only by the server quote. */}
+            <View style={localStyles.couponRow}>
+              <Tag size={16} color={c.primary} />
+              <TextInput
+                value={couponInput}
+                onChangeText={(t) => setCouponInput(t.toUpperCase())}
+                placeholder="Coupon code"
+                placeholderTextColor={c.textSecondary}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={40}
+                editable={!appliedCoupon}
+                style={[localStyles.couponInput, { color: c.text, borderColor: c.border, backgroundColor: c.bg }]}
+              />
+              {appliedCoupon ? (
+                <Pressable onPress={removeCoupon} style={localStyles.couponBtn} accessibilityRole="button">
+                  <Text style={[localStyles.couponBtnText, { color: c.error }]}>Remove</Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  onPress={applyCoupon}
+                  disabled={!couponInput.trim()}
+                  style={[localStyles.couponBtn, { opacity: couponInput.trim() ? 1 : 0.4 }]}
+                  accessibilityRole="button"
+                >
+                  <Text style={[localStyles.couponBtnText, { color: c.primary }]}>Apply</Text>
+                </Pressable>
+              )}
+            </View>
+            {appliedCoupon && quote && priceQuote.ready ? (
+              couponProblem ? (
+                <Text style={[localStyles.couponMsg, { color: c.error }]}>{couponProblem}</Text>
+              ) : quote.campaignDiscount > 0 ? (
+                <Text style={[localStyles.couponMsg, { color: c.success }]}>
+                  {quote.couponCode ?? appliedCoupon} applied — {formatInr(quote.campaignDiscount)} off
+                </Text>
+              ) : null
             ) : null}
-            <SummaryRow label="Taxes (10%)" value={`₹${pricing.taxes}`} c={c} />
+
+            {priceQuote.error ? (
+              <View style={localStyles.quoteError}>
+                <AlertTriangle size={16} color={c.error} />
+                <Text style={[localStyles.quoteErrorText, { color: c.text }]}>
+                  {quoteErrorMessage(priceQuote.error)}
+                </Text>
+                <Pressable onPress={() => void priceQuote.refetch()} accessibilityRole="button">
+                  <Text style={[localStyles.couponBtnText, { color: c.primary }]}>Retry</Text>
+                </Pressable>
+              </View>
+            ) : quote ? (
+              <View style={{ opacity: priceQuote.ready ? 1 : 0.5 }}>
+                {quoteLines(quote).map((l) => (
+                  <SummaryRow
+                    key={l.key}
+                    label={l.label}
+                    value={`${l.kind === "discount" ? "−" : ""}${formatInr(l.amount)}`}
+                    c={c}
+                    success={l.kind === "discount"}
+                  />
+                ))}
+              </View>
+            ) : (
+              <Text style={[typo.small, localStyles.gapBelow, { color: c.textSecondary }]}>
+                Calculating your price…
+              </Text>
+            )}
+            {!address && quote ? (
+              <Text style={[typo.caption, localStyles.gapBelow, { color: c.textSecondary }]}>
+                Final price is confirmed for your address once you choose it.
+              </Text>
+            ) : null}
+            {quote?.requirements && !quote.requirements.empty && priceQuote.ready ? (
+              <View testID="booking-preparation" style={[localStyles.gapBelow, { borderTopWidth: 1, borderTopColor: c.border, paddingTop: spacing.md }]}>
+                <Text style={[typo.body, { color: c.text, fontWeight: "600" }]}>Before we arrive</Text>
+                {quote.requirements.beforeBooking.map((r) => {
+                  const on = attested.includes(r.code);
+                  return (
+                    <Pressable
+                      key={r.code}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: on }}
+                      accessibilityLabel={`${r.label}. Please confirm before booking`}
+                      onPress={() => setAttested((prev) => (on ? prev.filter((x) => x !== r.code) : [...prev, r.code]))}
+                      style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}
+                    >
+                      <Text style={{ color: on ? c.teal : c.textSecondary, fontSize: 18 }}>{on ? "\u2611" : "\u2610"}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[typo.caption, { color: c.text, fontWeight: "600" }]}>{r.label}</Text>
+                        <Text style={[typo.caption, { color: c.textSecondary }]}>Please confirm before booking</Text>
+                        {r.note ? <Text style={[typo.caption, { color: c.textSecondary }]}>{r.note}</Text> : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+                {([
+                  ["Have this ready", quote.requirements.beforeArrival],
+                  ["You'll provide", quote.requirements.youProvide],
+                  ["Shared", quote.requirements.shared],
+                  ["We'll bring", quote.requirements.weBring],
+                  ["Optional", quote.requirements.optional],
+                ] as const).map(([title, items]) =>
+                  items.length ? (
+                    <View key={title} style={{ marginTop: spacing.sm }}>
+                      <Text style={[typo.caption, { color: c.textSecondary, fontWeight: "600" }]}>{title}</Text>
+                      {items.map((r) => (
+                        <Text key={r.code} style={[typo.caption, { color: c.text }]}>
+                          {"\u2022 "}
+                          {r.label}
+                          {[r.quantity, r.chargeText, r.timingText].filter(Boolean).length ? ` \u00b7 ${[r.quantity, r.chargeText, r.timingText].filter(Boolean).join(" \u00b7 ")}` : ""}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : null,
+                )}
+              </View>
+            ) : null}
             <View style={[styles.totalRow, { borderTopColor: c.border }]}>
               <Text style={[styles.totalLabel, { color: c.text }]}>Total Payable</Text>
-              <Text style={[styles.totalValue, { color: c.teal }]}>₹{pricing.total}</Text>
+              <Text style={[styles.totalValue, { color: c.teal }]}>
+                {quote && priceQuote.ready ? formatInr(quote.finalAmount) : "—"}
+              </Text>
             </View>
+
+            {walletBalance > 0 ? (
+              <Pressable
+                onPress={() => setUseWallet((v) => !v)}
+                style={[localStyles.walletRow, { borderColor: useWallet ? c.primary : c.border }]}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: useWallet }}
+              >
+                <View
+                  style={[
+                    styles.checkbox,
+                    { borderColor: useWallet ? c.primary : c.border, backgroundColor: useWallet ? c.primary : "transparent" },
+                  ]}
+                >
+                  {useWallet && <Check size={12} color="#fff" strokeWidth={3} />}
+                </View>
+                <Wallet size={16} color={c.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[typo.small, { color: c.text, fontWeight: "700" }]}>Use wallet balance</Text>
+                  <Text style={[typo.caption, { color: c.textSecondary }]}>
+                    {formatInr(walletBalance)} available · any remainder is paid by card/UPI
+                  </Text>
+                </View>
+              </Pressable>
+            ) : null}
             <View style={styles.secure}>
               <Lock size={14} color={c.success} />
               <Text style={[styles.secureText, { color: c.textSecondary }]}>
-                Secure payment · Razorpay opens after you confirm
+                {useWallet && walletBalance > 0
+                  ? "Wallet is applied first · Razorpay opens only for any remainder"
+                  : "Secure payment · Razorpay opens after you confirm"}
               </Text>
             </View>
           </View>
@@ -886,7 +1290,9 @@ export default function BookScreen() {
       <View style={[styles.footer, { backgroundColor: c.cardBg, borderTopColor: c.border }]}>
         <View>
           <Text style={[styles.footerLabel, { color: c.textSecondary }]}>Total</Text>
-          <Text style={[styles.footerTotal, { color: c.teal }]}>₹{pricing.total}</Text>
+          <Text style={[styles.footerTotal, { color: c.teal }]}>
+            {quote && priceQuote.ready ? formatInr(quote.finalAmount) : "—"}
+          </Text>
         </View>
         <View style={{ flex: 1, marginLeft: 16 }}>
           <Button
@@ -897,11 +1303,17 @@ export default function BookScreen() {
             }
             onPress={confirmBooking}
             loading={confirming}
+            disabled={!!blocker && !confirming}
             size="md"
             icon={confirming ? undefined : <Lock size={16} color="#fff" />}
           />
         </View>
       </View>
+      {blocker && !confirming ? (
+        <View style={[localStyles.blockerBar, { backgroundColor: c.cardBg }]}>
+          <Text style={[typo.caption, { color: c.textSecondary, textAlign: "center" }]}>{blocker}</Text>
+        </View>
+      ) : null}
 
       {androidPicker && (
         <DateTimePicker
@@ -955,12 +1367,26 @@ export default function BookScreen() {
         </Modal>
       )}
 
-      <LocationSheet visible={locationOpen} onClose={() => setLocationOpen(false)} />
+      <BookingAddressSheet
+        visible={addressSheetOpen}
+        onClose={() => setAddressSheetOpen(false)}
+        addresses={addressData?.addresses ?? []}
+        loading={addressesQuery.isLoading}
+        selectedId={address?.id ?? null}
+        onSelect={(a) => setAddress(a)}
+        onRequestSearch={openAddressSearch}
+        pickedSeed={pickedSeed}
+        onSeedConsumed={() => setPickedSeed(null)}
+        serviceCategory={svc.category}
+      />
       <BookingSuccessModal
         visible={!!successBooking}
         booking={successBooking}
         paymentState={paymentState}
         paying={confirming}
+        paymentNote={paymentNote}
+        canPay={canPay}
+        paidVia={paidVia}
         onPayNow={retryPayment}
         onClose={() => {
           setSuccessBooking(null);
@@ -975,6 +1401,35 @@ export default function BookScreen() {
     </AuthGuard>
   );
 }
+
+const localStyles = StyleSheet.create({
+  couponRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm },
+  couponInput: {
+    ...typo.small,
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  couponBtn: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
+  couponBtnText: { ...typo.small, fontWeight: "700" },
+  couponMsg: { ...typo.caption, marginBottom: spacing.sm },
+  quoteError: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm },
+  quoteErrorText: { ...typo.small, flex: 1 },
+  walletRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  blockerBar: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
+  gapBelow: { marginBottom: spacing.sm },
+  iconBtnSpacer: { width: 40, height: 40 },
+});
 
 function SummaryRow({
   label,

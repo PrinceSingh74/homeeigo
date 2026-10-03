@@ -16,12 +16,18 @@ export const partnerOsKeys = {
   forecast: ["partner", "os", "forecast"] as const,
   intelligence: ["partner", "os", "intelligence"] as const,
   rankings: ["partner", "os", "rankings"] as const,
+  score: ["partner", "os", "score"] as const,
+  scoreHistory: ["partner", "os", "score-history"] as const,
+  career: ["partner", "os", "career"] as const,
+  careerHistory: ["partner", "os", "career-history"] as const,
+  lifecycle: ["partner", "os", "lifecycle"] as const,
   academy: ["partner", "os", "academy"] as const,
   compliance: ["partner", "os", "compliance"] as const,
   wellbeing: ["partner", "os", "wellbeing"] as const,
   rewards: ["partner", "os", "rewards"] as const,
   serviceHistory: ["partner", "os", "service-history"] as const,
   documents: ["partner", "os", "documents"] as const,
+  network: ["partner", "os", "network"] as const,
 };
 
 export function usePartnerAttendanceQuery() {
@@ -85,6 +91,51 @@ export function usePartnerRankingsQuery() {
   });
 }
 
+export function usePartnerScoreQuery() {
+  return useQuery({
+    queryKey: partnerOsKeys.score,
+    queryFn: () => partnerApi.partnerOs.score(),
+    enabled: enabled(),
+    staleTime: 60_000,
+  });
+}
+
+export function usePartnerScoreHistoryQuery() {
+  return useQuery({
+    queryKey: partnerOsKeys.scoreHistory,
+    queryFn: () => partnerApi.partnerOs.scoreHistory(),
+    enabled: enabled(),
+    staleTime: 60_000,
+  });
+}
+
+export function usePartnerCareerQuery() {
+  return useQuery({
+    queryKey: partnerOsKeys.career,
+    queryFn: () => partnerApi.partnerOs.career(),
+    enabled: enabled(),
+    staleTime: 60_000,
+  });
+}
+
+export function usePartnerCareerHistoryQuery() {
+  return useQuery({
+    queryKey: partnerOsKeys.careerHistory,
+    queryFn: () => partnerApi.partnerOs.careerHistory(),
+    enabled: enabled(),
+    staleTime: 60_000,
+  });
+}
+
+export function usePartnerLifecycleQuery() {
+  return useQuery({
+    queryKey: partnerOsKeys.lifecycle,
+    queryFn: () => partnerApi.partnerOs.lifecycle(),
+    enabled: enabled(),
+    staleTime: 30_000,
+  });
+}
+
 export function usePartnerAcademyQuery() {
   return useQuery({
     queryKey: partnerOsKeys.academy,
@@ -136,5 +187,23 @@ export function usePartnerCompleteAcademyMutation() {
     mutationFn: ({ moduleId, score }: { moduleId: string; score?: number }) =>
       partnerApi.partnerOs.completeAcademyModule(moduleId, score),
     onSuccess: () => void qc.invalidateQueries({ queryKey: partnerOsKeys.academy }),
+  });
+}
+
+export function usePartnerNetworkQuery() {
+  return useQuery({
+    queryKey: partnerOsKeys.network,
+    queryFn: () => partnerApi.network.dashboard(),
+    enabled: enabled(),
+    staleTime: 20_000,
+  });
+}
+
+export function usePartnerNetworkInviteMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; phone: string; email?: string; city?: string; skillInterest?: string }) =>
+      partnerApi.network.invite(body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: partnerOsKeys.network }),
   });
 }

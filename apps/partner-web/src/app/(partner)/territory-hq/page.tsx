@@ -63,7 +63,7 @@ export default function TerritoryHqPage() {
         </Link>
         <Link href="/navigation" className="partner-card partner-card-hover p-5">
           <p className="font-semibold">Navigation</p>
-          <p className="mt-1 text-sm text-partner-muted">Turn-by-turn to active jobs</p>
+          <p className="mt-1 text-sm text-partner-muted">Route preview to active jobs (turns in Google Maps)</p>
         </Link>
         <Link href="/ai-hq/demand-forecast" className="partner-card partner-card-hover p-5">
           <p className="font-semibold">Demand Forecast</p>
@@ -75,15 +75,20 @@ export default function TerritoryHqPage() {
       {ranked.length > 0 ? (
         <section className="space-y-2">
           <h2 className="font-display text-sm font-bold uppercase tracking-wide text-partner-muted">
-            Top territories by composite score
+            Top territories by opportunity
           </h2>
           {ranked.slice(0, 5).map((zone) => (
             <article key={zone.zoneId} className="partner-card flex items-center justify-between p-4">
               <div>
                 <p className="font-semibold">{zone.name}</p>
-                <p className="text-xs text-partner-muted">{zone.city ?? "—"}</p>
+                <p className="text-xs text-partner-muted">
+                  {zone.city ?? "—"} · demand {zone.demand24h} · supply {zone.supply} · gap{" "}
+                  {zone.gap ?? zone.demand24h - zone.supply}
+                </p>
               </div>
-              <p className="text-sm font-bold text-partner-primary">{zone.compositeScore}/100</p>
+              <p className="text-sm font-bold text-partner-primary">
+                {zone.opportunityScore ?? zone.compositeScore}/100
+              </p>
             </article>
           ))}
         </section>

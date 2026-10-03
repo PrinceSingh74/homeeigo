@@ -4,12 +4,13 @@
 import crypto from "node:crypto";
 import prisma from "../../src/lib/prisma";
 import { ANALYTICS_CONFIG } from "../config";
+import type { Prisma } from "@prisma/client";
 
 export type VersionType = "dataset" | "feature" | "training" | "schema" | "pipeline";
 
 export async function createVersion(
   versionType: VersionType,
-  metadata?: Record<string, unknown>,
+  metadata?: Prisma.InputJsonObject,
 ): Promise<{ versionTag: string; id: string }> {
   const versionTag = `${versionType}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
   const checksum = crypto.createHash("sha256").update(JSON.stringify(metadata ?? {})).digest("hex").slice(0, 16);

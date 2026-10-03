@@ -102,7 +102,7 @@ export function SavedAddresses() {
                     </span>
                   )}
                 </button>
-                <span className="inline-block rounded-md bg-emerald-600/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-600">
+                <span className="inline-block rounded-md bg-emerald-600/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
                   {addr.type ?? "Address"}
                   {addr.label ? ` (${addr.label})` : ""}
                 </span>

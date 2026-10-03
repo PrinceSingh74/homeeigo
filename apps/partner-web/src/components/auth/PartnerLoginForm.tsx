@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { AlertTriangle, Loader2, LogIn, Mail, Phone, Sparkles } from "lucide-react";
 import { PartnerButton } from "@/components/ui/PartnerButton";
 import { PartnerCard } from "@/components/ui/PartnerCard";
@@ -19,7 +18,6 @@ function formatPhoneE164(local: string): string {
 }
 
 export function PartnerLoginForm() {
-  const router = useRouter();
   const login = usePartnerStore((s) => s.login);
   const sendOtp = usePartnerStore((s) => s.sendOtp);
   const loginWithOtp = usePartnerStore((s) => s.loginWithOtp);
@@ -54,8 +52,13 @@ export function PartnerLoginForm() {
     setIsLoading(true);
     const result = await login(email.trim().toLowerCase(), password);
     setIsLoading(false);
-    if (result.ok) router.replace("/");
-    else setLocalError(result.message);
+    // Navigation belongs to the auth guard alone. It already sends an authenticated user off any
+    // public page (PartnerAuthGuard: `isAuthenticated && isPublic → replace("/")`), and it fires the
+    // moment setSession lands. Navigating here as well issued TWO concurrent router.replace("/")
+    // calls: the trace of the failing cookie-session E2E (2026-09-21) shows both RSC fetches for
+    // "/" in flight, one aborted, and the navigation never committing — the page sat on /login
+    // for 60 s with the API already signed in. One owner, one navigation.
+    if (!result.ok) setLocalError(result.message);
   }
 
   async function handlePhoneSubmit(e: React.FormEvent) {
@@ -92,8 +95,7 @@ export function PartnerLoginForm() {
     setIsLoading(true);
     const result = await loginWithOtp(formatPhoneE164(phone), otp);
     setIsLoading(false);
-    if (result.ok) router.replace("/");
-    else setLocalError(result.message);
+    if (!result.ok) setLocalError(result.message);
   }
 
   const errorToShow = localError || storeError;
@@ -276,6 +278,10 @@ export function PartnerLoginForm() {
         Not a HOMEEIGO partner yet?{" "}
         <a href="/register" className="font-medium text-partner-primary hover:underline">
           Register as a partner
+        </a>
+        <span className="mx-1">·</span>
+        <a href="/register" className="font-medium text-partner-primary hover:underline">
+          Continue application
         </a>
       </p>
     </motion.div>

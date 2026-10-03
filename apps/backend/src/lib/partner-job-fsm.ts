@@ -13,8 +13,22 @@ import {
 export { JOB_STATES };
 export type { PartnerJobState };
 
-/** Terminals that exist on the booking row but are not the happy-path job machine. */
-export const JOB_TERMINAL_OUTCOMES = ["CANCELLED", "REJECTED"] as const;
+/**
+ * Terminals that exist on the booking row but are not the happy-path job machine.
+ *
+ * EXPIRED and the two no-show outcomes belong here for the same reason CANCELLED does, and the
+ * reason is not tidiness: `deriveJobState` reads timestamps, so a CUSTOMER_NO_SHOW row still
+ * carrying `arrivedAt` derived as ARRIVED and the partner app offered "Start service" on a booking
+ * that was already closed and settled. An EXPIRED row derived as OFFERED and offered Accept on a
+ * slot that had been released. A status that ends the job has to be read before the timestamps.
+ */
+export const JOB_TERMINAL_OUTCOMES = [
+  "CANCELLED",
+  "REJECTED",
+  "EXPIRED",
+  "CUSTOMER_NO_SHOW",
+  "PROVIDER_NO_SHOW",
+] as const;
 export type JobTerminalOutcome = (typeof JOB_TERMINAL_OUTCOMES)[number];
 
 export type JobAxisState = PartnerJobState | JobTerminalOutcome;
@@ -62,7 +76,7 @@ function hasTs(v: Date | string | null | undefined): boolean {
 }
 
 export function isJobTerminalOutcome(state: string): state is JobTerminalOutcome {
-  return state === "CANCELLED" || state === "REJECTED";
+  return (JOB_TERMINAL_OUTCOMES as readonly string[]).includes(state);
 }
 
 /**
@@ -75,9 +89,15 @@ export function deriveJobState(job: JobPhaseInput): JobAxisState {
   if (status === "CANCELLED_BY_USER" || status === "CANCELLED_BY_PROVIDER" || status === "CANCELLED") {
     return "CANCELLED";
   }
+  // Before any timestamp is consulted — see the note on JOB_TERMINAL_OUTCOMES.
+  if (status === "EXPIRED" || status === "CUSTOMER_NO_SHOW" || status === "PROVIDER_NO_SHOW") {
+    return status;
+  }
   if (status === "COMPLETED" || hasTs(job.completedAt)) return "COMPLETED";
   if (status === "IN_PROGRESS") return "IN_PROGRESS";
-  if (hasTs(job.startedAt) || (hasTs(job.startOtpVerifiedAt) && hasTs(job.arrivedAt))) return "STARTED";
+  // §6: a verified start PIN is a gate passed, not work begun — the requirement gate can still refuse
+  // START after it. Only the START transition itself (startedAt) makes the job STARTED.
+  if (hasTs(job.startedAt)) return "STARTED";
   if (hasTs(job.arrivedAt)) return "ARRIVED";
   if (status === "EN_ROUTE" || hasTs(job.enRouteAt)) return "EN_ROUTE";
   if (status === "ACCEPTED" || status === "ASSIGNED") return "ACCEPTED";

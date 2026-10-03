@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { IndianRupee, Flame, Zap, Brain, Cpu, TrendingUp } from "lucide-react";
 import { adminApi } from "@/services/admin-api";
 import { inr, formatNumber } from "@/lib/format";
+import { mlRegistryView, registryTiles } from "@/lib/warehouse-availability-view";
 import { GlassPanel } from "../GlassPanel";
 import { StatTile, DataUnavailable, SectionHeading, SparkBars } from "../primitives";
 
@@ -37,8 +38,18 @@ export function AiHqDashboard() {
   });
 
   const rev = revenue.data?.data;
+  /**
+   * An expired forecast window is not charted.
+   *
+   * The warehouse model projects forward from the end of its training data, so once that window has
+   * closed these points describe hours that already happened. Sparkbars carry no dates, so they would
+   * read as the coming 24 hours. The backend reports `stale`; this dashboard acts on it.
+   */
+  const demandStale = demand.data?.data?.stale === true;
+  // X-84: the source did not answer (`available: false`, data null) — never read that as 0 bookings.
+  const demandUnavailable = demand.isError || demand.data?.available === false;
   const demandBars = useMemo(
-    () => (demand.data?.data?.points ?? []).map((p) => num(p.predicted)),
+    () => (demand.data?.data?.stale === true ? [] : (demand.data?.data?.points ?? []).map((p) => num(p.predicted))),
     [demand.data],
   );
 
@@ -47,8 +58,9 @@ export function AiHqDashboard() {
     return [...zones].sort((a, b) => num(b.predictedSurge) - num(a.predictedSurge)).slice(0, 6);
   }, [surge.data]);
 
-  const ml = (mlops.data ?? {}) as Record<string, unknown>;
-  const modelsTotal = num(ml.total ?? ml.models ?? ml.count);
+  // X-88: `available: false` (warehouse down) takes the unavailable panel, never "Empty registry".
+  const mlView = mlRegistryView(mlops.data, mlops.isError);
+
 
   return (
     <div className="space-y-6">
@@ -56,13 +68,21 @@ export function AiHqDashboard() {
         <StatTile label="Revenue / hr (forecast)" value={rev ? inr(rev.forecastHourly) : "—"} icon={IndianRupee} loading={revenue.isLoading} tone="accent" />
         <StatTile label="Revenue / day (forecast)" value={rev ? inr(rev.forecastDaily) : "—"} sub={rev ? `Realized 24h ${inr(rev.realized24h)}` : undefined} icon={TrendingUp} loading={revenue.isLoading} tone="success" />
         <StatTile label="Revenue / wk (forecast)" value={rev ? inr(rev.forecastWeekly) : "—"} icon={TrendingUp} loading={revenue.isLoading} />
-        <StatTile label="Demand (next 24h)" value={demand.data ? formatNumber(num(demand.data.data?.totalPredicted)) : "—"} sub="predicted bookings" icon={Flame} loading={demand.isLoading} />
+        <StatTile label="Demand (next 24h)" value={demand.data?.data && !demandStale && !demandUnavailable ? formatNumber(num(demand.data.data.totalPredicted)) : "—"} sub={demandUnavailable ? "forecast unavailable" : demandStale ? "forecast window expired" : "predicted bookings"} icon={Flame} loading={demand.isLoading} />
       </section>
 
       <GlassPanel glow="blue" className="p-5">
         <SectionHeading title="Demand Forecast" hint="hourly · next 24h" />
         {demand.isLoading ? (
           <div className="biz-skeleton h-16 w-full rounded" />
+        ) : demandUnavailable ? (
+          <DataUnavailable title="Demand forecast unavailable" reason="The forecast source did not respond; nothing has been charted." />
+        ) : demandStale ? (
+          <p className="text-xs text-[var(--color-biz-muted)]">
+            The warehouse forecast window ended {demand.data?.data?.forecastWindow?.to ?? "at an unknown time"} and has
+            not been charted. It projects forward from the end of training data, so it cannot describe the next 24 hours
+            until it is retrained.
+          </p>
         ) : demandBars.length > 0 ? (
           <SparkBars data={demandBars} label={`${demandBars.length} hours · confidence bands available`} color="#3b82f6" height={72} />
         ) : (
@@ -104,15 +124,19 @@ export function AiHqDashboard() {
           </div>
           {mlops.isLoading ? (
             <div className="biz-skeleton h-20 w-full rounded" />
-          ) : mlops.isError ? (
+          ) : mlView.state === "unavailable" ? (
             <DataUnavailable title="MLOps not configured" reason="Model registry (BigQuery) is unavailable — likely GCP/BigQuery is not configured in this environment." />
-          ) : modelsTotal > 0 || Object.keys(ml).length > 0 ? (
+          ) : mlView.state === "ready" ? (
+            // X-91: the registry's own fields under their own names ("Healthy" read fields the API
+            // never returns and always showed 0).
             <div className="grid grid-cols-2 gap-3">
-              <StatTile label="Models" value={formatNumber(modelsTotal)} icon={Brain} />
-              <StatTile label="Healthy" value={formatNumber(num(ml.healthy ?? ml.active ?? ml.production))} tone="success" />
+              {registryTiles(mlView.health).map((t, i) => (
+                <StatTile key={t.label} label={t.label} value={t.value} icon={i === 0 ? Brain : undefined} tone={i === 1 ? "success" : undefined} />
+              ))}
             </div>
           ) : (
-            <DataUnavailable title="Empty registry" reason="No models registered in the warehouse yet." />
+            // No answer yet — not a claim that the registry is empty (a real empty registry is "Models 0").
+            <div className="biz-skeleton h-20 w-full rounded" />
           )}
         </GlassPanel>
 

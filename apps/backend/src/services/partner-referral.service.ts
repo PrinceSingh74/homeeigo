@@ -163,7 +163,7 @@ export class PartnerReferralService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       if (msg.startsWith("DUPLICATE:")) {
-        throw new Error("CONFLICT:This person already has a partner application");
+        throw new Error("CONFLICT:This person already has a partner application", { cause: err });
       }
       throw err;
     }
@@ -658,14 +658,20 @@ export class PartnerReferralService {
         });
         await this.emitStatus(referralId, "REWARD_RELEASED");
         if (result.userId) {
-          await notificationService.createForUser({
-            userId: result.userId,
-            type: "REFERRAL",
-            title: "Referral reward released",
-            message: `₹${result.amount} was credited to your partner wallet.`,
-            referenceId: result.rewardId,
-            priority: "high",
-          }).catch(() => undefined);
+          // The reward is committed. Detached keeps that true, and replaces a silent
+          // `.catch(() => undefined)` — a partner paid and never told, with no trace — with a
+          // logged, counted failure.
+          await notificationService.createForUserDetached(
+            {
+              userId: result.userId,
+              type: "REFERRAL",
+              title: "Referral reward released",
+              message: `₹${result.amount} was credited to your partner wallet.`,
+              referenceId: result.rewardId,
+              priority: "high",
+            },
+            { referralId, rewardId: result.rewardId },
+          );
           void earningsLiveService.broadcastEarningsUpdate(result.userId).catch(() => undefined);
         }
       }
@@ -967,6 +973,7 @@ export class PartnerReferralService {
     }
     await AuditLogService.success("ADMIN_ACTION", {
       userId: actorId,
+      reason: reason?.trim() || `PARTNER_REFERRAL_${action.toUpperCase()}`,
       details: { action: `PARTNER_REFERRAL_${action.toUpperCase()}`, referralId, reason },
     });
     return this.adminDetail(referralId);
@@ -1203,16 +1210,29 @@ export class PartnerReferralService {
       select: { referrerProviderId: true, referredProviderId: true, status: true },
     });
     if (row && eventPlatformConfig.outboxEnabled && eventPlatformConfig.partnerEventsEnabled) {
-      await emitStandalone(
-        prisma,
-        buildPartnerReferralEvent({
-          type: EVENT_TYPES.PARTNER_REFERRAL_FLAGGED,
-          referralId,
-          referrerProviderId: row.referrerProviderId,
-          referredProviderId: row.referredProviderId,
-          status: row.status,
-        }),
-      ).catch(() => undefined);
+      /**
+       * A deterministic event id, so a replay cannot become a second event.
+       *
+       * The `findFirst` above makes a SEQUENTIAL replay a no-op, but two concurrent callers both
+       * pass it, and `partnerEnvelope` mints a fresh `crypto.randomUUID()` every time — so the
+       * outbox would take both rows and every downstream consumer would see two genuinely distinct
+       * events for one flagging. `event_outbox.event_id` is unique, so deriving the id from the
+       * referral makes the duplicate a constraint violation instead, absorbed by the `.catch` below.
+       *
+       * One id per referral matches the semantics the guard already implies: this notification is
+       * sent at most once per referral, so the event announcing it is emitted at most once too.
+       */
+      const flagged = buildPartnerReferralEvent({
+        type: EVENT_TYPES.PARTNER_REFERRAL_FLAGGED,
+        referralId,
+        referrerProviderId: row.referrerProviderId,
+        referredProviderId: row.referredProviderId,
+        status: row.status,
+      });
+      await emitStandalone(prisma, {
+        ...flagged,
+        id: `partner-referral-flagged:${referralId}`,
+      }).catch(() => undefined);
     }
     const admins = await prisma.user.findMany({
       where: { role: "ADMIN", isActive: true, deletedAt: null },

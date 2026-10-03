@@ -161,6 +161,7 @@ export default function FinanceAdjustmentsPage() {
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-semibold">Adjustments</h2>
           <select
+            aria-label="Filter adjustments by status"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="rounded-lg border border-[var(--color-biz-line)] bg-transparent px-3 py-1.5 text-sm"
@@ -175,7 +176,7 @@ export default function FinanceAdjustmentsPage() {
         {isLoading ? (
           <p className="text-sm text-[var(--color-biz-muted)]">Loading…</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Adjustments table">
             <table className="w-full text-left text-sm">
               <thead className="text-[var(--color-biz-muted)]">
                 <tr>

@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "module": "ESNext",
-    "lib": ["ES2020"],
+    "lib": ["ES2022"],
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
@@ -11,7 +11,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "baseUrl": "./src",
     "paths": {
       "@/*": ["./*"],
@@ -23,10 +23,9 @@
     },
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true
-    ,
+    "allowSyntheticDefaultImports": true,
     "ignoreDeprecations": "6.0"
   },
-  "include": ["src"],
+  "include": ["src", "analytics"],
   "exclude": ["node_modules", "dist"]
 }

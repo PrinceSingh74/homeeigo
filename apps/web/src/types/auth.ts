@@ -20,7 +20,6 @@ export type AuthUser = {
 
 export type AuthTokens = {
   accessToken: string;
-  refreshToken: string;
 };
 
 export type ApiErrorCode =
@@ -48,7 +47,7 @@ export type ApiResponse<T = unknown> = {
 export type AuthSessionPayload = {
   user: AuthUser;
   accessToken: string;
-  refreshToken: string;
+  // No refresh token: it is an HttpOnly cookie the browser holds for /api/auth.
 };
 
 export type PendingRegistration = {

@@ -139,7 +139,7 @@ export async function syncTemplates(): Promise<{ created: number; updated: numbe
       language: def.language,
       title: def.title ?? null,
       body: def.body,
-      variablesSchema: def.variables as unknown as object,
+      variablesSchema: def.variables,
     };
 
     if (!existing) {

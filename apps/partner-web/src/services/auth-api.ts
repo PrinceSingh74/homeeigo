@@ -11,7 +11,6 @@ export const partnerAuthApi = {
         password,
         deviceId: getDeviceId(),
         deviceName: getDeviceName(),
-        setAuthCookies: false,
       },
     }).then((res) => res.data!);
   },
@@ -30,7 +29,6 @@ export const partnerAuthApi = {
     return apiRequest<
       ApiResponse<{
         accessToken: string;
-        refreshToken: string;
         userId: string;
         isPhoneVerified: boolean;
         user: {
@@ -49,31 +47,24 @@ export const partnerAuthApi = {
         login: true,
         deviceId: getDeviceId(),
         deviceName: getDeviceName(),
-        setAuthCookies: false,
       },
     }).then((res) => res.data);
   },
 
-  refresh(refreshToken: string) {
-    return apiRequest<ApiResponse<{ accessToken: string; refreshToken: string }>>(
-      "/api/auth/refresh",
-      {
-        method: "POST",
-        body: {
-          refreshToken,
-          deviceId: getDeviceId(),
-          deviceName: getDeviceName(),
-          setAuthCookies: false,
-        },
-      },
-    ).then((res) => res.data!);
+  refresh() {
+    // Cookie mode: the HttpOnly refresh cookie is the credential and only an access token comes back.
+    return apiRequest<ApiResponse<{ accessToken: string }>>("/api/auth/refresh", {
+      method: "POST",
+      body: { deviceId: getDeviceId(), deviceName: getDeviceName() },
+    }).then((res) => res.data!);
   },
 
-  logout(refreshToken: string) {
+  logout() {
+    // The API reads the refresh cookie, revokes that session and clears the cookie.
     return apiRequest<ApiResponse<unknown>>("/api/auth/logout", {
       method: "POST",
       auth: true,
-      body: { refreshToken, clearAuthCookies: true },
+      body: {},
     });
   },
 

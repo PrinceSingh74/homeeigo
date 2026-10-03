@@ -21,6 +21,7 @@ import {
   XCircle,
   CheckCircle2,
   RotateCcw,
+  CalendarClock,
 } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
@@ -29,7 +30,20 @@ import { spacing, type, screenPadding, radius } from "@/lib/typography";
 import { sheetHandle } from "@/lib/booking-ui";
 import type { SavedBooking } from "@/lib/store";
 import { useAppStore } from "@/lib/store";
-import { useCancelBookingMutation, useCancellationQuoteQuery } from "@/hooks/use-core-data";
+import { useQuery } from "@tanstack/react-query";
+import {
+  useCancelBookingMutation,
+  useCancellationQuoteQuery,
+  useReportProviderNoShowMutation,
+} from "@/hooks/use-core-data";
+import { coreApi } from "@/services/core/api";
+import { canRescheduleBooking } from "@/hooks/use-reschedule-booking";
+import {
+  canCancelBooking,
+  cancelBlockedReason,
+  canReportProviderNoShow,
+} from "@/lib/booking-cancel-rules";
+import { RescheduleBookingPanel } from "./RescheduleBookingPanel";
 import { STATUS_CONFIG } from "@/lib/booking-status";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 import { BookingTimeline } from "./BookingTimeline";
@@ -37,6 +51,10 @@ import { Button } from "@/components/Button";
 import { openBook } from "@/lib/navigation";
 import { getServiceImage } from "@/lib/service-assets";
 import { ServiceStartPinCard } from "@/components/track/ServiceStartPinCard";
+import { BookingRequirementsCard } from "./BookingRequirementsCard";
+import { BookingExecutionCard } from "./BookingExecutionCard";
+import { BookingSafetyCard } from "./BookingSafetyCard";
+import { BookingCompletionCard } from "./BookingCompletionCard";
 
 type Props = {
   visible: boolean;
@@ -49,13 +67,26 @@ export function BookingDetailSheet({ visible, booking, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const { colors: c } = useTheme();
   const cancelMutation = useCancelBookingMutation();
+  const noShowMutation = useReportProviderNoShowMutation();
   // Confirm step drives the quote fetch — the customer must see the real refund first.
   const [cancelOpen, setCancelOpen] = React.useState(false);
   const quoteQuery = useCancellationQuoteQuery(booking?.id ?? null, cancelOpen);
   const quote = quoteQuery.data?.quote;
+  const [rescheduleOpen, setRescheduleOpen] = React.useState(false);
+  // Live server copy: the reschedule decision + the current slot must not come from a stale list.
+  // (Read-only fetch — it must not rewrite or reorder the persisted booking list.)
+  const detailQuery = useQuery({
+    queryKey: ["bookings", "sheet-detail", booking?.id ?? ""],
+    queryFn: async () => (await coreApi.bookings.byId(booking!.id)).booking,
+    enabled: visible && !!booking?.id,
+    staleTime: 8_000,
+  });
 
   React.useEffect(() => {
-    if (!visible) setCancelOpen(false);
+    if (!visible) {
+      setCancelOpen(false);
+      setRescheduleOpen(false);
+    }
   }, [visible]);
 
   if (!booking) return null;
@@ -65,10 +96,19 @@ export function BookingDetailSheet({ visible, booking, onClose }: Props) {
   const canTrack =
     booking.status === "confirmed" || booking.status === "in_progress";
   const canRate = booking.status === "completed";
-  const canCancel =
-    booking.status === "confirmed" || booking.status === "in_progress";
   const canRebook =
     booking.status === "cancelled" || booking.status === "completed";
+  const liveStatus = detailQuery.data?.status ?? booking.backendStatus;
+  // O3b: read the BACKEND status, not the collapsed one — `in_progress` here also covers
+  // EN_ROUTE, where cancelling is still allowed.
+  const canCancel = canCancelBooking(liveStatus);
+  const cancelBlocked = cancelBlockedReason(liveStatus);
+  // §53: only while the booking is still waiting on the professional.
+  const canReportNoShow = canReportProviderNoShow(liveStatus);
+  const canReschedule = canRescheduleBooking(liveStatus);
+  const currentScheduledAt = detailQuery.data?.scheduledDate
+    ? new Date(detailQuery.data.scheduledDate)
+    : null;
 
   function goTrackLive() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -137,6 +177,10 @@ export function BookingDetailSheet({ visible, booking, onClose }: Props) {
           <ScrollView
             showsVerticalScrollIndicator={false}
             bounces
+            // The cards below open their own sheets with text fields (report an issue). With the
+            // default "never", this ScrollView — still their React ancestor — captures the first tap
+            // while a field is focused, so "Report issue" only closed the keyboard and sent nothing.
+            keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent}
           >
             <LinearGradient
@@ -197,6 +241,15 @@ export function BookingDetailSheet({ visible, booking, onClose }: Props) {
               <ServiceStartPinCard bookingId={booking.id} proName={booking.proName} />
             ) : null}
 
+            {/* §6: what must be in place, whether it is, and what to do — server truth. */}
+            {/* §9: safety information and any safety hold — server truth. */}
+            <BookingSafetyCard bookingId={booking.id} />
+            <BookingRequirementsCard bookingId={booking.id} active={canTrack} />
+            {/* §8: what was done — server truth, titles and states only. */}
+            <BookingExecutionCard bookingId={booking.id} />
+            {/* §10: verdict in plain words + confirmation window; §11: report an issue. */}
+            <BookingCompletionCard bookingId={booking.id} />
+
             <Text style={[styles.sectionTitle, { color: c.text }]}>Status timeline</Text>
             <View
               style={[
@@ -224,7 +277,50 @@ export function BookingDetailSheet({ visible, booking, onClose }: Props) {
                   icon={<CheckCircle2 size={18} color={c.primary} />}
                 />
               )}
-              {canCancel && !cancelOpen && (
+              {canReschedule && !rescheduleOpen && !cancelOpen && (
+                <Button
+                  title="Reschedule"
+                  variant="secondary"
+                  onPress={() => setRescheduleOpen(true)}
+                  icon={<CalendarClock size={18} color={c.primary} />}
+                />
+              )}
+              {canReschedule && rescheduleOpen && (
+                <RescheduleBookingPanel
+                  bookingId={booking.id}
+                  currentScheduledAt={currentScheduledAt}
+                  serviceId={booking.serviceId}
+                  onCancel={() => setRescheduleOpen(false)}
+                  onDone={() => {
+                    setRescheduleOpen(false);
+                    void detailQuery.refetch();
+                  }}
+                />
+              )}
+              {/* O3b: the job has started, so there is no self-serve cancel. Say why rather than
+                  silently removing the button — a customer who came here to cancel deserves the
+                  reason and the route that does work. */}
+              {cancelBlocked && !rescheduleOpen && (
+                <View style={[styles.cancelPanel, { borderColor: c.border, backgroundColor: c.cardBg }]}>
+                  <Text style={[styles.cancelPanelTitle, { color: c.text }]}>Service in progress</Text>
+                  <Text style={[styles.cancelPanelBody, { color: c.textSecondary }]}>{cancelBlocked}</Text>
+                </View>
+              )}
+              {/* §53: its own action. Cancelling would put the customer's name on an outcome
+                  that was not their doing, and would cost them the cancellation fee. */}
+              {canReportNoShow && !cancelOpen && !rescheduleOpen && (
+                <Pressable
+                  style={styles.cancelBtn}
+                  disabled={noShowMutation.isPending}
+                  onPress={() => noShowMutation.mutate(booking.id)}
+                >
+                  <XCircle size={18} color={c.warning ?? c.error} />
+                  <Text style={[styles.cancelText, { color: c.warning ?? c.error }]}>
+                    {noShowMutation.isPending ? "Reporting…" : "Professional didn’t arrive"}
+                  </Text>
+                </Pressable>
+              )}
+              {canCancel && !cancelOpen && !rescheduleOpen && (
                 <Pressable style={styles.cancelBtn} onPress={() => setCancelOpen(true)}>
                   <XCircle size={18} color={c.error} />
                   <Text style={[styles.cancelText, { color: c.error }]}>

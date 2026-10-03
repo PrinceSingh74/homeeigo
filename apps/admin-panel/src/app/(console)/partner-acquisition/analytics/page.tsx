@@ -106,7 +106,7 @@ export default function PartnerAcquisitionAnalyticsPage() {
 
       <GlassPanel className="p-6">
         <h3 className="text-sm font-semibold">Source funnel</h3>
-        <div className="mt-4 overflow-x-auto">
+        <div className="mt-4 overflow-x-auto" tabIndex={0} role="region" aria-label="Source funnel table">
           <table className="w-full min-w-[720px] text-sm">
             <thead className="text-left text-xs uppercase text-[var(--color-biz-muted)]">
               <tr>
@@ -192,7 +192,7 @@ export default function PartnerAcquisitionAnalyticsPage() {
         </form>
         {error ? <p role="alert" className="mt-3 text-sm text-rose-700">{error}</p> : null}
 
-        <div className="mt-6 overflow-x-auto">
+        <div className="mt-6 overflow-x-auto" tabIndex={0} role="region" aria-label="Acquisition spend table">
           <table className="w-full min-w-[640px] text-sm">
             <thead className="text-left text-xs uppercase text-[var(--color-biz-muted)]">
               <tr>

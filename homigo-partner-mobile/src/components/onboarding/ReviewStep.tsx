@@ -75,6 +75,7 @@ export function ReviewStep({
       ) : null}
       <Pressable
         accessibilityRole="button"
+        testID="onboarding-submit"
         style={styles.button}
         disabled={loading || !data?.canSubmit}
         onPress={() => void onSubmit()}

@@ -81,7 +81,7 @@ export default function FinanceBackfillPage() {
 
       <div className="rounded-xl border border-[var(--color-biz-line)] p-4">
         <h2 className="mb-3 font-semibold">Run history</h2>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Run history table">
           <table className="w-full text-left text-sm">
             <thead className="text-[var(--color-biz-muted)]">
               <tr>
@@ -113,7 +113,7 @@ export default function FinanceBackfillPage() {
 
       <div className="rounded-xl border border-[var(--color-biz-line)] p-4">
         <h2 className="mb-3 font-semibold">Recent issues</h2>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Recent issues table">
           <table className="w-full text-left text-sm">
             <thead className="text-[var(--color-biz-muted)]">
               <tr>

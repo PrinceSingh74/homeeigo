@@ -1,3 +1,4 @@
+import { evictRevokedSessions } from "../lib/ws-eviction";
 import type { TokenRevocationReason } from "@prisma/client";
 import type { JwtPayload } from "../types/auth.types";
 import prisma from "../lib/prisma";
@@ -17,6 +18,8 @@ class TokenRevocationService {
       create: { userId, epoch: 1 },
       update: { epoch: { increment: 1 } },
     });
+    // Every access token minted before this epoch is now invalid; sockets opened with them go too.
+    evictRevokedSessions(userId, "session_revoked");
     return row.epoch;
   }
 
@@ -48,6 +51,8 @@ class TokenRevocationService {
           revokedAt: new Date(),
         },
       });
+
+      evictRevokedSessions(input.userId, "token_revoked", input.tokenJti);
 
       void AuditLogService.record("TOKEN_REVOKED", "success", {
         userId: input.userId,
@@ -82,18 +87,44 @@ class TokenRevocationService {
    * Validates access token claims against blacklist + auth epoch.
    * Legacy tokens without jti/authEpoch remain valid until JWT exp.
    */
+  /**
+   * Both revocation facts are fetched CONCURRENTLY, not one after the other.
+   *
+   * ── Why ─────────────────────────────────────────────────────────────────
+   *
+   * This runs on every authenticated request. The two lookups — the jti blacklist and the user's
+   * auth epoch — are independent: neither's result changes what the other asks for. Awaiting them in
+   * sequence therefore spends two round trips where one round trip's latency would do.
+   *
+   * That is not a theoretical saving here. Measured on an isolated backend (Section 7B): Postgres
+   * executes each of these in ~0.06 ms, while a Prisma round trip costs ~1.05 ms of client-side
+   * marshalling even for `SELECT 1`. The database was idle at every concurrency tested — peak 3 of 5
+   * pool connections, zero lock waits, 0.3 ms of total execution per request — while the endpoint
+   * plateaued at ~87 rps. The ceiling was round-trip COUNT, not database work.
+   *
+   * ── What is unchanged ───────────────────────────────────────────────────
+   *
+   * The verdict is identical: a token is valid only if it is not revoked AND its epoch is current.
+   * Same two checks, same inputs, same answer. The only behavioural difference is that a REVOKED
+   * token now also costs the epoch lookup, because the short-circuit is gone. That is one extra
+   * query on the rare path, deliberately traded for one fewer round trip on the path every request
+   * takes — and a revoked token is precisely the case where you want both facts recorded anyway.
+   *
+   * No cache is introduced. Both facts are still read from the database on every request, which is
+   * what makes revocation take effect immediately.
+   */
   async isAccessTokenValid(payload: JwtPayload): Promise<boolean> {
-    if (payload.jti && (await this.isTokenRevoked(payload.jti))) {
+    const [revoked, currentEpoch] = await Promise.all([
+      payload.jti ? this.isTokenRevoked(payload.jti) : Promise.resolve(false),
+      payload.authEpoch !== undefined
+        ? this.getAuthEpoch(payload.userId)
+        : Promise.resolve<number | null>(null),
+    ]);
+
+    if (revoked) return false;
+    if (payload.authEpoch !== undefined && currentEpoch !== null && payload.authEpoch < currentEpoch) {
       return false;
     }
-
-    if (payload.authEpoch !== undefined) {
-      const currentEpoch = await this.getAuthEpoch(payload.userId);
-      if (payload.authEpoch < currentEpoch) {
-        return false;
-      }
-    }
-
     return true;
   }
 
@@ -150,7 +181,7 @@ class TokenRevocationService {
   ): Promise<void> {
     await this.revokeAllUserTokens(userId, reason, adminId, meta);
 
-    void notificationService.createForUser({
+    void notificationService.createForUserDetached({
       userId,
       type: "SYSTEM",
       title: "Security alert",

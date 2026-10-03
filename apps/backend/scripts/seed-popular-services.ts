@@ -74,8 +74,10 @@ async function main() {
           description: e.description,
           category: e.category ?? "cleaning",
           basePrice: e.basePrice,
+          // Tier prices are business data. They used to be derived (round(base × 1.6)) and were sold as
+          // a "Premium" package; withdrawn 2026-09-21 (owner decision). Only the base price is seeded.
           minPrice: e.basePrice,
-          maxPrice: Math.round(e.basePrice * 1.6),
+          maxPrice: e.basePrice,
           estimatedDuration: e.estimatedDuration,
           isActive: true,
           isPopular: true,

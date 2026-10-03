@@ -1,5 +1,6 @@
 import { BookingStatus } from "@prisma/client";
 import { ConflictError } from "../lib/app-error";
+import { isBookingTransitionAllowed } from "../lib/booking-state-machine";
 import { ErrorCode } from "../types/error";
 
 /**
@@ -49,40 +50,8 @@ export const resourceAlreadyExistsError = (resourceName: string, identifier?: st
     },
   );
 
-/**
- * Valid booking status transitions, keyed by the canonical Prisma
- * `BookingStatus` enum (UPPERCASE). Terminal states map to an empty array.
- */
-const VALID_BOOKING_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
-  PENDING: [
-    BookingStatus.ACCEPTED,
-    BookingStatus.REJECTED,
-    BookingStatus.CANCELLED_BY_USER,
-  ],
-  ACCEPTED: [
-    BookingStatus.ASSIGNED,
-    BookingStatus.EN_ROUTE,
-    BookingStatus.IN_PROGRESS,
-    BookingStatus.CANCELLED_BY_USER,
-    BookingStatus.CANCELLED_BY_PROVIDER,
-  ],
-  ASSIGNED: [
-    BookingStatus.EN_ROUTE,
-    BookingStatus.IN_PROGRESS,
-    BookingStatus.CANCELLED_BY_USER,
-    BookingStatus.CANCELLED_BY_PROVIDER,
-  ],
-  EN_ROUTE: [
-    BookingStatus.IN_PROGRESS,
-    BookingStatus.CANCELLED_BY_USER,
-    BookingStatus.CANCELLED_BY_PROVIDER,
-  ],
-  IN_PROGRESS: [BookingStatus.COMPLETED],
-  COMPLETED: [],
-  REJECTED: [],
-  CANCELLED_BY_USER: [],
-  CANCELLED_BY_PROVIDER: [],
-};
+/** The transition table lives in lib/booking-state-machine.ts; re-exported for existing callers. */
+export { isBookingTransitionAllowed };
 
 /**
  * Throw 409 if the booking cannot transition to `next`. Opt-in guard for
@@ -92,8 +61,7 @@ export function checkBookingStateTransition(
   current: BookingStatus,
   next: BookingStatus,
 ): void {
-  const allowed = VALID_BOOKING_TRANSITIONS[current] ?? [];
-  if (!allowed.includes(next)) {
+  if (!isBookingTransitionAllowed(current, next)) {
     throw invalidStateTransitionError(current, next);
   }
 }

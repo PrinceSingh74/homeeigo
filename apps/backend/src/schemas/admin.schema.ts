@@ -1,8 +1,9 @@
 import { z } from "zod";
 
 export const adminVerifyProviderSchema = z.object({
-  action: z.enum(["approve", "reject"]),
+  action: z.enum(["approve", "reject", "request_changes"]),
   notes: z.string().trim().max(2000).optional(),
+  targetStep: z.string().trim().max(64).optional(),
 });
 
 export const adminBanUserSchema = z.object({

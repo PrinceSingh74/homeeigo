@@ -24,6 +24,13 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+/** Local 10-digit Indian mobile, before `formatPhoneE164`. */
+export const loginPhoneSchema = z.object({
+  phoneNumber: z
+    .string()
+    .regex(/^\d{10}$/, "Enter a valid 10-digit mobile number"),
+});
+
 export const signupSchema = z
   .object({
     firstName: z.string().min(1, "First name is required").max(80),
@@ -70,6 +77,7 @@ export const verifyOtpSchema = z.object({
 });
 
 export type LoginFormValues = z.infer<typeof loginSchema>;
+export type LoginPhoneFormValues = z.infer<typeof loginPhoneSchema>;
 export type SignupFormValues = z.infer<typeof signupSchema>;
 export type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;

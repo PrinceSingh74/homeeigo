@@ -8,6 +8,10 @@ import { createVersion } from "../versioning/service";
 import prisma from "../../src/lib/prisma";
 import { logger } from "../../src/lib/logger";
 import { hashPii } from "../etl/pii";
+import { assertRowArray, withWarehouseDeadline } from "../../src/lib/warehouse-read";
+
+/** Reason code for "the feature-store warehouse views did not answer" (X-88). */
+export const FEATURE_STORE_UNAVAILABLE = "FEATURE_STORE_SOURCE_UNAVAILABLE" as const;
 
 const P = ANALYTICS_CONFIG.projectId;
 const D = ANALYTICS_CONFIG.dataset;
@@ -30,7 +34,7 @@ export class FeatureStoreService {
   async getFeatures(group: FeatureGroup, limit = 100): Promise<Record<string, unknown>[]> {
     const view = FEATURE_VIEWS[group];
     return cacheService.getOrFetch(`feature-store:${group}:${limit}`, 120, async () => {
-      return bqQuery(`SELECT * FROM \`${P}.${view}\` LIMIT ${limit}`);
+      return assertRowArray(await withWarehouseDeadline(bqQuery(`SELECT * FROM \`${P}.${view}\` LIMIT ${limit}`)), view);
     }, 5);
   }
 
@@ -49,8 +53,17 @@ export class FeatureStoreService {
     split: "training" | "validation" | "testing",
   ): Promise<{ versionTag: string; rowCount: number; view: string }> {
     const view = FEATURE_VIEWS[group];
+    /**
+     * Read first, write second (X-88). `createVersion` inserts the new training version as ACTIVE and
+     * demotes the previous one, and it used to run BEFORE the warehouse count — so an outage left a
+     * new active training version pointing at an export that never happened, and the real one
+     * deactivated. Now a failed read writes nothing.
+     */
+    const [row] = assertRowArray<{ n: number }>(
+      await withWarehouseDeadline(bqQuery<{ n: number }>(`SELECT COUNT(*) AS n FROM \`${P}.${view}\``)),
+      view,
+    );
     const version = await createVersion("training", { group, split, view });
-    const [row] = await bqQuery<{ n: number }>(`SELECT COUNT(*) AS n FROM \`${P}.${view}\``);
     return { versionTag: version.versionTag, rowCount: Number(row?.n ?? 0), view };
   }
 

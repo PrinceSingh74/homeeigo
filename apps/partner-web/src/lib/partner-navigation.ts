@@ -87,6 +87,7 @@ export const PARTNER_HQ_NAV: PartnerNavSection[] = [
     items: [
       { href: "/reviews", label: "Reviews", icon: Star },
       { href: "/performance-hq/scorecard", label: "Scorecard", icon: BarChart3 },
+      { href: "/performance-hq/career", label: "Career", icon: Award },
       { href: "/performance-hq/rankings", label: "Rankings", icon: Trophy },
       { href: "/performance-hq/quality-insights", label: "Quality Insights", icon: Star },
       { href: "/analytics", label: "Analytics", icon: BarChart3 },

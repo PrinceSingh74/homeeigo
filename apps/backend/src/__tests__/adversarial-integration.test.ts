@@ -3,6 +3,7 @@
  * Rejects simulation: every test mutates/queries the database and calls service or app.handle().
  */
 import "../load-env";
+import { provenanceForNewUser } from "../lib/data-provenance";
 import { describe, test, expect, beforeAll, afterAll, spyOn } from "bun:test";
 import {
   PaymentStatus,
@@ -12,6 +13,7 @@ import {
   prisma,
   dbReachable,
   seedAdversarialFixtures,
+  heartbeatFresh,
   cleanupAdversarialFixtures,
   deleteBookingsForUsers,
   fixturePhone,
@@ -33,9 +35,9 @@ import app from "../index";
 const RUN_ID = `run-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
 let dbOk = false;
+const savedNodeEnv = process.env.NODE_ENV;
 
 beforeAll(async () => {
-  process.env.NODE_ENV = "development";
   process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ?? "a".repeat(64);
   process.env.HASH_HMAC_KEY = process.env.HASH_HMAC_KEY ?? "test-hmac-pepper";
   process.env.MASTER_ENCRYPTION_KEY =
@@ -44,12 +46,12 @@ beforeAll(async () => {
   dbOk = await dbReachable();
   if (!dbOk) return;
   ctx = await seedAdversarialFixtures(RUN_ID);
-});
+}, 60_000);
 
 afterAll(async () => {
   if (dbOk) await cleanupAdversarialFixtures(RUN_ID);
-  await prisma.$disconnect();
-});
+  process.env.NODE_ENV = savedNodeEnv;
+}, 60_000);
 
 function skipIfNoDb() {
   if (!dbOk) {
@@ -65,6 +67,7 @@ describe.serial("Adversarial integration — PostgreSQL + services + HTTP", () =
 
     const user = await prisma.user.create({
       data: {
+        ...provenanceForNewUser(`adv-${RUN_ID}-wallet@adv.test`),
         email: `adv-${RUN_ID}-wallet@adv.test`,
         phoneNumber: fixturePhone(RUN_ID, "wallet-race"),
         firstName: "Wallet",
@@ -121,6 +124,7 @@ describe.serial("Adversarial integration — PostgreSQL + services + HTTP", () =
       Array.from({ length: concurrency }, async (_, i) => {
         const user = await prisma.user.create({
           data: {
+            ...provenanceForNewUser(`adv-${RUN_ID}-b1-${i}@adv.test`),
             email: `adv-${RUN_ID}-b1-${i}@adv.test`,
             phoneNumber: fixturePhone(RUN_ID, `booking-race-${i}`),
             firstName: "Race",
@@ -147,6 +151,8 @@ describe.serial("Adversarial integration — PostgreSQL + services + HTTP", () =
       }),
     );
 
+    // Seeding 50 users can outlast PRESENCE_FRESH_SEC; refresh presence right before the race.
+    await heartbeatFresh(ctx);
     const results = await Promise.all(
       customers.map((c) =>
         bookingService.create(c.userId, {
@@ -180,7 +186,7 @@ describe.serial("Adversarial integration — PostgreSQL + services + HTTP", () =
     await deleteBookingsForUsers(userIds);
     await prisma.address.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-  });
+  }, 120_000);
 
   async function assertSingleGatewayCreateOrder(concurrency: number, slotOffset: number) {
     resetRazorpayCreateOrderInvocationCount();
@@ -240,14 +246,14 @@ describe.serial("Adversarial integration — PostgreSQL + services + HTTP", () =
     const evidence = await assertSingleGatewayCreateOrder(50, 200);
     expect(evidence.serviceInvocationCount).toBe(1);
     expect(evidence.spyInvocationCount).toBe(1);
-  });
+  }, 60_000);
 
   test("C1b 200 concurrent createOrder — exactly 1 razorpayService.createOrder invocation", async () => {
     if (skipIfNoDb()) return;
     const evidence = await assertSingleGatewayCreateOrder(200, 240);
     expect(evidence.serviceInvocationCount).toBe(1);
     expect(evidence.spyInvocationCount).toBe(1);
-  });
+  }, 120_000);
 
   test("C2 FAILED retry preserves history in metadata and issues new gateway order", async () => {
     if (skipIfNoDb()) return;

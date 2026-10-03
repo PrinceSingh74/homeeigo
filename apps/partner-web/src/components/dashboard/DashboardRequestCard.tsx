@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { Clock, MapPin } from "lucide-react";
 import {
   useAcceptBookingMutation,
@@ -30,7 +30,7 @@ export function DashboardRequestCard({
   async function handleAccept() {
     setBusy("accept");
     try {
-      await accept.mutateAsync({ bookingId: request.id });
+      await accept.mutateAsync({ bookingId: request.id, eta: request.eta ?? undefined });
     } catch {
       /* onError handler shows toast */
     } finally {

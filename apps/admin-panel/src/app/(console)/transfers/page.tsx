@@ -23,7 +23,7 @@ export default function TransfersPage() {
     search: debounced || undefined,
   });
 
-  const transfers = data?.transfers ?? [];
+  const transfers = useMemo(() => data?.transfers ?? [], [data?.transfers]);
   const avg =
     (data?.totals.completedCount ?? 0) > 0
       ? (data?.totals.completedVolume ?? 0) / (data?.totals.completedCount ?? 1)

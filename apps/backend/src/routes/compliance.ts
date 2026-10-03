@@ -1,4 +1,5 @@
 import { Elysia, t } from "elysia";
+import type { ComplianceRequestStatus } from "@prisma/client";
 import type { ConsentPolicyType } from "@prisma/client";
 import { authPlugin } from "../plugins/auth.plugin";
 import { adminRbacPlugin } from "../middleware/admin-rbac";
@@ -14,6 +15,25 @@ function requestCtx(request: Request) {
 }
 
 const policyTypes = ["TERMS", "PRIVACY", "COOKIES", "REFUND"] as const;
+
+/**
+ * The real `ComplianceRequestStatus` members plus the "ALL" sentinel the service understands.
+ * `as const satisfies` ties this to the generated enum, so adding a member without updating the
+ * route becomes a compile error instead of a request that 400s in production.
+ */
+const COMPLIANCE_STATUSES = [
+  "PENDING",
+  "APPROVED",
+  "PROCESSING",
+  "COMPLETED",
+  "REJECTED",
+  "EXPIRED",
+] as const satisfies readonly ComplianceRequestStatus[];
+
+const COMPLIANCE_STATUS_SCHEMA = t.Union([
+  ...COMPLIANCE_STATUSES.map((s) => t.Literal(s)),
+  t.Literal("ALL"),
+]);
 
 export const complianceRoutes = new Elysia({ prefix: "/api/compliance" })
   .use(authPlugin)
@@ -152,7 +172,7 @@ export const complianceRoutes = new Elysia({ prefix: "/api/compliance" })
   }, {
     query: t.Object({
       limit: t.Optional(t.Numeric()),
-      status: t.Optional(t.String()),
+      status: t.Optional(COMPLIANCE_STATUS_SCHEMA),
     }),
   })
   .post(

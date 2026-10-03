@@ -8,10 +8,22 @@ function resolveBase(): string {
   return resolveApiBase();
 }
 
+/**
+ * This app's auth audience. The API host is shared by customer, partner and admin, so the HttpOnly
+ * refresh cookie is keyed per audience (hg_rt_admin here) — signing into the console must not
+ * overwrite a customer session in the same browser. The header is also a CSRF control on refresh.
+ */
+const AUTH_AUDIENCE = "admin";
+const authHeaders = (h: Record<string, string> = {}): Record<string, string> => ({
+  ...h,
+  "X-Homigo-Audience": AUTH_AUDIENCE,
+});
+
 export type ApiClientConfig = {
   getAccessToken: () => string | null;
-  getRefreshToken: () => string | null;
-  setTokens: (accessToken: string, refreshToken: string) => void;
+  /** A session may exist (the refresh token itself is an HttpOnly cookie, not visible to JS). */
+  hasSession: () => boolean;
+  setAccessToken: (accessToken: string) => void;
   clearSession: () => void;
 };
 
@@ -39,38 +51,33 @@ async function parseJson<T>(res: Response): Promise<ApiResponse<T>> {
 
 export async function ensureAccessToken(): Promise<boolean> {
   if (clientConfig?.getAccessToken()) return true;
-  if (!clientConfig?.getRefreshToken()) return false;
+  if (!clientConfig?.hasSession()) return false;
   return coordinatedRefresh(refreshAccessToken);
 }
 
 async function refreshAccessToken(): Promise<boolean> {
   if (!clientConfig) return false;
-  const refreshToken = clientConfig.getRefreshToken();
-  if (!refreshToken) return false;
+  if (!clientConfig.hasSession()) return false;
 
   const { getDeviceId, getDeviceName } = await import("@/lib/device");
   let res: Response;
   try {
     res = await fetch(`${resolveBase()}/api/auth/refresh`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        refreshToken,
-        deviceId: getDeviceId(),
-        deviceName: getDeviceName(),
-        setAuthCookies: false,
-      }),
+      credentials: "include", // the HttpOnly refresh cookie IS the credential
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ deviceId: getDeviceId(), deviceName: getDeviceName() }),
     });
   } catch {
     return false;
   }
 
-  const body = await parseJson<{ accessToken?: string; refreshToken?: string }>(res);
-  if (!res.ok || !body.success || !body.data?.accessToken || !body.data?.refreshToken) {
+  const body = await parseJson<{ accessToken?: string }>(res);
+  if (!res.ok || !body.success || !body.data?.accessToken) {
     return false;
   }
 
-  clientConfig.setTokens(body.data.accessToken, body.data.refreshToken);
+  clientConfig.setAccessToken(body.data.accessToken);
   return true;
 }
 
@@ -106,7 +113,8 @@ export async function apiRequest<T>(
   try {
     res = await fetch(url, {
       method,
-      headers,
+      credentials: "include",
+      headers: authHeaders(headers),
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
@@ -117,7 +125,7 @@ export async function apiRequest<T>(
     );
   }
 
-  if (res.status === 401 && auth && !skipRefresh && clientConfig?.getRefreshToken()) {
+  if (res.status === 401 && auth && !skipRefresh && clientConfig?.hasSession()) {
     const refreshed = await coordinatedRefresh(refreshAccessToken);
     if (refreshed) {
       return apiRequest<T>(path, { ...options, skipRefresh: true });
@@ -149,7 +157,7 @@ export async function apiRequestText(
 
   let res: Response;
   try {
-    res = await fetch(url, { method, headers });
+    res = await fetch(url, { method, credentials: "include", headers: authHeaders(headers) });
   } catch {
     throw new AdminApiError(
       "Could not reach backend API. Check that the API server is running.",
@@ -158,7 +166,7 @@ export async function apiRequestText(
     );
   }
 
-  if (res.status === 401 && auth && !skipRefresh && clientConfig?.getRefreshToken()) {
+  if (res.status === 401 && auth && !skipRefresh && clientConfig?.hasSession()) {
     const refreshed = await coordinatedRefresh(refreshAccessToken);
     if (refreshed) {
       return apiRequestText(path, { ...options, skipRefresh: true });
@@ -191,7 +199,7 @@ export async function apiRequestBlob(
 
   let res: Response;
   try {
-    res = await fetch(url, { method, headers });
+    res = await fetch(url, { method, credentials: "include", headers: authHeaders(headers) });
   } catch {
     throw new AdminApiError(
       "Could not reach backend API. Check that the API server is running.",
@@ -200,7 +208,7 @@ export async function apiRequestBlob(
     );
   }
 
-  if (res.status === 401 && auth && !skipRefresh && clientConfig?.getRefreshToken()) {
+  if (res.status === 401 && auth && !skipRefresh && clientConfig?.hasSession()) {
     const refreshed = await coordinatedRefresh(refreshAccessToken);
     if (refreshed) {
       return apiRequestBlob(path, { ...options, skipRefresh: true });

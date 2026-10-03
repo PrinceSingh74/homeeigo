@@ -5,14 +5,22 @@ import { useEffect, useState } from "react";
 import { PartnerApiError } from "@/lib/api-error";
 import { usePartnerStore } from "@/stores/partner-store";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { MotionProvider } from "@/components/providers/MotionProvider";
 
 function PartnerAuthBootstrap({ children }: { children: React.ReactNode }) {
   const bootstrap = usePartnerStore((s) => s.bootstrap);
-  const status = usePartnerStore((s) => s.status);
 
   useEffect(() => {
-    if (status === "idle") void bootstrap();
-  }, [bootstrap, status]);
+    const start = () => {
+      if (usePartnerStore.getState().status === "idle") void bootstrap();
+    };
+    const persistApi = usePartnerStore.persist;
+    if (persistApi.hasHydrated()) {
+      start();
+      return;
+    }
+    return persistApi.onFinishHydration(start);
+  }, [bootstrap]);
 
   return <>{children}</>;
 }
@@ -38,7 +46,10 @@ export function PartnerProviders({ children }: { children: React.ReactNode }) {
             },
           },
           mutations: {
-            retry: 1,
+            // Replay only when no HTTP response arrived (network failure). Any server answer —
+            // 4xx (conflict, validation, already accepted) or 5xx — is final: a replayed job action
+            // can double-apply. Same policy as the customer mobile app.
+            retry: (failureCount, error) => failureCount < 1 && !(error instanceof PartnerApiError),
             networkMode: "online",
           },
         },
@@ -48,7 +59,9 @@ export function PartnerProviders({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       <ThemeProvider>
-        <PartnerAuthBootstrap>{children}</PartnerAuthBootstrap>
+        <MotionProvider>
+          <PartnerAuthBootstrap>{children}</PartnerAuthBootstrap>
+        </MotionProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

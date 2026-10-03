@@ -18,17 +18,19 @@ const inputClass =
 export function Step3KYC({
   onSubmit,
   loading,
+  initialValues,
 }: {
   onSubmit: (data: Step3Data) => Promise<void>;
   loading: boolean;
+  initialValues?: Partial<Step3Data>;
 }) {
   const [formData, setFormData] = useState<Step3Data>({
-    panNumber: "",
-    aadharNumber: "",
-    bankAccountNumber: "",
-    bankAccountHolder: "",
-    ifscCode: "",
-    bankName: "",
+    panNumber: initialValues?.panNumber ?? "",
+    aadharNumber: initialValues?.aadharNumber ?? "",
+    bankAccountNumber: initialValues?.bankAccountNumber ?? "",
+    bankAccountHolder: initialValues?.bankAccountHolder ?? "",
+    ifscCode: initialValues?.ifscCode ?? "",
+    bankName: initialValues?.bankName ?? "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -61,64 +63,89 @@ export function Step3KYC({
         You can skip these for now and add them later from your profile.
       </p>
 
-      <input
-        type="text"
-        name="panNumber"
-        placeholder="PAN (AAAAA1234B)"
-        value={formData.panNumber}
-        onChange={handleChange}
-        className={inputClass}
-      />
-      {errors.panNumber ? <p className="text-xs text-red-400">{errors.panNumber}</p> : null}
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium">PAN</span>
+        <input
+          type="text"
+          name="panNumber"
+          placeholder="AAAAA1234B"
+          autoComplete="off"
+          value={formData.panNumber}
+          onChange={handleChange}
+          aria-invalid={Boolean(errors.panNumber)}
+          className={inputClass}
+        />
+      </label>
+      {errors.panNumber ? <p role="alert" className="text-xs text-red-400">{errors.panNumber}</p> : null}
 
-      <input
-        type="text"
-        name="aadharNumber"
-        placeholder="Aadhar (12 digits)"
-        value={formData.aadharNumber}
-        onChange={handleChange}
-        maxLength={12}
-        className={inputClass}
-      />
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium">Aadhaar</span>
+        <input
+          type="text"
+          name="aadharNumber"
+          placeholder="12 digits"
+          inputMode="numeric"
+          autoComplete="off"
+          value={formData.aadharNumber}
+          onChange={handleChange}
+          maxLength={12}
+          aria-invalid={Boolean(errors.aadharNumber)}
+          className={inputClass}
+        />
+      </label>
       {errors.aadharNumber ? (
-        <p className="text-xs text-red-400">{errors.aadharNumber}</p>
+        <p role="alert" className="text-xs text-red-400">{errors.aadharNumber}</p>
       ) : null}
 
-      <input
-        type="text"
-        name="bankAccountNumber"
-        placeholder="Bank account number"
-        value={formData.bankAccountNumber}
-        onChange={handleChange}
-        className={inputClass}
-      />
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium">Bank account number</span>
+        <input
+          type="text"
+          name="bankAccountNumber"
+          placeholder="Account number"
+          autoComplete="off"
+          value={formData.bankAccountNumber}
+          onChange={handleChange}
+          className={inputClass}
+        />
+      </label>
 
-      <input
-        type="text"
-        name="bankAccountHolder"
-        placeholder="Account holder name"
-        value={formData.bankAccountHolder}
-        onChange={handleChange}
-        className={inputClass}
-      />
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium">Account holder name</span>
+        <input
+          type="text"
+          name="bankAccountHolder"
+          placeholder="Name as on bank account"
+          value={formData.bankAccountHolder}
+          onChange={handleChange}
+          className={inputClass}
+        />
+      </label>
 
       <div className="grid grid-cols-2 gap-3">
-        <input
-          type="text"
-          name="ifscCode"
-          placeholder="IFSC"
-          value={formData.ifscCode}
-          onChange={handleChange}
-          className={inputClass}
-        />
-        <input
-          type="text"
-          name="bankName"
-          placeholder="Bank name"
-          value={formData.bankName}
-          onChange={handleChange}
-          className={inputClass}
-        />
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium">IFSC</span>
+          <input
+            type="text"
+            name="ifscCode"
+            placeholder="HDFC0001234"
+            autoComplete="off"
+            value={formData.ifscCode}
+            onChange={handleChange}
+            className={inputClass}
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium">Bank name</span>
+          <input
+            type="text"
+            name="bankName"
+            placeholder="HDFC Bank"
+            value={formData.bankName}
+            onChange={handleChange}
+            className={inputClass}
+          />
+        </label>
       </div>
 
       <PartnerButton type="submit" className="w-full" disabled={loading}>

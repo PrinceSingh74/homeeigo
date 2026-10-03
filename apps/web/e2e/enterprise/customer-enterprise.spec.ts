@@ -82,14 +82,14 @@ test.describe("Enterprise customer E2E", () => {
   }) => {
     await loginCustomerUi(page, SEED_CUSTOMER.email, SEED_CUSTOMER.password);
 
-    await page.goto("/services");
-    await expect(page.getByRole("heading", { name: /services/i }).first()).toBeVisible({
-      timeout: 30_000,
-    });
     const searchRes = page.waitForResponse(
       (r) => r.url().includes("/api/services") && r.ok(),
       { timeout: 30_000 },
     );
+    await page.goto("/services");
+    await expect(page.getByRole("heading", { name: /services/i }).first()).toBeVisible({
+      timeout: 30_000,
+    });
     await searchRes;
 
     const { token } = await apiLogin(SEED_CUSTOMER.email, SEED_CUSTOMER.password);
@@ -169,14 +169,12 @@ test.describe("Enterprise customer E2E", () => {
     const { token } = await apiLogin(SEED_CUSTOMER.email, SEED_CUSTOMER.password);
     await ensureDefaultAddress(token);
     await cancelUpcomingBookings(token);
-    await loginCustomerUi(page, SEED_CUSTOMER.email, SEED_CUSTOMER.password);
     await mockRazorpayCheckout(page);
-    await gotoAuthedCustomer(page, "/book", SEED_CUSTOMER);
     const servicesReady = page.waitForResponse(
       (r) => r.url().includes("/api/services") && r.ok(),
       { timeout: 60_000 },
     );
-    await page.reload({ waitUntil: "domcontentloaded" });
+    await gotoAuthedCustomer(page, "/book", SEED_CUSTOMER);
     await servicesReady;
     await expect(page.getByText(/loading booking/i)).toBeHidden({ timeout: 90_000 });
     await confirmBookingAndWait(page);

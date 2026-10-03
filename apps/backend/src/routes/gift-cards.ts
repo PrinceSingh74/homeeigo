@@ -100,10 +100,11 @@ export const giftCardsRoutes = new Elysia({ prefix: "/api/giftcards" })
       const { userId } = requireVerifiedEmail();
       const result = await giftCardService.void(userId, params.id);
       if ("error" in result) {
-        set.status = result.error === "NOT_FOUND" ? 404 : 400;
+        set.status = result.error === "NOT_FOUND" ? 404 : result.error === "GATEWAY_REFUND_PENDING" ? 202 : 400;
         return { success: false, error: result.error, code: result.error };
       }
-      return { success: true, message: `₹${result.refunded} refunded to your wallet`, data: result };
+      // The balance goes back to the payment the card was bought with — never to the wallet.
+      return { success: true, message: `₹${result.refunded} refunded to your original payment method`, data: result };
     },
     { params: t.Object({ id: t.String() }) },
   );

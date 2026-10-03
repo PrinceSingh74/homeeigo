@@ -2,6 +2,7 @@
  * Release blocker wave 2 — execution-driven adversarial integration tests.
  */
 import "../load-env";
+import { provenanceForNewUser } from "../lib/data-provenance";
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import {
   BookingStatus,
@@ -31,9 +32,9 @@ import app from "../index";
 const RUN_ID = `w2-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
 let dbOk = false;
+const savedNodeEnv = process.env.NODE_ENV;
 
 beforeAll(async () => {
-  process.env.NODE_ENV = "development";
   dbOk = await dbReachable();
   if (!dbOk) return;
   ctx = await seedAdversarialFixtures(RUN_ID);
@@ -42,7 +43,7 @@ beforeAll(async () => {
 afterAll(
   async () => {
     if (dbOk) await cleanupAdversarialFixtures(RUN_ID);
-    await prisma.$disconnect();
+    process.env.NODE_ENV = savedNodeEnv;
   },
   60_000,
 );
@@ -55,6 +56,19 @@ function skipIfNoDb() {
   return false;
 }
 
+/**
+ * A booking that is ready to be accepted, so the concurrency tests can reach `accept()` at all.
+ *
+ * These tests prove one thing: under N simultaneous accepts, exactly one wins and N-1 are refused
+ * without error. That is a locking property, and it says nothing about payment.
+ *
+ * The booking payment gate now refuses `accept()` unless `paymentStatus` is SUCCESS, so a freshly
+ * created booking — which starts PENDING — is turned away before the locking code is ever reached,
+ * and every one of the N attempts fails identically. Settling the payment here restores the test's
+ * ability to exercise what it is for. It does not weaken the gate: the gate is asserted directly in
+ * its own suite, and a booking that has genuinely been paid for is exactly the state in which
+ * concurrent accepts happen in production.
+ */
 async function seedPendingBooking(slotOffset = 200) {
   const slot = futureSlot(slotOffset);
   await prisma.booking.deleteMany({
@@ -67,7 +81,12 @@ async function seedPendingBooking(slotOffset = 200) {
     addressId: ctx.addressAId,
   });
   expect("booking" in created).toBe(true);
-  return { bookingId: created.booking!.id, slot };
+  const bookingId = created.booking!.id;
+  await prisma.booking.update({
+    where: { id: bookingId },
+    data: { paymentStatus: "SUCCESS" },
+  });
+  return { bookingId, slot };
 }
 
 describe.serial("Release blocker wave 2", () => {
@@ -79,10 +98,14 @@ describe.serial("Release blocker wave 2", () => {
       Array.from({ length: 50 }, () => bookingService.accept(ctx.providerId, bookingId)),
     );
 
-    const successes = results.filter((r) => r.ok);
-    const failures = results.filter((r) => !r.ok);
-    expect(successes.length).toBe(1);
-    expect(failures.length).toBe(49);
+    // One claim. Every other call is the SAME partner tapping again: since 2026-10-01 accepts of one
+    // booking are serialised in-process, so each of them reads the committed claim and gets the
+    // documented idempotent answer (ok, newlyAccepted=false) instead of a timing-dependent
+    // INVALID_STATUS. No double claim, no second notice — asserted below.
+    const claims = results.filter((r) => r.ok && r.newlyAccepted);
+    const repeats = results.filter((r) => r.ok && !r.newlyAccepted);
+    expect(claims.length).toBe(1);
+    expect(repeats.length).toBe(49);
     expect(results.filter((r) => r instanceof Error)).toHaveLength(0);
 
     const row = await prisma.booking.findUniqueOrThrow({ where: { id: bookingId } });
@@ -104,8 +127,9 @@ describe.serial("Release blocker wave 2", () => {
       Array.from({ length: 100 }, () => bookingService.accept(ctx.providerId, bookingId)),
     );
 
-    expect(results.filter((r) => r.ok).length).toBe(1);
-    expect(results.filter((r) => !r.ok).length).toBe(99);
+    // Same contract as the 50-way case: one claim, 99 idempotent repeats by the same partner.
+    expect(results.filter((r) => r.ok && r.newlyAccepted).length).toBe(1);
+    expect(results.filter((r) => r.ok && !r.newlyAccepted).length).toBe(99);
 
     const active = await prisma.booking.count({
       where: { id: bookingId, status: BookingStatus.ACCEPTED },
@@ -162,6 +186,7 @@ describe.serial("Release blocker wave 2", () => {
 
     const user = await prisma.user.create({
       data: {
+        ...provenanceForNewUser(`${RUN_ID}-wallet-idem@adv.test`),
         email: `${RUN_ID}-wallet-idem@adv.test`,
         phoneNumber: fixturePhone(RUN_ID, "idem"),
         firstName: "Idem",
@@ -196,6 +221,7 @@ describe.serial("Release blocker wave 2", () => {
 
     const user = await prisma.user.create({
       data: {
+        ...provenanceForNewUser(`${RUN_ID}-wallet-pending@adv.test`),
         email: `${RUN_ID}-wallet-pending@adv.test`,
         phoneNumber: fixturePhone(RUN_ID, "pending-cap"),
         firstName: "Pending",
@@ -225,6 +251,7 @@ describe.serial("Release blocker wave 2", () => {
 
     const user = await prisma.user.create({
       data: {
+        ...provenanceForNewUser(`${RUN_ID}-wallet-expired@adv.test`),
         email: `${RUN_ID}-wallet-expired@adv.test`,
         phoneNumber: fixturePhone(RUN_ID, "wallet-exp"),
         firstName: "Expired",
@@ -271,6 +298,7 @@ describe.serial("Release blocker wave 2", () => {
 
     const user = await prisma.user.create({
       data: {
+        ...provenanceForNewUser(`${RUN_ID}-wallet-clean@adv.test`),
         email: `${RUN_ID}-wallet-clean@adv.test`,
         phoneNumber: fixturePhone(RUN_ID, "wallet-clean"),
         firstName: "Clean",
@@ -323,6 +351,7 @@ describe.serial("Release blocker wave 2", () => {
 
     const unverified = await prisma.user.create({
       data: {
+        ...provenanceForNewUser(`${RUN_ID}-unverified@adv.test`),
         email: `${RUN_ID}-unverified@adv.test`,
         phoneNumber: fixturePhone(RUN_ID, "unverified"),
         firstName: "Unverified",
@@ -439,6 +468,7 @@ describe.serial("Release blocker wave 2", () => {
 
     const unverified = await prisma.user.create({
       data: {
+        ...provenanceForNewUser(`${RUN_ID}-gc-unverified@adv.test`),
         email: `${RUN_ID}-gc-unverified@adv.test`,
         phoneNumber: fixturePhone(RUN_ID, "gc-unv"),
         firstName: "GC",

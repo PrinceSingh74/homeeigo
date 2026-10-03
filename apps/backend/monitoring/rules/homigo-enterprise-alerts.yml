@@ -3,8 +3,17 @@
 groups:
   - name: homigo_payments
     rules:
+      # The denominator was `clamp_min(..., 1)`. That turns an idle window into a catastrophe: with
+      # no payments at all the numerator is 0, the clamped denominator is 1, and 0 < 95 fires a P0.
+      # Observed doing exactly that on 2026-09-21 — `PaymentSuccessRateLow` FIRING with value 0
+      # against `payment_success_total 0` and `payment_failed_total 0`.
+      #
+      # Dividing by the true denominator yields 0/0 = NaN when nothing happened, and a NaN
+      # comparison is false, so "no payments" produces no alert while any real traffic is evaluated
+      # normally. The clamp was there to avoid a divide-by-zero; there is nothing to avoid, because
+      # NaN is precisely the right answer to "what fraction of no payments succeeded".
       - alert: PaymentSuccessRateLow
-        expr: 100 * sum(increase(payment_success_total[15m])) / clamp_min(sum(increase(payment_success_total[15m])) + sum(increase(payment_failed_total[15m])), 1) < 95
+        expr: 100 * sum(increase(payment_success_total[15m])) / (sum(increase(payment_success_total[15m])) + sum(increase(payment_failed_total[15m]))) < 95
         for: 10m
         labels: { severity: critical, priority: P0, team: L2 }
         annotations: { summary: "Payment success rate < 95% (15m)", slo: "payment_success>99%" }
@@ -47,11 +56,10 @@ groups:
 
   - name: homigo_redis
     rules:
-      - alert: RedisDownP1
-        expr: redis_up == 0
-        for: 2m
-        labels: { severity: critical, priority: P1, team: L2 }
-        annotations: { summary: "Redis down — WS fan-out + distributed locks degraded" }
+      # RedisDownP1 lived here and is now `RedisDown` in homigo-alerts.yml, with these exact labels
+      # and this exact summary. It was a second definition of `redis_up == 0` for 2m at
+      # severity: critical — one outage, two alerts, two routes, no possible deduplication.
+      # See the consolidated definition for the full reasoning.
       - alert: RedisHitRateLow
         expr: redis_hit_rate < 0.5
         for: 10m

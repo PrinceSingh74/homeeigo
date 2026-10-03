@@ -55,7 +55,7 @@ export const LiveTrackingMapView = memo(function LiveTrackingMapView({
         <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-sky-400 ring-2 ring-white/80 shadow-lg shadow-sky-500/40" />
       </div>
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-slate-950/20" />
-      <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-slate-900/70 px-2.5 py-1 text-[10px] font-semibold text-sky-300 ring-1 ring-white/10 backdrop-blur">
+      <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-slate-900/70 px-2.5 py-1 text-xs font-semibold text-white/80 ring-1 ring-white/10 backdrop-blur">
         ● HOMEEIGO coverage
       </span>
     </div>

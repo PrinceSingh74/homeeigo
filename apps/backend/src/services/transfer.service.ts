@@ -1,3 +1,4 @@
+import { rupeesToPaise } from "../lib/money-paise";
 import { prisma } from "../lib/prisma";
 import { WalletTransferStatus, WalletTxnType, WalletTxnStatus } from "@prisma/client";
 import { nextWalletTxnNumber } from "../lib/booking-number";
@@ -123,17 +124,33 @@ export class TransferService {
     const baseTxnNo = await nextWalletTxnNumber();
 
     const result = await prisma.$transaction(async (tx) => {
-      // Lock + re-check the sender balance inside the transaction.
+      /**
+       * Claim the transfer first (compare-and-set on PENDING): a replayed confirm, or the same
+       * OTP verified twice inside the race window, must not move the money twice. Then serialise
+       * both wallets (lock order by id to avoid deadlocks) and read the sender balance under lock.
+       */
+      const claimed = await tx.walletTransfer.updateMany({
+        where: { id: transfer.id, status: WalletTransferStatus.PENDING },
+        data: { status: WalletTransferStatus.COMPLETED, completedAt: new Date() },
+      });
+      if (claimed.count === 0) throw new Error("ALREADY_COMPLETED");
+      for (const id of [senderId, recipient.id].sort()) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"wallet_pay:" + id}))`;
+      }
       const s = await tx.user.findUnique({ where: { id: senderId }, select: { walletBalance: true } });
       if (!s || s.walletBalance < transfer.amount) throw new Error("INSUFFICIENT_BALANCE");
+      // Read the recipient's opening balance under the same locks — never derive it from the closing one.
+      const r0 = await tx.user.findUnique({ where: { id: recipient.id }, select: { walletBalance: true } });
+      if (!r0) throw new Error("RECIPIENT_NOT_FOUND");
 
+      const amountPaise = rupeesToPaise(transfer.amount);
       const senderAfter = await tx.user.update({
         where: { id: senderId },
-        data: { walletBalance: { decrement: transfer.amount } },
+        data: { walletBalance: { decrement: transfer.amount }, walletBalancePaise: { decrement: amountPaise } },
       });
       const recipAfter = await tx.user.update({
         where: { id: recipient.id },
-        data: { walletBalance: { increment: transfer.amount } },
+        data: { walletBalance: { increment: transfer.amount }, walletBalancePaise: { increment: amountPaise } },
       });
       const senderTxn = await tx.walletTransaction.create({
         data: {
@@ -154,7 +171,7 @@ export class TransferService {
           transactionNumber: `${baseTxnNo}-R`,
           userId: recipient.id,
           amount: transfer.amount,
-          walletBalanceBefore: recipAfter.walletBalance - transfer.amount,
+          walletBalanceBefore: r0.walletBalance,
           walletBalanceAfter: recipAfter.walletBalance,
           type: WalletTxnType.CREDIT,
           description: `Received from ${maskName(sender.firstName, sender.lastName, sender.email)}`,
@@ -163,10 +180,7 @@ export class TransferService {
           status: WalletTxnStatus.COMPLETED,
         },
       });
-      await tx.walletTransfer.update({
-        where: { id: transfer.id },
-        data: { status: WalletTransferStatus.COMPLETED, completedAt: new Date() },
-      });
+      // (transfer row already claimed as COMPLETED above; a failure below rolls that back too)
       await financialLedgerService.recordJournalInTransaction(
         tx,
         financialLedgerService.journalForWalletTransferOut(transfer.id, senderTxn.id, transfer.amount),

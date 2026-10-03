@@ -20,7 +20,7 @@
 
   /* ── Accent system ──────────────────────────────────────────────────── */
   --color-biz-accent: #3d7eff;            /* Electric Blue   */
-  --color-biz-primary: #3d7eff;           /* Alias used by action buttons */
+  --color-biz-primary: #2563eb;           /* Action-button fill — carries white labels at 5.17:1 (AA) */
   --color-biz-accent-dim: rgb(61 126 255 / 0.13);
   --color-biz-cyan: #22d3ee;              /* Intelligence Cyan */
   --color-biz-cyan-dim: rgb(34 211 238 / 0.12);
@@ -31,7 +31,7 @@
   /* ── Ink ────────────────────────────────────────────────────────────── */
   --color-biz-text: #eef2fa;
   --color-biz-muted: #8b95ad;
-  --color-biz-faint: #5c6579;
+  --color-biz-faint: #7f8aa3;             /* ≥ 4.5:1 on bg / surface / elevated / overlay (AA) */
   --color-biz-line: rgb(96 116 156 / 0.22);
   --color-biz-line-strong: rgb(112 134 178 / 0.34);
 
@@ -56,16 +56,23 @@
   --color-biz-overlay: #182136;
   --color-biz-glass: rgb(142 176 255 / 0.05);
   --color-biz-accent: #3d7eff;
-  --color-biz-primary: #3d7eff;
+  --color-biz-primary: #2563eb;
   --color-biz-accent-dim: rgb(61 126 255 / 0.13);
   --color-biz-cyan: #22d3ee;
   --color-biz-cyan-dim: rgb(34 211 238 / 0.12);
   --color-biz-success: #10b981;
   --color-biz-warning: #f59e0b;
   --color-biz-danger: #ef4444;
+  /* Ink = the same hue when it is used as TEXT. On Graphite the fills already
+     read as text; Day mode remaps these to darker inks (see below). */
+  --color-biz-accent-ink: var(--color-biz-accent);
+  --color-biz-cyan-ink: var(--color-biz-cyan);
+  --color-biz-success-ink: var(--color-biz-success);
+  --color-biz-warning-ink: var(--color-biz-warning);
+  --color-biz-danger-ink: var(--color-biz-danger);
   --color-biz-text: #eef2fa;
   --color-biz-muted: #8b95ad;
-  --color-biz-faint: #5c6579;
+  --color-biz-faint: #7f8aa3;
   --color-biz-line: rgb(96 116 156 / 0.22);
   --color-biz-line-strong: rgb(112 134 178 / 0.34);
   --spacing-enterprise: 1.5rem;
@@ -98,13 +105,19 @@ html[data-theme="light"] {
   --color-biz-overlay: #e3f6ec;
   --color-biz-glass: rgb(16 185 129 / 0.05);
   --color-biz-accent: #059669;
-  --color-biz-primary: #059669;
+  --color-biz-primary: #047857;
   --color-biz-accent-dim: rgb(5 150 105 / 0.1);
   --color-biz-cyan: #0d9488;
   --color-biz-cyan-dim: rgb(13 148 136 / 0.1);
+  /* Text inks — each ≥ 4.5:1 on canvas, surface and elevated (WCAG AA) */
+  --color-biz-accent-ink: #047857;
+  --color-biz-cyan-ink: #0f766e;
+  --color-biz-success-ink: #047857;
+  --color-biz-warning-ink: #b45309;
+  --color-biz-danger-ink: #b91c1c;
   --color-biz-text: #06110c;
   --color-biz-muted: #3d5249;
-  --color-biz-faint: #64766d;
+  --color-biz-faint: #5a6b62;
   --color-biz-line: rgb(6 95 70 / 0.2);
   --color-biz-line-strong: rgb(6 95 70 / 0.34);
   --shadow-enterprise: 0 1px 2px rgb(6 78 59 / 0.05), 0 12px 32px -18px rgb(6 78 59 / 0.16);
@@ -126,7 +139,7 @@ html[data-theme="light"] body {
    Dozens of screens use dark-canvas grays (text-slate/zinc-200…500) that are
    unreadable on the mint canvas. Remap them to ink globally; dark islands
    (maps, heatmaps, dark chips) below re-assert their original grays. */
-html[data-theme="light"] :is(.text-slate-100, .text-slate-200, .text-zinc-100, .text-zinc-200, .text-gray-100, .text-gray-200) {
+html[data-theme="light"] :is(.text-slate-50, .text-slate-100, .text-slate-200, .text-zinc-50, .text-zinc-100, .text-zinc-200, .text-gray-50, .text-gray-100, .text-gray-200) {
   color: var(--color-biz-text);
 }
 html[data-theme="light"] :is(.text-slate-300, .text-zinc-300, .text-gray-300) {
@@ -135,38 +148,81 @@ html[data-theme="light"] :is(.text-slate-300, .text-zinc-300, .text-gray-300) {
 html[data-theme="light"] :is(.text-slate-400, .text-zinc-400, .text-gray-400, .text-slate-500, .text-zinc-500, .text-gray-500) {
   color: var(--color-biz-muted);
 }
-html[data-theme="light"] :is(.text-emerald-300, .text-emerald-400) {
-  color: #047857;
+html[data-theme="light"] :is(.text-emerald-200, .text-emerald-300, .text-emerald-400, .text-emerald-500, .text-green-400, .text-green-500, .text-green-600) {
+  color: var(--color-biz-success-ink);
 }
-html[data-theme="light"] :is(.text-amber-300, .text-amber-400) {
-  color: #b45309;
+html[data-theme="light"] :is(.text-amber-100, .text-amber-200, .text-amber-300, .text-amber-400, .text-amber-500, .text-amber-600) {
+  color: var(--color-biz-warning-ink);
 }
-html[data-theme="light"] :is(.text-red-300, .text-red-400, .text-rose-300, .text-rose-400) {
-  color: #b91c1c;
+html[data-theme="light"] :is(.text-red-200, .text-red-300, .text-red-400, .text-red-500, .text-rose-300, .text-rose-400) {
+  color: var(--color-biz-danger-ink);
 }
-html[data-theme="light"] :is(.text-sky-300, .text-sky-400, .text-blue-300, .text-blue-400, .text-cyan-300, .text-cyan-400) {
+html[data-theme="light"] :is(.text-orange-300, .text-orange-400) {
+  color: #c2410c;
+}
+html[data-theme="light"] :is(.text-sky-300, .text-sky-400, .text-blue-300, .text-blue-400, .text-blue-500, .text-cyan-300, .text-cyan-400) {
   color: #0e7490;
 }
 html[data-theme="light"] :is(.text-violet-300, .text-violet-400, .text-purple-300, .text-fuchsia-300) {
   color: #6d28d9;
 }
 
-/* Dark islands keep their bright grays (readable on their own dark surfaces) */
+/* Token-coloured text utilities read the ink, not the fill (fills are too light
+   to be text on the mint canvas: emerald 3.7:1, red 3.7:1, amber 2.1:1). */
+html[data-theme="light"] .text-\[var\(--color-biz-accent\)\] {
+  color: var(--color-biz-accent-ink);
+}
+html[data-theme="light"] .text-\[var\(--color-biz-cyan\)\] {
+  color: var(--color-biz-cyan-ink);
+}
+html[data-theme="light"] .text-\[var\(--color-biz-success\)\] {
+  color: var(--color-biz-success-ink);
+}
+html[data-theme="light"] .text-\[var\(--color-biz-warning\)\] {
+  color: var(--color-biz-warning-ink);
+}
+html[data-theme="light"] .text-\[var\(--color-biz-danger\)\] {
+  color: var(--color-biz-danger-ink);
+}
+
+/* Dark islands keep their bright grays (readable on their own dark surfaces).
+   An island is either an ancestor or the element itself (dark buttons/inputs
+   carry both the dark fill and the light text class). */
 html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900, .heatmap-canvas)
-  :is(.text-slate-200, .text-slate-300, .text-zinc-200, .text-zinc-300, .text-gray-300) {
+  :is(.text-slate-50, .text-slate-100, .text-zinc-50, .text-zinc-100, .text-gray-50, .text-gray-100),
+html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900):is(.text-slate-50, .text-slate-100, .text-slate-200, .text-zinc-50, .text-zinc-100, .text-zinc-200, .text-gray-50, .text-gray-100, .text-gray-200) {
+  color: #f1f5f9;
+}
+html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900, .heatmap-canvas)
+  :is(.text-slate-200, .text-slate-300, .text-zinc-200, .text-zinc-300, .text-gray-300),
+html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900):is(.text-slate-300, .text-zinc-300, .text-gray-300) {
   color: #cbd5e1;
 }
 html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900, .heatmap-canvas)
-  :is(.text-slate-400, .text-slate-500, .text-zinc-400, .text-zinc-500, .text-gray-400) {
+  :is(.text-slate-400, .text-slate-500, .text-zinc-400, .text-zinc-500, .text-gray-400),
+html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900):is(.text-slate-400, .text-slate-500, .text-zinc-400, .text-zinc-500, .text-gray-400) {
   color: #94a3b8;
 }
 html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900, .heatmap-canvas)
-  :is(.text-emerald-300, .text-emerald-400) {
+  :is(.text-emerald-300, .text-emerald-400),
+html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900):is(.text-emerald-300, .text-emerald-400) {
   color: #34d399;
 }
 html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900, .heatmap-canvas)
-  :is(.text-amber-300, .text-amber-400) {
+  :is(.text-amber-300, .text-amber-400),
+html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900):is(.text-amber-300, .text-amber-400) {
   color: #fbbf24;
+}
+html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900, .heatmap-canvas)
+  :is(.text-red-300, .text-red-400),
+html[data-theme="light"] :is(.bg-slate-950, .bg-slate-900, .bg-zinc-950, .bg-zinc-900):is(.text-red-300, .text-red-400) {
+  color: #fca5a5;
+}
+
+/* White labels sit on the action fill (--color-biz-primary), never on the
+   lighter accent: white on accent is 3.7:1 in both themes. */
+:is(.bg-\[var\(--color-biz-accent\)\], .bg-\[var\(--color-biz-primary\)\]).text-white {
+  background-color: var(--color-biz-primary);
 }
 
 html[data-theme="light"] :focus-visible {
@@ -371,32 +427,32 @@ html[data-theme="light"] *::-webkit-scrollbar-thumb:hover {
   border-radius: 0.625rem;
   background: var(--color-biz-accent-dim);
   border: 1px solid rgb(61 126 255 / 0.22);
-  color: var(--color-biz-accent);
+  color: var(--color-biz-accent-ink);
   flex-shrink: 0;
 }
 
 .biz-icon-chip--success {
   background: rgb(16 185 129 / 0.1);
   border-color: rgb(16 185 129 / 0.22);
-  color: var(--color-biz-success);
+  color: var(--color-biz-success-ink);
 }
 
 .biz-icon-chip--danger {
   background: rgb(239 68 68 / 0.1);
   border-color: rgb(239 68 68 / 0.22);
-  color: var(--color-biz-danger);
+  color: var(--color-biz-danger-ink);
 }
 
 .biz-icon-chip--warning {
   background: rgb(245 158 11 / 0.1);
   border-color: rgb(245 158 11 / 0.22);
-  color: var(--color-biz-warning);
+  color: var(--color-biz-warning-ink);
 }
 
 .biz-icon-chip--cyan {
   background: var(--color-biz-cyan-dim);
   border-color: rgb(34 211 238 / 0.22);
-  color: var(--color-biz-cyan);
+  color: var(--color-biz-cyan-ink);
 }
 
 /* Sidebar */
@@ -642,7 +698,7 @@ html[data-theme="light"] *::-webkit-scrollbar-thumb:hover {
 }
 
 .biz-segment-btn.is-active {
-  background: var(--color-biz-accent);
+  background: var(--color-biz-primary); /* white label needs the action fill (AA) */
   color: #fff;
   font-weight: 600;
   box-shadow: 0 1px 6px rgb(61 126 255 / 0.4);
@@ -786,25 +842,25 @@ html[data-theme="light"] *::-webkit-scrollbar-thumb:hover {
 .biz-status--success {
   border-color: rgb(16 185 129 / 0.28);
   background: rgb(16 185 129 / 0.12);
-  color: var(--color-biz-success);
+  color: var(--color-biz-success-ink);
 }
 
 .biz-status--warning {
   border-color: rgb(245 158 11 / 0.3);
   background: rgb(245 158 11 / 0.12);
-  color: var(--color-biz-warning);
+  color: var(--color-biz-warning-ink);
 }
 
 .biz-status--danger {
   border-color: rgb(239 68 68 / 0.28);
   background: rgb(239 68 68 / 0.12);
-  color: var(--color-biz-danger);
+  color: var(--color-biz-danger-ink);
 }
 
 .biz-status--info {
   border-color: rgb(61 126 255 / 0.28);
   background: var(--color-biz-accent-dim);
-  color: var(--color-biz-accent);
+  color: var(--color-biz-accent-ink);
 }
 
 .biz-status--neutral {
@@ -2217,17 +2273,17 @@ html:not([data-theme="light"]) .cmd-map-chip {
 
 .ops-alert-pill.is-hot {
   background: rgb(239 68 68 / 0.12);
-  color: var(--color-biz-danger);
+  color: var(--color-biz-danger-ink);
 }
 
 .ops-alert-pill.is-warm {
   background: rgb(245 158 11 / 0.14);
-  color: var(--color-biz-warning);
+  color: var(--color-biz-warning-ink);
 }
 
 .ops-alert-pill.is-good {
   background: rgb(16 185 129 / 0.12);
-  color: var(--color-biz-success);
+  color: var(--color-biz-success-ink);
 }
 
 @media (max-width: 1279px) {
@@ -2352,7 +2408,7 @@ html:not([data-theme="light"]) .cmd-map-chip {
   margin-top: 0.45rem;
   font-size: 0.72rem;
   line-height: 1.4;
-  color: var(--color-biz-accent);
+  color: var(--color-biz-accent-ink);
 }
 
 .gf-draw-banner {
@@ -2719,7 +2775,7 @@ html[data-theme="light"] .mp-hero {
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.04em;
-  color: var(--color-biz-accent);
+  color: var(--color-biz-accent-ink);
   background:
     linear-gradient(160deg, rgb(167 139 250 / 0.28), rgb(61 126 255 / 0.12));
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
@@ -2779,7 +2835,7 @@ html[data-theme="light"] .mp-hero {
 }
 
 .mp-stars.is-flagged {
-  color: var(--color-biz-danger);
+  color: var(--color-biz-danger-ink);
 }
 
 html[data-theme="light"] .mp-person,
@@ -2991,12 +3047,12 @@ html[data-theme="light"] .mp-review {
 
 .cu-rail__chip.is-warm {
   border-color: color-mix(in srgb, var(--color-biz-warning) 35%, var(--color-biz-line));
-  color: var(--color-biz-warning);
+  color: var(--color-biz-warning-ink);
 }
 
 .cu-rail__chip.is-hot {
   border-color: color-mix(in srgb, var(--color-biz-danger) 35%, var(--color-biz-line));
-  color: var(--color-biz-danger);
+  color: var(--color-biz-danger-ink);
 }
 
 .cu-floor {
@@ -3102,7 +3158,7 @@ html[data-theme="light"] .mp-review {
   background: rgb(239 68 68 / 0.08);
   padding: 0.75rem 1rem;
   font-size: 0.75rem;
-  color: var(--color-biz-danger);
+  color: var(--color-biz-danger-ink);
 }
 
 .cu-ledger__body {
@@ -3198,7 +3254,7 @@ html[data-theme="light"] .mp-review {
   font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.04em;
-  color: var(--color-biz-accent);
+  color: var(--color-biz-accent-ink);
   background: linear-gradient(160deg, rgb(167 139 250 / 0.3), rgb(61 126 255 / 0.12));
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
 }
@@ -3210,7 +3266,7 @@ html[data-theme="light"] .mp-review {
 }
 
 .cu-avatar--ban {
-  color: var(--color-biz-danger);
+  color: var(--color-biz-danger-ink);
   background: linear-gradient(160deg, rgb(248 113 113 / 0.28), rgb(239 68 68 / 0.1));
 }
 
@@ -3517,7 +3573,7 @@ html[data-theme="dark"] .pn-avatar {
 }
 
 .pn-avatar.is-app {
-  color: var(--color-biz-warning);
+  color: var(--color-biz-warning-ink);
   background: linear-gradient(160deg, rgb(251 191 36 / 0.32), rgb(245 158 11 / 0.1));
   box-shadow: none;
 }
@@ -3704,7 +3760,7 @@ html[data-theme="dark"] .dr-avatar {
 }
 
 .dr-avatar.is-stale {
-  color: var(--color-biz-danger);
+  color: var(--color-biz-danger-ink);
   background: linear-gradient(160deg, rgb(248 113 113 / 0.32), rgb(239 68 68 / 0.1));
 }
 
@@ -3832,7 +3888,7 @@ html[data-theme="dark"] .bk-avatar {
 }
 
 .bk-avatar.is-cancelled {
-  color: var(--color-biz-danger);
+  color: var(--color-biz-danger-ink);
   background: linear-gradient(160deg, rgb(248 113 113 / 0.32), rgb(239 68 68 / 0.1));
   box-shadow: none;
 }
@@ -4433,7 +4489,7 @@ html[data-theme="dark"] .sv-avatar {
   padding: 0.35rem 0.7rem;
   font-size: 0.75rem;
   font-weight: 700;
-  color: var(--color-biz-warning);
+  color: var(--color-biz-warning-ink);
 }
 
 .sv-publish-block {
@@ -4442,7 +4498,7 @@ html[data-theme="dark"] .sv-avatar {
   border-bottom: 1px solid color-mix(in srgb, var(--color-biz-danger) 28%, var(--color-biz-line));
   background: color-mix(in srgb, var(--color-biz-danger) 8%, transparent);
   font-size: 0.875rem;
-  color: var(--color-biz-danger);
+  color: var(--color-biz-danger-ink);
 }
 
 .sv-editor {
@@ -5978,7 +6034,7 @@ html[data-theme="light"] .gf-hero {
   padding-top: 0.15rem;
   font-size: 0.72rem;
   line-height: 1.45;
-  color: var(--color-biz-warning);
+  color: var(--color-biz-warning-ink);
 }
 
 html[data-theme="light"] .wx-card:hover,

@@ -253,7 +253,7 @@ function InspectIdle({ matching }: { matching: number }) {
         </div>
       </div>
 
-      <div className="cu-dock__body">
+      <div className="cu-dock__body" tabIndex={0} role="region" aria-label="Partner file overview">
         <div className="cu-inspect__identity">
           <span className="cu-avatar cu-avatar--lg cu-avatar--ghost" aria-hidden>
             ?
@@ -269,7 +269,7 @@ function InspectIdle({ matching }: { matching: number }) {
           </div>
         </div>
 
-        <div className="cu-dock__stats">
+        <dl className="cu-dock__stats">
           {[
             ["Earnings", "—"],
             ["Jobs", "—"],
@@ -281,7 +281,7 @@ function InspectIdle({ matching }: { matching: number }) {
               <dd>{value}</dd>
             </div>
           ))}
-        </div>
+        </dl>
 
         <div className="cu-guide">
           <p className="cu-intel__label">What opens here</p>
@@ -392,7 +392,7 @@ export default function VendorsPage() {
   } | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
-  const partners = data?.providers ?? [];
+  const partners = useMemo(() => data?.providers ?? [], [data?.providers]);
   const selected = partners.find((p) => p.id === selectedId) ?? null;
   const activationReady = selected?.isApproved || checklistQ.data?.ready === true;
   const filtersOn = Boolean(debouncedSearch) || statusFilter !== "all" || kycFilter !== "all" || sort !== "recent";
@@ -869,8 +869,8 @@ export default function VendorsPage() {
                 </button>
               </div>
 
-              <div className="cu-dock__body">
-                <div className="cu-dock__stats">
+              <div className="cu-dock__body" tabIndex={0} role="region" aria-label="Partner details">
+                <dl className="cu-dock__stats">
                   <div className="cu-stat">
                     <dt>Earnings</dt>
                     <dd data-stat-value>{inr(selected.totalEarnings, true)}</dd>
@@ -887,7 +887,7 @@ export default function VendorsPage() {
                     <dt>Accept</dt>
                     <dd data-stat-value>{Math.round(selected.acceptanceRate ?? 0)}%</dd>
                   </div>
-                </div>
+                </dl>
 
                 {selected.serviceCategories?.length ? (
                   <div className="pn-cats">

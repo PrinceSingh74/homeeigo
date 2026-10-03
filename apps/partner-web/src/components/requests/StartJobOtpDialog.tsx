@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m as motion } from "framer-motion";
 import { Loader2, Mail, MessageSquare, RefreshCw, ShieldCheck, Smartphone, X } from "lucide-react";
 import { useRequestStartOtpMutation } from "@/hooks/use-partner-data";
 import { getErrorMessage, PartnerApiError } from "@/lib/api-error";
@@ -119,7 +119,11 @@ export function StartJobOtpDialog({
         startedRef.current = true;
         onClose();
       } catch (error) {
-        setVerifyError(getErrorMessage(error));
+        const msg =
+          error instanceof PartnerApiError && error.code === "OUTSIDE_SERVICE_AREA"
+            ? "You're outside the job area — move closer to the service location and try again."
+            : getErrorMessage(error);
+        setVerifyError(msg);
         setShake((s) => s + 1);
         setDigits(Array(OTP_LENGTH).fill(""));
         inputsRef.current[0]?.focus();

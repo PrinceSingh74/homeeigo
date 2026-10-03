@@ -1,5 +1,5 @@
 import { createClient } from "redis";
-import { incCounter } from "./metrics";
+import { incCounter, registerRedisMetricsProvider } from "./metrics";
 
 /**
  * Optional Redis client.
@@ -39,6 +39,32 @@ type RedisClientType = ReturnType<typeof createClient>;
 
 const REDIS_URL = process.env.REDIS_URL?.trim() ?? "";
 const MAX_RETRIES = Number(process.env.REDIS_MAX_RETRIES || 3);
+/**
+ * How long any single Redis command may take before it is treated as a failure.
+ *
+ * ── The failure this closes ─────────────────────────────────────────────────
+ *
+ * `reconnectStrategy` handles a DEAD Redis: the socket refuses, `error` fires, `connected` goes
+ * false, and every caller falls through to the in-memory path. It does nothing for a FROZEN Redis —
+ * one that still holds the TCP connection open but never answers. There is no error to catch, so
+ * `connected` stays true, `isAvailable` stays true, and `await client.incr(...)` never settles. The
+ * try/catch around every command cannot fire, because nothing throws.
+ *
+ * Measured on an isolated instance frozen with `docker pause` (Section 7C):
+ *
+ *     GET  /api/services            4 ms   — unaffected
+ *     GET  /api/bookings/upcoming  31 ms   — unaffected
+ *     POST /api/auth/send-otp      HUNG    — ended only by the client's 20s timeout
+ *     POST /api/auth/login         HUNG    — ended only by the client's 20s timeout
+ *
+ * Both doors into the system, held open indefinitely, each hung request holding a connection. A
+ * degraded optional dependency became a total authentication outage — and "slow" produced a worse
+ * result than "down", because only "down" reaches the fallback.
+ *
+ * Five seconds is far above any healthy local or managed-Redis command (observed here: 6-9 ms) and
+ * far below a user's patience. Tunable for environments with a genuinely distant Redis.
+ */
+const COMMAND_TIMEOUT_MS = Number(process.env.REDIS_COMMAND_TIMEOUT_MS || 5000);
 // Cluster URLs use rediss+cluster:// or comma-separated nodes via REDIS_CLUSTER.
 // We keep a single managed endpoint (Upstash / ElastiCache / Redis Cloud) as the
 // default production path — that endpoint is itself an HA primary, so the app
@@ -56,6 +82,55 @@ class RedisClient {
   // Dedicated duplicated connections for Pub/Sub (node-redis requires a separate
   // connection in subscriber mode). Tracked so disconnect() tears them down.
   private subscribers: RedisClientType[] = [];
+
+  /**
+   * Run a Redis command under a deadline, and make a timeout indistinguishable from an error.
+   *
+   * Every command method already wraps its work in `try { ... } catch { <fallback> }`. This races the
+   * command against a timer and THROWS on expiry, so an unanswering server lands in that same catch
+   * and reaches the same in-memory fallback the error path already uses. No caller changes, no second
+   * abstraction, no new retry or backoff logic — the existing degradation strategy simply becomes
+   * reachable for the failure mode that previously bypassed it.
+   *
+   * The losing promise is left to settle on its own: node-redis has already queued the command, and
+   * there is nothing useful to do with a reply that arrives after the deadline. The timer is always
+   * cleared so a slow command cannot keep the process alive.
+   */
+  private async withDeadline<T>(operation: string, run: () => Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        run(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            incCounter("redis_command_timeout_total", { operation });
+            /**
+             * A timeout means this server is not answering, so stop asking.
+             *
+             * Bounding each command was not enough on its own. With `connected` left true,
+             * `isAvailable` stayed true and EVERY subsequent request paid the full deadline again —
+             * measured at 15.9s for `send-otp`, which issues two rate-limit calls, and 15.4s for the
+             * one after it. Bounded, but still unusable.
+             *
+             * Marking the client unavailable is exactly what the `error` handler already does for a
+             * dead Redis, and it makes the same fallbacks engage immediately for a frozen one. No new
+             * circuit breaker: `startHealthChecking` already PINGs periodically and its own `ready`
+             * event flips `connected` back, so recovery needs nothing added either.
+             */
+            this.connected = false;
+            this.lastError = `${operation} exceeded ${COMMAND_TIMEOUT_MS}ms`;
+            if (!this.warned) {
+              console.warn(`[redis] unresponsive — using in-memory fallback. ${this.lastError}`);
+              this.warned = true;
+            }
+            reject(new Error(`redis ${operation} exceeded ${COMMAND_TIMEOUT_MS}ms`));
+          }, COMMAND_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
 
   /** Configured via REDIS_URL (regardless of current connection state). */
   get isEnabled(): boolean {
@@ -80,10 +155,26 @@ class RedisClient {
     const client = createClient({
       url: REDIS_URL,
       socket: {
-        // Give up after MAX_RETRIES so a dead Redis can't block the event loop;
-        // once we give up, isAvailable stays false and callers use in-memory.
+        /**
+         * Give up only if Redis has NEVER been reachable in this process.
+         *
+         * The retry ceiling exists so a Redis that is absent at boot cannot hold `connect()` open
+         * forever. Applied to a client that HAD connected, it turned any hard outage outlasting the
+         * budget into a permanent one: measured in Section 7K, a 90-second stop of the isolated Redis
+         * left the server on the in-memory fallback for as long as it was watched (five minutes after
+         * Redis was healthy again), with zero Redis clients, zero `ws:fanout` subscribers while
+         * `roomManager` still reported itself subscribed, and every new client written into the
+         * never-evicted rate-limit fallback store. A 5-second and a 40-second outage recovered; the
+         * cliff was the budget, not the outage.
+         *
+         * Once connected, the client keeps retrying at the capped backoff. That costs nothing while
+         * Redis is away — callers already consult `isAvailable` and fall back immediately, and every
+         * command carries its own deadline — and it means recovery needs no restart. Subscriber
+         * connections are `duplicate()`s of this client and inherit the same strategy, so fan-out and
+         * the feature-flag listener resubscribe on their own.
+         */
         reconnectStrategy: (retries) =>
-          retries > MAX_RETRIES ? false : Math.min(retries * 200, 2000),
+          !this.hadConnectedOnce && retries > MAX_RETRIES ? false : Math.min(retries * 200, 2000),
       },
     });
 
@@ -140,11 +231,42 @@ class RedisClient {
   }
 
   /** PING for /health. */
+  /**
+   * Ping, and let the answer DECIDE availability — in both directions.
+   *
+   * ── Why the guard had to change ─────────────────────────────────────────
+   *
+   * This began `if (!this.isAvailable || !this.client) return false;`, so the moment `connected`
+   * went false the health check stopped pinging and returned false forever. A check that refuses to
+   * run while unhealthy cannot observe recovery: it is only capable of confirming health it already
+   * assumed.
+   *
+   * That was survivable while `connected` only went false on a socket error, because node-redis's
+   * own `ready` event restored it on reconnect. It stopped being survivable once a command timeout
+   * could also clear the flag: a Redis frozen and then unfrozen keeps its TCP connection throughout,
+   * so no reconnect ever fires. Measured before this change — Redis restored, and the process still
+   * reported `degraded` 76 seconds later, permanently pinned to the in-memory path.
+   *
+   * Gated on `enabled` and a live client only. The ping itself is the evidence, and it carries the
+   * same deadline as every other command, so a still-frozen server costs one bounded wait rather
+   * than a hang.
+   */
   async healthCheck(): Promise<boolean> {
-    if (!this.isAvailable || !this.client) return false;
+    if (!this.enabled || !this.client) return false;
     try {
-      return (await this.client.ping()) === "PONG";
+      const alive = (await this.withDeadline("ping", () => this.client!.ping())) === "PONG";
+      if (alive && !this.connected) {
+        this.connected = true;
+        this.warned = false;
+        this.lastError = null;
+        incCounter("redis_reconnect_total");
+        console.log("[redis] responsive again — leaving the in-memory fallback");
+      } else if (!alive) {
+        this.connected = false;
+      }
+      return alive;
     } catch (err) {
+      this.connected = false;
       this.lastError = err instanceof Error ? err.message : String(err);
       return false;
     }
@@ -175,7 +297,7 @@ class RedisClient {
   async get(key: string): Promise<string | null> {
     if (!this.isAvailable || !this.client) return null;
     try {
-      return await this.client.get(key);
+      return await this.withDeadline("get", () => this.client!.get(key));
     } catch {
       return null;
     }
@@ -185,10 +307,25 @@ class RedisClient {
   async set(key: string, value: string, ttlSec?: number): Promise<boolean> {
     if (!this.isAvailable || !this.client) return false;
     try {
-      await this.client.set(key, value, ttlSec ? { EX: ttlSec } : undefined);
+      await this.withDeadline("set", () => this.client!.set(key, value, ttlSec ? { EX: ttlSec } : undefined));
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Read a key and delete it in one server-side step (GETDEL) — for single-use tokens, where a GET
+   * followed by a DEL would let two concurrent readers both see the value.
+   * `answered: false` means Redis could not be asked; the caller decides its own fallback.
+   */
+  async take(key: string): Promise<{ answered: true; value: string | null } | { answered: false }> {
+    if (!this.isAvailable || !this.client) return { answered: false };
+    try {
+      const value = await this.withDeadline("getdel", () => this.client!.getDel(key));
+      return { answered: true, value: value ?? null };
+    } catch {
+      return { answered: false };
     }
   }
 
@@ -196,7 +333,7 @@ class RedisClient {
   async del(key: string): Promise<void> {
     if (!this.isAvailable || !this.client) return;
     try {
-      await this.client.del(key);
+      await this.withDeadline("del", () => this.client!.del(key));
     } catch {
       /* ignore */
     }
@@ -210,13 +347,52 @@ class RedisClient {
     const lockKey = `lock:${key}`;
     if (this.isAvailable && this.client) {
       try {
-        const ok = await this.client.set(lockKey, token, { NX: true, EX: ttlSec });
+        const ok = await this.withDeadline("setnx", () => this.client!.set(lockKey, token, { NX: true, EX: ttlSec }));
         return ok === "OK";
       } catch {
+        /**
+         * Redis was reachable enough to be `isAvailable` yet this specific command still failed
+         * (a mid-request drop). Falling back here is silently correct on a single instance, but
+         * on N instances every one of them independently falls back to its OWN in-memory lock —
+         * losing cross-instance mutual exclusion with no external signal that coordination has
+         * degraded. This counter is that signal.
+         */
+        incCounter("homigo_lock_fallback_total", { key, reason: "redis_error" });
         return memAcquireLock(lockKey, token, ttlSec);
       }
     }
+    incCounter("homigo_lock_fallback_total", { key, reason: "redis_unavailable" });
     return memAcquireLock(lockKey, token, ttlSec);
+  }
+
+  /**
+   * Extend TTL for a lock this token already holds. Returns false when the key is
+   * missing, expired, or owned by someone else — never SET NX / re-acquire.
+   *
+   * `acquireLock` is SET NX: calling it to "refresh" cannot extend Redis TTL, and on
+   * the in-memory fallback it re-takes a cleared/expired key, which leaks leadership
+   * across ticks (and across tests that reset the map while a tick is still running).
+   */
+  async refreshLock(key: string, token: string, ttlSec: number): Promise<boolean> {
+    const lockKey = `lock:${key}`;
+    if (this.isAvailable && this.client) {
+      try {
+        // Compare-and-expire in one server-side step. GET followed by EXPIRE is two round trips:
+        // between them the lease can lapse and another node acquire, and the EXPIRE would then
+        // extend a lock we no longer own.
+        const res = await this.withDeadline("eval:refresh", () =>
+          this.client!.eval(LUA_REFRESH_IF_OWNER, {
+            keys: [lockKey],
+            arguments: [token, String(ttlSec)],
+          }),
+        );
+        return Number(res) === 1;
+      } catch {
+        incCounter("homigo_lock_fallback_total", { key, reason: "redis_error" });
+        return memRefreshLock(lockKey, token, ttlSec);
+      }
+    }
+    return memRefreshLock(lockKey, token, ttlSec);
   }
 
   /** Release lock only if token matches (prevents releasing another holder's lock). */
@@ -224,14 +400,40 @@ class RedisClient {
     const lockKey = `lock:${key}`;
     if (this.isAvailable && this.client) {
       try {
-        const current = await this.client.get(lockKey);
-        if (current === token) await this.client.del(lockKey);
+        // Compare-and-delete in one server-side step (the textbook Redlock release). GET + DEL
+        // over two round trips can delete a lock that a new owner acquired in between.
+        await this.withDeadline("eval:release", () =>
+          this.client!.eval(LUA_RELEASE_IF_OWNER, { keys: [lockKey], arguments: [token] }),
+        );
         return;
       } catch {
-        /* fall through */
+        // The lease will lapse on its own at TTL; record that the release path degraded so a
+        // pattern of these is visible rather than silent.
+        incCounter("homigo_lock_fallback_total", { key, reason: "redis_error_release" });
       }
     }
     memReleaseLock(lockKey, token);
+  }
+
+  /**
+   * Distributed-only acquire: never falls back to process memory. Returns "unavailable" when Redis
+   * cannot answer so the caller can choose a real cross-node fallback (Postgres advisory lock) or
+   * fail closed, instead of every node quietly electing itself leader.
+   */
+  async tryAcquireDistributedLock(
+    key: string,
+    token: string,
+    ttlSec: number,
+  ): Promise<"acquired" | "held" | "unavailable"> {
+    const lockKey = `lock:${key}`;
+    if (!(this.isAvailable && this.client)) return "unavailable";
+    try {
+      const ok = await this.withDeadline("setnx", () => this.client!.set(lockKey, token, { NX: true, EX: ttlSec }));
+      return ok === "OK" ? "acquired" : "held";
+    } catch {
+      incCounter("homigo_lock_fallback_total", { key, reason: "redis_error" });
+      return "unavailable";
+    }
   }
 
   /**
@@ -243,15 +445,15 @@ class RedisClient {
     if (!this.isAvailable || !this.client) return null;
     try {
       const k = `ratelimit:${key}`;
-      const count = await this.client.incr(k);
+      const count = await this.withDeadline("incr", () => this.client!.incr(k));
       let ttl: number;
       if (count === 1) {
-        await this.client.expire(k, windowSec);
+        await this.withDeadline("expire", () => this.client!.expire(k, windowSec));
         ttl = windowSec;
       } else {
-        ttl = await this.client.ttl(k);
+        ttl = await this.withDeadline("ttl", () => this.client!.ttl(k));
         if (ttl < 0) {
-          await this.client.expire(k, windowSec);
+          await this.withDeadline("expire", () => this.client!.expire(k, windowSec));
           ttl = windowSec;
         }
       }
@@ -268,12 +470,12 @@ class RedisClient {
     if (!this.isAvailable || !this.client) return null;
     try {
       const k = `ratelimit:${key}`;
-      const raw = await this.client.get(k);
+      const raw = await this.withDeadline("get", () => this.client!.get(k));
       if (!raw) {
         return { allowed: true, remaining: limit, resetAt: Date.now() + windowSec * 1000 };
       }
       const count = Number.parseInt(raw, 10) || 0;
-      const ttl = await this.client.ttl(k);
+      const ttl = await this.withDeadline("ttl", () => this.client!.ttl(k));
       const resetAt = Date.now() + (ttl > 0 ? ttl : windowSec) * 1000;
       if (count > limit) return { allowed: false, remaining: 0, resetAt };
       return { allowed: true, remaining: Math.max(0, limit - count), resetAt };
@@ -295,7 +497,7 @@ class RedisClient {
   async publish(channel: string, message: string): Promise<number> {
     if (!this.isAvailable || !this.client) return 0;
     try {
-      return await this.client.publish(channel, message);
+      return await this.withDeadline("publish", () => this.client!.publish(channel, message));
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err);
       return 0;
@@ -356,7 +558,7 @@ class RedisClient {
     };
     if (!this.isAvailable || !this.client) return base;
     try {
-      const raw = await this.client.info();
+      const raw = await this.withDeadline("info", () => this.client!.info());
       const field = (name: string): string | undefined =>
         raw
           .split("\n")
@@ -383,6 +585,12 @@ class RedisClient {
   }
 }
 
+/** Owner-checked lease scripts. KEYS[1] = lock key, ARGV[1] = owner token, ARGV[2] = ttl seconds. */
+const LUA_RELEASE_IF_OWNER =
+  "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+const LUA_REFRESH_IF_OWNER =
+  "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('expire', KEYS[1], tonumber(ARGV[2])) else return 0 end";
+
 const memLocks = new Map<string, { token: string; expiresAt: number }>();
 
 function memAcquireLock(key: string, token: string, ttlSec: number): boolean {
@@ -393,9 +601,30 @@ function memAcquireLock(key: string, token: string, ttlSec: number): boolean {
   return true;
 }
 
+/** Same-token TTL extend only. Must not create a lock that is absent or expired. */
+function memRefreshLock(key: string, token: string, ttlSec: number): boolean {
+  const now = Date.now();
+  const existing = memLocks.get(key);
+  if (!existing || existing.expiresAt <= now || existing.token !== token) return false;
+  memLocks.set(key, { token, expiresAt: now + ttlSec * 1000 });
+  return true;
+}
+
 function memReleaseLock(key: string, token: string): void {
   const existing = memLocks.get(key);
   if (existing?.token === token) memLocks.delete(key);
 }
 
 export const redisClient = new RedisClient();
+
+/** Test-only: drop in-memory locks so lock-isolation cases start from a clean map. */
+export function resetMemoryLocksForTests(): void {
+  memLocks.clear();
+}
+
+// Dependency inversion: lib/metrics renders the redis_* gauges but must not import this module
+// (this module imports metrics for its counters). Register the provider once at import time.
+registerRedisMetricsProvider(async () => {
+  const m = await redisClient.getMetrics();
+  return { available: m.available, connectedClients: m.connectedClients, hitRate: m.hitRate };
+});

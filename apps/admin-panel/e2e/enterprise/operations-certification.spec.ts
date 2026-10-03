@@ -1,4 +1,5 @@
 import { expect } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import fs from "fs";
 import path from "path";
 import { adminApiToken, adminLogin, MINIMAL_PDF_BASE64, test } from "./fixtures";
@@ -20,7 +21,7 @@ type OpsSeed = {
 
 function loadSeed(): OpsSeed {
   if (!fs.existsSync(SEED_PATH)) {
-    throw new Error(`Missing ${SEED_PATH} — run: bun --env-file=.env run scripts/enterprise/seed-playwright-ops-data.ts`);
+    throw new Error(`Missing ${SEED_PATH} — run: bun --env-file=.env.test run scripts/enterprise/seed-playwright-ops-data.ts`);
   }
   return JSON.parse(fs.readFileSync(SEED_PATH, "utf8")) as OpsSeed;
 }
@@ -76,6 +77,19 @@ test.describe("Enterprise Operations Certification", () => {
   });
 
   test("payout batch workflow (API + UI)", async ({ page, monitor }) => {
+    // Each run needs a withdrawal that is not already in a batch. The previous run's batch is still
+    // in the database, so a static ops-seed id is consumed after one pass.
+    execFileSync(
+      "bun",
+      ["--env-file=.env.test", "run", "scripts/enterprise/seed-playwright-ops-data.ts"],
+      {
+        cwd: path.resolve(__dirname, "../../../backend"),
+        env: { ...process.env, NODE_ENV: "test" },
+        encoding: "utf8",
+        timeout: 120_000,
+      },
+    );
+    seed = loadSeed();
     // Prefer ops-seed withdrawal; if already batched (DUPLICATE_BATCH), pick another eligible row.
     const listed = await api(token, "GET", "/api/admin/finance/payouts");
     expect(listed.ok, JSON.stringify(listed.json)).toBe(true);
@@ -103,17 +117,19 @@ test.describe("Enterprise Operations Certification", () => {
         break;
       }
       lastErr = JSON.stringify(create.json);
-      // Stale seed already in a batch — continue searching.
-      if (!/DUPLICATE_BATCH/i.test(lastErr)) {
+      // Stale seed: already batched, or an id from another database that no longer exists.
+      if (!/DUPLICATE_BATCH|ORPHAN/i.test(lastErr)) {
         expect(create.ok, lastErr).toBe(true);
       }
     }
     expect(batchId, `no unused withdrawal for batch; last=${lastErr}`).toBeTruthy();
 
-    await api(token, "POST", `/api/admin/finance/payouts/batch/${batchId}/submit`, {});
+    const submit = await api(token, "POST", `/api/admin/finance/payouts/batch/${batchId}/submit`, {});
+    expect(submit.ok, JSON.stringify(submit.json)).toBe(true);
     const approverToken = await loginToken(seed.approverEmail, seed.approverPassword);
+    expect(approverToken, "finance approver login returned no access token").not.toBe("");
     const approve = await api(approverToken, "POST", `/api/admin/finance/payouts/batch/${batchId}/approve`, {});
-    expect(approve.ok).toBe(true);
+    expect(approve.ok, JSON.stringify(approve.json)).toBe(true);
 
     await adminLogin(page);
     const res = page.waitForResponse((r) => r.url().includes("/api/admin/finance/payouts") && r.ok(), { timeout: 30_000 });

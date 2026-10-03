@@ -14,7 +14,6 @@ import {
   Maximize2,
   MessageSquare,
   Navigation,
-  Phone,
   Wifi,
   WifiOff,
   X,
@@ -23,6 +22,8 @@ import { LiveTrackingMapView } from "@/components/LiveTrackingMapView";
 import type { LiveTelemetry, RouteInfo } from "@/components/tracking/LiveTrackingMap";
 import { toJourneyStage, type JourneyStage } from "@/components/tracking/BookingJourney";
 import { ServiceStartPin } from "@/components/tracking/ServiceStartPin";
+import { PartnerControlledCallButton } from "@/components/booking/PartnerControlledCallButton";
+import { ButtonLink } from "@/components/buttons/ButtonLink";
 import { HOMIGO_RIDER_IMAGE } from "@/lib/demo-tracking-booking";
 import { useActiveTracking } from "@/hooks/use-active-tracking";
 import { useBookingDetailQuery } from "@/hooks/use-core-data";
@@ -99,10 +100,10 @@ export function LiveTrackingSection() {
   const [route, setRoute] = useState<RouteInfo | null>(null);
   const [tele, setTele] = useState<LiveTelemetry | null>(null);
 
-  // Real provider contact (phone/rating) + home coords from GET /api/bookings/:id.
+  // Real provider contact (masked) + home coords from GET /api/bookings/:id.
   const detail = useBookingDetailQuery(activeBooking?.id);
-  const partnerPhone = detail.data?.provider?.phoneNumber ?? null;
   const partnerRating = detail.data?.provider?.rating ?? null;
+  const partnerMasked = detail.data?.provider?.phoneMasked ?? null;
   const destination =
     detail.data?.address?.latitude != null && detail.data?.address?.longitude != null
       ? { lat: detail.data.address.latitude, lng: detail.data.address.longitude }
@@ -173,10 +174,10 @@ export function LiveTrackingSection() {
       >
         <span
           aria-hidden
-          className="pointer-events-none absolute -inset-2 rounded-[36px] halo opacity-30 sm:-inset-3"
+          className="pointer-events-none absolute -inset-2 rounded-3xl halo opacity-30 sm:-inset-3"
         />
 
-        <article className="relative w-full min-w-0 overflow-hidden rounded-[26px] glass-card ring-aurora shadow-[0_24px_60px_-28px_rgb(30_27_75/0.4)] sm:rounded-[30px]">
+        <article className="relative w-full min-w-0 overflow-hidden rounded-3xl glass-card ring-aurora shadow-[0_24px_60px_-28px_rgb(30_27_75/0.4)]">
           <span
             aria-hidden
             className="pointer-events-none absolute inset-x-0 top-0 z-10 h-14 sheen opacity-45"
@@ -200,7 +201,7 @@ export function LiveTrackingSection() {
                 <h2 className="font-display text-lg font-bold tracking-tight text-content sm:text-xl">
                   Live <span className="bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">Tracking</span>
                 </h2>
-                <p className="truncate text-xs text-muted">
+                <p className="line-clamp-2 text-xs leading-snug text-muted">
                   {hasLive
                     ? `${activeBooking!.serviceTitle} · ${activeBooking!.dateLabel}`
                     : "Every booking comes with a real-time map"}
@@ -209,7 +210,7 @@ export function LiveTrackingSection() {
             </div>
             <span
               className={cn(
-                "flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold ring-1",
+                "flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ring-1",
                 hasLive && connected
                   ? "bg-emerald-500/15 text-emerald-700 ring-emerald-500/25 dark:text-emerald-300"
                   : hasLive && reconnecting
@@ -239,7 +240,7 @@ export function LiveTrackingSection() {
                       className="absolute inset-0 size-full"
                     />
                     {!providerPos ? (
-                      <span className="absolute left-3 top-3 z-10 rounded-full bg-slate-900/70 px-2.5 py-1 text-[10px] font-semibold text-sky-300 ring-1 ring-white/10 backdrop-blur">
+                      <span className="absolute left-3 top-3 z-10 rounded-full bg-slate-900/70 px-2.5 py-1 text-xs font-semibold text-sky-300 ring-1 ring-white/10 backdrop-blur">
                         Waiting for partner location…
                       </span>
                     ) : null}
@@ -258,7 +259,7 @@ export function LiveTrackingSection() {
                     {enRoute ? (
                       <>
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted">
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted">
                             Arriving in
                           </p>
                           <p className="mt-0.5 font-display text-[clamp(1.75rem,7vw,2.75rem)] font-bold leading-none bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">
@@ -267,7 +268,7 @@ export function LiveTrackingSection() {
                               min
                             </span>
                           </p>
-                          <p className="mt-1 text-[11px] font-semibold text-muted">
+                          <p className="mt-1 text-xs font-semibold text-muted">
                             {etaMin != null ? (
                               <>
                                 by <span className="text-content">{arrivalClock(etaMin)}</span>
@@ -288,12 +289,12 @@ export function LiveTrackingSection() {
                           <p className="mt-1 text-sm font-bold text-content">
                             {route?.distanceText ?? (distanceKm != null ? `${distanceKm} km` : "—")}
                           </p>
-                          <p className="text-[10px] font-medium text-muted">exact route</p>
+                          <p className="text-xs font-medium text-muted">exact route</p>
                         </div>
                       </>
                     ) : (
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted">
                           {stage === "ARRIVED" ? "Partner at your door" : "Service in progress"}
                         </p>
                         <p className="mt-0.5 flex items-center gap-2.5 font-display text-[clamp(1.4rem,5.5vw,2rem)] font-bold leading-tight bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">
@@ -305,7 +306,7 @@ export function LiveTrackingSection() {
                             <span className="relative size-2.5 rounded-full bg-emerald-500" />
                           </span>
                         </p>
-                        <p className="mt-1 text-[11px] font-semibold text-muted">
+                        <p className="mt-1 text-xs font-semibold text-muted">
                           {stage === "ARRIVED"
                             ? "Please meet your partner at the door"
                             : "Sit back — we'll update you the moment it's done"}
@@ -340,16 +341,16 @@ export function LiveTrackingSection() {
                       <p className="truncate font-display text-sm font-bold text-content sm:text-base">
                         {activeBooking!.proName}
                         {partnerRating != null ? (
-                          <span className="ml-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                          <span className="ml-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
                             ★ {Number(partnerRating).toFixed(1)}
                           </span>
                         ) : null}
                       </p>
-                      <p className="truncate text-xs text-muted">
+                      <p className="line-clamp-2 text-xs leading-snug text-muted">
                         {activeBooking!.serviceName} · {activeBooking!.packageName}
                       </p>
                       {/* Real telemetry — speed + heading from the live GPS feed */}
-                      <p className="mt-1 flex items-center gap-2.5 text-[11px] font-semibold text-muted">
+                      <p className="mt-1 flex items-center gap-2.5 text-xs font-semibold text-muted">
                         <span className="inline-flex items-center gap-1">
                           <Gauge size={12} className="text-emerald-600" />
                           {speedKmh != null ? `${speedKmh} km/h` : "— km/h"}
@@ -360,26 +361,24 @@ export function LiveTrackingSection() {
                         </span>
                       </p>
                     </div>
-                    {/* Call / Message — real partner phone from the booking */}
-                    {partnerPhone ? (
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <a
-                          href={`sms:${partnerPhone}`}
-                          aria-label={`Message ${activeBooking!.proName}`}
-                          title={`Message ${activeBooking!.proName}`}
-                          className="grid size-9 place-items-center rounded-full bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/20 transition hover:bg-emerald-500/20 active:scale-95"
-                        >
-                          <MessageSquare size={15} />
-                        </a>
-                        <a
-                          href={`tel:${partnerPhone}`}
-                          aria-label={`Call ${activeBooking!.proName}`}
-                          title={`Call ${activeBooking!.proName}`}
-                          className="grid size-9 place-items-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-md shadow-emerald-500/30 transition hover:brightness-110 active:scale-95"
-                        >
-                          <Phone size={15} />
-                        </a>
-                      </div>
+                    {/* Call / Message — controlled dial + booking chat (no raw tel:/sms:) */}
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <Link
+                        href="/bookings"
+                        aria-label={`Message ${activeBooking!.proName}`}
+                        title="Open booking chat"
+                        className="grid size-9 place-items-center rounded-full bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/20 transition hover:bg-emerald-500/20 active:scale-95"
+                      >
+                        <MessageSquare size={15} />
+                      </Link>
+                      <PartnerControlledCallButton
+                        bookingId={activeBooking!.id}
+                        partnerName={activeBooking!.proName}
+                        size="sm"
+                      />
+                    </div>
+                    {partnerMasked ? (
+                      <span className="sr-only">Partner contact {partnerMasked}</span>
                     ) : null}
                   </div>
 
@@ -406,7 +405,7 @@ export function LiveTrackingSection() {
                               </span>
                               <span
                                 className={cn(
-                                  "text-[10px] font-semibold",
+                                  "text-xs font-semibold",
                                   done || active ? "text-content" : "text-muted",
                                 )}
                               >
@@ -444,7 +443,7 @@ export function LiveTrackingSection() {
                     </button>
                     <Link
                       href="/bookings"
-                      className="block text-center text-[11px] font-semibold text-muted transition hover:text-content"
+                      className="block text-center text-xs font-semibold text-muted transition hover:text-content"
                     >
                       View all bookings →
                     </Link>
@@ -454,7 +453,7 @@ export function LiveTrackingSection() {
                 <>
                   {/* Honest empty state — no fake numbers */}
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted">
+                    <p className="text-xs font-semibold text-muted">
                       Uber-style tracking
                     </p>
                     <p className="mt-1.5 font-display text-lg font-bold leading-snug text-content sm:text-xl">
@@ -480,17 +479,15 @@ export function LiveTrackingSection() {
                     )}
                   </ul>
 
-                  <Link
-                    href={bookUrl()}
-                    className="group flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(120deg,#10b981_0%,#0d9488_55%,#0f766e_100%)] text-sm font-bold text-white shadow-[0_12px_30px_-10px_rgb(16_185_129/0.55)] transition hover:brightness-105 sm:h-12"
-                  >
-                    <Bike size={18} />
+                  <ButtonLink href={bookUrl()} variant="primary" size="md" fullWidth className="group">
+                    <Bike size={18} aria-hidden />
                     Book a service to go live
                     <ArrowRight
                       size={16}
+                      aria-hidden
                       className="transition-transform group-hover:translate-x-0.5"
                     />
-                  </Link>
+                  </ButtonLink>
                 </>
               )}
             </div>
@@ -540,7 +537,7 @@ export function LiveTrackingSection() {
                     <p className="truncate text-sm font-bold text-white">
                       {activeBooking!.proName}
                       {partnerRating != null ? (
-                        <span className="ml-1.5 text-[11px] font-semibold text-amber-400">
+                        <span className="ml-1.5 text-xs font-semibold text-amber-400">
                           ★ {Number(partnerRating).toFixed(1)}
                         </span>
                       ) : null}
@@ -551,7 +548,7 @@ export function LiveTrackingSection() {
                   </div>
                   <span
                     className={cn(
-                      "flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ring-1",
+                      "flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ring-1",
                       connected
                         ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
                         : "bg-amber-500/15 text-amber-300 ring-amber-500/30",
@@ -560,15 +557,11 @@ export function LiveTrackingSection() {
                     {connected ? <Wifi size={11} /> : <WifiOff size={11} />}
                     {connected ? "LIVE" : "RECONNECTING"}
                   </span>
-                  {partnerPhone ? (
-                    <a
-                      href={`tel:${partnerPhone}`}
-                      aria-label={`Call ${activeBooking!.proName}`}
-                      className="grid size-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-md shadow-emerald-500/30 transition hover:brightness-110 active:scale-95"
-                    >
-                      <Phone size={15} />
-                    </a>
-                  ) : null}
+                  <PartnerControlledCallButton
+                    bookingId={activeBooking!.id}
+                    partnerName={activeBooking!.proName}
+                    size="sm"
+                  />
                   <button
                     type="button"
                     onClick={() => setFullMapOpen(false)}
@@ -601,7 +594,7 @@ export function LiveTrackingSection() {
                   )}
                   <div className="flex items-end justify-between gap-3">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
                         {enRoute ? "Arriving in" : stage === "ARRIVED" ? "Partner at your door" : "Service in progress"}
                       </p>
                       {enRoute ? (
@@ -615,7 +608,7 @@ export function LiveTrackingSection() {
                         </p>
                       )}
                       {enRoute && etaMin != null ? (
-                        <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
+                        <p className="mt-0.5 text-xs font-semibold text-slate-400">
                           by <span className="text-white">{arrivalClock(etaMin)}</span>
                           {traffic ? (
                             <span className={cn("ml-1.5", traffic.cls)}>

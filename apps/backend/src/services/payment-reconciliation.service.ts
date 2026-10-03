@@ -23,22 +23,6 @@ function paymentAgeDays(p: { completedAt: Date | null; createdAt: Date }): numbe
   return (Date.now() - anchor.getTime()) / MS_PER_DAY;
 }
 
-function isPaymentMatched(p: {
-  status: string;
-  amount: number;
-  amountPaid: number;
-  razorpayPaymentId: string | null;
-  settlementId: string | null;
-  hasPaymentSettlement: boolean;
-}): boolean {
-  return (
-    p.status === "SUCCESS" &&
-    !!p.razorpayPaymentId &&
-    Math.abs(p.amountPaid - p.amount) <= 0.01 &&
-    (!!p.settlementId || p.hasPaymentSettlement)
-  );
-}
-
 /**
  * Enterprise payment reconciliation — per-payment trace, deduped issues,
  * correct match-rate denominator (SUCCESS payments only).
@@ -217,9 +201,10 @@ export class PaymentReconciliationService {
               ],
             },
           },
+          // Every (payment, type) already raised — no row cap. `take: 500` meant that once a run raised
+          // more than 500 issues, the next run could not see some of them and raised them again.
           select: { referenceId: true, issueType: true },
-          orderBy: { createdAt: "desc" },
-          take: 500,
+          distinct: ["referenceId", "issueType"],
         })
       : [];
     const seen = new Set(existing.map((e) => `${e.referenceId}:${e.issueType}`));
@@ -256,8 +241,6 @@ export class PaymentReconciliationService {
       avgMatch,
       successTotal,
       settledTotal,
-      pendingTotal,
-      mismatchTotal,
       revenueAgg,
       integrityScore,
     ] = await Promise.all([
@@ -277,8 +260,6 @@ export class PaymentReconciliationService {
       prisma.paymentReconciliation.aggregate({ _avg: { matchPct: true } }),
       prisma.payment.count({ where: { status: "SUCCESS" } }),
       prisma.payment.count({ where: { status: "SUCCESS", settlementId: { not: null } } }),
-      prisma.reconciliationIssue.count({ where: { issueType: ReconciliationStatus.SETTLEMENT_PENDING } }),
-      prisma.reconciliationIssue.count({ where: { issueType: ReconciliationStatus.SETTLEMENT_MISMATCH } }),
       prisma.payment.aggregate({ _sum: { amountPaid: true }, where: { status: "SUCCESS" } }),
       prisma.financialIntegrityRun.findFirst({ orderBy: { createdAt: "desc" } }),
     ]);
@@ -308,16 +289,26 @@ export class PaymentReconciliationService {
     `);
     const pendingGraceN = pendingGraceRows[0]?.n ?? 0;
     const overdueUnsettled = overdueUnsettledRows[0]?.n ?? 0;
+    /**
+     * ── Never a perfect score from no evidence ──────────────────────────────
+     *
+     * These read `?? 100` and `: 100`, so a platform on which reconciliation had NEVER RUN reported
+     * a 100% match rate, 0% mismatch and 100% settlement effectiveness. That is the most reassuring
+     * possible set of numbers produced by a complete absence of reconciliation, on the finance
+     * surface where the difference matters most. Null means "no run to report", which an operator
+     * can act on; 100% invites them not to look.
+     */
     const settlementEffectivePct =
-      successTotal > 0 ? round2(((settledTotal + pendingGraceN) / successTotal) * 100) : 100;
+      successTotal > 0 ? round2(((settledTotal + pendingGraceN) / successTotal) * 100) : null;
 
-    const matchPct = latest?.matchPct ?? round2(avgMatch._avg.matchPct ?? 100);
+    const avgMatchPct = avgMatch._avg.matchPct != null ? round2(avgMatch._avg.matchPct) : null;
+    const matchPct = latest?.matchPct ?? avgMatchPct;
 
     return {
       latestRun: latest,
       totalIssues: issueCount,
-      avgMatchPct: round2(avgMatch._avg.matchPct ?? 100),
-      mismatchPct: round2(100 - (avgMatch._avg.matchPct ?? 100)),
+      avgMatchPct,
+      mismatchPct: avgMatchPct != null ? round2(100 - avgMatchPct) : null,
       matchPct,
       totalRevenue: round2(Number(revenueAgg._sum.amountPaid ?? 0)),
       matchedPayments: settledTotal,

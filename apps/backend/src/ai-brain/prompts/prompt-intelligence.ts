@@ -1,6 +1,6 @@
 import type { AiGatewayRole } from "@prisma/client";
 import { isolateSystemPrompt } from "../../ai/security/prompt-security";
-import { getActivePromptVersion, resolvePromptWithFallback } from "./prompt-versioning";
+import { resolvePromptWithFallback } from "./prompt-versioning";
 import { getTemplate, renderUserPrompt } from "../../ai/templates/prompt-templates";
 import {
   recordPromptTokens,
@@ -48,7 +48,7 @@ function compressContext(context: string, maxTokens: number): { compressed: stri
   const priorityLines = lines.filter((l) => l.startsWith("---") || l.includes("Booking") || l.includes("Intent"));
   const otherLines = lines.filter((l) => !priorityLines.includes(l));
 
-  let compressed = [...priorityLines];
+  const compressed = [...priorityLines];
   let tokens = estimateTokens(compressed.join("\n"));
 
   for (const line of otherLines) {
@@ -73,9 +73,9 @@ export async function composePrompt(input: {
 }): Promise<ComposedPrompt> {
   let systemPrompt: string;
   let userTemplate: string | undefined;
-  let maxTokens = 2048;
+  let maxTokens: number;
   let promptVersion = 1;
-  let resolvedPromptId = input.promptId ?? "default";
+  let resolvedPromptId: string;
 
   if (input.promptId) {
     const registryVersion = await resolvePromptWithFallback(

@@ -1,6 +1,5 @@
 import { CampaignStatus } from "@prisma/client";
 import prisma from "../lib/prisma";
-import { AuditLogService } from "./audit-log.service";
 import { entitlementService } from "./entitlement.service";
 
 export type CampaignEligibilityMeta = {

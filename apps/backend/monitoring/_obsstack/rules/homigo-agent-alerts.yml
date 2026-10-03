@@ -1,0 +1,122 @@
+# Phase 16 governed-agent alerts.
+#
+# Every rule below fires on a condition that is INVISIBLE in the tool-layer alerts
+# (monitoring/rules/homigo-alerts.yml). An agent that reaches a forbidden tool, plans outside its
+# vocabulary, or reports success against an unchanged world all look like healthy tool traffic from
+# there — the call was authorised, executed and returned.
+#
+# Deliberately NOT alerted on:
+#   - escalation rate: escalation is the DESIGNED outcome for high-risk work. Alerting on it would
+#     train operators to treat correct governance as an incident.
+#   - SHADOW-mode runs: an agent planning without side effects is the safe state, not a fault.
+#   - run failures in aggregate: a provider outage produces a burst of clean, contained failures.
+#     The AI-gateway alerts already cover provider health; duplicating it here would double-page.
+groups:
+  - name: homigo_agents_security
+    rules:
+      # The single most important agent alert. A model asking for a capability its agent does not
+      # hold is either prompt injection or a prompt/registry drift. Both need a human, and neither
+      # is visible anywhere else.
+      - alert: AgentPlanRejectedUnknownCapability
+        expr: sum(rate(homigo_agent_plan_rejected_total{code="UNKNOWN_CAPABILITY"}[5m])) > 0
+        for: 2m
+        labels:
+          severity: critical
+          domain: agents
+        annotations:
+          summary: An agent plan named a capability outside its vocabulary
+          description: >-
+            The plan validator rejected a capability the agent does not hold. This is what an
+            attempted privilege escalation looks like from inside the runtime. Inspect the run in
+            the Agent Control Center and check whether the source content was attacker-controlled.
+
+      # Recursion refusal should be zero once trigger contracts are stable. A non-zero rate means
+      # an agent is appearing twice in one causation chain.
+      - alert: AgentRecursionPrevented
+        expr: sum(rate(homigo_agent_loop_prevented_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          domain: agents
+        annotations:
+          summary: Agent recursion guard is firing
+          description: >-
+            An agent → workflow → event → same-agent cycle is being refused. The guard is working,
+            but a sustained rate means a trigger contract is producing self-caused events.
+
+  - name: homigo_agents_correctness
+    rules:
+      # A tool reported SUCCESS and the world disagreed. Invisible in tool metrics, where the call
+      # genuinely succeeded.
+      - alert: AgentPostConditionFailed
+        expr: sum(rate(homigo_agent_verification_total{verdict="FAILED"}[5m])) > 0
+        for: 2m
+        labels:
+          severity: critical
+          domain: agents
+        annotations:
+          summary: An agent action reported success but the expected state change was not observed
+          description: >-
+            Post-condition verification failed after a tool returned SUCCESS. The run was stopped
+            rather than retried. Reconcile the affected entity before re-enabling the capability.
+
+      # UNKNOWN is not a pass. A sustained rate means verification cannot see the entity it is
+      # supposed to re-read, which makes every "verified" claim from that capability unreliable.
+      - alert: AgentPostConditionUnknown
+        expr: sum(rate(homigo_agent_verification_total{verdict="UNKNOWN"}[15m])) > 0.01
+        for: 10m
+        labels:
+          severity: warning
+          domain: agents
+        annotations:
+          summary: Agent post-conditions are returning UNKNOWN
+          description: >-
+            Verification could not be performed. UNKNOWN is never treated as success, so runs are
+            stopping — but the underlying read path needs fixing before the capability is useful.
+
+  - name: homigo_agents_cost
+    rules:
+      # Bounds firing occasionally is healthy. Firing constantly means the bounds are mis-sized or
+      # the agent is looping within them, and the fix is a human decision, not a bigger bound.
+      - alert: AgentBoundsHitFrequently
+        expr: sum(rate(homigo_agent_bound_hit_total[15m])) by (agent_id, bound) > 0.05
+        for: 15m
+        labels:
+          severity: warning
+          domain: agents
+        annotations:
+          summary: "Agent {{ $labels.agent_id }} is repeatedly hitting bound {{ $labels.bound }}"
+          description: >-
+            Runs are being stopped on a bound rather than completing. Investigate before widening
+            the bound — a agent that needs more steps usually needs a better plan.
+
+      - alert: AgentInferenceCostSpike
+        expr: sum(rate(homigo_agent_cost_usd_total[15m])) * 3600 > 5
+        for: 15m
+        labels:
+          severity: warning
+          domain: agents
+        annotations:
+          summary: Agent inference spend exceeds $5/hour
+          description: >-
+            Sustained agent inference cost. Per-run ceilings stop any single run, so this indicates
+            RUN VOLUME rather than a runaway run — check the trigger rates and cooldowns.
+
+  - name: homigo_agents_availability
+    rules:
+      # An agent marked LIVE that cannot execute is the failure mode the readiness check exists for:
+      # it looks healthy and does nothing.
+      - alert: AgentLiveButFailingEveryRun
+        expr: >-
+          (sum(rate(homigo_agent_run_outcome_total{status="FAILED"}[10m])) by (agent_id)
+            / clamp_min(sum(rate(homigo_agent_run_outcome_total[10m])) by (agent_id), 0.0001)) > 0.9
+          and on(agent_id) homigo_agent_live == 1
+        for: 10m
+        labels:
+          severity: critical
+          domain: agents
+        annotations:
+          summary: "Agent {{ $labels.agent_id }} is LIVE but failing more than 90% of runs"
+          description: >-
+            The agent is enabled and every run is failing. Check GET /api/agents for readiness —
+            an unseeded tool registry fails every call at the audit write, before the handler.

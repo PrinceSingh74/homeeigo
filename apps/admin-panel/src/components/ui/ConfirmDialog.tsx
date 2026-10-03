@@ -16,6 +16,10 @@ type ConfirmDialogProps = {
   /** If true, reason text is required. Defaults to true when `reasonLabel` is set. */
   reasonRequired?: boolean;
   isLoading?: boolean;
+  /** Extra inputs rendered between the description and the reason field (e.g. an amount). */
+  children?: React.ReactNode;
+  /** Caller-side validation gate for the confirm button (e.g. amount out of range). */
+  confirmDisabled?: boolean;
   onConfirm: (reason?: string) => void | Promise<void>;
   onClose: () => void;
 };
@@ -31,6 +35,8 @@ export function ConfirmDialog({
   reasonPlaceholder,
   reasonRequired,
   isLoading = false,
+  children,
+  confirmDisabled = false,
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
@@ -94,10 +100,12 @@ export function ConfirmDialog({
             {description ? (
               <p className="mt-1 text-sm text-[var(--color-biz-muted)]">{description}</p>
             ) : null}
+            {children ? <div className="mt-3">{children}</div> : null}
             {reasonLabel ? (
               <div className="mt-3">
                 <label className="text-xs text-[var(--color-biz-muted)]">{reasonLabel}</label>
                 <textarea
+                  aria-label={reasonLabel ?? "Reason"}
                   rows={3}
                   value={reason}
                   disabled={isLoading}
@@ -121,7 +129,7 @@ export function ConfirmDialog({
           </button>
           <button
             type="button"
-            disabled={isLoading || (isReasonRequired && reason.trim().length === 0)}
+            disabled={isLoading || confirmDisabled || (isReasonRequired && reason.trim().length === 0)}
             onClick={() =>
               void onConfirm(reasonLabel ? reason.trim() || undefined : undefined)
             }

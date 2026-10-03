@@ -212,7 +212,9 @@ export function AppOverlays() {
             <ListRow
               key={item.id}
               title={item.title}
-              subtitle={`${item.rating != null ? `★ ${item.rating}` : "New"} · ₹${item.price} · ${item.duration}`}
+              subtitle={[item.rating != null ? `★ ${item.rating}` : "New", item.price != null ? `₹${item.price}` : null, item.duration]
+                .filter(Boolean)
+                .join(" · ")}
               trailing="Book"
               onPress={() => handleBook(item.serviceId)}
             />

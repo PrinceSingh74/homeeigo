@@ -301,7 +301,7 @@ export default function ServicesPage() {
   const statusMut = useSetServiceStatusMutation();
   const deleteMut = useDeleteServiceMutation();
 
-  const services = data?.services ?? [];
+  const services = useMemo(() => data?.services ?? [], [data?.services]);
   const summary = data?.summary;
   const selected = services.find((s) => s.id === selectedId) ?? null;
   const taxonomy = useServiceTaxonomyQuery();
@@ -901,6 +901,15 @@ export default function ServicesPage() {
                   <span>Image URL</span>
                   <input className="sv-input" value={form.icon} onChange={(e) => set("icon", e.target.value)} placeholder="https://…" />
                 </label>
+                <label className="sv-field">
+                  <span>Video URL</span>
+                  <input
+                    className="sv-input"
+                    value={form.extras.video}
+                    onChange={(e) => set("extras", { ...form.extras, video: e.target.value })}
+                    placeholder="https://…"
+                  />
+                </label>
                 {form.icon.trim() ? (
                   <div
                     className="sv-preview"
@@ -985,7 +994,7 @@ export default function ServicesPage() {
                 </div>
               </div>
               <div className="sv-file">
-                <div className="cu-dock__stats">
+                <dl className="cu-dock__stats">
                   <div className="cu-stat">
                     <dt>Price</dt>
                     <dd data-stat-value>{inr(selected.basePrice, true)}</dd>
@@ -1002,7 +1011,7 @@ export default function ServicesPage() {
                     <dt>Rating</dt>
                     <dd data-stat-value>{selected.rating != null ? `${selected.rating.toFixed(1)}★` : "—"}</dd>
                   </div>
-                </div>
+                </dl>
                 <p className="sv-file__copy">{selected.description}</p>
                 {selected.availableCities.length > 0 ? (
                   <p className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--color-biz-muted)]">

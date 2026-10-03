@@ -43,7 +43,7 @@ const FOOTER_COLUMNS: { heading: string; links: { href: string; label: string }[
 export function SiteFooter() {
   return (
     <footer className={`${pageSection} mt-16 pb-12 sm:mt-20`}>
-      <div className="relative overflow-hidden rounded-[28px] glass-card p-6 sm:p-10">
+      <div className="relative overflow-hidden rounded-3xl glass-card p-6 sm:p-10">
         {/* Brand hairline across the top edge */}
         <span
           aria-hidden
@@ -83,7 +83,7 @@ export function SiteFooter() {
                   <li key={href}>
                     <Link
                       href={href}
-                      className="group inline-flex items-center gap-1 text-sm text-content transition hover:text-emerald-600"
+                      className="group inline-flex items-center gap-1 text-sm text-content transition hover:text-brand"
                     >
                       <span className="h-px w-0 bg-emerald-500 transition-all duration-300 group-hover:w-3" aria-hidden />
                       {label}

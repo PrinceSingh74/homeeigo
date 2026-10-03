@@ -12,6 +12,7 @@ import {
   recordCooldownSuppressed,
   recordQuietHoursDeferred,
 } from "../lib/notification-metrics";
+import { inAppAdapter } from "./channels/in-app.adapter";
 import { pushAdapter } from "./channels/push.adapter";
 import { emailAdapter } from "./channels/email.adapter";
 import { smsAdapter } from "./channels/sms.adapter";
@@ -19,9 +20,13 @@ import { evaluatePreference, categoryDefaultChannels } from "./preferences.servi
 import { quietHoursApply, cadenceApplies } from "./governance/policy";
 import { evaluateQuietHours } from "./governance/quiet-hours";
 import { evaluateWorkflowCooldown } from "./governance/cooldown";
+import { channelOrderFor } from "./governance/channel-policy";
+import { isContainedWorkflow, CONTAINMENT_REASON } from "./governance/containment";
 import { reserveGovernedSlot, reserveDailySlot } from "./governance/cadence";
 import { recordDecision, recordDecisionWithin, type DecisionAuditInput } from "./governance/decision-audit";
-import { GOVERNANCE_REASON, type GovernanceReason } from "./governance/policy";
+import { recordShadowEvidence, shadowIdentity, SHADOW_OUTCOME, type ShadowOutcome } from "./governance/shadow-evidence";
+import { currentWindow } from "./governance/cadence";
+import { GOVERNANCE_REASON } from "./governance/policy";
 import { resolveRecipient } from "./recipient-resolver";
 import { resolveTemplate, validateVariables, render } from "./templates/registry";
 import {
@@ -30,7 +35,7 @@ import {
   type NotificationRequest,
   type RouteResult,
 } from "./types";
-import type { NotificationChannel } from "@prisma/client";
+import type { NotificationCategory, NotificationChannel } from "@prisma/client";
 
 /**
  * The single point through which every automated communication passes.
@@ -45,6 +50,7 @@ import type { NotificationChannel } from "@prisma/client";
  */
 
 const ADAPTERS: Record<NotificationChannel, NotificationChannelAdapter> = {
+  IN_APP: inAppAdapter,
   PUSH: pushAdapter,
   EMAIL: emailAdapter,
   SMS: smsAdapter,
@@ -233,9 +239,94 @@ export async function routeNotification(request: NotificationRequest): Promise<R
    * message text — two customers can legitimately receive the same words, and two workflow
    * instances acting on the same booking are still two operations.
    */
-  const claim = await claimIdempotency(request);
-  if (!claim.taken) return claim.result;
-  const notificationId = claim.notificationId;
+  /**
+   * ── Seam 1 of 3: operation identity ────────────────────────────────────────
+   *
+   * A live request claims a real `NotificationDelivery` row, which is what makes two workers
+   * agree on one send. A shadow request must not: that row is live delivery truth, and a rehearsal
+   * writing into it would be indistinguishable from the real thing the moment anyone read the
+   * table back. Shadow therefore carries its own identity and touches no live row at all — not by
+   * a naming convention someone could get wrong, but because `claimIdempotency` is never called.
+   */
+  /**
+   * ── Containment, ahead of everything ───────────────────────────────────────
+   *
+   * Placed before the idempotency claim on purpose: a contained automation must not reach an
+   * adapter, must not spend the recipient's cadence, and must not leave a delivery row behind that
+   * would read as a real attempt. Returning here means none of that code runs at all.
+   *
+   * It is checked before execution mode is even consulted, because the instances this protects
+   * already exist with LIVE pinned on them — see `containment.ts` for why the definition is the
+   * wrong place to fix this.
+   */
+  if (isContainedWorkflow(request.workflowId)) {
+    recordNotificationSkipped(request.notificationType, CONTAINMENT_REASON);
+    logger.warn("notification_contained", {
+      notificationType: request.notificationType,
+      workflowId: request.workflowId,
+      workflowInstanceId: request.workflowInstanceId,
+      reason: CONTAINMENT_REASON,
+    });
+    return {
+      notificationId: request.idempotencyKey,
+      status: "SKIPPED",
+      reasonCode: CONTAINMENT_REASON,
+    };
+  }
+
+  const isShadow = request.executionMode === "SHADOW";
+
+  let notificationId = "";
+  if (!isShadow) {
+    const claim = await claimIdempotency(request);
+    if (!claim.taken) return claim.result;
+    notificationId = claim.notificationId;
+  }
+
+  /** Everything a shadow row needs that is known before any decision is taken. */
+  const shadowBase = {
+    workflowId: request.workflowId ?? "unknown",
+    workflowVersion: request.workflowVersion ?? 0,
+    workflowInstanceId: request.workflowInstanceId,
+    shadowIdentity: shadowIdentity(
+      request.workflowInstanceId ?? "no-instance",
+      request.shadowStepId ?? "no-step",
+      request.notificationType,
+    ),
+    triggerEventId: request.triggerEventId,
+    subjectType: request.subjectType ?? "unknown",
+    subjectId: request.subjectId ?? "unknown",
+    recipientType: request.recipientType,
+    recipientId: request.recipientId,
+    notificationType: request.notificationType,
+    traceId: request.traceId,
+    correlationId: request.correlationId,
+  };
+
+  /** Files the rehearsal and returns the shape a caller expects, without ever saying SENT. */
+  const shadowResult = async (
+    outcome: ShadowOutcome,
+    reasonCode: string,
+    extra: {
+      category?: NotificationCategory; channel?: NotificationChannel; fallback?: string[];
+      governanceResult?: string; conditionResult?: string; deferredUntil?: Date; reasonText?: string;
+    } = {},
+  ): Promise<RouteResult> => {
+    await recordShadowEvidence({
+      ...shadowBase, outcome, reasonCode,
+      category: extra.category, intendedChannel: extra.channel, intendedFallback: extra.fallback,
+      governanceResult: extra.governanceResult ?? reasonCode,
+      conditionResult: extra.conditionResult ?? request.conditionResult,
+      deferredUntil: extra.deferredUntil, reasonText: extra.reasonText,
+    });
+    return {
+      notificationId: shadowBase.shadowIdentity,
+      status: "SKIPPED",
+      channel: extra.channel,
+      reasonCode,
+      deferredUntil: extra.deferredUntil,
+    };
+  };
 
   // The template decides the category, so it is resolved before any policy is applied. Language
   // preference is read from the recipient below; English is the fallback for lookup only.
@@ -250,6 +341,7 @@ export async function routeNotification(request: NotificationRequest): Promise<R
     resolveTemplate({ notificationType: request.notificationType, channel: "SMS", language: "en" });
 
   if (!anyTemplate) {
+    if (isShadow) return shadowResult(SHADOW_OUTCOME.SKIPPED, NOTIFICATION_REASON.NO_TEMPLATE);
     const id = await finalizeDelivery({
       notificationId, category: "TRANSACTIONAL", status: "SKIPPED",
       reasonCode: NOTIFICATION_REASON.NO_TEMPLATE,
@@ -262,6 +354,7 @@ export async function routeNotification(request: NotificationRequest): Promise<R
 
   const resolved = await resolveRecipient(request.recipientType, request.recipientId);
   if (!resolved.ok) {
+    if (isShadow) return shadowResult(SHADOW_OUTCOME.SKIPPED, NOTIFICATION_REASON.RECIPIENT_NOT_FOUND, { category });
     const id = await finalizeDelivery({
       notificationId, category, status: "SKIPPED", reasonCode: NOTIFICATION_REASON.RECIPIENT_NOT_FOUND,
     });
@@ -306,6 +399,25 @@ export async function routeNotification(request: NotificationRequest): Promise<R
   if (quietHoursApply(category)) {
     const quiet = await evaluateQuietHours(request.recipientType, request.recipientId);
     if (quiet.inQuietHours) {
+      /**
+       * The rehearsal stops here with an answer, not with a parked job.
+       *
+       * A live deferral schedules a real wake-up so the message goes out in the morning. Doing that
+       * in shadow would create exactly the external side effect the mode exists to avoid — the job
+       * would fire at 08:00 and the notification would be real. Shadow records when it *would* have
+       * gone and creates nothing.
+       */
+      if (isShadow) {
+        return shadowResult(SHADOW_OUTCOME.WOULD_DEFER, GOVERNANCE_REASON.QUIET_HOURS, {
+          category,
+          fallback: channelOrderFor(
+            request.notificationType,
+            FALLBACK_ORDER[category] ?? categoryDefaultChannels(category),
+          ) as string[],
+          deferredUntil: quiet.nextAllowedAt ?? undefined,
+          reasonText: `local ${quiet.localTime} in ${quiet.timezone}`,
+        });
+      }
       const released = await releaseClaim(notificationId);
 
       logger.info("notification_deferred_quiet_hours", {
@@ -366,6 +478,12 @@ export async function routeNotification(request: NotificationRequest): Promise<R
       idempotencyKey: request.idempotencyKey,
     });
     if (!cooldown.allowed) {
+      if (isShadow) {
+        return shadowResult(SHADOW_OUTCOME.WOULD_SUPPRESS, GOVERNANCE_REASON.WORKFLOW_COOLDOWN, {
+          category,
+          reasonText: `next eligible ${cooldown.nextEligibleAt.toISOString()}`,
+        });
+      }
       const id = await finalizeDelivery({
         notificationId, category, status: "SKIPPED",
         reasonCode: NOTIFICATION_REASON.WORKFLOW_COOLDOWN, language,
@@ -390,7 +508,10 @@ export async function routeNotification(request: NotificationRequest): Promise<R
 
   const candidates = request.channelOverride
     ? [request.channelOverride]
-    : (FALLBACK_ORDER[category] ?? categoryDefaultChannels(category));
+    : channelOrderFor(
+        request.notificationType,
+        FALLBACK_ORDER[category] ?? categoryDefaultChannels(category),
+      );
 
   let lastReason: string = NOTIFICATION_REASON.NO_CHANNEL_TARGET;
 
@@ -411,7 +532,10 @@ export async function routeNotification(request: NotificationRequest): Promise<R
 
     if (!adapter.canSend(recipient)) { lastReason = NOTIFICATION_REASON.NO_CHANNEL_TARGET; continue; }
 
-    const decision = await evaluatePreference({ userId: recipient.userId, channel, category });
+    const decision = await evaluatePreference({
+      userId: recipient.userId, channel, category,
+      notificationType: request.notificationType,
+    });
     if (!decision.allowed) { lastReason = NOTIFICATION_REASON.PREFERENCE_OPTED_OUT; continue; }
 
     const template = resolveTemplate({ notificationType: request.notificationType, channel, language });
@@ -419,6 +543,11 @@ export async function routeNotification(request: NotificationRequest): Promise<R
 
     const validated = validateVariables(template, request.variables);
     if (!validated.ok) {
+      if (isShadow) {
+        return shadowResult(SHADOW_OUTCOME.SKIPPED, NOTIFICATION_REASON.VARIABLE_VALIDATION_FAILED, {
+          category, channel,
+        });
+      }
       // A schema violation is the caller's bug, not a channel problem — do not try another channel
       // with the same bad input.
       const id = await finalizeDelivery({
@@ -449,6 +578,38 @@ export async function routeNotification(request: NotificationRequest): Promise<R
      * would leave cooldown enforced only by the earlier read — and a read is what let four
      * processes each send inside the same one-hour window when 6C-C measured it.
      */
+    /**
+     * ── Seams 2 and 3: cadence and dispatch ────────────────────────────────
+     *
+     * By this point the channel is genuinely sendable: the recipient is reachable on it, they have
+     * not opted out, a template exists and the variables typecheck. Live would now spend a unit of
+     * the recipient's day and call a provider. Shadow asks the same question of the same data and
+     * writes down the answer.
+     *
+     * The cadence read uses `currentWindow` and the cooldown evaluation already checked above —
+     * both Phase-6C functions, both read-only. There is no second cadence engine here, and there is
+     * deliberately no reservation: consuming a real allowance to find out whether a real allowance
+     * would have been consumed defeats the entire exercise.
+     */
+    if (isShadow) {
+      if (governed) {
+        const window = await currentWindow(request.recipientType, request.recipientId);
+        if (window.used >= window.cap) {
+          return shadowResult(SHADOW_OUTCOME.WOULD_SUPPRESS, GOVERNANCE_REASON.RECIPIENT_DAILY_CAP, {
+            category, channel, fallback: candidates as string[],
+            reasonText: `${window.used}/${window.cap} used on ${window.windowDate}`,
+          });
+        }
+      }
+      /**
+       * The adapter is never entered. Not called and short-circuited inside — never entered, so
+       * there is no branch anywhere in push, email or SMS that a rehearsal could reach.
+       */
+      return shadowResult(SHADOW_OUTCOME.WOULD_SEND, GOVERNANCE_REASON.ALLOWED, {
+        category, channel, fallback: candidates as string[],
+      });
+    }
+
     if (governed && reservationId === null) {
       /**
        * The ALLOWED record commits with the slot it explains.
@@ -556,6 +717,15 @@ export async function routeNotification(request: NotificationRequest): Promise<R
       templateId: template.templateId, templateVersion: template.version,
       reasonCode: NOTIFICATION_REASON.SENT,
     };
+  }
+
+  if (isShadow) {
+    const outcome = lastReason === NOTIFICATION_REASON.PREFERENCE_OPTED_OUT
+      ? SHADOW_OUTCOME.WOULD_SUPPRESS
+      : SHADOW_OUTCOME.SKIPPED;
+    return shadowResult(outcome, lastReason, {
+      category, fallback: candidates as string[],
+    });
   }
 
   const id = await finalizeDelivery({

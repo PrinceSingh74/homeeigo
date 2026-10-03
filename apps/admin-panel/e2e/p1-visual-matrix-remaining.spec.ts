@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { adminLogin, attachEnterpriseMonitor } from "./enterprise/fixtures";
+import { adminApiToken, adminLogin, attachEnterpriseMonitor } from "./enterprise/fixtures";
 
 /** Remaining widths after 1920–1024 already certified. Do not rerun those here. */
 const VIEWPORTS = [
@@ -21,7 +21,20 @@ const ROUTES = [
   { path: "/partner-acquisition/analytics", name: "analytics" },
 ] as const;
 
-const SEED_PROVIDER_ID = process.env.E2E_PROVIDER_ID ?? "cmq9h687s0005tz8swhtkju1p";
+const API = (process.env.E2E_API_URL ?? "http://localhost:3000").replace(/\/$/, "");
+
+/** A provider that exists in this database. The old hardcoded id belongs to another database. */
+async function resolveProviderId(): Promise<string> {
+  if (process.env.E2E_PROVIDER_ID) return process.env.E2E_PROVIDER_ID;
+  const token = await adminApiToken();
+  const res = await fetch(`${API}/api/admin/providers?limit=1`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const body = (await res.json()) as { data?: { providers?: Array<{ id: string }> } };
+  const id = body.data?.providers?.[0]?.id;
+  if (!res.ok || !id) throw new Error(`no provider to open: ${res.status}`);
+  return id;
+}
 
 async function assertReadableTypography(page: import("@playwright/test").Page, label: string) {
   const tiny = await page.evaluate(() => {
@@ -78,7 +91,8 @@ test.describe("P1 remaining visual matrix 834–360", () => {
     await page.setViewportSize({ width: 360, height: 800 });
     const monitor = attachEnterpriseMonitor(page);
     await adminLogin(page);
-    await page.goto(`/vendors/${SEED_PROVIDER_ID}`);
+    const providerId = await resolveProviderId();
+    await page.goto(`/vendors/${providerId}`);
     await expect(page.getByText(/Score, career/i)).toBeVisible({ timeout: 45_000 });
     await expect(page.getByText("/100")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(/Partner score/i)).toBeVisible();

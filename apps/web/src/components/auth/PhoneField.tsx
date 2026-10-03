@@ -10,6 +10,8 @@ type PhoneFieldProps = {
   errorMessage?: string;
   disabled?: boolean;
   helperText?: string;
+  autoComplete?: string;
+  autoFocus?: boolean;
 };
 
 export function PhoneField({
@@ -20,19 +22,27 @@ export function PhoneField({
   errorMessage,
   disabled,
   helperText,
+  autoComplete = "tel-national",
+  autoFocus,
 }: PhoneFieldProps) {
   return (
     <div className="w-full">
       {label ? (
-        <label className="mb-1.5 block text-sm font-medium text-content">{label}</label>
+        <label htmlFor={name} className="mb-1.5 block text-sm font-medium text-content">
+          {label}
+        </label>
       ) : null}
       <div className="flex gap-2">
         <span className="flex h-10 min-h-[44px] shrink-0 items-center rounded-lg border border-line bg-surface px-3 text-sm font-medium text-muted sm:min-h-10 sm:h-10">
           +91
         </span>
         <input
+          id={name}
           name={name}
           type="tel"
+          inputMode="numeric"
+          autoComplete={autoComplete}
+          autoFocus={autoFocus}
           value={value}
           disabled={disabled}
           placeholder="98765 43210"

@@ -1,3 +1,4 @@
+import { evictUserEverywhere } from "../lib/ws-eviction";
 import type { AdminAction, AdminResource, AdminRoleType } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { AuditLogService } from "./audit-log.service";
@@ -216,6 +217,27 @@ class RBACService {
       throw new Error("Role not found");
     }
 
+    /**
+     * Escalation guards. ADMIN_USERS/CREATE lets an admin manage the admin roster; it must not
+     * let them (a) crown themselves, (b) hand out SUPER_ADMIN, or (c) quietly demote an existing
+     * SUPER_ADMIN by re-granting a lesser role — the deleteMany below replaces whatever the target
+     * currently holds. Only a SUPER_ADMIN may touch the SUPER_ADMIN role in either direction.
+     */
+    if (userId === grantedBy.userId) {
+      throw new Error("SELF_GRANT_FORBIDDEN");
+    }
+    const actorIsSuper = grantedBy.role === "SUPER_ADMIN";
+    if (role.name === "SUPER_ADMIN" && !actorIsSuper) {
+      throw new Error("SUPER_ADMIN_GRANT_REQUIRES_SUPER_ADMIN");
+    }
+    const existing = await prisma.adminUser.findFirst({
+      where: { userId },
+      include: { role: { select: { name: true } } },
+    });
+    if (existing?.role?.name === "SUPER_ADMIN" && !actorIsSuper) {
+      throw new Error("SUPER_ADMIN_ROLE_CHANGE_REQUIRES_SUPER_ADMIN");
+    }
+
     await prisma.adminUser.deleteMany({ where: { userId } });
 
     const adminUser = await prisma.adminUser.create({
@@ -234,6 +256,7 @@ class RBACService {
     }
 
     this.permissionCache.delete(adminUser.id);
+    evictUserEverywhere(userId, "role_changed");
 
     void AuditLogService.record("ADMIN_PERMISSION_GRANTED", "success", {
       userId: grantedBy.userId,
@@ -261,6 +284,17 @@ class RBACService {
       throw new Error("Cannot revoke your own admin access");
     }
 
+    // The same guards grantRole applies, in the other direction: only a SUPER_ADMIN may remove a
+    // SUPER_ADMIN, and the platform is never left without one (nobody could manage admins again).
+    const target = await prisma.adminRole.findUnique({ where: { id: adminUser.roleId }, select: { name: true } });
+    if (target?.name === "SUPER_ADMIN") {
+      if (revokedBy.role !== "SUPER_ADMIN") throw new Error("SUPER_ADMIN_REVOKE_REQUIRES_SUPER_ADMIN");
+      const remaining = await prisma.adminUser.count({
+        where: { isActive: true, role: { name: "SUPER_ADMIN" }, NOT: { id: adminUser.id } },
+      });
+      if (remaining === 0) throw new Error("LAST_SUPER_ADMIN");
+    }
+
     await prisma.adminUser.update({
       where: { id: adminUserId },
       data: {
@@ -271,6 +305,11 @@ class RBACService {
     });
 
     this.permissionCache.delete(adminUserId);
+    evictUserEverywhere(adminUser.userId, "role_changed");
+    // Revocation ends the session now, not when the 30-day refresh token runs out. (requireRole
+    // also refuses an ADMIN without an active record, so this is the second of two locks.)
+    const { tokenRevocationService } = await import("./token-revocation.service");
+    await tokenRevocationService.forceLogoutUser(adminUser.userId, "ADMIN_FORCE_LOGOUT", revokedBy.adminId);
 
     void AuditLogService.record("ADMIN_PERMISSION_REVOKED", "success", {
       userId: revokedBy.userId,

@@ -191,6 +191,10 @@ try {
       },
     });
     const offline = await matchingService.findBestProviders({
+      // W2-D4: matching is scoped to the customer's population; a customer-less query is
+      // a business query and the harness's partner is classified at creation. Ask within
+      // the fixture world by naming the fixture customer.
+      customerId: ctx.customerA.id,
       serviceId: ctx.serviceId,
       latitude: 28.62,
       longitude: 77.37,
@@ -200,6 +204,10 @@ try {
 
     await partnerOperationsService.setOnline(ctx.providerId, true);
     const online = await matchingService.findBestProviders({
+      // W2-D4: matching is scoped to the customer's population; a customer-less query is
+      // a business query and the harness's partner is classified at creation. Ask within
+      // the fixture world by naming the fixture customer.
+      customerId: ctx.customerA.id,
       serviceId: ctx.serviceId,
       latitude: 28.62,
       longitude: 77.37,
@@ -219,6 +227,10 @@ try {
 
     await partnerOperationsService.pause(ctx.providerId, "personal");
     const paused = await matchingService.findBestProviders({
+      // W2-D4: matching is scoped to the customer's population; a customer-less query is
+      // a business query and the harness's partner is classified at creation. Ask within
+      // the fixture world by naming the fixture customer.
+      customerId: ctx.customerA.id,
       serviceId: ctx.serviceId,
       latitude: 28.62,
       longitude: 77.37,
@@ -335,7 +347,6 @@ try {
 } finally {
   await new Promise((r) => setTimeout(r, 300));
   await cleanupAdversarialFixtures(RUN_ID).catch(() => undefined);
-  await prisma.$disconnect().catch(() => undefined);
 }
 
 console.log(`\n[ops] ${passed} pass, ${failed} fail`);

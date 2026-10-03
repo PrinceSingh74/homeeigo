@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { coreApi } from "@/services/core/api";
+import { catalogQueryOptions } from "@/hooks/use-core-data";
 import type { BackendService } from "@/types/backend";
 import {
   EXPRESS_SERVICES,
@@ -14,16 +14,12 @@ import {
 } from "@/lib/services-marketplace-data";
 
 /**
- * Full catalog for the marketplace sections. Separate query key from the
- * shared `useServicesQuery` (which uses the default page size of 20) because
- * the marketplace needs every active service to group them into sections.
+ * Full catalog for the marketplace sections — the SHARED catalog query (one key, one fetch;
+ * see catalogQueryOptions). The old private key duplicated the same 100-service request on
+ * every home/services visit; the shared walk also sees past page 1, which this one never did.
  */
 export function useMarketplaceCatalogQuery() {
-  return useQuery({
-    queryKey: ["services", "marketplace-catalog"],
-    queryFn: () => coreApi.services.list("?limit=100"),
-    staleTime: 60_000,
-  });
+  return useQuery(catalogQueryOptions);
 }
 
 /** Static fallback images keyed by backend slug (used when a service has no thumbnail). */
@@ -57,7 +53,8 @@ function toMarketplaceService(s: BackendService): MarketplaceService {
     name: s.name,
     image: s.thumbnail ?? s.icon ?? fallback?.image ?? DEFAULT_IMAGE,
     duration: formatDuration(s),
-    rating: s.rating && s.rating > 0 ? Number(s.rating.toFixed(1)) : fallback?.rating ?? 4.8,
+    // Real aggregate only; no reviews → null (never a curated or placeholder number).
+    rating: s.rating != null && s.rating > 0 && (s.reviewCount ?? 0) > 0 ? Number(s.rating.toFixed(1)) : null,
     price: price > 0 ? `₹${price} onwards` : "Price on request",
     priceValue: price,
     badge: s.isPopular ? "Popular" : s.isFeatured ? "Most Booked" : fallback?.badge,

@@ -18,6 +18,7 @@ import {
 import { StatTile } from "@/components/hq/primitives";
 import { SectionHead } from "@/components/hq/SectionHead";
 import { Icon3D } from "@/components/hq/Icon3D";
+import { OperationsWorkspaceRail, OpsEyebrow } from "@/components/operations/OperationsWorkspaceRail";
 import { IsoBarChart } from "@/components/hq/IsoBarChart";
 import { HeatmapCanvas, heatmapCellKey } from "@/components/heatmap/HeatmapCanvas";
 import { adminApi, type HeatmapCell, type HeatmapData } from "@/services/admin-api";
@@ -200,6 +201,7 @@ export default function HeatmapPage() {
         <div className="flex items-center gap-4">
           <Icon3D icon={Flame} tone="warning" size="lg" />
           <div>
+            <OpsEyebrow />
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <h1 className="biz-display text-[1.75rem] font-bold leading-none tracking-tight">Demand Heatmap</h1>
               <span className="cmd-live-pill">
@@ -208,7 +210,7 @@ export default function HeatmapPage() {
               </span>
             </div>
             <p className="mt-2.5 max-w-2xl text-sm leading-relaxed text-[var(--color-biz-muted)]">
-              Demand vs supply · revenue · under-served zones · click a hotspot for the full briefing
+              Demand vs supply, revenue, and under-served zones — click a hotspot for the full briefing
             </p>
           </div>
         </div>
@@ -237,6 +239,8 @@ export default function HeatmapPage() {
           </button>
         </div>
       </header>
+
+      <OperationsWorkspaceRail />
 
       {q.isLoading ? (
         <div className="flex items-center justify-center py-20 text-[var(--color-biz-muted)]">
@@ -370,7 +374,7 @@ export default function HeatmapPage() {
             <div className="biz-glass-panel p-6">
               <SectionHead icon={AlertCircle} tone="danger" title="Under-served" subtitle="Demand exceeds online supply" meta={`${underServed.length}`} />
               {underServed.length ? (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2">
                   {underServed.map((c, i) => (
                     <button
                       key={heatmapCellKey(c)}
@@ -402,7 +406,7 @@ export default function HeatmapPage() {
             <div className="biz-glass-panel p-6">
               <SectionHead icon={TrendingUp} tone="success" title="Top revenue" subtitle="Best performing cells" meta={`${topRevenue.length}`} />
               {topRevenue.length ? (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2">
                   {topRevenue.map((c, i) => (
                     <button
                       key={heatmapCellKey(c)}

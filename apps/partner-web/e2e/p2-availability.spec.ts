@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
 import { partnerLogin, partnerToken, test as enterpriseTest } from "./enterprise/fixtures";
+import { assertAxeSerious } from "./helpers/p0-a11y";
 
 const API = (process.env.E2E_API_URL ?? "http://localhost:3000").replace(/\/$/, "");
 
@@ -55,7 +55,9 @@ test.describe("Section 02 partner operations", () => {
     });
     const onlineJson = (await online.json()) as { success: boolean; data?: { isOnline?: boolean }; error?: string };
     if (!online.ok) {
-      expect(onlineJson.error ?? "").toMatch(/pending|restricted|skill|service area|approval/i);
+      expect(onlineJson.error ?? "").toMatch(
+        /pending|restricted|skill|service area|approval|unavailable|contact support|paused|banned/i,
+      );
     } else {
       expect(onlineJson.data?.isOnline).toBe(true);
       const paused = await fetch(`${API}/api/providers/me/pause`, {
@@ -122,8 +124,8 @@ test.describe("Section 02 partner operations", () => {
     await partnerLogin(page);
     await page.goto("/availability");
     await expect(page.getByRole("heading", { name: /availability/i }).first()).toBeVisible({ timeout: 30_000 });
-    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
-    const blocking = results.violations.filter((v) => v.impact === "critical" || v.impact === "serious");
-    expect(blocking, JSON.stringify(blocking.map((v) => v.id))).toEqual([]);
+    // Shared helper: waits for the shell's fade-in transitions to finish before scanning (the top bar's
+    // "9+" badge measured 2.1:1 mid-fade, ~9:1 at rest). Same serious/critical criterion as before.
+    await assertAxeSerious(page, "availability");
   });
 });

@@ -2,7 +2,21 @@ export type BookingStatus =
   | "confirmed"
   | "in_progress"
   | "completed"
-  | "cancelled";
+  | "cancelled"
+  /**
+   * The payment window closed before payment completed (PAYMENT_PENDING_TTL) and the slot was
+   * released. Its own state on purpose: collapsing it into "cancelled" tells the customer someone
+   * cancelled their booking, and letting it fall through to "confirmed" — which is what happened
+   * before this existed — tells them a booking is going ahead when it is not.
+   */
+  | "expired"
+  /**
+   * Nobody was served, and WHO failed to appear decides both the money and the wording. They are two
+   * states rather than one "no show" because telling a customer they missed their appointment when
+   * the professional never arrived is the failure §53 exists to prevent.
+   */
+  | "customer_no_show"
+  | "provider_no_show";
 
 export type TimelineEvent = {
   id: string;
@@ -59,6 +73,9 @@ export function collapseCustomerBookingStatus(raw: string | undefined): BookingS
   const v = (raw ?? "").toLowerCase().replace(/-/g, "_");
   if (v === "completed") return "completed";
   if (v === "in_progress" || v === "en_route") return "in_progress";
+  if (v === "expired") return "expired";
+  if (v === "customer_no_show") return "customer_no_show";
+  if (v === "provider_no_show") return "provider_no_show";
   if (
     v === "rejected" ||
     v === "cancelled" ||

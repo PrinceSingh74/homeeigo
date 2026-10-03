@@ -155,12 +155,19 @@ export default function ProvidersDiscoveryPage() {
                 <h3 className="truncate font-display text-lg font-bold text-content">{provider.name}</h3>
                 <p className="mt-1 flex items-center gap-1 text-xs text-muted">
                   <Star size={12} className="fill-amber-400 text-amber-400" />
-                  {(provider.rating ?? 4.8).toFixed(1)} ({provider.totalReviews ?? 0} reviews)
+                  {provider.rating != null && provider.rating > 0 && (provider.totalReviews ?? 0) > 0
+                    ? `${provider.rating.toFixed(1)} (${provider.totalReviews} reviews)`
+                    : "New"}
                 </p>
                 <p className="mt-1 flex items-center gap-1 text-xs text-muted">
                   <MapPin size={12} />
-                  {provider.distance ?? 0} km away · ETA {provider.eta ?? 15} mins
-                  {provider.isOnline ? <span className="ml-1 text-emerald-500">· Online</span> : null}
+                  {provider.distance != null ? `${provider.distance} km away` : "Distance pending"}
+                  {provider.eta != null ? ` · ETA ${provider.eta} mins` : null}
+                  {provider.availabilityLabel === "Available now" || provider.availableNow ? (
+                    <span className="ml-1 text-emerald-500">· Available now</span>
+                  ) : provider.availabilityLabel === "Limited availability" ? (
+                    <span className="ml-1 text-amber-600">· Limited availability</span>
+                  ) : null}
                 </p>
               </div>
               <span

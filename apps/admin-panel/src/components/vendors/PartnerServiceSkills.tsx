@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BadgeCheck, BadgeX, ClipboardList, Search } from "lucide-react";
@@ -43,15 +43,15 @@ export function PartnerServiceSkills({ providerId }: { providerId: string }) {
   });
 
   const data = board.data;
-  const match = (items: PartnerServiceSkillCard[]) => {
+  const match = useCallback((items: PartnerServiceSkillCard[]) => {
     const q = query.trim().toLowerCase();
     if (!q) return items;
     return items.filter((s) => s.name.toLowerCase().includes(q) || s.slug.includes(q) || s.category.toLowerCase().includes(q));
-  };
-  const performing = useMemo(() => match(data?.performing ?? []), [data?.performing, query]);
-  const pending = useMemo(() => match(data?.pending ?? []), [data?.pending, query]);
-  const suspended = useMemo(() => match(data?.suspended ?? []), [data?.suspended, query]);
-  const available = useMemo(() => match(data?.available ?? []), [data?.available, query]);
+  }, [query]);
+  const performing = useMemo(() => match(data?.performing ?? []), [data?.performing, match]);
+  const pending = useMemo(() => match(data?.pending ?? []), [data?.pending, match]);
+  const suspended = useMemo(() => match(data?.suspended ?? []), [data?.suspended, match]);
+  const available = useMemo(() => match(data?.available ?? []), [data?.available, match]);
 
   const submitDecision = () => {
     if (!decision) return;
@@ -90,6 +90,7 @@ export function PartnerServiceSkills({ providerId }: { providerId: string }) {
             <p className="mt-1 text-xs text-[var(--color-biz-muted)]">This grants the skill immediately. The partner does not have to request it first.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <select
+                aria-label="Service to add"
                 value={picked}
                 onChange={(e) => setPicked(e.target.value)}
                 className="min-w-[220px] flex-1 rounded-lg border border-[var(--color-biz-line)] bg-transparent px-3 py-2 text-sm"

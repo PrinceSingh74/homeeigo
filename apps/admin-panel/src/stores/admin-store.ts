@@ -13,10 +13,9 @@ type AdminAuthStatus = "idle" | "initializing" | "authenticated" | "unauthentica
 type AdminState = {
   user: CurrentUser | null;
   accessToken: string | null;
-  refreshToken: string | null;
   status: AdminAuthStatus;
   error: string | null;
-  setSession: (user: CurrentUser, accessToken: string, refreshToken: string) => void;
+  setSession: (user: CurrentUser, accessToken: string) => void;
   setError: (msg: string | null) => void;
   clearSession: () => void;
   bootstrap: () => Promise<void>;
@@ -29,16 +28,14 @@ export const useAdminStore = create<AdminState>()(
     (set, get) => ({
       user: null,
       accessToken: null,
-      refreshToken: null,
       status: "idle",
       error: null,
 
-      setSession: (user, accessToken, refreshToken) => {
+      setSession: (user, accessToken) => {
         setSentryUser({ id: (user as { id?: string })?.id, role: (user as { role?: string })?.role });
         set({
           user,
           accessToken,
-          refreshToken,
           status: "authenticated",
           error: null,
         });
@@ -51,18 +48,18 @@ export const useAdminStore = create<AdminState>()(
         set({
           user: null,
           accessToken: null,
-          refreshToken: null,
           status: "unauthenticated",
           error: null,
         });
       },
 
       bootstrap: async () => {
-        const { refreshToken, status } = get();
+        const { user: persisted, status } = get();
         if (status === "initializing") return;
         set({ status: "initializing", error: null });
 
-        if (!refreshToken) {
+        // A persisted profile means a refresh cookie may exist; the refresh call proves it.
+        if (!persisted) {
           set({ status: "unauthenticated" });
           return;
         }
@@ -102,17 +99,14 @@ export const useAdminStore = create<AdminState>()(
           }
 
           // Login response doesn't include role in the user object — refetch /me to confirm.
-          set({
-            accessToken: payload.accessToken,
-            refreshToken: payload.refreshToken,
-          });
+          set({ accessToken: payload.accessToken });
           const user = await adminAuthApi.me();
           if (user.role !== "ADMIN") {
             // Wrong role — wipe and bail.
             get().clearSession();
             return { ok: false, message: "This account is not an admin." };
           }
-          get().setSession(user, payload.accessToken, payload.refreshToken);
+          get().setSession(user, payload.accessToken);
           return { ok: true };
         } catch (error) {
           const message = getErrorMessage(error);
@@ -125,25 +119,26 @@ export const useAdminStore = create<AdminState>()(
       },
 
       logout: async () => {
-        const token = get().refreshToken;
-        get().clearSession();
-        if (token) {
-          try {
-            await adminAuthApi.logout(token);
-          } catch {
-            /* session already cleared locally */
-          }
+        // Call the API first: it revokes the cookie's session server-side and clears the cookie.
+        try {
+          await adminAuthApi.logout();
+        } catch {
+          /* the local session is cleared regardless */
         }
+        get().clearSession();
       },
     }),
     {
       name: "homigo-admin-store",
+      /**
+       * NO TOKENS IN localStorage. The access token is memory-only; the refresh token is an
+       * HttpOnly, SameSite=Strict, audience-scoped cookie (hg_rt_admin) that JavaScript cannot read.
+       */
       partialize: (state) => ({
         user: state.user,
-        refreshToken: state.refreshToken,
       }),
       onRehydrateStorage: () => (state) => {
-        if (state?.refreshToken) state.status = "idle";
+        if (state?.user) state.status = "idle";
         else if (state) state.status = "unauthenticated";
       },
     },
@@ -152,9 +147,10 @@ export const useAdminStore = create<AdminState>()(
 
 configureApiClient({
   getAccessToken: () => useAdminStore.getState().accessToken,
-  getRefreshToken: () => useAdminStore.getState().refreshToken,
-  setTokens: (accessToken, refreshToken) => {
-    useAdminStore.setState({ accessToken, refreshToken });
+  // A persisted profile is the session marker; the credential is the HttpOnly cookie.
+  hasSession: () => Boolean(useAdminStore.getState().user),
+  setAccessToken: (accessToken) => {
+    useAdminStore.setState({ accessToken });
   },
   clearSession: () => useAdminStore.getState().clearSession(),
 });

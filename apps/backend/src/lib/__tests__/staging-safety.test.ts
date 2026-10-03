@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { validateStagingSafety } from "../staging-safety";
 
 function withEnv(overrides: Record<string, string | undefined>, fn: () => void) {

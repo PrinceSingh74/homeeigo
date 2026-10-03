@@ -17,8 +17,8 @@ import { bookUrl } from "@/lib/booking-url";
 import { useAppStore } from "@/stores/app-store";
 import { PageSection } from "@/components/layout/PageSection";
 import { SectionHeader } from "@/components/layout/SectionHeader";
-import { sectionAction } from "@/lib/page-layout";
-import { cn } from "@/lib/utils";
+import { SectionActionLink } from "@/components/layout/SectionActionLink";
+import { Button } from "@/components/buttons/Button";
 import {
   CLIPBOARD_UNAVAILABLE_TOAST,
   copyToClipboard,
@@ -77,19 +77,7 @@ export function OffersSection() {
     <PageSection>
       <SectionHeader
         title="Offers & Deals"
-        action={
-          <button
-            type="button"
-            onClick={() => router.push(bookUrl())}
-            className={cn(sectionAction, "group inline-flex items-center gap-1")}
-          >
-            View All
-            <ArrowRight
-              size={16}
-              className="transition-transform group-hover:translate-x-1"
-            />
-          </button>
-        }
+        action={<SectionActionLink href={bookUrl()}>View All</SectionActionLink>}
       />
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -104,7 +92,7 @@ export function OffersSection() {
               viewport={{ once: true }}
               transition={{ duration: 0.45, delay: i * 0.08 }}
               whileHover={reduce ? undefined : { y: -8 }}
-              className="group relative flex min-h-52 flex-col justify-between overflow-hidden rounded-[28px] p-7 shadow-[0_18px_44px_-14px_rgb(15_23_42/0.28)] ring-1 ring-white/50 transition-shadow duration-300 hover:shadow-[0_28px_60px_-12px_rgb(15_23_42/0.34)]"
+              className="group relative flex min-h-52 flex-col justify-between overflow-hidden rounded-2xl p-6 shadow-[0_18px_44px_-14px_rgb(15_23_42/0.28)] ring-1 ring-white/50 transition-shadow duration-300 hover:shadow-[0_28px_60px_-12px_rgb(15_23_42/0.34)]"
               style={{
                 background: `linear-gradient(135deg, ${o.from} 0%, ${o.to} 100%)`,
                 color: o.fg,
@@ -119,40 +107,44 @@ export function OffersSection() {
                 className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full bg-white/40 blur-2xl transition-opacity duration-500 group-hover:opacity-80"
               />
               <span
-                className="relative grid size-14 place-items-center rounded-2xl bg-white/70 ring-1 ring-white/60"
+                className="relative grid size-12 place-items-center rounded-xl bg-white/70 ring-1 ring-white/60"
                 style={{
                   boxShadow: "inset 0 2px 4px rgb(255 255 255 / 0.8)",
                 }}
               >
-                <Icon size={28} />
+                <Icon size={24} aria-hidden />
               </span>
               <div className="relative">
                 <p className="font-display text-2xl font-bold">{o.discount}</p>
-                <p className="text-sm opacity-75">{o.desc}</p>
+                <p className="text-sm opacity-80">{o.desc}</p>
               </div>
               <div className="relative mt-2 flex flex-wrap gap-2">
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => copy(o.code)}
-                  className="inline-flex items-center gap-2 rounded-full bg-white/65 px-4 py-2 font-mono text-xs font-semibold uppercase outline-none ring-1 ring-white/60 transition hover:bg-white/90 focus-visible:ring-2 focus-visible:ring-current"
+                  icon={isCopied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
                   aria-label={`Copy code ${o.code}`}
+                  className="font-mono uppercase"
                 >
-                  {isCopied ? <Check size={14} /> : <Copy size={14} />}
                   {isCopied ? "Copied!" : o.code}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="inverse"
+                  size="sm"
                   onClick={() => {
                     setActivePromo(o.code);
                     router.push(
                       bookUrl({ service: o.serviceId, promo: o.code }),
                     );
                   }}
-                  className="inline-flex items-center gap-1 rounded-full bg-white px-4 py-2 text-xs font-bold shadow-sm transition hover:bg-white/90"
+                  icon={<ArrowRight size={14} aria-hidden />}
+                  iconPosition="right"
                 >
                   Apply &amp; Book
-                  <ArrowRight size={14} />
-                </button>
+                </Button>
               </div>
             </motion.div>
           );

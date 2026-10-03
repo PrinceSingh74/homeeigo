@@ -26,6 +26,11 @@ async function regRequest<T>(path: string, opts: { method?: string; body?: unkno
 }
 
 export const partnerRegistrationApi = {
+  serviceOptions() {
+    return regRequest<{ source: string; options: Array<{ id: string; label: string }> }>(
+      "/api/partner/register/service-options",
+    );
+  },
   step1(body: {
     email: string;
     phoneNumber: string;
@@ -36,7 +41,7 @@ export const partnerRegistrationApi = {
   }) {
     return regRequest<{ userId: string; devOtp?: string }>("/api/partner/register/step1", { method: "POST", body });
   },
-  verifyOtp(body: { email: string; otp: string; userId: string; inviteToken?: string }) {
+  verifyOtp(body: { email: string; otp: string; userId: string; inviteToken?: string; referralCode?: string }) {
     return regRequest<{ registrationToken: string }>("/api/partner/register/verify-otp", { method: "POST", body }).then(
       async (d) => {
         if (d.registrationToken) await setRegistrationToken(d.registrationToken);

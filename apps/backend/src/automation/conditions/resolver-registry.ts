@@ -1,6 +1,9 @@
 import { bookingResolver } from "./resolvers/booking.resolver";
 import { paymentResolver } from "./resolvers/payment.resolver";
+import { bookingPaymentResolver } from "./resolvers/booking-payment.resolver";
 import { ratingResolver } from "./resolvers/rating.resolver";
+import { partnerLeadResolver } from "./resolvers/partner-lead.resolver";
+import { providerResolver } from "./resolvers/provider.resolver";
 import { CONDITION_REASON, type ConditionReason, type ConditionResolver, type ResolvedValue, type SubjectRef } from "./types";
 
 /**
@@ -36,6 +39,9 @@ export function unregisterResolver(domain: string): void {
 registerResolver(bookingResolver);
 registerResolver(paymentResolver);
 registerResolver(ratingResolver);
+registerResolver(bookingPaymentResolver);
+registerResolver(partnerLeadResolver);
+registerResolver(providerResolver);
 
 export function getResolver(domain: string): ConditionResolver | undefined {
   return registry.get(domain);

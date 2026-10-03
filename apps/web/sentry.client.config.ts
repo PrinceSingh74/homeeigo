@@ -5,12 +5,14 @@
  * the backend's lib/observability.ts pattern.
  */
 import * as Sentry from "@sentry/nextjs";
+import { sentryReportingAllowed } from "./src/lib/sentry-gate";
 
 const DSN = process.env.NEXT_PUBLIC_SENTRY_DSN;
 
 Sentry.init({
   dsn: DSN,
-  enabled: Boolean(DSN),
+  // Production only; never dev, tests or browser automation (see src/lib/sentry-gate.ts).
+  enabled: sentryReportingAllowed(DSN),
   environment: process.env.NEXT_PUBLIC_ENV ?? process.env.NODE_ENV,
   release: process.env.NEXT_PUBLIC_SENTRY_RELEASE, // set in CI to the build SHA
   // Distributed tracing (links frontend → backend spans via the trace header).
@@ -34,7 +36,7 @@ Sentry.init({
 // adds steady background work that hurts 60fps smoothness. Error + performance tracking work
 // fully without it. Enable per-env with NEXT_PUBLIC_SENTRY_REPLAY > 0 when actively investigating.
 const REPLAY_ENABLED = Number(process.env.NEXT_PUBLIC_SENTRY_REPLAY ?? 0) > 0;
-if (DSN && REPLAY_ENABLED && typeof window !== "undefined") {
+if (sentryReportingAllowed(DSN) && REPLAY_ENABLED && typeof window !== "undefined") {
   const addReplay = () => {
     Sentry.lazyLoadIntegration("replayIntegration")
       .then((replayIntegration) => {

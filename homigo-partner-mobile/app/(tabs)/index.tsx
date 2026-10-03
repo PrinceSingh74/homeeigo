@@ -14,6 +14,9 @@ import { StyleSheet, Text, View } from "react-native";
 import { EmptyState, HqCard, HqCardTitle, HqLinkRow, LoadingBlock, StatRow } from "@/components/HqUi";
 import { KpiCard } from "@/components/KpiCard";
 import { PartnerScreen } from "@/components/PartnerScreen";
+import { useServerNowTick } from "@/hooks/use-offer-countdown";
+import { BOOKING_LIST_FILTER } from "@/lib/booking-status";
+import { isOfferLive } from "@/lib/offer";
 import { customerName, formatCurrency, formatDateTime, formatPct } from "@/lib/format";
 import { partnerApi } from "@/services/partner-api";
 import { OnlineToggleCard } from "@/screens/hq-work-earnings";
@@ -30,12 +33,17 @@ export default function HomeTab() {
   });
   const pending = useQuery({
     queryKey: ["partner", "bookings", "pending-home"],
-    queryFn: () => partnerApi.listBookings({ status: "pending", limit: 3, sortBy: "recent" }),
+    queryFn: () => partnerApi.listBookings({ status: BOOKING_LIST_FILTER.OFFERS, limit: 3, sortBy: "recent" }),
   });
   const schedule = useQuery({
     queryKey: ["partner", "bookings", "today"],
-    queryFn: () => partnerApi.listBookings({ status: "accepted", limit: 5, sortBy: "upcoming" }),
+    // ACTIVE_WORK (not "accepted") so a job already IN_PROGRESS stays on the schedule.
+    queryFn: () => partnerApi.listBookings({ status: BOOKING_LIST_FILTER.ACTIVE_WORK, limit: 5, sortBy: "upcoming" }),
   });
+
+  // Never list an offer whose window has closed (server-time estimate) — it cannot be accepted.
+  const now = useServerNowTick((pending.data?.bookings.length ?? 0) > 0);
+  const liveOffers = (pending.data?.bookings ?? []).filter((b) => isOfferLive(b.offer, now));
 
   const d = dashboard.data;
   const counts = d?.counts;
@@ -61,10 +69,10 @@ export default function HomeTab() {
             <HqCardTitle>New booking requests</HqCardTitle>
             {pending.isLoading ? (
               <LoadingBlock />
-            ) : (pending.data?.bookings ?? []).length === 0 ? (
+            ) : liveOffers.length === 0 ? (
               <EmptyState message="No pending requests — you're all caught up!" />
             ) : (
-              pending.data!.bookings.map((b) => (
+              liveOffers.map((b) => (
                 <StatRow key={b.id} label={`${b.service.name} · ${customerName(b.customer)}`} value={formatCurrency(b.finalAmount || b.amount)} />
               ))
             )}

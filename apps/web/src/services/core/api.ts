@@ -1,6 +1,6 @@
 import type { ApiResponse } from "@/types/auth";
-import { resolveApiBase } from "@/lib/api-base";
-import type {
+import type { BookingRequirementsView } from "@/types/backend";
+import type { ServiceResolution, ServiceSelectionRequest, ServiceSelectionSnapshot,
   BackendAddress,
   BackendAvailabilitySlot,
   BackendBooking,
@@ -26,6 +26,15 @@ import type {
 } from "@/lib/coverage/coverage-types";
 
 // Phase 16 — geolocation response shapes (mirror apps/backend maps.service / matching).
+/**
+ * The four policies a customer can consent to and withdraw from.
+ *
+ * Mirrors the backend enum `ConsentPolicyType` and the `policyTypes` allow-list in
+ * `routes/compliance.ts`, which rejects anything else with 400. Declared as a union rather than
+ * `string` so a typo is a build error here instead of a rejected request at runtime.
+ */
+export type ConsentPolicyType = "TERMS" | "PRIVACY" | "COOKIES" | "REFUND";
+
 export type GeoPrediction = { placeId: string; description: string; mainText: string; secondaryText: string };
 export type GeoAddress = {
   formattedAddress: string;
@@ -44,6 +53,8 @@ export type NearbyProvider = {
   distance: number;
   eta: number;
   isOnline: boolean;
+  availableNow?: boolean;
+  availabilityLabel?: "Available now" | "Limited availability" | "Confirming professional" | "Unavailable";
   availability: boolean;
   profileImage: string | null;
 };
@@ -55,6 +66,21 @@ export type StatsOverview = {
   customers: number;
   averageRating: number | null;
   reviewCount: number;
+};
+
+/** What the booking API accepts for pricing: ids + a quantity, never an amount. */
+export type BookingSelectionPayload = {
+  serviceId: string;
+  couponCode?: string;
+  /** Legacy package tier (validated server-side against min/base/max). */
+  packagePrice?: number;
+  variantId?: string;
+  quantity?: number;
+  audience?: string;
+  professionalPreference?: string;
+  addonIds?: string[];
+  /** Quote only: price at this saved address (the server uses the same coordinates as booking). */
+  addressId?: string;
 };
 
 export const coreApi = {
@@ -111,6 +137,11 @@ export const coreApi = {
       ).then((r) => r.data!),
     details: (id: string) =>
       apiRequest<ApiResponse<{ service: BackendService }>>(`/api/services/${id}`).then((r) => r.data!),
+    /** Server verdict on a selection: price lines before tax, duration, every issue. */
+    resolveSelection: (id: string, body: ServiceSelectionRequest) =>
+      apiRequest<ApiResponse<ServiceResolution>>(`/api/services/${id}/resolve-selection`, { method: "POST", body }).then(
+        (r) => r.data!,
+      ),
     byCategory: (category: string, query = "") =>
       apiRequest<ApiResponse<{ services: BackendService[]; total: number }>>(
         `/api/services/category/${encodeURIComponent(category)}${query}`,
@@ -180,12 +211,30 @@ export const coreApi = {
       apiRequest<ApiResponse<{ bookings: BackendBooking[]; total: number }>>("/api/bookings/upcoming", {
         auth: true,
       }).then((r) => r.data!),
-    priceQuote: (payload: {
-      serviceId: string;
-      couponCode?: string;
-      packagePrice?: number;
-      addonIds?: string[];
-    }) =>
+    /**
+     * Wave 4 — the slots the SERVER says are bookable for one day.
+     *
+     * The booking step used to render a hardcoded list of six times that no server had agreed to, so
+     * a customer could pick a slot the platform would then refuse. The grid, the window and the
+     * verdict all come from the backend now; this client only renders them.
+     */
+    availability: (params: { serviceId: string; date: string; addressId?: string; providerId?: string }) => {
+      const qs = new URLSearchParams({ serviceId: params.serviceId, date: params.date });
+      if (params.addressId) qs.set("addressId", params.addressId);
+      if (params.providerId) qs.set("providerId", params.providerId);
+      return apiRequest<
+        ApiResponse<{
+          date: string;
+          timeZone: string;
+          slotMinutes: number;
+          durationMinutes: number;
+          operatingWindow: { start: string; end: string };
+          availableCount: number;
+          slots: { start: string; available: boolean; reason?: string }[];
+        }>
+      >(`/api/bookings/availability?${qs}`, { auth: true }).then((r) => r.data!);
+    },
+    priceQuote: (payload: BookingSelectionPayload) =>
       apiRequest<
         ApiResponse<{
           quote: {
@@ -202,6 +251,18 @@ export const coreApi = {
             finalAmount: number;
             couponCode?: string;
             couponError?: string;
+            /** Server-priced selection (variant, quantity, unit price, audience, duration). */
+            selection?: ServiceSelectionSnapshot;
+            addons?: { id: string; name: string; price: number; quantity?: number }[];
+            /** Phase 05: the tax the server applied (rate in basis points) — never a client constant. */
+            tax?: { mode: string; rateBps: number; label: string };
+            currency?: string;
+            finalAmountPaise?: number;
+            /** Signed quote; POST /api/bookings refuses (PRICE_CHANGED) instead of charging a different total. */
+            quoteToken?: string;
+            expiresAt?: string;
+            /** Phase 06: customer-safe requirements of THIS selection (server-phrased). */
+            requirements?: import("@/types/backend").CustomerRequirementsView;
           };
         }>
       >("/api/bookings/price-quote", {
@@ -219,6 +280,20 @@ export const coreApi = {
       apiRequest<ApiResponse<{ booking: BackendBooking }>>(`/api/bookings/${id}`, {
         auth: true,
       }).then((r) => r.data!),
+    /** Phase 10 §6 — the booking's gated requirements, their state and what blocks the start. */
+    requirements: (id: string) =>
+      apiRequest<ApiResponse<BookingRequirementsView>>(`/api/bookings/${id}/requirements`, {
+        auth: true,
+      }).then((r) => r.data!),
+    /**
+     * READY: a check the professional found missing is now in place — please check again.
+     * ATTEST: confirm an attestation item. The customer can never mark a partner check satisfied.
+     */
+    requirementAction: (id: string, code: string, action: "READY" | "ATTEST", note?: string) =>
+      apiRequest<ApiResponse<{ code: string; state: string; changed: boolean }>>(
+        `/api/bookings/${id}/requirements/${encodeURIComponent(code)}/customer`,
+        { method: "POST", auth: true, body: { action, ...(note ? { note } : {}) } },
+      ).then((r) => r.data!),
     /**
      * Owner-only service-start PIN (Urban-Company style). "active" carries the
      * plaintext PIN the customer shares in person with the partner at the door.
@@ -232,6 +307,56 @@ export const coreApi = {
           verifiedAt: string | null;
         }>
       >(`/api/bookings/${id}/start-pin`, { auth: true }).then((r) => r.data!),
+    /** Booking-scoped chat — same backend conversation as partner web/mobile. */
+    listChat: (id: string, query: { cursor?: string; limit?: number } = {}) => {
+      const qs = new URLSearchParams();
+      if (query.cursor) qs.set("cursor", query.cursor);
+      if (query.limit != null) qs.set("limit", String(query.limit));
+      const suffix = qs.toString() ? `?${qs}` : "";
+      return apiRequest<
+        ApiResponse<{
+          messages: Array<{
+            id: string;
+            body: string;
+            senderUserId: string;
+            createdAt: string;
+            clientMessageId?: string | null;
+          }>;
+          nextCursor: string | null;
+        }>
+      >(`/api/bookings/${id}/chat${suffix}`, { auth: true }).then((r) => r.data!);
+    },
+    sendChat: (id: string, body: string, clientMessageId?: string) =>
+      apiRequest<
+        ApiResponse<{
+          message: {
+            id: string;
+            body: string;
+            senderUserId: string;
+            createdAt: string;
+            clientMessageId?: string | null;
+          };
+          created: boolean;
+        }>
+      >(`/api/bookings/${id}/chat`, {
+        method: "POST",
+        auth: true,
+        body: { body, clientMessageId },
+      }).then((r) => r.data!),
+    markChatRead: (id: string) =>
+      apiRequest<ApiResponse<{ ok: boolean }>>(`/api/bookings/${id}/chat/read`, {
+        method: "POST",
+        auth: true,
+      }).then((r) => r.data!),
+    partnerContact: (id: string) =>
+      apiRequest<ApiResponse<{ phoneMasked: string | null; canCall: boolean }>>(
+        `/api/bookings/${id}/partner-contact`,
+        { auth: true },
+      ).then((r) => r.data!),
+    partnerCall: (id: string) =>
+      apiRequest<
+        ApiResponse<{ dialUri: string; phoneMasked: string; expiresInSec: number }>
+      >(`/api/bookings/${id}/partner-call`, { method: "POST", auth: true }).then((r) => r.data!),
     cancel: (id: string, reason: string, cancelledBy: "user" | "provider") =>
       apiRequest<
         ApiResponse<{
@@ -249,6 +374,26 @@ export const coreApi = {
         body: { reason, cancelledBy },
         auth: true,
       }).then((r) => r.data!),
+    /** §53 — the customer reporting that nobody turned up. Never charges them. */
+    reportProviderNoShow: (id: string) =>
+      apiRequest<
+        ApiResponse<{ status: string; feeAmount: number; refundAmount: number; refundStatus: string }>
+      >(`/api/bookings/${id}/provider-no-show`, { method: "POST", body: {}, auth: true }).then((r) => r.data!),
+    /** §45 / O6 — what moving this booking costs, from the server's frozen policy. */
+    rescheduleQuote: (id: string) =>
+      apiRequest<
+        ApiResponse<{
+          quote: {
+            version: string;
+            disposition: "FREE" | "LATE_FEE" | "NOT_PERMITTED";
+            feeBps: number;
+            feeAmountPaise: number;
+            feeAmount: number;
+            hoursUntilAppointment: number | null;
+            message: string;
+          };
+        }>
+      >(`/api/bookings/${id}/reschedule-quote`, { auth: true }).then((r) => r.data!),
     cancellationQuote: (id: string) =>
       apiRequest<
         ApiResponse<{
@@ -334,18 +479,9 @@ export const coreApi = {
         auth: true,
       }).then((r) => r.data!),
     exportData: async (format: "json" | "zip" = "json") => {
-      const { useAuthStore } = await import("@/stores/auth-store");
-      let token = useAuthStore.getState().accessToken;
-      if (!token) {
-        const refreshed = await useAuthStore.getState().refreshSession();
-        if (!refreshed) throw new Error("Export failed — sign in again");
-        token = useAuthStore.getState().accessToken;
-      }
-      const base = (resolveApiBase()).replace(/\/$/, "");
-      const res = await fetch(`${base}/api/users/me/export?format=${format}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: "include",
-      });
+      const { apiRequestRaw } = await import("@/services/auth/api-client");
+      const res = await apiRequestRaw(`/api/users/me/export?format=${format}`);
+      if (res.status === 401) throw new Error("Export failed — sign in again");
       if (!res.ok) throw new Error("Export failed");
       if (format === "zip") return res.blob();
       return res.json();
@@ -548,6 +684,7 @@ export const coreApi = {
           amount: number;
           currency: string;
           key: string;
+          checkoutMode?: "razorpay" | "dev_mock";
           notes?: Record<string, string>;
         }>
       >("/api/payments/create-order", {
@@ -786,6 +923,44 @@ export const coreApi = {
           expiresAt: string | null;
         }>
       >(`/api/compliance/export/${exportId}`, { auth: true }).then((r) => r.data!),
+
+    /**
+     * Authoritative status for a single data-subject request.
+     *
+     * The backend resolves it through `getRequestForUser(id, userId)` and returns 404 when the
+     * request belongs to someone else, so ownership is enforced server-side and this client never
+     * has to filter. Status is read from the response and never inferred locally: an export that
+     * the customer submitted is not complete until the backend says so.
+     */
+    getRequest: (requestId: string) =>
+      apiRequest<
+        ApiResponse<{
+          requestId: string;
+          requestType: string;
+          status: string;
+          submittedAt: string;
+          dueDateAt: string;
+          completedAt: string | null;
+          rejectionReason: string | null;
+          slaDaysRemaining: number;
+          export: { id: string; exportStatus: string; fileUrl: string | null; expiresAt: string | null } | null;
+          deletion: { id: string; status: string } | null;
+        }>
+      >(`/api/compliance/request/${encodeURIComponent(requestId)}`, { auth: true }).then((r) => r.data!),
+
+    /**
+     * Withdraw consent for one policy.
+     *
+     * The backend accepts exactly TERMS, PRIVACY, COOKIES or REFUND and rejects anything else with
+     * 400 INVALID_INPUT, so the caller passes the enum rather than free text. Withdrawal is an
+     * explicit act by the account holder and is audited server-side with the request context.
+     */
+    withdrawConsent: (policyType: ConsentPolicyType) =>
+      apiRequest<ApiResponse<Record<string, unknown>>>("/api/compliance/consent/withdraw", {
+        method: "POST",
+        auth: true,
+        body: { policyType },
+      }).then((r) => r.data!),
   },
 
   support: {
@@ -844,7 +1019,7 @@ export const coreApi = {
         body: { code, amount },
       }).then((r) => r.data!),
     void: (id: string) =>
-      apiRequest<ApiResponse<{ refunded: number; walletBalance: number }>>(`/api/giftcards/${id}/void`, {
+      apiRequest<ApiResponse<{ refunded: number; walletBalance: number; refundedTo?: "ORIGINAL_PAYMENT" }>>(`/api/giftcards/${id}/void`, {
         method: "POST",
         auth: true,
       }).then((r) => r.data!),

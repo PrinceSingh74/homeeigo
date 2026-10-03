@@ -1,5 +1,7 @@
 import { apiRequest, apiRequestBlob, apiRequestText } from "@/lib/api-client";
 import type {
+  SupportIntelligence,
+  SupportRecommendationRow,
   ExecutiveBrief,
   ExecutiveBriefPeriod,
   ReportScheduleStatus,
@@ -75,6 +77,31 @@ export type AutomationInstance = {
   subjectId: string;
   stepIndex: number;
   createdAt: string;
+};
+
+/**
+ * An instance the engine says cannot make progress. Mirrors `StuckInstance` in
+ * `workflow-recovery.service.ts`.
+ *
+ * `evidence` and `actionable` are the two fields that matter to an operator and are shown verbatim:
+ * the backend states WHY it calls an instance stuck rather than asking anyone to trust the label,
+ * and it marks STALE_LEASE as not actionable because the executor reclaims expired leases itself —
+ * an operator "fixing" one would only race the engine.
+ */
+export type StuckWorkflowInstance = {
+  instanceId: string;
+  workflowId: string;
+  workflowVersion: number;
+  executionMode: string;
+  status: string;
+  reason: "STALE_LEASE" | "LOST_WAKEUP" | "EXPIRED_UNTERMINATED";
+  evidence: string;
+  stepIndex: number;
+  stepCount: number;
+  ageMs: number;
+  actionable: boolean;
+  recommendedAction: "REQUEUE" | "CANCEL" | "NONE";
+  updatedAt?: string;
 };
 
 export type AutomationDeadLetter = {
@@ -199,14 +226,90 @@ export type ZoneScore = {
 export type ZoneScoring = { ranked: ZoneScore[]; bestEarning: ZoneScore[]; worstService: ZoneScore[]; highRisk: ZoneScore[] };
 export type FraudEvent = { provider_hash: string; booking_id: string | null; implied_kmh: number; jump_meters: number; lat: number; lng: number; ts: string };
 export type FraudData = { suspiciousCount: number; riskScore: number; events: FraudEvent[] };
+/** X-86: the GPS fraud-signal warehouse did not answer — a state carrying no count and no score. */
+export type GeoFraudUnavailable = {
+  success: true;
+  available: false;
+  reasonCode: "FRAUD_SIGNALS_SOURCE_UNAVAILABLE";
+  cause: string;
+  reason: string;
+  data: null;
+  confidence: null;
+  freshness: null;
+  source: "unavailable";
+  cached: false;
+  generatedAt: string;
+};
+export type GeoFraudResponse = (GeoIntel<FraudData> & { available?: true }) | GeoFraudUnavailable;
+/** X-88: any warehouse read that did not answer — a state carrying no figures. */
+export type WarehouseUnavailable<R extends string = string> = {
+  available: false;
+  reasonCode: R;
+  cause: string;
+  reason: string;
+  data: null;
+};
+export type MlopsHealth = { total: number; trained: number; partial: number; blocked: number; productionModels: number; freshness: string };
+export type MlopsHealthResponse =
+  | { success: boolean; available?: true; data: MlopsHealth }
+  | ({ success: boolean } & WarehouseUnavailable<"ML_REGISTRY_SOURCE_UNAVAILABLE">);
+export type PipelineHealth = {
+  freshness: number;
+  totalDatasets: number;
+  /** Null when no data-quality rule could be evaluated (X-90) — not 0%. */
+  qualityScore: number | null;
+  qualityUnavailable?: boolean;
+  mlops: (Record<string, unknown> & { available?: true }) | WarehouseUnavailable<"ML_REGISTRY_SOURCE_UNAVAILABLE">;
+};
 export type RevenueForecast = { realized24h: number; realized7d: number; forecastHourly: number; forecastDaily: number; forecastWeekly: number; forecastMonthly: number; completedLast24h: number };
 export type DemandPoint = { zone_id: string; hour: string; predicted: number; lo: number; hi: number };
-export type DemandForecast = { horizonHours: number; points: DemandPoint[]; totalPredicted: number };
+/**
+ * `stale` and `forecastWindow` come from the API and must be honoured before charting.
+ *
+ * ML.FORECAST projects from the end of the model's training data, so a warehouse forecast can
+ * describe hours that are months old. Charts here carry no dates, so an unchecked render shows a
+ * past window as the coming day.
+ */
+/** X-84: the forecast source did not answer — a state carrying no forecast numbers. */
+export type DemandForecastUnavailable = {
+  success: true;
+  available: false;
+  reasonCode: "FORECAST_SOURCE_UNAVAILABLE";
+  cause: string;
+  reason: string;
+  data: null;
+  confidence: null;
+  freshness: null;
+  source: "unavailable";
+  cached: false;
+  generatedAt: string;
+};
+export type DemandForecastResponse = (GeoIntel<DemandForecast> & { available?: true }) | DemandForecastUnavailable;
+export type DemandForecast = {
+  horizonHours: number;
+  points: DemandPoint[];
+  totalPredicted: number;
+  stale?: boolean;
+  forecastWindow?: { from: string | null; to: string | null };
+  expiredByHours?: number | null;
+  limitations?: string[];
+};
 
 // --- City Digital Twin ---
 export type TwinEnvelope<T> = { success: boolean; data: T; confidence: number; freshness: string; source: string; generatedAt: string };
 export type TwinLayers = {
-  demand: { current: number; forecast1h: number; forecast6h: number; forecast24h: number };
+  /**
+   * Forecast figures are nullable: the backend withholds them when the warehouse forecast window
+   * has already passed, rather than sending 0. A 0 would read as "no demand expected", which is a
+   * prediction nobody made. `forecastUnavailableReason` says why they are absent.
+   */
+  demand: {
+    current: number;
+    forecast1h: number | null;
+    forecast6h: number | null;
+    forecast24h: number | null;
+    forecastUnavailableReason?: string | null;
+  };
   supply: { online: number; busy: number; available: number; density: number; shortageRisk: number };
   traffic: { congestionIndex: number; level: string };
   weather: { condition: string; description: string; severity: string; rain1hMm: number; weatherImpactScore: number; floodRisk: string; aqi: number | null } | null;
@@ -292,10 +395,20 @@ export type ManagedCityRow = {
   areaCount: number;
   pincodeCount: number;
   societyCount: number;
-  activePartners: number;
-  customers: number;
-  servicesCompleted: number;
-  fulfillmentRate: number;
+  /**
+   * null = UNMEASURED, and the backend means it.
+   *
+   * `deriveCitySummary` publishes these straight from the aggregate query and returns null when
+   * there is nothing authoritative to publish; `coverage.service` also falls back to an EMPTY live
+   * map if the aggregate read fails, so every one of these can arrive null on a healthy deploy.
+   * This block previously declared them non-null, which is why `tsc` was clean while the page threw
+   * "Cannot read properties of null (reading 'toFixed')" in the browser.
+   */
+  activePartners: number | null;
+  customers: number | null;
+  servicesCompleted: number | null;
+  /** Always null today — see OWNER DECISION #9, this metric has no agreed definition. */
+  fulfillmentRate: number | null;
   coverageScore: number;
   /** Non-null when an admin has manually pinned this city's status. */
   managedStatus: CityStatus | null;
@@ -310,10 +423,20 @@ export type CoverageCityRow = {
   areaCount: number;
   pincodeCount: number;
   societyCount: number;
-  activePartners: number;
-  customers: number;
-  servicesCompleted: number;
-  fulfillmentRate: number;
+  /**
+   * null = UNMEASURED, and the backend means it.
+   *
+   * `deriveCitySummary` publishes these straight from the aggregate query and returns null when
+   * there is nothing authoritative to publish; `coverage.service` also falls back to an EMPTY live
+   * map if the aggregate read fails, so every one of these can arrive null on a healthy deploy.
+   * This block previously declared them non-null, which is why `tsc` was clean while the page threw
+   * "Cannot read properties of null (reading 'toFixed')" in the browser.
+   */
+  activePartners: number | null;
+  customers: number | null;
+  servicesCompleted: number | null;
+  /** Always null today — see OWNER DECISION #9, this metric has no agreed definition. */
+  fulfillmentRate: number | null;
   coverageScore: number;
   liveAreas: number;
   limitedAreas: number;
@@ -413,6 +536,216 @@ export type PendingServiceSkillRequest = {
   requestNote: string | null;
 };
 
+/* ── Phase 10 §10 — quality verdicts + completion (admin view) ─────────────────────────────── */
+
+/** Mirror of the backend VerdictRecord (booking-quality.service), dates as ISO strings. */
+export type AdminQualityVerdict = {
+  id: number;
+  sequence: number;
+  verdict: "PASS" | "PASS_WITH_EXCEPTION" | "REWORK_REQUIRED" | "FAILED" | "ESCALATED";
+  reasonCodes: string[];
+  evidence: unknown;
+  actorType: string;
+  actorId: string | null;
+  reason: string | null;
+  policyVersion: string;
+  serviceConfigVersion: number | null;
+  bookingStatus: string;
+  supersedesId: number | null;
+  requestId: string | null;
+  traceId: string | null;
+  createdAt: string;
+};
+
+/** Mirror of QUALITY_VERDICTS (backend lib/quality-verdict.ts) — the values an override may set. */
+export const ADMIN_QUALITY_VERDICTS = ["PASS", "PASS_WITH_EXCEPTION", "REWORK_REQUIRED", "FAILED", "ESCALATED"] as const;
+
+export type AdminBookingCompletion = {
+  state: "PENDING_CUSTOMER" | "CONFIRMED" | "AUTO_CONFIRMED" | "ISSUE_REPORTED";
+  verdictId: number | null;
+  requestedAt: string;
+  confirmBy: string;
+  resolvedAt: string | null;
+  resolvedByType: string | null;
+  resolvedById: string | null;
+  caseId: string | null;
+  version: number;
+};
+
+export type AdminQualityView = {
+  enforced: boolean;
+  latest: AdminQualityVerdict | null;
+  history: AdminQualityVerdict[];
+  completion: AdminBookingCompletion | null;
+  audit: Array<{
+    id: number;
+    action: string;
+    from_state: string | null;
+    to_state: string;
+    verdict_id: number | null;
+    case_id: string | null;
+    actor_type: string | null;
+    actor_id: string | null;
+    reason: string | null;
+    request_id: string | null;
+    trace_id: string | null;
+    changed_at: string;
+  }>;
+  warranty: { state: string; policy: unknown; startsAt: string; expiresAt: string; voidReason: string | null } | null;
+};
+
+/* ── Phase 11 — matching diagnostics (read-only; nothing is dispatched) ────────────────────── */
+
+export type AdminMatchingDiagnostics = {
+  bookingId: string;
+  bookingStatus: string;
+  jobLocated: boolean;
+  matches: Array<{
+    providerId: string;
+    totalScore: number;
+    distance: number | null;
+    scoreBreakdown: Record<string, number>;
+    unknownSignals: string[];
+  }>;
+  rejections: Array<{ providerId: string; reasons: string[]; details: Array<Record<string, unknown>> }>;
+  /** Providers carrying each reason (a provider counts once per reason it carries). */
+  counts: Record<string, number>;
+  latencyMs: number;
+  candidateCount: number;
+  serviceCapabilityMode: string;
+};
+
+/* ── Phase 10 §11 — complaint / warranty-claim cases ───────────────────────────────────────── */
+
+/** Mirrors of backend lib/booking-case-policy.ts — kept in sync by hand (frontend mirrors, never imports). */
+export const ADMIN_CASE_STATES = ["CASE_CREATED", "TRIAGE", "ELIGIBILITY", "INVESTIGATION", "ACTION", "RESOLVED", "REJECTED", "ESCALATED"] as const;
+export const ADMIN_CASE_TYPES = ["COMPLAINT", "WARRANTY_CLAIM", "REWORK"] as const;
+export const ADMIN_RESOLVE_ACTIONS = ["REWORK", "REFUND", "INSPECTION", "REJECT", "NONE"] as const;
+export type AdminResolveAction = (typeof ADMIN_RESOLVE_ACTIONS)[number];
+/** Admin transitions between OPEN states; RESOLVED/REJECTED are reached only through resolve. */
+export const ADMIN_CASE_TRANSITIONS: Readonly<Record<string, readonly string[]>> = {
+  CASE_CREATED: ["TRIAGE", "ESCALATED"],
+  TRIAGE: ["ELIGIBILITY", "INVESTIGATION", "ESCALATED"],
+  ELIGIBILITY: ["INVESTIGATION", "ACTION", "ESCALATED"],
+  INVESTIGATION: ["ELIGIBILITY", "ACTION", "ESCALATED"],
+  ACTION: ["INVESTIGATION", "ESCALATED"],
+  ESCALATED: ["TRIAGE", "ELIGIBILITY", "INVESTIGATION", "ACTION"],
+  RESOLVED: [],
+  REJECTED: [],
+};
+
+export type AdminCaseSummary = {
+  id: string;
+  caseNumber: string;
+  bookingId: string;
+  customerId: string;
+  providerId: string | null;
+  type: string;
+  category: string;
+  state: string;
+  version: number;
+  ownerAdminId: string | null;
+  slaDueAt: string | null;
+  slaBreached: boolean;
+  createdAt: string;
+  closedAt: string | null;
+  resolution: Record<string, unknown> | null;
+};
+
+export type AdminCaseEligibility = {
+  complaintWindowOpen: boolean;
+  warrantyCovers: boolean;
+  reasonCodes: string[];
+  allowedActions: Array<"REWORK" | "REFUND" | "INSPECTION" | "REJECT">;
+  proofRequired: boolean;
+  proofMissing: boolean;
+};
+
+export type AdminCaseDetail = {
+  /** The raw booking_cases row (snake_case), dates as ISO strings. */
+  case: {
+    id: string;
+    case_number: string;
+    booking_id: string;
+    customer_id: string;
+    provider_id: string | null;
+    type: string;
+    category: string;
+    state: string;
+    description: string | null;
+    eligibility: Record<string, unknown> | null;
+    resolution: Record<string, unknown> | null;
+    warranty_snapshot: Record<string, unknown> | null;
+    service_config_version: number | null;
+    sla_due_at: string | null;
+    owner_admin_id: string | null;
+    version: number;
+    created_at: string;
+    updated_at: string;
+    closed_at: string | null;
+  };
+  eligibilityNow: AdminCaseEligibility;
+  booking: {
+    id: string;
+    bookingNumber: string;
+    status: string;
+    completedAt: string | null;
+    totalAmount: number;
+    providerId: string | null;
+    serviceId: string;
+  } | null;
+  warranty: { state: string; startsAt: string; expiresAt: string } | null;
+  followUps: Array<{ id: string; booking_number: string; booking_kind: string; status: string; scheduled_date: string; provider_id: string | null }>;
+  refunds: Array<{ id: string; amount: number; status: string; idempotency_key: string; created_at: string }>;
+  events: Array<{
+    id: number;
+    action: string;
+    from_state: string | null;
+    to_state: string;
+    actor_type: string | null;
+    actor_id: string | null;
+    reason: string | null;
+    details: Record<string, unknown> | null;
+    request_id: string | null;
+    trace_id: string | null;
+    created_at: string;
+  }>;
+  evidence: Array<{
+    id: number;
+    kind: string;
+    jobEvidenceId: string | null;
+    mediaStorageKey: string | null;
+    mediaUrl: string | null;
+    note: string | null;
+    actorType?: string | null;
+    actorId?: string | null;
+    createdAt: string;
+  }>;
+};
+
+/* ── Phase 11 — provider capability profile (admin review) ─────────────────────────────────── */
+
+export const ADMIN_CAPABILITY_KINDS = ["skills", "certifications", "equipment", "insurance", "languages"] as const;
+export type AdminCapabilityKind = (typeof ADMIN_CAPABILITY_KINDS)[number];
+
+/** Rows are camelCased DB rows plus computed `validity` and `nearExpiry`; columns vary by kind. */
+export type AdminCapabilityRow = Record<string, unknown> & { id: number; status?: string; validity: string; nearExpiry?: boolean };
+
+export type AdminCapabilityProfile = {
+  providerId: string;
+  dataOrigin: string | null;
+  generatedAt: string;
+  skills: AdminCapabilityRow[];
+  certifications: AdminCapabilityRow[];
+  equipment: AdminCapabilityRow[];
+  insurance: AdminCapabilityRow[];
+  languages: AdminCapabilityRow[];
+  services: AdminCapabilityRow[];
+  memberships: Array<Record<string, unknown> & { validity: string }>;
+  summary: { nearExpiry: number; expired: number; pendingReview: number };
+  audit: Array<Record<string, unknown>>;
+};
+
 export const adminApi = {
   dashboard: () =>
     apiRequest<ApiResponse<DashboardData>>("/api/admin/dashboard", {
@@ -475,9 +808,9 @@ export const adminApi = {
     surge: () => apiRequest<GeoIntel<SurgeZone[]>>("/api/geo-intel/surge", { auth: true }),
     density: () => apiRequest<GeoIntel<DensityZone[]>>("/api/geo-intel/provider-density", { auth: true }),
     zoneScoring: () => apiRequest<GeoIntel<ZoneScoring>>("/api/geo-intel/zone-scoring", { auth: true }),
-    fraud: (limit = 50) => apiRequest<GeoIntel<FraudData>>("/api/geo-intel/fraud", { auth: true, query: { limit } }),
+    fraud: (limit = 50) => apiRequest<GeoFraudResponse>("/api/geo-intel/fraud", { auth: true, query: { limit } }),
     revenueForecast: () => apiRequest<GeoIntel<RevenueForecast>>("/api/geo-intel/revenue-forecast", { auth: true }),
-    demandForecast: (horizon = 24) => apiRequest<GeoIntel<DemandForecast>>("/api/geo-intel/demand-forecast", { auth: true, query: { horizon } }),
+    demandForecast: (horizon = 24) => apiRequest<DemandForecastResponse>("/api/geo-intel/demand-forecast", { auth: true, query: { horizon } }),
   },
 
   /** Server-side driving route (Google → OSRM). Avoids client Directions billing errors. */
@@ -642,11 +975,171 @@ export const adminApi = {
       }>
     >(`/api/bookings/${id}/evidence`, { auth: true }).then((r) => r.data!),
 
-  adminCancelBooking: (id: string, reason: string) =>
+  /** Phase 10 §6 — requirement operations view: items, state, START gate and append-only audit. */
+  getBookingRequirements: (id: string) =>
+    apiRequest<
+      ApiResponse<{
+        enforced: boolean;
+        serviceVersion: number | null;
+        items: Array<{
+          code: string;
+          label: string;
+          kind: string;
+          enforcementPoint: "BEFORE_BOOKING" | "BEFORE_ARRIVAL" | "AT_START";
+          responsibility: string;
+          verification: string;
+          optional: boolean;
+          state: "UNRESOLVED" | "SATISFIED" | "FAILED" | "EXPIRED";
+          resolvedAt: string | null;
+          resolvedByRole: string | null;
+          note: string | null;
+          actions: string[];
+          blocking: { reason: string; remediation: { role: string; text: string } } | null;
+        }>;
+        gate: { arrival: { ok: boolean; blocking: Array<{ code: string; label: string; reason: string }> }; start: { ok: boolean; blocking: Array<{ code: string; label: string; reason: string }> } };
+        audit?: Array<{
+          id: number;
+          code: string;
+          action: string;
+          fromState: string | null;
+          toState: string;
+          actorType: string | null;
+          actorId: string | null;
+          reason: string | null;
+          requestId: string | null;
+          traceId: string | null;
+          evidenceKind: string | null;
+          changedAt: string;
+        }>;
+      }>
+    >(`/api/admin/bookings/${id}/requirements`, { auth: true }).then((r) => r.data!),
+
+  /** Phase 10 §9 — safety operations view: frozen rules, holds, open incidents, hold audit. */
+  getBookingSafety: (id: string) =>
+    apiRequest<
+      ApiResponse<{
+        gate: { ok: boolean; message: string };
+        holdsEnforced: boolean;
+        safety: { prohibitedConditions: string[]; warnings: string[]; providerRequirements: string[]; medicalDisclaimer: string | null; emergencyProtocol: string | null } | null;
+        holds: Array<{ id: number; condition: string; source: string; state: string; incidentId: string | null; note: string | null; raisedByRole: string; raisedAt: string; releasedAt: string | null; releaseReason: string | null }>;
+        incidents: Array<{ id: string; type: string; status: string }>;
+        audit: Array<{ id: number; condition: string; action: string; from_state: string | null; to_state: string; actor_type: string | null; reason: string | null; request_id: string | null; trace_id: string | null; incident_id: string | null; changed_at: string }>;
+      }>
+    >(`/api/admin/bookings/${id}/safety`, { auth: true }).then((r) => r.data!),
+
+  /** Safety operations clear a hold, with a reason (audited). The linked incident is resolved in the safety queue. */
+  adminReleaseSafetyHold: (id: string, holdId: number, reason: string) =>
+    apiRequest<ApiResponse<{ released: boolean; gate: { ok: boolean; message: string } }>>(`/api/admin/bookings/${id}/safety/holds/${holdId}/release`, { method: "POST", auth: true, body: { reason } }).then((r) => r.data!),
+
+  /** X-55 — safety operations place a hold themselves (source ADMIN). The condition is shown to the professional and the customer; the reason stays internal. */
+  adminPlaceSafetyHold: (id: string, condition: string, reason: string) =>
+    apiRequest<ApiResponse<{ holdId: number | null; changed: boolean; gate: { ok: boolean; message: string } }>>(`/api/admin/bookings/${id}/safety/holds`, { method: "POST", auth: true, body: { condition, reason } }).then((r) => r.data!),
+
+  /** Phase 10 §8 — execution operations view: steps, state, completion gate, step audit. */
+  getBookingExecution: (id: string) =>
+    apiRequest<
+      ApiResponse<{
+        enforced: boolean;
+        serviceVersion: number | null;
+        steps: Array<{ code: string; stepNumber: number; title: string; kind: string; mandatory: boolean; evidence: string; state: string; finishedAt: string | null; note: string | null; reason: string | null; actions: string[] }>;
+        gate: { ok: boolean; blocking: Array<{ code: string; reason: string }> };
+        audit: Array<{ id: number; code: string; action: string; from_state: string | null; to_state: string; actor_type: string | null; actor_id: string | null; reason: string | null; request_id: string | null; trace_id: string | null; evidence_ref: string | null; changed_at: string }>;
+      }>
+    >(`/api/admin/bookings/${id}/execution`, { auth: true }).then((r) => r.data!),
+
+  /** The one admin step action: reset a FAILED/ESCALATED step for a re-attempt, with a reason. */
+  adminResetExecutionStep: (id: string, code: string, reason: string) =>
+    apiRequest<ApiResponse<{ state: string }>>(`/api/admin/bookings/${id}/execution/${encodeURIComponent(code)}/reset`, { method: "POST", auth: true, body: { reason } }).then((r) => r.data!),
+
+  /** The one admin action on a requirement: force a re-check, with a reason (audited). */
+  adminRecheckRequirement: (id: string, code: string, reason: string) =>
+    apiRequest<ApiResponse<{ code: string; state: string; changed: boolean }>>(
+      `/api/admin/bookings/${id}/requirements/${encodeURIComponent(code)}/recheck`,
+      { method: "POST", auth: true, body: { reason } },
+    ).then((r) => r.data!),
+
+  /** Phase 10 §10 — quality operations view: verdict history, completion row, warranty, completion audit. */
+  getBookingQuality: (id: string) =>
+    apiRequest<ApiResponse<AdminQualityView>>(`/api/admin/bookings/${id}/quality`, { auth: true }).then((r) => r.data!),
+
+  /** The one admin quality action: a new verdict that supersedes the latest, with a reason. Never edits history. */
+  adminOverrideQualityVerdict: (id: string, verdict: string, reason: string) =>
+    apiRequest<ApiResponse<{ verdict: AdminQualityVerdict; supersedes: number | null }>>(
+      `/api/admin/bookings/${id}/quality/override`,
+      { method: "POST", auth: true, body: { verdict, reason } },
+    ).then((r) => r.data!),
+
+  /** Phase 11 — why this booking matched whom. Read-only: re-runs the matcher, dispatches nothing. */
+  getBookingMatchingDiagnostics: (id: string) =>
+    apiRequest<ApiResponse<AdminMatchingDiagnostics>>(`/api/admin/bookings/${id}/matching-diagnostics`, { auth: true }).then((r) => r.data!),
+
+  /** Phase 10 §11 — complaint / warranty-claim cases (DISPUTES resource). */
+  cases: {
+    list: (filters: { state?: string; type?: string; slaBreached?: boolean; bookingId?: string; limit?: number; offset?: number } = {}) =>
+      apiRequest<ApiResponse<{ available: boolean; total: number; cases: AdminCaseSummary[] }>>("/api/admin/cases", {
+        auth: true,
+        query: {
+          state: filters.state,
+          type: filters.type,
+          bookingId: filters.bookingId,
+          slaBreached: filters.slaBreached ? "true" : undefined,
+          limit: filters.limit,
+          offset: filters.offset,
+        },
+      }).then((r) => r.data!),
+
+    detail: (caseId: string) =>
+      apiRequest<ApiResponse<AdminCaseDetail>>(`/api/admin/cases/${caseId}`, { auth: true }).then((r) => r.data!),
+
+    /** Between OPEN states only; RESOLVED/REJECTED are reached through resolve. 409 CASE_VERSION_CONFLICT when stale. */
+    transition: (caseId: string, input: { to: string; reason: string; expectedVersion?: number }) =>
+      apiRequest<ApiResponse<{ case: Record<string, unknown> }>>(`/api/admin/cases/${caseId}/transition`, {
+        method: "POST",
+        auth: true,
+        body: input,
+      }).then((r) => r.data!),
+
+    /**
+     * Decide the case. refundPaise for REFUND; scheduledDate (ISO) for REWORK/INSPECTION;
+     * overrideReason unlocks an action the warranty does not allow (409 ACTION_NOT_ALLOWED otherwise,
+     * with details.allowedActions naming what is).
+     */
+    resolve: (
+      caseId: string,
+      input: {
+        action: AdminResolveAction;
+        reason: string;
+        refundPaise?: number;
+        scheduledDate?: string;
+        overrideReason?: string;
+        expectedVersion?: number;
+      },
+    ) =>
+      apiRequest<ApiResponse<{ replayed: boolean; state: string; resolution: Record<string, unknown> | null }>>(
+        `/api/admin/cases/${caseId}/resolve`,
+        { method: "POST", auth: true, body: input },
+      ).then((r) => r.data!),
+  },
+
+  /** Phase 11 — provider capability review (profile with computed validity + audit; verify/reject/revoke). */
+  capabilities: {
+    profile: (providerId: string) =>
+      apiRequest<ApiResponse<AdminCapabilityProfile>>(`/api/admin/providers/${providerId}/capabilities`, { auth: true }).then((r) => r.data!),
+
+    /** verify: DECLARED/REJECTED rows; reject: DECLARED; revoke: DECLARED/VERIFIED (languages: revoke deactivates). Reason required for reject/revoke. */
+    transition: (providerId: string, kind: AdminCapabilityKind, rowId: number, action: "verify" | "reject" | "revoke", reason?: string) =>
+      apiRequest<ApiResponse<{ row: Record<string, unknown> }>>(
+        `/api/admin/providers/${providerId}/capabilities/${kind}/${rowId}/${action}`,
+        { method: "POST", auth: true, body: reason ? { reason } : {} },
+      ).then((r) => r.data!),
+  },
+
+  /** refundPolicy: "customer_policy" = the published tiers a customer would get; "full" = all refundable. */
+  adminCancelBooking: (id: string, reason: string, refundPolicy: "customer_policy" | "full" = "customer_policy") =>
     apiRequest<ApiResponse<Record<string, unknown>>>(`/api/admin/bookings/${id}/cancel`, {
       method: "POST",
       auth: true,
-      body: { reason },
+      body: { reason, refundPolicy },
     }).then((r) => r.data!),
 
   adminRescheduleBooking: (id: string, scheduledDate: string, reason: string) =>
@@ -706,11 +1199,18 @@ export const adminApi = {
 
   /** Phase 1 ML data pipeline — consumes /api/analytics/* */
   dataPipeline: {
-    health: () =>
-      apiRequest<ApiResponse<{ pipeline: { freshness: number; totalDatasets: number; qualityScore: number; mlops: Record<string, unknown> } }>>(
-        "/api/analytics/health",
-        { auth: true },
-      ).then((r) => r.data!),
+    health: async () => {
+      const r = await apiRequest<{
+        success: boolean;
+        pipeline?: PipelineHealth;
+        data?: { pipeline?: PipelineHealth };
+      }>("/api/analytics/health", { auth: true });
+      const pipeline = r.pipeline ?? r.data?.pipeline;
+      if (!pipeline) {
+        throw new Error("Pipeline health payload missing");
+      }
+      return { pipeline };
+    },
     etlJobs: () =>
       apiRequest<ApiResponse<{ jobs: Array<Record<string, unknown>> }>>("/api/analytics/etl/jobs", { auth: true }).then((r) => r.data!),
     watermarks: () =>
@@ -1370,6 +1870,31 @@ export const adminApi = {
         body: { isActive },
       }).then((r) => r.data!),
 
+    get: (id: string) =>
+      apiRequest<ApiResponse<{ service: AdminServiceRow }>>(`/api/admin/services/${id}`, { auth: true }).then((r) => r.data!),
+
+    transition: (id: string, to: RequestableLifecycle, expectedVersion?: number) =>
+      apiRequest<ApiResponse<{ service: AdminServiceRow }>>(`/api/admin/services/${id}/lifecycle`, {
+        method: "POST",
+        auth: true,
+        body: { to, expectedVersion },
+      }).then((r) => r.data!),
+
+    versions: (id: string) =>
+      apiRequest<ApiResponse<{ currentVersion: number; versions: ServiceVersionRow[] }>>(`/api/admin/services/${id}/versions`, {
+        auth: true,
+      }).then((r) => r.data!),
+    /** Phase 06 — reusable requirement catalogue (materials / equipment / customer preconditions). */
+    requirementItems: (includeInactive = false) =>
+      apiRequest<ApiResponse<{ items: RequirementItemRow[] }>>(`/api/admin/requirement-items${includeInactive ? "?includeInactive=true" : ""}`, { auth: true }).then((r) => r.data!),
+    createRequirementItem: (body: { code: string; kind: RequirementItemRow["kind"]; name: string; customerLabel?: string | null; description?: string | null }) =>
+      apiRequest<ApiResponse<{ item: RequirementItemRow }>>("/api/admin/requirement-items", { method: "POST", body, auth: true }).then((r) => r.data!),
+    updateRequirementItem: (id: string, body: { expectedVersion: number; name?: string; customerLabel?: string | null; description?: string | null; isActive?: boolean }) =>
+      apiRequest<ApiResponse<{ item: RequirementItemRow }>>(`/api/admin/requirement-items/${id}`, { method: "PUT", body, auth: true }).then((r) => r.data!),
+
+    categories: () =>
+      apiRequest<ApiResponse<ServiceTaxonomyTree>>("/api/admin/service-categories", { auth: true }).then((r) => r.data!),
+
     remove: (id: string) =>
       apiRequest<ApiResponse<unknown>>(`/api/admin/services/${id}`, {
         method: "DELETE",
@@ -1517,6 +2042,31 @@ export const adminApi = {
         `/api/admin/support/tickets/${id}`,
         { auth: true },
       ).then((r) => r.data!.ticket),
+    /** The persisted recommendation history for one ticket — the audit trail behind the panel. */
+    recommendations: (id: string) =>
+      apiRequest<ApiResponse<{ history: SupportRecommendationRow[] }>>(
+        `/api/admin/support/tickets/${id}/recommendations`,
+        { auth: true },
+      ).then((r) => r.data!.history),
+
+    /**
+     * Record a person's verdict on the current recommendation.
+     *
+     * Records agreement only. Nothing is executed here — the existing respond / escalate / resolve
+     * controls remain the only way anything happens to a ticket.
+     */
+    recommendationVerdict: (id: string, verdict: "APPROVED" | "REJECTED", note?: string) =>
+      apiRequest<ApiResponse<{ matched: boolean; recommendationId: string | null }>>(
+        `/api/admin/support/tickets/${id}/recommendation/verdict`,
+        { auth: true, method: "POST", body: { verdict, note } },
+      ).then((r) => r.data!),
+
+    /** Phase-10 intelligence for one ticket. Read-only; gated by the ticket's own DISPUTES/READ. */
+    intelligence: (id: string) =>
+      apiRequest<ApiResponse<SupportIntelligence>>(
+        `/api/admin/support/tickets/${id}/intelligence`,
+        { auth: true },
+      ).then((r) => r.data!),
     analytics: () =>
       apiRequest<ApiResponse<Record<string, unknown>>>("/api/admin/support/analytics", {
         auth: true,
@@ -1609,6 +2159,19 @@ export const adminApi = {
         method: "POST",
         auth: true,
         body: { reason },
+      }),
+    /**
+     * The counterpart to `freezeCommission`, which the console has always had.
+     *
+     * The backend endpoint existed with no caller, so a frozen referral commission could be put on
+     * hold from the fraud console and then only released by someone with database access. Freezing
+     * is reversible by design — the endpoint moves the commission back to review rather than
+     * approving it — so an operator who froze one in error had no way to undo it.
+     */
+    unfreezeCommission: (id: string) =>
+      apiRequest<ApiResponse<unknown>>(`/api/admin/fraud/commissions/${id}/unfreeze`, {
+        method: "POST",
+        auth: true,
       }),
     blacklistUser: (id: string, reason: string) =>
       apiRequest<ApiResponse<unknown>>(`/api/admin/fraud/users/${id}/blacklist`, {
@@ -1756,6 +2319,42 @@ export const adminApi = {
         `/api/admin/automation/dead-letters/${id}/replay`,
         { method: "POST", auth: true },
       ).then((r) => r.data!),
+
+    /**
+     * Instances that cannot make progress. The backend has exposed these since Phase 14 and
+     * nothing called it: 16 stuck instances were being counted in `/metrics` with no way for an
+     * operator to see, let alone resolve, any of them.
+     */
+    stuckWorkflows: () =>
+      apiRequest<ApiResponse<StuckWorkflowInstance[]>>("/api/admin/governance/workflows/stuck", {
+        auth: true,
+      }).then((r) => r.data!),
+
+    /**
+     * `observedStatus` / `observedUpdatedAt` are the state the operator was looking at. The backend
+     * requires them so two simultaneous recoveries resolve to exactly one winner instead of
+     * scheduling two wake-ups on one instance — so they are passed through, never defaulted.
+     */
+    recoverWorkflow: (input: {
+      instanceId: string;
+      action: "REQUEUE" | "CANCEL";
+      reason: string;
+      observedStatus: string;
+      observedUpdatedAt: string;
+    }) =>
+      apiRequest<ApiResponse<{ ok: boolean; reason?: string }>>(
+        `/api/admin/governance/workflows/${encodeURIComponent(input.instanceId)}/recover`,
+        {
+          method: "POST",
+          auth: true,
+          body: {
+            action: input.action,
+            reason: input.reason,
+            observedStatus: input.observedStatus,
+            observedUpdatedAt: input.observedUpdatedAt,
+          },
+        },
+      ).then((r) => r.data!),
   },
 
   compliance: {
@@ -1845,6 +2444,15 @@ export const adminApi = {
 
   // Phase 17.4 / 16.4 / 16.3 — operations map, heatmap, geofence management (existing APIs).
   opsMap: () => apiRequest<ApiResponse<OpsMapData>>("/api/admin/ops-map", { auth: true }).then((r) => r.data!),
+  /** Shared, audited alert acknowledgements (server-side; every admin sees the same set). */
+  opsAlertAcks: () =>
+    apiRequest<ApiResponse<{ acks: OpsAlertAck[] }>>("/api/admin/ops-alerts/acks", { auth: true }).then((r) => r.data!.acks),
+  acknowledgeOpsAlerts: (keys: string[]) =>
+    apiRequest<ApiResponse<{ acknowledged: number; rejected: string[] }>>("/api/admin/ops-alerts/acks", {
+      method: "POST",
+      auth: true,
+      body: { keys },
+    }).then((r) => r.data!),
   partnerAvailability: (query: {
     status?: string;
     zone?: string;
@@ -1861,6 +2469,7 @@ export const adminApi = {
           name: string;
           status: string;
           isOnline: boolean;
+          lifecycleState: string;
           city: string | null;
           zones: string[];
           skills: string[];
@@ -1873,6 +2482,13 @@ export const adminApi = {
           lastSeen: string | null;
           nextAvailable: string | null;
           rating: number;
+          presence: "FRESH" | "STALE" | "EXPIRED";
+          lastHeartbeatAt: string | null;
+          locationFreshness: "FRESH" | "STALE" | "EXPIRED";
+          lastLocationAt: string | null;
+          dispatchEligible: boolean;
+          dispatchBlockedBy: string | null;
+          dispatchReasons: string[];
         }>;
         total: number;
         page: number;
@@ -2078,8 +2694,8 @@ export const adminApi = {
       apiRequest<ApiResponse<Record<string, unknown>>>("/api/mlops/registry", { auth: true }).then((r) => r.data!),
     dataQuality: () =>
       apiRequest<ApiResponse<Record<string, unknown>>>("/api/mlops/data-quality", { auth: true }).then((r) => r.data!),
-    health: () =>
-      apiRequest<ApiResponse<Record<string, unknown>>>("/api/mlops/health", { auth: true }).then((r) => r.data!),
+    /** Whole response: `available: false` (warehouse down) must not read as an empty registry (X-88). */
+    health: () => apiRequest<MlopsHealthResponse>("/api/mlops/health", { auth: true }),
   },
 
   // --- RBAC: roles, admins, current permissions (real) ---
@@ -2097,6 +2713,10 @@ export const adminApi = {
         "/api/admin/rbac/me",
         { auth: true },
       ).then((r) => r.data!),
+    grantRole: (userId: string, roleId: string) =>
+      apiRequest<ApiResponse<unknown>>("/api/admin/rbac/grant-role", { method: "POST", auth: true, body: { userId, roleId } }),
+    revokeRole: (adminUserId: string) =>
+      apiRequest<ApiResponse<unknown>>("/api/admin/rbac/revoke-role", { method: "POST", auth: true, body: { adminUserId } }),
   },
 
   // --- Membership time-series (retention / churn per period) ---
@@ -2378,6 +2998,7 @@ export type CustomerIntel = {
 
 export type OpsMapProvider = { providerId: string; name: string; lat: number; lng: number; status: "ONLINE" | "BUSY" | "OFFLINE"; lastUpdate: string };
 export type OpsMapBooking = { bookingId: string; providerId: string | null; status: string; lat: number; lng: number; eta: number | null };
+export type OpsAlertAck = { alertKey: string; acknowledgedBy: string; acknowledgedAt: string; expiresAt: string };
 export type OpsMapAlert = { type: string; severity: "warning" | "critical"; bookingId?: string; providerId?: string; message: string };
 export type OpsMapData = {
   providers: OpsMapProvider[];
@@ -2514,6 +3135,7 @@ export type HCoinRule = {
 export type AdminHCoinAnalytics = {
   totalIssued: number;
   totalRedeemed: number;
+  totalExpired: number;
   outstanding: number;
   liabilityRupees: number;
   holders: number;
@@ -2927,6 +3549,271 @@ export type AdminServiceRow = {
   createdAt: string;
   rating?: number | null;
   reviewCount?: number;
+  pricingModel?: string;
+  thumbnail?: string | null;
+  images?: string[];
+  includedServices?: string[];
+  excludedServices?: string[];
+  requirements?: string[];
+  /** Full admin view of the booking/content config (null when none). */
+  catalogConfig?: ServiceCatalogConfig | null;
+  /** Stored config failed validation and is being ignored by the customer app. */
+  catalogConfigInvalid?: boolean;
+  /** What is still missing — computed by the backend. */
+  configGaps?: string[];
+  configSections?: { id: string; label: string; status: "ok" | "warn" | "missing"; issues: string[] }[];
+  publishBlocked?: { code: string; path: string; message: string }[];
+  bookable?: boolean;
+  serviceCode?: string | null;
+  /** Operational identifier (ops / ERP). Admin-only, unique when set. */
+  internalServiceCode?: string | null;
+  displayName?: string | null;
+  shortName?: string | null;
+  capabilityProfile?: string;
+  lifecycleStatus?: string;
+  /** Lifecycle moves the backend will accept from the current state. */
+  allowedTransitions?: string[];
+  configStatus?: string;
+  isCustomerVisible?: boolean;
+  isBookable?: boolean;
+  version?: number;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  seoKeywords?: string | null;
+  ownerTeam?: string | null;
+  operationsNotes?: string | null;
+  categoryId?: string | null;
+  subcategoryId?: string | null;
+  taxonomy?: { category: { slug: string; name: string } | null; subcategory: { slug: string; name: string } | null };
+  updatedAt?: string;
+  publishedAt?: string | null;
+  publishedBy?: string | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  lastReviewedAt?: string | null;
+  duration?: ServiceDuration;
+  /** D1: DURATION reserves the appointment length; FIXED keeps the 60-minute block (turnaround services). */
+  partnerSlotPolicy?: "DURATION" | "FIXED";
+  /** Minutes a default booking reserves on the partner calendar under the policy (incl. ±30-min buffers). */
+  reservedSlotMinutes?: number;
+};
+
+/** Mirror of backend ResolvedDuration (lib/service-catalog-config.ts resolveServiceDuration). */
+export type ServiceDuration = {
+  serviceMinutes: number;
+  addonMinutes: number;
+  preparationMinutes: number;
+  cleanupMinutes: number;
+  totalMinutes: number;
+  customerEstimate: { estimatedMinutes: number; minMinutes: number | null; maxMinutes: number | null };
+};
+
+export type ServiceTaxonomyTree = {
+  categories: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    shortName: string | null;
+    sortOrder: number;
+    isActive: boolean;
+    operationalCategories: string[];
+    serviceCount: number;
+    subcategories: Array<{ id: string; slug: string; name: string; sortOrder: number; isActive: boolean; serviceCount: number }>;
+  }>;
+};
+
+export type ServiceVersionRow = {
+  version: number;
+  status: string;
+  createdBy: string | null;
+  createdAt: string;
+  publishedAt: string | null;
+  snapshot: Record<string, unknown>;
+};
+
+export const REQUESTABLE_LIFECYCLES = ["DRAFT", "READY_FOR_REVIEW", "ACTIVE", "PAUSED", "DEPRECATED", "ARCHIVED"] as const;
+export type RequestableLifecycle = (typeof REQUESTABLE_LIFECYCLES)[number];
+
+/** Mirror of apps/backend src/lib/service-catalog-config.ts serviceCatalogConfigSchema. */
+/** Phase 06 — mirror of backend RequirementItemInfo + admin row fields. */
+export type RequirementItemRow = {
+  id: string;
+  code: string;
+  kind: "MATERIAL" | "EQUIPMENT" | "CUSTOMER_PRECONDITION";
+  name: string;
+  customerLabel: string | null;
+  description: string | null;
+  isActive: boolean;
+  version: number;
+  activeAssignments?: number;
+};
+
+/** Phase 06 — mirror of backend requirementAssignmentSchema (lib/service-requirements.ts). */
+export type RequirementAssignment = {
+  id: string;
+  itemCode: string;
+  responsibility: "CUSTOMER" | "PROFESSIONAL" | "PLATFORM" | "SHARED" | "UNKNOWN";
+  procurement?: "CUSTOMER" | "PROFESSIONAL" | "PLATFORM";
+  charge?: "INCLUDED" | "CHARGEABLE" | "SEPARATE_QUOTE" | "NOT_APPLICABLE";
+  optional?: boolean;
+  enforcement?: "INFORMATIONAL" | "WARNING" | "REQUIRED_BEFORE_BOOKING" | "REQUIRED_BEFORE_ARRIVAL" | "REQUIRED_AT_START";
+  verification?: "NONE" | "CUSTOMER_ATTESTATION" | "PARTNER_CHECK";
+  quantity?: number;
+  unit?: string;
+  quantityBasis?: "PER_BOOKING" | "PER_SELECTED_UNIT";
+  when?: { variantIds?: string[]; addonIds?: string[]; minQuantity?: number };
+  customerNote?: string;
+  customerWarning?: string;
+  partnerInstructions?: string;
+  handlingNote?: string;
+  internalNote?: string;
+  sortOrder?: number;
+  active?: boolean;
+};
+
+export type ServiceCatalogConfig = {
+  bookingMode?: "STANDARD" | "HOURLY";
+  comingSoon?: boolean;
+  sameDayAvailable?: boolean;
+  video?: string;
+  quantity?: {
+    type: "NONE" | "HOUR" | "UNIT" | "SEAT" | "ROOM" | "BATHROOM" | "SOFA_SEAT" | "MATTRESS" | "WINDOW" | "FAN" | "APPLIANCE" | "SQ_FT" | "AREA" | "LOAD" | "ITEM" | "PACKAGE";
+    unitLabel: string;
+    unitLabelPlural?: string;
+    min: number;
+    max: number;
+    step?: number;
+    default?: number;
+    unitPrice?: number;
+    minimumCharge?: number;
+    durationPerUnitMin?: number;
+    required?: boolean;
+  };
+  variants?: {
+    id: string;
+    name: string;
+    price: number;
+    durationMin?: number;
+    description?: string;
+    inclusions?: string[];
+    exclusions?: string[];
+    requirements?: string[];
+    sortOrder?: number;
+    audiences?: ("women" | "men" | "girls" | "boys" | "senior-women" | "senior-men")[];
+    professionalPreferences?: ("NO_PREFERENCE" | "FEMALE" | "MALE")[];
+    quantity?: { unitPrice?: number; min?: number; max?: number };
+    active?: boolean;
+  }[];
+  /** When variants exist, one must be chosen (no silent base-price fallback). */
+  variantRequired?: boolean;
+  audiences?: ("women" | "men" | "girls" | "boys" | "senior-women" | "senior-men")[];
+  eligibility?: string;
+  materialPolicy?: "CUSTOMER_PROVIDED" | "PROFESSIONAL_PROVIDED" | "PACKAGE_INCLUDED" | "MIXED" | "NOT_REQUIRED" | "NOT_SPECIFIED";
+  equipmentPolicy?: "CUSTOMER_PROVIDED" | "PROFESSIONAL_PROVIDED" | "PACKAGE_INCLUDED" | "MIXED" | "NOT_REQUIRED" | "NOT_SPECIFIED";
+  sparePartsPolicy?: "NOT_APPLICABLE" | "INCLUDED" | "CUSTOMER_PAYS" | "APPROVAL_REQUIRED";
+  preparation?: string[];
+  safetyNotes?: string[];
+  faqs?: { q: string; a: string }[];
+  addons?: {
+    id: string;
+    name: string;
+    price: number;
+    durationMin?: number;
+    description?: string;
+    quantityAllowed?: boolean;
+    maxQuantity?: number;
+    active?: boolean;
+    compatibleVariantIds?: string[];
+    requiresAddonIds?: string[];
+    conflictsWithAddonIds?: string[];
+    sortOrder?: number;
+  }[];
+  /** Phase 06 assignments (mirrored to service_requirements by the backend in the same save). */
+  requirements?: RequirementAssignment[];
+  /** Server-attached catalogue facts for assigned items; read-only (the backend strips it from writes). */
+  requirementItems?: Record<string, { code: string; kind: RequirementItemRow["kind"]; name: string; customerLabel?: string | null; isActive: boolean }>;
+  duration?: {
+    estimatedMin?: number;
+    minMin?: number;
+    maxMin?: number;
+    unit?: "MINUTE" | "HOUR";
+    preparationMin?: number;
+    serviceMin?: number;
+    cleanupMin?: number;
+    totalSlotMin?: number;
+  };
+  availability?: {
+    sameDay?: boolean;
+    minimumLeadTimeMinutes?: number;
+    maximumAdvanceDays?: number;
+  };
+  bookingRules?: { cancellationPolicy?: string; reschedulePolicy?: string };
+  providerRequirements?: { requiredSkills?: string[]; verifiedProfessionalRequired?: boolean };
+  /**
+   * Mirrors `payment` / `quality` / `matching` in the backend's catalog-config schema
+   * (apps/backend/src/lib/service-catalog-config.ts). This type is a HAND-WRITTEN MIRROR — the apps
+   * do not import backend types — so a field the backend accepts is invisible here until it is
+   * added. The service editor wrote splitPaymentAllowed, membershipAllowed, the quality checklist
+   * and the whole matching block against a mirror that stopped at two payment flags, which left the
+   * admin typecheck red (14 errors) and `next build` unable to run. Field sets below are copied
+   * from that schema; the backend strips `matching` from customer-facing responses.
+   */
+  payment?: {
+    paymentRequired?: boolean;
+    paymentTiming?: "BEFORE_DISPATCH" | "AFTER_COMPLETION" | "SPLIT";
+    walletAllowed?: boolean;
+    couponAllowed?: boolean;
+    membershipAllowed?: boolean;
+    splitPaymentAllowed?: boolean;
+    invoiceRequired?: boolean;
+    refundPolicy?: string;
+  };
+  matching?: {
+    strategy?: string;
+    skillWeight?: number;
+    distanceWeight?: number;
+    ratingWeight?: number;
+    availabilityWeight?: number;
+    responseWeight?: number;
+    completionWeight?: number;
+    preferredProvider?: boolean;
+  };
+  inspectionRequired?: boolean;
+  content?: {
+    customerSummary?: string;
+    valueProposition?: string;
+    highlights?: string[];
+    keyBenefits?: string[];
+    limitations?: string[];
+    importantNotes?: string[];
+    customerDisclosures?: string[];
+    process?: string[];
+  };
+  media?: {
+    heroImage?: string;
+    heroVideo?: string;
+    gallery?: string[];
+    instructional?: string[];
+    beforeAfter?: { before: string; after: string; caption?: string }[];
+    documents?: { label: string; url: string }[];
+  };
+  quality?: {
+    checklist?: string[];
+    completionCriteria?: string[];
+    proofRequired?: boolean;
+    beforeAfterPhotos?: boolean;
+    customerConfirmation?: boolean;
+    warrantyDays?: number;
+    revisitPolicy?: string;
+    complaintWindowDays?: number;
+    notApplicable?: boolean;
+  };
+  seo?: { noindex?: boolean; canonicalUrl?: string };
+  /**
+   * Fields this console does not edit (coverage, materials, equipment, safety, trust, …) still
+   * arrive here and are preserved on save — the editor merges onto the stored document.
+   */
+  [key: string]: unknown;
 };
 
 export type ServiceCatalogSummary = {
@@ -2954,6 +3841,33 @@ export type ServiceInput = {
   isFeatured?: boolean;
   premiumOnly?: boolean;
   availableCities?: string[];
+  slug?: string;
+  pricingModel?: string;
+  thumbnail?: string;
+  images?: string[];
+  includedServices?: string[];
+  excludedServices?: string[];
+  requirements?: string[];
+  /** null clears the configuration. */
+  catalogConfig?: ServiceCatalogConfig | null;
+  capabilityProfile?: string;
+  displayName?: string;
+  shortName?: string;
+  serviceCode?: string;
+  internalServiceCode?: string;
+  /** Customer taxonomy by slug. null clears it. */
+  categorySlug?: string | null;
+  subcategorySlug?: string | null;
+  seoTitle?: string;
+  seoDescription?: string;
+  seoKeywords?: string;
+  ownerTeam?: string;
+  operationsNotes?: string;
+  /** Optimistic concurrency: the version the editor loaded. A mismatch is 409 VERSION_CONFLICT. */
+  expectedVersion?: number;
+  /** Why this change was made — recorded with before/after values in the pricing audit trail. */
+  changeReason?: string;
+  partnerSlotPolicy?: "DURATION" | "FIXED";
 };
 
 export type AdminCustomerRow = AdminCustomer;

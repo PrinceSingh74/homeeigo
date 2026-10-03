@@ -3,6 +3,20 @@ import { fillReactControlled } from "../helpers";
 
 const API = (process.env.E2E_API_URL ?? "http://localhost:3000").replace(/\/$/, "");
 
+/**
+ * Host the browser will actually call. localhost and 127.0.0.1 are different sites, and the
+ * customer app rewrites a loopback API origin onto the page host so the SameSite refresh cookie
+ * is stored and sent. A cookie planted on the other host never rides along, and the app falls
+ * back to /login.
+ */
+function browserApiOrigin(): string {
+  const configured = new URL(API);
+  const pageHost = new URL(process.env.E2E_WEB_URL ?? "http://localhost:3001").hostname;
+  const loopback = (host: string) => host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+  if (loopback(configured.hostname) && loopback(pageHost)) configured.hostname = pageHost;
+  return configured.origin;
+}
+
 export type EnterpriseMonitor = {
   consoleErrors: string[];
   failedApi: Array<{ url: string; status: number }>;
@@ -19,7 +33,7 @@ export function attachEnterpriseMonitor(page: Page): EnterpriseMonitor {
     if (msg.type() === "error") {
       const t = msg.text();
       if (
-        /favicon|hydration|devtools|404 \(Not Found\)|chunk|_next\/static|401 \(Unauthorized\)|429 \(Too Many Requests\)|504 \(Gateway Timeout\)|hot-reloader|hmr|fast refresh|webpack-hmr|Failed to fetch.*hmr/i.test(
+        /favicon|hydration|devtools|404 \(Not Found\)|chunk|_next\/static|401 \(Unauthorized\)|429|504 \(Gateway Timeout\)|hot-reloader|hmr|fast refresh|webpack-hmr|Failed to fetch.*hmr/i.test(
           t,
         )
       ) {
@@ -117,26 +131,24 @@ export async function seedCustomerBrowserSession(page: Page, email: string, pass
   await dismissCookieConsent(page);
 }
 
+/**
+ * Hand an API-minted session to the browser the way the app itself holds it: the refresh token as
+ * the HttpOnly `hg_rt_customer` cookie scoped to the API's /api/auth, and only the profile in
+ * `homigo-auth` (store version 2). The app never reads tokens from localStorage any more — this
+ * fixture used to plant them there (version 0), so every "authed" page load had no credential,
+ * refreshed to a 401 and landed on /login. Same handover as partner-web (X-81).
+ */
 async function injectCustomerSession(
   page: Page,
   data: { user: unknown; accessToken: string; refreshToken: string },
 ) {
-  await page.addInitScript((payload) => {
-    localStorage.setItem(
-      "homigo-auth",
-      JSON.stringify({
-        state: {
-          user: payload.user,
-          accessToken: payload.accessToken,
-          refreshToken: payload.refreshToken,
-          status: "authenticated",
-          error: null,
-        },
-        version: 0,
-      }),
-    );
+  await page.context().addCookies([
+    { name: "hg_rt_customer", value: data.refreshToken, url: `${browserApiOrigin()}/api/auth`, httpOnly: true, sameSite: "Strict" },
+  ]);
+  await page.addInitScript((user) => {
+    localStorage.setItem("homigo-auth", JSON.stringify({ state: { user }, version: 2 }));
     document.cookie = "homigo_session=1; Path=/; Max-Age=2592000; SameSite=Lax";
-  }, data);
+  }, data.user);
 }
 
 export async function gotoAuthedCustomer(
@@ -175,7 +187,10 @@ export async function apiGet<T>(path: string, token: string): Promise<T> {
 
 export async function loginCustomerUi(page: Page, email: string, password: string) {
   await seedCustomerBrowserSession(page, email, password);
-  await page.goto("/login", { waitUntil: "networkidle" });
+  // NOT networkidle: with the seeded session /login redirects to the signed-in home, which polls the
+  // customer's active booking and keeps loading images — the network never idles for 500 ms, so the
+  // wait timed out at 240 s. "load" still waits for the document's own scripts before we touch the form.
+  await page.goto("/login", { waitUntil: "load" });
   await dismissCookieConsent(page);
   const emailField = page.getByRole("textbox", { name: "Email" });
   if (await emailField.isVisible({ timeout: 5000 }).catch(() => false)) {

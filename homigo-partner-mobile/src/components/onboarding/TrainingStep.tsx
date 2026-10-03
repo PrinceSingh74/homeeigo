@@ -78,7 +78,7 @@ export function TrainingStep({
           {error}
         </Text>
       ) : null}
-      <Pressable accessibilityRole="button" style={styles.button} disabled={loading} onPress={() => void onContinue()}>
+      <Pressable accessibilityRole="button" testID="onboarding-continue-review" style={styles.button} disabled={loading} onPress={() => void onContinue()}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Continue to review</Text>}
       </Pressable>
     </View>

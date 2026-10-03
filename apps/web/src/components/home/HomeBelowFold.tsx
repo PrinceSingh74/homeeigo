@@ -58,9 +58,7 @@ export function HomeBelowFold() {
       </div>
       <TrustSection />
       <PremiumSection />
-      <div id="tracking">
-        <LiveTrackingSection />
-      </div>
+      <LiveTrackingSection />
       <FinalCtaSection />
     </Suspense>
   );

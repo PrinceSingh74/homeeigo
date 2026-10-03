@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { coreApi } from "@/services/core/api";
+import { parityApi } from "@/services/core/parity-api";
 import { offlineApiMutate } from "@/lib/offline/offline-mutate";
 import { mutateWithOfflineFallback } from "@/lib/offline/sender";
 import { AuthApiError, getErrorMessage } from "@/lib/auth/errors";
@@ -25,6 +26,7 @@ import type {
 export const qk = {
   services: ["services"] as const,
   featured: ["services", "featured"] as const,
+  serviceDetail: (id: string) => ["services", "detail", id] as const,
   statsOverview: ["stats", "overview"] as const,
   coverageCities: ["coverage", "cities"] as const,
   bookings: ["bookings"] as const,
@@ -120,12 +122,57 @@ export function useCoverageSearch(rawQuery: string) {
   return { ...result, debouncedQuery: query };
 }
 
+/**
+ * The bookable slots for one service and one day, as decided by the server (Wave 4).
+ *
+ * Kept briefly fresh because capacity is shared: a slot someone else takes should stop being
+ * offered quickly.
+ */
+export function useAvailabilityQuery(params: {
+  serviceId: string | null | undefined;
+  date: string | null | undefined;
+  providerId?: string | null;
+  /** Rescheduling: the booking being moved (it must not block its own new time). */
+  excludeBookingId?: string | null;
+}) {
+  return useQuery({
+    queryKey: [
+      "bookings",
+      "availability",
+      params.serviceId,
+      params.date,
+      params.providerId ?? null,
+      params.excludeBookingId ?? null,
+    ],
+    queryFn: () =>
+      parityApi.bookings.availability({
+        serviceId: params.serviceId!,
+        date: params.date!,
+        providerId: params.providerId ?? undefined,
+        excludeBookingId: params.excludeBookingId ?? undefined,
+      }),
+    enabled: !!params.serviceId && !!params.date,
+    staleTime: 30_000,
+  });
+}
+
 export function useServicesQuery(opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: qk.services,
     queryFn: () => coreApi.services.list(""),
     staleTime: 60_000,
     enabled: opts?.enabled ?? true,
+  });
+}
+
+/** One service by id — for a request that is not in the loaded catalogue page. */
+export function useServiceDetailQuery(id: string | null, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.serviceDetail(id ?? ""),
+    queryFn: () => coreApi.services.details(id!),
+    staleTime: 60_000,
+    retry: 1,
+    enabled: Boolean(id) && (opts?.enabled ?? true),
   });
 }
 
@@ -145,19 +192,20 @@ export function useProvidersQuery(
 ) {
   const coords = coordsOrOpts && "latitude" in coordsOrOpts ? coordsOrOpts : undefined;
   const opts = coordsOrOpts && "enabled" in coordsOrOpts ? coordsOrOpts : maybeOpts;
+  // No real location → no "near you" search (never a default city).
   const resolved = coords ?? getCachedDeviceCoordinates();
   return useQuery({
-    queryKey: [...qk.providers, serviceId, resolved.latitude, resolved.longitude],
+    queryKey: [...qk.providers, serviceId, resolved?.latitude ?? null, resolved?.longitude ?? null],
     queryFn: () =>
       coreApi.providers.search({
         serviceId,
-        latitude: resolved.latitude,
-        longitude: resolved.longitude,
+        latitude: resolved!.latitude,
+        longitude: resolved!.longitude,
         radius: 10,
         page: 1,
         limit: 8,
       }),
-    enabled: (opts?.enabled ?? true) && !!serviceId,
+    enabled: (opts?.enabled ?? true) && !!serviceId && resolved != null,
     staleTime: 30_000,
   });
 }
@@ -171,18 +219,18 @@ export function useMatchedProvidersQuery(
   const isAuthenticated = useAuthStore((s) => s.status === "authenticated");
   const resolved = coords ?? getCachedDeviceCoordinates();
   return useQuery({
-    queryKey: [...qk.providers, "match", serviceId, resolved.latitude, resolved.longitude, scheduledDate ?? ""],
+    queryKey: [...qk.providers, "match", serviceId, resolved?.latitude ?? null, resolved?.longitude ?? null, scheduledDate ?? ""],
     queryFn: () =>
       coreApi.providers.match({
         serviceId,
-        latitude: resolved.latitude,
-        longitude: resolved.longitude,
+        latitude: resolved!.latitude,
+        longitude: resolved!.longitude,
         scheduledDate: scheduledDate ?? new Date().toISOString(),
         maxResults: 10,
         maxDistanceKm: 25,
       }),
     staleTime: 30_000,
-    enabled: !!serviceId && isAuthenticated && enabled,
+    enabled: !!serviceId && isAuthenticated && enabled && resolved != null,
   });
 }
 
@@ -197,8 +245,10 @@ export function useBookingsQuery() {
     enabled: isAuthenticated,
     refetchInterval: (queryRef) => {
       const data = queryRef.state.data as { bookings?: BackendBooking[] } | undefined;
-      const hasActive = (data?.bookings ?? []).some(
-        (b) => b.status === "pending" || b.status === "accepted" || b.status === "in_progress",
+      // Every non-terminal backend status keeps the safety-net poll alive (assigned / en_route
+      // were missing, so polling stopped while the partner was travelling).
+      const hasActive = (data?.bookings ?? []).some((b) =>
+        ["pending", "accepted", "assigned", "en_route", "in_progress"].includes(b.status),
       );
       return hasActive ? 8_000 : false;
     },
@@ -250,7 +300,8 @@ export function useCreateBookingMutation() {
       }
       if (result.booking) addBooking(mapBackendBookingToSaved(result.booking));
       void qc.invalidateQueries({ queryKey: qk.bookings });
-      showToast("Booking confirmed successfully");
+      // PENDING = created, no partner has accepted yet. "Confirmed" is a promise the server has not made.
+      showToast("Booking placed — finding your pro");
     },
     onError: (error) => showToast(getErrorMessage(error)),
   });
@@ -260,12 +311,53 @@ export function useCreateBookingMutation() {
  * Live refund/fee preview for cancelling a booking. Fetched only while the
  * confirm sheet is open so the customer sees the real number BEFORE deciding.
  */
+/**
+ * §45 / O6 — what moving this booking costs, before the customer commits.
+ *
+ * The number is the SERVER's. The client renders it and never derives the percentage itself; a
+ * client that did would disagree with the server the moment the policy version changes.
+ */
+export function useRescheduleQuoteQuery(bookingId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ["bookings", "reschedule-quote", bookingId ?? ""] as const,
+    queryFn: () => coreApi.bookings.rescheduleQuote(bookingId!),
+    enabled: Boolean(bookingId) && enabled,
+    // Short: the fee flips from FREE to LATE_FEE as the two-hour boundary passes.
+    staleTime: 30_000,
+  });
+}
+
 export function useCancellationQuoteQuery(bookingId: string | null, enabled: boolean) {
   return useQuery({
     queryKey: ["bookings", "cancellation-quote", bookingId ?? ""] as const,
     queryFn: () => coreApi.bookings.cancellationQuote(bookingId!),
     enabled: Boolean(bookingId) && enabled,
     staleTime: 30_000,
+  });
+}
+
+/**
+ * §53 — the customer reporting that the professional never arrived.
+ *
+ * A separate mutation from cancel on purpose: different status, different money, different
+ * consequences for the partner. Folding it into cancel would record the customer as the one who
+ * called it off.
+ */
+export function useReportProviderNoShowMutation() {
+  const qc = useQueryClient();
+  const showToast = useAppStore((s) => s.showToast);
+  return useMutation({
+    mutationFn: (bookingId: string) => coreApi.bookings.reportProviderNoShow(bookingId),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: qk.bookings });
+      const refund = data?.refundAmount ?? 0;
+      showToast(
+        refund > 0
+          ? `Reported. ₹${refund} is being returned in full — you have not been charged.`
+          : "Reported. You have not been charged.",
+      );
+    },
+    onError: () => showToast("Could not report this. Please try again."),
   });
 }
 

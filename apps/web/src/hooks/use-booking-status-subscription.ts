@@ -29,6 +29,12 @@ function mapBackendStatus(raw: string | undefined): BookingStatus | null {
   ) {
     return "cancelled";
   }
+  // The payment window closed and the slot was released. Mapped explicitly: returning null here
+  // meant a live EXPIRED transition updated nothing on screen and the customer kept watching a
+  // booking that no longer existed.
+  if (v === "expired") return "expired";
+  if (v === "customer_no_show") return "customer_no_show";
+  if (v === "provider_no_show") return "provider_no_show";
   return null;
 }
 
@@ -94,6 +100,14 @@ export function useBookingStatusSubscription({ bookingId, enabled = true }: Opti
 
         const targetBookingId = msg.data?.bookingId ?? bookingId;
         if (!targetBookingId) return;
+
+        // §6: requirement/gate frame — the requirement panel refetches; the frame is only a signal.
+        if (msg.type === "booking.requirement") {
+          void queryClient.invalidateQueries({ queryKey: qk.bookingRequirements(targetBookingId) });
+          void queryClient.invalidateQueries({ queryKey: ["bookings", "execution", targetBookingId] });
+          void queryClient.invalidateQueries({ queryKey: ["bookings", "safety", targetBookingId] });
+          return;
+        }
 
         if (msg.type === "BOOKING_STATUS" || msg.type === "BOOKING_COMPLETED") {
           const mapped = mapBackendStatus(msg.data?.status);

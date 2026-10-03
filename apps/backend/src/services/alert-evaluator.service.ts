@@ -6,7 +6,6 @@ import { setOpsGauge } from "../lib/ops-metrics";
 
 export class AlertEvaluatorService {
   async evaluateAll(): Promise<{ raised: number }> {
-    let raised = 0;
     const checks = [
       this.checkPaymentFailures(),
       this.checkRefundFailures(),
@@ -21,7 +20,7 @@ export class AlertEvaluatorService {
       this.checkOtpFailures(),
     ];
     const results = await Promise.all(checks);
-    raised = results.filter(Boolean).length;
+    const raised = results.filter(Boolean).length;
     return { raised };
   }
 

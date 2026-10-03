@@ -1,0 +1,6 @@
+# Certification-only: semantic tap on the withdraw submit control.
+# Invoked from e2e/native-android-section04-finance.ts after the sheet is filled.
+appId: com.homeeigo.partner
+---
+- tapOn:
+    id: "withdraw-submit"

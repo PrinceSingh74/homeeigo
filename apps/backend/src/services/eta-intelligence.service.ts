@@ -313,7 +313,11 @@ class EtaIntelligenceService {
         isSynthetic: isSyntheticBookingNumber(booking.bookingNumber),
       });
 
-      if (validation.passed) {
+      // A redelivered BOOKING_COMPLETED re-runs this whole method. The upsert is idempotent, the
+      // three events below are not: every emitStandalone mints a fresh event id, so a re-emission
+      // fans out to every consumer as brand-new facts. Emit only when the label's status moved.
+      const statusChanged = existing?.status !== label.status;
+      if (validation.passed && statusChanged) {
         recordEtaLabelCreated(label.city, validation.qualityScore);
         // Authoritative count — excludes synthetic fixtures, so the gauge cannot report
         // labels that BigQuery training would reject.
@@ -358,7 +362,7 @@ class EtaIntelligenceService {
             rowCount: 1,
           }),
         );
-      } else {
+      } else if (!validation.passed) {
         recordEtaLabelFailure(validation.rejectionReasons[0] ?? "validation");
       }
 
@@ -385,7 +389,16 @@ class EtaIntelligenceService {
   private async resolveArrivalSource(
     bookingId: string,
     eventId?: string,
-  ): Promise<"explicit_partner_action" | "gps_geofence" | "job_start"> {
+    /**
+     * Returns `null` when arrival provenance genuinely cannot be determined — no matching
+     * PARTNER_ARRIVED event, an unrecognised source value, or a lookup failure. That UNKNOWN state
+     * is deliberate and is handled downstream: `validateEtaLabel` records
+     * `historical_provenance_unknown`, deducts 10 points and caps the label at VALIDATED, because
+     * "unknown is never treated as precise". The declared type previously promised a non-null
+     * provenance, which would have meant substituting a fabricated source and silently promoting
+     * unverifiable arrivals to full training weight.
+     */
+  ): Promise<"explicit_partner_action" | "gps_geofence" | "job_start" | null> {
     if (!eventId) return this.arrivalSourceForBooking(bookingId);
     try {
       const row = await prisma.eventOutbox.findUnique({
@@ -534,7 +547,8 @@ class EtaIntelligenceService {
     labelsToday: number;
     trainingReady: number;
     rejected: number;
-    avgQualityScore: number;
+    /** null = UNMEASURED. No trip carries a quality score yet. */
+    avgQualityScore: number | null;
     avgGapMinutes: number | null;
     cities: Array<{ city: string; count: number }>;
     freshnessMinutes: number | null;
@@ -576,7 +590,16 @@ class EtaIntelligenceService {
       labelsToday: today,
       trainingReady: ready,
       rejected,
-      avgQualityScore: Math.round((avgQuality._avg.qualityScore ?? 100) * 10) / 10,
+      /**
+       * Null when no trip carries a quality score — never 100.
+       *
+       * `_avg` returns null for an empty set, and `?? 100` turned "we have measured nothing" into a
+       * PERFECT score. `tripsCollected` sits beside it, so a reader could in principle notice the
+       * zero, but the number itself asserted flawless data quality on the strength of no data. This
+       * is the same defect the provider acceptance rate had, pointing the same way.
+       */
+      avgQualityScore:
+        avgQuality._avg.qualityScore != null ? Math.round(avgQuality._avg.qualityScore * 10) / 10 : null,
       avgGapMinutes: gap,
       cities: cities.map((c) => ({ city: c.city ?? "unknown", count: c._count.city })),
       freshnessMinutes: latest ? Math.round((Date.now() - latest.createdAt.getTime()) / 60_000) : null,
@@ -584,7 +607,8 @@ class EtaIntelligenceService {
   }
 
   async getQualityReport(): Promise<{
-    overallScore: number;
+    /** null = UNMEASURED. */
+    overallScore: number | null;
     byStatus: Record<string, number>;
     rejectionReasons: Array<{ reason: string; count: number }>;
   }> {
@@ -606,7 +630,8 @@ class EtaIntelligenceService {
     }
 
     return {
-      overallScore: Math.round((avg._avg.qualityScore ?? 100) * 10) / 10,
+      // Null, not 100 — see avgQualityScore above. An unscored dataset has no overall score.
+      overallScore: avg._avg.qualityScore != null ? Math.round(avg._avg.qualityScore * 10) / 10 : null,
       byStatus: Object.fromEntries(byStatus.map((s) => [s.status, s._count.status])),
       rejectionReasons: [...reasonCounts.entries()]
         .map(([reason, count]) => ({ reason, count }))
@@ -714,7 +739,12 @@ class EtaIntelligenceService {
     temperature: number | null;
     partnerRating: number | null;
     createdAt: Date;
-  }, provenance: { arrivalSource: string; isSynthetic: boolean }): Promise<void> {
+    /**
+     * `arrivalSource` is nullable for the same reason it is nullable upstream: provenance can be
+     * genuinely UNKNOWN. It must reach the warehouse as NULL rather than a substituted value, or
+     * BigQuery-side training queries would read a fabricated provenance as fact.
+     */
+  }, provenance: { arrivalSource: string | null; isSynthetic: boolean }): Promise<void> {
     const now = new Date().toISOString();
     const rawRow = {
       booking_id: label.bookingId,

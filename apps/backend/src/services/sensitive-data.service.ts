@@ -136,6 +136,12 @@ export async function assertProviderKycUnique(
       select: { id: true },
     });
     if (existing) {
+      /**
+       * One financial / KYC identity per partner. The unique indexes on the hash columns are the
+       * atomic guarantee; this check is the product-facing refusal so the client sees CONFLICT
+       * rather than a raw unique-constraint error. Do not treat a later BANK_REUSE signal as
+       * permission to share the same bank — that signal only fires if this path was bypassed.
+       */
       throw new Error(`CONFLICT:${label} is already registered`);
     }
   }

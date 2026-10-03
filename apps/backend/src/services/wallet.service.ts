@@ -272,14 +272,19 @@ export class WalletService {
       return { handled: true as const, reason: "WALLET_ALREADY_RECONCILED", ...settled };
     }
 
-    await notificationService.createForUser({
-      userId: txn.userId,
-      type: "WALLET_CREDIT",
-      title: "Wallet topped up",
-      message: `₹${txn.amount} added to your HOMEEIGO wallet`,
-      referenceId: settled.walletTransactionId,
-      priority: "high",
-    });
+    // Detached: the credit is committed. A notification failure here used to fail the webhook,
+    // and the redelivery returns early on `alreadySettled` — so the notice was lost permanently.
+    await notificationService.createForUserDetached(
+      {
+        userId: txn.userId,
+        type: "WALLET_CREDIT",
+        title: "Wallet topped up",
+        message: `₹${txn.amount} added to your HOMEEIGO wallet`,
+        referenceId: settled.walletTransactionId,
+        priority: "high",
+      },
+      { walletTransactionId: settled.walletTransactionId, source: "webhook_reconcile" },
+    );
 
     return { handled: true as const, reason: "WALLET_RECONCILED", ...settled };
   }
@@ -317,14 +322,19 @@ export class WalletService {
       const settled = await this.settleTopUpTransaction(txn.id, userId);
 
       if (!settled.alreadySettled) {
-        await notificationService.createForUser({
-          userId,
-          type: "WALLET_CREDIT",
-          title: "Wallet topped up",
-          message: `₹${txn.amount} added to your HOMEEIGO wallet`,
-          referenceId: settled.walletTransactionId,
-          priority: "high",
-        });
+        // Detached: the credit is committed. A notification failure here used to surface to the
+        // customer as a failed top-up, and the retry returns early on `alreadySettled`.
+        await notificationService.createForUserDetached(
+          {
+            userId,
+            type: "WALLET_CREDIT",
+            title: "Wallet topped up",
+            message: `₹${txn.amount} added to your HOMEEIGO wallet`,
+            referenceId: settled.walletTransactionId,
+            priority: "high",
+          },
+          { walletTransactionId: settled.walletTransactionId, source: "customer_verify" },
+        );
       }
 
       return { ...settled, status: "success" as const };
@@ -464,6 +474,7 @@ export class WalletService {
       bankAccountNumber: string;
       ifscCode: string;
       accountHolder: string;
+      idempotencyKey?: string;
     },
   ) {
     return providerWalletReservationService.reserveAndCreateWithdrawal(providerId, body);

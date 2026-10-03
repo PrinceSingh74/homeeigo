@@ -36,6 +36,27 @@ export const ratingsRoutes = new Elysia({ prefix: "/api/ratings" })
       const body = parsed.data;
       const rating = await ratingService.create(userId, body);
       if ("error" in rating) {
+        if (rating.error === "TIP_INSUFFICIENT_WALLET") {
+          set.status = 402;
+          return {
+            success: false,
+            error: "Your wallet balance does not cover this tip. Add money or lower the tip.",
+            code: "TIP_INSUFFICIENT_WALLET",
+          };
+        }
+        if (rating.error === "TIP_FAILED") {
+          set.status = 500;
+          return { success: false, error: "Could not process the tip. Your review was not saved.", code: "TIP_FAILED" };
+        }
+        // Explicit, so neither falls through to the "booking not found" answer below.
+        if (rating.error === "INVALID_PHOTOS") {
+          set.status = 400;
+          return { success: false, error: "Photos must be images you uploaded for this review (up to 6).", code: "INVALID_PHOTOS" };
+        }
+        if (rating.error === "VALIDATION_ERROR") {
+          set.status = 400;
+          return { success: false, error: "Rating must be between 1 and 5.", code: "VALIDATION_ERROR" };
+        }
         set.status = 400;
         return { success: false, error: "Booking not found or already rated", code: "INVALID_BOOKING" };
       }
@@ -85,6 +106,10 @@ export const ratingsRoutes = new Elysia({ prefix: "/api/ratings" })
         reviewText: body.reviewText,
         photos: body.photos,
       });
+      if (ok === "INVALID_PHOTOS") {
+        set.status = 400;
+        return { success: false, error: "Photos must be images you uploaded for this review (up to 6).", code: "INVALID_PHOTOS" };
+      }
       if (!ok) {
         set.status = 404;
         return { success: false, error: "Rating not found", code: "NOT_FOUND" };

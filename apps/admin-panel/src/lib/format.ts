@@ -13,6 +13,18 @@ export function formatNumber(value: number): string {
   return Number(value || 0).toLocaleString("en-IN");
 }
 
+/**
+ * A measured count, or an em dash when there is no measurement.
+ *
+ * `formatNumber` coerces with `value || 0`, so a field the platform reports as UNMEASURED renders
+ * as a confident "0". Several coverage fields are `number | null` on purpose — null means nobody
+ * measured it, which is a different claim from "we measured it and it was zero".
+ */
+export function formatCount(value?: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return Number(value).toLocaleString("en-IN");
+}
+
 /** Compact human wait — never dumps raw milliseconds into a KPI tile. */
 export function formatWait(ms?: number | null, compact = true): string {
   if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";

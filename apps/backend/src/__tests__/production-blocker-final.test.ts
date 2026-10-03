@@ -2,8 +2,9 @@
  * Production blocker final — execution proof for ledger, atomic writes, paise drift.
  */
 import "../load-env";
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { HCoinTxnType, WalletTxnStatus } from "@prisma/client";
+import { provenanceForNewUser } from "../lib/data-provenance";
+import { describe, test, expect, beforeAll } from "bun:test";
+import { WalletTxnStatus } from "@prisma/client";
 import {
   prisma,
   dbReachable,
@@ -23,24 +24,26 @@ let dbOk = false;
 beforeAll(async () => {
   dbOk = await dbReachable();
   if (dbOk) {
-    await ledgerReconciliationService.reconcile({ backfillLimit: 3000 });
+    await ledgerReconciliationService.reconcile({ backfillLimit: 3000, postAdjustments: true, adjustmentReason: "test fixture: homigo_test ledger reconciled to exercise the post path" });
   }
-});
-
-afterAll(async () => {
-  await prisma.$disconnect();
-});
+}, 120_000);
 
 describe.serial("Production blocker final", () => {
   test("ledger reconciliation achieves zero adjustable delta", async () => {
     if (!dbOk) return;
 
-    const result = await ledgerReconciliationService.reconcile({ backfillLimit: 3000 });
+    const result = await ledgerReconciliationService.reconcile({ backfillLimit: 3000, postAdjustments: true, adjustmentReason: "test fixture: homigo_test ledger reconciled to exercise the post path" });
+    // Invariant-backed accounts only. `PLATFORM_ESCROW` was listed here and must not be: it is
+    // commingled (booking escrow, provider earnings, wallet debits, gift cards and refunds all move
+    // it), so comparing it to active gift-card balance is not an invariant and its "delta" is mostly
+    // unreleased booking escrow doing its job. It was removed from the reconciler's ADJUSTABLE set in
+    // Enterprise Pass 2 after 56 plugs had forced ₹17,245 out of it — and this assertion was not
+    // updated, so this test has failed at ₹149,550 on `homigo_test` ever since while no regression
+    // run included it. Found in Pass 5.
     const adjustable = result.final.filter((r) =>
-      ["CUSTOMER_WALLET", "PROVIDER_PAYABLE", "HCOIN_LIABILITY", "PLATFORM_ESCROW"].includes(
-        r.ledgerAccount,
-      ),
+      ["CUSTOMER_WALLET", "PROVIDER_PAYABLE", "HCOIN_LIABILITY"].includes(r.ledgerAccount),
     );
+    expect(adjustable).toHaveLength(3);
     for (const r of adjustable) {
       expect(Math.abs(r.delta)).toBeLessThanOrEqual(0.01);
     }
@@ -64,6 +67,7 @@ describe.serial("Production blocker final", () => {
 
     const user = await prisma.user.create({
       data: {
+        ...provenanceForNewUser(`${RUN_ID}-hcoin-fail@adv.test`),
         email: `${RUN_ID}-hcoin-fail@adv.test`,
         phoneNumber: fixturePhone(RUN_ID, "hcoin-fail"),
         firstName: "H",
@@ -102,6 +106,7 @@ describe.serial("Production blocker final", () => {
 
     const user = await prisma.user.create({
       data: {
+        ...provenanceForNewUser(`${RUN_ID}-wallet-atomic@adv.test`),
         email: `${RUN_ID}-wallet-atomic@adv.test`,
         phoneNumber: fixturePhone(RUN_ID, "wallet-atomic"),
         firstName: "W",

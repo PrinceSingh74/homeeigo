@@ -6,7 +6,7 @@ import { ArrowRight, Check, Clock } from "lucide-react";
 import {
   HOURLY_OPTIONS,
   HOURLY_TASKS,
-  estimateSelection,
+  serverQuantityPrice,
   formatInr,
   hourlyQuote,
   quantityOptions,
@@ -22,7 +22,8 @@ type Tone = "dark" | "light";
 
 export type HourlySelection = { hours: number; tasks: string[] };
 
-type HourOption = { hours: number; amount: number; bookable: boolean; packageIndex?: number };
+/** `amount` is the server-resolved service line, or null while unknown — never computed here. */
+type HourOption = { hours: number; amount: number | null; bookable: boolean; packageIndex?: number };
 
 /**
  * Hour options come from the backend HOUR quantity rule (every option is priced
@@ -34,7 +35,7 @@ export function hourOptions(service: ServiceView): HourOption[] {
   if (rule?.type === "HOUR") {
     return quantityOptions(rule).map((h) => ({
       hours: h,
-      amount: estimateSelection(service, { quantity: h }).servicePrice,
+      amount: serverQuantityPrice(service, h),
       bookable: true,
     }));
   }
@@ -61,20 +62,20 @@ export function hourlyBooking(service: ServiceView, sel: HourlySelection) {
 
 const T = {
   dark: {
-    root: "bg-ink text-white dark:ring-1 dark:ring-white/10",
-    muted: "text-white/70",
-    chip: "border-white/15 bg-white/[0.06] text-white hover:border-emerald-300/60",
-    chipOn: "border-emerald-300 bg-emerald-400 text-ink",
-    chipOff: "border-white/10 text-white/40",
-    panel: "border-white/10 bg-white/[0.04]",
+    root: "bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-500 text-white",
+    muted: "text-white/80",
+    chip: "border-white/20 bg-white/10 text-white hover:border-white/50",
+    chipOn: "border-white bg-white text-emerald-800",
+    chipOff: "border-white/15 text-white/45",
+    panel: "border-white/20 bg-white/10",
   },
   light: {
-    root: "bg-surface text-content border border-line",
+    root: "bg-surface/80 text-content border border-emerald-500/20 shadow-e2 backdrop-blur-md",
     muted: "text-muted",
     chip: "border-line bg-surface text-content hover:border-emerald-300",
-    chipOn: "border-transparent bg-ink text-white dark:bg-emerald-400 dark:text-ink",
+    chipOn: "border-transparent bg-gradient-to-r from-emerald-500 to-teal-500 text-white",
     chipOff: "border-line text-muted/60",
-    panel: "border-line bg-canvas",
+    panel: "border-emerald-500/15 bg-canvas/80",
   },
 } as const;
 
@@ -126,17 +127,21 @@ export function HourlyHelpModule({
   return (
     <section
       aria-labelledby="hourly-heading"
-      className={cn("relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-10", t.root)}
+      className={cn("relative overflow-hidden rounded-[2.25rem] p-6 sm:rounded-[2.5rem] sm:p-8 lg:p-10", t.root)}
     >
       {tone === "dark" && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-emerald-500/20 blur-3xl"
-        />
+        <>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-emerald-500/20 blur-3xl"
+          />
+          <span aria-hidden className="pointer-events-none absolute -left-8 bottom-10 size-28 rounded-[1.75rem] bg-white/[0.06]" />
+          <span aria-hidden className="pointer-events-none absolute right-24 bottom-6 size-14 rounded-full border border-white/15" />
+        </>
       )}
       <div className="relative grid gap-8 lg:grid-cols-[1fr_1.15fr] lg:gap-12">
         <div>
-          <p className={cn("text-xs font-semibold uppercase tracking-[0.14em]", tone === "dark" ? "text-emerald-300" : "text-brand")}>
+          <p className={cn("text-xs font-semibold uppercase tracking-[0.14em]", tone === "dark" ? "text-white" : "text-brand")}>
             Hourly home help
           </p>
           <Heading id="hourly-heading" className="mt-3 font-display text-2xl font-bold tracking-tight sm:text-3xl">
@@ -167,7 +172,7 @@ export function HourlyHelpModule({
         </div>
 
         {live ? (
-          <div className={cn("rounded-2xl border p-5 sm:p-6", t.panel)}>
+          <div className={cn("rounded-[1.75rem] border p-5 sm:rounded-[2rem] sm:p-6", t.panel)}>
             <fieldset>
               <legend className="text-sm font-semibold">How long?</legend>
               <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-2">
@@ -181,10 +186,10 @@ export function HourlyHelpModule({
                       disabled={!q.bookable}
                       onClick={() => setHours(q.hours)}
                       aria-label={`${q.hours} ${q.hours === 1 ? "hour" : "hours"}, ${
-                        q.bookable ? `estimated ${formatInr(q.amount)} before taxes` : "not bookable online yet"
+                        q.bookable ? (q.amount != null ? `${formatInr(q.amount)} before taxes` : "priced at checkout") : "not bookable online yet"
                       }`}
                       className={cn(
-                        "flex min-h-14 flex-col items-center justify-center rounded-xl border text-sm font-semibold motion-safe:transition-colors",
+                        "flex min-h-14 flex-col items-center justify-center rounded-2xl border text-sm font-semibold motion-safe:transition-colors",
                         focusRing,
                         !q.bookable ? cn(t.chipOff, "cursor-not-allowed") : on ? t.chipOn : t.chip,
                       )}
@@ -193,7 +198,7 @@ export function HourlyHelpModule({
                         {q.hours} {q.hours === 1 ? "hr" : "hrs"}
                       </span>
                       <span className={cn("text-xs font-medium", !q.bookable ? "" : on ? "opacity-80" : t.muted)}>
-                        {q.bookable ? formatInr(q.amount) : "Soon"}
+                        {q.bookable ? (q.amount != null ? formatInr(q.amount) : "—") : "Soon"}
                       </span>
                     </button>
                   );
@@ -240,7 +245,7 @@ export function HourlyHelpModule({
                   <Clock className="size-3.5" aria-hidden />
                   {hours} {hours === 1 ? "hour" : "hours"} · estimate before taxes · final price at checkout
                 </p>
-                {quote && <AnimatedPrice amount={quote.amount} className="mt-1 font-display text-2xl font-bold" />}
+                {quote && quote.amount != null && <AnimatedPrice amount={quote.amount} className="mt-1 font-display text-2xl font-bold" />}
               </div>
               {!hideCta && booking?.href && (
                 <ButtonLink

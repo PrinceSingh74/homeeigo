@@ -41,7 +41,6 @@ async function newBooking(userId: string) {
 afterAll(async () => {
   await prisma.geofenceEvent.deleteMany({ where: { geofenceId: { in: createdGeofenceIds } } }).catch(() => {});
   await prisma.geofence.deleteMany({ where: { id: { in: createdGeofenceIds } } }).catch(() => {});
-  await prisma.$disconnect();
 });
 
 describe("Phase 16.3 — Geofencing", () => {

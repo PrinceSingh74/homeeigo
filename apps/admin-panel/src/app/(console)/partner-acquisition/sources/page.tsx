@@ -50,7 +50,7 @@ export default function PartnerAcquisitionSourcesPage() {
         }
       />
       <GlassPanel className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Lead sources table">
           <table className="w-full min-w-[800px] text-sm">
             <thead className="bg-[var(--color-biz-elevated)] text-left text-xs uppercase tracking-wide text-[var(--color-biz-muted)]">
               <tr>

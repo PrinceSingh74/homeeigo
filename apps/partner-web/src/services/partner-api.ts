@@ -1,7 +1,10 @@
 import { apiRequest } from "@/lib/api-client";
+import { parseExecutionPolicyCopy, parseExecutionQuality, type BookingExecutionQuality, type ExecutionPolicyCopy } from "@/lib/completion-checklist";
 import type {
   ApiResponse,
+  BookingRequirementsView,
   JobActionResult,
+  RequirementGateResult,
   JobChatList,
   JobEvidenceItem,
   PartnerBookingsResponse,
@@ -15,7 +18,6 @@ import type {
   PartnerReview,
   PartnerReviewsResponse,
   ProviderProfile,
-  WalletBalance,
   WalletTransactionsResponse,
 } from "@/types/partner";
 
@@ -26,15 +28,191 @@ type ListBookingsQuery = {
   sortBy?: "upcoming" | "recent";
 };
 
+// --- Canonical notification preferences (Section 09) ---
+export type NotificationChannelName = "IN_APP" | "PUSH" | "EMAIL" | "SMS";
+export type NotificationCategoryName = "TRANSACTIONAL" | "SECURITY" | "OPTIONAL";
+
+export type NotificationChannelAvailability = {
+  channel: NotificationChannelName;
+  available: boolean;
+  unavailableReason?: string;
+  reason?: "no_registered_device" | "no_email_on_file" | "no_phone_on_file" | "provider_not_configured";
+};
+
+export type NotificationPreferenceCell = {
+  category: NotificationCategoryName;
+  channel: NotificationChannelName;
+  enabled: boolean;
+  editable: boolean;
+  mandatory: boolean;
+  available: boolean;
+  unavailableReason?: NotificationChannelAvailability["reason"];
+  source: "EXPLICIT_PREFERENCE" | "CATEGORY_DEFAULT" | "SYSTEM_DEFAULT" | "MANDATORY_CATEGORY";
+};
+
+export type NotificationPreferenceMatrix = {
+  preferences: Array<{
+    channel: NotificationChannelName;
+    category: NotificationCategoryName;
+    enabled: boolean;
+    language: string | null;
+  }>;
+  channels: NotificationChannelAvailability[];
+  matrix: NotificationPreferenceCell[];
+};
+
 // --- Geo-Intelligence envelopes (consumes /api/geo-intel/*; partner-allowed endpoints) ---
 export type GeoIntel<T> = { success: boolean; data: T; confidence: number; freshness: string; source: string; cached: boolean; generatedAt: string };
 export type SurgeZone = { zoneId: string; name: string; city: string | null; supply: number; activeBookings: number; weatherSurge: number; predictedSurge: number; demandDeltaPct: number | null };
 export type DensityZone = { zoneId: string; name: string; city: string | null; centerLat: number; centerLng: number; providers: number; areaKm2: number; densityPerKm2: number };
-export type ZoneScore = { zoneId: string; name: string; city: string | null; supply: number; demand24h: number; revenue24h: number; earningScore: number; demandScore: number; serviceHealth: number; riskScore: number; compositeScore: number };
-export type ZoneScoring = { ranked: ZoneScore[]; bestEarning: ZoneScore[]; worstService: ZoneScore[]; highRisk: ZoneScore[] };
+export type ZoneScore = {
+  zoneId: string;
+  name: string;
+  city: string | null;
+  supply: number;
+  demand24h: number;
+  revenue24h: number;
+  earningScore: number;
+  demandScore: number;
+  serviceHealth: number;
+  riskScore: number;
+  compositeScore: number;
+  opportunityScore?: number;
+  gap?: number;
+  interpretation?: string;
+  recommendation?: string | null;
+  skillGaps?: Array<{ skill: string; demand: number; supply: number; gap: number }>;
+};
+export type ZoneScoring = {
+  ranked: ZoneScore[];
+  bestEarning: ZoneScore[];
+  bestOpportunity?: ZoneScore[];
+  worstService: ZoneScore[];
+  highRisk: ZoneScore[];
+};
 export type DemandPoint = { zone_id: string; hour: string; predicted: number; lo: number; hi: number };
-export type DemandForecast = { horizonHours: number; points: DemandPoint[]; totalPredicted: number };
+/**
+ * The backend states whether the forecast window has already passed.
+ *
+ * `ML.FORECAST` projects from the end of the model's training data, so a warehouse forecast can
+ * describe hours that are months old. `stale` and `forecastWindow` come from the API; the page
+ * must not render the points as a forecast of the coming day when `stale` is true.
+ */
+export type DemandForecast = {
+  horizonHours: number;
+  points: DemandPoint[];
+  totalPredicted: number;
+  stale?: boolean;
+  forecastWindow?: { from: string | null; to: string | null };
+  expiredByHours?: number | null;
+  limitations?: string[];
+};
+/**
+ * X-84: the forecast source (the data warehouse) did not answer. A state, not an error — and it
+ * carries no forecast numbers, so nothing can be rendered as a prediction.
+ */
+export type DemandForecastUnavailable = {
+  success: true;
+  available: false;
+  reasonCode: "FORECAST_SOURCE_UNAVAILABLE";
+  cause: string;
+  reason: string;
+  data: null;
+  confidence: null;
+  freshness: null;
+  source: "unavailable";
+  cached: false;
+  generatedAt: string;
+};
+export type DemandForecastResponse = (GeoIntel<DemandForecast> & { available?: true }) | DemandForecastUnavailable;
 export type EtaResult = { etaMin: number; distanceKm: number; method: string; withTraffic?: boolean };
+
+export type PresenceFreshness = "FRESH" | "STALE" | "EXPIRED";
+
+export type PartnerPresenceLocation = {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  capturedAt: string | null;
+  receivedAt: string | null;
+  transportLagSeconds: number | null;
+  source: string | null;
+  sequence: number | null;
+};
+
+export type PartnerPresenceSnapshot = {
+  providerId: string;
+  sessionId: string | null;
+  deviceId: string | null;
+  lastHeartbeatAt: string | null;
+  lastSeenAt: string | null;
+  presenceFreshness: PresenceFreshness;
+  locationFreshness: PresenceFreshness;
+  presenceAgeSeconds: number | null;
+  locationAgeSeconds: number | null;
+  operationallyLive: boolean;
+  location: PartnerPresenceLocation | null;
+  appState: string | null;
+  platform: string | null;
+  appVersion: string | null;
+  heartbeatIntervalSeconds: number;
+};
+
+export type PartnerPresenceHeartbeatBody = {
+  sessionId: string;
+  deviceId: string;
+  timestamp: string;
+  appState?: "foreground" | "background" | "inactive";
+  platform?: "ios" | "android" | "web";
+  appVersion?: string;
+  availabilityTelemetry?: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+    capturedAt: string;
+    sequence?: number;
+  };
+};
+
+export type PartnerPresenceHeartbeatResult = {
+  accepted: boolean;
+  duplicate?: boolean;
+  snapshot: PartnerPresenceSnapshot;
+};
+
+export type PartnerLocationPingBody = {
+  sessionId: string;
+  deviceId: string;
+  location: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+    capturedAt: string;
+    sequence?: number;
+  };
+};
+
+export type PartnerDispatchEligibility = {
+  providerId: string;
+  eligible: boolean;
+  blockedBy: string | null;
+  reasons: string[];
+  checks: {
+    lifecycle: boolean;
+    availability: boolean;
+    presence: boolean;
+    location: boolean;
+    capacity: boolean;
+    schedule: boolean;
+    geo: boolean;
+    skill: boolean;
+    risk: boolean;
+    payment: boolean;
+    conflict: boolean;
+  };
+  evaluatedAt: string;
+};
 
 // --- Network coverage (shared source of truth: consumes /api/coverage/cities) ---
 export type CityCoverageSummary = {
@@ -46,12 +224,39 @@ export type CityCoverageSummary = {
   areaCount: number;
   pincodeCount: number;
   societyCount: number;
-  activePartners: number;
-  customers: number;
-  servicesCompleted: number;
-  fulfillmentRate: number;
+  /**
+   * null = UNMEASURED. GET /api/coverage/cities returns null rather than inventing a figure, and
+   * falls back to an empty aggregate map if the read fails — so these arrive null in practice, not
+   * only in theory. Declaring them non-null here hid that from `tsc`.
+   */
+  activePartners: number | null;
+  customers: number | null;
+  servicesCompleted: number | null;
+  fulfillmentRate: number | null;
   coverageScore: number;
 };
+
+/** Omit unset ETA so Accept does not POST `{"eta":null}` (TypeBox: "Expected number"). */
+function acceptEtaBody(eta?: number): { eta?: number } {
+  if (typeof eta !== "number" || !Number.isFinite(eta)) return {};
+  const n = Math.round(eta);
+  if (n < 1 || n > 480) return {};
+  return { eta: n };
+}
+
+function optionalGeoBody(
+  latitude: number | null | undefined,
+  longitude: number | null | undefined,
+  extra?: Record<string, unknown>,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { ...extra };
+  if (typeof latitude === "number" && Number.isFinite(latitude)) body.latitude = latitude;
+  if (typeof longitude === "number" && Number.isFinite(longitude)) body.longitude = longitude;
+  for (const [key, value] of Object.entries(body)) {
+    if (value === undefined || value === null || value === "") delete body[key];
+  }
+  return body;
+}
 
 export type PartnerServiceSkillCard = {
   serviceId: string;
@@ -92,7 +297,7 @@ export const partnerApi = {
     surge: () => apiRequest<GeoIntel<SurgeZone[]>>("/api/geo-intel/surge", { auth: true }),
     density: () => apiRequest<GeoIntel<DensityZone[]>>("/api/geo-intel/provider-density", { auth: true }),
     zoneScoring: () => apiRequest<GeoIntel<ZoneScoring>>("/api/geo-intel/zone-scoring", { auth: true }),
-    demandForecast: (horizon = 24) => apiRequest<GeoIntel<DemandForecast>>("/api/geo-intel/demand-forecast", { auth: true, query: { horizon } }),
+    demandForecast: (horizon = 24) => apiRequest<DemandForecastResponse>("/api/geo-intel/demand-forecast", { auth: true, query: { horizon } }),
     eta: (fromLat: number, fromLng: number, toLat: number, toLng: number) =>
       apiRequest<GeoIntel<EtaResult>>("/api/geo-intel/eta", { auth: true, query: { fromLat, fromLng, toLat, toLng } }),
     /** Server-side driving route (Google → OSRM). Avoids client Directions billing errors. */
@@ -116,6 +321,30 @@ export const partnerApi = {
     apiRequest<ApiResponse<{ provider: ProviderProfile }>>("/api/providers/me", {
       auth: true,
     }).then((r) => r.data!.provider),
+
+  myServices: () =>
+    apiRequest<
+      ApiResponse<{
+        services: Array<{
+          id: string;
+          name: string;
+          slug: string;
+          category: string;
+          estimatedDuration: number;
+          requiredSkills: string[];
+          inspectionRequired: boolean;
+          materialPolicy: string | null;
+          equipmentPolicy: string | null;
+          materials: string | null;
+          equipment: string | null;
+          qualityChecklist: string[];
+          proofRequired: boolean;
+          beforeAfterPhotos: boolean;
+          trainingRequired: boolean;
+          certifications: string[];
+        }>;
+      }>
+    >("/api/providers/me/services", { auth: true }).then((r) => r.data!),
 
   serviceSkills: () =>
     apiRequest<ApiResponse<PartnerServiceSkillBoard>>("/api/providers/me/service-skills", { auth: true }).then((r) => r.data!),
@@ -190,6 +419,30 @@ export const partnerApi = {
       auth: true,
     }).then((r) => r.data!),
 
+  presenceSnapshot: () =>
+    apiRequest<ApiResponse<PartnerPresenceSnapshot>>("/api/providers/me/presence", { auth: true }).then(
+      (r) => r.data!,
+    ),
+
+  presenceHeartbeat: (body: PartnerPresenceHeartbeatBody) =>
+    apiRequest<ApiResponse<PartnerPresenceHeartbeatResult>>("/api/providers/me/presence/heartbeat", {
+      method: "POST",
+      auth: true,
+      body,
+    }).then((r) => r.data!),
+
+  locationPing: (body: PartnerLocationPingBody) =>
+    apiRequest<ApiResponse<PartnerPresenceHeartbeatResult>>("/api/providers/me/location/ping", {
+      method: "POST",
+      auth: true,
+      body,
+    }).then((r) => r.data!),
+
+  dispatchEligibility: () =>
+    apiRequest<ApiResponse<PartnerDispatchEligibility>>("/api/providers/me/dispatch-eligibility", {
+      auth: true,
+    }).then((r) => r.data!),
+
   updateServiceArea: (body: {
     city?: string;
     serviceRegions?: string[];
@@ -247,6 +500,10 @@ export const partnerApi = {
         model: string;
         fallbackUsed: boolean;
         requestId: string;
+        mode?: "llm" | "deterministic_fallback";
+        intent?: string;
+        basis?: string[];
+        recommendation?: string | null;
       }>
     >("/api/ai/partner", {
       method: "POST",
@@ -264,7 +521,7 @@ export const partnerApi = {
     >(`/api/bookings/${bookingId}/accept`, {
       method: "POST",
       auth: true,
-      body: { eta },
+      body: acceptEtaBody(eta),
     }).then((r) => r.data!),
 
   rejectBooking: (bookingId: string, reason: string) =>
@@ -279,7 +536,7 @@ export const partnerApi = {
    * only corroborates it now, so a partner on a flaky connection still records when
    * travel began. Safe to call twice: the server reports `newlyTransitioned: false`.
    */
-  markEnRoute: (bookingId: string, latitude: number, longitude: number) =>
+  markEnRoute: (bookingId: string, latitude: number | null, longitude: number | null) =>
     apiRequest<
       ApiResponse<{
         newlyTransitioned: boolean;
@@ -288,7 +545,7 @@ export const partnerApi = {
     >(`/api/bookings/${bookingId}/en-route`, {
       method: "POST",
       auth: true,
-      body: { latitude, longitude },
+      body: optionalGeoBody(latitude, longitude),
     }).then((r) => r.data!),
 
   /** Declares arrival. Races safely with the geofence and the job-start fallback. */
@@ -328,12 +585,31 @@ export const partnerApi = {
       body: { latitude, longitude, ...(otp ? { otp } : {}) },
     }).then((r) => r.data!),
 
+  /**
+   * The frozen execution policy of ONE booking, from `GET /api/bookings/:id` (partner projection:
+   * `data.booking.execution`) for the job page: the quality checklist the completion UI needs (a
+   * service without a quality policy answers with an empty checklist) and (X-30) the frozen
+   * materials / equipment copy.
+   */
+  getBookingExecutionBrief: (bookingId: string): Promise<{ quality: BookingExecutionQuality; policy: ExecutionPolicyCopy }> =>
+    apiRequest<ApiResponse<{ booking: { execution?: unknown } }>>(`/api/bookings/${bookingId}`, { auth: true }).then((r) => ({
+      quality: parseExecutionQuality(r),
+      policy: parseExecutionPolicyCopy(r),
+    })),
+
+  /**
+   * `completedChecklist` is the partner's ACTUAL submission — only the items ticked in the UI, as
+   * the exact strings of the booking's frozen checklist. The server matches item by item and refuses
+   * with `QUALITY_CHECKLIST_REQUIRED` when any is missing; the key is omitted when the booking has
+   * no checklist (see `checklistCompletionFields`).
+   */
   completeBooking: (
     bookingId: string,
-    latitude: number,
-    longitude: number,
+    latitude: number | null,
+    longitude: number | null,
     notes?: string,
     photos?: string[],
+    completedChecklist?: string[],
   ) =>
     apiRequest<
       ApiResponse<{
@@ -342,13 +618,26 @@ export const partnerApi = {
     >(`/api/bookings/${bookingId}/complete`, {
       method: "POST",
       auth: true,
-      body: {
-        latitude,
-        longitude,
+      body: optionalGeoBody(latitude, longitude, {
         notes,
         ...(photos?.length ? { photos } : {}),
-      },
+        ...(completedChecklist !== undefined ? { completedChecklist } : {}),
+      }),
     }).then((r) => r.data!),
+
+  /* ---- Phase 10 §6 — requirement state ---- */
+  getRequirements: (bookingId: string) =>
+    apiRequest<ApiResponse<BookingRequirementsView>>(`/api/bookings/${bookingId}/requirements`, { auth: true }).then((r) => r.data!),
+
+  /**
+   * Records what the partner FOUND on site. The server decides whether the gate passes and answers
+   * with the new state and the START gate; GPS proximity is enforced exactly like arrival.
+   */
+  checkRequirement: (bookingId: string, code: string, outcome: "SATISFIED" | "FAILED", latitude: number, longitude: number, note?: string) =>
+    apiRequest<ApiResponse<{ code: string; state: string; changed: boolean; gate: RequirementGateResult }>>(
+      `/api/bookings/${bookingId}/requirements/${encodeURIComponent(code)}/check`,
+      { method: "POST", auth: true, body: { outcome, latitude, longitude, ...(note ? { note } : {}) } },
+    ).then((r) => r.data!),
 
   getJobActions: (bookingId: string) =>
     apiRequest<ApiResponse<JobActionResult>>(`/api/bookings/${bookingId}/actions`, {
@@ -422,11 +711,8 @@ export const partnerApi = {
     }),
 
   /* ----------------- Wallet + withdrawal ------------------------------ */
-  walletBalance: () =>
-    apiRequest<ApiResponse<WalletBalance>>("/api/wallet/balance", {
-      auth: true,
-    }).then((r) => r.data!),
-
+  // NOTE: there is deliberately no `walletBalance` client here. `/api/wallet/balance` is the
+  // CUSTOMER wallet (users.wallet_balance); partner balance comes from `/me/payouts`.
   walletTransactions: (query: { page?: number; limit?: number } = {}) =>
     apiRequest<ApiResponse<WalletTransactionsResponse>>("/api/wallet/transactions", {
       auth: true,
@@ -487,6 +773,26 @@ export const partnerApi = {
       apiRequest<ApiResponse<unknown>>(`/api/notifications/${id}`, {
         method: "DELETE",
         auth: true,
+      }),
+
+    /**
+     * The canonical preference matrix — one cell per (channel, category), resolved server-side
+     * through the same function the notification router uses.
+     */
+    preferences: () =>
+      apiRequest<ApiResponse<NotificationPreferenceMatrix>>("/api/notifications/preferences", {
+        auth: true,
+      }).then((r) => r.data!),
+
+    setPreference: (body: {
+      channel: NotificationChannelName;
+      category: NotificationCategoryName;
+      enabled: boolean;
+    }) =>
+      apiRequest<ApiResponse<unknown>>("/api/notifications/preferences", {
+        method: "PUT",
+        auth: true,
+        body,
       }),
   },
 
@@ -558,6 +864,23 @@ export const partnerApi = {
           frozen: number;
         }>
       >("/api/referrals/me", { auth: true }).then((r) => r.data!),
+  },
+
+  network: {
+    dashboard: () =>
+      apiRequest<ApiResponse<PartnerNetworkDashboard>>("/api/providers/me/network", { auth: true }).then((r) => r.data!),
+    invite: (body: {
+      name: string;
+      phone: string;
+      email?: string;
+      city?: string;
+      skillInterest?: string;
+    }) =>
+      apiRequest<ApiResponse<PartnerNetworkInviteResult>>("/api/providers/me/network/invite", {
+        method: "POST",
+        auth: true,
+        body,
+      }).then((r) => r.data!),
   },
 
   /* ----------------- Ratings respond ---------------------------------- */
@@ -720,6 +1043,22 @@ export const partnerApi = {
       }).then((r) => r.data!),
     rankings: () =>
       apiRequest<ApiResponse<PartnerRankings>>("/api/providers/me/rankings", { auth: true }).then((r) => r.data!),
+    score: () =>
+      apiRequest<ApiResponse<PartnerScorecard>>("/api/providers/me/score", { auth: true }).then((r) => r.data!),
+    scoreHistory: (page = 1) =>
+      apiRequest<ApiResponse<PartnerScoreHistoryPage>>("/api/providers/me/score/history", {
+        auth: true,
+        query: { page, limit: 20 },
+      }).then((r) => r.data!),
+    career: () =>
+      apiRequest<ApiResponse<PartnerCareer>>("/api/providers/me/career", { auth: true }).then((r) => r.data!),
+    careerHistory: (page = 1) =>
+      apiRequest<ApiResponse<PartnerCareerHistoryPage>>("/api/providers/me/career/history", {
+        auth: true,
+        query: { page, limit: 20 },
+      }).then((r) => r.data!),
+    lifecycle: () =>
+      apiRequest<ApiResponse<PartnerLifecycle>>("/api/providers/me/lifecycle", { auth: true }).then((r) => r.data!),
     academy: () =>
       apiRequest<ApiResponse<PartnerAcademy>>("/api/providers/me/academy", { auth: true }).then((r) => r.data!),
     completeAcademyModule: (moduleId: string, score?: number) =>
@@ -732,6 +1071,22 @@ export const partnerApi = {
       apiRequest<ApiResponse<PartnerCompliance>>("/api/providers/me/compliance", { auth: true }).then((r) => r.data!),
     wellbeing: () =>
       apiRequest<ApiResponse<PartnerWellbeing>>("/api/providers/me/wellbeing", { auth: true }).then((r) => r.data!),
+    triggerSos: (body?: { bookingId?: string; latitude?: number; longitude?: number; accuracy?: number }) =>
+      apiRequest<ApiResponse<{ incidentId: string; status: string; created: boolean; hasLocation: boolean }>>(
+        "/api/providers/me/safety/sos",
+        { method: "POST", auth: true, body: body ?? {} },
+      ).then((r) => r.data!),
+    reportSafety: (body: { type: string; bookingId?: string; notes?: string }) =>
+      apiRequest<ApiResponse<{ incidentId: string; status: string }>>("/api/providers/me/safety/report", {
+        method: "POST",
+        auth: true,
+        body,
+      }).then((r) => r.data!),
+    safetyIncidents: () =>
+      apiRequest<ApiResponse<{ incidents: Array<{ id: string; type: string; status: string; severity: string; createdAt: string }> }>>(
+        "/api/providers/me/safety/incidents",
+        { auth: true },
+      ).then((r) => r.data!.incidents),
     rewards: () =>
       apiRequest<ApiResponse<PartnerRewards>>("/api/providers/me/rewards", { auth: true }).then((r) => r.data!),
     serviceHistory: () =>
@@ -742,6 +1097,17 @@ export const partnerApi = {
       apiRequest<ApiResponse<{ documents: PartnerDocument[] }>>("/api/providers/me/documents", { auth: true }).then(
         (r) => r.data!,
       ),
+    setDocumentMeta: (documentId: string, body: { expiryDate?: string | null; issuer?: string; issueDate?: string | null }) =>
+      apiRequest<ApiResponse<{ document: PartnerDocument }>>(`/api/providers/me/documents/${documentId}`, {
+        method: "PATCH",
+        auth: true,
+        body,
+      }).then((r) => r.data!),
+    updateEmergencyContact: (body: { emergencyContactName?: string; emergencyContactPhone?: string }) =>
+      apiRequest<ApiResponse<{ emergencyContactName: string | null; emergencyContactPhone: string | null }>>(
+        "/api/providers/me/safety/emergency-contact",
+        { method: "PATCH", auth: true, body },
+      ).then((r) => r.data!),
   },
 };
 
@@ -848,6 +1214,11 @@ export type PartnerForecast = {
   weeklyProjection: number;
   monthlyProjection: number;
   inputs: Record<string, number>;
+  basis?: {
+    todayProjection?: { method?: string; predictive?: boolean; source?: string; freshness?: string };
+    weeklyProjection?: { method?: string; predictive?: boolean; state?: string };
+    monthlyProjection?: { method?: string; predictive?: boolean; state?: string };
+  };
 };
 
 export type PartnerIntelligence = {
@@ -868,6 +1239,77 @@ export type PartnerRankings = {
   categoryRanks: Array<{ category: string; rank: number; total: number; score: number }>;
 };
 
+export type PartnerScoreComponent = { value: number | null; weight: number };
+export type PartnerScorecard = {
+  policyVersion: string;
+  overallScore: number | null;
+  band: "EXCELLENT" | "GOOD" | "HEALTHY" | "NEEDS_ATTENTION" | "AT_RISK" | "INSUFFICIENT_DATA";
+  components: {
+    quality: PartnerScoreComponent;
+    reliability: PartnerScoreComponent;
+    completion: PartnerScoreComponent;
+    onTime: PartnerScoreComponent;
+    customerSatisfaction: PartnerScoreComponent;
+    compliance: PartnerScoreComponent;
+    safety: PartnerScoreComponent;
+  };
+  sample: { completedJobs: number; ratings: number; arrivals: number; assignments: number };
+  calculatedAt: string;
+  trends: Record<string, { delta: number | null; insufficient: boolean }>;
+};
+export type PartnerScoreHistoryPage = {
+  items: Array<{
+    id: string;
+    previousScore: number | null;
+    newScore: number | null;
+    previousBand: string | null;
+    newBand: string;
+    delta: number | null;
+    reasons: Array<{ code: string; component: string; delta: number; detail: string; evidenceCount: number }>;
+    calculatedAt: string;
+  }>;
+  page: number;
+  total: number;
+};
+export type PartnerCareerRequirement = {
+  id: string;
+  label: string;
+  current: number;
+  target: number;
+  met: boolean;
+  unit: string;
+};
+export type PartnerCareer = {
+  currentLevel: "STARTER" | "PROFESSIONAL" | "EXPERT" | "ELITE";
+  nextLevel: "STARTER" | "PROFESSIONAL" | "EXPERT" | "ELITE" | null;
+  progressPct: number;
+  remainingRequirements: PartnerCareerRequirement[];
+  requirements: PartnerCareerRequirement[];
+  qualificationState: string;
+  benefitsActive: boolean;
+  careerPriorityBoost: number;
+  badges: Array<{ code: string; label: string; awardedAt: string; reason: string }>;
+};
+export type PartnerCareerHistoryPage = {
+  items: Array<{
+    id: string;
+    previousLevel: string | null;
+    newLevel: string;
+    reason: string;
+    createdAt: string;
+  }>;
+  page: number;
+  total: number;
+};
+export type PartnerLifecycle = {
+  lifecycleState: string;
+  allowedTransitions: string[];
+  dispatchEligible: boolean;
+  availability: { isOnline: boolean; pausedAt: string | null; currentStatus: string };
+  isApproved: boolean;
+  isActive: boolean;
+};
+
 export type PartnerAcademy = {
   modules: Array<{
     id: string;
@@ -884,24 +1326,36 @@ export type PartnerAcademy = {
 };
 
 export type PartnerCompliance = {
+  status: "VERIFIED" | "EXPIRING" | "ACTION_REQUIRED" | "RESTRICTED";
+  explanation: string;
+  restricted: boolean;
+  restrictionReason: string | null;
   documents: Array<{
     id: string;
     documentType: string;
     documentName: string | null;
+    issuer?: string | null;
     isVerified: boolean;
     expiryDate: string | null;
+    expiryState?: string;
+    daysToExpiry?: number | null;
+    cta?: string;
+    category?: string;
     expiringSoon: boolean;
   }>;
   verification: Record<string, unknown>;
   complianceScore: number;
   expiringSoon: number;
   certifications: string[];
+  insurance?: Array<Record<string, unknown>>;
 };
 
 export type PartnerWellbeing = {
   sosPhone: string | null;
   insuranceUrl: string | null;
   communityUrl: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
 };
 
 export type PartnerRewards = {
@@ -910,6 +1364,50 @@ export type PartnerRewards = {
   referralCount: number;
   referralCode: string | null;
   incentiveEarnings: number;
+};
+
+export type PartnerNetworkReferral = {
+  id: string;
+  name: string;
+  status: string;
+  jobs: number;
+  jobTarget: number;
+  qualificationLabel: string;
+  nextMilestone: string;
+  rewardAmount: number | null;
+  invitedAt: string;
+  registeredAt: string | null;
+  qualifiedAt: string | null;
+  rewardedAt: string | null;
+};
+
+export type PartnerNetworkDashboard = {
+  code: string;
+  shareUrl: string;
+  rewardPerQualified: number;
+  jobTarget: number;
+  counts: {
+    invited: number;
+    registered: number;
+    verified: number;
+    training: number;
+    active: number;
+    firstJob: number;
+    qualified: number;
+    rewarded: number;
+  };
+  totalRewarded: number;
+  referrals: PartnerNetworkReferral[];
+};
+
+export type PartnerNetworkInviteResult = {
+  referralId: string;
+  leadId: string;
+  status: string;
+  code: string;
+  shareUrl: string;
+  inviteUrl: string;
+  expiresAt: string;
 };
 
 export type PartnerServiceHistory = {

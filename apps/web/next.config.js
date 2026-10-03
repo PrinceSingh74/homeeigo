@@ -6,7 +6,9 @@ const nextConfig = {
   poweredByHeader: false,
   // Windows often opens the app as 127.0.0.1 while Next binds to localhost.
   // That mismatch breaks /_next/* (HMR + RSC) and makes tab switches hang.
-  allowedDevOrigins: ["127.0.0.1", "localhost"],
+  // Private LAN ranges too (same list as partner-web/admin-panel): opening the dev server as
+  // http://192.168.x.x:3001 from a phone/other machine otherwise gets its HMR socket refused.
+  allowedDevOrigins: ["127.0.0.1", "localhost", "10.*.*.*", "172.*.*.*", "192.168.*.*"],
   // Lets a production build be produced into a separate folder while `next dev` holds `.next`
   // (measuring prod navigation without disturbing a running dev server). No-op when unset.
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),

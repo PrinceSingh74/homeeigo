@@ -8,7 +8,6 @@ import {
   Check,
   Star,
   ShieldCheck,
-  Leaf,
   BadgeCheck,
   Clock,
   Sparkles,
@@ -52,21 +51,23 @@ import {
   bookServiceRail,
   bookSplitGrid,
 } from "@/components/booking/book-page-layout";
-import { buildAddressCreatePayload } from "@/lib/addresses";
+import { AddAddressModal } from "@/components/profile/AddAddressModal";
 import {
   SERVICES,
   popularPackageIndex,
+  packagePositionForTier,
   getLocation,
   type Service,
 } from "@/lib/services";
 import { bookUrl, parseBookParams } from "@/lib/booking-url";
+import { BOOKING_ADDONS, tierOptions } from "@/lib/catalog/pricing";
 import { SERVICE_IMAGES, type SavedBooking } from "@/lib/bookings";
 import { useAppStore } from "@/stores/app-store";
 import {
   mapBackendBookingToSaved,
   useAddressesQuery,
+  useAvailabilityQuery,
   useBookingPriceQuoteQuery,
-  useCreateAddressMutation,
   useCreateBookingMutation,
   useServicesQuery,
 } from "@/hooks/use-core-data";
@@ -75,29 +76,30 @@ import {
   defaultScheduledSlot,
   formatDateLabel,
   formatTimeLabel,
+  toYmdLocal,
 } from "@/lib/booking-datetime";
-import type { BackendService } from "@/types/backend";
+import type { BackendService, ServiceSelectionSnapshot } from "@/types/backend";
+import { getErrorMessage } from "@/lib/auth/errors";
 
 /* ----------------------------- data ----------------------------- */
 
+// Only claims the product can back: partner approval, itemised server pricing,
+// live arrival tracking and gateway payments. (No guarantees or material claims.)
 const HERO_FEATURES: { icon: LucideIcon; label: string }[] = [
   { icon: ShieldCheck, label: "Verified\nProfessionals" },
-  { icon: Leaf, label: "Eco Friendly\nProducts" },
-  { icon: BadgeCheck, label: "Satisfaction\nGuarantee" },
-  { icon: Clock, label: "On-time\nService" },
+  { icon: BadgeCheck, label: "Itemised\nPricing" },
+  { icon: Clock, label: "Live Arrival\nTracking" },
+  { icon: CreditCard, label: "Secure\nPayments" },
 ];
 
-const ADDONS = [
-  { id: "fridge", name: "Fridge Cleaning", desc: "Deep cleaning & sanitization", price: 99 },
-  { id: "sofa", name: "Sofa Cleaning", desc: "Vacuum & stain removal", price: 149 },
-  { id: "microwave", name: "Microwave Cleaning", desc: "Interior cleaning", price: 79 },
-] as const;
+// Shared with the service detail page so both show the same add-on prices.
+const ADDONS = BOOKING_ADDONS;
 
 const TRUST = [
   { icon: ShieldCheck, label: "Verified\nProfessionals" },
-  { icon: UserCheck, label: "Background\nChecked" },
-  { icon: Clock, label: "On-time\nGuarantee" },
-  { icon: BadgeCheck, label: "Satisfaction\nGuarantee" },
+  { icon: UserCheck, label: "Start PIN\nat the Door" },
+  { icon: Clock, label: "Live\nTracking" },
+  { icon: BadgeCheck, label: "Cancellation Terms\nShown Upfront" },
   { icon: CreditCard, label: "Secure\nPayments" },
 ];
 
@@ -116,32 +118,23 @@ const FALLBACK_SERVICE: Service = {
   keywords: [],
 };
 
+/**
+ * Exactly the tiers the server prices (resolvePackagePrice: min / base / max, exact values only).
+ * Not base × 1.35 when maxPrice is unset — the server refuses that price — and no per-tier feature
+ * claims the service does not actually configure.
+ */
 function packagesFromApi(api: BackendService): Service["packages"] {
-  const base = api.basePrice ?? api.minPrice ?? 199;
+  const base = api.basePrice ?? api.minPrice ?? 0;
   const min = api.minPrice ?? base;
-  const max = api.maxPrice ?? Math.round(base * 1.35);
-  const mid = base;
-  return [
-    {
-      name: "Basic",
-      tag: "Essentials",
-      price: min,
-      items: ["Core service scope", "Standard products"],
-    },
-    {
-      name: "Standard",
-      tag: "Most popular",
-      price: mid,
-      popular: true,
-      items: ["Extended coverage", "Premium products", "Quality check"],
-    },
-    {
-      name: "Premium",
-      tag: "Full service",
-      price: max,
-      items: ["Maximum coverage", "Deep treatment", "Priority support"],
-    },
-  ];
+  const max = api.maxPrice ?? Math.max(base, min);
+  return tierOptions({ base, min, max }).map((t) => ({
+    name: t.name,
+    tag: t.tag,
+    price: t.price,
+    popular: t.price === base,
+    items: [],
+    tierIndex: t.index,
+  }));
 }
 
 function toUiService(api: BackendService, fallbackIndex = 0): Service {
@@ -157,8 +150,8 @@ function toUiService(api: BackendService, fallbackIndex = 0): Service {
     priceFrom,
     price: `₹${priceFrom}`,
     packages: packagesFromApi(api),
-    rating: String(api.rating ?? fallback.rating),
-    reviews: api.reviewCount ? `${api.reviewCount}` : fallback.reviews,
+    rating: api.rating != null && api.rating > 0 && (api.reviewCount ?? 0) > 0 ? String(api.rating) : "New",
+    reviews: (api.reviewCount ?? 0) > 0 ? `${api.reviewCount}` : "0",
     featured: api.isFeatured ?? fallback.featured,
     img: api.thumbnail ?? api.icon ?? fallback.img,
   };
@@ -219,7 +212,6 @@ function BookPageContent() {
   } = useServicesQuery();
   const createBookingMutation = useCreateBookingMutation();
   const { data: addressesData, isLoading: addressesLoading } = useAddressesQuery();
-  const createAddressMutation = useCreateAddressMutation();
   const { payForBooking } = useBookingPayment();
   const services: Service[] = useMemo(() => {
     const incoming = servicesData?.services ?? [];
@@ -234,40 +226,51 @@ function BookPageContent() {
         services.findIndex((s) => s.id === parsed.serviceId || s.slug === parsed.serviceId),
       )
     : 0;
-  const initialPkg =
-    parsed.packageIndex ?? popularPackageIndex(services[initialService] ?? services[0]!);
+  const initialPkg = packagePositionForTier(services[initialService] ?? services[0]!, parsed.packageIndex);
 
   const [service, setService] = useState(initialService);
   const [pkg, setPkg] = useState(initialPkg);
   const [searchQuery, setSearchQuery] = useState(parsed.query);
   const [scheduledAt, setScheduledAt] = useState(() => defaultScheduledSlot());
+  /** The clock starts at 11:00 so the day grid has a time to show. It is not a chosen slot. */
+  const [slotChosen, setSlotChosen] = useState(false);
   const [addons, setAddons] = useState<Set<string>>(new Set());
+  /** Phase 06: codes of blocking requirements the customer has ticked (the server enforces them). */
+  const [attested, setAttested] = useState<Set<string>>(new Set());
+  /** Variant / quantity / audience from the service page — ids only; the server prices them. */
+  const [selection, setSelection] = useState<{
+    variantId?: string;
+    quantity?: number;
+    audience?: string;
+    professionalPreference?: string;
+  } | null>(null);
   const [couponInput, setCouponInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [address, setAddress] = useState({
-    line1: "",
-    line2: "",
-  });
-
+  // The booking's address is always a SAVED address with a real pin — chosen here, or added through
+  // AddAddressModal (search / GPS). Free text here used to be ignored when a default existed, and
+  // without one the page saved an address at the preset area's centroid.
+  const savedAddresses = useMemo(() => addressesData?.addresses ?? [], [addressesData?.addresses]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [addAddressOpen, setAddAddressOpen] = useState(false);
   useEffect(() => {
-    const list = addressesData?.addresses ?? [];
-    const def = list.find((a) => a.isDefault) ?? list[0];
-    if (def) {
-      setAddress({
-        line1: def.line1 ?? "",
-        line2: [def.line2, def.city, def.pincode].filter(Boolean).join(", "),
-      });
-      return;
-    }
-    const l = getLocation(locationId);
-    setAddress({ line1: l.label, line2: `${l.city}, ${l.pin}` });
-  }, [addressesData?.addresses, locationId]);
-  const [editingAddr, setEditingAddr] = useState(false);
+    if (selectedAddressId && savedAddresses.some((a) => a.id === selectedAddressId)) return;
+    const def = savedAddresses.find((a) => a.isDefault) ?? savedAddresses[0];
+    setSelectedAddressId(def?.id ?? null);
+  }, [savedAddresses, selectedAddressId]);
+  const defaultAddressId = (savedAddresses.find((a) => a.isDefault) ?? savedAddresses[0])?.id ?? null;
+  // Synchronous on the first render after addresses load, so the quote is requested ONCE, already
+  // at the right address (the effect above only persists the choice).
+  const effectiveAddressId = selectedAddressId ?? defaultAddressId;
+  const selectedAddress = savedAddresses.find((a) => a.id === effectiveAddressId) ?? null;
+  const addressText = selectedAddress
+    ? [selectedAddress.line1, selectedAddress.line2, selectedAddress.city, selectedAddress.pincode].filter(Boolean).join(", ")
+    : "";
   const [bookingDone, setBookingDone] = useState<SavedBooking | null>(null);
   const [confirming, setConfirming] = useState(false);
 
   const dateRef = useRef<HTMLDivElement>(null);
+  const prepRef = useRef<HTMLDivElement>(null);
   const instrRef = useRef<HTMLTextAreaElement>(null);
 
   const svc = services[service] ?? services[0]!;
@@ -281,9 +284,26 @@ function BookPageContent() {
         services.findIndex((s) => s.id === sid || s.slug === sid),
       );
       setService(idx);
-      setPkg(parsed.packageIndex ?? popularPackageIndex(services[idx] ?? services[0]!));
+      setPkg(packagePositionForTier(services[idx] ?? services[0]!, parsed.packageIndex));
     }
     if (parsed.query) setSearchQuery(parsed.query);
+    if (parsed.addons.length) {
+      const raw = servicesData?.services?.find((s) => s.id === sid || s.slug === sid);
+      const known = new Set<string>(addonCatalogFor(raw).map((a) => a.id));
+      setAddons(new Set(parsed.addons.filter((id) => known.has(id))));
+    }
+    const hasSelection = parsed.variant || parsed.quantity != null || parsed.audience || parsed.preference;
+    setSelection(
+      sid && hasSelection
+        ? {
+            variantId: parsed.variant ?? undefined,
+            quantity: parsed.quantity ?? undefined,
+            audience: parsed.audience ?? undefined,
+            professionalPreference: parsed.preference ?? undefined,
+          }
+        : null,
+    );
+    if (parsed.notes) setInstructions((cur) => cur || parsed.notes);
     if (parsed.promo) {
       const code = parsed.promo.trim();
       useAppStore.getState().setActivePromo(code);
@@ -312,6 +332,7 @@ function BookPageContent() {
     setService(idx);
     setPkg(popularPackageIndex(services[idx] ?? services[0]!));
     setAddons(new Set());
+    setSelection(null);
     showToast(`${(services[idx] ?? services[0]!).title} selected`, "info");
     router.replace(
       bookUrl({ service: serviceId, q: q || undefined }),
@@ -329,9 +350,17 @@ function BookPageContent() {
     setService(i);
     setPkg(popularPackageIndex(services[i] ?? services[0]!));
     setAddons(new Set());
+    setSelection(null);
     showToast(`${(services[i] ?? services[0]!).title} selected`, "info");
   };
 
+  const toggleAttested = (code: string) =>
+    setAttested((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
   const toggleAddon = (id: string) =>
     setAddons((prev) => {
       const next = new Set(prev);
@@ -346,55 +375,93 @@ function BookPageContent() {
 
   const selected = svc.packages[pkg] ?? svc.packages[0];
   const addonIds = Array.from(addons);
+  const rawService = servicesData?.services?.find((s) => s.id === svc.id);
+  const addonList = addonCatalogFor(rawService);
+  const rule = rawService?.catalogConfig?.quantity;
+  // Quantity-priced services never use package tiers: without a carried selection
+  // (e.g. picked in the list below) the server prices the rule's default quantity.
+  const effectiveSelection =
+    selection ?? (rule ? { quantity: rule.default ?? rule.min } : null);
+  // With a selection the server prices variant × quantity; package tiers don't apply.
+  const selectionPayload = effectiveSelection
+    ? {
+        variantId: effectiveSelection.variantId,
+        quantity: effectiveSelection.quantity,
+        audience: effectiveSelection.audience,
+        professionalPreference: effectiveSelection.professionalPreference,
+      }
+    : { packagePrice: selected.price };
+  /**
+   * Which times the SERVER will accept for the chosen day. The booking step used to offer six
+   * hardcoded times nobody had agreed to; this asks.
+   */
+  const availabilityQuery = useAvailabilityQuery({
+    serviceId: svc?.id,
+    date: toYmdLocal(scheduledAt),
+    addressId: effectiveAddressId,
+  });
+
   const priceQuoteQuery = useBookingPriceQuoteQuery(
-    svc.id && svc.id !== "service-unavailable" && !servicesLoading
+    // Wait for addresses: the quote is priced at the selected address (surge), and a first quote
+    // without it would show a total that silently changes a moment later.
+    svc.id && svc.id !== "service-unavailable" && !servicesLoading && !addressesLoading
       ? {
           serviceId: svc.id,
-          packagePrice: selected.price,
+          ...selectionPayload,
           addonIds,
           couponCode: appliedCoupon || undefined,
+          addressId: effectiveAddressId ?? undefined,
         }
       : null,
   );
   const quote = priceQuoteQuery.data?.quote;
-  const subtotal = quote?.baseAmount ?? selected.price;
-  const taxes = quote?.taxes ?? Math.round(subtotal * 0.1);
+  const quoteError = priceQuoteQuery.error ? getErrorMessage(priceQuoteQuery.error) : null;
+  // Every displayed amount comes from the server quote — never a client total.
+  const subtotal = quote?.baseAmount ?? null;
+  const taxes = quote?.taxes ?? null;
   const discount = quote?.discount ?? 0;
-  const total = quote?.finalAmount ?? subtotal + taxes;
+  const total = quote?.finalAmount ?? null;
   const couponError = quote?.couponError;
+  const requirements = quote?.requirements ?? null;
+  const mustConfirm = requirements?.beforeBooking ?? [];
+  const unconfirmed = mustConfirm.filter((r) => !attested.has(r.code));
+  const sel = quote?.selection;
 
   async function resolveAddressId(): Promise<string | null> {
-    const list = addressesData?.addresses ?? [];
-    const def = list.find((a) => a.isDefault) ?? list[0];
-    if (def?.id) return def.id;
-    if (!address.line1.trim()) {
-      showToast("Please add an address to continue", "error");
-      return null;
-    }
-    try {
-      const loc = getLocation(locationId);
-      const created = await createAddressMutation.mutateAsync(
-        buildAddressCreatePayload({
-          line1: address.line1,
-          line2: address.line2,
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-        }),
-      );
-      return created.address?.id ?? null;
-    } catch {
-      return null;
-    }
+    if (effectiveAddressId) return effectiveAddressId;
+    showToast("Add your service address to continue", "error");
+    setAddAddressOpen(true);
+    return null;
   }
 
   async function confirmBooking() {
     if (confirming) return;
+    if (!quote) {
+      showToast(quoteError ?? "Price is still being calculated", "error");
+      return;
+    }
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       showToast("You are offline. Reconnect and try again.", "error");
       return;
     }
     if (addressesLoading) {
       showToast("Loading your addresses…", "info");
+      return;
+    }
+    if (!slotChosen) {
+      showToast("Choose a time slot before paying", "error");
+      scrollTo(dateRef.current);
+      return;
+    }
+    const offered = availabilityQuery.data?.slots ?? [];
+    if (availabilityQuery.isLoading || (offered.length === 0 && availabilityQuery.isFetching)) {
+      showToast("Checking available times…", "info");
+      return;
+    }
+    if (offered.length > 0 && !offered.some((s) => s.available && new Date(s.start).getTime() === scheduledAt.getTime())) {
+      setSlotChosen(false);
+      showToast("That time isn't available. Pick another slot.", "error");
+      scrollTo(dateRef.current);
       return;
     }
     setConfirming(true);
@@ -404,15 +471,30 @@ function BookPageContent() {
         setConfirming(false);
         return;
       }
+      // The quote token lets the server refuse — rather than silently charge a different total —
+      // if the price moved since the customer saw it.
+      if (unconfirmed.length) {
+        setConfirming(false);
+        showToast(`Please confirm: ${unconfirmed.map((r) => r.label).join(", ")}`, "error");
+        scrollTo(prepRef.current);
+        return;
+      }
+      if (quote.expiresAt && new Date(quote.expiresAt).getTime() <= Date.now()) {
+        await priceQuoteQuery.refetch();
+        showToast("Your price was refreshed — please review the total and confirm again", "info");
+        return;
+      }
       const created = await createBookingMutation.mutateAsync({
         serviceId: svc.id,
         scheduledDate: scheduledAt.toISOString(),
         addressId,
         description: instructions.trim() || undefined,
         paymentMethod: "razorpay",
-        packagePrice: selected.price,
+        ...selectionPayload,
         addonIds,
         couponCode: appliedCoupon || undefined,
+        quoteToken: quote.quoteToken,
+        ...(mustConfirm.length ? { requirementAttestations: mustConfirm.filter((r) => attested.has(r.code)).map((r) => r.code) } : {}),
       });
       if (!created.booking?.id) {
         showToast("Booking could not be confirmed", "error");
@@ -426,23 +508,37 @@ function BookPageContent() {
         packageName: selected.name,
         dateLabel: `${formatDateLabel(scheduledAt)}, ${scheduledAt.getFullYear()}`,
         timeLabel: formatTimeLabel(scheduledAt),
-        address: `${address.line1}, ${address.line2}`,
+        address: addressText,
         imagePath: SERVICE_IMAGES[svc.id] ?? svc.img,
         serviceColor: svc.color,
         instructions: instructions.trim() || undefined,
       };
       addBooking(booking);
-      setBookingDone(booking);
+      // The success modal and the "confirmed" copy are gated on the SERVER verifying the payment.
+      // `payForBooking` resolves as soon as the gateway sheet opens (razorpay.open() is void), so
+      // anything after the await would fire while the payment is unattempted, dismissed or declined.
       await payForBooking({
         bookingId: created.booking.id,
         description: `${svc.title} booking payment`,
         onVerified: () => {
-          showToast("Payment completed and verified", "success");
+          setBookingDone(booking);
+          showToast("Payment verified — we're finding your pro", "success");
         },
       });
-      showToast("Booking confirmed securely", "success");
-    } catch {
-      // mutation handles user-facing error toast
+    } catch (err) {
+      // The mutation toasts the server's message. A price change or an expired quote also means
+      // the total on screen is stale: reload the server quote so the customer re-confirms the real one.
+      const code = (err as { code?: string } | null)?.code;
+      if (code === "PRICE_CHANGED" || code === "QUOTE_EXPIRED" || code === "QUOTE_MISMATCH") {
+        void priceQuoteQuery.refetch();
+      }
+      if (code === "REQUIREMENTS_NOT_CONFIRMED") scrollTo(prepRef.current);
+      // A schedule refusal (lead time, blackout date, the partner's hours, an overlapping booking)
+      // is fixed by picking another slot, so put the customer on the date step rather than leaving
+      // them at the confirm button with a toast.
+      if (code === "SCHEDULE_NOT_ALLOWED" || code === "PROVIDER_UNAVAILABLE" || code === "OVERLAPPING_BOOKING") {
+        scrollTo(dateRef.current);
+      }
     } finally {
       setConfirming(false);
     }
@@ -659,7 +755,7 @@ function BookPageContent() {
                 </div>
 
                 <div className="min-w-0 flex-1 text-center sm:text-left">
-                  <span className="inline-block rounded-full bg-emerald-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider shadow-lg sm:px-4 sm:py-1.5 sm:text-xs">
+                  <span className="inline-block rounded-full bg-success-strong px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg sm:px-4 sm:py-1.5 sm:text-xs">
                     Best Seller
                   </span>
                   <h2
@@ -672,24 +768,15 @@ function BookPageContent() {
                     {svc.tagline}
                   </p>
                   <div className="mt-4 flex flex-wrap items-center justify-center gap-4 sm:justify-start">
-                    <span className="flex items-center gap-1.5 font-semibold">
-                      <Star size={18} className="fill-gold text-gold" />
-                      {svc.rating}
-                      <span className="font-normal text-white/60">
-                        ({svc.reviews} reviews)
+                    {rawService?.rating != null && rawService.rating > 0 && (rawService.reviewCount ?? 0) > 0 ? (
+                      <span className="flex items-center gap-1.5 font-semibold">
+                        <Star size={18} className="fill-gold text-gold" />
+                        {rawService.rating.toFixed(1)}
+                        <span className="font-normal text-white/60">
+                          ({rawService.reviewCount} {rawService.reviewCount === 1 ? "review" : "reviews"})
+                        </span>
                       </span>
-                    </span>
-                    <span className="flex items-center gap-2 text-sm text-white/75">
-                      <span className="flex -space-x-2">
-                        {[0, 1, 2].map((a) => (
-                          <span
-                            key={a}
-                            className="size-6 rounded-full bg-[linear-gradient(135deg,#10b981_0%,#14b8a6_100%)] ring-2 ring-emerald-900"
-                          />
-                        ))}
-                      </span>
-                      {svc.homes}
-                    </span>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -716,11 +803,19 @@ function BookPageContent() {
             {/* Package picker */}
             <div className="min-w-0">
               <div className="mb-4 flex flex-wrap items-center gap-2 sm:mb-6 sm:gap-3">
-                <h3 className={bookSectionTitle}>Choose Your Package</h3>
+                <h3 className={bookSectionTitle}>{effectiveSelection ? "Your Selection" : "Choose Your Package"}</h3>
                 <span className="rounded-full bg-success/15 px-2.5 py-0.5 text-[10px] font-bold text-success sm:px-3 sm:py-1 sm:text-xs">
                   Save More
                 </span>
               </div>
+              {effectiveSelection ? (
+                <SelectionSummary
+                  selection={sel}
+                  loading={priceQuoteQuery.isFetching && !sel}
+                  error={quoteError}
+                  onChange={() => router.back()}
+                />
+              ) : (
               <div className={bookPackageGrid}>
                 {svc.packages.map((p, i) => {
                   const active = i === pkg;
@@ -793,6 +888,7 @@ function BookPageContent() {
                   );
                 })}
               </div>
+              )}
             </div>
 
             {/* Date & time */}
@@ -800,9 +896,19 @@ function BookPageContent() {
             <SectionCard>
               <BookingScheduleSection
                 scheduledAt={scheduledAt}
-                onScheduledAtChange={setScheduledAt}
+                timeSelected={slotChosen}
+                onScheduledAtChange={(next) => {
+                  setScheduledAt(next);
+                  setSlotChosen(false);
+                }}
+                onPickTime={(next) => {
+                  setScheduledAt(next);
+                  setSlotChosen(true);
+                }}
                 onInvalid={(msg) => showToast(msg, "error")}
                 step={3}
+                slots={availabilityQuery.data?.slots}
+                slotsLoading={availabilityQuery.isLoading}
               />
             </SectionCard>
             </div>
@@ -813,8 +919,8 @@ function BookPageContent() {
                 <h3 className="mb-3 font-display text-lg font-bold text-content">Pros near you</h3>
                 <ProviderETA
                   serviceId={svc.id}
-                  latitude={getLocation(locationId).latitude}
-                  longitude={getLocation(locationId).longitude}
+                  latitude={selectedAddress?.latitude ?? getLocation(locationId).latitude}
+                  longitude={selectedAddress?.longitude ?? getLocation(locationId).longitude}
                 />
               </SectionCard>
             )}
@@ -829,7 +935,7 @@ function BookPageContent() {
                   </span>
                 </h3>
                 <div className="flex flex-col gap-3">
-                  {ADDONS.map((a) => {
+                  {addonList.map((a) => {
                     const on = addons.has(a.id);
                     return (
                       <button
@@ -866,11 +972,12 @@ function BookPageContent() {
               </SectionCard>
 
               <SectionCard>
-                <h3 className="mb-4 font-display text-lg font-bold text-content">
+                <h3 id="special-instructions-heading" className="mb-4 font-display text-lg font-bold text-content">
                   Special Instructions
                 </h3>
                 <Textarea
                   ref={instrRef}
+                  aria-labelledby="special-instructions-heading"
                   value={instructions}
                   onChange={(e) => setInstructions(e.target.value)}
                   maxCharacters={250}
@@ -1022,42 +1129,36 @@ function BookPageContent() {
                   <span className="text-sm font-bold text-content">Address</span>
                   <button
                     type="button"
-                    onClick={() => setEditingAddr((v) => !v)}
+                    onClick={() => setAddAddressOpen(true)}
                     className="text-xs font-bold text-emerald-600 hover:underline"
                   >
-                    {editingAddr ? "Save" : "Edit"}
+                    Add address
                   </button>
                 </div>
-                {editingAddr ? (
-                  <div className="mt-2 flex flex-col gap-2">
-                    <Input
-                      size="sm"
-                      value={address.line1}
-                      onChange={(e) =>
-                        setAddress((a) => ({ ...a, line1: e.target.value }))
-                      }
-                      placeholder="Address line 1"
-                      showClear={false}
-                      containerClassName="rounded-xl bg-surface/60"
-                      inputClassName="text-xs"
-                    />
-                    <Input
-                      size="sm"
-                      value={address.line2}
-                      onChange={(e) =>
-                        setAddress((a) => ({ ...a, line2: e.target.value }))
-                      }
-                      placeholder="City, PIN"
-                      showClear={false}
-                      containerClassName="rounded-xl bg-surface/60"
-                      inputClassName="text-xs"
-                    />
-                  </div>
+                {savedAddresses.length > 0 ? (
+                  <select
+                    aria-label="Service address"
+                    value={effectiveAddressId ?? ""}
+                    onChange={(e) => setSelectedAddressId(e.target.value || null)}
+                    className="mt-2 w-full rounded-xl border border-line bg-surface/60 px-2 py-2 text-xs text-content"
+                  >
+                    {savedAddresses.map((a) => (
+                      <option key={a.id} value={a.id} disabled={a.latitude == null || a.longitude == null}>
+                        {[a.label, a.line1, a.city].filter(Boolean).join(" · ")}
+                        {a.latitude == null || a.longitude == null ? " (no map pin)" : ""}
+                      </option>
+                    ))}
+                  </select>
                 ) : (
-                  <span className="mt-1 block whitespace-pre-line text-xs text-muted">
-                    {`${address.line1}\n${address.line2}`}
+                  <span className="mt-1 block text-xs text-muted">
+                    {addressesLoading ? "Loading your addresses…" : "Add the address where the service will happen."}
                   </span>
                 )}
+                <AddAddressModal
+                  open={addAddressOpen}
+                  onClose={() => setAddAddressOpen(false)}
+                  onSaved={(id) => setSelectedAddressId(id)}
+                />
               </div>
 
               {/* Instructions */}
@@ -1116,15 +1217,31 @@ function BookPageContent() {
               </div>
 
               <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4 text-sm">
-                <Row label="Package + add-ons" value={`₹${subtotal}`} />
+                {quoteError ? (
+                  <p role="alert" className="rounded-xl bg-warning/10 px-3 py-2 text-xs text-warning">{quoteError}</p>
+                ) : null}
+                <Row label={sel ? "Service + add-ons" : "Package + add-ons"} value={subtotal != null ? `₹${subtotal}` : "—"} />
                 {discount > 0 ? (
                   <Row label="Discounts" value={`-₹${discount}`} />
                 ) : null}
-                <Row label="Taxes (10%)" value={`₹${taxes}`} />
+                <Row
+                  label={
+                    quote?.tax
+                      ? `${quote.tax.label} (${quote.tax.rateBps / 100}%)`
+                      : "Taxes"
+                  }
+                  value={taxes != null ? `₹${taxes}` : "—"}
+                />
                 {priceQuoteQuery.isFetching ? (
                   <p className="text-xs text-muted">Updating price…</p>
                 ) : null}
               </div>
+
+              {requirements && !requirements.empty && (
+                <div ref={prepRef} className="mt-5 border-t border-line pt-5">
+                  <BookingPreparation view={requirements} attested={attested} onToggle={toggleAttested} />
+                </div>
+              )}
 
               <div className="mt-5 flex items-center justify-between border-t border-line pt-5">
                 <span className="font-display text-lg font-bold text-content">
@@ -1134,7 +1251,7 @@ function BookPageContent() {
                   className="font-display font-bold bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent"
                   style={{ fontSize: "clamp(1.5rem, 5vw, 1.875rem)" }}
                 >
-                  ₹{total}
+                  {total != null ? `₹${total}` : "—"}
                 </span>
               </div>
 
@@ -1161,11 +1278,11 @@ function BookPageContent() {
                 className="mt-5 hidden h-16 w-full items-center justify-center gap-2.5 rounded-2xl bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-base font-bold text-white shadow-[0_18px_40px_-10px_rgb(16_185_129/0.55)] disabled:opacity-70 lg:flex"
               >
                 <Lock size={18} />
-                {confirming ? "Securing your slot…" : "Confirm Booking Securely"}
+                {confirming ? "Securing your slot…" : slotChosen ? "Confirm Booking Securely" : "Choose a time slot"}
                 <ArrowRight size={18} />
               </motion.button>
               <p className="mt-2 hidden text-center text-xs text-muted lg:block">
-                You won&apos;t be charged yet
+                Payment is taken when you confirm
               </p>
             </SectionCard>
           </div>
@@ -1189,28 +1306,14 @@ function BookPageContent() {
               );
             })}
           </div>
-          <div className="flex flex-col items-center gap-3 sm:flex-row">
-            <span className="text-center text-xs font-semibold text-content sm:text-left sm:text-sm">
-              Trusted by 50,000+ families
-            </span>
-            <span className="flex -space-x-2">
-              {[0, 1, 2, 3, 4].map((a) => (
-                <span
-                  key={a}
-                  className="size-7 rounded-full bg-[linear-gradient(135deg,#10b981_0%,#14b8a6_100%)] ring-2 ring-surface"
-                />
-              ))}
-            </span>
-            <span className="flex items-center gap-1 rounded-full bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] px-3 py-1 text-sm font-bold text-white">
-              4.9 <Star size={13} className="fill-white" />
-            </span>
-          </div>
+
         </div>
       </main>
 
       <BookStickyCheckout
         total={total}
         confirming={confirming}
+        slotChosen={slotChosen}
         onConfirm={confirmBooking}
       />
 
@@ -1245,3 +1348,131 @@ function Row({
     </div>
   );
 }
+
+/** Add-ons offered for a service: its configured catalogue, else the shared one. */
+function addonCatalogFor(raw: BackendService | undefined): { id: string; name: string; desc: string; price: number }[] {
+  const own = raw?.catalogConfig?.addons;
+  if (own) return own.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name, desc: "", price: a.price }));
+  return ADDONS.map((a) => ({ ...a }));
+}
+
+/** The server-priced selection carried from the service page (variant, quantity, audience). */
+function SelectionSummary({
+  selection,
+  loading,
+  error,
+  onChange,
+}: {
+  selection: ServiceSelectionSnapshot | undefined;
+  loading: boolean;
+  error: string | null;
+  onChange: () => void;
+}) {
+  const audience = selection?.audience ? AUDIENCE_LABEL[selection.audience] : null;
+  return (
+    <div className="rounded-2xl border border-line bg-surface p-5">
+      {error ? (
+        <p role="alert" className="text-sm text-warning">
+          {error}
+        </p>
+      ) : loading || !selection ? (
+        <p className="text-sm text-muted">Calculating your price…</p>
+      ) : (
+        <dl className="grid gap-2 text-sm sm:grid-cols-2">
+          {selection.variant ? (
+            <Row label="Option" value={selection.variant.name} />
+          ) : null}
+          {selection.quantityType ? (
+            <Row label="Quantity" value={`${selection.quantity} ${selection.unitLabel ?? ""}`.trim()} />
+          ) : null}
+          {selection.unitPrice != null ? <Row label="Unit price" value={`₹${selection.unitPrice}`} /> : null}
+          {audience ? <Row label="For" value={audience} /> : null}
+          <Row label="Estimated time" value={`${selection.durationMinutes} min`} />
+        </dl>
+      )}
+      <button type="button" onClick={onChange} className="mt-4 text-sm font-semibold text-emerald-700 underline-offset-4 hover:underline dark:text-emerald-300">
+        Change selection
+      </button>
+    </div>
+  );
+}
+
+const AUDIENCE_LABEL: Record<string, string> = {
+  women: "Women",
+  men: "Men",
+  girls: "Girls",
+  boys: "Boys",
+  "senior-women": "Senior Women",
+  "senior-men": "Senior Men",
+};
+
+/**
+ * Phase 06 — the selection's requirements on the booking page, from the server quote. Blocking
+ * requirements are ticked here; the backend refuses the booking without them, so this is guidance,
+ * never the enforcement.
+ */
+function BookingPreparation({
+  view,
+  attested,
+  onToggle,
+}: {
+  view: NonNullable<NonNullable<ReturnType<typeof useBookingPriceQuoteQuery>["data"]>["quote"]["requirements"]>;
+  attested: Set<string>;
+  onToggle: (code: string) => void;
+}) {
+  const lines: Array<{ title: string; items: typeof view.weBring }> = [
+    { title: "Have this ready", items: view.beforeArrival },
+    { title: "You'll provide", items: view.youProvide },
+    { title: "Shared", items: view.shared },
+    { title: "We'll bring", items: view.weBring },
+    { title: "Optional", items: view.optional },
+  ].filter((g) => g.items.length > 0);
+  return (
+    <div className="space-y-4" data-testid="booking-preparation">
+      <p className="text-sm font-semibold text-content">Before we arrive</p>
+      {view.beforeBooking.length > 0 && (
+        <ul className="space-y-2">
+          {view.beforeBooking.map((r) => (
+            <li key={r.code}>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line p-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 accent-emerald-600"
+                  checked={attested.has(r.code)}
+                  onChange={() => onToggle(r.code)}
+                  aria-describedby={r.note ? `prep-note-${r.code}` : undefined}
+                />
+                <span className="min-w-0">
+                  <span className="font-medium text-content">{r.label}</span>
+                  <span className="block text-xs text-muted">Please confirm before booking</span>
+                  {r.note && <span id={`prep-note-${r.code}`} className="mt-1 block text-xs text-muted">{r.note}</span>}
+                  {r.warning && <span className="mt-1 block text-xs text-warning">{r.warning}</span>}
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+      {lines.map((g) => (
+        <div key={g.title}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">{g.title}</p>
+          <ul className="mt-1 space-y-1 text-sm text-content">
+            {g.items.map((r) => (
+              <li key={r.code} className="flex gap-2">
+                <span className="mt-2 size-1 shrink-0 rounded-full bg-muted" aria-hidden />
+                <span>
+                  {r.label}
+                  {[r.quantity, r.chargeText, r.timingText].filter(Boolean).length > 0 && (
+                    <span className="text-muted"> · {[r.quantity, r.chargeText, r.timingText].filter(Boolean).join(" · ")}</span>
+                  )}
+                  {r.note && <span className="block text-xs text-muted">{r.note}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+

@@ -28,9 +28,9 @@ export function SectionHead({
       <div className="exec-section-head__title">
         {icon ? <Icon3D icon={icon} tone={tone} size="md" /> : null}
         <div className="min-w-0">
-          <Heading className="truncate text-sm font-semibold leading-snug tracking-tight">{title}</Heading>
+          <Heading className="truncate text-base font-semibold leading-snug tracking-tight md:text-lg">{title}</Heading>
           {subtitle ? (
-            <p className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-[var(--color-biz-muted)]">{subtitle}</p>
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[var(--color-biz-muted)]">{subtitle}</p>
           ) : null}
         </div>
       </div>

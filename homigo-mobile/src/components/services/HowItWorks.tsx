@@ -8,7 +8,7 @@ import { useServicesTheme } from "./ServicesThemeContext";
 
 /** Exact same 5 steps as the website services page (HOW_IT_WORKS_STEPS). */
 const STEPS = [
-  { icon: Search, title: "Choose a Service", desc: "Select from 100+ home services", grad: ["#10b981", "#0d9488"] as const },
+  { icon: Search, title: "Choose a Service", desc: "Pick the home service you need", grad: ["#10b981", "#0d9488"] as const },
   { icon: CalendarClock, title: "Pick Date & Time", desc: "Choose your preferred time slot", grad: ["#14b8a6", "#0f766e"] as const },
   { icon: UserCheck, title: "Verified Partner Assigned", desc: "We assign the best-matched expert", grad: ["#22c55e", "#15803d"] as const },
   { icon: Sparkles, title: "Service Delivered", desc: "Relax, we handle the rest!", grad: ["#059669", "#047857"] as const },

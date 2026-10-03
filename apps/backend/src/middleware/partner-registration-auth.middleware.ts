@@ -8,8 +8,11 @@ export function extractRegistrationToken(request: Request): string | null {
   return null;
 }
 
-export async function requireRegistrationSession(request: Request): Promise<RegistrationSessionContext> {
+export async function requireRegistrationSession(
+  request: Request,
+  opts?: { allowCompleted?: boolean },
+): Promise<RegistrationSessionContext> {
   const token = extractRegistrationToken(request);
   if (!token) throw new Error("FORBIDDEN:Registration token required");
-  return partnerRegistrationSessionService.resolveSession(token);
+  return partnerRegistrationSessionService.resolveSession(token, opts);
 }

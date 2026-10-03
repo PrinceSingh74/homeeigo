@@ -23,7 +23,7 @@ const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export const DashboardEarningsChart = memo(function DashboardEarningsChart() {
   const { data, isLoading } = usePartnerDashboardQuery();
 
-  const sparkline = data?.earnings.sparkline ?? [];
+  const sparkline = useMemo(() => data?.earnings.sparkline ?? [], [data?.earnings.sparkline]);
   const chartData = useMemo(
     () =>
       sparkline.map((d) => ({

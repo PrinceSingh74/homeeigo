@@ -14,7 +14,10 @@ import { coverageRoutes } from "./coverage";
 const geoCoreRoutes = new Elysia({ prefix: "/api/geo" })
   .use(authPlugin)
   // Lets the client know whether live geocoding/autocomplete is available (else manual entry).
-  .get("/config", () => ({ success: true, data: { mapsConfigured: mapsService.isConfigured } }))
+  .get("/config", ({ requireAuth }) => {
+    requireAuth();
+    return { success: true, data: { mapsConfigured: mapsService.isConfigured } };
+  })
 
   .get("/reverse", async ({ requireAuth, query, set }) => {
     const { userId } = requireAuth();
@@ -52,19 +55,43 @@ const geoCoreRoutes = new Elysia({ prefix: "/api/geo" })
     return { success: true, data: { available: mapsService.isConfigured, predictions } };
   })
 
-  .get("/place/:placeId", async ({ requireAuth, params }) => {
-    requireAuth();
+  /**
+   * Places Details is the most expensive Maps SKU and the cache is keyed on the caller-chosen
+   * placeId, so a scan is never a cache hit. Per-user ceiling: a person picks a handful of
+   * addresses a day; 30/min is far above any real selection rate.
+   */
+  .get("/place/:placeId", async ({ requireAuth, params, set }) => {
+    const { userId } = requireAuth();
+    if (!/^[A-Za-z0-9_-]{5,300}$/.test(params.placeId)) {
+      set.status = 400;
+      return { success: false, error: "Invalid place id", code: "INVALID_PLACE_ID" };
+    }
+    const gate = await consumeRateLimitSmart(`geo:place:${userId}`, 30, 60_000);
+    if (!gate.allowed) {
+      set.status = 429;
+      return { success: false, error: "Too many requests", code: "RATE_LIMITED" };
+    }
     const place = await mapsService.placeDetails(params.placeId);
     return { success: Boolean(place), data: place };
   })
 
   .get("/eta", async ({ requireAuth, query, set }) => {
-    requireAuth();
+    const { userId } = requireAuth();
     const from = { lat: Number(query.fromLat), lng: Number(query.fromLng) };
     const to = { lat: Number(query.toLat), lng: Number(query.toLng) };
     if ([from.lat, from.lng, to.lat, to.lng].some((n) => !Number.isFinite(n))) {
       set.status = 400;
       return { success: false, error: "Invalid coordinates", code: "INVALID_COORDS" };
+    }
+    if (!mapsService.isWithinIndia(from.lat, from.lng) || !mapsService.isWithinIndia(to.lat, to.lng)) {
+      set.status = 400;
+      return { success: false, error: "Coordinates outside the service area", code: "OUT_OF_AREA" };
+    }
+    // Live tracking polls this; the 120 s server cache absorbs repeats, the limiter absorbs abuse.
+    const gate = await consumeRateLimitSmart(`geo:eta:${userId}`, 120, 60_000);
+    if (!gate.allowed) {
+      set.status = 429;
+      return { success: false, error: "Too many requests", code: "RATE_LIMITED" };
     }
     // Weather-adjusted ETA — bad weather at the destination slows partner travel.
     return { success: true, data: await mapsService.etaWithWeather(from, to) };
@@ -72,13 +99,24 @@ const geoCoreRoutes = new Elysia({ prefix: "/api/geo" })
 
   // Driving route — encoded road polyline + traffic-aware distance/duration for
   // accurate on-map tracking anywhere in India. Falls back gracefully (null).
+  // Two billed calls per request (Directions + Distance Matrix) and the Directions half is not
+  // cached, so this is the most expensive route in the file: per-user limit + service-area guard.
   .get("/route", async ({ requireAuth, query, set }) => {
-    requireAuth();
+    const { userId } = requireAuth();
     const from = { lat: Number(query.fromLat), lng: Number(query.fromLng) };
     const to = { lat: Number(query.toLat), lng: Number(query.toLng) };
     if ([from.lat, from.lng, to.lat, to.lng].some((n) => !Number.isFinite(n))) {
       set.status = 400;
       return { success: false, error: "Invalid coordinates", code: "INVALID_COORDS" };
+    }
+    if (!mapsService.isWithinIndia(from.lat, from.lng) || !mapsService.isWithinIndia(to.lat, to.lng)) {
+      set.status = 400;
+      return { success: false, error: "Coordinates outside the service area", code: "OUT_OF_AREA" };
+    }
+    const gate = await consumeRateLimitSmart(`geo:route:${userId}`, 60, 60_000);
+    if (!gate.allowed) {
+      set.status = 429;
+      return { success: false, error: "Too many requests", code: "RATE_LIMITED" };
     }
     const [route, eta] = await Promise.all([
       mapsService.directions(from, to),
@@ -153,11 +191,12 @@ const geoCoreRoutes = new Elysia({ prefix: "/api/geo" })
     },
     {
       body: t.Object({
-        serviceId: t.String(),
+        serviceId: t.String({ maxLength: 64 }),
         latitude: t.Number(),
         longitude: t.Number(),
-        scheduledDate: t.Optional(t.String()),
-        maxDistanceKm: t.Optional(t.Number()),
+        scheduledDate: t.Optional(t.String({ maxLength: 40 })),
+        // Matching loads every candidate in the radius; an unbounded radius is a full-table scan.
+        maxDistanceKm: t.Optional(t.Number({ minimum: 1, maximum: 50 })),
       }),
     },
   )

@@ -1,4 +1,7 @@
 
+# Prisma custom generate output (workaround only — never commit)
+prisma/generated-client/
+
 # Local file uploads (rating photos, partner docs)
 uploads/
 

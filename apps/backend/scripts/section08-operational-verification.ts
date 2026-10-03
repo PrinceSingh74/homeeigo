@@ -138,7 +138,7 @@ async function main() {
       complianceRestricted: false,
       pausedAt: null,
       user: { isBanned: false },
-      OR: [{ lifecycleState: "ACTIVE" }, { lifecycleState: "APPLIED", isApproved: true }],
+      lifecycleState: "ACTIVE",
     },
   });
   const onlineOnly = await prisma.provider.count({ where: { isOnline: true } });

@@ -52,6 +52,7 @@ export function PartnerRealtimeBridge() {
           referenceId?: string;
           referenceType?: string;
           status?: string;
+          event?: string;
         };
 
         const dedupeKey =
@@ -66,22 +67,41 @@ export function PartnerRealtimeBridge() {
 
         const kind = (msg.notificationType ?? msg.type ?? "").toLowerCase();
 
-        // Booking-related signals → refetch lists + dashboard
+        // Booking-related signals → refetch lists + dashboard.
+        // `booking.status` is the authoritative transition frame (lib/booking-realtime.ts);
+        // `booking_*` / `service_started` are the legacy notification types.
         const isBookingSignal =
+          kind === "booking.status" ||
           kind.startsWith("booking_") ||
-          (kind === "notification.created" && msg.notificationType === "BOOKING_REQUEST");
+          kind === "service_started";
 
-        if (isBookingSignal || kind === "service_started" || kind === "service_completed") {
+        if (isBookingSignal) {
           void queryClient.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
           void queryClient.invalidateQueries({ queryKey: partnerKeys.dashboard });
         }
 
-        // Wallet / earnings signals
-        if (
-          kind.startsWith("wallet_") ||
-          kind === "earning_credited" ||
-          kind === "withdrawal_processed"
-        ) {
+        // §6: a requirement/gate frame (lib/booking-realtime.ts). The checklist and the START gate
+        // are refetched — the frame is a signal, never the authority.
+        if (kind === "booking.requirement") {
+          // List rows carry the safety gate / payment exemption the cards read (X-60): refresh them too.
+          void queryClient.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
+          void queryClient.invalidateQueries({ queryKey: ["partner", "requirements"] });
+          void queryClient.invalidateQueries({ queryKey: ["partner", "job-actions"] });
+          // §8 step frames share this event (code "step:<code>"); §9 safety holds too (code "safety").
+          void queryClient.invalidateQueries({ queryKey: ["partner", "execution"] });
+          void queryClient.invalidateQueries({ queryKey: ["partner", "safety"] });
+          // §10: a quality verdict or a customer-confirmation change rides this same envelope
+          // (sub-events "quality.verdict" / "completion.confirmed" / "completion.auto_confirmed").
+          const sub = String(msg.event ?? "");
+          if (sub.startsWith("quality.") || sub.startsWith("completion.")) {
+            void queryClient.invalidateQueries({ queryKey: ["partner", "quality"] });
+            void queryClient.invalidateQueries({ queryKey: ["partner", "completion"] });
+            void queryClient.invalidateQueries({ queryKey: ["partner", "cases"] });
+          }
+        }
+
+        // Wallet / earnings signals (WALLET_CREDIT / WALLET_DEBIT / WALLET_TOPUP)
+        if (kind.startsWith("wallet_")) {
           void queryClient.invalidateQueries({ queryKey: partnerKeys.walletBalance });
           void queryClient.invalidateQueries({ queryKey: partnerKeys.walletTxAll });
           void queryClient.invalidateQueries({ queryKey: partnerKeys.payouts });
@@ -107,7 +127,7 @@ export function PartnerRealtimeBridge() {
         }
 
         // Review / rating signals
-        if (kind === "rating_received" || kind === "review_received") {
+        if (kind === "rating_received") {
           void queryClient.invalidateQueries({ queryKey: partnerKeys.reviewsAll });
           void queryClient.invalidateQueries({ queryKey: partnerKeys.dashboard });
         }
@@ -137,6 +157,14 @@ export function PartnerRealtimeBridge() {
     if (ws.connected) {
       void queryClient.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
       void queryClient.invalidateQueries({ queryKey: partnerKeys.dashboard });
+      // Frames missed while disconnected are not replayed — converge on the server's state instead.
+      void queryClient.invalidateQueries({ queryKey: ["partner", "requirements"] });
+      void queryClient.invalidateQueries({ queryKey: ["partner", "execution"] });
+      void queryClient.invalidateQueries({ queryKey: ["partner", "job-actions"] });
+      void queryClient.invalidateQueries({ queryKey: ["partner", "safety"] });
+      void queryClient.invalidateQueries({ queryKey: ["partner", "quality"] });
+      void queryClient.invalidateQueries({ queryKey: ["partner", "completion"] });
+      void queryClient.invalidateQueries({ queryKey: ["partner", "cases"] });
     }
   }, [queryClient, ws.connected]);
 

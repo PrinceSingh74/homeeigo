@@ -1,25 +1,29 @@
 "use client";
 
-import { forwardRef, type ReactNode } from "react";
-import { m as motion, type HTMLMotionProps } from "framer-motion";
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { buttonHover, buttonTap } from "@/lib/animations";
 
 type Variant =
   | "primary"
   | "secondary"
-  | "outline"
   | "ghost"
+  | "inverse"
   | "danger"
-  | "success"
+  /** @deprecated resolves to secondary */
+  | "outline"
+  /** @deprecated resolves to secondary */
   | "glass"
+  /** @deprecated resolves to primary */
+  | "success"
+  /** @deprecated resolves to primary */
   | "gold"
+  /** @deprecated resolves to inverse */
   | "dark";
 type Size = "sm" | "md" | "lg" | "xl";
 
 export interface ButtonProps
-  extends Omit<HTMLMotionProps<"button">, "ref" | "children"> {
+  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
   variant?: Variant;
   size?: Size;
   fullWidth?: boolean;
@@ -31,29 +35,52 @@ export interface ButtonProps
 
 export const buttonBase =
   "relative inline-flex items-center justify-center gap-2 font-semibold " +
-  "select-none whitespace-nowrap rounded-xl outline-none transition-colors " +
-  "focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 " +
+  "select-none whitespace-nowrap rounded-xl outline-none " +
+  "transition-[color,background-color,border-color,box-shadow,transform] duration-200 " +
+  "focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-2 " +
   "focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-50";
 
-export const buttonVariants: Record<Variant, string> = {
-  primary: "bg-aurora text-white shadow-[0_8px_24px_rgb(37_99_235/0.3)]",
+/**
+ * HOMEEIGO button system - exactly five visual styles:
+ *   primary   filled brand gradient (the one call-to-action per surface)
+ *   secondary glass + hairline, brand text (supporting CTA on light surfaces)
+ *   ghost     borderless, content text (tertiary / toolbar actions)
+ *   inverse   solid white, brand text (CTA on dark / gradient banners)
+ *   danger    filled error (destructive)
+ * Legacy variant names stay accepted but resolve to one of the five styles so
+ * no caller breaks and no sixth style can appear.
+ */
+const STYLE = {
+  primary:
+    "bg-brand-gradient text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.35),0_8px_24px_-6px_rgb(16_185_129/0.5)] " +
+    "hover:shadow-[inset_0_1px_0_rgb(255_255_255/0.35),0_14px_36px_-8px_rgb(16_185_129/0.6)]",
   secondary:
-    "glass-card text-content border border-white/65 shadow-e2 dark:border-white/12 hover:border-primary/40",
-  outline:
-    "border-2 border-primary/75 glass-card text-primary hover:bg-primary/8",
-  ghost: "glass-card border border-white/55 text-content hover:bg-primary/8 dark:border-white/10",
+    "glass-card border border-emerald-500/25 text-brand shadow-e2 " +
+    "hover:border-emerald-500/45 hover:shadow-e3 dark:border-white/12",
+  ghost: "bg-transparent text-content hover:bg-content/5",
+  inverse:
+    "bg-white text-brand shadow-e3 hover:shadow-e4 dark:bg-white dark:text-emerald-800",
   danger: "bg-error text-white shadow-e3 hover:opacity-90",
-  success: "bg-success text-white shadow-e3 hover:opacity-90",
-  glass:
-    "glass dark:glass-dark text-primary dark:text-luxe border border-line/60 " +
-    "shadow-e2 hover:border-primary/30",
-  gold: "bg-gold text-ink shadow-glow-gold",
-  dark: "bg-ink text-white shadow-e3 hover:bg-charcoal",
+} as const;
+
+export const buttonVariants: Record<Variant, string> = {
+  primary: STYLE.primary,
+  secondary: STYLE.secondary,
+  ghost: STYLE.ghost,
+  inverse: STYLE.inverse,
+  danger: STYLE.danger,
+  // ---- legacy aliases (kept for API compatibility) ----
+  outline: STYLE.secondary,
+  glass: STYLE.secondary,
+  success: STYLE.primary,
+  gold: STYLE.primary,
+  dark: STYLE.inverse,
 };
 
+/** One height/type/padding rule per size - shared by Button + ButtonLink. */
 export const buttonSizes: Record<Size, string> = {
-  sm: "h-8 min-h-[44px] px-4 text-sm sm:min-h-8 sm:h-8",
-  md: "h-10 min-h-[44px] px-5 text-[15px] sm:min-h-10 sm:h-10",
+  sm: "h-9 min-h-[44px] px-4 text-sm sm:min-h-9 sm:h-9",
+  md: "h-11 min-h-[44px] px-5 text-sm",
   lg: "h-12 min-h-[44px] px-6 text-base",
   xl: "h-14 min-h-[44px] px-7 text-base",
 };
@@ -74,14 +101,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     },
     ref,
   ) => (
-    <motion.button
+    <button
       ref={ref}
-      whileHover={disabled || isLoading ? undefined : buttonHover}
-      whileTap={disabled || isLoading ? undefined : buttonTap}
       disabled={disabled || isLoading}
       aria-busy={isLoading || undefined}
       className={cn(
         buttonBase,
+        "enabled:hover:scale-[1.02] enabled:active:scale-[0.96] motion-reduce:transform-none",
         buttonVariants[variant],
         buttonSizes[size],
         fullWidth && "w-full",
@@ -99,7 +125,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       {!isLoading && icon && iconPosition === "right" ? (
         <span className="shrink-0">{icon}</span>
       ) : null}
-    </motion.button>
+    </button>
   ),
 );
 Button.displayName = "Button";

@@ -22,7 +22,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <AdminTopBar />
         <main
           tabIndex={0}
-          className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-auto p-4 md:p-6 xl:p-8 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-biz-accent)]"
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-auto p-4 md:p-6 xl:px-10 xl:py-8 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-biz-accent)]"
         >
           {children}
         </main>

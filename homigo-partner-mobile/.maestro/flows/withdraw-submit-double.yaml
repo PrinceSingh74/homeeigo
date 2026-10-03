@@ -1,0 +1,6 @@
+appId: com.homeeigo.partner
+---
+- tapOn:
+    id: "withdraw-submit"
+- tapOn:
+    id: "withdraw-submit"

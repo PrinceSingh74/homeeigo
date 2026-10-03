@@ -13,9 +13,16 @@ export type NavRoute = {
   distanceText: string;
   etaMin: number;
   durationText: string;
-  trafficLevel: "light" | "moderate" | "heavy";
-  /** Road summary from Google, e.g. "NH 48 and Sohna Rd" — tells the partner WHICH route. */
+  /**
+   * Only ever "unknown" today: the route endpoint returns no traffic data, and a hardcoded "light"
+   * told partners the road was clear when nobody knew. Kept as a union so real traffic data can
+   * populate it later without a type change.
+   */
+  trafficLevel: "unknown" | "light" | "moderate" | "heavy";
+  /** Where the route came from ("google" / "osrm" / "haversine" / "unavailable"). */
   summary: string;
+  /** False when the route call failed — ETA/distance are then unknown, not zero. */
+  available: boolean;
 };
 export type NavStep = { instruction: string; maneuver: string; distanceText: string; distanceM: number };
 export type NavGuidance = {
@@ -284,22 +291,18 @@ function drawRoute(
         },
       ];
       stepIdxRef.current = 0;
-      navStepsRef.current = [
-        {
-          instruction: "Head to the job",
-          maneuver: "straight",
-          distanceText: route.distanceKm ? `${route.distanceKm} km` : "",
-          distanceM: Math.round(route.distanceKm * 1000),
-        },
-      ];
-      cbs.onStep?.(navStepsRef.current[0] ?? null);
+      // The server route has no turn list, so there are no steps — not one synthetic "Head to the
+      // job" step dressed up as turn-by-turn. The page offers Google Maps for real turn guidance.
+      navStepsRef.current = [];
+      cbs.onStep?.(null);
       cbs.onRoute?.({
         distanceKm: route.distanceKm,
-        distanceText: route.distanceKm ? `${route.distanceKm} km` : "",
+        distanceText: route.available && route.distanceKm ? `${route.distanceKm} km` : "",
         etaMin: route.etaMin,
-        durationText: `${route.durationMin} min`,
-        trafficLevel: "light",
-        summary: "",
+        durationText: route.available ? `${route.durationMin} min` : "",
+        trafficLevel: "unknown",
+        summary: route.source,
+        available: route.available,
       });
     } finally {
       onDone?.();

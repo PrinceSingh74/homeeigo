@@ -1,0 +1,11 @@
+-- Adds IN_APP as a first-class notification channel.
+--
+-- The in-app inbox has always existed — `notificationService.sendNotification` writes a Notification
+-- row for every recipient regardless of device — but the router had no way to name it, so a
+-- device-less customer resolved to no channel at all and the row was never written through the
+-- governed path. Push and in-app are two different surfaces; this lets the router say which one it
+-- means.
+--
+-- Additive only. Existing PUSH / EMAIL / SMS values keep their identity and ordinal, so every stored
+-- row continues to deserialize exactly as before.
+ALTER TYPE "NotificationChannel" ADD VALUE IF NOT EXISTS 'IN_APP';

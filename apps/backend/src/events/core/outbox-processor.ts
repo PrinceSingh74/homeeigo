@@ -11,7 +11,7 @@ import { refreshEventPlatformGauges } from "./retention";
 import { recordDeadLetter } from "./dead-letter";
 
 /** Attributed as the DLQ "consumer" when the publisher itself gives up on an event. */
-const OUTBOX_PUBLISHER_SOURCE = "outbox.publisher";
+export const OUTBOX_PUBLISHER_SOURCE = "outbox.publisher";
 
 let processorTimer: ReturnType<typeof setInterval> | null = null;
 let shuttingDown = false;
@@ -151,8 +151,54 @@ async function refreshOutboxGauges(): Promise<void> {
   await refreshEventPlatformGauges();
 }
 
+/** Warn once per process, not once per five-second tick. */
+let announcedNoConsumers = false;
+
 export async function processOutboxBatch(): Promise<{ claimed: number; recovered: number }> {
   if (!eventPlatformConfig.outboxEnabled || shuttingDown) return { claimed: 0, recovered: 0 };
+
+  /**
+   * With no consumers, there is nothing to deliver to — so do not claim.
+   *
+   * ── What this used to do ────────────────────────────────────────────────
+   *
+   * `publishRow` calls `dispatchEvent(event)` and then `markPublished(row.id)`. When
+   * `EVENTS_CONSUMERS_ENABLED=false`, `dispatchEvent` returns on its first line without reaching a
+   * single consumer (event-bus.ts), and `markPublished` then set status PUBLISHED, stamped
+   * `publishedAt`, cleared `lastError`, and incremented `homigo_outbox_publish_total{result=success}`.
+   * The row became terminal, undelivered, and indistinguishable from a genuinely delivered one —
+   * after which retention deletes it in fourteen days.
+   *
+   * Measured on an isolated backend, not argued: with consumers disabled, 221 events moved to
+   * PUBLISHED in twenty seconds while the process logged ZERO `event_consumer_ok` lines. An operator
+   * who turns consumers off to deploy a consumer change would lose every event in that window and be
+   * told it succeeded.
+   *
+   * `/ready` already reported this state as `publish_without_delivery`, so it was known and visible;
+   * what it was not was harmless. Visibility is not containment.
+   *
+   * ── Why not claim ───────────────────────────────────────────────────────
+   *
+   * Leaving the rows PENDING is what an operator expects from "consumers off": events queue and
+   * drain when consumers return. The alternative — claim, fail to deliver, release — increments
+   * `attempts` on every claim, so rows would march through `maxAttempts` into FAILED and the DLQ,
+   * turning a pause into a different kind of loss.
+   *
+   * A writer-only instance in a split topology is unaffected: it simply stops claiming, and the
+   * instance that actually runs consumers does the delivery.
+   */
+  if (!eventPlatformConfig.consumersEnabled) {
+    if (!announcedNoConsumers) {
+      announcedNoConsumers = true;
+      logger.warn("outbox_paused_no_consumers", {
+        category: "APPLICATION",
+        reason:
+          "EVENTS_CONSUMERS_ENABLED is false, so dispatch would reach no consumer. Events stay " +
+          "PENDING and will drain when consumers are re-enabled.",
+      });
+    }
+    return { claimed: 0, recovered: 0 };
+  }
 
   const recovered = await recoverStaleClaims();
   const rows = await claimBatch();

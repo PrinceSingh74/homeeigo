@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import type { EncryptionKey, EncryptionKeyStatus, KeyPurpose } from "@prisma/client";
 import { logger } from "../lib/logger";
+import { getPrismaErrorCode } from "../lib/prisma-errors";
 
 async function getPrisma() {
   const { default: prisma } = await import("../lib/prisma-base");
@@ -28,8 +29,13 @@ export class KeyManagementService {
     }
   }
 
-  async createKey(purpose: KeyPurpose, createdBy: string): Promise<EncryptionKey> {
-    const prisma = await getPrisma();
+  /** `db`: tests only — lets a race be staged deterministically; production always uses the base client. */
+  async createKey(
+    purpose: KeyPurpose,
+    createdBy: string,
+    db?: Pick<Awaited<ReturnType<typeof getPrisma>>, "encryptionKey">,
+  ): Promise<EncryptionKey> {
+    const prisma = db ?? (await getPrisma());
     const latest = await prisma.encryptionKey.findFirst({
       where: { purpose },
       orderBy: { keyVersion: "desc" },
@@ -38,18 +44,35 @@ export class KeyManagementService {
     const dek = generateDataKey();
     const wrapped = wrapDataKey(dek);
 
-    return prisma.encryptionKey.create({
-      data: {
-        keyId: crypto.randomUUID(),
-        keyVersion,
-        encryptedKey: wrapped.encryptedKey,
-        iv: wrapped.iv,
-        keyWrapAuthTag: wrapped.keyWrapAuthTag,
-        status: "ACTIVE",
-        purpose,
-        createdBy,
-      },
-    });
+    try {
+      return await prisma.encryptionKey.create({
+        data: {
+          keyId: crypto.randomUUID(),
+          keyVersion,
+          encryptedKey: wrapped.encryptedKey,
+          iv: wrapped.iv,
+          keyWrapAuthTag: wrapped.keyWrapAuthTag,
+          status: "ACTIVE",
+          purpose,
+          createdBy,
+        },
+      });
+    } catch (err) {
+      /**
+       * Another process created this version first (2026-10-01). Two instances encrypting for the first
+       * time on a new database — or rotating at the same moment — both read the same latest version and
+       * both insert version+1; the loser hit the (purpose, key_version) unique index and the encryption
+       * FAILED, surfacing to the customer as a 409 on address create. The winner's key is the key: use it.
+       */
+      if (getPrismaErrorCode(err) === "P2002") {
+        const winner = await prisma.encryptionKey.findFirst({ where: { purpose, keyVersion, status: "ACTIVE" } });
+        if (winner) {
+          logger.info("encryption_key_create_race_resolved", { purpose, keyVersion });
+          return winner;
+        }
+      }
+      throw err;
+    }
   }
 
   async getActiveKey(purpose: KeyPurpose): Promise<EncryptionKey> {

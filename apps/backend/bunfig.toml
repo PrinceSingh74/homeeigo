@@ -3,7 +3,18 @@
 preload = ["dotenv/config"]
 
 [test]
-timeout = 5000
+# NOTE: bun 1.3.x IGNORES this key (probe: a 6.5 s test fails at 5000 ms). A preload
+# setDefaultTimeout() only covers the FIRST file of a multi-file run. The only reliable setting is
+# the CLI flag, so package.json "test" and CI pass `--timeout 45000` explicitly.
+timeout = 45000
+# Prisma's query engine returns "Response from the Engine was empty" when dozens of
+# test files share one connection_limit=5 pool. Serialise files; assertions stay intact.
+maxConcurrency = 1
+# load-env MUST run before any test file imports prisma — otherwise the first file
+# that skips `import "../load-env"` constructs the singleton against .env (homigo_db)
+# and every later file inherits that poisoned client. The second preload then
+# no-ops $disconnect on the singleton so afterAll cleanup cannot kill the engine.
+preload = ["./src/load-env.ts", "./src/__tests__/helpers/keep-shared-prisma-alive.ts", "./src/__tests__/helpers/no-external-egress.ts"]
 
 [build]
 root = "src"

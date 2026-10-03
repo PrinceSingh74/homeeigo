@@ -7,6 +7,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { DataTable, StatusBadge } from "@/components/ui/DataTable";
 import { adminApi } from "@/services/admin-api";
+import { SupportIntelligencePanel } from "@/components/support/SupportIntelligencePanel";
 import { cn } from "@/lib/cn";
 import {
   SUPPORT_ANALYTICS_STALE_MS,
@@ -176,6 +177,7 @@ export default function SupportPage() {
           />
         </div>
         <select
+          aria-label="Filter tickets by status"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
           className="h-10 rounded-lg border border-line bg-transparent px-3 text-sm"
@@ -302,6 +304,19 @@ function TicketOpsPanel({
             {ticket.slaBreached ? " (breached)" : ""}
           </p>
         ) : null}
+      </div>
+
+      {/*
+        Phase-10 intelligence, above the conversation and below the header.
+
+        Placed on the existing detail panel rather than on a new screen: the agent already reads the
+        ticket here and already replies, escalates and resolves from here, so a separate
+        "AI support" surface would have split one job across two places. The panel reads; the
+        controls below it are the ones that already existed and already go through the support
+        service.
+      */}
+      <div className="py-2">
+        <SupportIntelligencePanel ticketId={ticket.id} />
       </div>
 
       <div className="flex-1 space-y-2 overflow-y-auto py-3">

@@ -1,31 +1,19 @@
 import prisma from "@/lib/prisma";
-import { roomManager, MessageType, WSMessage } from "@/lib/websocket";
-import { notificationService } from "@/services/notification.service";
-import { BookingStatus } from "@prisma/client";
 import { assignmentEngine } from "@/services/assignment-engine.service";
 import { bookingService } from "@/services/booking.service";
+import { bookingStartOtpService } from "@/services/booking-start-otp.service";
 import { resolveProviderIdFromUserId } from "@/lib/provider-resolve";
+import { logger } from "@/lib/logger";
 
+/**
+ * WebSocket command adapter for `/ws/booking/:id`.
+ *
+ * Every method delegates to `bookingService`, which is the single owner of the state machine AND
+ * of the realtime `BOOKING_STATUS` frame (see lib/booking-realtime.ts). This class used to
+ * broadcast its own copy of the frame and send its own copy of the customer notification, which
+ * meant an action taken over WS double-notified while the same action over HTTP emitted nothing.
+ */
 export class BookingLiveService {
-  private async broadcastBookingUpdate(
-    bookingId: string,
-    status: BookingStatus | string,
-    data: Record<string, unknown> = {},
-  ): Promise<void> {
-    const message: WSMessage = {
-      type: MessageType.BOOKING_STATUS,
-      data: {
-        bookingId,
-        status: status.toLowerCase(),
-        ...data,
-        timestamp: new Date(),
-      },
-      timestamp: new Date(),
-    };
-
-    roomManager.broadcast(`booking:${bookingId}`, message);
-  }
-
   async acceptBooking(bookingId: string, providerUserId: string): Promise<unknown> {
     try {
       const providerId = await resolveProviderIdFromUserId(providerUserId);
@@ -36,26 +24,15 @@ export class BookingLiveService {
 
       const booking = result.booking;
 
-      await this.broadcastBookingUpdate(bookingId, booking.status, {
-        providerId,
-        providerName: booking.provider?.user.firstName,
-        acceptedAt: booking.acceptedAt,
-      });
-
-      if (result.newlyAccepted) {
-        await notificationService.sendNotification(booking.userId, "BOOKING_ACCEPTED", {
-          title: "Booking Accepted",
-          body: `${booking.provider?.user.firstName || "Provider"} accepted your ${booking.service.name} booking`,
-          data: { bookingId, type: "booking_accepted" },
-        });
-      }
-
       void assignmentEngine.onProviderAccepted(bookingId, providerId).catch(() => undefined);
 
-      console.log(`[Booking] Accepted: ${bookingId} by ${providerId}`);
+      logger.info("booking_ws_accepted", { bookingId, providerId });
       return booking;
     } catch (error) {
-      console.error("Accept booking error:", error);
+      logger.error("booking_ws_accept_failed", {
+        bookingId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }
@@ -74,12 +51,13 @@ export class BookingLiveService {
       });
       if (!booking) throw new Error("NOT_FOUND");
 
-      await this.broadcastBookingUpdate(bookingId, booking.status, { providerId, reason });
-
-      console.log(`[Booking] Declined: ${bookingId} by ${providerId}`);
+      logger.info("booking_ws_declined", { bookingId, providerId });
       return booking;
     } catch (error) {
-      console.error("Reject booking error:", error);
+      logger.error("booking_ws_reject_failed", {
+        bookingId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }
@@ -98,79 +76,83 @@ export class BookingLiveService {
       });
       if (!booking) throw new Error("NOT_FOUND");
 
-      await this.broadcastBookingUpdate(bookingId, booking.status, {
-        cancelledBy: userId,
-        reason,
-        // cancel() returns one of two success shapes; only one carries a refund.
-        refundAmount: "refundAmount" in result ? result.refundAmount : 0,
-      });
-
-      if (booking.provider?.userId) {
-        await notificationService.sendNotification(booking.provider.userId, "BOOKING_CANCELLED", {
-          title: "Booking Cancelled",
-          body: `Customer cancelled the ${booking.service.name} booking`,
-          data: { bookingId, reason },
-        });
-      }
-
-      console.log(`[Booking] Cancelled: ${bookingId}`);
+      // Partner notification is owned by bookingService.cancel (notifyBookingCancelled).
+      logger.info("booking_ws_cancelled", { bookingId, userId });
       return booking;
     } catch (error) {
-      console.error("Cancel booking error:", error);
+      logger.error("booking_ws_cancel_failed", {
+        bookingId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }
 
-  async startService(bookingId: string, providerUserId: string): Promise<unknown> {
+  /**
+   * WS start must honour the same OTP + payment gates as HTTP.
+   * Coords come from the client message when present; never invent 0,0 as presence proof.
+   */
+  async startService(
+    bookingId: string,
+    providerUserId: string,
+    opts?: { otp?: string; latitude?: number; longitude?: number },
+  ): Promise<unknown> {
     try {
       const providerId = await resolveProviderIdFromUserId(providerUserId);
       if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
 
-      const booking = await bookingService.start(providerId, bookingId, 0, 0);
+      const lat = opts?.latitude;
+      const lng = opts?.longitude;
+      if (
+        typeof lat !== "number" ||
+        typeof lng !== "number" ||
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng)
+      ) {
+        throw new Error("LOCATION_REQUIRED");
+      }
 
-      await this.broadcastBookingUpdate(bookingId, booking.status, {
-        startedAt: booking.startedAt,
-      });
+      const gate = await bookingStartOtpService.ensureCanStart(providerId, bookingId, opts?.otp);
+      if (!gate.ok) throw new Error(gate.error);
 
-      await notificationService.sendNotification(booking.userId, "SYSTEM", {
-        title: "Service Started",
-        body: "Provider has started your service",
-        data: { bookingId },
-      });
+      const booking = await bookingService.start(providerId, bookingId, lat, lng);
 
-      console.log(`[Booking] Service started: ${bookingId}`);
+      logger.info("booking_ws_started", { bookingId, providerId });
       return booking;
     } catch (error) {
-      console.error("Start service error:", error);
+      logger.error("booking_ws_start_failed", {
+        bookingId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }
 
   /** Delegates to booking.service.complete — single source of truth for earnings + ledger. */
-  async completeBooking(bookingId: string, providerUserId: string): Promise<unknown> {
+  async completeBooking(
+    bookingId: string,
+    providerUserId: string,
+    opts?: { latitude?: number; longitude?: number; notes?: string },
+  ): Promise<unknown> {
     try {
       const providerId = await resolveProviderIdFromUserId(providerUserId);
       if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
 
-      const result = await bookingService.complete(providerId, bookingId, 0, 0);
-      if (!result) throw new Error("FORBIDDEN");
-
+      // Absent coordinates stay absent (UNKNOWN) — never coerced to 0,0.
+      const lat = opts?.latitude ?? null;
+      const lng = opts?.longitude ?? null;
+      const result = await bookingService.complete(providerId, bookingId, lat, lng, opts?.notes);
       const booking = result.booking;
 
-      await this.broadcastBookingUpdate(bookingId, booking.status, {
-        completedAt: booking.completedAt,
-      });
-
-      await notificationService.sendNotification(booking.userId, "SYSTEM", {
-        title: "Service Complete",
-        body: `Please rate your experience`,
-        data: { bookingId, action: "rate" },
-      });
-
-      console.log(`[Booking] Completed: ${bookingId}`);
+      // "Please rate your experience" is already sent by bookingService.complete
+      // (type booking_completed); a second SYSTEM copy here was a duplicate.
+      logger.info("booking_ws_completed", { bookingId, providerId, newlyCompleted: result.newlyCompleted });
       return booking;
     } catch (error) {
-      console.error("Complete booking error:", error);
+      logger.error("booking_ws_complete_failed", {
+        bookingId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }

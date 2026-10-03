@@ -1,4 +1,5 @@
 import type { EtlRunMode } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 export type EtlJobContext = {
   jobId: string;
@@ -19,7 +20,7 @@ export type EtlJobResult = {
   lowWatermark: Date | null;
   highWatermark: Date | null;
   cursorEnd: string | null;
-  metadata?: Record<string, unknown>;
+  metadata?: Prisma.InputJsonObject;
 };
 
 export type EtlJobHandler = (ctx: EtlJobContext) => Promise<EtlJobResult>;

@@ -38,7 +38,7 @@ export default function TrustSafetyCompliancePage() {
           </button>
         ))}
       </div>
-      <div className="overflow-x-auto rounded-2xl border">
+      <div className="overflow-x-auto rounded-2xl border" tabIndex={0} role="region" aria-label="Partner compliance table">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b text-left text-muted-foreground">

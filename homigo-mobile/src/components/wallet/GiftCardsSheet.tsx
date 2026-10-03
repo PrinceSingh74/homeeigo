@@ -77,7 +77,7 @@ export function GiftCardsSheet({ visible, onClose }: { visible: boolean; onClose
         </View>
 
         {tab === "buy" ? (
-          <ScrollView contentContainerStyle={{ gap: spacing.md, paddingBottom: spacing["3xl"] }}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: spacing.md, paddingBottom: spacing["3xl"] }}>
             <Text style={[styles.label, { color: c.textSecondary }]}>Choose amount</Text>
             <View style={styles.chips}>
               {(denoms ?? [100, 250, 500, 1000, 2000]).map((d) => {
@@ -108,7 +108,7 @@ export function GiftCardsSheet({ visible, onClose }: { visible: boolean; onClose
             </PressableScale>
           </ScrollView>
         ) : (
-          <ScrollView contentContainerStyle={{ gap: spacing.md, paddingBottom: spacing["3xl"] }}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: spacing.md, paddingBottom: spacing["3xl"] }}>
             <View style={[styles.redeemBox, { borderColor: c.border }]}>
               <View style={styles.redeemHead}>
                 <Ticket size={14} color={c.primary} />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { rememberPartnerFix } from "@/lib/partner-coords";
 
 export type GeoCoords = {
   latitude: number;
@@ -59,6 +60,7 @@ export function useGeolocationWatcher({
         };
         if (lastFix && haversine(lastFix, next) < minMoveMeters) return;
         lastFix = next;
+        rememberPartnerFix(next.latitude, next.longitude);
         setCoords(next);
       },
       () => {
@@ -66,8 +68,8 @@ export function useGeolocationWatcher({
       },
       {
         enableHighAccuracy,
-        maximumAge: 5_000,
-        timeout: 15_000,
+        maximumAge: 30_000,
+        timeout: 20_000,
       },
     );
 

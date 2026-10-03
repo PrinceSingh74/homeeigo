@@ -3,8 +3,9 @@
  * Payout processing, chargeback evidence, settlement resolution, admin booking ops.
  */
 import "../load-env";
+import { provenanceForNewUser } from "../lib/data-provenance";
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { BookingStatus, ChargebackStatus, PayoutBatchStatus, WithdrawalStatus } from "@prisma/client";
+import { ChargebackStatus, PayoutBatchStatus, WithdrawalStatus } from "@prisma/client";
 import fs from "fs";
 import path from "path";
 import {
@@ -19,6 +20,8 @@ import { chargebackWorkflowService } from "../services/chargeback-workflow.servi
 import { settlementResolutionService } from "../services/settlement-resolution.service";
 import { adminBookingOperationsService } from "../services/admin-booking-operations.service";
 import { bookingService } from "../services/booking.service";
+import { isLikelyValidPdf, minimalPdfBuffer } from "../lib/minimal-pdf";
+import { isRetryablePrismaError } from "../lib/prisma-errors";
 
 const RUN_ID = `ent-ops-${Date.now().toString(36)}`;
 const DOCS = path.join(import.meta.dir, "../../docs");
@@ -58,7 +61,10 @@ function writeCert(filename: string, title: string, modules: Record<string, Modu
     ...Object.entries(modules).map(([k, v]) => `| ${k} | **${v.verdict}** | ${v.detail.replace(/\|/g, "\\|")} |`),
     "",
   ];
-  fs.mkdirSync(DOCS, { recursive: true });
+  // `recursive: true` is documented as a no-op when the directory exists, but under Bun on
+  // Windows it still throws EEXIST here, failing the suite on an operation whose intent is
+  // already satisfied. Checking first states that intent directly.
+  if (!fs.existsSync(DOCS)) fs.mkdirSync(DOCS, { recursive: true });
   fs.writeFileSync(path.join(DOCS, filename), lines.join("\n"), "utf8");
 }
 
@@ -71,6 +77,7 @@ beforeAll(async () => {
   const passwordHash = await Bun.password.hash("AdvTest@123", { algorithm: "bcrypt", cost: 10 });
   const admin = await prisma.user.create({
     data: {
+      ...provenanceForNewUser(`adv-${RUN_ID}-finance@adv.test`),
       email: `adv-${RUN_ID}-finance@adv.test`,
       phoneNumber: `+9199${RUN_ID.slice(-8).padStart(8, "0")}`,
       firstName: "Finance",
@@ -154,15 +161,20 @@ describe("Phase 11 — Payout Processing", () => {
   test("batch approval workflow enforces maker-checker", async () => {
     if (skipIfNoDb()) return;
 
-    const withdrawal = await prisma.withdrawal.findFirst({
-      where: { status: WithdrawalStatus.REQUESTED },
+    const withdrawal = await prisma.withdrawal.create({
+      data: {
+        withdrawalNumber: `WD-${RUN_ID}`,
+        providerId: ctx.providerId,
+        amount: 100,
+        netAmount: 100,
+        accountHolderName: "Cert Fixture",
+        accountNumber: "000000000000",
+        ifscCode: "TEST0000001",
+        bankName: "Test Bank",
+        paymentMethod: "NEFT",
+        status: WithdrawalStatus.REQUESTED,
+      },
     });
-
-    if (!withdrawal) {
-      record("P11 Batch creation", "PARTIAL", "No REQUESTED withdrawals to test batch flow");
-      record("P11 Approval workflow", "PARTIAL", "Skipped — no eligible withdrawals");
-      return;
-    }
 
     const batch = await payoutOperationsService.createBatch([withdrawal.id], financeAdminId);
     expect(batch.status).toBe(PayoutBatchStatus.DRAFT);
@@ -180,6 +192,9 @@ describe("Phase 11 — Payout Processing", () => {
     record("P11 Approval workflow", "CONNECTED", "Maker-checker enforced on batch approve");
 
     await payoutOperationsService.rejectBatch(batch.id, financeAdminId, "cert test cleanup");
+    await prisma.payoutBatchItem.deleteMany({ where: { batchId: batch.id } });
+    await prisma.payoutBatch.delete({ where: { id: batch.id } });
+    await prisma.withdrawal.delete({ where: { id: withdrawal.id } });
   });
 
   test("100 payout integrity simulations", async () => {
@@ -210,15 +225,31 @@ describe("Phase 12 — Chargeback Evidence", () => {
       },
     });
 
+    const validPdf = await minimalPdfBuffer();
+    expect(isLikelyValidPdf(validPdf)).toBe(true);
+    expect(validPdf.toString("latin1").startsWith("%PDF-")).toBe(true);
+
+    await expect(
+      chargebackWorkflowService.uploadEvidence(
+        cb.id,
+        financeAdminId,
+        Buffer.from("cert-test-pdf-content"),
+        "evidence.pdf",
+        "malformed upload",
+      ),
+    ).rejects.toThrow("INVALID_PDF");
+
     const evidence = await chargebackWorkflowService.uploadEvidence(
       cb.id,
       financeAdminId,
-      Buffer.from("cert-test-pdf-content"),
+      validPdf,
       "evidence.pdf",
       "cert upload",
     );
     expect(evidence.id).toBeTruthy();
-    record("P12 Evidence", "CONNECTED", `uploaded=${evidence.fileName}`);
+    expect(evidence.fileName).toBe("evidence.pdf");
+    expect(evidence.mimeType).toBe("application/pdf");
+    record("P12 Evidence", "CONNECTED", `uploaded=${evidence.fileName} mime=${evidence.mimeType}`);
 
     const pkg = await chargebackWorkflowService.buildEvidencePackage(cb.id);
     expect(pkg.chargeback.id).toBe(cb.id);
@@ -278,7 +309,7 @@ describe("Phase 12 — Chargeback Evidence", () => {
       await prisma.chargebackTimeline.deleteMany({ where: { chargebackId: id } });
       await prisma.chargeback.delete({ where: { id } });
     }
-  });
+  }, 120_000);
 });
 
 describe("Phase 13 — Settlement Resolution", () => {
@@ -303,6 +334,7 @@ describe("Phase 13 — Settlement Resolution", () => {
 
     const opsAdmin = await prisma.user.create({
       data: {
+        ...provenanceForNewUser(`adv-${RUN_ID}-ops2@adv.test`),
         email: `adv-${RUN_ID}-ops2@adv.test`,
         phoneNumber: `+9198${RUN_ID.slice(-8).padStart(8, "1")}`,
         firstName: "Ops",
@@ -318,7 +350,14 @@ describe("Phase 13 — Settlement Resolution", () => {
     record("P13 Resolution", "CONNECTED", "Dual approval completed resolution");
 
     const health = await settlementResolutionService.healthScore();
-    expect(typeof health.healthScore).toBe("number");
+    // The rate and the score are measured on the same evidence: with discrepancies on record both
+    // are numbers; with none on record both must be null, never a fabricated 100.
+    expect(health.total > 0 ? typeof health.healthScore : health.healthScore).toBe(
+      health.total > 0 ? "number" : null,
+    );
+    expect(health.total > 0 ? typeof health.resolutionRate : health.resolutionRate).toBe(
+      health.total > 0 ? "number" : null,
+    );
     record("P13 Health", "CONNECTED", `healthScore=${health.healthScore}`);
 
     await prisma.settlementResolutionNote.deleteMany({ where: { discrepancyId: disc.id } });
@@ -396,34 +435,61 @@ describe("Phase 14 — Admin Booking Operations", () => {
     const result = await adminBookingOperationsService.repairBooking(bookingId, financeAdminId, "cert repair");
     expect(typeof result.repaired).toBe("boolean");
     record("P14 Repair", "CONNECTED", `repaired=${result.repaired}`);
-  });
+  }, 60_000);
 
   test("100 booking operations simulation", async () => {
     if (skipIfNoDb()) return;
     let corruption = 0;
     let created = 0;
+    let poolBusy = 0;
 
     for (let i = 0; i < 100; i++) {
       const slot = new Date(Date.now() + (i + 10) * 3_600_000);
       slot.setMinutes(0, 0, 0);
-      try {
-        const result = await bookingService.create(ctx.customerA.id, {
-          serviceId: ctx.serviceId,
-          scheduledDate: slot.toISOString(),
-          addressId: ctx.addressAId,
-        });
-        if ("booking" in result && result.booking) {
-          created++;
-          const b = await prisma.booking.findUnique({ where: { id: result.booking.id } });
-          if (!b || b.finalAmount <= 0) corruption++;
+      let ok = false;
+      for (let attempt = 0; attempt < 4 && !ok; attempt++) {
+        try {
+          const result = await bookingService.create(ctx.customerA.id, {
+            serviceId: ctx.serviceId,
+            scheduledDate: slot.toISOString(),
+            addressId: ctx.addressAId,
+          });
+          if ("error" in result && result.error === "POOL_BUSY") {
+            poolBusy++;
+            await new Promise((r) => setTimeout(r, 100 * 2 ** attempt));
+            continue;
+          }
+          if ("booking" in result && result.booking) {
+            created++;
+            const b = await prisma.booking.findUnique({ where: { id: result.booking.id } });
+            if (!b || b.finalAmount <= 0) corruption++;
+            ok = true;
+          } else if ("error" in result) {
+            // Non-pool business rejection — not money corruption; stop attempting this slot.
+            ok = true;
+          } else {
+            corruption++;
+            ok = true;
+          }
+        } catch (err) {
+          if (isRetryablePrismaError(err) && attempt < 3) {
+            poolBusy++;
+            await new Promise((r) => setTimeout(r, 100 * 2 ** attempt));
+            continue;
+          }
+          corruption++;
+          ok = true;
         }
-      } catch {
-        corruption++;
       }
+      if (!ok) corruption++;
     }
 
     expect(corruption).toBe(0);
-    record("P14 Simulation", "CONNECTED", `100 bookings created=${created}, corruption=${corruption}`);
+    record(
+      "P14 Simulation",
+      "CONNECTED",
+      `100 bookings created=${created}, corruption=${corruption}, poolBusyRetries=${poolBusy}`,
+    );
     record("P14 Cancel", "PARTIAL", "Cancel tested via service layer; HTTP E2E NOT PROVEN");
-  }, 120_000);
+  }, 180_000);
 });

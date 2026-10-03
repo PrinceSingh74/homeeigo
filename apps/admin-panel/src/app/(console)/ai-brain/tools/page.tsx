@@ -133,7 +133,7 @@ export default function EnterpriseToolCenterPage() {
         {registry.isLoading ? (
           <div className="flex justify-center py-8"><Loader2 className="animate-spin" /></div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Tool registry table">
             <table className="w-full text-sm">
               <thead className="bg-white/5 text-[var(--color-biz-muted)]">
                 <tr>
@@ -209,7 +209,7 @@ export default function EnterpriseToolCenterPage() {
 
       <section className="rounded-xl border border-[var(--color-biz-line)] p-4">
         <h2 className="mb-3 text-lg font-semibold">Execution History</h2>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Execution history table">
           <table className="w-full text-sm">
             <thead className="bg-white/5 text-[var(--color-biz-muted)]">
               <tr>

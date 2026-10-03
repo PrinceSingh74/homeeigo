@@ -82,10 +82,14 @@ export function GoogleOAuthCallback() {
         return;
       }
 
-      // Only a genuine state mismatch is a hard CSRF failure. A missing/expired local
-      // token (OAuth returned to a different tab/origin, or the page was refreshed) is
-      // recoverable: the backend validates the state via oauthStateService, so proceed.
-      if (!pending.valid && pending.localMismatch) {
+      // Fail closed on ANY state problem, including a missing local token (2026-10-01).
+      // Treating "missing" as recoverable and deferring to the backend was a login-CSRF hole:
+      // the backend's state store is not bound to this browser, so an attacker could start a
+      // sign-in with their OWN Google account, send the victim this callback URL with their
+      // code + state, and the victim's tab — holding no pending state — signed in as the
+      // attacker. Only the tab that began the sign-in holds the pending state; the Apple
+      // callback already fails closed the same way.
+      if (!pending.valid) {
         setPhase("error");
         setMessage(pending.error);
         return;

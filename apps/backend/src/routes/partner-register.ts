@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { consumeRateLimitSmart } from "../middleware/rate-limit.middleware";
 import { parseBody } from "../lib/route-security";
+import { getClientIp } from "../lib/client-ip";
 import {
   partnerKycSchema,
   partnerRegisterStep1Schema,
@@ -10,14 +11,21 @@ import {
   indiaPhoneSchema,
 } from "../schemas/partner.schema";
 import { partnerRegistrationService } from "../services/partner-registration.service";
+import { partnerOnboardingService } from "../services/partner-onboarding.service";
 import { documentUploadService } from "../services/document-upload.service";
 import { partnerRegistrationSessionService } from "../services/partner-registration-session.service";
+import { partnerLeadService } from "../services/partner-lead.service";
+import { catalogService } from "../services/catalog.service";
 import { requireRegistrationSession } from "../middleware/partner-registration-auth.middleware";
 import { validate, ValidationFailedError } from "../middleware/validation.middleware";
 import { sanitizeUserInput } from "../utils/sanitizer";
 import { z } from "zod";
 
 const documentIdParamSchema = z.object({ documentId: z.string().trim().min(1) });
+
+const partnerRegIpLimit = process.env.NODE_ENV === "production" ? 15 : 100;
+const partnerRegOtpLimit = process.env.NODE_ENV === "production" ? 20 : 100;
+const partnerRegResumeLimit = process.env.NODE_ENV === "production" ? 20 : 100;
 
 function mapError(err: unknown, set: { status?: number | string }) {
   if (err instanceof ValidationFailedError) throw err;
@@ -47,31 +55,41 @@ function mapError(err: unknown, set: { status?: number | string }) {
   }
 }
 
-const getIp = (request: Request) =>
-  request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-  request.headers.get("x-real-ip") ||
-  "unknown";
+const getIp = (request: Request) => getClientIp(request);
 
 const documentUploadSchema = z.object({
   file: z.string().min(1),
   documentType: z.string().trim().min(1).max(80),
   fileName: z.string().trim().max(255).optional(),
+  expiryDate: z.string().trim().min(8).max(40).optional(),
+  issuer: z.string().trim().max(120).optional(),
+  issueDate: z.string().trim().min(8).max(40).optional(),
 });
 
 async function withRegistrationToken(
   request: Request,
   handler: (session: Awaited<ReturnType<typeof requireRegistrationSession>>) => Promise<unknown>,
+  opts?: { allowCompleted?: boolean },
 ) {
-  const session = await requireRegistrationSession(request);
+  const session = await requireRegistrationSession(request, opts);
   return handler(session);
 }
 
 export const partnerRegisterRoutes = new Elysia({ prefix: "/api/partner" })
+  .get("/register/service-options", async ({ set, request }) => {
+    const limited = await consumeRateLimitSmart(`partner-onboarding-options:${getIp(request)}`, partnerRegIpLimit, 60_000);
+    if (!limited.allowed) {
+      set.status = 429;
+      return { success: false, error: "Too many requests", code: "RATE_LIMITED" };
+    }
+    const data = await catalogService.partnerOnboardingOptions();
+    return { success: true, data };
+  })
   .post(
     "/register/step1",
     async ({ body: raw, request, set }) => {
       const ip = getIp(request);
-      const limiter = await consumeRateLimitSmart(`partner-reg:${ip}`, 15, 60 * 60 * 1000);
+      const limiter = await consumeRateLimitSmart(`partner-reg:${ip}`, partnerRegIpLimit, 60 * 60 * 1000);
       if (!limiter.allowed) {
         set.status = 429;
         return {
@@ -110,10 +128,18 @@ export const partnerRegisterRoutes = new Elysia({ prefix: "/api/partner" })
   )
   .post(
     "/register/verify-otp",
-    async ({ body: raw, set }) => {
+    async ({ body: raw, request, set }) => {
+      const ip = getIp(request);
+      const limiter = await consumeRateLimitSmart(`partner-reg-otp:${ip}`, partnerRegOtpLimit, 60 * 60 * 1000);
+      if (!limiter.allowed) {
+        set.status = 429;
+        return { success: false, error: "Too many OTP attempts", code: "RATE_LIMIT_EXCEEDED" };
+      }
       try {
         const body = parseBody(partnerVerifyOtpSchema, raw);
-        const data = await partnerRegistrationService.verifyOtp(body);
+        const { fraudContextFromRequest } = await import("../lib/fraud-context");
+        const ctx = fraudContextFromRequest(request, body.userId);
+        const data = await partnerRegistrationService.verifyOtp({ ...body, ctx });
         return { success: true, message: "Phone verified", data };
       } catch (err) {
         return mapError(err, set);
@@ -124,8 +150,58 @@ export const partnerRegisterRoutes = new Elysia({ prefix: "/api/partner" })
         email: t.String({ format: "email" }),
         otp: t.String({ minLength: 6, maxLength: 6 }),
         userId: t.String(),
+        inviteToken: t.Optional(t.String()),
+        referralCode: t.Optional(t.String()),
       }),
     },
+  )
+  .get("/register/invite", async ({ query, set }) => {
+    try {
+      const token = typeof query.token === "string" ? query.token : "";
+      if (!token) {
+        set.status = 400;
+        return { success: false, error: "Invite token is required", code: "VALIDATION_ERROR" };
+      }
+      const { verifyPartnerLeadInvite } = await import("../services/partner-application-invite");
+      const invite = verifyPartnerLeadInvite(token);
+      const data = await partnerLeadService.previewInvite(invite.leadId);
+      return { success: true, data };
+    } catch (err) {
+      return mapError(err, set);
+    }
+  })
+  .get("/register/referral-code", async ({ query, set }) => {
+    try {
+      const code = typeof query.code === "string" ? query.code : "";
+      if (!code) {
+        set.status = 400;
+        return { success: false, error: "Referral code is required", code: "VALIDATION_ERROR" };
+      }
+      const { partnerReferralService } = await import("../services/partner-referral.service");
+      const data = await partnerReferralService.previewCode(code);
+      return { success: true, data };
+    } catch (err) {
+      return mapError(err, set);
+    }
+  })
+  .post(
+    "/register/resume",
+    async ({ body: raw, request, set }) => {
+      const ip = getIp(request);
+      const limiter = await consumeRateLimitSmart(`partner-reg-resume:${ip}`, partnerRegResumeLimit, 60 * 60 * 1000);
+      if (!limiter.allowed) {
+        set.status = 429;
+        return { success: false, error: "Too many attempts", code: "RATE_LIMIT_EXCEEDED" };
+      }
+      try {
+        const body = raw as { email: string; password: string };
+        const data = await partnerRegistrationService.resumeApplication(body);
+        return { success: true, message: "Application resumed", data };
+      } catch (err) {
+        return mapError(err, set);
+      }
+    },
+    { body: t.Object({ email: t.String({ format: "email" }), password: t.String({ minLength: 8 }) }) },
   )
   .post(
     "/register/services",
@@ -191,15 +267,21 @@ export const partnerRegisterRoutes = new Elysia({ prefix: "/api/partner" })
     "/register/submit",
     async ({ request, set }) => {
       try {
-        return await withRegistrationToken(request, async (session) => {
-          const providerId = await partnerRegistrationSessionService.requireProviderId(session);
-          const data = await partnerRegistrationService.submit(session.userId, providerId);
-          return {
-            success: true,
-            message: "Registration submitted. Waiting for admin approval.",
-            data,
-          };
-        });
+        return await withRegistrationToken(
+          request,
+          async (session) => {
+            const providerId = await partnerRegistrationSessionService.requireProviderId(session);
+            const data = await partnerRegistrationService.submit(session.userId, providerId);
+            return {
+              success: true,
+              message: data.alreadySubmitted
+                ? "Application already submitted. Waiting for admin approval."
+                : "Registration submitted. Waiting for admin approval.",
+              data,
+            };
+          },
+          { allowCompleted: true },
+        );
       } catch (err) {
         return mapError(err, set);
       }
@@ -207,11 +289,15 @@ export const partnerRegisterRoutes = new Elysia({ prefix: "/api/partner" })
   )
   .get("/registration-status", async ({ request, set }) => {
     try {
-      return await withRegistrationToken(request, async (session) => {
-        const providerId = await partnerRegistrationSessionService.requireProviderId(session);
-        const data = await partnerRegistrationService.getRegistrationStatus(session.userId, providerId);
-        return { success: true, data };
-      });
+      return await withRegistrationToken(
+        request,
+        async (session) => {
+          const providerId = await partnerRegistrationSessionService.requireProviderId(session);
+          const data = await partnerRegistrationService.getRegistrationStatus(session.userId, providerId);
+          return { success: true, data };
+        },
+        { allowCompleted: true },
+      );
     } catch (err) {
       return mapError(err, set);
     }
@@ -232,11 +318,16 @@ export const partnerRegisterRoutes = new Elysia({ prefix: "/api/partner" })
             buffer,
             fileName,
             sanitizeUserInput(body.documentType, 80),
+            {
+              expiryDate: body.expiryDate ? new Date(body.expiryDate) : null,
+              issuer: body.issuer ? sanitizeUserInput(body.issuer, 120) : null,
+              issueDate: body.issueDate ? new Date(body.issueDate) : null,
+            },
           );
           return {
             success: true,
             message: "Document uploaded",
-            data: result,
+            data: { documentId: result.documentId },
           };
         });
       } catch (err) {
@@ -255,6 +346,9 @@ export const partnerRegisterRoutes = new Elysia({ prefix: "/api/partner" })
         file: t.String(),
         documentType: t.String(),
         fileName: t.Optional(t.String()),
+        expiryDate: t.Optional(t.String()),
+        issuer: t.Optional(t.String()),
+        issueDate: t.Optional(t.String()),
       }),
     },
   )
@@ -275,6 +369,353 @@ export const partnerRegisterRoutes = new Elysia({ prefix: "/api/partner" })
         const params = validate(documentIdParamSchema, raw);
         await documentUploadService.deleteDocument(params.documentId, session.userId);
         return { success: true, message: "Document deleted" };
+      });
+    } catch (err) {
+      return mapError(err, set);
+    }
+  })
+  .get("/onboarding/progress", async ({ request, set }) => {
+    try {
+      return await withRegistrationToken(
+        request,
+        async (session) => {
+          const data = await partnerOnboardingService.getProgress(session.userId);
+          return { success: true, data };
+        },
+        { allowCompleted: true },
+      );
+    } catch (err) {
+      return mapError(err, set);
+    }
+  })
+  .post(
+    "/onboarding/profile",
+    async ({ body: raw, request, set }) => {
+      try {
+        return await withRegistrationToken(request, async (session) => {
+          const providerId = await partnerRegistrationSessionService.requireProviderId(session);
+          const body = raw as Record<string, string | undefined>;
+          const data = await partnerOnboardingService.saveProfile(session.userId, providerId, body);
+          return { success: true, data };
+        });
+      } catch (err) {
+        return mapError(err, set);
+      }
+    },
+    {
+      body: t.Object({
+        dateOfBirth: t.Optional(t.String()),
+        gender: t.Optional(t.String()),
+        emergencyContactName: t.Optional(t.String()),
+        emergencyContactPhone: t.Optional(t.String()),
+        bio: t.Optional(t.String()),
+      }),
+    },
+  )
+  .post(
+    "/onboarding/skills",
+    async ({ body: raw, request, set }) => {
+      try {
+        return await withRegistrationToken(request, async (session) => {
+          const providerId = await partnerRegistrationSessionService.requireProviderId(session);
+          const body = raw as {
+            primarySkill: string;
+            secondarySkills?: string[];
+            experienceYears: number;
+            certifications?: string[];
+          };
+          const data = await partnerOnboardingService.saveSkills(session.userId, providerId, body);
+          return { success: true, data };
+        });
+      } catch (err) {
+        return mapError(err, set);
+      }
+    },
+    {
+      body: t.Object({
+        primarySkill: t.String(),
+        secondarySkills: t.Optional(t.Array(t.String())),
+        experienceYears: t.Number(),
+        certifications: t.Optional(t.Array(t.String())),
+      }),
+    },
+  )
+  .post(
+    "/onboarding/location",
+    async ({ body: raw, request, set }) => {
+      try {
+        return await withRegistrationToken(request, async (session) => {
+          const providerId = await partnerRegistrationSessionService.requireProviderId(session);
+          const body = raw as {
+            city: string;
+            serviceRegions: string[];
+            serviceRadiusKm: number;
+            baseLatitude?: number;
+            baseLongitude?: number;
+          };
+          const data = await partnerOnboardingService.saveLocation(session.userId, providerId, body);
+          return { success: true, data };
+        });
+      } catch (err) {
+        return mapError(err, set);
+      }
+    },
+    {
+      body: t.Object({
+        city: t.String(),
+        serviceRegions: t.Array(t.String()),
+        serviceRadiusKm: t.Number(),
+        baseLatitude: t.Optional(t.Number()),
+        baseLongitude: t.Optional(t.Number()),
+      }),
+    },
+  )
+  .post(
+    "/onboarding/availability",
+    async ({ body: raw, request, set }) => {
+      try {
+        return await withRegistrationToken(request, async (session) => {
+          const providerId = await partnerRegistrationSessionService.requireProviderId(session);
+          const body = raw as {
+            workingHoursStart?: string;
+            workingHoursEnd?: string;
+            workingDays?: string[];
+          };
+          const data = await partnerOnboardingService.saveAvailability(session.userId, providerId, body);
+          return { success: true, data };
+        });
+      } catch (err) {
+        return mapError(err, set);
+      }
+    },
+    {
+      body: t.Object({
+        workingHoursStart: t.Optional(t.String()),
+        workingHoursEnd: t.Optional(t.String()),
+        workingDays: t.Optional(t.Array(t.String())),
+      }),
+    },
+  )
+  .post(
+    "/onboarding/documents",
+    async ({ body, request, set }) => {
+      try {
+        return await withRegistrationToken(request, async (session) => {
+          const providerId = await partnerRegistrationSessionService.requireProviderId(session);
+          const uploadedTypes = Array.isArray(body?.uploadedTypes)
+            ? (body.uploadedTypes as string[])
+            : [];
+          const data = await partnerOnboardingService.completeDocuments(
+            session.userId,
+            providerId,
+            uploadedTypes,
+          );
+          return { success: true, data };
+        });
+      } catch (err) {
+        return mapError(err, set);
+      }
+    },
+    { body: t.Object({ uploadedTypes: t.Optional(t.Array(t.String())) }) },
+  )
+  .get("/onboarding/assessment", async ({ query, request, set }) => {
+    try {
+      return await withRegistrationToken(request, async (session) => {
+        const providerId = await partnerRegistrationSessionService.requireProviderId(session);
+        const prisma = (await import("../lib/prisma")).default;
+        const provider = await prisma.provider.findUnique({
+          where: { id: providerId },
+          select: { primarySkill: true },
+        });
+        const skill =
+          typeof query.skill === "string" && query.skill.length > 0
+            ? query.skill
+            : provider?.primarySkill ?? "general";
+        const data = partnerOnboardingService.getAssessmentQuestions(skill);
+        return { success: true, data };
+      });
+    } catch (err) {
+      return mapError(err, set);
+    }
+  })
+  .post(
+    "/onboarding/assessment",
+    async ({ body: raw, request, set }) => {
+      try {
+        return await withRegistrationToken(request, async (session) => {
+          const providerId = await partnerRegistrationSessionService.requireProviderId(session);
+          const body = raw as { skillSlug: string; answers: Record<string, string> };
+          const data = await partnerOnboardingService.runAssessment(providerId, body.skillSlug, body.answers);
+          if (data.passed) {
+            await partnerOnboardingService.saveStep(
+              session.userId,
+              "assessment",
+              { skillSlug: data.skillSlug, passed: true, score: data.score },
+              providerId,
+            );
+          }
+          return { success: true, data };
+        });
+      } catch (err) {
+        return mapError(err, set);
+      }
+    },
+    {
+      body: t.Object({
+        skillSlug: t.String(),
+        answers: t.Record(t.String(), t.String()),
+      }),
+    },
+  )
+  .get("/onboarding/training", async ({ request, set }) => {
+    try {
+      return await withRegistrationToken(request, async (session) => {
+        const providerId = await partnerRegistrationSessionService.requireProviderId(session);
+        const data = await partnerOnboardingService.getTraining(providerId);
+        return { success: true, data };
+      });
+    } catch (err) {
+      return mapError(err, set);
+    }
+  })
+  .post("/onboarding/training/:moduleId/complete", async ({ params, request, set }) => {
+    try {
+      return await withRegistrationToken(request, async (session) => {
+        const providerId = await partnerRegistrationSessionService.requireProviderId(session);
+        const data = await partnerOnboardingService.completeTrainingModule(
+          session.userId,
+          providerId,
+          params.moduleId,
+        );
+        return { success: true, data };
+      });
+    } catch (err) {
+      return mapError(err, set);
+    }
+  })
+  .post("/onboarding/training/acknowledge", async ({ request, set }) => {
+    try {
+      return await withRegistrationToken(request, async (session) => {
+        const providerId = await partnerRegistrationSessionService.requireProviderId(session);
+        const data = await partnerOnboardingService.acknowledgeTraining(session.userId, providerId);
+        return { success: true, data };
+      });
+    } catch (err) {
+      return mapError(err, set);
+    }
+  })
+  .get("/onboarding/review", async ({ request, set }) => {
+    try {
+      return await withRegistrationToken(request, async (session) => {
+        const providerId = await partnerRegistrationSessionService.requireProviderId(session);
+        const data = await partnerOnboardingService.getReview(session.userId, providerId);
+        return { success: true, data };
+      });
+    } catch (err) {
+      return mapError(err, set);
+    }
+  })
+  .post("/onboarding/review/acknowledge", async ({ request, set }) => {
+    try {
+      return await withRegistrationToken(request, async (session) => {
+        const providerId = await partnerRegistrationSessionService.requireProviderId(session);
+        const data = await partnerOnboardingService.acknowledgeReview(session.userId, providerId);
+        return { success: true, data };
+      });
+    } catch (err) {
+      return mapError(err, set);
+    }
+  })
+  .get("/onboarding/geo/config", async ({ request, set }) => {
+    try {
+      return await withRegistrationToken(request, async () => {
+        const { mapsService } = await import("../services/maps.service");
+        return { success: true, data: { mapsConfigured: mapsService.isConfigured } };
+      });
+    } catch (err) {
+      return mapError(err, set);
+    }
+  })
+  .get("/onboarding/geo/reverse", async ({ query, request, set }) => {
+    try {
+      return await withRegistrationToken(request, async (session) => {
+        const { mapsService } = await import("../services/maps.service");
+        const { geofenceService } = await import("../services/geofence.service");
+        const lat = Number(query.lat);
+        const lng = Number(query.lng);
+        if (!mapsService.isWithinIndia(lat, lng)) {
+          set.status = 400;
+          return { success: false, error: "Coordinates outside the service area", code: "OUT_OF_AREA" };
+        }
+        const limiter = await consumeRateLimitSmart(`partner-geo-rev:${session.userId}`, 60, 60_000);
+        if (!limiter.allowed) {
+          set.status = 429;
+          return { success: false, error: "Too many requests", code: "RATE_LIMITED" };
+        }
+        const address = await mapsService.reverseGeocode(lat, lng);
+        const zones = await geofenceService.findContaining(lat, lng).catch(() => []);
+        return {
+          success: true,
+          data: {
+            available: mapsService.isConfigured,
+            address,
+            coverageZones: zones.slice(0, 8).map((z) => ({
+              id: z.id,
+              name: z.name,
+              zoneType: z.zoneType,
+              city: z.city,
+            })),
+          },
+        };
+      });
+    } catch (err) {
+      return mapError(err, set);
+    }
+  })
+  .get("/onboarding/geo/autocomplete", async ({ query, request, set }) => {
+    try {
+      return await withRegistrationToken(request, async (session) => {
+        const { mapsService } = await import("../services/maps.service");
+        const q = String(query.q ?? "").trim();
+        if (q.length < 3) return { success: true, data: { predictions: [] } };
+        const limiter = await consumeRateLimitSmart(`partner-geo-ac:${session.userId}`, 120, 60_000);
+        if (!limiter.allowed) {
+          set.status = 429;
+          return { success: false, error: "Too many requests", code: "RATE_LIMITED" };
+        }
+        const predictions = await mapsService.autocomplete(q, {
+          sessionToken: typeof query.session === "string" ? query.session : undefined,
+        });
+        return { success: true, data: { available: mapsService.isConfigured, predictions } };
+      });
+    } catch (err) {
+      return mapError(err, set);
+    }
+  })
+  .get("/onboarding/geo/place/:placeId", async ({ params, request, set }) => {
+    try {
+      return await withRegistrationToken(request, async () => {
+        const { mapsService } = await import("../services/maps.service");
+        const place = await mapsService.placeDetails(params.placeId);
+        return { success: Boolean(place), data: place };
+      });
+    } catch (err) {
+      return mapError(err, set);
+    }
+  })
+  .get("/onboarding/geo/search", async ({ query, request, set }) => {
+    try {
+      return await withRegistrationToken(request, async (session) => {
+        const { mapsService } = await import("../services/maps.service");
+        const q = String(query.q ?? "").trim();
+        if (q.length < 3) return { success: true, data: null };
+        const limiter = await consumeRateLimitSmart(`partner-geo-fwd:${session.userId}`, 60, 60_000);
+        if (!limiter.allowed) {
+          set.status = 429;
+          return { success: false, error: "Too many requests", code: "RATE_LIMITED" };
+        }
+        const address = await mapsService.geocode(q);
+        return { success: true, data: { available: mapsService.isConfigured, address } };
       });
     } catch (err) {
       return mapError(err, set);

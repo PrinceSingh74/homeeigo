@@ -9,6 +9,7 @@ import { useNativeNotifications } from "@/hooks/use-native-notifications";
 import { qk, upsertNotificationInCache } from "@/hooks/use-core-data";
 import type { BackendNotification } from "@/types/backend";
 import { resolveWsBase } from "@/lib/api-base";
+import { collapseCustomerBookingStatus } from "@/lib/bookings";
 
 
 const SYSTEM_WS_TYPES = new Set(["SUBSCRIBE", "UNSUBSCRIBE", "PONG", "PING"]);
@@ -70,7 +71,8 @@ export function RealtimeBridge() {
           isRead?: boolean;
           referenceId?: string;
           referenceType?: string;
-          status?: "confirmed" | "in_progress" | "completed" | "cancelled";
+          /** Raw backend status on `booking.status` frames (pending | en_route | …). */
+          status?: string;
         };
 
         if (isSystemWsPayload(raw, msg)) return;
@@ -93,7 +95,8 @@ export function RealtimeBridge() {
           const prevTs = bookingStatusUpdatedAt.current.get(msg.referenceId) ?? 0;
           if (!Number.isNaN(incomingTs) && incomingTs < prevTs) return;
           bookingStatusUpdatedAt.current.set(msg.referenceId, Number.isNaN(incomingTs) ? Date.now() : incomingTs);
-          updateBookingStatus(msg.referenceId, msg.status);
+          // Backend is authoritative; the 4-state customer view is a presentation collapse.
+          updateBookingStatus(msg.referenceId, collapseCustomerBookingStatus(msg.status), msg.status);
           shouldRefreshBookings = true;
         }
 

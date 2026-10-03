@@ -186,7 +186,7 @@ const routes = new Elysia({ prefix: "/api/coverage" })
     { body: t.Object({ status: t.Optional(t.Union([t.String(), t.Null()])), note: t.Optional(t.String()) }) },
   );
 
-// Exported with a widened type so the already-huge index.ts plugin chain does
-// not blow TypeScript's instantiation depth (TS2589). Handlers above are still
-// fully type-checked; runtime behaviour is unchanged.
-export const coverageRoutes = routes as unknown as Elysia;
+// The `as unknown as Elysia` widening that used to be here is no longer needed: it existed only
+// to keep index.ts's plugin chain under TypeScript's instantiation-depth limit, and that chain is
+// now built in segments (P3-8), so the real inferred type flows through and is checked.
+export const coverageRoutes = routes;

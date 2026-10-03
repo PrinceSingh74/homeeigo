@@ -1,4 +1,4 @@
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 const BACKUP_DIR = process.env.BACKUP_DIR ?? "./backups";
@@ -39,7 +39,7 @@ export class RecoveryIntelligenceService {
     const successRate =
       backupCount > 0 && lastSuccess > 0 ? (ageSec != null && ageSec < 86400 * 2 ? 100 : Math.max(0, 100 - (ageSec ?? 0) / 864)) : null;
 
-    let drReport: { rtoSeconds?: number; restoredAt?: string } | null = null;
+    let drReport: { rtoSeconds?: number; restoredAt?: string } | null;
     try {
       const raw = await readFile(join(BACKUP_DIR, "restore-validation-report.json"), "utf8");
       drReport = JSON.parse(raw);

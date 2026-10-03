@@ -8,6 +8,7 @@ export type ApiResponse<T = unknown> = {
   code?: string;
   message?: string;
   details?: ApiErrorDetail[];
+  retryAfter?: number;
 };
 
 export type Paginated<T> = T & {
@@ -124,6 +125,8 @@ export type PartnerDashboard = {
 };
 
 export type PartnerOperations = {
+  axis?: "AVAILABILITY";
+  availabilityState?: string;
   operationalStatus: string;
   uiOnline: boolean;
   isOnline: boolean;
@@ -168,9 +171,46 @@ export type PartnerBookingStatus =
   | "en_route"
   | "in_progress"
   | "completed"
+  // Backend `BookingStatus.REJECTED`, serialised lowercase like every other value.
+  | "rejected"
   | "cancelled"
   | "cancelled_by_user"
   | "cancelled_by_provider";
+
+/** Mirror of backend PartnerJobBrief (lib/service-domain.ts). Execution facts only. */
+export type PartnerJobBrief = {
+  variant: string | null;
+  audience: string | null;
+  quantity: number;
+  unit: string | null;
+  addons: { name: string; quantity: number }[];
+  durationMinutes: number | null;
+  duration: {
+    preparationMinutes: number;
+    serviceMinutes: number;
+    addonMinutes: number;
+    cleanupMinutes: number;
+    totalMinutes: number;
+  } | null;
+};
+
+/** Mirror of backend PartnerRequirementsBrief (lib/service-requirements.ts) — from the booking snapshot. */
+export type PartnerRequirement = {
+  label: string;
+  quantity: string | null;
+  instructions: string | null;
+  handling: string | null;
+  customerWasTold: string | null;
+  optional: boolean;
+  chargeable: boolean;
+};
+export type PartnerRequirementsBrief = {
+  bringMaterials: PartnerRequirement[];
+  bringEquipment: PartnerRequirement[];
+  customerProvides: PartnerRequirement[];
+  preconditions: Array<PartnerRequirement & { check: "CONFIRMED_BY_CUSTOMER" | "VERIFY_ON_ARRIVAL" | "VERIFY_AT_START" | "INFORMATIONAL" }>;
+  empty: boolean;
+};
 
 export type PartnerBooking = {
   id: string;
@@ -185,9 +225,17 @@ export type PartnerBooking = {
   startedAt: string | null;
   amount: number;
   finalAmount: number;
-  /** Catalog snapshot of purchased add-ons ({id,name,price}) from the backend. */
-  addons?: { id: string; name: string; price: number }[];
+  /** Catalog snapshot of purchased add-ons from the backend. `price` is the line total. */
+  addons?: { id: string; name: string; price: number; unitPrice?: number; quantity?: number }[];
+  /** What was booked (variant, quantity, add-on units, duration) — backend partnerJobBrief. */
+  job?: PartnerJobBrief;
+  /** Phase 06 preparation checklist recorded at booking (null for bookings made before Phase 06). */
+  requirements?: PartnerRequirementsBrief | null;
   paymentStatus: string;
+  /** The server's payment exemption (fee-waived rework / revisit or audited override); the action mirror reads it. */
+  paymentExempt?: boolean;
+  /** §11: set on a case-created rework / revisit visit; null for an ordinary booking. */
+  followUp?: { kind: string; parentBookingNumber: string | null; caseNumber: string | null } | null;
   description: string | null;
   eta: number | null;
   customer: {
@@ -210,6 +258,15 @@ export type PartnerBooking = {
   };
   ratingGiven: boolean;
   rating: number | null;
+  /**
+   * The live dispatch window, present ONLY on rows in the pending tab.
+   *
+   * `null` means this row is not an open offer — an accepted or finished job — so nothing should
+   * render a countdown for it. It is never "an offer with no deadline": the backend only returns a
+   * pending row while its window is still open, so an offer and a deadline arrive together or not
+   * at all.
+   */
+  offer: { dispatchedAt: string; expiresAt: string } | null;
 };
 
 export type JobAction =
@@ -221,18 +278,22 @@ export type JobAction =
   | "COMPLETE_SERVICE"
   | "CALL_CUSTOMER"
   | "OPEN_CHAT"
-  | "UPLOAD_EVIDENCE";
+  | "UPLOAD_EVIDENCE"
+  | "REPORT_NO_SHOW";
 
 export type JobLifecycleStage =
-  | "PENDING"
+  | "OFFERED"
   | "ACCEPTED"
   | "EN_ROUTE"
   | "ARRIVED"
+  | "STARTED"
   | "IN_PROGRESS"
   | "COMPLETED"
-  | "EARNINGS_POSTED"
   | "CANCELLED"
-  | "REJECTED";
+  | "REJECTED"
+  | "EXPIRED"
+  | "CUSTOMER_NO_SHOW"
+  | "PROVIDER_NO_SHOW";
 
 export type JobActionResult = {
   stage: JobLifecycleStage;
@@ -240,6 +301,49 @@ export type JobActionResult = {
   primaryAction: JobAction | null;
   requiredGates: string[];
   disabledReasons: Partial<Record<JobAction, string>>;
+  /** §6: the server's START requirement gate. Only the server can compute it; null = not deployed. */
+  requirementGate?: { ok: boolean; blocking: number; message: string } | null;
+  /** §9: the server's safety gate (ACTIVE holds + open incidents). */
+  safetyGate?: { ok: boolean; blocking: number; message: string } | null;
+  /** The server's payment exemption for this booking. */
+  paymentExempt?: boolean;
+};
+
+/* ---- Phase 10 §6 — booking requirement state (mirror of backend BookingRequirementsView) ---- */
+export type RequirementEnforcementPoint = "BEFORE_BOOKING" | "BEFORE_ARRIVAL" | "AT_START";
+export type RequirementEffectiveState = "UNRESOLVED" | "SATISFIED" | "FAILED" | "EXPIRED";
+export type BlockingRequirement = {
+  code: string;
+  label: string;
+  kind: string;
+  enforcementPoint: RequirementEnforcementPoint;
+  responsibility: string;
+  verification: string;
+  state: RequirementEffectiveState;
+  reason: string;
+  remediation: { role: "PARTNER" | "CUSTOMER"; text: string };
+};
+export type RequirementGateResult = { target: "ARRIVAL" | "START"; ok: boolean; evaluated: number; blocking: BlockingRequirement[] };
+export type RequirementItemView = {
+  code: string;
+  label: string;
+  kind: string;
+  enforcementPoint: RequirementEnforcementPoint;
+  responsibility: string;
+  verification: string;
+  optional: boolean;
+  state: RequirementEffectiveState;
+  resolvedAt: string | null;
+  resolvedByRole: string | null;
+  note: string | null;
+  actions: Array<"CHECK" | "READY" | "ATTEST" | "RECHECK">;
+  blocking: Pick<BlockingRequirement, "reason" | "remediation"> | null;
+};
+export type BookingRequirementsView = {
+  enforced: boolean;
+  serviceVersion: number | null;
+  items: RequirementItemView[];
+  gate: { arrival: RequirementGateResult; start: RequirementGateResult };
 };
 
 export type JobEvidenceItem = {
@@ -330,7 +434,8 @@ export type LoginPayload = {
     role?: string;
   };
   accessToken: string;
-  refreshToken: string;
+  /** Web receives no refresh token — it is an HttpOnly cookie. Present only for non-web clients. */
+  refreshToken?: string;
   userId: string;
   expiresIn: number;
 };
@@ -439,6 +544,7 @@ export type OtpLoginPayload = {
     role?: string;
   };
   accessToken: string;
-  refreshToken: string;
+  /** Web receives no refresh token — it is an HttpOnly cookie. */
+  refreshToken?: string;
   isPhoneVerified: boolean;
 };

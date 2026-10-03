@@ -17,6 +17,7 @@ import {
 import { PageShell } from "@/components/layout/PageShell";
 import { pageLead, pageTitle } from "@/lib/page-layout";
 import { DevicesSessions } from "@/components/profile/DevicesSessions";
+import { DataRequests } from "@/components/profile/DataRequests";
 import { authApi } from "@/services/auth/auth-api";
 import { coreApi } from "@/services/core/api";
 import { useUpdatePreferencesMutation } from "@/hooks/use-core-data";
@@ -308,24 +309,32 @@ export default function SettingsPage() {
               checked={prefs.emailNotifications}
               onChange={togglePref("emailNotifications")}
               label="Email notifications"
-              description="Booking confirmations, receipts, and offers"
+              description="Offers, recommendations, and product news"
               disabled={updatePreferences.isPending}
             />
             <Toggle
               checked={prefs.pushNotifications}
               onChange={togglePref("pushNotifications")}
               label="Push notifications"
-              description="Real-time booking and pro-arrival updates"
+              description="Reminders, offers, and re-booking suggestions"
               disabled={updatePreferences.isPending}
             />
             <Toggle
               checked={prefs.smsNotifications}
               onChange={togglePref("smsNotifications")}
               label="SMS notifications"
-              description="OTPs and critical booking alerts"
+              description="Promotional messages sent by text"
               disabled={updatePreferences.isPending}
             />
           </div>
+          {/*
+            These switches govern optional messaging only. Booking confirmations, receipts,
+            pro-arrival updates and sign-in codes are delivered regardless — describing them as
+            switchable, as this card previously did, promised control the platform does not give.
+          */}
+          <p className="mt-3 text-xs text-[color:var(--muted-foreground,#6b7280)]">
+            Booking confirmations, receipts, service updates and security codes are always sent.
+          </p>
         </SectionCard>
 
         {/* Security */}
@@ -402,6 +411,16 @@ export default function SettingsPage() {
             </button>
           </div>
           <p className="mt-3 text-xs text-muted">
+            Partners only see what they need for an active job: your first name, masked phone, and the service address.
+            They never receive your full number, other saved addresses, payment details, or private notes. After the job,
+            address detail is minimized.
+          </p>
+          {/* Requests the customer has already made, and the consent controls. Both capabilities
+              existed in the backend with no consumer: a submitted ZIP export could not be tracked or
+              downloaded, and consent could not be withdrawn at all. */}
+          <DataRequests />
+
+          <p className="mt-3 text-xs text-muted">
             <Link href="/legal/privacy" className="text-primary hover:underline">
               Privacy Policy
             </Link>
@@ -418,11 +437,11 @@ export default function SettingsPage() {
 
         {/* Danger zone */}
         <section className="rounded-[28px] border border-error/25 bg-error/5 p-5 sm:p-6">
-          <h2 className="flex items-center gap-2 font-display text-lg font-bold text-error">
+          <h2 className="flex items-center gap-2 font-display text-lg font-bold text-red-800">
             <Trash2 size={18} />
             Delete account
           </h2>
-          <p className="mt-1 text-sm text-muted">
+          <p className="mt-1 text-sm text-slate-700">
             Your account is deactivated immediately and permanently deleted after 30 days. Contact
             support within 30 days to restore.
           </p>

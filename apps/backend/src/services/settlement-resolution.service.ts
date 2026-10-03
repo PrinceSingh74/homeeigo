@@ -158,8 +158,13 @@ export class SettlementResolutionService {
       `,
     ]);
 
-    const resolutionRate = total > 0 ? round2((resolved / total) * 100) : 100;
-    const healthScore = round2(Math.max(0, resolutionRate - open * 0.5 - escalated * 2));
+    // With no discrepancies on record, a resolution *rate* is undefined -- there is nothing to
+    // have resolved. 100 would claim a perfect track record built on zero events. The health
+    // score derives from that rate, so it is unmeasured on the same evidence; `total`, `open` and
+    // `escalated` remain real measured zeros and are still reported.
+    const resolutionRate = total > 0 ? round2((resolved / total) * 100) : null;
+    const healthScore =
+      resolutionRate == null ? null : round2(Math.max(0, resolutionRate - open * 0.5 - escalated * 2));
 
     return {
       total,

@@ -42,6 +42,16 @@ export default function FraudPage() {
     mutationFn: (id: string) => adminApi.fraud.freezeCommission(id, "Manual freeze"),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "fraud"] }),
   });
+  /**
+   * Freezing was reversible in the backend and irreversible in this console: the endpoint existed
+   * with no caller, so a commission frozen here could only be released by someone with database
+   * access. Unfreezing returns it to review — it does not approve it — so the reviewer still makes
+   * the decision.
+   */
+  const unfreezeMut = useMutation({
+    mutationFn: (id: string) => adminApi.fraud.unfreezeCommission(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "fraud"] }),
+  });
   const blacklistMut = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       adminApi.fraud.blacklistUser(id, reason),
@@ -84,13 +94,27 @@ export default function FraudPage() {
       >
         Approve
       </button>
-      <button
-        type="button"
-        className="text-xs text-amber-600"
-        onClick={() => freezeMut.mutate(c.id)}
-      >
-        Freeze
-      </button>
+      {/* A frozen commission offers the release, not another freeze — the two are the same
+          decision in opposite directions, and showing both at once invites the wrong click. */}
+      {String(c.status).toUpperCase() === "FROZEN" ? (
+        <button
+          type="button"
+          className="text-xs text-amber-600"
+          disabled={unfreezeMut.isPending}
+          onClick={() => unfreezeMut.mutate(c.id)}
+        >
+          Unfreeze
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="text-xs text-amber-600"
+          disabled={freezeMut.isPending}
+          onClick={() => freezeMut.mutate(c.id)}
+        >
+          Freeze
+        </button>
+      )}
       <button
         type="button"
         className="text-xs text-red-500"

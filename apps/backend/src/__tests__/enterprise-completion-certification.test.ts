@@ -3,21 +3,13 @@
  * membership deeplink, partner realtime, partner settings).
  */
 import "../load-env";
+import { provenanceForNewUser } from "../lib/data-provenance";
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { BookingStatus } from "@prisma/client";
 import fs from "fs";
 import path from "path";
 import app from "../index";
-import {
-  prisma,
-  dbReachable,
-  seedAdversarialFixtures,
-  cleanupAdversarialFixtures,
-  deleteBookingsForUsers,
-  bearer,
-  fixturePhone,
-  type AdvCtx,
-} from "./helpers/adversarial-fixtures";
+import { prisma, dbReachable, seedAdversarialFixtures, cleanupAdversarialFixtures, bearer, fixturePhone, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { bookingService } from "../services/booking.service";
 import { supportTicketService } from "../services/support-ticket.service";
 import { providerService } from "../services/provider.service";
@@ -80,7 +72,9 @@ async function seedAcceptedBooking(hoursFromNow: number): Promise<string> {
 }
 
 function writeCert(filename: string, title: string, body: string) {
-  fs.mkdirSync(DOCS, { recursive: true });
+  // `recursive: true` should be a no-op when the directory exists, but under Bun on Windows
+  // it still throws EEXIST, failing the suite on an operation already satisfied.
+  if (!fs.existsSync(DOCS)) fs.mkdirSync(DOCS, { recursive: true });
   fs.writeFileSync(path.join(DOCS, filename), body, "utf8");
 }
 
@@ -99,6 +93,7 @@ beforeAll(async () => {
   });
   const auditor = await prisma.user.create({
     data: {
+      ...provenanceForNewUser(`adv-${RUN_ID}-auditor@adv.test`),
       email: `adv-${RUN_ID}-auditor@adv.test`,
       phoneNumber: fixturePhone(RUN_ID, "auditor"),
       firstName: "Analytics",
@@ -172,7 +167,6 @@ afterAll(async () => {
       `# Enterprise Completion Certification\n\n**Overall verdict:** ${overall}\n\n| Priority | Verdict | Evidence |\n|----------|---------|----------|\n${summary}\n\nExecuted: ${new Date().toISOString()}\n`,
     );
   }
-  await prisma.$disconnect();
 }, 180_000);
 
 describe.serial("Enterprise completion certification", () => {
@@ -397,7 +391,7 @@ describe.serial("Enterprise completion certification", () => {
         workingDays: ["Mon", "Tue", "Wed", "Thu", "Fri"].slice(0, 3 + (i % 3)),
         bio,
       });
-      if (r.bio === bio) ok++;
+      if (r && r.bio === bio) ok++;
     }
     const me = await providerService.me(ctx.providerId);
     const pass = ok === 50 && (me?.bio?.includes(RUN_ID) ?? false);

@@ -30,7 +30,9 @@ export function CitiesSection() {
   const [modalMounted, setModalMounted] = useState(false);
 
   const coverageBySlug = useMemo(() => {
-    const map = new Map<string, { activePartners: number; status: string }>();
+    // null = UNMEASURED. The backend publishes a measured partner count or nothing at all, so the
+    // "N+ partners" badge below is shown only when there is a real number behind it.
+    const map = new Map<string, { activePartners: number | null; status: string }>();
     for (const c of coverage.data?.cities ?? []) {
       map.set(c.slug, { activePartners: c.activePartners, status: c.status });
     }
@@ -121,7 +123,7 @@ export function CitiesSection() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-black/20 transition-all duration-300 group-hover:from-black/90" />
                 <div className="absolute inset-0 flex flex-col items-center justify-end gap-0.5 pb-3">
                   <span className="text-center text-sm font-bold text-white">{city.name}</span>
-                  {cov && cov.activePartners > 0 ? (
+                  {cov && cov.activePartners != null && cov.activePartners > 0 ? (
                     <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-300">
                       <Users size={10} /> {cov.activePartners}+ partners
                     </span>

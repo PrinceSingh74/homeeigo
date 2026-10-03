@@ -2,10 +2,12 @@
  * E2E: demo customer books plumbing → partner@homigo.demo sees request instantly.
  */
 import "../src/load-env";
+import { requireDeclaredTarget } from "./lib/script-target";
 import prisma from "../src/lib/prisma";
 import { bookingService } from "../src/services/booking.service";
 import { providerService } from "../src/services/provider.service";
 import { userPiiService } from "../src/services/user-pii.service";
+requireDeclaredTarget({ label: "e2e-demo-booking" });
 
 const customer = await userPiiService.findByEmail("customer@homigo.demo");
 const partner = await userPiiService.findByEmail("partner@homigo.demo");

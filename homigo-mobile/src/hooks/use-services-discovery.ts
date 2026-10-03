@@ -53,7 +53,8 @@ export function useServicesDiscovery(enabled = true) {
   const trending = useMemo(() => {
     const services = (featuredQuery.data?.services ?? servicesQuery.data?.services ?? []).slice(0, 6);
     const providers = providersQuery.data?.providers ?? [];
-    return services.map((s, i) => ({
+    // A service with no price is not bookable; it is left out rather than shown with an invented one.
+    return services.filter((s) => (s.basePrice ?? s.minPrice) != null).map((s, i) => ({
       id: i + 1,
       title: s.name,
       // Real rating: prefer the provider's maintained avg, else the service's
@@ -66,8 +67,9 @@ export function useServicesDiscovery(enabled = true) {
         (s.reviewCount ?? 0) >= 1000
           ? `${((s.reviewCount ?? 0) / 1000).toFixed(1)}k`
           : String(s.reviewCount ?? providers[i]?.reviewCount ?? 0),
-      price: s.basePrice ?? s.minPrice ?? 199,
-      duration: "60-120 mins",
+      // Real price and duration only — nothing invented when the backend has none.
+      price: (s.basePrice ?? s.minPrice)!,
+      duration: s.estimatedDuration ? minutesLabel(s.estimatedDuration) : null,
       imageUri:
         s.thumbnail ??
         s.icon ??
@@ -93,10 +95,13 @@ export function useServicesDiscovery(enabled = true) {
   }, [featuredQuery.data?.services, servicesQuery.data?.services]);
 
   const expressServices = useMemo(() => {
-    return (featuredQuery.data?.services ?? servicesQuery.data?.services ?? []).slice(0, 4).map((s, i) => ({
+    return (featuredQuery.data?.services ?? servicesQuery.data?.services ?? [])
+      .filter((s) => (s.basePrice ?? s.minPrice) != null)
+      .slice(0, 4)
+      .map((s, i) => ({
       icon: emojiForService(s.id, s.name),
       name: s.name,
-      price: s.basePrice ?? s.minPrice ?? 199,
+      price: (s.basePrice ?? s.minPrice)!,
       iconBg: ["#EDE9FE", "#CFFAFE", "#DBEAFE", "#FFEDD5"][i % 4]!,
       iconColor: ["#7C3AED", "#0891B2", "#2563EB", "#EA580C"][i % 4]!,
       serviceId: s.id,
@@ -111,4 +116,10 @@ export function useServicesDiscovery(enabled = true) {
     isLoading: servicesQuery.isLoading || featuredQuery.isLoading,
     isFromApi: Boolean(servicesQuery.data?.services?.length),
   };
+}
+
+function minutesLabel(n: number): string {
+  if (n < 60) return `${n} mins`;
+  const h = n / 60;
+  return `${Number.isInteger(h) ? h : h.toFixed(1)} ${h === 1 ? "hr" : "hrs"}`;
 }

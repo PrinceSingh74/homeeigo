@@ -11,6 +11,15 @@ import {
   type ResolvedPath,
 } from "@/lib/catalog";
 import { CategoryLanding, ServiceDetail } from "@/components/services-catalog/lazy-views";
+import { fetchServicesCatalog } from "@/lib/server-api";
+
+/** true = bookable, false = coming soon, null = the live catalogue could not be read. */
+async function isLiveService(slug: string): Promise<boolean | null> {
+  const data = await fetchServicesCatalog();
+  if (!data) return null;
+  const view = buildCatalog(data.services).bySlug.get(slug);
+  return view ? view.status === "live" : null;
+}
 
 export const revalidate = 60;
 
@@ -88,12 +97,16 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
   if (resolved.kind === "service") {
     const s = resolved.service;
     const cat = CATEGORY_BY_ID.get(s.category)!;
+    // Coming-soon pages stay out of the index until they launch — the same rule sitemap.ts applies
+    // (only status "live" is listed). Metadata streams for browsers, so the page body is not held
+    // behind this cached read; only crawlers wait for it. Unknown (backend unreadable) emits nothing
+    // rather than noindex, so an outage can never de-index live pages.
+    const live = await isLiveService(s.slug);
     return {
       title: `${s.name} — ${cat.name}`,
       description: s.description,
       alternates: { canonical: s.href },
-      // Live vs coming-soon is decided after the client catalog hydrates; blocking
-      // the RSC on that fetch made every service URL feel stuck.
+      ...(live === false ? { robots: { index: false, follow: true } } : {}),
       openGraph: s.image?.startsWith("/") ? { images: [{ url: s.image }] } : undefined,
     };
   }

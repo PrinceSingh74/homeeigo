@@ -11,6 +11,8 @@ const E2E_PRODUCTION = process.env.E2E_PRODUCTION === "1" || process.env.CI === 
 
 export default defineConfig({
   testDir: "./e2e",
+  // Refuses to run unless the backend under test reports a disposable database (never live homigo_db).
+  globalSetup: path.join(__dirname, "../../scripts/e2e-assert-isolated-backend.mjs"),
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

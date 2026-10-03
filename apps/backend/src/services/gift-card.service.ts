@@ -1,3 +1,4 @@
+import { rupeesToPaise } from "../lib/money-paise";
 import crypto from "crypto";
 import { prisma } from "../lib/prisma";
 import { GiftCardStatus, WalletTxnType, WalletTxnStatus, Prisma } from "@prisma/client";
@@ -282,7 +283,7 @@ export class GiftCardService {
 
       const updated = await tx.user.update({
         where: { id: userId },
-        data: { walletBalance: { increment: amount } },
+        data: { walletBalance: { increment: amount }, walletBalancePaise: { increment: rupeesToPaise(amount) } },
       });
       const walletTxn = await tx.walletTransaction.create({
         data: {
@@ -354,88 +355,112 @@ export class GiftCardService {
   }
 
   /**
-   * Void/cancel a gift card the user PURCHASED. When a gateway payment exists,
-   * Razorpay refund must succeed before any wallet credit. Idempotent + ledger-aware.
+   * Void a gift card the user PURCHASED and refund its unspent balance to the ORIGINAL payment.
+   *
+   * Gift cards are only ever bought through Razorpay (createOrder), so the only refundable tender
+   * is the card's captured gateway payment — the same "refund to original tender" rule booking
+   * refunds use. The money goes back exactly once and ONLY there: this path used to refund the
+   * gateway AND credit the wallet for the same balance (a P1 double credit), with no idempotency.
+   *
+   *   1. reserve  — under the card lock: record VOID_RESERVED(amount) and zero the balance, so a
+   *                 concurrent redeem cannot spend money that is being refunded;
+   *   2. refund   — gateway refund with Razorpay's idempotency header keyed by card: every retry
+   *                 of this void returns the SAME gateway refund, never a second one;
+   *   3. complete — under the card lock, idempotently: VOID, REFUND row, purchase-reversal journal.
+   *
+   * A definitive gateway rejection releases the reservation; an unknown outcome keeps it, and the
+   * next call resumes with the same key. No payment evidence → refused, never turned into wallet cash.
    */
   async void(
     userId: string,
     cardId: string,
-  ): Promise<{ ok: true; refunded: number; walletBalance: number } | { error: string }> {
+  ): Promise<{ ok: true; refunded: number; walletBalance: number; refundedTo: "ORIGINAL_PAYMENT"; gatewayRefundId: string } | { error: string }> {
     const card = await prisma.giftCard.findFirst({ where: { id: cardId, purchaserId: userId } });
     if (!card) return { error: "NOT_FOUND" };
     if (card.status === GiftCardStatus.VOID) return { error: "ALREADY_VOIDED" };
     if (card.status !== GiftCardStatus.ACTIVE) return { error: "NOT_VOIDABLE" };
-    if (card.balance <= 0) return { error: "NO_BALANCE" };
+    const pending = await this.activeVoidReservation(prisma, cardId);
+    if (!pending && card.balance <= 0) return { error: "NO_BALANCE" };
 
-    let gatewayPaymentId: string | null = null;
-    if (card.razorpayOrderId) {
-      const payments = await razorpayService.fetchOrderPayments(card.razorpayOrderId);
-      const captured = payments.find((p) => p.status === "captured");
-      if (captured) {
-        gatewayPaymentId = captured.id;
-      } else if (payments.some((p) => p.status === "authorized")) {
-        return { error: "AWAITING_CAPTURE" };
-      }
+    if (!card.razorpayOrderId) return { error: "NO_REFUNDABLE_PAYMENT" };
+    const payments = await razorpayService.fetchOrderPayments(card.razorpayOrderId);
+    const captured = payments.find((p) => p.status === "captured");
+    if (!captured) {
+      return { error: payments.some((p) => p.status === "authorized") ? "AWAITING_CAPTURE" : "NO_REFUNDABLE_PAYMENT" };
     }
 
-    const refundAmount = card.balance;
-    if (gatewayPaymentId) {
-      const idempotencyKey = `gift_void:${cardId}`;
-      const existingRefund = await prisma.walletTransaction.findFirst({
-        where: { referenceId: cardId, referenceType: "gift_card_void_refund" },
+    // 1. reserve (idempotent: an existing reservation is resumed, never duplicated)
+    let amount: number;
+    try {
+      amount = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT id FROM gift_cards WHERE id = ${cardId} FOR UPDATE`;
+        const locked = await tx.giftCard.findUnique({ where: { id: cardId } });
+        if (!locked || locked.status === GiftCardStatus.VOID) throw new Error("ALREADY_VOIDED");
+        if (locked.status !== GiftCardStatus.ACTIVE) throw new Error("NOT_VOIDABLE");
+        const existing = await this.activeVoidReservation(tx, cardId);
+        if (existing) return existing.amount;
+        if (locked.balance <= 0) throw new Error("NO_BALANCE");
+        await tx.giftCardTransaction.create({
+          data: { giftCardId: cardId, userId, type: "VOID_RESERVED", amount: locked.balance, balanceAfter: 0 },
+        });
+        await tx.giftCard.update({ where: { id: cardId }, data: { balance: 0 } });
+        return locked.balance;
       });
-      if (!existingRefund) {
-        const gatewayRefund = await razorpayService.createRefund(gatewayPaymentId, refundAmount);
-        if (!gatewayRefund.refundId) return { error: "GATEWAY_REFUND_FAILED" };
-      }
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "";
+      if (["ALREADY_VOIDED", "NOT_VOIDABLE", "NO_BALANCE"].includes(code)) return { error: code };
+      throw e;
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    // 2. refund once, to the original payment
+    let gatewayRefundId: string;
+    try {
+      const gateway = await razorpayService.createRefund(captured.id, amount, `gift_void:${cardId}`);
+      gatewayRefundId = gateway.refundId;
+    } catch (e) {
+      if ((e as { outcomeUnknown?: boolean }).outcomeUnknown) return { error: "GATEWAY_REFUND_PENDING" };
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT id FROM gift_cards WHERE id = ${cardId} FOR UPDATE`;
+        const locked = await tx.giftCard.findUnique({ where: { id: cardId } });
+        if (!locked || locked.status !== GiftCardStatus.ACTIVE || !(await this.activeVoidReservation(tx, cardId))) return;
+        await tx.giftCardTransaction.create({
+          data: { giftCardId: cardId, userId, type: "VOID_RELEASED", amount, balanceAfter: amount },
+        });
+        await tx.giftCard.update({ where: { id: cardId }, data: { balance: amount } });
+      });
+      return { error: "GATEWAY_REFUND_FAILED" };
+    }
+
+    // 3. complete (idempotent: a card already VOID is left untouched)
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT id FROM gift_cards WHERE id = ${cardId} FOR UPDATE`;
       const locked = await tx.giftCard.findUnique({ where: { id: cardId } });
-      if (!locked || locked.status === GiftCardStatus.VOID) throw new Error("ALREADY_VOIDED");
-      if (locked.status !== GiftCardStatus.ACTIVE || locked.balance <= 0) {
-        throw new Error("NOT_VOIDABLE");
-      }
-      const refund = locked.balance;
-      const purchaser = await tx.user.findUnique({ where: { id: userId }, select: { walletBalance: true } });
-      if (!purchaser) throw new Error("NOT_FOUND");
-      const updated = await tx.user.update({
-        where: { id: userId },
-        data: { walletBalance: { increment: refund } },
-      });
-      const walletTxn = await tx.walletTransaction.create({
-        data: {
-          transactionNumber: await nextWalletTxnNumber(tx),
-          userId,
-          amount: refund,
-          walletBalanceBefore: purchaser.walletBalance,
-          walletBalanceAfter: updated.walletBalance,
-          type: WalletTxnType.CREDIT,
-          description: `Gift card ${locked.code} refunded`,
-          referenceId: locked.id,
-          referenceType: gatewayPaymentId ? "gift_card_void_refund" : "gift_card_refund",
-          status: WalletTxnStatus.COMPLETED,
-        },
-      });
+      if (!locked || locked.status === GiftCardStatus.VOID) return;
       await tx.giftCardTransaction.create({
-        data: { giftCardId: locked.id, userId, type: "REFUND", amount: refund, balanceAfter: 0 },
+        data: { giftCardId: cardId, userId, type: "REFUND", amount, balanceAfter: 0 },
       });
-      await tx.giftCard.update({
-        where: { id: locked.id },
-        data: { status: GiftCardStatus.VOID, balance: 0 },
-      });
+      await tx.giftCard.update({ where: { id: cardId }, data: { status: GiftCardStatus.VOID, balance: 0 } });
       await financialLedgerService.recordJournalInTransaction(
         tx,
-        financialLedgerService.journalForRefund(
-          gatewayPaymentId ?? cardId,
-          refund,
-          `gift_void:${cardId}`,
-        ),
+        financialLedgerService.journalForGiftCardVoidRefund(cardId, amount, gatewayRefundId),
       );
-      return { refunded: refund, walletBalance: updated.walletBalance, walletTxnId: walletTxn.id };
     });
 
-    return { ok: true, refunded: result.refunded, walletBalance: result.walletBalance };
+    void AuditLogService.success("GIFT_CARD_VOIDED", {
+      userId,
+      details: { giftCardId: cardId, amount, refundedTo: "ORIGINAL_PAYMENT", gatewayPaymentId: captured.id, gatewayRefundId },
+    });
+    const purchaser = await prisma.user.findUnique({ where: { id: userId }, select: { walletBalance: true } });
+    return { ok: true, refunded: amount, walletBalance: purchaser?.walletBalance ?? 0, refundedTo: "ORIGINAL_PAYMENT", gatewayRefundId };
+  }
+
+  /** The in-flight void reservation for a card: the latest VOID_RESERVED not followed by VOID_RELEASED. */
+  private async activeVoidReservation(db: Prisma.TransactionClient | typeof prisma, cardId: string) {
+    const last = await db.giftCardTransaction.findFirst({
+      where: { giftCardId: cardId, type: { in: ["VOID_RESERVED", "VOID_RELEASED"] } },
+      orderBy: { createdAt: "desc" },
+    });
+    return last?.type === "VOID_RESERVED" ? last : null;
   }
 
   async myCards(userId: string) {

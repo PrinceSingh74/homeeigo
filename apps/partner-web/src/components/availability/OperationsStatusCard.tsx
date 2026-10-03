@@ -6,6 +6,7 @@ import { PartnerCard } from "@/components/ui/PartnerCard";
 import { PartnerButton } from "@/components/ui/PartnerButton";
 import { partnerApi } from "@/services/partner-api";
 import { partnerKeys, usePartnerOperationsQuery, useSetOnlineMutation } from "@/hooks/use-partner-data";
+import { usePartnerPresenceHeartbeat } from "@/hooks/use-partner-presence-heartbeat";
 import { getErrorMessage } from "@/lib/api-error";
 import { useToastStore } from "@/stores/toast-store";
 import { cn } from "@/lib/cn";
@@ -20,16 +21,32 @@ const PAUSE_REASONS = [
 const STATUS_COPY: Record<string, { label: string; detail: string }> = {
   available: { label: "Online", detail: "Available for jobs" },
   offered: { label: "Online", detail: "Job offer pending your response" },
-  accepting_job: { label: "Online", detail: "Accepted — preparing to travel" },
+  accepting: { label: "Online", detail: "Accepted — preparing to travel" },
   en_route: { label: "Online", detail: "En route to a job" },
   on_job: { label: "Online", detail: "On a job — current work continues if you pause" },
   paused: { label: "Paused", detail: "New offers are paused. Current jobs continue." },
   offline: { label: "Offline", detail: "You're not receiving new job offers." },
-  suspended: { label: "Account restricted", detail: "Your account is currently unavailable for job assignments." },
 };
+
+function dispatchVisibilityCopy(
+  dispatchable: boolean,
+  presence: { connected: boolean; reconnecting: boolean; lastHeartbeatAt: string | null; presenceFreshness: string },
+): { text: string; tone: "ok" | "warn" } | null {
+  if (!dispatchable) return null;
+  if (presence.reconnecting && (presence.presenceFreshness === "FRESH" || !presence.lastHeartbeatAt)) {
+    return { text: "Connection lost — reconnecting…", tone: "warn" };
+  }
+  if (presence.presenceFreshness !== "FRESH") {
+    return { text: "You're currently not receiving new jobs", tone: "warn" };
+  }
+  if (presence.connected) return { text: "You're visible for new jobs", tone: "ok" };
+  if (presence.reconnecting) return { text: "Connection lost — reconnecting…", tone: "warn" };
+  return null;
+}
 
 export function OperationsStatusCard() {
   const ops = usePartnerOperationsQuery();
+  const presence = usePartnerPresenceHeartbeat();
   const setOnline = useSetOnlineMutation();
   const qc = useQueryClient();
   const toast = useToastStore((s) => s.showToast);
@@ -64,10 +81,14 @@ export function OperationsStatusCard() {
   }
 
   const data = ops.data;
-  const status = data?.operationalStatus ?? "offline";
+  const status = data?.operationalStatus === "accepting_job" ? "accepting" : (data?.operationalStatus ?? "offline");
   const copy = STATUS_COPY[status] ?? STATUS_COPY.offline;
-  const online = Boolean(data?.uiOnline && status !== "paused" && status !== "suspended");
+  const online = Boolean(data?.uiOnline && status !== "paused" && !data?.isSuspended);
   const busy = setOnline.isPending || pause.isPending || resume.isPending;
+  const visibility = dispatchVisibilityCopy(
+    online && status !== "offline",
+    presence,
+  );
 
   return (
     <PartnerCard glass className="space-y-5">
@@ -78,7 +99,7 @@ export function OperationsStatusCard() {
             <span
               className={cn(
                 "inline-block h-2.5 w-2.5 rounded-full",
-                status === "suspended" && "bg-partner-danger",
+                data?.isSuspended && "bg-partner-danger",
                 status === "paused" && "bg-partner-warning",
                 status === "offline" && "bg-partner-muted",
                 online && "bg-partner-success",
@@ -88,6 +109,16 @@ export function OperationsStatusCard() {
             {copy.label}
           </p>
           <p className="mt-2 max-w-md text-sm leading-relaxed text-partner-muted">{copy.detail}</p>
+          {visibility ? (
+            <p
+              className={cn(
+                "mt-2 max-w-md text-sm font-medium",
+                visibility.tone === "ok" ? "text-partner-success" : "text-partner-warning",
+              )}
+            >
+              {visibility.text}
+            </p>
+          ) : null}
         </div>
         {data?.capacity ? (
           <p className="text-right text-sm text-partner-muted">

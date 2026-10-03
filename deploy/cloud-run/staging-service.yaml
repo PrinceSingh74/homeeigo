@@ -55,6 +55,10 @@ spec:
               valueFrom: { secretKeyRef: { name: STAGING_JWT_REFRESH_SECRET, key: latest } }
             - name: ENCRYPTION_KEY
               valueFrom: { secretKeyRef: { name: STAGING_ENCRYPTION_KEY, key: latest } }
+            # Required by assertProductionConfig on staging; provisioned by staging-gcp-provision.ps1 and
+            # already passed by every staging deploy script — this manifest was the one place missing it.
+            - name: OTP_SECRET
+              valueFrom: { secretKeyRef: { name: STAGING_OTP_SECRET, key: latest } }
             - name: RAZORPAY_KEY_ID
               valueFrom: { secretKeyRef: { name: STAGING_RAZORPAY_KEY_ID, key: latest } }
             - name: RAZORPAY_KEY_SECRET
@@ -63,13 +67,14 @@ spec:
               valueFrom: { secretKeyRef: { name: STAGING_RAZORPAY_WEBHOOK_SECRET, key: latest } }
             - name: RESEND_API_KEY
               valueFrom: { secretKeyRef: { name: STAGING_RESEND_API_KEY, key: latest } }
+          # Same probe split as service.yaml: /readyz gates startup on the database, /livez is process-only.
           startupProbe:
-            httpGet: { path: /health, port: 8080 }
+            httpGet: { path: /readyz, port: 8080 }
             initialDelaySeconds: 2
             periodSeconds: 3
             failureThreshold: 10
           livenessProbe:
-            httpGet: { path: /health, port: 8080 }
+            httpGet: { path: /livez, port: 8080 }
             periodSeconds: 15
             timeoutSeconds: 3
   traffic:

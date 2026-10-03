@@ -13,12 +13,14 @@ export class FinancialTransactionManager {
   }): Promise<T> {
     return prisma.$transaction(
       async (tx) => {
+        const result = await opts.mutate(tx);
+
+        // Checked AFTER `mutate`, which takes the row locks: a concurrent settlement that won the lock
+        // has committed its journal by now. Checked before, both saw "no journal", the loser's insert
+        // hit the unique key, and a payment that had just succeeded answered 500.
         const existing = await tx.journalEntry.findUnique({
           where: { idempotencyKey: opts.journal.idempotencyKey },
         });
-
-        const result = await opts.mutate(tx);
-
         if (!existing) {
           await financialLedgerService.recordJournalInTransaction(tx, opts.journal);
         }

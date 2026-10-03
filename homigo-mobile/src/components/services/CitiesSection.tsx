@@ -45,19 +45,25 @@ export function CitiesSection() {
   const [openCity, setOpenCity] = useState<{ slug: string; name: string } | null>(null);
 
   const metrics = useMemo(
+    // Live figures only (GET /api/stats/overview + /api/coverage/cities). Until they load — or
+    // when there is nothing real to show — the tile says "—", never an invented number
+    // (it used to fall back to "50,000+", "10,000+" and "4.9★").
     () => [
-      { number: "11+", label: "Cities" },
+      { number: coverage?.cities?.length ? nf(coverage.cities.length) : "—", label: "Cities" },
       {
-        number: stats && stats.completedBookings > 0 ? `${nf(stats.completedBookings)}+` : "50,000+",
+        number: stats && stats.completedBookings > 0 ? nf(stats.completedBookings) : "—",
         label: "Homes Served",
       },
       {
-        number: stats && stats.activeProviders > 0 ? `${nf(stats.activeProviders)}+` : "10,000+",
+        number: stats && stats.activeProviders > 0 ? nf(stats.activeProviders) : "—",
         label: "Verified Partners",
       },
-      { number: stats?.averageRating != null ? `${stats.averageRating}★` : "4.9★", label: "Rating" },
+      {
+        number: stats?.averageRating != null && stats.reviewCount > 0 ? `${stats.averageRating.toFixed(1)}★` : "—",
+        label: "Rating",
+      },
     ],
-    [stats],
+    [stats, coverage?.cities?.length],
   );
 
   const partnersBySlug = useMemo(() => {
@@ -76,7 +82,9 @@ export function CitiesSection() {
       >
         {/* header */}
         <Animated.View entering={FadeInUp.duration(500)} style={styles.header}>
-          <Text style={styles.title}>Available in 11+ Indian Cities</Text>
+          <Text style={styles.title}>
+            {coverage?.cities?.length ? `Available in ${coverage.cities.length} Indian Cities` : "Where we serve"}
+          </Text>
           <Text style={styles.subtitle}>
             Hyperlocal coverage — check your society, area or pincode
           </Text>

@@ -118,6 +118,23 @@ export const FOUR_AXIS_TOPOLOGY = [
 /** Dispatch / matching may only load lifecycle ACTIVE. Not APPLIED+isApproved. */
 export const DISPATCH_LIFECYCLE_WHERE = { lifecycleState: "ACTIVE" as const };
 
+/**
+ * Phase 11 — the ONE account-level predicate for "this partner may be offered work": active,
+ * approved, not banned, not compliance-restricted, not paused, lifecycle ACTIVE. Matching, the
+ * availability projection and the public discovery surfaces (`/providers/search`, `/providers/nearby`)
+ * all spread this so a partner one of them lists is one dispatch could actually offer. It used to be
+ * restated per call site, and the public surfaces had drifted (no compliance, lifecycle or pause
+ * filter at all).
+ */
+export const DISPATCHABLE_PROVIDER_WHERE = {
+  isActive: true as const,
+  isApproved: true as const,
+  isBanned: false as const,
+  complianceRestricted: false as const,
+  pausedAt: null,
+  ...DISPATCH_LIFECYCLE_WHERE,
+};
+
 export function axisOfLifecycle(state: string): PartnerAxis | null {
   return LIFECYCLE_SET.has(state) ? PARTNER_AXIS.LIFECYCLE : null;
 }

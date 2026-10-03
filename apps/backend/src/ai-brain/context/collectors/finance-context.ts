@@ -1,3 +1,4 @@
+import { analyticsWhere } from "../../../lib/analytics-scope";
 import prisma from "../../../lib/prisma";
 
 export async function collectFinanceContext(): Promise<Record<string, unknown>> {
@@ -11,13 +12,15 @@ export async function collectFinanceContext(): Promise<Record<string, unknown>> 
     walletAgg,
     recentRefunds,
   ] = await Promise.all([
-    prisma.refundRequest.count({ where: { status: "REQUESTED" } }).catch(() => 0),
+    prisma.refundRequest.count({ where: { status: "REQUESTED", ...analyticsWhere() } }).catch(() => 0),
     prisma.payoutReconciliation.count().catch(() => 0),
     prisma.booking.aggregate({
-      where: { status: "COMPLETED", createdAt: { gte: todayStart } },
+      where: { status: "COMPLETED", createdAt: { gte: todayStart }, ...analyticsWhere() },
       _sum: { totalAmount: true },
     }).catch(() => ({ _sum: { totalAmount: 0 } })),
-    prisma.user.aggregate({ _sum: { walletBalance: true } }).catch(() => ({ _sum: { walletBalance: 0 } })),
+    // NOT scoped: total wallet balance is a liability, and every balance is owed regardless of how
+  // the account was created. See finance-dashboard.service for the same decision.
+  prisma.user.aggregate({ _sum: { walletBalance: true } }).catch(() => ({ _sum: { walletBalance: 0 } })),
     prisma.refundRequest.findMany({
       where: { createdAt: { gte: new Date(Date.now() - 7 * 86_400_000) } },
       orderBy: { createdAt: "desc" },

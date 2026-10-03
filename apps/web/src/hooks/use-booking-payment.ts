@@ -54,11 +54,16 @@ export function useBookingPayment() {
         bookingId: booking.bookingId,
       });
       setPendingPaymentBookingId(booking.bookingId);
+      const e2eDevMock =
+        typeof window !== "undefined" &&
+        Boolean((window as unknown as { __HOMIGO_E2E_RAZORPAY_MOCK?: boolean }).__HOMIGO_E2E_RAZORPAY_MOCK);
+
       await openCheckout({
         key: order.key,
         orderId: order.razorpayOrderId,
         amount: order.amount,
         currency: order.currency,
+        checkoutMode: e2eDevMock ? "dev_mock" : order.checkoutMode,
         name: "HOMEEIGO",
         description: booking.description,
         onSuccess: async (payload) => {

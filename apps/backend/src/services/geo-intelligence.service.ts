@@ -12,6 +12,7 @@
  * and heavy aggregates are cached — so this stays flat as customers/providers grow toward
  * the 1M/100k/50-city target. Per-endpoint TTLs below tune freshness vs. cost.
  */
+import { analyticsWhere } from "../lib/analytics-scope";
 import type { BookingStatus } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { cacheService } from "./cache.service";
@@ -19,7 +20,21 @@ import { weatherService } from "./weather.service";
 import { mapsService } from "./maps.service";
 import { distanceKm } from "../lib/geo";
 import { incCounter, observeHist } from "../lib/metrics";
-import { forecastDemand, detectFakeGps, predictEta as bqPredictEta } from "./vertex-ai.service";
+import {
+  forecastDemand,
+  detectFakeGps,
+  predictEta as bqPredictEta,
+} from "./vertex-ai.service";
+import { warehouseUnavailable, type WarehouseFailureCause } from "../lib/warehouse-read";
+import { isDemandForecastStale, DEMAND_STALE_AFTER_HOURS } from "../lib/demand-forecast-freshness";
+import { cancellationRatePct, completionRatePct } from "../lib/fulfillment-rates";
+import { scoreZone, skillGapRecommendation, type SkillGap } from "../lib/zone-scoring";
+import { DISPATCH_LIFECYCLE_WHERE } from "../lib/partner-four-axis";
+import {
+  deriveZoneSupplyConfidence,
+  loadPresenceEvidence,
+} from "./dispatch-eligibility.service";
+import { isPresenceFresh, isLocationFresh } from "../lib/partner-presence-freshness";
 
 export interface IntelResult<T> {
   data: T;
@@ -33,8 +48,76 @@ export interface IntelResult<T> {
   generatedAt: string;
 }
 
+// Reason code for "the demand-forecast source did not answer" — defined once in lib/warehouse-read,
+// re-exported here for forecast-explainer and dynamic-pricing.
+import { DEMAND_FORECAST_UNAVAILABLE } from "../lib/warehouse-read";
+export { DEMAND_FORECAST_UNAVAILABLE };
+
+/** Reason code for "the GPS fraud-signal warehouse view did not answer" (X-86). */
+export const FRAUD_SIGNALS_UNAVAILABLE = "FRAUD_SIGNALS_SOURCE_UNAVAILABLE" as const;
+
+/**
+ * A warehouse-backed result for an HTTP route, or the stated fact that the warehouse did not give one.
+ * The unavailable shape carries no figures at all — `data`, `confidence` and `freshness` are null —
+ * so no client can render a number nobody computed (X-84, X-86).
+ */
+export type IntelOrUnavailable<R extends string> =
+  | (IntelResult<unknown> & { available: true })
+  | {
+      available: false;
+      reasonCode: R;
+      cause: WarehouseFailureCause;
+      reason: string;
+      data: null;
+      confidence: null;
+      freshness: null;
+      source: "unavailable";
+      cached: false;
+      generatedAt: string;
+    };
+
+/**
+ * Never throws on a warehouse OUTAGE (lib/warehouse-read decides what that is). A query that is itself
+ * wrong, or a programming error, still throws — that is a defect to fix, not an outage to state.
+ */
+async function intelOrUnavailable<R extends string>(
+  run: () => Promise<IntelResult<unknown>>,
+  reasonCode: R,
+  logEvent: string,
+  reason: string,
+): Promise<IntelOrUnavailable<R>> {
+  try {
+    return { available: true, ...(await run()) };
+  } catch (err) {
+    const unavailable = warehouseUnavailable(err, { reasonCode, logEvent, reason });
+    if (!unavailable) throw err;
+    return {
+      ...unavailable,
+      confidence: null,
+      freshness: null,
+      source: "unavailable",
+      cached: false,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+}
+
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const ACTIVE_BOOKING: BookingStatus[] = ["ACCEPTED", "ASSIGNED", "EN_ROUTE", "IN_PROGRESS"] as BookingStatus[];
+/** Real demand excludes cancelled/rejected so forecasts and gaps are not inflated by drop-off. */
+const DEMAND_EXCLUDED: BookingStatus[] = ["CANCELLED_BY_USER", "CANCELLED_BY_PROVIDER", "REJECTED"] as BookingStatus[];
+
+/** Matching-eligible online supply — same operational gates as Section 02, not merely isOnline. */
+const ELIGIBLE_SUPPLY_WHERE = {
+  isOnline: true,
+  isActive: true,
+  isApproved: true,
+  isBanned: false,
+  complianceRestricted: false,
+  pausedAt: null,
+  user: { isBanned: false },
+  ...DISPATCH_LIFECYCLE_WHERE,
+};
 
 /** Telemetry + cache wrapper used by every endpoint. */
 async function intel<T>(
@@ -72,6 +155,11 @@ async function intel<T>(
 type ZoneAgg = {
   zoneId: string; name: string; city: string | null; centerLat: number; centerLng: number; radiusMeters: number;
   baseSurge: number; supply: number; demand24h: number; revenue24h: number; activeBookings: number; areaKm2: number;
+  skillGaps: SkillGap[];
+  liveSupply: number;
+  freshLocationSupply: number;
+  supplyConfidence: "HIGH" | "MEDIUM" | "LOW" | "NONE";
+  customerLabel: "Available now" | "Limited availability" | "Confirming professional" | "Unavailable";
 };
 
 function inside(lat: number, lng: number, z: { centerLat: number; centerLng: number; radiusMeters: number }): boolean {
@@ -82,44 +170,179 @@ async function buildZoneSnapshot(): Promise<ZoneAgg[]> {
   const since = new Date(Date.now() - 24 * 3600_000);
   const [zones, providerLocs, recentBookings, activeBookings] = await Promise.all([
     prisma.geofence.findMany({ where: { isActive: true }, select: { id: true, name: true, city: true, centerLat: true, centerLng: true, radiusMeters: true, surgeMultiplier: true } }),
-    prisma.location.findMany({ where: { provider: { isOnline: true } }, select: { latitude: true, longitude: true } }),
-    prisma.booking.findMany({ where: { createdAt: { gte: since } }, select: { totalAmount: true, status: true, address: { select: { latitude: true, longitude: true } } } }),
+    prisma.location.findMany({
+      where: { provider: ELIGIBLE_SUPPLY_WHERE },
+      select: { latitude: true, longitude: true, providerId: true, provider: { select: { id: true, serviceCategories: true } } },
+    }),
+    prisma.booking.findMany({
+      where: { createdAt: { gte: since }, status: { notIn: DEMAND_EXCLUDED } },
+      select: {
+        totalAmount: true,
+        status: true,
+        address: { select: { latitude: true, longitude: true } },
+        service: { select: { category: true } },
+      },
+    }),
     prisma.booking.findMany({ where: { status: { in: ACTIVE_BOOKING } }, select: { address: { select: { latitude: true, longitude: true } } } }),
   ]);
+  const now = new Date();
+  const presenceMap = await loadPresenceEvidence(providerLocs.map((p) => p.providerId));
   return zones.map((z) => {
-    const supply = providerLocs.filter((p) => inside(p.latitude, p.longitude, z)).length;
+    const inZone = providerLocs.filter((p) => inside(p.latitude, p.longitude, z));
+    const supply = inZone.length;
+    let liveSupply = 0;
+    let freshLocationSupply = 0;
+    for (const p of inZone) {
+      const evidence = presenceMap.get(p.providerId) ?? null;
+      if (isPresenceFresh({ lastHeartbeatAt: evidence?.lastHeartbeatAt ?? null, now })) liveSupply++;
+      if (isLocationFresh({ lastLocationAt: evidence?.lastLocationAt ?? null, now })) freshLocationSupply++;
+    }
+    const supplySnap = deriveZoneSupplyConfidence({
+      activePartners: supply,
+      availablePartners: supply,
+      livePartners: liveSupply,
+      freshLocationPartners: freshLocationSupply,
+    });
     let demand24h = 0, revenue24h = 0;
+    const demandBySkill = new Map<string, number>();
     for (const b of recentBookings) {
       if (!b.address || !inside(b.address.latitude, b.address.longitude, z)) continue;
       demand24h++;
       if (b.status === "COMPLETED") revenue24h += b.totalAmount ?? 0;
+      const skill = b.service?.category?.trim();
+      if (skill) demandBySkill.set(skill, (demandBySkill.get(skill) ?? 0) + 1);
     }
+    const supplyBySkill = new Map<string, number>();
+    for (const p of inZone) {
+      const cats = p.provider.serviceCategories ?? [];
+      for (const cat of cats) {
+        const skill = cat.trim();
+        if (skill) supplyBySkill.set(skill, (supplyBySkill.get(skill) ?? 0) + 1);
+      }
+    }
+    const skillGaps: SkillGap[] = [];
+    const skills = new Set([...demandBySkill.keys(), ...supplyBySkill.keys()]);
+    for (const skill of skills) {
+      const d = demandBySkill.get(skill) ?? 0;
+      const s = supplyBySkill.get(skill) ?? 0;
+      if (d === 0 && s === 0) continue;
+      skillGaps.push({ skill, demand: d, supply: s, gap: d - s });
+    }
+    skillGaps.sort((a, b) => b.gap - a.gap);
     const active = activeBookings.filter((b) => b.address && inside(b.address.latitude, b.address.longitude, z)).length;
     const areaKm2 = Math.PI * Math.pow(z.radiusMeters / 1000, 2);
     return {
       zoneId: z.id, name: z.name, city: z.city, centerLat: z.centerLat, centerLng: z.centerLng, radiusMeters: z.radiusMeters,
-      baseSurge: z.surgeMultiplier ?? 1, supply, demand24h, revenue24h, activeBookings: active, areaKm2,
+      baseSurge: z.surgeMultiplier ?? 1, supply, demand24h, revenue24h, activeBookings: active, areaKm2, skillGaps,
+      liveSupply, freshLocationSupply,
+      supplyConfidence: supplySnap.confidence,
+      customerLabel: supplySnap.customerLabel,
     };
   });
 }
 
 export class GeoIntelligenceService {
   // 1) DEMAND FORECAST (BigQuery ARIMA) — multi-horizon (1/6/24/168h) ----------
+  /**
+   * ── Why this reports its own expiry ──────────────────────────────────────────
+   *
+   * `ML.FORECAST` projects forward from the end of the model's *training* data, not from now. Queried
+   * today, `model_demand_forecast` returns 24 confident points covering 2026-06-20 to 2026-06-21 —
+   * a window that closed months ago — and this method used to stamp them
+   * `freshness: new Date().toISOString()` and hand them back as "the next 24 hours".
+   *
+   * Five consumers already defended themselves with `isDemandForecastStale`. Five did not: this
+   * route, the ML boundary, the AI tool handler, the digital twin and surge forecasting. Rather than
+   * patch five call sites with five copies of the same check, the check happens once, here, at the
+   * source — so a consumer cannot forget it and cannot disagree with another consumer about whether
+   * the same forecast was stale.
+   *
+   * The points are still returned. That is deliberate: the five consumers that already read them and
+   * run `isDemandForecastStale` themselves keep working unchanged, and an operator debugging the
+   * warehouse needs to see what the model actually said. What changes is that the result now states
+   * the window it describes, and `source` stops claiming to be a clean model forecast once that
+   * window has passed.
+   */
   async demandForecast(horizonHours = 24): Promise<IntelResult<unknown>> {
     const h = clamp(Math.round(horizonHours), 1, 168);
     return intel(`demand-forecast:${h}`, 300, async () => {
       const points = await forecastDemand(h);
+      const now = new Date();
+      // The canonical definition, imported rather than restated — one meaning of "stale demand".
+      const stale = isDemandForecastStale(now.toISOString(), { points }, now.getTime());
+
+      const lastHour = points[points.length - 1]?.hour ?? null;
+      const lastMs = lastHour ? Date.parse(`${String(lastHour).replace(" ", "T")}Z`) : NaN;
+      const expiredByHours = Number.isNaN(lastMs)
+        ? null
+        : Math.max(0, Math.round((now.getTime() - lastMs) / 3_600_000));
+
       // confidence = inverse of mean relative CI width across points.
       const rel = points.length
         ? points.reduce((s, p) => s + (p.hi - p.lo) / (2 * Math.max(p.predicted, 1)), 0) / points.length
         : 1;
+
+      const limitations: string[] = [];
+      if (stale) {
+        limitations.push(
+          `The warehouse model's forecast window ends ${lastHour ?? "at an unreadable time"}` +
+          (expiredByHours ? `, ${expiredByHours} hours ago` : "") +
+          `. ML.FORECAST projects from the end of training data, so this describes the past and must not be presented as a forecast of the coming ${h} hours.`,
+        );
+      }
+      if (points.some((p) => p.lo < 0)) {
+        limitations.push("Some prediction intervals have a negative lower bound. Demand is a count; a negative bound is an invalid interval, not a low one.");
+      }
+
       return {
-        data: { horizonHours: h, points, totalPredicted: Math.round(points.reduce((s, p) => s + Math.max(0, p.predicted), 0) * 10) / 10 },
-        confidence: clamp(1 - rel, 0.5, 0.97),
-        freshness: new Date().toISOString(),
-        source: "bigquery:arima_plus",
+        data: {
+          horizonHours: h,
+          points,
+          totalPredicted: Math.round(points.reduce((s, p) => s + Math.max(0, p.predicted), 0) * 10) / 10,
+          /** True when the newest predicted hour is already more than the canonical window old. */
+          stale,
+          /** The window these points actually describe, so a caller never has to infer it. */
+          forecastWindow: { from: points[0]?.hour ?? null, to: lastHour },
+          expiredByHours,
+          staleAfterHours: DEMAND_STALE_AFTER_HOURS,
+          limitations,
+        },
+        /**
+         * A stale forecast is not a low-confidence forecast, it is a forecast about the wrong days.
+         * Floored rather than scaled so no consumer can weight it into a blend as merely uncertain.
+         */
+        confidence: stale ? 0 : clamp(1 - rel, 0.5, 0.97),
+        // Retrieval time, as documented by the consumers that read it. The window is above.
+        freshness: now.toISOString(),
+        /**
+         * The source string changes when the window has passed. Consumers surface it as
+         * `modelVersion`, and a model that can only describe June must not read there as the same
+         * thing that describes today.
+         */
+        source: stale ? "bigquery:arima_plus:expired_horizon" : "bigquery:arima_plus",
       };
     }, 30);
+  }
+
+  /**
+   * `demandForecast` for the HTTP route (X-84): never throws when the warehouse is down.
+   *
+   * The route used to let the throw through, so an unreachable warehouse (no credentials on a
+   * zero-egress stack; disabled billing on live) became an unhandled 500 on a partner page. Same
+   * shape as `demandForecastService.forecastSafe`: the outage becomes a stated `available: false`
+   * with the reason code `forecast-explainer` already uses for this source. There is deliberately no
+   * fallback series — a forecast nobody computed is not shown as one.
+   *
+   * `demandForecast` itself still throws: its direct consumers (explainer, executive intelligence,
+   * digital twin, partner OS, …) classify the throw into their own SOURCE_UNAVAILABLE states.
+   */
+  async demandForecastSafe(horizonHours = 24): Promise<IntelOrUnavailable<typeof DEMAND_FORECAST_UNAVAILABLE>> {
+    return intelOrUnavailable(
+      () => this.demandForecast(horizonHours),
+      DEMAND_FORECAST_UNAVAILABLE,
+      "demand_forecast_unavailable",
+      "The demand-forecast warehouse did not return a usable forecast.",
+    );
   }
 
   // 2) SURGE PREDICTION — weather surge × demand/supply pressure per zone -------
@@ -148,23 +371,41 @@ export class GeoIntelligenceService {
     });
   }
 
-  // 3) DYNAMIC ZONE SCORING — rank zones (earning / service / risk) -------------
+  // 3) DYNAMIC ZONE SCORING — opportunity-first rank (earning / demand / gap) ---
   async zoneScoring(): Promise<IntelResult<unknown>> {
-    return intel("zone-scoring", 180, async () => {
+    return intel("zone-scoring:v2", 180, async () => {
       const zones = await buildZoneSnapshot();
       const maxRev = Math.max(1, ...zones.map((z) => z.revenue24h));
       const maxDem = Math.max(1, ...zones.map((z) => z.demand24h));
       const scored = zones.map((z) => {
-        const earning = (z.revenue24h / maxRev) * 100;
-        const demandScore = (z.demand24h / maxDem) * 100;
-        // service health: supply able to meet active demand (1 = healthy, 0 = starved).
-        const serviceHealth = z.activeBookings === 0 ? 100 : clamp((z.supply / z.activeBookings) * 100, 0, 100);
-        // risk: high demand + low supply ⇒ high operational risk.
-        const risk = clamp(demandScore - serviceHealth + (z.supply === 0 && z.demand24h > 0 ? 40 : 0), 0, 100);
-        const composite = Math.round(earning * 0.4 + demandScore * 0.3 + serviceHealth * 0.3);
+        const s = scoreZone({
+          demand24h: z.demand24h,
+          supply: z.supply,
+          revenue24h: z.revenue24h,
+          activeBookings: z.activeBookings,
+          maxRev,
+          maxDem,
+        });
+        const recommendation = skillGapRecommendation(z.name, s.gap, z.skillGaps);
         return {
-          zoneId: z.zoneId, name: z.name, city: z.city, supply: z.supply, demand24h: z.demand24h, revenue24h: Math.round(z.revenue24h),
-          earningScore: Math.round(earning), demandScore: Math.round(demandScore), serviceHealth: Math.round(serviceHealth), riskScore: Math.round(risk), compositeScore: composite,
+          zoneId: z.zoneId,
+          name: z.name,
+          city: z.city,
+          supply: z.supply,
+          demand24h: z.demand24h,
+          revenue24h: Math.round(z.revenue24h),
+          activeBookings: z.activeBookings,
+          earningScore: s.earningScore,
+          demandScore: s.demandScore,
+          serviceHealth: s.serviceHealth,
+          riskScore: s.riskScore,
+          opportunityScore: s.opportunityScore,
+          gap: s.gap,
+          interpretation: s.interpretation,
+          skillGaps: z.skillGaps.slice(0, 6),
+          recommendation,
+          method: "HEURISTIC" as const,
+          compositeScore: s.compositeScore,
         };
       });
       scored.sort((a, b) => b.compositeScore - a.compositeScore);
@@ -172,12 +413,13 @@ export class GeoIntelligenceService {
         data: {
           ranked: scored,
           bestEarning: [...scored].sort((a, b) => b.earningScore - a.earningScore).slice(0, 5),
+          bestOpportunity: [...scored].sort((a, b) => b.opportunityScore - a.opportunityScore).slice(0, 5),
           worstService: [...scored].sort((a, b) => a.serviceHealth - b.serviceHealth).slice(0, 5),
           highRisk: [...scored].filter((z) => z.riskScore >= 50).sort((a, b) => b.riskScore - a.riskScore),
         },
         confidence: 0.82,
         freshness: new Date().toISOString(),
-        source: "postgres+computed",
+        source: "postgres+computed:heuristic_opportunity_v2",
       };
     });
   }
@@ -190,6 +432,10 @@ export class GeoIntelligenceService {
         zoneId: z.zoneId, name: z.name, city: z.city, centerLat: z.centerLat, centerLng: z.centerLng,
         providers: z.supply, areaKm2: Math.round(z.areaKm2 * 10) / 10,
         densityPerKm2: Math.round((z.supply / Math.max(z.areaKm2, 0.01)) * 100) / 100,
+        liveSupply: z.liveSupply,
+        freshLocationSupply: z.freshLocationSupply,
+        supplyConfidence: z.supplyConfidence,
+        customerLabel: z.customerLabel,
       })).sort((a, b) => b.densityPerKm2 - a.densityPerKm2);
       return { data, confidence: 0.95, freshness: new Date().toISOString(), source: "postgres" };
     });
@@ -200,8 +446,8 @@ export class GeoIntelligenceService {
     return intel("revenue-forecast", 300, async () => {
       const now = Date.now();
       const [d1, d7] = await Promise.all([
-        prisma.booking.aggregate({ _sum: { totalAmount: true }, _count: true, where: { status: "COMPLETED", completedAt: { gte: new Date(now - 86400_000) } } }),
-        prisma.booking.aggregate({ _sum: { totalAmount: true }, where: { status: "COMPLETED", completedAt: { gte: new Date(now - 7 * 86400_000) } } }),
+        prisma.booking.aggregate({ _sum: { totalAmount: true }, _count: true, where: { status: "COMPLETED", completedAt: { gte: new Date(now - 86400_000) }, ...analyticsWhere() } }),
+        prisma.booking.aggregate({ _sum: { totalAmount: true }, where: { status: "COMPLETED", completedAt: { gte: new Date(now - 7 * 86400_000) }, ...analyticsWhere() } }),
       ]);
       const rev24h = d1._sum.totalAmount ?? 0;
       const rev7d = d7._sum.totalAmount ?? 0;
@@ -244,8 +490,10 @@ export class GeoIntelligenceService {
 
   // 7) FRAUD / FAKE-GPS — BigQuery teleport detection --------------------------
   async fraudDetection(limit = 50): Promise<IntelResult<unknown>> {
-    return intel("fraud", 120, async () => {
-      const rows = await detectFakeGps(limit);
+    // Keyed by the limit: one key for every limit served a 5-row answer to a 50-row request (X-86).
+    const n = clamp(Math.round(limit), 1, 500);
+    return intel(`fraud:${n}`, 120, async () => {
+      const rows = await detectFakeGps(n);
       // risk score scales with the worst implied speed seen.
       const worst = rows.reduce((m, r) => Math.max(m, r.implied_kmh), 0);
       const riskScore = clamp(Math.round((worst / 1000) * 100), 0, 100);
@@ -258,18 +506,36 @@ export class GeoIntelligenceService {
     });
   }
 
+  /**
+   * `fraudDetection` for the admin HTTP route (X-86): a warehouse outage becomes `available: false`
+   * with no anomaly count and no risk score. `fraudDetection` itself still throws for its direct
+   * consumer (the digital twin), which handles the throw itself.
+   */
+  async fraudDetectionSafe(limit = 50): Promise<IntelOrUnavailable<typeof FRAUD_SIGNALS_UNAVAILABLE>> {
+    return intelOrUnavailable(
+      () => this.fraudDetection(limit),
+      FRAUD_SIGNALS_UNAVAILABLE,
+      "fraud_signals_unavailable",
+      "The GPS fraud-signal warehouse did not return usable signals.",
+    );
+  }
+
   // 8) EXECUTIVE KPI AGGREGATION ----------------------------------------------
   async executiveKpis(): Promise<IntelResult<unknown>> {
     return intel("exec-kpis", 30, async () => {
       const now = Date.now();
       const [gmv, completed, cancelled, online, customers, refunded, dayBookings] = await Promise.all([
-        prisma.booking.aggregate({ _sum: { totalAmount: true }, where: { status: "COMPLETED" } }),
-        prisma.booking.count({ where: { status: "COMPLETED" } }),
-        prisma.booking.count({ where: { status: { in: ["CANCELLED_BY_USER", "CANCELLED_BY_PROVIDER"] } } }),
+        // Executive KPIs are the definition of a business statement, so every one is scoped.
+        // Measured difference today is small (completed revenue 1.7%); the scope is what keeps declared
+        // fixture traffic out as it accumulates. An earlier '20%' claim was withdrawn — see data-provenance.
+        prisma.booking.aggregate({ _sum: { totalAmount: true }, where: { status: "COMPLETED", ...analyticsWhere() } }),
+        prisma.booking.count({ where: { status: "COMPLETED", ...analyticsWhere() } }),
+        prisma.booking.count({ where: { status: { in: ["CANCELLED_BY_USER", "CANCELLED_BY_PROVIDER"] }, ...analyticsWhere() } }),
+        // `online` is deliberately NOT scoped: it is live operational state, not a business total.
         prisma.provider.count({ where: { isOnline: true } }),
-        prisma.user.count({ where: { role: "CUSTOMER", isActive: true, deletedAt: null } }),
-        prisma.booking.count({ where: { refundAmount: { gt: 0 } } }),
-        prisma.booking.count({ where: { createdAt: { gte: new Date(now - 86400_000) } } }),
+        prisma.user.count({ where: { role: "CUSTOMER", isActive: true, deletedAt: null, ...analyticsWhere() } }),
+        prisma.booking.count({ where: { refundAmount: { gt: 0 }, ...analyticsWhere() } }),
+        prisma.booking.count({ where: { createdAt: { gte: new Date(now - 86400_000) }, ...analyticsWhere() } }),
       ]);
       const finished = completed + cancelled;
       const gmvVal = gmv._sum.totalAmount ?? 0;
@@ -277,9 +543,18 @@ export class GeoIntelligenceService {
         data: {
           gmv: Math.round(gmvVal),
           bookingsToday: dayBookings,
-          completionRate: finished ? Math.round((completed / finished) * 1000) / 10 : 0,
-          cancellationRate: finished ? Math.round((cancelled / finished) * 1000) / 10 : 0,
-          refundRate: finished ? Math.round((refunded / finished) * 1000) / 10 : 0,
+          /**
+           * Null, not zero, when nothing has finished.
+           *
+           * `finished ? ... : 0` reported a 0% completion rate for a platform with no finished
+           * bookings — a claim that nothing which started ever succeeded, which reads as total
+           * failure on a dashboard rather than as an absence of data. The ratio itself is unchanged
+           * and now comes from lib/fulfillment-rates.ts, the same definition the city coverage page
+           * uses, so the two surfaces cannot disagree about what "completion rate" means.
+           */
+          completionRate: completionRatePct(completed, cancelled),
+          cancellationRate: cancellationRatePct(completed, cancelled),
+          refundRate: finished > 0 ? Math.round((refunded / finished) * 1000) / 10 : null,
           onlineProviders: online,
           activeCustomers: customers,
         },

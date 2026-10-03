@@ -1,17 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PartnerButton } from "@/components/ui/PartnerButton";
-
-const SERVICES = [
-  { id: "cleaning", label: "Cleaning" },
-  { id: "plumbing", label: "Plumbing" },
-  { id: "ac-repair", label: "AC Repair" },
-  { id: "electrician", label: "Electrician" },
-  { id: "pest-control", label: "Pest Control" },
-  { id: "salon", label: "Salon" },
-  { id: "appliance-repair", label: "Appliance Repair" },
-];
+import { partnerRegistrationApi, type OnboardingServiceOption } from "@/services/partner-registration-api";
 
 const CITIES = [
   "Delhi",
@@ -35,16 +26,39 @@ export type Step2Data = {
 export function Step2Services({
   onSubmit,
   loading,
+  initialValues,
 }: {
   onSubmit: (data: Step2Data) => Promise<void>;
   loading: boolean;
+  initialValues?: Partial<Step2Data>;
 }) {
   const [formData, setFormData] = useState<Step2Data>({
-    serviceCategories: [],
-    city: "",
-    experienceYears: 0,
+    serviceCategories: initialValues?.serviceCategories ?? [],
+    city: initialValues?.city ?? "",
+    experienceYears: initialValues?.experienceYears ?? 0,
   });
   const [error, setError] = useState<string | null>(null);
+  const [options, setOptions] = useState<OnboardingServiceOption[]>([]);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    partnerRegistrationApi
+      .serviceOptions()
+      .then((data) => {
+        if (cancelled) return;
+        setOptions(data.options);
+        setOptionsError(null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setOptions([]);
+        setOptionsError("Service catalogue is unavailable. Try again.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function toggleService(serviceId: string) {
     setFormData((prev) => ({
@@ -75,8 +89,9 @@ export function Step2Services({
 
       <div>
         <label className="mb-3 block text-sm font-medium">Which services do you provide?</label>
+        {optionsError ? <p className="mb-2 text-sm text-red-400">{optionsError}</p> : null}
         <div className="grid grid-cols-2 gap-2">
-          {SERVICES.map((service) => {
+          {options.map((service) => {
             const checked = formData.serviceCategories.includes(service.id);
             return (
               <label
@@ -137,7 +152,7 @@ export function Step2Services({
 
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
-      <PartnerButton type="submit" className="w-full" disabled={loading}>
+      <PartnerButton type="submit" className="w-full" disabled={loading || !options.length}>
         {loading ? "Saving…" : "Continue"}
       </PartnerButton>
     </form>

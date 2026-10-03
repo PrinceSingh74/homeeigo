@@ -10,7 +10,9 @@ import { DashboardPerformance } from "./DashboardPerformance";
 import { DashboardRecentActivity } from "./DashboardRecentActivity";
 import { DashboardPanel } from "@/components/ui/DashboardPanel";
 import { PartnerWeatherWarning } from "@/components/weather/PartnerWeatherWarning";
-import { usePartnerBookingsQuery } from "@/hooks/use-partner-data";
+import { OperationsStatusCard } from "@/components/availability/OperationsStatusCard";
+import { CapacityCard } from "@/components/availability/CapacityCard";
+import { usePartnerBookingsQuery, usePartnerOperationsQuery } from "@/hooks/use-partner-data";
 import { partnerLayout } from "@/lib/partner-layout";
 
 const DashboardEarningsChart = dynamic(
@@ -26,11 +28,16 @@ export function PartnerDashboard() {
     sortBy: "recent",
   });
 
+  const ops = usePartnerOperationsQuery();
   const pending = requestsQuery.data?.bookings ?? [];
 
   return (
     <div className={partnerLayout.pageStack}>
       <PartnerWeatherWarning />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <OperationsStatusCard />
+        <CapacityCard ops={ops.data} loading={ops.isLoading} />
+      </div>
       <DashboardStatsRow />
 
       <div className={partnerLayout.mainGrid}>

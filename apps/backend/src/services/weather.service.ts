@@ -14,7 +14,16 @@ import { weatherBreaker, CircuitOpenError } from "../lib/circuit-breaker";
 import { incCounter, setGauge } from "../lib/metrics";
 import { logger } from "../lib/logger";
 
-const KEY = process.env.WEATHER_API_KEY || "";
+/**
+ * A NODE_ENV=test runtime never calls OpenWeather unless HOMIGO_REQUIRE_WEATHER=1. `.env.test` is
+ * layered on top of `.env`, so the REAL key was present in every test run: suites made live calls
+ * (8 s timeout) and a zone-recommendation test timed out at 5 s whenever the network was slow
+ * (release certification 2026-09-20). Same rule as the BigQuery barrier (lib/bigquery-adc.ts).
+ */
+const KEY =
+  process.env.NODE_ENV === "test" && process.env.HOMIGO_REQUIRE_WEATHER !== "1"
+    ? ""
+    : process.env.WEATHER_API_KEY || "";
 const BASE = "https://api.openweathermap.org/data/2.5";
 const TIMEOUT_MS = 8_000;
 const CACHE_TTL = { current: 600, forecast: 1_800 } as const; // 10m current, 30m forecast

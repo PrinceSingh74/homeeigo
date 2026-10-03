@@ -104,21 +104,20 @@ export async function grandfatherLegacyOffers(
   const existing = await db.$queryRaw<Array<{ service_id: string }>>`
     SELECT service_id FROM provider_service_capabilities WHERE provider_id = ${input.providerId}`;
   const have = new Set(existing.map((row) => row.service_id));
-  let written = 0;
-  for (const service of catalog) {
-    if (service.id === input.exceptServiceId) continue;
-    if (have.has(service.id)) continue;
-    if (!providerOffersService(provider.serviceCategories, tokensFor(service, idsByCategory))) continue;
-    await db.$executeRaw`
-      INSERT INTO provider_service_capabilities
-        (provider_id, service_id, status, source, verified_by, verified_at, suspended_reason, data_origin)
-      VALUES (
-        ${input.providerId}, ${service.id}, 'ACTIVE', 'LEGACY', ${input.actorUserId}, ${input.now}, NULL, ${input.origin}::"DataOrigin"
-      )
-      ON CONFLICT (provider_id, service_id) DO NOTHING`;
-    written += 1;
-  }
-  return written;
+  const serviceIds = catalog
+    .filter((service) => service.id !== input.exceptServiceId && !have.has(service.id))
+    .filter((service) => providerOffersService(provider.serviceCategories, tokensFor(service, idsByCategory)))
+    .map((service) => service.id);
+  if (serviceIds.length === 0) return 0;
+  // One statement: this runs inside the caller's interactive transaction, and a row-per-service loop
+  // over a large catalogue outlived its 5 s window.
+  const written = await db.$executeRaw`
+    INSERT INTO provider_service_capabilities
+      (provider_id, service_id, status, source, verified_by, verified_at, suspended_reason, data_origin)
+    SELECT ${input.providerId}, s, 'ACTIVE', 'LEGACY', ${input.actorUserId}, ${input.now}, NULL, ${input.origin}::"DataOrigin"
+    FROM unnest(${serviceIds}::text[]) AS s
+    ON CONFLICT (provider_id, service_id) DO NOTHING`;
+  return Number(written);
 }
 
 export async function alreadyPerformsService(db: Db, providerId: string, serviceId: string): Promise<boolean> {
@@ -274,7 +273,12 @@ async function stampActor(db: Db, actorType: "partner" | "admin", actorId: strin
     set_config('homigo.reason', ${reason.slice(0, 500)}, true)`;
 }
 
-/** Partner asks for one more catalogue service. Stays REQUESTED until an admin approves. */
+/**
+ * X-3 (2026-09-26): this was the dead route file's twin of provider-capability.service
+ * requestService — it wrote data_origin NULL and skipped the operational/membership gates. The
+ * unmounted routes file was removed; this function now refuses so no future mount can resurrect
+ * the ungated path. The canonical write is providerCapabilityService.requestService.
+ */
 export async function requestServiceSkill(input: {
   providerId: string;
   actorUserId: string;
@@ -282,6 +286,8 @@ export async function requestServiceSkill(input: {
   note?: string | null;
   now?: Date;
 }): Promise<ServiceSkillResult<{ changed: boolean }>> {
+  void input;
+  return { ok: false, error: "NOT_DEPLOYED" }; // X-3: superseded by providerCapabilityService.requestService
   if (!(await tablesPresent(prisma))) return { ok: false, error: "NOT_DEPLOYED" };
   const now = input.now ?? new Date();
   const note = (input.note ?? "").trim().slice(0, 300) || null;
@@ -310,7 +316,7 @@ export async function requestServiceSkill(input: {
   });
 }
 
-/** Admin grants, approves, suspends, or revokes one service skill. */
+/** X-3: neutralised admin twin of providerCapabilityService.adminServiceTransition — it wrote rows with no provenance and skipped the membership and eligibility gates. Kept only so the refusal is visible; nothing imports it. */
 export async function decideServiceSkill(input: {
   providerId: string;
   serviceId: string;
@@ -319,6 +325,8 @@ export async function decideServiceSkill(input: {
   reason?: string | null;
   now?: Date;
 }): Promise<ServiceSkillResult<{ status: string }>> {
+  void input;
+  return { ok: false, error: "NOT_DEPLOYED" }; // X-3: superseded by providerCapabilityService.adminServiceTransition
   if (!(await tablesPresent(prisma))) return { ok: false, error: "NOT_DEPLOYED" };
   const now = input.now ?? new Date();
   const reason = (input.reason ?? "").trim();

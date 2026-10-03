@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { Bot, Send, Sparkles } from "lucide-react";
+import { m as motion } from "framer-motion";
+import { Send, Sparkles } from "lucide-react";
 import { PartnerCard } from "@/components/ui/PartnerCard";
 import { PartnerButton } from "@/components/ui/PartnerButton";
 import {
@@ -13,88 +13,80 @@ import { partnerApi } from "@/services/partner-api";
 import { formatInr } from "@/lib/format";
 
 const suggestions = [
-  "Best jobs near me right now?",
-  "Predict my earnings this week",
-  "How can I improve my acceptance rate?",
+  "How much did I earn this week?",
+  "Which jobs are next?",
+  "When should I go online?",
+  "Which zone has more demand?",
+  "How am I performing?",
+  "What training should I complete?",
 ];
 
-/** `mode` distinguishes a gateway answer from the offline heuristic, so neither is mistaken for the other. */
-type ChatMessage = { role: "user" | "ai"; text: string; mode?: "llm" | "offline" };
+type ChatMessage = {
+  role: "user" | "ai";
+  text: string;
+  mode?: "llm" | "offline" | "deterministic_fallback";
+  basis?: string[];
+  recommendation?: string | null;
+};
+
+function parseStructured(text: string, basis?: string[], recommendation?: string | null) {
+  return {
+    answer: text,
+    basis: basis ?? [],
+    recommendation: recommendation ?? null,
+  };
+}
 
 export function PartnerAiPanel() {
   const dashboard = usePartnerDashboardQuery();
   const me = usePartnerMeQuery();
 
   const headline = useMemo(() => {
-    if (dashboard.isLoading) return "Analysing your day…";
+    if (dashboard.isLoading) return "Reading your day…";
     const pending = dashboard.data?.counts.pendingRequests ?? 0;
     if (pending > 0) {
-      return `${pending} request${pending === 1 ? "" : "s"} waiting — accept fast to keep acceptance rate above 90%.`;
+      return `${pending} request${pending === 1 ? "" : "s"} waiting.`;
     }
     const today = dashboard.data?.earnings.today ?? 0;
     if (today > 0) {
-      return `You've earned ${formatInr(today)} today. Keep momentum through peak hours.`;
+      return `Verified today: ${formatInr(today)}.`;
     }
-    return "Go online to start receiving live job requests.";
+    return "Ask a question — answers come from your live tools, not guesses.";
   }, [dashboard.data, dashboard.isLoading]);
 
   const insights = useMemo(() => {
     const items: Array<{ id: string; title: string; body: string }> = [];
     const dash = dashboard.data;
     if (!dash) return items;
-
     if (dash.counts.pendingRequests > 0) {
       items.push({
         id: "pending",
-        title: `${dash.counts.pendingRequests} new request${dash.counts.pendingRequests === 1 ? "" : "s"}`,
-        body: "Tap Requests in the sidebar to review and accept.",
+        title: `${dash.counts.pendingRequests} waiting request${dash.counts.pendingRequests === 1 ? "" : "s"}`,
+        body: "From your live job inbox.",
       });
     }
-
-    if (dash.rates.acceptanceRate < 90) {
-      items.push({
-        id: "acceptance",
-        title: "Lift acceptance above 90%",
-        body: "Higher acceptance unlocks weekly bonuses and better matching priority.",
-      });
-    }
-
-    if ((me.data?.rating ?? 0) >= 4.9) {
-      items.push({
-        id: "rating",
-        title: "Perfect-rating bonus active",
-        body: "Each completed job earns +₹50 while your rating stays ≥ 4.9.",
-      });
-    } else if ((me.data?.rating ?? 0) > 0) {
-      items.push({
-        id: "rating",
-        title: "Aim for 4.9+ rating",
-        body: "Perfect-rating bonus unlocks +₹50 per job.",
-      });
-    }
-
     if (dash.earnings.thisWeek > 0) {
       items.push({
         id: "week",
-        title: `Weekly net: ${formatInr(dash.earnings.thisWeek)}`,
-        body: "Commission tier improves once you cross 50/100/200 jobs this month.",
+        title: `This week ${formatInr(dash.earnings.thisWeek)}`,
+        body: "Net earnings from completed jobs.",
       });
     }
-
+    if ((me.data?.rating ?? 0) > 0) {
+      items.push({
+        id: "rating",
+        title: `Rating ${me.data!.rating.toFixed(2)}`,
+        body: "Canonical score — the assistant explains it, it does not invent it.",
+      });
+    }
     return items.slice(0, 3);
-  }, [dashboard.data, me.data?.rating]);
+  }, [dashboard.data, me.data]);
 
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState(false);
+  const [history, setHistory] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
 
-  /**
-   * Sends through the backend AI Gateway (`/api/ai/partner`).
-   *
-   * The local `aiReply` heuristic is the degraded fallback, not the product — it runs only
-   * when the gateway is unreachable or the providers are unconfigured, and the turn is
-   * labelled so a partner can tell a model answer from a canned one.
-   */
   async function send(text: string) {
     const trimmed = text.trim();
     if (!trimmed || pending) return;
@@ -102,14 +94,32 @@ export function PartnerAiPanel() {
     setInput("");
     setPending(true);
     try {
-      const res = await partnerApi.aiChat(trimmed);
-      setMessages((m) => [...m, { role: "ai", text: res.content, mode: "llm" }]);
+      const res = await partnerApi.aiChat(trimmed, history);
+      const mode = res.mode === "deterministic_fallback" ? "deterministic_fallback" : "llm";
+      setMessages((m) => [
+        ...m,
+        {
+          role: "ai",
+          text: res.content,
+          mode,
+          basis: res.basis,
+          recommendation: res.recommendation,
+        },
+      ]);
+      setHistory((h) => {
+        const next: Array<{ role: "user" | "assistant"; content: string }> = [
+          ...h,
+          { role: "user", content: trimmed },
+          { role: "assistant", content: res.content },
+        ];
+        return next.slice(-12);
+      });
     } catch {
       setMessages((m) => [
         ...m,
         {
           role: "ai",
-          text: aiReply(trimmed, dashboard.data, me.data?.rating ?? 0),
+          text: "Live AI is temporarily unavailable. Open Earnings, Jobs, or Smart Zones for the latest verified figures.",
           mode: "offline",
         },
       ]);
@@ -122,60 +132,85 @@ export function PartnerAiPanel() {
     <div className="space-y-4">
       <div className="grid gap-3 md:grid-cols-3">
         {insights.length === 0 ? (
-          <PartnerCard glass>
-            <Sparkles className="h-4 w-4 text-partner-primary" />
+          <PartnerCard>
+            <Sparkles className="h-4 w-4 text-partner-primary" aria-hidden />
             <p className="mt-2 font-semibold">{headline}</p>
             <p className="mt-1 text-sm text-partner-muted">
               {dashboard.isLoading
-                ? "Live insights load with your dashboard."
-                : "Insights will appear as you complete jobs and receive ratings."}
+                ? "Live figures load with your dashboard."
+                : "Not enough verified data yet for insight cards."}
             </p>
           </PartnerCard>
         ) : (
           insights.map((insight) => (
-            <PartnerCard key={insight.id} glass>
-              <Sparkles className="h-4 w-4 text-partner-primary" />
-              <p className="mt-2 font-semibold">{insight.title}</p>
+            <PartnerCard key={insight.id}>
+              <p className="font-semibold">{insight.title}</p>
               <p className="mt-1 text-sm text-partner-muted">{insight.body}</p>
             </PartnerCard>
           ))
         )}
       </div>
 
-      <PartnerCard className="flex min-h-[360px] flex-col">
-        <div className="flex items-center gap-2 border-b border-partner-line pb-3">
-          <Bot className="h-5 w-5 text-partner-primary" />
-          <span className="font-semibold">HOMEEIGO Pro AI</span>
+      <PartnerCard className="flex min-h-[420px] flex-col">
+        <div className="flex items-center justify-between border-b border-partner-line pb-3">
+          <div>
+            <p className="font-semibold">Partner Copilot</p>
+            <p className="text-xs text-partner-muted">Answer · basis · recommendation. Read-only.</p>
+          </div>
         </div>
-        <div className="partner-scroll flex-1 space-y-3 overflow-y-auto py-4">
+        <div className="partner-scroll flex-1 space-y-3 overflow-y-auto py-4" role="log" aria-live="polite">
           {messages.length === 0 ? (
             <p className="text-sm text-partner-muted">
-              Ask about routes, earnings, scheduling, or how to improve your stats.
+              Ask about earnings, next jobs, demand, performance, or training. If data is missing, the
+              assistant will say so.
             </p>
           ) : (
-            messages.map((msg, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={
-                  msg.role === "user"
-                    ? "ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-partner-primary/25 px-3 py-2 text-sm"
-                    : "max-w-[90%] rounded-2xl rounded-bl-md bg-partner-bg/80 px-3 py-2 text-sm text-partner-muted"
-                }
-              >
-                {msg.text}
-                {msg.mode === "offline" ? (
-                  <span className="mt-1.5 block text-[10px] uppercase tracking-wide text-partner-warning">
-                    Offline answer — assistant unavailable
-                  </span>
-                ) : null}
-              </motion.div>
-            ))
+            messages.map((msg, i) => {
+              if (msg.role === "user") {
+                return (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-partner-primary/20 px-3 py-2 text-sm"
+                  >
+                    {msg.text}
+                  </motion.div>
+                );
+              }
+              const structured = parseStructured(msg.text, msg.basis, msg.recommendation);
+              return (
+                <motion.article
+                  key={i}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="max-w-[92%] space-y-2 rounded-2xl border border-partner-line bg-partner-bg/60 px-3 py-3 text-sm"
+                >
+                  <p className="font-medium text-partner-text">{structured.answer}</p>
+                  {structured.basis.length > 0 ? (
+                    <ul className="space-y-0.5 text-xs text-partner-muted">
+                      {structured.basis.map((b) => (
+                        <li key={b}>Based on: {b}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {structured.recommendation ? (
+                    <p className="text-xs text-partner-muted">{structured.recommendation}</p>
+                  ) : null}
+                  {msg.mode === "offline" || msg.mode === "deterministic_fallback" ? (
+                    <p className="text-[10px] uppercase tracking-wide text-partner-warning">
+                      {msg.mode === "offline"
+                        ? "Offline — verified tools unavailable"
+                        : "Verified summary — live model unavailable"}
+                    </p>
+                  ) : null}
+                </motion.article>
+              );
+            })
           )}
           {pending ? (
             <p className="text-sm text-partner-muted" aria-live="polite">
-              Thinking…
+              Reading verified partner data…
             </p>
           ) : null}
         </div>
@@ -185,7 +220,7 @@ export function PartnerAiPanel() {
               key={s}
               type="button"
               onClick={() => send(s)}
-              className="rounded-full border border-partner-line px-3 py-1 text-xs text-partner-muted transition hover:border-partner-primary/40 hover:text-partner-text"
+              className="min-h-11 rounded-full border border-partner-line px-3 py-2 text-xs text-partner-muted transition hover:border-partner-primary/40 hover:text-partner-text"
             >
               {s}
             </button>
@@ -198,47 +233,27 @@ export function PartnerAiPanel() {
             send(input);
           }}
         >
+          <label htmlFor="partner-copilot-input" className="sr-only">
+            Ask the partner copilot
+          </label>
           <input
+            id="partner-copilot-input"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={pending}
-            placeholder="Ask about routes, earnings, scheduling…"
-            className="flex-1 rounded-xl border border-partner-line bg-partner-bg/60 px-3 py-2.5 text-sm outline-none focus:border-partner-primary disabled:opacity-60"
+            placeholder="Ask about earnings, schedule, demand…"
+            className="min-h-11 flex-1 rounded-xl border border-partner-line bg-partner-bg/60 px-3 py-2.5 text-sm outline-none focus:border-partner-primary disabled:opacity-60"
           />
-          <PartnerButton type="submit" variant="primary" disabled={pending}>
+          <PartnerButton type="submit" variant="primary" disabled={pending} aria-label="Send">
             <Send className="h-4 w-4" />
           </PartnerButton>
         </form>
       </PartnerCard>
 
       <p className="text-[10px] text-partner-muted-dim">
-        Local heuristic replies — the live AI assistant ships once the backend AI
-        endpoint is available. Stats above are real, from{" "}
-        <code>/api/providers/me/dashboard</code>.
+        Answers are grounded in approved read tools. The copilot cannot pay, refund, or change job
+        state.
       </p>
     </div>
   );
-}
-
-function aiReply(
-  question: string,
-  dashboard: ReturnType<typeof usePartnerDashboardQuery>["data"],
-  rating: number,
-): string {
-  const q = question.toLowerCase();
-  if (!dashboard) return "Give me a moment — your stats are still loading.";
-  if (q.includes("earnings") || q.includes("earn")) {
-    return `You've netted ${formatInr(dashboard.earnings.today)} today and ${formatInr(dashboard.earnings.thisWeek)} this week. Forecast for the week is on pace if peak-hour acceptance stays above 85%.`;
-  }
-  if (q.includes("accept")) {
-    const acc = Math.round(dashboard.rates.acceptanceRate);
-    return `Acceptance rate is ${acc}%. ${acc < 90 ? "Bonus tier unlocks at 90% — try to respond within 5 minutes of a request." : "You're in the bonus tier — keep it up."}`;
-  }
-  if (q.includes("rating")) {
-    return `Average rating: ${rating > 0 ? rating.toFixed(2) : "no ratings yet"}. ${rating >= 4.9 ? "You qualify for the perfect-rating bonus." : "Reach 4.9 for the perfect-rating bonus (+₹50 per job)."}`;
-  }
-  if (q.includes("route") || q.includes("near")) {
-    return "Cluster nearby jobs to minimise travel and lift ₹/hour. Try to chain 2–3 jobs within the same sector.";
-  }
-  return "I can answer questions about your earnings, acceptance, ratings and route optimisation. Try one of the quick suggestions below.";
 }

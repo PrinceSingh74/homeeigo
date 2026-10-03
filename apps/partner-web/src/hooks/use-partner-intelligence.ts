@@ -9,8 +9,8 @@ export type SmartZone = {
   centerLat: number; centerLng: number; distanceKm: number | null;
   providers: number; demand24h: number; revenue24h: number; riskScore: number; earningScore: number; serviceHealth: number;
   predictedSurge: number; weatherSurge: number; demandDeltaPct: number | null;
-  /** Expected earnings for THIS partner over the next 2h, derived from real zone revenue ÷
-   *  active supply × surge. A range (±25%) — not a fabricated figure. */
+  opportunityScore: number;
+  gap: number;
   expectedEarnings2h: { lo: number; hi: number };
 };
 
@@ -48,7 +48,14 @@ export function usePartnerIntelligence(location: { lat: number; lng: number } | 
       return {
         zoneId: d.zoneId, name: d.name, city: d.city, centerLat: d.centerLat, centerLng: d.centerLng,
         distanceKm: location ? Math.round(haversineKm(location, { lat: d.centerLat, lng: d.centerLng }) * 10) / 10 : null,
-        providers: d.providers, demand24h: s?.demand24h ?? 0, revenue24h, riskScore: s?.riskScore ?? 0, earningScore: s?.earningScore ?? 0, serviceHealth: s?.serviceHealth ?? 100,
+        providers: d.providers,
+        demand24h: s?.demand24h ?? 0,
+        revenue24h,
+        riskScore: s?.riskScore ?? 0,
+        earningScore: s?.earningScore ?? 0,
+        serviceHealth: s?.serviceHealth ?? 50,
+        opportunityScore: s?.opportunityScore ?? s?.compositeScore ?? 0,
+        gap: s?.gap ?? (s?.demand24h ?? 0) - d.providers,
         predictedSurge: surgeMult, weatherSurge: su?.weatherSurge ?? 1, demandDeltaPct: su?.demandDeltaPct ?? null,
         expectedEarnings2h: { lo: Math.round(base * 0.75), hi: Math.round(base * 1.25) },
       };
@@ -61,6 +68,7 @@ export function usePartnerIntelligence(location: { lat: number; lng: number } | 
   return {
     zones,
     bestEarning: zonesQ.data?.data.bestEarning ?? [],
+    bestOpportunity: zonesQ.data?.data.bestOpportunity ?? [],
     highRisk: zonesQ.data?.data.highRisk ?? [],
     worstService: zonesQ.data?.data.worstService ?? [],
     demand: demandQ.data?.data,

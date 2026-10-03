@@ -1,12 +1,9 @@
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import { PopularServicesGrid } from "@/components/home/PopularServicesGrid";
 import { PopularServicesLive } from "@/components/home/PopularServicesLive";
 import { PageSection } from "@/components/layout/PageSection";
 import { SectionHeader } from "@/components/layout/SectionHeader";
-import { sectionAction } from "@/lib/page-layout";
+import { SectionActionLink } from "@/components/layout/SectionActionLink";
 import type { BackendService } from "@/types/backend";
-import { cn } from "@/lib/utils";
 
 export function ServiceCategoriesServer({
   services: apiServices,
@@ -30,15 +27,7 @@ export function ServiceCategoriesServer({
     <PageSection>
       <SectionHeader
         title="Popular Services"
-        action={
-          <Link
-            href="/services"
-            className={cn(sectionAction, "inline-flex items-center gap-1")}
-          >
-            Explore full catalog
-            <ArrowRight size={16} aria-hidden />
-          </Link>
-        }
+        action={<SectionActionLink href="/services">Explore full catalog</SectionActionLink>}
       />
       {popular.length > 0 ? (
         <PopularServicesGrid services={popular} />

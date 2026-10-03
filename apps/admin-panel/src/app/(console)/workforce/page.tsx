@@ -18,6 +18,7 @@ import {
 import { StatTile } from "@/components/hq/primitives";
 import { SectionHead } from "@/components/hq/SectionHead";
 import { Icon3D } from "@/components/hq/Icon3D";
+import { OperationsWorkspaceRail, OpsEyebrow } from "@/components/operations/OperationsWorkspaceRail";
 import { IsoBarChart } from "@/components/hq/IsoBarChart";
 import { GlassRing3D } from "@/components/hq/GlassRing3D";
 import { adminApi, type WorkforceAnalytics } from "@/services/admin-api";
@@ -100,6 +101,7 @@ export default function WorkforcePage() {
         <div className="flex items-center gap-4">
           <Icon3D icon={Users} tone="success" size="lg" />
           <div>
+            <OpsEyebrow />
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <h1 className="biz-display text-[1.75rem] font-bold leading-none tracking-tight">Workforce Analytics</h1>
               <span className="cmd-live-pill">
@@ -108,7 +110,7 @@ export default function WorkforcePage() {
               </span>
             </div>
             <p className="mt-2.5 max-w-2xl text-sm leading-relaxed text-[var(--color-biz-muted)]">
-              Partner OS — attendance, live roster, and performance · auto-refresh 60s
+              Attendance, utilisation, and job quality — availability ONLINE is not lifecycle ACTIVE · auto-refresh 60s
             </p>
           </div>
         </div>
@@ -117,6 +119,8 @@ export default function WorkforcePage() {
           Refresh
         </button>
       </header>
+
+      <OperationsWorkspaceRail />
 
       {analytics.isLoading ? (
         <div className="flex items-center justify-center py-20 text-[var(--color-biz-muted)]">
@@ -255,7 +259,7 @@ export default function WorkforcePage() {
               meta={`${data.topPartners.length} shown`}
             />
             {data.topPartners.length ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {data.topPartners.map((partner) => (
                   <article key={partner.id} className="rounded-[14px] border border-[var(--color-biz-line)] bg-[var(--color-biz-surface)] p-4">
                     <div className="flex items-start justify-between gap-2">
@@ -291,7 +295,7 @@ export default function WorkforcePage() {
               meta={`${data.cities.length} cities`}
             />
             {data.cities.length ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {data.cities.map((city) => (
                   <article key={city.city} className="rounded-[14px] border border-[var(--color-biz-line)] bg-[var(--color-biz-surface)] p-4">
                     <div className="flex items-start justify-between gap-2">

@@ -1,14 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
+  AlertTriangle,
   MapPin,
   MapPinCheck,
+  MessageSquare,
   Navigation,
   PlayCircle,
   CheckCircle2,
 } from "lucide-react";
 import { DashboardPanel } from "@/components/ui/DashboardPanel";
+import { CallCustomerButton } from "@/components/requests/CallCustomerButton";
 import { StartJobOtpDialog } from "@/components/requests/StartJobOtpDialog";
 import {
   useCompleteBookingMutation,
@@ -17,7 +21,12 @@ import {
   usePartnerActiveBookingsQuery,
   useStartBookingMutation,
 } from "@/hooks/use-partner-data";
+import { localActionsFromBooking, primaryActionToLocalCta } from "@/lib/job-action-policy";
+import { getPartnerCoords, getLocationRequiredMessage } from "@/lib/partner-coords";
+import { getErrorMessage, PartnerApiError } from "@/lib/api-error";
+import { describeCompletionRefusal, type CompletionRefusal } from "@/lib/completion-checklist";
 import { formatInr } from "@/lib/format";
+import { useToastStore } from "@/stores/toast-store";
 
 /** Presentation for each lifecycle stage — keeps the CTA a lookup, not a ternary chain. */
 const NEXT_ACTION = {
@@ -27,24 +36,6 @@ const NEXT_ACTION = {
   complete: { label: "Mark complete", busyLabel: "Completing…", Icon: CheckCircle2 },
 } as const;
 
-async function getCurrentCoords(): Promise<{ latitude: number; longitude: number }> {
-  return new Promise((resolve) => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      resolve({ latitude: 0, longitude: 0 });
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) =>
-        resolve({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-        }),
-      () => resolve({ latitude: 0, longitude: 0 }),
-      { enableHighAccuracy: true, timeout: 5000, maximumAge: 30_000 },
-    );
-  });
-}
-
 export function DashboardLiveTracking() {
   const { data, isLoading, isError } = usePartnerActiveBookingsQuery();
 
@@ -52,11 +43,17 @@ export function DashboardLiveTracking() {
   const completeMutation = useCompleteBookingMutation();
   const enRouteMutation = useMarkEnRouteMutation();
   const arrivedMutation = useMarkArrivedMutation();
+  const showToast = useToastStore((s) => s.showToast);
   const [busy, setBusy] = useState<
     "start" | "complete" | "en_route" | "arrived" | null
   >(null);
   // "Start job" routes through the customer-PIN verification gate.
   const [otpDialogOpen, setOtpDialogOpen] = useState(false);
+  /**
+   * The dashboard cannot show the service quality checklist, and it must not pretend one was
+   * ticked. When the server refuses completion for it, the way out is the job page.
+   */
+  const [checklistRefusal, setChecklistRefusal] = useState<CompletionRefusal | null>(null);
 
   const activeJob = useMemo(
     () =>
@@ -78,13 +75,25 @@ export function DashboardLiveTracking() {
    */
   const nextAction: "en_route" | "arrived" | "start" | "complete" | null = !activeJob
     ? null
-    : isInProgress
-      ? "complete"
-      : !activeJob.enRouteAt && ["accepted", "assigned"].includes(activeJob.status)
-        ? "en_route"
-        : !activeJob.arrivedAt
-          ? "arrived"
-          : "start";
+    : (() => {
+        const fromPolicy = primaryActionToLocalCta(
+          localActionsFromBooking(activeJob).primaryAction,
+        );
+        if (
+          fromPolicy === "en_route" ||
+          fromPolicy === "arrived" ||
+          fromPolicy === "start" ||
+          fromPolicy === "complete"
+        ) {
+          return fromPolicy;
+        }
+        if (isInProgress) return "complete";
+        if (!activeJob.enRouteAt && ["accepted", "assigned"].includes(activeJob.status)) {
+          return "en_route";
+        }
+        if (!activeJob.arrivedAt) return "arrived";
+        return "start";
+      })();
 
   // GPS publishing happens app-wide via <GlobalTrackingPublisher/> in PartnerShell —
   // the customer's live map updates from ANY partner screen, not just this one.
@@ -99,17 +108,33 @@ export function DashboardLiveTracking() {
     }
     setBusy(nextAction);
     try {
-      const coords = await getCurrentCoords();
+      const mode = nextAction === "arrived" ? "strict" : "soft";
+      const coords = await getPartnerCoords(mode);
+      if (nextAction === "arrived") {
+        // Arrival is a proof of presence: no fix, no arrival (the server rejects 0,0 anyway).
+        if (!coords) {
+          showToast(getLocationRequiredMessage(), "error");
+          return;
+        }
+        await arrivedMutation.mutateAsync({ bookingId: activeJob.id, latitude: coords.latitude, longitude: coords.longitude });
+        return;
+      }
       const args = {
         bookingId: activeJob.id,
-        latitude: coords.latitude,
-        longitude: coords.longitude,
+        latitude: coords?.latitude ?? null,
+        longitude: coords?.longitude ?? null,
       };
       if (nextAction === "en_route") await enRouteMutation.mutateAsync(args);
-      else if (nextAction === "arrived") await arrivedMutation.mutateAsync(args);
-      else await completeMutation.mutateAsync(args);
-    } catch {
-      /* mutation onError surfaces the toast — avoid an uncaught PartnerApiError */
+      else {
+        setChecklistRefusal(null);
+        await completeMutation.mutateAsync(args);
+      }
+    } catch (error) {
+      const refusal = describeCompletionRefusal(error, activeJob.id);
+      if (refusal) setChecklistRefusal(refusal);
+      if (!(error instanceof PartnerApiError)) {
+        showToast(getErrorMessage(error), "error");
+      }
     } finally {
       setBusy(null);
     }
@@ -185,8 +210,16 @@ export function DashboardLiveTracking() {
             <p className="text-sm text-partner-danger">Couldn&apos;t load active job.</p>
           ) : activeJob ? (
             <>
-              <p className="text-sm font-semibold text-partner-text">{customerName}</p>
+              <Link
+                href={`/requests/${activeJob.id}`}
+                className="text-sm font-semibold text-partner-text hover:text-partner-primary hover:underline"
+              >
+                {customerName}
+              </Link>
               <p className="text-[11px] text-partner-muted">{activeJob.service.name}</p>
+              {activeJob.customer.phoneMasked ? (
+                <p className="text-[11px] text-partner-muted">{activeJob.customer.phoneMasked}</p>
+              ) : null}
             </>
           ) : (
             <p className="text-sm text-partner-muted">
@@ -234,6 +267,39 @@ export function DashboardLiveTracking() {
         )}
       </div>
 
+      {activeJob && checklistRefusal && isInProgress ? (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-xl border border-amber-400/60 bg-amber-50 p-3 text-xs text-amber-900"
+          data-testid="complete-checklist-refusal"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">Checklist not complete</p>
+            <p>{checklistRefusal.message}</p>
+            <Link href={checklistRefusal.href} className="mt-1 inline-block font-semibold underline">
+              Open the job page
+            </Link>
+          </div>
+        </div>
+      ) : null}
+
+      {activeJob ? (
+        <div className="grid grid-cols-2 gap-2">
+          <CallCustomerButton
+            bookingId={activeJob.id}
+            phoneMasked={activeJob.customer.phoneMasked}
+          />
+          <Link
+            href={`/requests/${activeJob.id}`}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-partner-line px-4 py-2.5 text-xs font-semibold text-partner-text transition hover:border-partner-primary/50"
+          >
+            <MessageSquare className="h-3.5 w-3.5 text-partner-primary" />
+            Chat
+          </Link>
+        </div>
+      ) : null}
+
       {otpDialogOpen && activeJob && (
         <StartJobOtpDialog
           bookingId={activeJob.id}
@@ -242,7 +308,11 @@ export function DashboardLiveTracking() {
           onStart={async (otp) => {
             setBusy("start");
             try {
-              const coords = await getCurrentCoords();
+              const coords = await getPartnerCoords("strict");
+              if (!coords) {
+                showToast(getLocationRequiredMessage(), "error");
+                return;
+              }
               await startMutation.mutateAsync({
                 bookingId: activeJob.id,
                 latitude: coords.latitude,

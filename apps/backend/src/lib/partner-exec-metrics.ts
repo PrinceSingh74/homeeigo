@@ -26,14 +26,17 @@
  *   biz_orders_today           ← bookings created in last 24h (calendar)
  *   ops_avg_eta_minutes        ← avg(booking.eta) last 7d; fallback when maps histogram empty
  */
+import { analyticsWhere } from "./analytics-scope";
 import type { BookingStatus } from "@prisma/client";
 import prisma from "./prisma";
 import { setGauge, registerScrapeSampler } from "./metrics";
+import { CREDITED_EARNING_WHERE } from "./earning-settlement";
+import { ACCEPTANCE_TERMINAL_STATUSES, acceptanceRatePct } from "./acceptance-rate";
 
 const TTL_MS = 20_000;
 let last = 0;
 
-const BUSY_STATUSES = ["busy", "on_job", "on_the_way", "in_progress", "en_route", "accepting_job"];
+const BUSY_STATUSES = ["busy", "on_job", "on_the_way", "in_progress", "en_route", "accepting", "accepting_job"];
 const AVAILABLE_STATUSES = ["available", "online", "idle", "ready", "offered"];
 
 export function registerPartnerExecSamplers(): void {
@@ -73,19 +76,23 @@ export function registerPartnerExecSamplers(): void {
       prisma.booking.count({ where: { status: { in: ["EN_ROUTE", "IN_PROGRESS"] as BookingStatus[] } } }).catch(() => 0),
       Promise.all([
         prisma.assignmentAttempt.count({ where: { status: "ACCEPTED", dispatchedAt: { gte: dayAgo } } }).catch(() => 0),
-        prisma.assignmentAttempt.count({ where: { dispatchedAt: { gte: dayAgo } } }).catch(() => 0),
+        // TERMINAL outcomes only. Counting still-SENT offers capped this at roughly 1/fanout under
+        // broadcast dispatch — see lib/acceptance-rate.ts.
+        prisma.assignmentAttempt
+          .count({ where: { status: { in: ACCEPTANCE_TERMINAL_STATUSES }, dispatchedAt: { gte: dayAgo } } })
+          .catch(() => 0),
       ]),
       prisma.provider.aggregate({ _sum: { rejectedBookings: true } }).catch(() => ({ _sum: { rejectedBookings: 0 } })),
       prisma.withdrawal.count({ where: { status: "REQUESTED" } }).catch(() => 0),
-      prisma.earning.aggregate({ _sum: { netEarning: true }, where: { createdAt: { gte: dayAgo } } }).catch(() => ({ _sum: { netEarning: 0 } })),
-      prisma.earning.aggregate({ _sum: { netEarning: true }, where: { createdAt: { gte: weekAgo } } }).catch(() => ({ _sum: { netEarning: 0 } })),
-      prisma.booking.aggregate({ _sum: { totalAmount: true }, where: { status: "COMPLETED" as BookingStatus } }).catch(() => ({ _sum: { totalAmount: 0 } })),
-      prisma.earning.aggregate({ _sum: { commission: true } }).catch(() => ({ _sum: { commission: 0 } })),
-      prisma.user.count({ where: { role: "CUSTOMER", isActive: true, deletedAt: null } }).catch(() => 0),
-      prisma.booking.count({ where: { status: "COMPLETED" as BookingStatus } }).catch(() => 0),
-      prisma.booking.count({ where: { status: { in: ["CANCELLED_BY_USER", "CANCELLED_BY_PROVIDER"] as BookingStatus[] } } }).catch(() => 0),
-      prisma.booking.count({ where: { refundAmount: { gt: 0 } } }).catch(() => 0),
-      prisma.booking.count({ where: { createdAt: { gte: dayAgo } } }).catch(() => 0),
+      prisma.earning.aggregate({ _sum: { netEarning: true }, where: { createdAt: { gte: dayAgo }, ...CREDITED_EARNING_WHERE } }).catch(() => ({ _sum: { netEarning: 0 } })),
+      prisma.earning.aggregate({ _sum: { netEarning: true }, where: { createdAt: { gte: weekAgo }, ...CREDITED_EARNING_WHERE } }).catch(() => ({ _sum: { netEarning: 0 } })),
+      prisma.booking.aggregate({ _sum: { totalAmount: true }, where: { status: "COMPLETED" as BookingStatus, ...analyticsWhere() } }).catch(() => ({ _sum: { totalAmount: 0 } })),
+      prisma.earning.aggregate({ _sum: { commission: true }, where: CREDITED_EARNING_WHERE }).catch(() => ({ _sum: { commission: 0 } })),
+      prisma.user.count({ where: { role: "CUSTOMER", isActive: true, deletedAt: null, ...analyticsWhere() } }).catch(() => 0),
+      prisma.booking.count({ where: { status: "COMPLETED" as BookingStatus, ...analyticsWhere() } }).catch(() => 0),
+      prisma.booking.count({ where: { status: { in: ["CANCELLED_BY_USER", "CANCELLED_BY_PROVIDER"] as BookingStatus[] }, ...analyticsWhere() } }).catch(() => 0),
+      prisma.booking.count({ where: { refundAmount: { gt: 0 }, ...analyticsWhere() } }).catch(() => 0),
+      prisma.booking.count({ where: { createdAt: { gte: dayAgo }, ...analyticsWhere() } }).catch(() => 0),
       prisma.paymentSettlement.aggregate({ _sum: { settledAmount: true } }).catch(() => ({ _sum: { settledAmount: 0 } })),
       Promise.all([
         prisma.payment.count({ where: { status: "SUCCESS" } }).catch(() => 0),
@@ -99,7 +106,8 @@ export function registerPartnerExecSamplers(): void {
     ]);
 
     const [acceptedAttempts, totalAttempts] = acceptanceAttempts;
-    const acceptanceRate = totalAttempts > 0 ? Math.round((acceptedAttempts / totalAttempts) * 10000) / 100 : 0;
+    // NaN, not 0, when nothing terminal happened: 0 asserts every offer was refused.
+    const acceptanceRate = acceptanceRatePct(acceptedAttempts, totalAttempts) ?? Number.NaN;
     const [paymentSuccess, paymentFailed] = paymentStats;
     const paymentAttempts = paymentSuccess + paymentFailed;
     const paymentSuccessPct = paymentAttempts > 0 ? Math.round((paymentSuccess / paymentAttempts) * 1000) / 10 : 0;

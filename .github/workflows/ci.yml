@@ -74,6 +74,9 @@ jobs:
           bun install
           bunx prisma generate
           bun build src/index.ts --outdir dist --target bun
+      # The three web builds used to sit in the ddl-target-guard job, which never sets up Node and
+      # never builds the backend — so its artifact upload could not have found apps/backend/dist.
+      # Web's postbuild also enforces the bundle budget (scripts/check-bundle-budget.mjs).
       - name: Web build
         working-directory: apps/web
         run: |
@@ -89,6 +92,8 @@ jobs:
         run: |
           npm ci
           npm run build
+      - name: Release env guard refuses a local backend (self-test)
+        run: bun test apps/web/tests/release-env.test.ts
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -99,6 +104,85 @@ jobs:
             apps/admin-panel/.next
             apps/partner-web/.next
           retention-days: 7
+
+  migration-safety:
+    name: Migration safety guard (protected objects are never dropped)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the guard diffs new/changed migration SQL against the base ref
+      - uses: oven-sh/setup-bun@v2
+      - name: Scan migration SQL added or changed on this branch
+        working-directory: apps/backend
+        env:
+          MIGRATION_SAFETY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: bun run scripts/check-migration-safety.ts
+      - name: Guard self-test (fixtures must be refused / accepted as designed)
+        working-directory: apps/backend
+        run: bun test --timeout 45000 ./scripts/__tests__/check-migration-safety.test.ts
+
+  ddl-target-guard:
+    name: DDL target guard (no script reaches a database without naming it)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install
+        working-directory: apps/backend
+        run: bun install
+      - name: Every DDL / hardcoded-url script states its target
+        working-directory: apps/backend
+        run: bun run scripts/check-ddl-guard-coverage.ts
+      - name: Guard behaviour + coverage-checker self-tests
+        working-directory: apps/backend
+        run: bun test --timeout 45000 ./src/__tests__/ddl-target-guard.test.ts ./scripts/__tests__/check-ddl-guard-coverage.test.ts
+
+  lint:
+    name: Lint (all apps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Backend lint currently reports 102 pre-existing errors (mostly no-unused-vars), so it
+      # runs in report-only mode: the gate exists and every PR shows the output, but it does not
+      # turn CI red for violations that predate it. Flipping `continue-on-error` to false is a
+      # one-line change once that backlog is cleared — tracked as P2-12.
+      #
+      # NOTE: the `lint` script itself was broken before this job existed — it passed `--ext ts`,
+      # a flag ESLint 9+ removed, so `npm run lint` failed instantly with a usage error and the
+      # backend was effectively unlinted. Fixed as part of adding this gate.
+      - name: Backend deps + prisma client
+        working-directory: apps/backend
+        run: |
+          bun install
+          bunx prisma generate
+      - name: Backend lint (report-only — see P2-12)
+        working-directory: apps/backend
+        continue-on-error: true
+        run: bun run lint
+
+      # The three Next apps lint clean (warnings only) today, so these ARE blocking gates —
+      # they protect a currently-green state rather than papering over a backlog.
+      - name: Web lint
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run lint
+      - name: Admin-panel lint
+        working-directory: apps/admin-panel
+        run: |
+          npm ci
+          npm run lint
+      - name: Partner-web lint
+        working-directory: apps/partner-web
+        run: |
+          npm ci
+          npm run lint
 
   backend-tests:
     name: Backend unit/integration (isolated test DB)
@@ -125,7 +209,44 @@ jobs:
         run: |
           bun install
           bunx prisma generate
-          bun run test:setup
+          # --migrate: the empty service database is built from the migration history (as production
+          # is). The db push path cannot create migration-only tables, so a fresh push-built DB failed
+          # the invariant check.
+          bun run test:setup -- --migrate
+      - name: Test DB carries the raw-SQL invariants (EXCLUDE / CHECK / trigger)
+        working-directory: apps/backend
+        run: REQUIRE_TEST_DB=1 NODE_ENV=test bun test --timeout 45000 ./src/__tests__/db-invariants.test.ts
+      # Schema / generated-client / live-database agreement. Runs here rather than in `prebuild`
+      # because it needs a database, and a build that requires one is a build that gets skipped.
+      #
+      # It exists because the previous migration verifier probed the client with narrow `select`
+      # lists, which ask Postgres only for the columns they name — so a column the client declares
+      # and the database lacks was never requested and never errored. It printed 29/29 PASS against
+      # a database where `prisma.user.findFirst()` throws P2022. This one derives its expectations
+      # from schema.prisma (all 218 models, 2,940 columns) and probes with bare finds.
+      - name: Schema / client / database contract (NO_SCHEMA_CLIENT_DRIFT)
+        working-directory: apps/backend
+        run: bun run scripts/check-schema-client-contract.ts --url "$DATABASE_URL"
       - name: Run unit/integration tests (includes Phase 16/17/18 regression)
         working-directory: apps/backend
-        run: NODE_ENV=test bun test
+        run: NODE_ENV=test bun test --timeout 45000 --max-concurrency 1 --coverage --coverage-reporter=text --coverage-reporter=lcov
+      - name: Isolated Prisma mock.module file (must be its own process)
+        working-directory: apps/backend
+        run: NODE_ENV=test bun test --timeout 45000 ./src/__tests__/data-archival-failure-injection.inject.ts
+      - name: Isolated event-bus mock.module file (must be its own process)
+        working-directory: apps/backend
+        run: NODE_ENV=test bun test --timeout 45000 ./src/events/__tests__/event-bus.inject.ts
+
+      # Coverage is REPORTED, not yet threshold-gated. No numeric floor is asserted here because
+      # no measured baseline exists yet — inventing a percentage would either be trivially passable
+      # (meaningless) or immediately failing (blocks unrelated work). The lcov artifact makes the
+      # real number visible on every run so a defensible floor can be set from evidence. Tracked
+      # as P2-12 alongside the backend lint backlog.
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: apps/backend/coverage/
+          retention-days: 7
+          if-no-files-found: warn

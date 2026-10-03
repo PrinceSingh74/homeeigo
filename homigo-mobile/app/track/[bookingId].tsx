@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, Image, Linking, StyleSheet, Dimensions } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, Pressable, Image, Linking, StyleSheet, Dimensions, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Phone, MessageSquare, Star, Check, ShieldCheck, Navigation2 } from "lucide-react-native";
 import { coreApi } from "@/services/core/api";
 import { parityApi } from "@/services/core/parity-api";
@@ -14,6 +14,14 @@ import { decodePolyline } from "@/lib/polyline";
 import { toJourneyStage, STAGE_ORDER, RAIL_STEPS } from "@/lib/journey-stage";
 import { HomeLiveMap, type LatLng } from "@/components/track/HomeLiveMap";
 import { ServiceStartPinCard } from "@/components/track/ServiceStartPinCard";
+import { BookingChatSheet } from "@/components/track/BookingChatSheet";
+import {
+  applyTrackingFrame,
+  INITIAL_TRACKING_STATE,
+  unwrapTrackingMessage,
+  type LiveTrackingState,
+  type TrackingFrame,
+} from "@/lib/tracking-frames";
 
 const { height } = Dimensions.get("window");
 
@@ -38,15 +46,22 @@ export default function TrackBookingScreen() {
   const { bookingId } = useLocalSearchParams<{ bookingId: string }>();
   const router = useRouter();
   const token = useAuthStore((s) => s.accessToken);
-  const [live, setLive] = useState<{
-    lat?: number;
-    lng?: number;
-    eta?: number;
-    distance?: number;
-    status?: string;
-    bearing?: number;
-    speed?: number;
-  }>({});
+  const queryClient = useQueryClient();
+  // Every frame — WS or REST — passes the integrity reducer (dedupe, ordering, staleness,
+  // impossible jumps) before it can move the marker. See src/lib/tracking-frames.ts.
+  const liveRef = useRef<LiveTrackingState>(INITIAL_TRACKING_STATE);
+  const [live, setLive] = useState<LiveTrackingState>(INITIAL_TRACKING_STATE);
+  const applyFrame = useCallback((frame: TrackingFrame, source: "ws" | "rest") => {
+    const r = applyTrackingFrame(liveRef.current, frame, Date.now(), source);
+    liveRef.current = r.state;
+    if (r.applied) setLive(r.state);
+  }, []);
+  useEffect(() => {
+    liveRef.current = INITIAL_TRACKING_STATE;
+    setLive(INITIAL_TRACKING_STATE);
+  }, [bookingId]);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [calling, setCalling] = useState(false);
 
   const bookingQ = useQuery({
     queryKey: ["booking", bookingId],
@@ -59,20 +74,19 @@ export default function TrackBookingScreen() {
     url: bookingId && token ? `${wsBase}/ws/tracking/${bookingId}?token=${encodeURIComponent(token)}` : null,
     enabled: !!bookingId && !!token,
     onMessage: (data) => {
+      let frame: TrackingFrame | null = null;
       try {
-        const raw = JSON.parse(data) as Record<string, unknown> & { data?: Record<string, unknown> };
-        const p = (raw.data && typeof raw.data === "object" ? raw.data : raw) as Record<string, number | string | undefined>;
-        setLive((prev) => ({
-          lat: (p.providerLatitude ?? p.latitude ?? prev.lat) as number | undefined,
-          lng: (p.providerLongitude ?? p.longitude ?? prev.lng) as number | undefined,
-          eta: (p.eta ?? prev.eta) as number | undefined,
-          distance: (p.distance ?? prev.distance) as number | undefined,
-          status: (p.status ?? prev.status) as string | undefined,
-          bearing: (p.bearing ?? prev.bearing) as number | undefined,
-          speed: (p.speed ?? prev.speed) as number | undefined,
-        }));
+        frame = unwrapTrackingMessage(JSON.parse(data));
       } catch {
-        /* ignore malformed frame */
+        frame = null;
+      }
+      if (frame) {
+        // A frame for another booking must never move this map.
+        if (frame.bookingId && frame.bookingId !== bookingId) return;
+        applyFrame(frame, "ws");
+      } else if (bookingId) {
+        // Unreadable frame: resync from REST rather than guess.
+        void queryClient.invalidateQueries({ queryKey: ["tracking", bookingId] });
       }
     },
   });
@@ -89,21 +103,40 @@ export default function TrackBookingScreen() {
     reportUxSignal("nav_success", "track");
   }, []);
 
+  // REST snapshots go through the same reducer: they can fill gaps but never move state back.
+  useEffect(() => {
+    const t = trackingQ.data?.tracking;
+    if (t) applyFrame(t as TrackingFrame, "rest");
+  }, [trackingQ.data, trackingQ.dataUpdatedAt, applyFrame]);
+
+  // Reconnect recovery: frames sent while the socket was down are lost — refetch the snapshot.
+  const wasConnected = useRef(false);
+  useEffect(() => {
+    if (ws.connected && !wasConnected.current && bookingId) void trackingQ.refetch();
+    wasConnected.current = ws.connected;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ws.connected, bookingId]);
+
   const tracking = trackingQ.data?.tracking;
   const booking = bookingQ.data?.booking as
     | {
         address?: { latitude?: number; longitude?: number };
-        provider?: { name?: string; rating?: number; profileImage?: string | null; phoneNumber?: string | null };
+        provider?: {
+          name?: string;
+          rating?: number;
+          profileImage?: string | null;
+          phoneMasked?: string | null;
+          phoneNumber?: string | null;
+        };
         serviceName?: string;
         service?: { name?: string };
       }
     | undefined;
 
-  const provider: LatLng | null = useMemo(() => {
-    const lat = live.lat ?? tracking?.providerLatitude;
-    const lng = live.lng ?? tracking?.providerLongitude;
-    return lat != null && lng != null ? { latitude: lat, longitude: lng } : null;
-  }, [live.lat, live.lng, tracking?.providerLatitude, tracking?.providerLongitude]);
+  const provider: LatLng | null = useMemo(
+    () => (live.lat != null && live.lng != null ? { latitude: live.lat, longitude: live.lng } : null),
+    [live.lat, live.lng],
+  );
 
   const destination: LatLng | null = useMemo(() => {
     const lat = booking?.address?.latitude;
@@ -145,12 +178,11 @@ export default function TrackBookingScreen() {
   const proName = pro?.name?.trim() || "Your professional";
   const serviceName = booking?.service?.name ?? booking?.serviceName ?? "Home service";
 
-  const region = {
-    latitude: provider?.latitude ?? destination?.latitude ?? 28.6139,
-    longitude: provider?.longitude ?? destination?.longitude ?? 77.209,
-    latitudeDelta: 0.04,
-    longitudeDelta: 0.04,
-  };
+  // Only built when both real points exist (the map isn't rendered otherwise) — no default city.
+  const region =
+    provider && destination
+      ? { latitude: provider.latitude, longitude: provider.longitude, latitudeDelta: 0.04, longitudeDelta: 0.04 }
+      : null;
 
   const stageLine =
     stage === "COMPLETED"
@@ -163,14 +195,27 @@ export default function TrackBookingScreen() {
             ? `${proName} is on the way`
             : "Waiting for a professional";
 
-  const callPro = () => {
-    if (pro?.phoneNumber) Linking.openURL(`tel:${pro.phoneNumber}`).catch(() => undefined);
+  const callPro = async () => {
+    if (!bookingId || calling) return;
+    setCalling(true);
+    try {
+      const data = await coreApi.bookings.partnerCall(bookingId);
+      if (data?.dialUri) {
+        await Linking.openURL(data.dialUri);
+      } else {
+        Alert.alert("Call unavailable", "Partner phone is not available for this booking yet.");
+      }
+    } catch {
+      Alert.alert("Call unavailable", "Could not start a controlled call right now.");
+    } finally {
+      setCalling(false);
+    }
   };
 
   return (
     <View style={styles.root}>
       {/* Full-screen map */}
-      {provider && destination ? (
+      {provider && destination && region ? (
         <HomeLiveMap
           provider={provider}
           destination={destination}
@@ -288,15 +333,32 @@ export default function TrackBookingScreen() {
                 </View>
               </View>
             </View>
-            <Pressable onPress={callPro} style={[styles.actionBtn, { backgroundColor: "#10b981" }]}>
+            <Pressable
+              onPress={() => void callPro()}
+              style={[styles.actionBtn, { backgroundColor: "#10b981", opacity: calling ? 0.6 : 1 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Call professional"
+            >
               <Phone size={18} color="#fff" fill="#fff" />
             </Pressable>
-            <Pressable style={[styles.actionBtn, { backgroundColor: "#0d9488" }]}>
+            <Pressable
+              onPress={() => setChatOpen(true)}
+              style={[styles.actionBtn, { backgroundColor: "#0d9488" }]}
+              accessibilityRole="button"
+              accessibilityLabel="Open booking chat"
+            >
               <MessageSquare size={18} color="#fff" />
             </Pressable>
           </View>
         </View>
       </SafeAreaView>
+
+      <BookingChatSheet
+        visible={chatOpen}
+        bookingId={bookingId}
+        partnerName={proName}
+        onClose={() => setChatOpen(false)}
+      />
     </View>
   );
 }

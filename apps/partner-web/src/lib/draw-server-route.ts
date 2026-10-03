@@ -4,11 +4,18 @@ import { partnerApi } from "@/services/partner-api";
 
 type LatLng = { lat: number; lng: number };
 
+/**
+ * What the backend route endpoint actually knows: a road polyline (Google or OSRM, or a straight
+ * line), distance, duration and a weather-adjusted ETA — and nothing about turns or live traffic.
+ * `available: false` when the call failed: callers show "—", never a made-up "1 min".
+ */
 export type ServerRoute = {
   path: LatLng[];
   distanceKm: number;
   durationMin: number;
   etaMin: number;
+  source: string;
+  available: boolean;
 };
 
 let inFlight = false;
@@ -17,8 +24,10 @@ export async function fetchServerRoute(origin: LatLng, destination: LatLng): Pro
   const fallback: ServerRoute = {
     path: [origin, destination],
     distanceKm: 0,
-    durationMin: 1,
-    etaMin: 1,
+    durationMin: 0,
+    etaMin: 0,
+    source: "unavailable",
+    available: false,
   };
   try {
     const route = await partnerApi.geoIntel.route(origin, destination);
@@ -28,6 +37,8 @@ export async function fetchServerRoute(origin: LatLng, destination: LatLng): Pro
       distanceKm: route.distanceKm,
       durationMin: route.durationMin,
       etaMin: Math.max(1, Math.round(route.etaMinutes || route.durationMin)),
+      source: route.source,
+      available: true,
     };
   } catch {
     return fallback;

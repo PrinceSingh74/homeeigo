@@ -5,7 +5,8 @@ import { LoginForm } from "@/components/auth/LoginForm";
 
 export const metadata: Metadata = {
   title: "Sign In",
-  description: "Sign in to your HOMEEIGO account to book trusted home services, track bookings, and manage your wallet.",
+  description:
+    "Sign in to HOMEEIGO with mobile OTP, email, Google, or Apple to book trusted home services, track bookings, and manage your wallet.",
   alternates: { canonical: "/login" },
 };
 

@@ -6,6 +6,7 @@ import type { DataQualitySeverity } from "@prisma/client";
 import { logger } from "../../src/lib/logger";
 import { fqTable, bqQuery } from "../etl/bq-client";
 import { recordDataQualityMetrics } from "../../src/lib/etl-metrics";
+import { classifyWarehouseFailure, isWarehouseOutage, withWarehouseDeadline } from "../../src/lib/warehouse-read";
 
 export type DataQualityRule = {
   id: string;
@@ -35,27 +36,72 @@ export const DATA_QUALITY_RULES: DataQualityRule[] = [
 
 export type DataQualityReport = {
   evaluatedAt: string;
-  overallScore: number;
-  rules: Array<{ ruleId: string; name: string; severity: string; passed: boolean; violationCount: number; repairSuggestion: string }>;
+  /** Null when no rule could be evaluated — an unmeasured score is not 0% (X-90). */
+  overallScore: number | null;
+  /** `evaluated: false` = the warehouse did not answer; `passed` is then null, never false. */
+  rules: Array<{ ruleId: string; name: string; severity: string; evaluated: boolean; passed: boolean | null; violationCount: number; repairSuggestion: string }>;
   criticalFailures: number;
   warnings: number;
+  /** Rules the warehouse could not evaluate (outage), excluded from the score and not persisted. */
+  unevaluatedRules: number;
+  /** True when the warehouse answered no rule at all. */
+  sourceUnavailable: boolean;
 };
 
-export async function runDataQualityChecks(executionId?: string): Promise<DataQualityReport> {
+/**
+ * `deadlineMs` bounds each rule's query — the HTTP routes pass it so a hung warehouse cannot hold the
+ * request; the scheduled run does not, because a rule over a large table may legitimately be slow.
+ */
+export async function runDataQualityChecks(executionId?: string, opts: { deadlineMs?: number } = {}): Promise<DataQualityReport> {
   const results: DataQualityReport["rules"] = [];
   let totalWeight = 0;
   let earnedWeight = 0;
   let criticalFailures = 0;
   let warnings = 0;
+  let unevaluatedRules = 0;
+  /**
+   * Set once the warehouse itself is known to be down (credentials, connection, deadline). The rules
+   * run one after another, so without this a HUNG warehouse held an HTTP request for every rule's
+   * deadline in turn (13 × 15 s). A failure specific to one query (a 403 on one dataset, a 404) does
+   * not stop the others.
+   */
+  let sourceDown = false;
 
   for (const rule of DATA_QUALITY_RULES) {
     let violationCount = 0;
     let passed = true;
+    if (sourceDown) {
+      unevaluatedRules++;
+      results.push({
+        ruleId: rule.id, name: rule.name, severity: rule.severity,
+        evaluated: false, passed: null, violationCount: 0, repairSuggestion: rule.repairSuggestion,
+      });
+      continue;
+    }
     try {
-      const [row] = await bqQuery<{ cnt: number }>(rule.sql);
+      const read = bqQuery<{ cnt: number }>(rule.sql);
+      const [row] = opts.deadlineMs ? await withWarehouseDeadline(read, opts.deadlineMs) : await read;
       violationCount = Number(row?.cnt ?? 0);
       passed = violationCount === 0;
     } catch (err) {
+      /**
+       * X-90: a rule the warehouse could not answer was scored as FAILED — during an outage every rule
+       * failed, the overall score read 0%, every CRITICAL rule counted as a critical failure, and a
+       * `data_quality_results` row per rule (quality_score 101) was written, on a GET. An outage is
+       * "not evaluated": not scored, not counted, not persisted. A rule whose query is itself wrong
+       * (missing table, invalid SQL) still fails — that IS a data-pipeline defect.
+       */
+      if (isWarehouseOutage(err)) {
+        const cause = classifyWarehouseFailure(err);
+        if (cause === "CREDENTIALS" || cause === "CONNECTION" || cause === "TIMEOUT") sourceDown = true;
+        unevaluatedRules++;
+        logger.warn("dq_rule_not_evaluated", { ruleId: rule.id, error: err instanceof Error ? err.message : String(err) });
+        results.push({
+          ruleId: rule.id, name: rule.name, severity: rule.severity,
+          evaluated: false, passed: null, violationCount: 0, repairSuggestion: rule.repairSuggestion,
+        });
+        continue;
+      }
       passed = false;
       violationCount = -1;
       logger.warn("dq_rule_skipped", { ruleId: rule.id, error: err instanceof Error ? err.message : String(err) });
@@ -86,16 +132,28 @@ export async function runDataQualityChecks(executionId?: string): Promise<DataQu
       ruleId: rule.id,
       name: rule.name,
       severity: rule.severity,
+      evaluated: true,
       passed,
       violationCount: Math.max(0, violationCount),
       repairSuggestion: rule.repairSuggestion,
     });
   }
 
-  const overallScore = totalWeight > 0 ? Math.round((earnedWeight / totalWeight) * 100) : 100;
-  recordDataQualityMetrics(overallScore, criticalFailures, warnings);
+  const sourceUnavailable = unevaluatedRules > 0 && totalWeight === 0;
+  // Scored over the rules that were evaluated. Nothing evaluated → no score (not 0%, not 100%).
+  const overallScore = sourceUnavailable ? null : totalWeight > 0 ? Math.round((earnedWeight / totalWeight) * 100) : 100;
+  // The gauge keeps its last measured value rather than recording an outage as a score.
+  if (overallScore !== null) recordDataQualityMetrics(overallScore, criticalFailures, warnings);
 
-  return { evaluatedAt: new Date().toISOString(), overallScore, rules: results, criticalFailures, warnings };
+  return {
+    evaluatedAt: new Date().toISOString(),
+    overallScore,
+    rules: results,
+    criticalFailures,
+    warnings,
+    unevaluatedRules,
+    sourceUnavailable,
+  };
 }
 
 export async function getQualityHistory(dataset: string, limit = 50) {

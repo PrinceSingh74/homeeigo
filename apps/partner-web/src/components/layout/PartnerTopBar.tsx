@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { Bell, ChevronDown, Loader2, LogOut, Menu, Search, Sun } from "lucide-react";
 import { AppearanceMenu } from "@/components/theme/AppearanceMenu";
 import { useRouter } from "next/navigation";

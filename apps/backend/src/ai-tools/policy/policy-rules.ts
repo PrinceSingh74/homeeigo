@@ -187,6 +187,29 @@ export const POLICY_RULES: PolicyRule[] = [
   },
 ];
 
+
+/**
+ * Phase 14 — the identity of this ruleset.
+ *
+ * A decision row naming `rbac.role_check` says which rule fired, not what that rule DID at the
+ * time. The rules are code, so editing one silently changes the meaning of every historical row
+ * that names it: a DENY logged last year becomes unreadable once the roles inside the check have
+ * moved on. Stamping each decision with a version pins it to a ruleset whose content can be
+ * recovered from source control.
+ *
+ * Derived from the rule ids rather than hand-maintained, because a hand-maintained constant is
+ * one someone forgets to bump — and a version that silently stops changing is worse than none,
+ * since it asserts stability that is not there. Adding, removing or renaming a rule changes the
+ * hash. Editing a rule's *body* does not, which is why the version is paired with a git revision
+ * in the audit report rather than presented as a complete description on its own.
+ */
+export const POLICY_RULESET_VERSION: string = (() => {
+  const ids = POLICY_RULES.map((r) => r.id).join("|");
+  let h = 0;
+  for (let i = 0; i < ids.length; i++) h = (Math.imul(31, h) + ids.charCodeAt(i)) | 0;
+  return `rules.v${POLICY_RULES.length}.${(h >>> 0).toString(16).padStart(8, "0")}`;
+})();
+
 export function getRoleToolPermissions(role: AiGatewayRole): string[] {
   return ROLE_TOOL_PERMISSIONS[role] ?? [];
 }

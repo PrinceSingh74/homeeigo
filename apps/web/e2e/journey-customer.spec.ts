@@ -1,5 +1,6 @@
+import { spawnSync } from "node:child_process";
+import path from "node:path";
 import { test, expect } from "@playwright/test";
-import { apiLogin } from "./enterprise/fixtures";
 
 /**
  * COMPLETE customer journey (fresh-env Playwright):
@@ -15,11 +16,33 @@ test.use({ video: "on", trace: "on" });
 
 const SEED_CUSTOMER = { email: "customer@homigo.demo", password: "Homigo@123" };
 const API = (process.env.E2E_API_URL ?? "http://localhost:3000").replace(/\/$/, "");
-const BOOKING_ID = process.env.BOOKING_ID ?? "";
+
+/**
+ * The id comes from scripts/seed-customer-journey.ts (real POST /api/bookings, or the unpaid
+ * booking that script already created). BOOKING_ID may be passed in; otherwise this runs the
+ * script. It does not invent an id.
+ */
+function resolveBookingId(): string {
+  const fromEnv = process.env.BOOKING_ID?.trim();
+  if (fromEnv) return fromEnv;
+  const backendDir = path.resolve(process.cwd(), "../backend");
+  const run = spawnSync("bun", ["--env-file=.env.test", "run", "scripts/seed-customer-journey.ts"], {
+    cwd: backendDir,
+    env: { ...process.env, NODE_ENV: "test", SMOKE_BASE: API },
+    encoding: "utf8",
+    timeout: 120_000,
+  });
+  const detail = `${run.stderr ?? ""}\n${run.stdout ?? ""}`.replace(/postgres(?:ql)?:\/\/\S+/gi, "<db-url>").slice(-500);
+  if (run.status !== 0) throw new Error(`seed-customer-journey failed (${run.status}): ${detail}`);
+  const id = (run.stdout ?? "").trim().split(/\r?\n/).filter(Boolean).pop() ?? "";
+  if (!id) throw new Error(`seed-customer-journey printed no booking id: ${detail}`);
+  return id;
+}
 
 test("Login → Address → Booking → Assignment → Tracking → Checkout → Completion", async ({ page }) => {
   test.setTimeout(180_000);
-  expect(BOOKING_ID, "BOOKING_ID env (from seed script)").not.toBe("");
+  const BOOKING_ID = resolveBookingId();
+  expect(BOOKING_ID, "BOOKING_ID from env or scripts/seed-customer-journey.ts").not.toBe("");
 
   // ── 1) CUSTOMER LOGIN (real UI form → real /api/auth/login → status authenticated) ──
   // A real UI login calls setSession (status="authenticated") directly, avoiding the

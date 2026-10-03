@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { authPlugin } from "../plugins/auth.plugin";
 import { bookingService } from "../services/booking.service";
+import { catalogService } from "../services/catalog.service";
 import { providerService } from "../services/provider.service";
 import { matchingService } from "../services/matching.service";
 import { routeOptimizationService } from "../services/route-optimization.service";
@@ -9,6 +10,18 @@ import prisma from "../lib/prisma";
 import { parseBody } from "../lib/route-security";
 import { providerMatchSchema, providerOnlineSchema, providerSearchSchema, providerPauseSchema, providerServiceAreaSchema } from "../schemas/provider.schema";
 import { partnerOperationsService } from "../services/partner-operations.service";
+import { partnerPresenceService } from "../services/partner-presence.service";
+import {
+  partnerLocationPingSchema,
+  partnerPresenceHeartbeatSchema,
+} from "../schemas/partner-presence.schema";
+import {
+  dispatchEligibilityBlockCode,
+  evaluateDispatchEligibility,
+  loadProviderEligibilitySnapshot,
+} from "../services/dispatch-eligibility.service";
+import { capabilityTablesPresent } from "../services/provider-capability.service";
+import { buildServiceSkillBoard } from "../services/partner-service-skills.service";
 
 export const providersRoutes = new Elysia({ prefix: "/api/providers" })
   .use(authPlugin)
@@ -24,6 +37,24 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
       return { success: false, error: "Provider not found", code: "NOT_FOUND" };
     }
     return { success: true, data: { provider: data } };
+  })
+  .get("/me/services", async ({ requireProvider }) => {
+    const { providerId } = requireProvider();
+    const provider = await prisma.provider.findUnique({
+      where: { id: providerId },
+      select: { serviceCategories: true },
+    });
+    const data = await catalogService.partnerEligible(provider?.serviceCategories ?? []);
+    return { success: true, data };
+  })
+  .get("/me/service-skills", async ({ requireProvider, set }) => {
+    const { providerId } = requireProvider();
+    const board = await buildServiceSkillBoard(providerId, await capabilityTablesPresent());
+    if (!board) {
+      set.status = 404;
+      return { success: false as const, error: "Provider not found", code: "NOT_FOUND" };
+    }
+    return { success: true as const, data: board };
   })
   // Phase 17.3 — optimise the provider's active multi-stop route (reuses maps.service /
   // existing ETA; no new routing engine). Uses the provider's live location + active jobs.
@@ -80,6 +111,116 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
     const data = await partnerOperationsService.snapshot(providerId);
     return { success: true, data };
   })
+  .get("/me/presence", async ({ requireProvider }) => {
+    const { providerId } = requireProvider();
+    const data = await partnerPresenceService.getSnapshot(providerId);
+    return { success: true, data };
+  })
+  /**
+   * Why the partner is or isn't receiving offers right now. Read-only projection of the
+   * same engine dispatch uses — never a second implementation the two could drift apart on.
+   */
+  .get("/me/dispatch-eligibility", async ({ requireProvider, set }) => {
+    const { providerId } = requireProvider();
+    const snapshot = await loadProviderEligibilitySnapshot(providerId);
+    if (!snapshot) {
+      set.status = 404;
+      return { success: false, error: "Provider not found", code: "NOT_FOUND" };
+    }
+    const result = evaluateDispatchEligibility(snapshot);
+    return {
+      success: true,
+      data: {
+        providerId,
+        eligible: result.eligible,
+        blockedBy: dispatchEligibilityBlockCode(result),
+        reasons: result.reasons,
+        checks: result.checks,
+        evaluatedAt: new Date().toISOString(),
+      },
+    };
+  })
+  .post(
+    "/me/presence/heartbeat",
+    async ({ requireProvider, body: raw, request }) => {
+      const auth = requireProvider();
+      const body = parseBody(partnerPresenceHeartbeatSchema, raw);
+      const requestId = request.headers.get("x-request-id") ?? undefined;
+      const correlationId = request.headers.get("x-correlation-id") ?? undefined;
+      const result = await partnerPresenceService.heartbeat(
+        {
+          providerId: auth.providerId,
+          userId: auth.userId,
+          requestId,
+          correlationId,
+          ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+            ?? request.headers.get("x-real-ip")
+            ?? undefined,
+          userAgent: request.headers.get("user-agent") ?? undefined,
+        },
+        body,
+      );
+      return { success: true, data: result };
+    },
+    {
+      body: t.Object({
+        sessionId: t.String(),
+        deviceId: t.String(),
+        timestamp: t.Union([t.String(), t.Date()]),
+        appState: t.Optional(t.Union([t.Literal("foreground"), t.Literal("background"), t.Literal("inactive")])),
+        platform: t.Optional(t.Union([t.Literal("ios"), t.Literal("android"), t.Literal("web")])),
+        appVersion: t.Optional(t.String()),
+        availabilityTelemetry: t.Optional(t.String()),
+        location: t.Optional(
+          t.Object({
+            latitude: t.Number(),
+            longitude: t.Number(),
+            accuracy: t.Optional(t.Number()),
+            capturedAt: t.Union([t.String(), t.Date()]),
+            sequence: t.Optional(t.Number()),
+          }),
+        ),
+      }),
+    },
+  )
+  /**
+   * GPS on its own cadence, decoupled from the liveness beat so the app can throttle
+   * location for battery without also going presence-stale.
+   */
+  .post(
+    "/me/location/ping",
+    async ({ requireProvider, body: raw, request }) => {
+      const auth = requireProvider();
+      const body = parseBody(partnerLocationPingSchema, raw);
+      const result = await partnerPresenceService.locationPing(
+        {
+          providerId: auth.providerId,
+          userId: auth.userId,
+          requestId: request.headers.get("x-request-id") ?? undefined,
+          correlationId: request.headers.get("x-correlation-id") ?? undefined,
+          ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+            ?? request.headers.get("x-real-ip")
+            ?? undefined,
+          userAgent: request.headers.get("user-agent") ?? undefined,
+        },
+        body,
+      );
+      return { success: true, data: result };
+    },
+    {
+      body: t.Object({
+        sessionId: t.String(),
+        deviceId: t.String(),
+        location: t.Object({
+          latitude: t.Number(),
+          longitude: t.Number(),
+          accuracy: t.Optional(t.Number()),
+          capturedAt: t.Union([t.String(), t.Date()]),
+          sequence: t.Optional(t.Number()),
+        }),
+      }),
+    },
+  )
   .put(
     "/me/service-area",
     async ({ requireProvider, body: raw }) => {
@@ -242,6 +383,84 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
    * flag or a lookup failure all return 404 rather than exposing the capability. 404 rather than
    * 403 because an ungated capability should not advertise its own existence.
    */
+  /**
+   * Grounded earnings-opportunity plan for a target amount.
+   *
+   * Server-authoritative and READ-ONLY: no transaction is opened and no financial record is
+   * touched. Partner identity comes from the session via `requireProvider()`, so one partner can
+   * never request another's plan, and `target` only sets the goal being measured against — it
+   * cannot widen what data is read.
+   *
+   * Gated by `PARTNER_EARNINGS_COACH`, fail-closed: a missing or disabled flag returns 404.
+   */
+  /**
+   * Advisory shift plan — when to work, where to start, and what the trade-offs are.
+   *
+   * READ-ONLY and advisory by construction: the planning service holds no database handle and
+   * calls no mutator, so this endpoint cannot change availability, a shift or a booking. Partner
+   * identity comes from the session; `target` only tunes the optional earnings context.
+   *
+   * Gated by `PARTNER_SHIFT_PLANNING`, fail-closed: a missing or disabled flag returns 404.
+   */
+  /**
+   * Performance nudges — partner-self comparison over the platform's own metric definitions.
+   *
+   * READ-ONLY: computes and returns. Sending is deliberately NOT here — a nudge existing is not a
+   * reason to notify anyone, and any future automated path must run through notification
+   * governance in SHADOW first.
+   *
+   * Gated by `PARTNER_PERFORMANCE_NUDGES`, fail-closed.
+   */
+  .get("/me/intel/nudges", async ({ requireProvider, set }) => {
+    const { providerId } = requireProvider();
+    const { isFeatureEnabled } = await import("../services/feature-flag.service");
+    if (!(await isFeatureEnabled("PARTNER_PERFORMANCE_NUDGES", providerId))) {
+      set.status = 404;
+      return { success: false, error: "Not found", code: "NOT_FOUND" };
+    }
+    const { performanceNudgesService } = await import("../services/performance-nudges.service");
+    const data = await performanceNudgesService.compute(providerId);
+    return { success: true, data };
+  })
+
+  .get("/me/intel/shift-plan", async ({ requireProvider, query, set }) => {
+    const { providerId } = requireProvider();
+    const { isFeatureEnabled } = await import("../services/feature-flag.service");
+    if (!(await isFeatureEnabled("PARTNER_SHIFT_PLANNING", providerId))) {
+      set.status = 404;
+      return { success: false, error: "Not found", code: "NOT_FOUND" };
+    }
+    const target = query.target === undefined ? undefined : Number(query.target);
+    if (target !== undefined && (!Number.isFinite(target) || target < 0)) {
+      set.status = 400;
+      return { success: false, error: "target must be a non-negative number", code: "VALIDATION_ERROR" };
+    }
+    const { shiftPlanningService } = await import("../services/shift-planning.service");
+    const data = await shiftPlanningService.plan(providerId, { targetAmount: target });
+    return { success: true, data };
+  }, {
+    query: t.Object({ target: t.Optional(t.String()) }),
+  })
+
+  .get("/me/intel/earnings-coach", async ({ requireProvider, query, set }) => {
+    const { providerId } = requireProvider();
+    const { isFeatureEnabled } = await import("../services/feature-flag.service");
+    if (!(await isFeatureEnabled("PARTNER_EARNINGS_COACH", providerId))) {
+      set.status = 404;
+      return { success: false, error: "Not found", code: "NOT_FOUND" };
+    }
+    const target = Number(query.target ?? 0);
+    if (!Number.isFinite(target) || target < 0) {
+      set.status = 400;
+      return { success: false, error: "target must be a non-negative number", code: "VALIDATION_ERROR" };
+    }
+    const { earningsCoachService } = await import("../services/earnings-coach.service");
+    const data = await earningsCoachService.plan(providerId, target);
+    return { success: true, data };
+  }, {
+    query: t.Object({ target: t.Optional(t.String()) }),
+  })
+
   .get("/me/intel/zones", async ({ requireProvider, query, set }) => {
     const { providerId } = requireProvider();
     const { isFeatureEnabled } = await import("../services/feature-flag.service");
@@ -270,6 +489,128 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
     const data = await partnerOsService.getRankings(providerId);
     return { success: true, data };
   })
+  .get("/me/score", async ({ requireProvider, set }) => {
+    const { providerId } = requireProvider();
+    const { partnerScoreService } = await import("../services/partner-score.service");
+    const data = await partnerScoreService.getCurrent(providerId);
+    if (!data) {
+      set.status = 404;
+      return { success: false, error: "Provider not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data };
+  })
+  .get("/me/score/history", async ({ requireProvider, query }) => {
+    const { providerId } = requireProvider();
+    const { partnerScoreService } = await import("../services/partner-score.service");
+    const data = await partnerScoreService.getHistory(providerId, query as Record<string, string | undefined>);
+    return { success: true, data };
+  })
+  .get("/me/career", async ({ requireProvider, set }) => {
+    const { providerId } = requireProvider();
+    const { partnerCareerService } = await import("../services/partner-career.service");
+    const data = await partnerCareerService.getCurrent(providerId);
+    if (!data) {
+      set.status = 404;
+      return { success: false, error: "Provider not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data };
+  })
+  .get("/me/career/history", async ({ requireProvider, query }) => {
+    const { providerId } = requireProvider();
+    const { partnerCareerService } = await import("../services/partner-career.service");
+    const data = await partnerCareerService.getHistory(providerId, query as Record<string, string | undefined>);
+    return { success: true, data };
+  })
+  .get("/me/lifecycle", async ({ requireProvider, set }) => {
+    const { providerId } = requireProvider();
+    const { partnerLifecycleService } = await import("../services/partner-lifecycle.service");
+    const data = await partnerLifecycleService.getCurrent(providerId);
+    if (!data) {
+      set.status = 404;
+      return { success: false, error: "Provider not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data };
+  })
+  .get("/me/lifecycle/history", async ({ requireProvider, query }) => {
+    const { providerId } = requireProvider();
+    const { partnerLifecycleService } = await import("../services/partner-lifecycle.service");
+    const data = await partnerLifecycleService.getHistory(providerId, query as Record<string, string | undefined>);
+    return { success: true, data };
+  })
+  .get("/me/network", async ({ requireProvider }) => {
+    const { providerId } = requireProvider();
+    const { partnerReferralService } = await import("../services/partner-referral.service");
+    const data = await partnerReferralService.partnerDashboard(providerId);
+    return { success: true, data };
+  })
+  .post(
+    "/me/network/invite",
+    async ({ requireProvider, body, set }) => {
+      const { providerId } = requireProvider();
+      const { partnerReferralService } = await import("../services/partner-referral.service");
+      try {
+        const data = await partnerReferralService.invite({
+          referrerProviderId: providerId,
+          name: body.name,
+          phone: body.phone,
+          email: body.email,
+          city: body.city,
+          skillInterest: body.skillInterest,
+          campaign: body.campaign,
+        });
+        return { success: true, data };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed";
+        const [code, detail] = message.includes(":") ? message.split(":", 2) : ["INTERNAL", message];
+        set.status = code === "CONFLICT" ? 409 : code === "VALIDATION" ? 400 : 500;
+        return { success: false, error: detail ?? message, code: code === "INTERNAL" ? "INTERNAL_ERROR" : code };
+      }
+    },
+    {
+      body: t.Object({
+        name: t.String({ minLength: 2, maxLength: 120 }),
+        phone: t.String({ minLength: 10, maxLength: 20 }),
+        email: t.Optional(t.String()),
+        city: t.Optional(t.String()),
+        skillInterest: t.Optional(t.String()),
+        campaign: t.Optional(t.String()),
+      }),
+    },
+  )
+  .post("/me/lifecycle/pause", async ({ requireProvider, body, set }) => {
+    const { providerId } = requireProvider();
+    const { partnerLifecycleService } = await import("../services/partner-lifecycle.service");
+    const result = await partnerLifecycleService.transition({
+      providerId,
+      to: "PAUSED",
+      actorType: "PARTNER",
+      actorId: providerId,
+      reasonCode: "PARTNER_REQUEST",
+      reasonText: typeof body?.reason === "string" ? body.reason : "Partner requested pause",
+    });
+    if ("error" in result && result.error) {
+      set.status = result.error === "INVALID_TRANSITION" ? 409 : 400;
+      return { success: false, error: result.error, code: result.error, allowed: "allowed" in result ? result.allowed : undefined };
+    }
+    return { success: true, data: result.data };
+  }, { body: t.Optional(t.Object({ reason: t.Optional(t.String()) })) })
+  .post("/me/lifecycle/resume", async ({ requireProvider, set }) => {
+    const { providerId } = requireProvider();
+    const { partnerLifecycleService } = await import("../services/partner-lifecycle.service");
+    const result = await partnerLifecycleService.transition({
+      providerId,
+      to: "ACTIVE",
+      actorType: "PARTNER",
+      actorId: providerId,
+      reasonCode: "PARTNER_REQUEST",
+      reasonText: "Partner resumed partnership",
+    });
+    if ("error" in result && result.error) {
+      set.status = result.error === "INVALID_TRANSITION" ? 409 : 400;
+      return { success: false, error: result.error, code: result.error };
+    }
+    return { success: true, data: result.data };
+  })
   .get("/me/academy", async ({ requireProvider }) => {
     const { providerId } = requireProvider();
     const { partnerOsService } = await import("../services/partner-os.service");
@@ -289,10 +630,98 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
     const data = await partnerOsService.getCompliance(providerId);
     return { success: true, data };
   })
-  .get("/me/wellbeing", async () => {
+  .get("/me/wellbeing", async ({ requireProvider }) => {
+    const { providerId } = requireProvider();
     const { partnerOsService } = await import("../services/partner-os.service");
-    const data = await partnerOsService.getWellbeing();
+    const data = await partnerOsService.getWellbeing(providerId);
     return { success: true, data };
+  })
+  .patch(
+    "/me/safety/emergency-contact",
+    async ({ requireProvider, body }) => {
+      const { providerId } = requireProvider();
+      const { partnerOsService } = await import("../services/partner-os.service");
+      const data = await partnerOsService.updateEmergencyContact(providerId, body);
+      return { success: true, data };
+    },
+    {
+      body: t.Object({
+        emergencyContactName: t.Optional(t.String()),
+        emergencyContactPhone: t.Optional(t.String()),
+      }),
+    },
+  )
+  .post(
+    "/me/safety/sos",
+    async ({ requireProvider, requireAuth, body }) => {
+      const { providerId } = requireProvider();
+      const { userId } = requireAuth();
+      const { partnerSafetyService } = await import("../services/partner-safety.service");
+      const result = await partnerSafetyService.triggerSos({
+        providerId,
+        userId,
+        bookingId: body?.bookingId,
+        latitude: body?.latitude,
+        longitude: body?.longitude,
+        accuracy: body?.accuracy,
+      });
+      return {
+        success: true,
+        data: {
+          incidentId: result.incident.id,
+          status: result.incident.status,
+          created: result.created,
+          hasLocation: result.incident.latitude != null,
+        },
+      };
+    },
+    {
+      body: t.Optional(
+        t.Object({
+          bookingId: t.Optional(t.String()),
+          latitude: t.Optional(t.Number()),
+          longitude: t.Optional(t.Number()),
+          accuracy: t.Optional(t.Number()),
+        }),
+      ),
+    },
+  )
+  .post(
+    "/me/safety/report",
+    async ({ requireProvider, requireAuth, body }) => {
+      const { providerId } = requireProvider();
+      const { userId } = requireAuth();
+      const { partnerSafetyService } = await import("../services/partner-safety.service");
+      const incident = await partnerSafetyService.reportIssue({
+        providerId,
+        userId,
+        type: body.type,
+        bookingId: body.bookingId,
+        notes: body.notes,
+      });
+      return { success: true, data: { incidentId: incident.id, status: incident.status } };
+    },
+    {
+      body: t.Object({
+        type: t.Union([
+          t.Literal("ACCIDENT"),
+          t.Literal("THREAT"),
+          t.Literal("MEDICAL"),
+          t.Literal("CUSTOMER_SAFETY"),
+          t.Literal("PARTNER_SAFETY"),
+          t.Literal("LOCATION_DANGER"),
+          t.Literal("OTHER"),
+        ]),
+        bookingId: t.Optional(t.String()),
+        notes: t.Optional(t.String()),
+      }),
+    },
+  )
+  .get("/me/safety/incidents", async ({ requireProvider }) => {
+    const { providerId } = requireProvider();
+    const { partnerSafetyService } = await import("../services/partner-safety.service");
+    const items = await partnerSafetyService.partnerHistory(providerId);
+    return { success: true, data: { incidents: items } };
   })
   .get("/me/rewards", async ({ requireProvider }) => {
     const { providerId } = requireProvider();
@@ -313,6 +742,79 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
     const documents = await documentUploadService.listDocuments(providerId, userId);
     return { success: true, data: { documents } };
   })
+  .patch(
+    "/me/documents/:documentId",
+    async ({ requireProvider, requireAuth, params, body, set }) => {
+      const { userId } = requireAuth();
+      void requireProvider();
+      const { documentUploadService } = await import("../services/document-upload.service");
+      const { sanitizeUserInput } = await import("../utils/sanitizer");
+      try {
+        const doc = await documentUploadService.setDocumentMeta(
+          params.documentId,
+          { userId },
+          {
+            expiryDate: body.expiryDate ? new Date(body.expiryDate) : body.expiryDate === null ? null : undefined,
+            issuer: body.issuer != null ? sanitizeUserInput(body.issuer, 120) : undefined,
+            issueDate: body.issueDate ? new Date(body.issueDate) : body.issueDate === null ? null : undefined,
+          },
+        );
+        return { success: true, data: { document: doc } };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed";
+        set.status = msg.startsWith("FORBIDDEN") ? 403 : msg.startsWith("NOT_FOUND") ? 404 : msg.startsWith("DOCUMENT_LOCKED") ? 409 : 400;
+        return { success: false, error: msg.replace(/^[A-Z_]+:/, ""), code: msg.split(":")[0] };
+      }
+    },
+    {
+      params: t.Object({ documentId: t.String() }),
+      body: t.Object({
+        expiryDate: t.Optional(t.Union([t.String(), t.Null()])),
+        issuer: t.Optional(t.String()),
+        issueDate: t.Optional(t.Union([t.String(), t.Null()])),
+      }),
+    },
+  )
+  .post(
+    "/me/documents",
+    async ({ requireProvider, requireAuth, body, set }) => {
+      const { providerId } = requireProvider();
+      const { userId } = requireAuth();
+      const { documentUploadService } = await import("../services/document-upload.service");
+      const { sanitizeUserInput } = await import("../utils/sanitizer");
+      try {
+        const base64 = body.file.includes(",") ? body.file.split(",")[1]! : body.file;
+        const buffer = Buffer.from(base64, "base64");
+        const result = await documentUploadService.uploadDocument(
+          providerId,
+          userId,
+          buffer,
+          sanitizeUserInput(body.fileName || `${body.documentType}.pdf`, 255),
+          sanitizeUserInput(body.documentType, 80),
+          {
+            expiryDate: body.expiryDate ? new Date(body.expiryDate) : null,
+            issuer: body.issuer ? sanitizeUserInput(body.issuer, 120) : null,
+            issueDate: body.issueDate ? new Date(body.issueDate) : null,
+          },
+        );
+        return { success: true, data: { documentId: result.documentId } };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Upload failed";
+        set.status = msg.startsWith("FORBIDDEN") ? 403 : 400;
+        return { success: false, error: msg.replace(/^[A-Z_]+:/, ""), code: "UPLOAD_FAILED" };
+      }
+    },
+    {
+      body: t.Object({
+        file: t.String(),
+        documentType: t.String(),
+        fileName: t.Optional(t.String()),
+        expiryDate: t.Optional(t.String()),
+        issuer: t.Optional(t.String()),
+        issueDate: t.Optional(t.String()),
+      }),
+    },
+  )
   .post(
     "/search",
     async ({ body: raw }) => {
@@ -360,10 +862,28 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
       }),
     },
   )
-  .get("/nearby", async ({ query }) => {
+  .get("/nearby", async ({ query, set }) => {
+    // Validated here because the service builds a bounding box from these, and `Number(undefined)`
+    // is NaN: a request with no or malformed coordinates reached Prisma as `lte: NaN` and came back
+    // as a 500 carrying the Prisma invocation text. This route is public, so that was the most
+    // exposed 500 in the API. Found in Pass 6 by the authenticated GET sweep.
+    const latitude = Number(query.latitude);
+    const longitude = Number(query.longitude);
+    if (
+      query.latitude === undefined || query.longitude === undefined ||
+      !Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+      Math.abs(latitude) > 90 || Math.abs(longitude) > 180
+    ) {
+      set.status = 400;
+      return {
+        success: false,
+        error: "latitude and longitude are required and must be valid coordinates",
+        code: "VALIDATION_ERROR",
+      };
+    }
     const data = await providerService.nearby({
-      latitude: Number(query.latitude),
-      longitude: Number(query.longitude),
+      latitude,
+      longitude,
       radius: query.radius ? Number(query.radius) : undefined,
       serviceId: query.serviceId,
       limit: query.limit ? Number(query.limit) : undefined,
@@ -374,12 +894,20 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
     const data = await providerService.reviews(params.id, query as Record<string, string>);
     return { success: true, data };
   })
-  .get("/:id/availability", async ({ params, query }) => {
-    const data = await providerService.availability(
-      params.id,
-      String(query.date),
-      String(query.serviceId),
-    );
+  // Public by design (customers browse before signing in) — the payload is therefore limited to
+  // what a booking decision needs; operational counters stay behind the partner's own session.
+  .get("/:id/availability", async ({ params, query, set }) => {
+    const date = typeof query.date === "string" ? query.date : "";
+    const serviceId = typeof query.serviceId === "string" ? query.serviceId : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(new Date(`${date}T00:00:00`).getTime())) {
+      set.status = 400;
+      return { success: false, error: "date must be YYYY-MM-DD", code: "INVALID_DATE" };
+    }
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(serviceId)) {
+      set.status = 400;
+      return { success: false, error: "serviceId is required", code: "INVALID_SERVICE_ID" };
+    }
+    const data = await providerService.availability(params.id, date, serviceId);
     return { success: true, data };
   })
   .get("/:id", async ({ params, set }) => {
@@ -402,6 +930,10 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
         description: body.description,
         couponCode: body.couponCode,
         packagePrice: body.packagePrice,
+        variantId: body.variantId,
+        quantity: body.quantity,
+        audience: body.audience,
+        professionalPreference: body.professionalPreference,
         addonIds: body.addonIds,
         paymentMethod: body.paymentMethod,
       });
@@ -413,6 +945,12 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
         set.status = 409;
         return { success: false, error: "You have an overlapping booking", code: "OVERLAPPING_BOOKING" };
       }
+      // Any other rejection (invalid selection, coupon, validation) is a client error —
+      // it used to fall through as 201 "success" with the error inside data.
+      if (result.error) {
+        set.status = result.error === "UPGRADE_REQUIRED" ? 403 : 400;
+        return { success: false, error: "Booking could not be created", code: result.error };
+      }
       set.status = 201;
       return { success: true, data: result };
     },
@@ -422,6 +960,10 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
         scheduledDate: t.String(),
         couponCode: t.Optional(t.String()),
         packagePrice: t.Optional(t.Number()),
+        variantId: t.Optional(t.String()),
+        quantity: t.Optional(t.Number()),
+        audience: t.Optional(t.String()),
+        professionalPreference: t.Optional(t.String()),
         addonIds: t.Optional(t.Array(t.String())),
         paymentMethod: t.Optional(t.String()),
         addressId: t.String(),

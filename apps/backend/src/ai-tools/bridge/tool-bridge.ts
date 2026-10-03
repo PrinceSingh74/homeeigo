@@ -1,5 +1,4 @@
 import type { AiGatewayRole } from "@prisma/client";
-import type { AiIntent } from "../../ai/intent/intent-classifier";
 import type { AiMessage, AiProviderResponse, ProviderToolCall } from "../../ai/types";
 import { getAvailableAiTools, toProviderToolSchemas, fromProviderToolName } from "../registry/tool-discovery";
 import { getTool } from "../registry/tool-registry";
@@ -48,7 +47,7 @@ export type ToolBridgeResult = {
 
 export type ToolBridgeInput = {
   actor: ToolActorContext;
-  intent?: AiIntent;
+  intent?: string;
   systemPrompt: string;
   messages: AiMessage[];
   maxTokens?: number;

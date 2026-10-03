@@ -26,7 +26,11 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
             },
           },
           mutations: {
-            retry: 1,
+            // Never auto-replay an admin mutation. This console issues refunds, payouts and price
+            // changes; a retried request after a lost response can apply twice, and replaying a
+            // 400/409 only repeats the rejection (it doubled every failed service save). The admin
+            // retries deliberately after reading the error.
+            retry: 0,
             networkMode: "online",
           },
         },

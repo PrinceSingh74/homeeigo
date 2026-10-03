@@ -2,12 +2,15 @@
  * Release blocker elimination — PostgreSQL + production services.
  */
 import "../load-env";
+import { provenanceForNewUser } from "../lib/data-provenance";
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { WalletTxnStatus } from "@prisma/client";
 import {
   prisma,
   dbReachable,
   seedAdversarialFixtures,
+  heartbeatFresh,
+  keepPresenceFresh,
   cleanupAdversarialFixtures,
   deleteBookingsForUsers,
   fixturePhone,
@@ -15,24 +18,43 @@ import {
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { bookingService } from "../services/booking.service";
+import { sumCounterWhere } from "../lib/metrics";
 import { walletService } from "../services/wallet.service";
 import { financialLedgerService } from "../services/financial-ledger.service";
 
 const RUN_ID = `rbe-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
 let dbOk = false;
+const savedNodeEnv = process.env.NODE_ENV;
 
 beforeAll(async () => {
-  process.env.NODE_ENV = "development";
   dbOk = await dbReachable();
   if (!dbOk) return;
   ctx = await seedAdversarialFixtures(RUN_ID);
-});
+  /**
+   * Warm-up (2026-09-26): one direct-assign create outside any test budget. The first create of a
+   * process pays module init, engine warm-up, the to_regclass probes and the first capability
+   * gate-context load (Phase 11); with that cold-start inside the FIRST concurrency test's 60s
+   * budget, the 50-way race timed out and its still-running leaked promises then starved every
+   * later test in this serial suite. The suite certifies ATOMICITY (one success, no duplicates),
+   * not cold-start latency, so steady state is the right thing to measure.
+   */
+  await heartbeatFresh(ctx);
+  const warm = await bookingService.create(ctx.customerA.id, {
+    serviceId: ctx.serviceId,
+    providerId: ctx.providerId,
+    scheduledDate: futureSlot(40).toISOString(),
+    addressId: ctx.addressAId,
+  });
+  if ("booking" in warm && warm.booking) {
+    await prisma.booking.delete({ where: { id: warm.booking.id } }).catch(() => undefined);
+  }
+}, 120_000);
 
 afterAll(async () => {
   if (dbOk) await cleanupAdversarialFixtures(RUN_ID);
-  await prisma.$disconnect();
-});
+  process.env.NODE_ENV = savedNodeEnv;
+}, 60_000);
 
 function skipIfNoDb() {
   if (!dbOk) {
@@ -47,6 +69,7 @@ async function seedCustomers(count: number, tag: string) {
     Array.from({ length: count }, async (_, i) => {
       const user = await prisma.user.create({
         data: {
+          ...provenanceForNewUser(`adv-${RUN_ID}-${tag}-${i}@adv.test`),
           email: `adv-${RUN_ID}-${tag}-${i}@adv.test`,
           phoneNumber: fixturePhone(RUN_ID, `race-${tag}-${i}`),
           firstName: "Race",
@@ -102,16 +125,36 @@ async function runConcurrentCreates(concurrency: number, slotOffset: number) {
   const slot = futureSlot(slotOffset);
   await cleanProviderSlot(ctx.providerId, slot);
   const customers = await seedCustomers(concurrency, `c${concurrency}-${slotOffset}`);
-  const results = await Promise.all(
-    customers.map((c) =>
-      bookingService.create(c.userId, {
-        serviceId: ctx.serviceId,
-        providerId: ctx.providerId,
-        scheduledDate: slot.toISOString(),
-        addressId: c.addressId,
-      }),
-    ),
-  );
+  // Seeding N users can outlast PRESENCE_FRESH_SEC; refresh presence right before the race.
+  await heartbeatFresh(ctx);
+  // …and keep it live DURING the race, as the partner's app would (it heartbeats every ~25 s).
+  // A direct assignment requires live presence (assertOfferEligible, livePresenceRequired defaults
+  // on), and a 500-way burst on the 5-connection test pool drains every create's pre-transaction
+  // validation before the first transaction starts: measured 20–24 s, over 30 s under suite load.
+  // With one heartbeat the presence expired mid-race and EVERY create — the winner included — was
+  // refused STALE_PRESENCE, reported as "0 successes" (reproduced 2026-09-30 with
+  // PRESENCE_FRESH_SEC=10: 500/500 STALE_PRESENCE). 8 s stays inside the heartbeat rate limit.
+  const stalePresenceBefore = sumCounterWhere("direct_assignment_rejections", "STALE_PRESENCE");
+  const keepAlive = setInterval(() => {
+    void heartbeatFresh(ctx).catch(() => undefined);
+  }, 8_000);
+  let results: Awaited<ReturnType<typeof bookingService.create>>[];
+  try {
+    results = await Promise.all(
+      customers.map((c) =>
+        bookingService.create(c.userId, {
+          serviceId: ctx.serviceId,
+          providerId: ctx.providerId,
+          scheduledDate: slot.toISOString(),
+          addressId: c.addressId,
+        }),
+      ),
+    );
+  } finally {
+    clearInterval(keepAlive);
+  }
+  const stalePresenceRejections =
+    sumCounterWhere("direct_assignment_rejections", "STALE_PRESENCE") - stalePresenceBefore;
   const successes = results.filter((r) => "booking" in r);
   const failures = results.filter((r) => "error" in r);
   const throws = results.filter((r) => r instanceof Error);
@@ -130,6 +173,7 @@ async function runConcurrentCreates(concurrency: number, slotOffset: number) {
     throwCount: throws.length,
     activeBookings: active,
     allFailuresProviderUnavailable: failures.every((f) => f.error === "PROVIDER_UNAVAILABLE"),
+    stalePresenceRejections,
   };
 }
 
@@ -147,6 +191,8 @@ describe.serial("Release blocker elimination", () => {
       async () => {
       if (skipIfNoDb()) return;
       const r = await runConcurrentCreates(n, createSlotHours[n]);
+      // A refusal for an expired fixture heartbeat is a harness failure, not a slot race: say so.
+      expect(r.stalePresenceRejections, "fixture presence expired during the race").toBe(0);
       expect(r.successCount).toBe(1);
       expect(r.activeBookings).toBe(1);
       expect(r.throwCount).toBe(0);
@@ -158,6 +204,7 @@ describe.serial("Release blocker elimination", () => {
 
   test("booking update rejects exact and buffer conflicts", async () => {
     if (skipIfNoDb()) return;
+    await heartbeatFresh(ctx);
 
     const baseSlot = futureSlot(140);
     const bookingA = await bookingService.create(ctx.customerA.id, {
@@ -196,6 +243,7 @@ describe.serial("Release blocker elimination", () => {
     "booking 50 concurrent updates — 1 success, 49 conflicts",
     async () => {
     if (skipIfNoDb()) return;
+    await heartbeatFresh(ctx);
 
     const targetSlot = futureSlot(150);
     await cleanProviderSlot(ctx.providerId, targetSlot);
@@ -208,6 +256,8 @@ describe.serial("Release blocker elimination", () => {
       const bookingIds: string[] = [];
 
       for (let i = 0; i < customers.length; i++) {
+        // 50 sequential creates after seeding 50 customers can outlast PRESENCE_FRESH_SEC.
+        await keepPresenceFresh(ctx);
         const created = await bookingService.create(customers[i]!.userId, {
           serviceId: ctx.serviceId,
           providerId: ctx.providerId,
@@ -218,6 +268,7 @@ describe.serial("Release blocker elimination", () => {
         bookingIds.push(created.booking!.id);
       }
 
+      await keepPresenceFresh(ctx);
       const results = await Promise.all(
         customers.map((c, i) =>
           bookingService.update(c.userId, bookingIds[i]!, {
@@ -246,6 +297,7 @@ describe.serial("Release blocker elimination", () => {
     "booking create vs update race — no duplicate active bookings",
     async () => {
     if (skipIfNoDb()) return;
+    await heartbeatFresh(ctx);
 
     const slot = futureSlot(160);
     await cleanProviderSlot(ctx.providerId, slot);
@@ -296,9 +348,11 @@ describe.serial("Release blocker elimination", () => {
 
   test("wallet top-up commits balance and ledger atomically", async () => {
     if (skipIfNoDb()) return;
+    await heartbeatFresh(ctx);
 
     const user = await prisma.user.create({
       data: {
+        ...provenanceForNewUser(`${RUN_ID}-wallet-ok@adv.test`),
         email: `${RUN_ID}-wallet-ok@adv.test`,
         phoneNumber: fixturePhone(RUN_ID, "wallet-ok"),
         firstName: "Wallet",
@@ -341,9 +395,11 @@ describe.serial("Release blocker elimination", () => {
 
   test("wallet ledger failure rolls back balance (no divergence)", async () => {
     if (skipIfNoDb()) return;
+    await heartbeatFresh(ctx);
 
     const user = await prisma.user.create({
       data: {
+        ...provenanceForNewUser(`${RUN_ID}-wallet-fail@adv.test`),
         email: `${RUN_ID}-wallet-fail@adv.test`,
         phoneNumber: fixturePhone(RUN_ID, "wallet-fail"),
         firstName: "Wallet",
@@ -396,9 +452,13 @@ describe.serial("Release blocker elimination", () => {
 
   test("wallet duplicate verify is idempotent — balance matches ledger", async () => {
     if (skipIfNoDb()) return;
+    // Presence is only a precondition here; heartbeatFresh after the preceding tests tripped the
+    // product heartbeat rate limit (429) before the wallet assertion ever ran.
+    await keepPresenceFresh(ctx);
 
     const user = await prisma.user.create({
       data: {
+        ...provenanceForNewUser(`${RUN_ID}-wallet-dup@adv.test`),
         email: `${RUN_ID}-wallet-dup@adv.test`,
         phoneNumber: fixturePhone(RUN_ID, "wallet-dup"),
         firstName: "Wallet",

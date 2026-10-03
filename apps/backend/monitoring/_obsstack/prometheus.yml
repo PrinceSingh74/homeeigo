@@ -11,11 +11,35 @@ alerting:
         - targets: ["alertmanager:9093"]
 
 scrape_configs:
+  # The backend runs on the Windows host, not in this compose network, so it is reached through
+  # host.docker.internal rather than a service name.
+  #
+  # The port was 3010. Nothing has ever listened on 3010 — the backend reads PORT from .env and runs
+  # on 3000 — so this target had been `down` with "connection refused" for as long as the stack has
+  # existed. That is worse than it sounds: a scrape target that never comes up means every rule built
+  # on a `homigo_*` series evaluates against no data and can never fire. On 2026-09-21 the stack was
+  # loading 114 alert rules, all of them healthy, all of them structurally incapable of firing —
+  # including every money-integrity alert and the refund-backlog alerts whose conditions were
+  # demonstrably true in the database at that moment.
+  #
+  # Fixing the rules without fixing this would have produced a monitoring system that looks complete
+  # on `/api/v1/rules` and watches nothing.
   - job_name: homigo-backend
     metrics_path: /metrics
     static_configs:
-      - targets: ["host.docker.internal:3010"]
+      - targets: ["host.docker.internal:3000"]
     relabel_configs:
       - source_labels: [__address__]
         target_label: instance
-        replacement: homigo-api-3010
+        replacement: homigo-api-3000
+
+  # NOTE: there is deliberately no scrape job for /ready.
+  #
+  # /ready returns application/json (an orchestrator probe), not Prometheus text format, so a scrape
+  # of it fails with "received unsupported Content-Type" on every attempt. A job pointed at it is a
+  # target that is permanently down — which is worse than no job, because it trains people to ignore
+  # target-down alerts, and target-down is exactly the signal that matters here: this stack scraped a
+  # nonexistent port for months and nobody noticed.
+  #
+  # If readiness needs to be alertable, the boot/integration checks in /ready have to be exposed as
+  # metrics on /metrics. That is an exposition change, not a scrape-config change.

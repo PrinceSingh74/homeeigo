@@ -1,8 +1,9 @@
 import React, { useEffect } from "react";
 import { View, ActivityIndicator, StyleSheet, Pressable, Text } from "react-native";
-import { useRouter } from "expo-router";
+import { useNavigationContainerRef, useRouter } from "expo-router";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/useTheme";
+import { authGuardDecision, shouldNavigateToSignIn } from "@/lib/auth/guard-decision";
 
 type Props = {
   children: React.ReactNode;
@@ -11,16 +12,25 @@ type Props = {
 
 export function AuthGuard({ children, title = "Sign in required" }: Props) {
   const router = useRouter();
+  const navigationRef = useNavigationContainerRef();
   const { colors: c } = useTheme();
-  const { isAuthenticated, isInitializing } = useAuth();
+  const { isAuthenticated, status } = useAuth();
+  const decision = authGuardDecision(status, isAuthenticated);
 
   useEffect(() => {
-    if (!isInitializing && !isAuthenticated) {
-      router.push("/login");
-    }
-  }, [isAuthenticated, isInitializing, router]);
+    if (decision !== "sign_in") return;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const attempt = () => {
+      // On a cold start the container becomes ready within the first frames; readiness is not
+      // observable as state, so check again shortly rather than navigate early.
+      if (shouldNavigateToSignIn(decision, navigationRef.isReady())) router.push("/login");
+      else retry = setTimeout(attempt, 50);
+    };
+    attempt();
+    return () => clearTimeout(retry);
+  }, [decision, navigationRef, router]);
 
-  if (isInitializing) {
+  if (decision === "wait") {
     return (
       <View style={[styles.center, { backgroundColor: c.bg }]}>
         <ActivityIndicator size="large" color={c.primary} />

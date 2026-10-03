@@ -1,4 +1,5 @@
 import { getDeviceId, getDeviceName } from "@/lib/auth/device";
+import { AuthApiError } from "@/lib/auth/errors";
 import { consumePendingReferralCode } from "@/lib/auth/pending-referral";
 import { getFraudBodyFields } from "@/lib/fraud/signals";
 import type {
@@ -8,6 +9,13 @@ import type {
   PendingRegistration,
 } from "@/types/auth";
 import { apiRequest } from "./api-client";
+
+export type SendOtpPayload = {
+  expiresIn: number;
+  attemptsRemaining: number;
+  smsSent?: boolean;
+  devOtp?: string;
+};
 
 export interface DeviceSession {
   id: string;
@@ -36,15 +44,11 @@ function sanitizeUser(raw: Record<string, unknown>): AuthUser {
   return user as AuthUser;
 }
 
-function mapSession(data: {
-  user: Record<string, unknown>;
-  accessToken: string;
-  refreshToken: string;
-}): AuthSessionPayload {
+function mapSession(data: { user: Record<string, unknown>; accessToken: string }): AuthSessionPayload {
+  // No refreshToken: for a declared web audience the API keeps it in the HttpOnly cookie.
   return {
     user: sanitizeUser(data.user),
     accessToken: data.accessToken,
-    refreshToken: data.refreshToken,
   };
 }
 
@@ -57,7 +61,6 @@ export const authApi = {
         password,
         deviceId: getDeviceId(),
         deviceName: getDeviceName(),
-        setAuthCookies: false,
       },
     }).then((res) => mapSession(res.data!));
   },
@@ -70,37 +73,29 @@ export const authApi = {
         deviceId: getDeviceId(),
         deviceName: getDeviceName(),
         ...getFraudBodyFields(),
-        setAuthCookies: false,
       },
     }).then((res) => mapSession(res.data!));
   },
 
-  logout(refreshToken: string) {
+  logout() {
+    // The API reads the refresh cookie, revokes that session and clears the cookie.
     return apiRequest<ApiResponse<unknown>>("/api/auth/logout", {
       method: "POST",
       auth: true,
-      body: { refreshToken, clearAuthCookies: true },
+      body: {},
     });
   },
 
-  refresh(refreshToken: string) {
-    return apiRequest<ApiResponse<{ accessToken: string; refreshToken: string }>>(
-      "/api/auth/refresh",
-      {
-        method: "POST",
-        skipRefresh: true,
-        body: {
-          refreshToken,
-          deviceId: getDeviceId(),
-          deviceName: getDeviceName(),
-          setAuthCookies: false,
-        },
-      },
-    ).then((res) => res.data!);
+  refresh() {
+    return apiRequest<ApiResponse<{ accessToken: string }>>("/api/auth/refresh", {
+      method: "POST",
+      skipRefresh: true,
+      body: { deviceId: getDeviceId(), deviceName: getDeviceName() },
+    }).then((res) => res.data!);
   },
 
   sendOtp(phoneNumber: string, userId?: string) {
-    return apiRequest<ApiResponse<unknown>>("/api/auth/send-otp", {
+    return apiRequest<ApiResponse<SendOtpPayload>>("/api/auth/send-otp", {
       method: "POST",
       body: { phoneNumber, userId },
     });
@@ -110,6 +105,29 @@ export const authApi = {
     return apiRequest<ApiResponse<unknown>>("/api/auth/verify-otp", {
       method: "POST",
       body: { phoneNumber, otp, userId },
+    });
+  },
+
+  verifyOtpSession(phoneNumber: string, otp: string) {
+    return apiRequest<ApiResponse<AuthSessionPayload>>("/api/auth/verify-otp", {
+      method: "POST",
+      body: {
+        phoneNumber,
+        otp,
+        login: true,
+        deviceId: getDeviceId(),
+        deviceName: getDeviceName(),
+      },
+    }).then((res) => {
+      const data = res.data;
+      if (!data?.accessToken || !data.user) {
+        throw new AuthApiError(
+          "OTP verified but no session was issued. Please try again.",
+          500,
+          "INTERNAL_ERROR",
+        );
+      }
+      return mapSession(data);
     });
   },
 
@@ -199,7 +217,6 @@ export const authApi = {
         deviceId: getDeviceId(),
         ...getFraudBodyFields(),
         referralCode,
-        setAuthCookies: false,
       },
     }).then((res) => mapSession(res.data!));
   },
@@ -227,7 +244,6 @@ export const authApi = {
         deviceId: getDeviceId(),
         ...getFraudBodyFields(),
         referralCode,
-        setAuthCookies: false,
       },
     }).then((res) => mapSession(res.data!));
   },

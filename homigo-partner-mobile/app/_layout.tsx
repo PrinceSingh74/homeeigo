@@ -1,3 +1,6 @@
+// Defines the background-location TaskManager task at module scope. Must load before React renders
+// so an OS-initiated (headless) start finds the task. See src/lib/background-location.ts.
+import "@/lib/background-location";
 import { LogBox } from "react-native";
 import { Stack, router } from "expo-router";
 import { useEffect } from "react";
@@ -6,7 +9,10 @@ import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AppProviders } from "@/providers/AppProviders";
 import { useAuthStore } from "@/stores/auth-store";
+import { usePartnerPresenceHeartbeat } from "@/hooks/use-partner-presence-heartbeat";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
+import { usePartnerRealtime } from "@/hooks/use-partner-realtime";
+import { useBackgroundLocationController } from "@/hooks/use-background-location-controller";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { initSentry, setSentryUser } from "@/lib/observability/sentry";
 
@@ -33,6 +39,11 @@ function AuthBootstrap() {
   // Registers/refreshes the Expo push token once authenticated and routes notification taps.
   // No-ops safely in Expo Go and when permission is declined.
   usePushNotifications();
+  usePartnerPresenceHeartbeat();
+  // `/ws/notifications`: pushes offers / transitions / wallet events into the query cache.
+  usePartnerRealtime();
+  // Background GPS while online or on an active job (only with "Always" permission).
+  useBackgroundLocationController();
   useEffect(() => {
     const run = () => {
       void bootstrap();

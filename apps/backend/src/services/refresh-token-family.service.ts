@@ -63,7 +63,7 @@ class RefreshTokenFamilyService {
 
     await tokenRevocationService.bumpAuthEpoch(userId);
 
-    void notificationService.createForUser({
+    void notificationService.createForUserDetached({
       userId,
       type: "SYSTEM",
       title: "Security alert",

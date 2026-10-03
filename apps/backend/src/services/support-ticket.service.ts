@@ -1,8 +1,12 @@
+import { randomInt } from "node:crypto";
 import { Prisma, SupportPriorityLevel, SupportTicketStatus } from "@prisma/client";
 import prisma from "../lib/prisma";
+import { isRetryablePrismaError } from "../lib/prisma-errors";
 import { parsePagination } from "../lib/pagination";
 import { entitlementService } from "./entitlement.service";
 import { notificationService } from "./notification.service";
+import { emitInTransaction } from "../events/core/event-publisher";
+import { buildSupportTicketCreatedEvent } from "../events/catalog/support-ops.events";
 
 const SLA_MS: Record<SupportPriorityLevel, number> = {
   HIGH: 2 * 60 * 60 * 1000,
@@ -12,8 +16,66 @@ const SLA_MS: Record<SupportPriorityLevel, number> = {
 
 function nextTicketNumber(): string {
   const d = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const seq = Math.floor(Math.random() * 90000) + 10000;
+  // 900k/day space. Retrying P2002 *inside* an open Postgres transaction is a no-op:
+  // a unique violation aborts the txn, so the previous 8-attempt loop still failed soak.
+  const seq = randomInt(100_000, 1_000_000);
   return `TKT-${d}-${seq}`;
+}
+
+function isTicketNumberConflict(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== "P2002") return false;
+  const target = err.meta?.target;
+  const fields = Array.isArray(target) ? target.map(String).join(",") : String(target ?? "");
+  return fields.length === 0 || /ticket_number|ticketNumber/i.test(fields);
+}
+
+async function createTicketRow(
+  tx: Prisma.TransactionClient,
+  data: Omit<Prisma.SupportTicketUncheckedCreateInput, "ticketNumber"> & { ticketNumber?: string },
+) {
+  return tx.supportTicket.create({
+    data: { ...data, ticketNumber: data.ticketNumber ?? nextTicketNumber() },
+  });
+}
+
+const TX_OPTS = { maxWait: 30_000, timeout: 45_000 };
+
+/** Max support-admin notifications per ticket event — prevents pool storms on large AdminUser tables. */
+export const SUPPORT_NOTIFY_CAP = 25;
+
+async function runTicketCreateTx<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      return await prisma.$transaction((tx) => fn(tx), TX_OPTS);
+    } catch (err) {
+      lastErr = err;
+      if (isTicketNumberConflict(err)) continue;
+      if (isRetryablePrismaError(err) && attempt < 7) {
+        await new Promise((r) => setTimeout(r, 5 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
+async function runRetryableTx<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      return await prisma.$transaction((tx) => fn(tx), TX_OPTS);
+    } catch (err) {
+      lastErr = err;
+      if (isRetryablePrismaError(err) && attempt < 7) {
+        await new Promise((r) => setTimeout(r, 5 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
 }
 
 function parsePriority(raw?: string): SupportPriorityLevel | null {
@@ -83,21 +145,18 @@ export class SupportTicketService {
     const slaDueAt = new Date(Date.now() + SLA_MS[priorityLevel]);
     const bookingId = await this.resolveBookingLink(body.bookingId, userId, ctx.providerId);
 
-    const ticket = await prisma.$transaction(async (tx) => {
-      const row = await tx.supportTicket.create({
-        data: {
-          ticketNumber: nextTicketNumber(),
-          userId,
-          providerId: ctx.providerId,
-          bookingId,
-          subject: body.subject,
-          description: body.description,
-          category: body.category,
-          priority: priorityLevel.toLowerCase(),
-          priorityLevel,
-          slaDueAt,
-          attachments: body.attachments ?? [],
-        },
+    const ticket = await runTicketCreateTx(async (tx) => {
+      const row = await createTicketRow(tx, {
+        userId,
+        providerId: ctx.providerId,
+        bookingId,
+        subject: body.subject,
+        description: body.description,
+        category: body.category,
+        priority: priorityLevel.toLowerCase(),
+        priorityLevel,
+        slaDueAt,
+        attachments: body.attachments ?? [],
       });
       await tx.supportTicketMessage.create({
         data: {
@@ -107,10 +166,39 @@ export class SupportTicketService {
           body: body.description,
         },
       });
+
+      /**
+       * Phase 16 — the ticket and its event are written in ONE transaction.
+       *
+       * Inside `runTicketCreateTx` deliberately. This helper retries on ticket-number conflicts
+       * and on retryable Prisma errors, re-running the whole closure each time — so emitting
+       * outside it would publish an event for a ticket that a later attempt replaced, and
+       * emitting after it would open a window where the ticket exists and the event does not.
+       * Here, a rolled-back attempt takes its outbox row with it and a retry writes a fresh
+       * event id for the row that actually survived.
+       *
+       * The payload carries ids and classification only — never the subject or description. See
+       * `support-ops.events.ts` for why that is not merely a size decision.
+       */
+      await emitInTransaction(
+        tx,
+        buildSupportTicketCreatedEvent({
+          ticketId: row.id,
+          ticketNumber: row.ticketNumber,
+          category: row.category,
+          priorityLevel: row.priorityLevel,
+          bookingId: row.bookingId,
+          providerId: ctx.providerId,
+          userId,
+          slaDueAt: row.slaDueAt,
+          createdAt: row.createdAt,
+        }),
+      );
+
       return row;
     });
 
-    void this.notifySupportAdmins(
+    await this.notifySupportAdmins(
       ticket,
       `New ${ctx.providerId ? "partner" : "customer"} ticket: ${body.subject.slice(0, 120)}`,
     );
@@ -243,7 +331,7 @@ export class SupportTicketService {
       return row;
     });
 
-    void this.notifySupportAdmins(
+    await this.notifySupportAdmins(
       ticket,
       `${authorRole === "partner" ? "Partner" : "Customer"} replied on ${ticket.ticketNumber}`,
     );
@@ -336,6 +424,13 @@ export class SupportTicketService {
     ticket: { id: string; ticketNumber: string },
     message: string,
   ) {
+    /**
+     * Cap fan-out. Unbounded findMany over every SUPER/SUPPORT admin ever seeded
+     * (measured 422+ rows on homigo_test after adversarial suites) turns each reply into
+     * hundreds of concurrent notification.create calls and exhausts connection_limit=8 (P2024).
+     * Prefer recently active admins; Alert Center / admin:ops WS remains the live queue signal.
+     * AdminUser has lastLogin only — never orderBy updatedAt (field does not exist).
+     */
     const admins = await prisma.adminUser.findMany({
       where: {
         isActive: true,
@@ -349,20 +444,22 @@ export class SupportTicketService {
         },
       },
       select: { userId: true },
+      orderBy: { lastLogin: "desc" },
+      take: SUPPORT_NOTIFY_CAP,
     });
 
-    await Promise.all(
-      admins.map((admin) =>
-        notificationService.createForUser({
-          userId: admin.userId,
-          type: "SYSTEM",
-          title: `Support queue — ${ticket.ticketNumber}`,
-          message,
-          referenceId: ticket.id,
-          referenceType: "support_ticket",
-        }),
-      ),
-    );
+    for (const admin of admins) {
+      // Detached: the ticket mutation is committed. A throw here 500'd the API, and the retry
+      // wrote a second ticket message plus a second 25-admin fan-out.
+      await notificationService.createForUserDetached({
+        userId: admin.userId,
+        type: "SYSTEM",
+        title: `Support queue — ${ticket.ticketNumber}`,
+        message,
+        referenceId: ticket.id,
+        referenceType: "support_ticket",
+      });
+    }
   }
 
   private async notifyTicketUpdate(ticket: {
@@ -373,7 +470,7 @@ export class SupportTicketService {
     subject: string;
   }, message: string) {
     if (ticket.userId) {
-      await notificationService.createForUser({
+      await notificationService.createForUserDetached({
         userId: ticket.userId,
         type: "SYSTEM",
         title: `Support update — ${ticket.ticketNumber}`,
@@ -388,7 +485,7 @@ export class SupportTicketService {
         select: { userId: true },
       });
       if (provider?.userId) {
-        await notificationService.createForUser({
+        await notificationService.createForUserDetached({
           userId: provider.userId,
           type: "SYSTEM",
           title: `Support update — ${ticket.ticketNumber}`,
@@ -408,7 +505,7 @@ export class SupportTicketService {
     const firstResponse = !ticket.firstResponseAt;
     const responseTimeMs = firstResponse ? now.getTime() - ticket.createdAt.getTime() : ticket.responseTimeMs;
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await runRetryableTx(async (tx) => {
       await tx.supportTicketMessage.create({
         data: {
           ticketId,
@@ -430,10 +527,12 @@ export class SupportTicketService {
       });
     });
 
+    // Await notifications so fire-and-forget cannot pile concurrent creates on the pool
+    // while the next adminRespond transaction starts (soak 4 / connection_limit=8).
     if (!isInternal) {
-      void this.notifyTicketUpdate(ticket, resolution.slice(0, 200));
+      await this.notifyTicketUpdate(ticket, resolution.slice(0, 200));
     }
-    void this.notifySupportAdmins(
+    await this.notifySupportAdmins(
       ticket,
       `Ticket ${ticket.ticketNumber} updated by support team`,
     );
@@ -470,8 +569,8 @@ export class SupportTicketService {
       });
     });
 
-    void this.notifyTicketUpdate(ticket, `Resolved: ${resolution.slice(0, 160)}`);
-    void this.notifySupportAdmins(ticket, `Ticket ${ticket.ticketNumber} resolved`);
+    await this.notifyTicketUpdate(ticket, `Resolved: ${resolution.slice(0, 160)}`);
+    await this.notifySupportAdmins(ticket, `Ticket ${ticket.ticketNumber} resolved`);
     return updated;
   }
 
@@ -479,7 +578,7 @@ export class SupportTicketService {
     const ticket = await prisma.supportTicket.findUnique({ where: { id: ticketId } });
     if (!ticket) return null;
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await runRetryableTx(async (tx) => {
       if (note?.trim()) {
         await tx.supportTicketMessage.create({
           data: {
@@ -505,11 +604,11 @@ export class SupportTicketService {
       });
     });
 
-    void this.notifyTicketUpdate(
+    await this.notifyTicketUpdate(
       ticket,
       `Your ticket ${ticket.ticketNumber} has been escalated to high priority.`,
     );
-    void this.notifySupportAdmins(ticket, `Escalated to HIGH — ${ticket.ticketNumber}`);
+    await this.notifySupportAdmins(ticket, `Escalated to HIGH — ${ticket.ticketNumber}`);
     return updated;
   }
 
@@ -554,11 +653,11 @@ export class SupportTicketService {
       });
     });
 
-    void this.notifyTicketUpdate(
+    await this.notifyTicketUpdate(
       primary,
       `Ticket ${duplicate.ticketNumber} was merged into ${primary.ticketNumber}.`,
     );
-    void this.notifySupportAdmins(primary, `Merged ${duplicate.ticketNumber} → ${primary.ticketNumber}`);
+    await this.notifySupportAdmins(primary, `Merged ${duplicate.ticketNumber} → ${primary.ticketNumber}`);
 
     return { ok: true as const, primaryId };
   }

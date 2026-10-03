@@ -43,7 +43,7 @@ export function AccountSummaryStrip() {
           </p>
           <Link
             href={bookUrl({})}
-            className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-[linear-gradient(120deg,#10b981_0%,#0d9488_100%)] px-3 py-2 text-xs font-semibold text-white shadow-[0_8px_20px_-8px_rgb(16_185_129/0.5)] transition hover:-translate-y-0.5 sm:text-sm"
+            className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-brand-gradient px-3 py-2 text-xs font-semibold text-white shadow-[0_8px_20px_-8px_rgb(16_185_129/0.5)] transition hover:-translate-y-0.5 sm:text-sm"
           >
             <Sparkles size={14} />
             Book a service
@@ -55,11 +55,11 @@ export function AccountSummaryStrip() {
             href="/bookings"
             className="group flex items-center gap-3 rounded-xl border border-line bg-surface/60 p-3 transition hover:border-emerald-500/40 sm:p-4"
           >
-            <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-emerald-500/15 to-teal-500/15 text-emerald-600 dark:text-emerald-400">
+            <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-emerald-500/15 to-teal-500/15 text-brand">
               <CalendarClock size={18} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[11px] font-medium text-muted">Active bookings</span>
+              <span className="block text-xs font-medium text-muted">Active bookings</span>
               <span className="block font-display text-lg font-bold text-content">
                 {bookingsLoading ? "—" : activeBookings}
               </span>
@@ -71,11 +71,11 @@ export function AccountSummaryStrip() {
             href="/wallet"
             className="group flex items-center gap-3 rounded-xl border border-line bg-surface/60 p-3 transition hover:border-emerald-500/40 sm:p-4"
           >
-            <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-teal-500/15 to-emerald-500/15 text-teal-600 dark:text-teal-400">
+            <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-teal-500/15 to-emerald-500/15 text-brand">
               <Wallet size={18} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[11px] font-medium text-muted">Wallet balance</span>
+              <span className="block text-xs font-medium text-muted">Wallet balance</span>
               <span className="block font-display text-lg font-bold text-content">
                 {walletLoading
                   ? "—"

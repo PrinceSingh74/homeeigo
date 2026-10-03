@@ -1,3 +1,4 @@
+import { devAffordancesAllowed } from "../lib/deployed-environment";
 import { Prisma } from "@prisma/client";
 import { Elysia } from "elysia";
 import { errorResponse } from "../lib/api-response";
@@ -8,6 +9,7 @@ import { observability } from "../lib/observability";
 import { AppError, RateLimitError } from "../lib/app-error";
 import { isPrismaPoolTimeout, isPrismaConcurrencyError, mapPrismaKnownError, mapDomainError } from "../lib/prisma-errors";
 import { resolveRequestId } from "./request-context.middleware";
+import { connectionFailureCode } from "../lib/connection-errors";
 
 /** Best-effort extraction of field-level details from an Elysia validation error. */
 function extractElysiaValidationDetails(error: unknown): FieldError[] {
@@ -26,16 +28,29 @@ function isDatabaseError(error: unknown): boolean {
     return ["P1000", "P1001", "P1002", "P1017"].includes(error.code);
   }
   if (error instanceof Prisma.PrismaClientInitializationError) return true;
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    return (
-      msg.includes("database") ||
-      msg.includes("postgres") ||
-      msg.includes("prisma") ||
-      msg.includes("connect econnrefused")
-    );
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  // Connection / reachability only — do NOT treat every Prisma query error as
+  // "database unreachable" (that masked real accept/capacity/constraint failures).
+  // Prisma's own wording identifies the database even when the error was re-thrown as a plain Error.
+  if (
+    msg.includes("can't reach database") ||
+    msg.includes("cannot reach database") ||
+    msg.includes("database server") ||
+    msg.includes("server has closed the connection") ||
+    (msg.includes("postgres") && msg.includes("connect"))
+  ) {
+    return true;
   }
-  return false;
+  // A bare refused / timed-out connection names no dependency. It counts as the database only when
+  // Prisma raised it; from anything else (warehouse, Redis, an HTTP upstream) it used to be answered
+  // "Database is not reachable. Start Docker…" and paged as a fatal database event (X-87).
+  const prismaRaised =
+    error instanceof Prisma.PrismaClientUnknownRequestError || error instanceof Prisma.PrismaClientRustPanicError;
+  return (
+    prismaRaised &&
+    (msg.includes("connect econnrefused") || msg.includes("connection refused") || msg.includes("connection timed out"))
+  );
 }
 
 export const errorMiddleware = new Elysia({ name: "error-middleware" }).onError(
@@ -218,6 +233,28 @@ export const errorMiddleware = new Elysia({ name: "error-middleware" }).onError(
     );
   }
 
+  // Some other dependency could not be reached (X-87). Still a 503 — the request did not fail
+  // because of anything the caller sent — but it names no dependency and is not a database event.
+  const connectionCode = connectionFailureCode(error);
+  if (connectionCode) {
+    set.status = 503;
+    logger.warn("dependency_unreachable", {
+      requestId,
+      path,
+      connectionCode,
+      error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200),
+    });
+    observability.captureException(error, {
+      requestId,
+      path,
+      method: request.method,
+      code: "SERVICE_UNAVAILABLE",
+      category: "integration",
+      level: "error",
+    });
+    return errorResponse("A required service is temporarily unavailable.", "SERVICE_UNAVAILABLE", { requestId });
+  }
+
   set.status = 500;
   const raw = error instanceof Error ? error.message : "An error occurred. Please try again later.";
   logger.error("unhandled error", {
@@ -236,8 +273,14 @@ export const errorMiddleware = new Elysia({ name: "error-middleware" }).onError(
     code: String(code),
     level: "error",
   });
+  // The raw message goes back only on a developer machine. It used to be gated on
+  // `NODE_ENV === "production"`, and `.env.staging` ships NODE_ENV=development — so on staging every
+  // unhandled 500 returned the underlying error to the caller. Measured on 2026-09-21: an
+  // unauthenticated POST /api/auth/login answered with the Prisma invocation text, the absolute
+  // source path of user-pii.service.ts and an excerpt of its code. The full detail is still logged
+  // and sent to Sentry above; only the response is reduced.
   return errorResponse(
-    process.env.NODE_ENV === "production" ? "Internal server error" : raw,
+    devAffordancesAllowed() ? raw : "Internal server error",
     "INTERNAL_ERROR",
     { requestId },
   );

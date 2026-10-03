@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { useServicesQuery, useFeaturedServicesQuery } from "@/hooks/use-core-data";
+import { useServicesQuery, useFeaturedServicesQuery, useServiceDetailQuery } from "@/hooks/use-core-data";
 import { mapBackendServices } from "@/lib/service-mapper";
+import { findServiceIndex, isServiceId, withRequestedService } from "@/lib/requested-service";
 import type { Service } from "@/lib/services";
 import {
   loadCatalogCache,
@@ -35,6 +36,30 @@ export function useCatalogServices() {
     isFromApi: Boolean(query.data?.services?.length),
     isFromCache: !query.data?.services?.length && Boolean(cached?.length),
     error: query.error,
+  };
+}
+
+/**
+ * The catalogue page plus the service a caller asked for, fetched on its own when it is not in that
+ * page (lib/requested-service.ts). `requestedMissing` means the request could not be resolved at
+ * all — the screen must say so rather than quietly offer another service.
+ */
+export function useBookableServices(requested: string | null) {
+  const catalog = useCatalogServices();
+  const inPage = !requested || findServiceIndex(catalog.services, requested) >= 0;
+  const lookupWanted = Boolean(requested) && !catalog.isLoading && !inPage && isServiceId(requested ?? "");
+  const lookup = useServiceDetailQuery(lookupWanted ? requested : null);
+
+  const services = useMemo(() => {
+    const fetched = lookup.data?.service ? mapBackendServices([lookup.data.service])[0] : null;
+    return withRequestedService(catalog.services, fetched);
+  }, [catalog.services, lookup.data]);
+
+  const resolving = catalog.isLoading || (lookupWanted && lookup.isPending);
+  return {
+    services,
+    isLoading: resolving,
+    requestedMissing: Boolean(requested) && !resolving && findServiceIndex(services, requested ?? "") < 0,
   };
 }
 
@@ -77,11 +102,4 @@ export function useFeaturedCatalog(enabled = true) {
     isFromApi: Boolean(query.data?.services?.length),
     isFromCache: !query.data?.services?.length && Boolean(cachedFeatured?.length),
   };
-}
-
-export function getServiceIndexFromCatalog(services: Service[], idOrSlug: string): number {
-  const idx = services.findIndex(
-    (s) => s.id === idOrSlug || s.id.includes(idOrSlug) || s.name.toLowerCase().includes(idOrSlug.toLowerCase()),
-  );
-  return idx >= 0 ? idx : 0;
 }

@@ -1,0 +1,391 @@
+{
+  "uid": "homigo-agents",
+  "title": "21 — Phase 16 Governed Agents (Runs · Risk · Verification · Escalation)",
+  "tags": [
+    "homigo",
+    "enterprise",
+    "phase16",
+    "agents"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Agent live state",
+      "type": "stat",
+      "description": "1 = the agent would EXECUTE a run started now. Folds in all four conditions: layer enabled, kill switch, environment allowlist and feature flag. A flag-only view would read 1 for an agent the kill switch has stopped.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "SHADOW/OFF",
+                  "color": "blue"
+                },
+                "1": {
+                  "text": "LIVE",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "homigo_agent_live",
+          "legendFormat": "{{agent_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Runs started/min by mode",
+      "type": "timeseries",
+      "description": "SHADOW runs plan and authorise without side effects. A sustained LIVE rate with no SHADOW is normal after rollout; SHADOW with no LIVE means the agents are observing only.",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(homigo_agent_runs_total[5m])) by (agent_id, mode) * 60",
+          "legendFormat": "{{agent_id}} {{mode}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Run outcomes/min",
+      "type": "timeseries",
+      "description": "ESCALATED is a DESIGNED outcome, not a failure — it means work was handed to a human. Judge it against the risk mix, not against zero.",
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(homigo_agent_run_outcome_total[5m])) by (status) * 60",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Post-condition verdicts/min",
+      "type": "timeseries",
+      "description": "The most important series on this board. FAILED means a tool reported SUCCESS while the world disagreed; UNKNOWN means the check could not be performed. Neither is visible in tool-layer metrics, where the call genuinely succeeded.",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(homigo_agent_verification_total[5m])) by (verdict) * 60",
+          "legendFormat": "{{verdict}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Step disposition/min (EXECUTE · SHADOW · ESCALATE)",
+      "type": "timeseries",
+      "description": "How each planned step was resolved, by risk tier. Every HIGH step must appear as ESCALATE; an EXECUTE at risk_tier=HIGH would be a control failure.",
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(homigo_agent_step_disposition_total[5m])) by (action, risk_tier) * 60",
+          "legendFormat": "{{action}} / {{risk_tier}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Plan rejections/min",
+      "type": "timeseries",
+      "description": "UNKNOWN_CAPABILITY is the series to alert on: a model asked for something outside its agent's vocabulary, which is what an attempted escalation looks like from the inside.",
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(homigo_agent_plan_rejected_total[5m])) by (agent_id, code) * 60",
+          "legendFormat": "{{agent_id}} {{code}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Admission refusals & loop prevention/min",
+      "type": "timeseries",
+      "description": "Recursion refusals should be zero in steady state. A non-zero rate means an agent is appearing twice in a causation chain — an agent→workflow→event→agent cycle.",
+      "gridPos": {
+        "x": 8,
+        "y": 11,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(homigo_agent_admission_refused_total[5m])) by (code) * 60",
+          "legendFormat": "refused {{code}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(homigo_agent_loop_prevented_total[5m])) by (kind) * 60",
+          "legendFormat": "loop {{kind}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Bounds hit/min",
+      "type": "timeseries",
+      "description": "MAX_STEPS, MAX_TOOL_CALLS, MAX_ELAPSED, BUDGET_EXHAUSTED, MAX_TOKENS. A rising rate means bounds are mis-sized or an agent is confused — both need a human, not a bigger bound.",
+      "gridPos": {
+        "x": 16,
+        "y": 11,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(homigo_agent_bound_hit_total[5m])) by (agent_id, bound) * 60",
+          "legendFormat": "{{agent_id}} {{bound}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Escalations to humans/min",
+      "type": "timeseries",
+      "description": "READ_ONLY_AGENT and HIGH_RISK_REQUIRES_HUMAN are the two that prove the finance/fraud and high-risk boundaries are being exercised rather than merely configured.",
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 12,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(homigo_agent_escalation_total[5m])) by (agent_id, reason) * 60",
+          "legendFormat": "{{agent_id}} {{reason}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Agent tool calls/min by outcome",
+      "type": "timeseries",
+      "description": "Joins this board to dashboard 20 (Enterprise AI Tools). Every call counted here also appears there, because agents execute through the same governed engine as every other caller.",
+      "gridPos": {
+        "x": 12,
+        "y": 17,
+        "w": 12,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(homigo_agent_tool_calls_total[5m])) by (agent_id, status) * 60",
+          "legendFormat": "{{agent_id}} {{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Run latency (p50 / p95)",
+      "type": "timeseries",
+      "description": "Seconds. Includes planning, which is dominated by provider latency and failover.",
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 12,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(homigo_agent_run_latency_seconds_bucket[5m])) by (le, agent_id))",
+          "legendFormat": "p50 {{agent_id}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(homigo_agent_run_latency_seconds_bucket[5m])) by (le, agent_id))",
+          "legendFormat": "p95 {{agent_id}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Inference cost & tokens",
+      "type": "timeseries",
+      "description": "Cost is reported by the AI gateway's own accounting; the agent layer adds no second budget engine. A per-run ceiling stops a run before this can run away.",
+      "gridPos": {
+        "x": 12,
+        "y": 23,
+        "w": 12,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(homigo_agent_cost_usd_total[5m])) by (agent_id) * 3600",
+          "legendFormat": "USD/hr {{agent_id}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(homigo_agent_tokens_total[5m])) by (kind) * 60",
+          "legendFormat": "tokens/min {{kind}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Duplicate triggers suppressed & orphans recovered/min",
+      "type": "timeseries",
+      "description": "Duplicate suppression proves event idempotency is doing work. Recovered orphans indicate processes dying mid-run — a sustained non-zero rate is an infrastructure problem, not an agent one.",
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 24,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(homigo_agent_duplicate_suppressed_total[5m])) by (agent_id, trigger) * 60",
+          "legendFormat": "dup {{agent_id}}/{{trigger}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(homigo_agent_recovered_total[5m])) by (agent_id, action) * 60",
+          "legendFormat": "recovered {{agent_id}}/{{action}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "Plans accepted/min & mean plan length",
+      "type": "timeseries",
+      "description": "Mean plan length is the ratio of summed steps to accepted plans. A histogram would be wrong here: observeHist buckets by DURATION, so a 3-step plan would be filed as '3 seconds' and every plan would pile into one bucket.",
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 24,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(homigo_agent_plan_accepted_total[5m])) by (agent_id, risk_tier) * 60",
+          "legendFormat": "accepted {{agent_id}}/{{risk_tier}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(homigo_agent_plan_steps_total[5m])) by (agent_id) / clamp_min(sum(rate(homigo_agent_plan_accepted_total[5m])) by (agent_id), 0.0001)",
+          "legendFormat": "mean steps {{agent_id}}",
+          "refId": "B"
+        }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/buttons/Button";
 import { ImageDropzone } from "@/components/upload/ImageDropzone";
 import { useImageUpload } from "@/hooks/use-image-upload";
+import { AuthApiError } from "@/lib/auth/errors";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/app-store";
 import {
@@ -133,8 +134,16 @@ export function RatingModal({
       }
       showToast(isEditing ? "Review updated" : "Thanks for your review!", "success");
       onClose();
-    } catch {
+    } catch (err) {
       // Never let the error bubble to the dev overlay — show a friendly toast instead.
+      const code = err instanceof AuthApiError ? err.code : undefined;
+      if (code === "TIP_INSUFFICIENT_WALLET") {
+        showToast(
+          "Your wallet balance doesn't cover this tip. Add money to your wallet or lower the tip — your review wasn't saved yet.",
+          "error",
+        );
+        return;
+      }
       showToast("Could not submit your review. Please try again.", "error");
     }
   }

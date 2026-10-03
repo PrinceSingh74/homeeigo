@@ -146,12 +146,38 @@ function gapsFor(def: ServiceDef, cfg: PublicCatalogConfig | null): string[] {
 /* Build                                                               */
 /* ------------------------------------------------------------------ */
 
+/** https URL or a site-relative path. Icon-name tokens and unsafe schemes are not photos. */
+function customerMediaUrl(value: string | null | undefined): string | undefined {
+  const v = value?.trim();
+  if (!v) return undefined;
+  if (/^https:\/\/\S+$/i.test(v) || /^\/(?!\/)\S*$/.test(v)) return v;
+  return undefined;
+}
+
+function adminImage(backend?: BackendService): string | undefined {
+  const media = backend?.catalogConfig?.media;
+  return (
+    customerMediaUrl(media?.heroImage) ??
+    customerMediaUrl(backend?.thumbnail) ??
+    customerMediaUrl(backend?.icon) ??
+    customerMediaUrl(media?.gallery?.[0])
+  );
+}
+
+function adminVideo(backend?: BackendService): string | undefined {
+  const cfg = backend?.catalogConfig;
+  return customerMediaUrl(cfg?.media?.heroVideo) ?? customerMediaUrl(cfg?.video);
+}
+
 function imageFor(def: ServiceDef, backend?: BackendService): string | undefined {
+  // An explicit hero replaces the stock photo. The Offer form's Image URL is stored on `icon`.
+  const hero = customerMediaUrl(backend?.catalogConfig?.media?.heroImage);
+  if (hero) return hero;
   if (def.image) return def.image;
   const photo = matchServiceVisual(def.name)?.photo;
-  // Curated local art is one consistent, branded set — prefer it.
+  // Curated local art is one consistent, branded set — prefer it over a leftover thumbnail.
   if (photo?.startsWith("/")) return photo;
-  return backend?.thumbnail ?? photo ?? undefined;
+  return adminImage(backend) ?? photo ?? undefined;
 }
 
 function toView(def: ServiceDef, order: number, backend?: BackendService): ServiceView {
@@ -198,6 +224,7 @@ function toView(def: ServiceDef, order: number, backend?: BackendService): Servi
     price,
     durationMin: backend?.estimatedDuration || undefined,
     image: imageFor(def, backend),
+    video: adminVideo(backend),
     icon: def.icon ?? visual?.icon ?? cat.icon,
     tone: visual?.color ?? cat.tone,
     popular: Boolean(backend?.isPopular),

@@ -1,0 +1,2510 @@
+{
+  "note": "IMMUTABLE — the Phase 06 requirement content applied to homigo_db on 2026-09-22 (hash below). Used by apply-requirement-proposal.ts --supersedes to prove a service still holds exactly this content before replacing it. Never edit.",
+  "version": "2026-09-22.final",
+  "contentHash": "c19f8ab1ab12b5070465c7edcda4b20f9d6bc95b1b1b4d0acb0c61b305250b06",
+  "catalogue": [
+    {
+      "code": "cleaning-solutions",
+      "kind": "MATERIAL",
+      "name": "Professional cleaning solutions",
+      "customerLabel": "Cleaning products",
+      "description": "Category-level: all-purpose surface and floor cleaning products. No brand or formulation is specified. Also: cleaning liquid, cleaner, surface cleaner."
+    },
+    {
+      "code": "bathroom-descaler",
+      "kind": "MATERIAL",
+      "name": "Bathroom descaler and sanitiser",
+      "customerLabel": "Descaler and sanitiser",
+      "description": "Category-level: limescale removal and sanitising products for bathroom fittings and tiles. Also: descaling agent, toilet cleaner."
+    },
+    {
+      "code": "kitchen-degreaser",
+      "kind": "MATERIAL",
+      "name": "Kitchen degreaser",
+      "customerLabel": "Degreaser",
+      "description": "Category-level: grease removal for kitchen surfaces, cabinets, chimney exteriors and fan blades. Also: grease remover."
+    },
+    {
+      "code": "glass-cleaner",
+      "kind": "MATERIAL",
+      "name": "Glass cleaner",
+      "customerLabel": "Glass cleaner",
+      "description": "Category-level: streak-free glass and mirror cleaning product. Also: window cleaner."
+    },
+    {
+      "code": "upholstery-shampoo",
+      "kind": "MATERIAL",
+      "name": "Upholstery shampoo and fabric sanitiser",
+      "customerLabel": "Upholstery shampoo and sanitiser",
+      "description": "Fabric-safe cleaning and sanitising products for sofas and mattresses. Kept separate from carpet shampoo (different fabric handling). Also: sofa shampoo, fabric cleaner."
+    },
+    {
+      "code": "carpet-shampoo",
+      "kind": "MATERIAL",
+      "name": "Carpet shampoo and stain treatment",
+      "customerLabel": "Carpet shampoo and stain treatment",
+      "description": "Products used with the carpet shampooing machine, including spot/stain treatment. Also: rug shampoo."
+    },
+    {
+      "code": "laundry-detergent",
+      "kind": "MATERIAL",
+      "name": "Laundry detergent and fabric conditioner",
+      "customerLabel": "Detergent and conditioner",
+      "description": "Stated by the service description ('premium detergents'). No brand specified. Also: washing powder, softener."
+    },
+    {
+      "code": "garbage-bags",
+      "kind": "MATERIAL",
+      "name": "Garbage bags",
+      "customerLabel": "Garbage bags",
+      "description": "For post-event waste collection; disposal follows the building's normal waste route. Also: trash bags, bin liners."
+    },
+    {
+      "code": "car-care-products",
+      "kind": "MATERIAL",
+      "name": "Car shampoo, polish and interior cleaner",
+      "customerLabel": "Car shampoo, polish and interior cleaner",
+      "description": "Category-level products for exterior wash, polish and interior surfaces (service description). Also: car wash liquid, wax."
+    },
+    {
+      "code": "pest-treatment-products",
+      "kind": "MATERIAL",
+      "name": "Pest treatment products (applied as per label)",
+      "customerLabel": "Treatment products",
+      "description": "Category-level. Products are applied as per their label; no product, concentration or re-entry time is specified here — the professional advises per the product used. Also: pesticide, insecticide, termite treatment."
+    },
+    {
+      "code": "paint-and-primer",
+      "kind": "MATERIAL",
+      "name": "Paint, primer and putty",
+      "customerLabel": "Paint, primer and putty",
+      "description": "Customer-chosen brand and shade; not part of the fixed base price. Need and cost confirmed on site before use. Also: emulsion, wall paint."
+    },
+    {
+      "code": "masking-and-drop-sheets",
+      "kind": "MATERIAL",
+      "name": "Masking tape and drop sheets",
+      "customerLabel": "Masking tape and floor covers",
+      "description": "Protection of floors, fittings and furniture during painting. Also: floor covering, tarpaulin."
+    },
+    {
+      "code": "ac-coil-cleaner",
+      "kind": "MATERIAL",
+      "name": "AC coil cleaning solution",
+      "customerLabel": "Coil cleaning solution",
+      "description": "Category-level product for indoor/outdoor coil cleaning. Also: ac cleaner, foam cleaner."
+    },
+    {
+      "code": "ac-refrigerant-gas",
+      "kind": "MATERIAL",
+      "name": "Refrigerant gas (if a refill is needed)",
+      "customerLabel": "Refrigerant gas, if needed",
+      "description": "Only when the pressure check shows a refill is needed. Not part of the fixed base price; confirmed on site before use. Also: ac gas, gas refill, gas top-up."
+    },
+    {
+      "code": "spare-parts-and-fittings",
+      "kind": "MATERIAL",
+      "name": "Spare parts and fittings (as needed)",
+      "customerLabel": "Spare parts, if needed",
+      "description": "Any replacement part identified during diagnosis. Not part of the fixed base price; confirmed with the customer before use. Also: replacement parts, components, fittings."
+    },
+    {
+      "code": "fan-dust-covers",
+      "kind": "MATERIAL",
+      "name": "Fan dust covers",
+      "customerLabel": "Dust covers",
+      "description": "Stated by the service description ('no dust showers, we bring covers'). Also: dust sheets."
+    },
+    {
+      "code": "salon-products",
+      "kind": "MATERIAL",
+      "name": "Salon products and single-use disposables",
+      "customerLabel": "Salon products and disposables",
+      "description": "Category-level products and disposables for hair, grooming and beauty services. No brand specified; no audience-based variation. Also: beauty products, disposable towels."
+    },
+    {
+      "code": "food-safe-hygiene-kit",
+      "kind": "MATERIAL",
+      "name": "Food-safe gloves and hair cover",
+      "customerLabel": "Food-safe gloves and hair cover",
+      "description": "Personal hygiene items for food preparation ('hygienic, trained kitchen helper'). Also: gloves, hair net."
+    },
+    {
+      "code": "household-cleaning-supplies",
+      "kind": "MATERIAL",
+      "name": "Household cleaning supplies",
+      "customerLabel": "Your regular cleaning supplies",
+      "description": "Customer-provided: the floor cleaner, dusting spray and cloths already used in the home. Applies to helper-style home-help services (assumption A1). Also: floor cleaner, phenyl, cloths."
+    },
+    {
+      "code": "dishwashing-supplies",
+      "kind": "MATERIAL",
+      "name": "Dishwashing liquid and scrubber",
+      "customerLabel": "Dishwashing liquid and scrubber",
+      "description": "Customer-provided kitchen supplies for utensil washing. Also: dish soap, scrub pad."
+    },
+    {
+      "code": "ingredients-and-menu",
+      "kind": "MATERIAL",
+      "name": "Ingredients and the menu / recipes",
+      "customerLabel": "Ingredients and your menu",
+      "description": "Customer-provided: the food to be prepared and the instructions to follow. Also: groceries, recipe."
+    },
+    {
+      "code": "packing-material",
+      "kind": "MATERIAL",
+      "name": "Packing boxes, bubble wrap and tape",
+      "customerLabel": "Boxes, bubble wrap and tape",
+      "description": "Customer-provided packing consumables (assumption A3). Also: cartons, packing tape, wrap."
+    },
+    {
+      "code": "pot-and-potting-mix",
+      "kind": "MATERIAL",
+      "name": "Pot and potting mix (if you want repotting)",
+      "customerLabel": "Pot and potting mix, if you want repotting",
+      "description": "Customer-provided, optional: only if the customer wants a plant repotted (assumption A2). Also: soil, planter, fertiliser."
+    },
+    {
+      "code": "vacuum-cleaner",
+      "kind": "EQUIPMENT",
+      "name": "Vacuum cleaner",
+      "customerLabel": "Vacuum cleaner",
+      "description": "Standard dry vacuum for floors, upholstery and mattresses. Also: hoover."
+    },
+    {
+      "code": "mop-and-bucket",
+      "kind": "EQUIPMENT",
+      "name": "Mop and bucket",
+      "customerLabel": "Mop and bucket",
+      "description": "Professional mopping set for cleaning services (home-help services use the customer's tools — see household-cleaning-tools). Also: floor mop."
+    },
+    {
+      "code": "step-ladder",
+      "kind": "EQUIPMENT",
+      "name": "Step ladder (standard indoor reach)",
+      "customerLabel": "Step ladder",
+      "description": "Standard indoor step ladder for fans, high shelves and windows reachable from inside. Not work-at-height equipment. Also: ladder."
+    },
+    {
+      "code": "upholstery-cleaning-machine",
+      "kind": "EQUIPMENT",
+      "name": "Upholstery cleaning machine",
+      "customerLabel": "Upholstery cleaning machine",
+      "description": "Extraction/shampoo machine for sofas and upholstery. Also: sofa cleaning machine, extractor."
+    },
+    {
+      "code": "carpet-shampoo-machine",
+      "kind": "EQUIPMENT",
+      "name": "Carpet shampooing machine",
+      "customerLabel": "Carpet shampooing machine",
+      "description": "Machine shampooing stated by the service description. Also: carpet cleaner."
+    },
+    {
+      "code": "uv-sanitising-unit",
+      "kind": "EQUIPMENT",
+      "name": "UV sanitising unit",
+      "customerLabel": "UV sanitiser",
+      "description": "UV treatment stated by the service description. Also: uv lamp."
+    },
+    {
+      "code": "glass-cleaning-kit",
+      "kind": "EQUIPMENT",
+      "name": "Squeegee and glass cleaning kit",
+      "customerLabel": "Glass cleaning kit",
+      "description": "Squeegee, applicator and track brushes. Also: squeegee."
+    },
+    {
+      "code": "car-cleaning-kit",
+      "kind": "EQUIPMENT",
+      "name": "Car cleaning kit (foam applicator, microfibre, vacuum)",
+      "customerLabel": "Car cleaning kit",
+      "description": "Doorstep exterior wash and interior vacuum kit. No pressure washer is asserted. Also: car wash kit."
+    },
+    {
+      "code": "pest-application-equipment",
+      "kind": "EQUIPMENT",
+      "name": "Sprayer and application equipment",
+      "customerLabel": "Application equipment",
+      "description": "Category-level application equipment for the treatment products used. Also: sprayer."
+    },
+    {
+      "code": "painting-tools",
+      "kind": "EQUIPMENT",
+      "name": "Rollers, brushes and painting tools",
+      "customerLabel": "Painting tools",
+      "description": "Rollers, brushes, trays and scrapers. Also: paint roller."
+    },
+    {
+      "code": "ac-service-tools",
+      "kind": "EQUIPMENT",
+      "name": "AC servicing tools (jet pump, gauges)",
+      "customerLabel": "AC servicing tools",
+      "description": "Jet pump for coil wash and gauges for the pressure check. Also: jet pump, gauges."
+    },
+    {
+      "code": "electrician-toolkit",
+      "kind": "EQUIPMENT",
+      "name": "Electrician's toolkit and tester",
+      "customerLabel": "Electrician's toolkit",
+      "description": "Hand tools and a tester. Also: tester, tools."
+    },
+    {
+      "code": "plumbing-toolkit",
+      "kind": "EQUIPMENT",
+      "name": "Plumber's toolkit",
+      "customerLabel": "Plumber's toolkit",
+      "description": "Hand tools for taps, joints and drainage. Also: wrench, tools."
+    },
+    {
+      "code": "gardening-tools",
+      "kind": "EQUIPMENT",
+      "name": "Pruning shears and gardening tools",
+      "customerLabel": "Gardening tools",
+      "description": "Shears and hand tools for pruning and repotting. Also: secateurs."
+    },
+    {
+      "code": "salon-kit",
+      "kind": "EQUIPMENT",
+      "name": "Salon kit with sterilised tools",
+      "customerLabel": "Salon kit",
+      "description": "Tools for hair, grooming and beauty services; sterilised between customers. Also: scissors, clippers."
+    },
+    {
+      "code": "access-equipment-assessed-on-site",
+      "kind": "EQUIPMENT",
+      "name": "Access equipment confirmed after on-site assessment",
+      "customerLabel": "Access equipment, confirmed after assessment",
+      "description": "SAFETY_HOLD: no work-at-height method is defined. What is needed to reach the facade is decided by the professional's on-site assessment; nothing is guaranteed here. Also: scaffolding, harness, rope access."
+    },
+    {
+      "code": "household-cleaning-tools",
+      "kind": "EQUIPMENT",
+      "name": "Household cleaning tools (broom, mop, bucket)",
+      "customerLabel": "Your broom, mop and bucket",
+      "description": "Customer-provided for helper-style home-help services (assumption A1). Also: jhadu, pocha."
+    },
+    {
+      "code": "running-water-access",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Running water access",
+      "customerLabel": "Access to running water",
+      "description": "Class: UTILITY. A tap the professional can use for cleaning and rinsing. Also: water, tap."
+    },
+    {
+      "code": "power-socket-access",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Working power socket near the work area",
+      "customerLabel": "A working power socket near the work area",
+      "description": "Class: UTILITY. For the professional's electrical equipment. Also: electricity, plug point."
+    },
+    {
+      "code": "access-to-all-areas",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Access to every area included in the service",
+      "customerLabel": "Access to all the areas to be covered",
+      "description": "Class: ACCESS. Rooms or spaces that are locked or occupied cannot be serviced. Also: entry, rooms open."
+    },
+    {
+      "code": "loose-items-put-away",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Loose, fragile and valuable items put away",
+      "customerLabel": "Put away loose, fragile and valuable items",
+      "description": "Class: CUSTOMER_PREPARATION. Prevents damage and disputes; advice, not a booking condition. Also: valuables, clutter."
+    },
+    {
+      "code": "adult-present",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "An adult available during the visit",
+      "customerLabel": "An adult available at home during the visit",
+      "description": "Class: OCCUPANCY. Only for services where decisions are taken on site (parts, shade, scope, access). Also: someone at home."
+    },
+    {
+      "code": "society-permission-external-work",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Society / building permission for external work",
+      "customerLabel": "Society permission for work on the building exterior",
+      "description": "Class: BUILDING_PERMISSION. External work on a building usually needs the society's or manager's consent. Also: RWA permission, NOC."
+    },
+    {
+      "code": "vehicle-access-and-parking",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Vehicle parked where washing is permitted, with water nearby",
+      "customerLabel": "Park where washing is allowed, with water access nearby",
+      "description": "Class: VEHICLE_ACCESS. Doorstep car cleaning depends on where the vehicle stands. Also: parking, wash bay."
+    },
+    {
+      "code": "fridge-emptied-and-off",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Fridge emptied and switched off",
+      "customerLabel": "Empty the fridge and switch it off beforehand",
+      "description": "Class: ITEM_PREPARATION. Legacy guidance ('if possible'): a defrosted, empty fridge gets a better clean. Also: defrost."
+    },
+    {
+      "code": "bed-linen-removed",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Bed linen removed from the mattress",
+      "customerLabel": "Remove sheets and covers from the mattress",
+      "description": "Class: ITEM_PREPARATION. So the mattress surface is reachable. Also: strip the bed."
+    },
+    {
+      "code": "furniture-away-from-walls",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Furniture moved away from the walls",
+      "customerLabel": "Move furniture away from the walls to be painted",
+      "description": "Class: SPACE. Legacy guidance ('where possible'). Also: clear the walls."
+    },
+    {
+      "code": "paint-shade-confirmed",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Paint shade and finish confirmed",
+      "customerLabel": "Confirm the paint shade and finish",
+      "description": "Class: TASK_INFORMATION. Confirmed with the professional before the first coat. Also: colour, finish."
+    },
+    {
+      "code": "room-ventilation",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Rooms can be ventilated",
+      "customerLabel": "Windows can be opened for ventilation",
+      "description": "Class: CUSTOMER_PREPARATION. Ventilation while paint dries. Also: airflow."
+    },
+    {
+      "code": "drying-time-allowed",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Drying time after the service",
+      "customerLabel": "Allow drying time after the service",
+      "description": "Class: CUSTOMER_PREPARATION. Legacy guidance for shampooed fabrics. Also: dry time."
+    },
+    {
+      "code": "pest-treatment-preparation",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Home prepared for pest treatment",
+      "customerLabel": "Food covered; people and pets away from treated areas as advised",
+      "description": "Class: SAFETY. The one booking-blocking confirmation. Re-entry time is advised by the professional per the product used — not specified here. Also: vacate, cover food."
+    },
+    {
+      "code": "ac-units-accessible",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Clear access to the indoor and outdoor units",
+      "customerLabel": "Clear access to the indoor and outdoor AC units",
+      "description": "Class: ACCESS. Space below the indoor unit and a safe path to the outdoor unit. Also: outdoor unit access."
+    },
+    {
+      "code": "switchboard-access",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Access to the main switchboard / MCB",
+      "customerLabel": "Access to the main switchboard",
+      "description": "Class: SAFETY. The circuit is isolated before electrical work. Also: MCB, mains."
+    },
+    {
+      "code": "water-shutoff-access",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Access to the main water shut-off valve",
+      "customerLabel": "Access to the main water shut-off",
+      "description": "Class: SAFETY. The supply may need to be closed while working on joints. Also: stopcock, main valve."
+    },
+    {
+      "code": "garments-sorted",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Clothes sorted, pockets emptied, special-care items pointed out",
+      "customerLabel": "Sort the clothes, empty pockets, point out delicate items",
+      "description": "Class: ITEM_PREPARATION. Pickup-based fabric services. Also: laundry sorted."
+    },
+    {
+      "code": "wardrobe-valuables-removed",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Valuables, cash and documents removed from the wardrobe",
+      "customerLabel": "Remove valuables and documents from the wardrobe",
+      "description": "Class: CUSTOMER_PREPARATION. Checked by the professional before touching the wardrobe (dispute prevention). Also: jewellery."
+    },
+    {
+      "code": "fragile-items-identified",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Fragile and high-value items identified",
+      "customerLabel": "Point out fragile and high-value items",
+      "description": "Class: TASK_INFORMATION. So they are handled, wrapped or set aside first. Also: breakables."
+    },
+    {
+      "code": "priorities-shared",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Priority rooms / tasks shared with the professional",
+      "customerLabel": "Tell us your priorities",
+      "description": "Class: TASK_INFORMATION. Time-boxed services do the most important areas first. Also: task list, agenda."
+    },
+    {
+      "code": "allergies-disclosed",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Allergies or sensitivities disclosed",
+      "customerLabel": "Tell us about allergies or sensitivities",
+      "description": "Class: TASK_INFORMATION. Skin/product sensitivities (salon) or food allergies (kitchen prep). Disclosure only — no medical guidance. Also: allergy."
+    },
+    {
+      "code": "lit-space-with-chair",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Well-lit space with a chair, a socket and basin access",
+      "customerLabel": "A well-lit space with a chair, a nearby socket and access to a basin",
+      "description": "Class: SPACE. Salon-at-home workspace. Also: seating, lighting."
+    },
+    {
+      "code": "windows-reachable-from-inside",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Windows reachable safely from inside; exterior faces assessed on site",
+      "customerLabel": "Windows reachable from inside; high or exterior glass is assessed on arrival",
+      "description": "Class: SAFETY. INSPECTION_DEPENDENT: no work-at-height method exists. The professional decides on site what can be reached safely. Also: high windows, exterior glass."
+    },
+    {
+      "code": "window-access",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Window grills unlocked; curtains and blinds removed",
+      "customerLabel": "Unlock grills; remove curtains and blinds",
+      "description": "Class: CUSTOMER_PREPARATION. So glass, tracks and grills are reachable. Also: curtains."
+    },
+    {
+      "code": "balcony-cleared",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Balcony floor cleared of plants and loose items",
+      "customerLabel": "Clear the balcony floor of plants and loose items",
+      "description": "Class: SPACE. So the floor and railing can be cleaned end to end. Also: pots moved."
+    },
+    {
+      "code": "items-below-fans-covered",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Delicate items below the fans moved or covered",
+      "customerLabel": "Move or cover delicate items below the fans",
+      "description": "Class: CUSTOMER_PREPARATION. Covers are brought; delicate items are still safer moved. Also: furniture under fan."
+    },
+    {
+      "code": "leftovers-put-away",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Leftover food and valuables put away",
+      "customerLabel": "Put away leftover food and valuables",
+      "description": "Class: CUSTOMER_PREPARATION. Post-event clean removes what is left out. Also: leftovers."
+    },
+    {
+      "code": "plants-accessible",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Plants accessible; known issues shared",
+      "customerLabel": "Plants within reach; tell us about known issues",
+      "description": "Class: ACCESS. Hanging or high plants brought within reach; pests or yellowing mentioned. Also: hanging plants."
+    },
+    {
+      "code": "safe-access-assessed-on-site",
+      "kind": "CUSTOMER_PRECONDITION",
+      "name": "Safe access assessed by the professional before work starts",
+      "customerLabel": "Our professional assesses safe access before starting; areas that cannot be reached safely are not covered",
+      "description": "Class: SAFETY. SAFETY_HOLD / INSPECTION_DEPENDENT for facade and exterior work. No method is defined; the assessment is the rule. Also: site assessment, risk check."
+    }
+  ],
+  "services": {
+    "ac-service": [
+      {
+        "id": "ac-service-tools",
+        "itemCode": "ac-service-tools",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Jet pump and gauges for the service and pressure check. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "ac-coil-cleaner",
+        "itemCode": "ac-coil-cleaner",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Coil wash. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "ac-refrigerant-gas",
+        "itemCode": "ac-refrigerant-gas",
+        "responsibility": "PROFESSIONAL",
+        "procurement": "PROFESSIONAL",
+        "charge": "SEPARATE_QUOTE",
+        "optional": true,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "customerNote": "Only if the pressure check shows a refill is needed; the professional confirms the cost with you before proceeding.",
+        "active": true,
+        "partnerInstructions": "Show the gauge reading to the customer and confirm the cost before any refill.",
+        "internalNote": "[COMMERCIAL_HOLD 2026-09-22.final] Why: Gas refill is in scope by the description but cannot be part of a fixed base price. No in-app quote → approval → payment chain exists (Phase 09); the professional confirms need and cost on site before use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "spare-parts-and-fittings",
+        "itemCode": "spare-parts-and-fittings",
+        "responsibility": "PROFESSIONAL",
+        "procurement": "PROFESSIONAL",
+        "charge": "SEPARATE_QUOTE",
+        "optional": true,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "customerNote": "Any part that needs replacing is confirmed with you before the work.",
+        "active": true,
+        "internalNote": "[COMMERCIAL_HOLD 2026-09-22.final] Why: Repair scope. No in-app quote → approval → payment chain exists (Phase 09); the professional confirms need and cost on site before use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "ac-units-accessible",
+        "itemCode": "ac-units-accessible",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please clear the space below the indoor unit and a safe path to the outdoor unit.",
+        "active": true,
+        "partnerInstructions": "Confirm access to both units on arrival.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Both units must be reachable. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      },
+      {
+        "id": "power-socket-access",
+        "itemCode": "power-socket-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a working power socket free near the work area.",
+        "active": true,
+        "partnerInstructions": "Confirm a working socket on arrival; carry your extension lead.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: The unit and tools need power. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 6
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: The coil wash needs water. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 7
+      },
+      {
+        "id": "adult-present",
+        "itemCode": "adult-present",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please have an adult at home during the visit to take decisions with the professional.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Gas and part decisions are taken on site. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 8
+      }
+    ],
+    "after-party-express-clean": [
+      {
+        "id": "garbage-bags",
+        "itemCode": "garbage-bags",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[EXISTING_AUTHORITATIVE 2026-09-22.final] Why: Trash removal is stated by the description. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "cleaning-solutions",
+        "itemCode": "cleaning-solutions",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Surfaces and floors. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "mop-and-bucket",
+        "itemCode": "mop-and-bucket",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Floors. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "leftovers-put-away",
+        "itemCode": "leftovers-put-away",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please put away leftover food you want to keep, and any valuables left out during the party.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Everything left out is treated as waste or clutter. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      }
+    ],
+    "balcony-cleaning": [
+      {
+        "id": "cleaning-solutions",
+        "itemCode": "cleaning-solutions",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Floor and railing. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "glass-cleaner",
+        "itemCode": "glass-cleaner",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Balcony glass. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "mop-and-bucket",
+        "itemCode": "mop-and-bucket",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Floor finish. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "balcony-cleared",
+        "itemCode": "balcony-cleared",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please move pots, furniture and loose items so the whole floor and railing can be cleaned.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Coverage. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      }
+    ],
+    "bathroom-cleaning": [
+      {
+        "id": "bathroom-descaler",
+        "itemCode": "bathroom-descaler",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Descaling and sanitising are the service. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "mop-and-bucket",
+        "itemCode": "mop-and-bucket",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Floor finish. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "loose-items-put-away",
+        "itemCode": "loose-items-put-away",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please clear toiletries and personal items from the counters and shelves.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Prevents damage to small or fragile items and the disputes that follow. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      }
+    ],
+    "car-surface-cleaning": [
+      {
+        "id": "car-care-products",
+        "itemCode": "car-care-products",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Wash, polish and interior products are the service. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "car-cleaning-kit",
+        "itemCode": "car-cleaning-kit",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Doorstep kit. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "vacuum-cleaner",
+        "itemCode": "vacuum-cleaner",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[EXISTING_AUTHORITATIVE 2026-09-22.final] Why: Interior vacuum is stated by the description. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "vehicle-access-and-parking",
+        "itemCode": "vehicle-access-and-parking",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please park where washing is allowed by your building or society, with a water point and a socket nearby.",
+        "active": true,
+        "partnerInstructions": "Confirm the wash location is permitted and has water before starting.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: A doorstep wash depends on where the car stands and whether washing is permitted there. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "power-socket-access",
+        "itemCode": "power-socket-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a working power socket free near the work area.",
+        "active": true,
+        "partnerInstructions": "Confirm a working socket on arrival; carry your extension lead.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: The vacuum needs a socket. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      },
+      {
+        "id": "loose-items-put-away",
+        "itemCode": "loose-items-put-away",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please remove valuables and personal items from the car before the interior vacuum.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Prevents damage to small or fragile items and the disputes that follow. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 6
+      }
+    ],
+    "carpet-shampooing": [
+      {
+        "id": "carpet-shampoo",
+        "itemCode": "carpet-shampoo",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Shampoo and stain treatment are the service. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "carpet-shampoo-machine",
+        "itemCode": "carpet-shampoo-machine",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[EXISTING_AUTHORITATIVE 2026-09-22.final] Why: Machine shampooing is stated by the description. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "vacuum-cleaner",
+        "itemCode": "vacuum-cleaner",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Pre-clean. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "power-socket-access",
+        "itemCode": "power-socket-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a working power socket free near the work area.",
+        "active": true,
+        "partnerInstructions": "Confirm a working socket on arrival; carry your extension lead.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: The equipment runs off a standard socket. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      },
+      {
+        "id": "loose-items-put-away",
+        "itemCode": "loose-items-put-away",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please move light furniture and items off the carpet or rug.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Prevents damage to small or fragile items and the disputes that follow. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 6
+      },
+      {
+        "id": "drying-time-allowed",
+        "itemCode": "drying-time-allowed",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "customerNote": "Allow a few hours of drying time and keep the room ventilated.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Sets expectations after shampooing. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 7
+      }
+    ],
+    "deep-cleaning": [
+      {
+        "id": "cleaning-solutions",
+        "itemCode": "cleaning-solutions",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: All-purpose surfaces and floors across the home. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "bathroom-descaler",
+        "itemCode": "bathroom-descaler",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Bathrooms are part of a whole-home deep clean. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "kitchen-degreaser",
+        "itemCode": "kitchen-degreaser",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Kitchen surfaces are part of a whole-home deep clean. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "vacuum-cleaner",
+        "itemCode": "vacuum-cleaner",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Floors, upholstery and corners. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "mop-and-bucket",
+        "itemCode": "mop-and-bucket",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Professional mopping set. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      },
+      {
+        "id": "step-ladder",
+        "itemCode": "step-ladder",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Fans, high shelves and cobwebs. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 6
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 7
+      },
+      {
+        "id": "power-socket-access",
+        "itemCode": "power-socket-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a working power socket free near the work area.",
+        "active": true,
+        "partnerInstructions": "Confirm a working socket on arrival; carry your extension lead.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: The equipment runs off a standard socket. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 8
+      },
+      {
+        "id": "access-to-all-areas",
+        "itemCode": "access-to-all-areas",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep every room to be cleaned open and accessible.",
+        "active": true,
+        "partnerInstructions": "Walk through with the customer on arrival; note any room that is unavailable before starting.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: A locked or occupied room cannot be cleaned and becomes a scope dispute. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 9
+      },
+      {
+        "id": "loose-items-put-away",
+        "itemCode": "loose-items-put-away",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please put away small, fragile or valuable items before we start.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Prevents damage to small or fragile items and the disputes that follow. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 10
+      }
+    ],
+    "dusting-wiping": [
+      {
+        "id": "household-cleaning-supplies",
+        "itemCode": "household-cleaning-supplies",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "We use your regular cleaning supplies — floor cleaner, dusting spray and cloths.",
+        "active": true,
+        "partnerInstructions": "Ask which products the customer prefers; report anything missing before starting.",
+        "internalNote": "[SYSTEM_INFERRED 2026-09-22.final] Why: Helper-style service: the home's own supplies are used. Assumption A1 (owner may override). Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "household-cleaning-tools",
+        "itemCode": "household-cleaning-tools",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "We use your broom, mop and bucket.",
+        "active": true,
+        "internalNote": "[SYSTEM_INFERRED 2026-09-22.final] Why: Helper-style service: the home's own tools are used. Assumption A1 (owner may override). Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "fragile-items-identified",
+        "itemCode": "fragile-items-identified",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please point out delicate décor and anything that should not be moved.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Breakage prevention. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      }
+    ],
+    "electrician": [
+      {
+        "id": "electrician-toolkit",
+        "itemCode": "electrician-toolkit",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Tools and tester. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "spare-parts-and-fittings",
+        "itemCode": "spare-parts-and-fittings",
+        "responsibility": "PROFESSIONAL",
+        "procurement": "PROFESSIONAL",
+        "charge": "SEPARATE_QUOTE",
+        "optional": true,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "customerNote": "Switches, wiring and fittings are confirmed with you before they are used.",
+        "active": true,
+        "internalNote": "[COMMERCIAL_HOLD 2026-09-22.final] Why: Repair and installation scope. No in-app quote → approval → payment chain exists (Phase 09); the professional confirms need and cost on site before use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "switchboard-access",
+        "itemCode": "switchboard-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_AT_START",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep the main switchboard reachable — the professional switches off the circuit before working.",
+        "active": true,
+        "partnerInstructions": "Isolate the circuit at the MCB and test before touching any wiring.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Electrical isolation is confirmed before work starts. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "adult-present",
+        "itemCode": "adult-present",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please have an adult at home during the visit to take decisions with the professional.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Part and scope decisions are taken on site. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      }
+    ],
+    "fan-cleaning": [
+      {
+        "id": "fan-dust-covers",
+        "itemCode": "fan-dust-covers",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[EXISTING_AUTHORITATIVE 2026-09-22.final] Why: Stated by the description: 'we bring covers'. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "kitchen-degreaser",
+        "itemCode": "kitchen-degreaser",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Blade grease. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "step-ladder",
+        "itemCode": "step-ladder",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Ceiling fans are reached with a standard step ladder. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "power-socket-access",
+        "itemCode": "power-socket-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a working power socket free near the work area.",
+        "active": true,
+        "partnerInstructions": "Confirm a working socket on arrival; carry your extension lead.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Fans are switched off at the wall; a socket is not needed — but light is. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "items-below-fans-covered",
+        "itemCode": "items-below-fans-covered",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Covers go on every fan, but please move anything delicate from directly below them.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Dust and drips land below the fan. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      }
+    ],
+    "fasade-cleaning": [
+      {
+        "id": "cleaning-solutions",
+        "itemCode": "cleaning-solutions",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Exterior surfaces. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "access-equipment-assessed-on-site",
+        "itemCode": "access-equipment-assessed-on-site",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "customerNote": "The equipment needed to reach the facade is confirmed after an on-site assessment.",
+        "internalNote": "[SAFETY_HOLD 2026-09-22.final] Why: No work-at-height method is defined; equipment is decided by the on-site assessment. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "society-permission-external-work",
+        "itemCode": "society-permission-external-work",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Work on the building exterior needs your society's or building manager's permission — please arrange it before the visit.",
+        "active": true,
+        "partnerInstructions": "Ask for the society's permission before starting; do not start without it.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: External work without consent is stopped by security. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "safe-access-assessed-on-site",
+        "itemCode": "safe-access-assessed-on-site",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_AT_START",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Our professional assesses safe access before starting; areas that cannot be reached safely are not covered.",
+        "active": true,
+        "partnerInstructions": "Assess access before any work. Do not use improvised height access. Exclude anything that cannot be reached safely and record it.",
+        "internalNote": "[SAFETY_HOLD 2026-09-22.final] Why: No work-at-height method exists; the assessment is the rule. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      },
+      {
+        "id": "power-socket-access",
+        "itemCode": "power-socket-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a working power socket free near the work area.",
+        "active": true,
+        "partnerInstructions": "Confirm a working socket on arrival; carry your extension lead.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: The equipment runs off a standard socket. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 6
+      },
+      {
+        "id": "adult-present",
+        "itemCode": "adult-present",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please have an adult at home during the visit to take decisions with the professional.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Scope exclusions are agreed on site. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 7
+      }
+    ],
+    "fridge-cleaning": [
+      {
+        "id": "cleaning-solutions",
+        "itemCode": "cleaning-solutions",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Interior shelves and seals. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "fridge-emptied-and-off",
+        "itemCode": "fridge-emptied-and-off",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "If you can, empty the fridge and switch it off a few hours before we arrive — a defrosted, empty fridge gets a better clean. We wipe up the defrost water.",
+        "active": true,
+        "customerWarning": "Keep perishables in a cool bag while the fridge is off.",
+        "internalNote": "[EXISTING_AUTHORITATIVE 2026-09-22.final] Why: Legacy guidance said 'if possible'; the professional can work around a stocked fridge, so this is advice, not a condition. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      }
+    ],
+    "home-painting": [
+      {
+        "id": "masking-and-drop-sheets",
+        "itemCode": "masking-and-drop-sheets",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Protection of floors and fittings. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "painting-tools",
+        "itemCode": "painting-tools",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Rollers, brushes and trays. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "step-ladder",
+        "itemCode": "step-ladder",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Interior walls and ceilings. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "paint-and-primer",
+        "itemCode": "paint-and-primer",
+        "responsibility": "PROFESSIONAL",
+        "procurement": "PROFESSIONAL",
+        "charge": "SEPARATE_QUOTE",
+        "optional": true,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "customerNote": "Paint in the brand and shade of your choice is not included in the base price; the professional confirms the need and the cost with you before using any.",
+        "active": true,
+        "internalNote": "[COMMERCIAL_HOLD 2026-09-22.final] Why: The fixed base price covers labour; paint is a customer choice. No in-app quote → approval → payment chain exists (Phase 09); the professional confirms need and cost on site before use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "paint-shade-confirmed",
+        "itemCode": "paint-shade-confirmed",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_AT_START",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "The professional confirms the shade and finish with you before the first coat.",
+        "active": true,
+        "partnerInstructions": "Get the shade and finish confirmed before opening any paint.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Rework prevention. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      },
+      {
+        "id": "furniture-away-from-walls",
+        "itemCode": "furniture-away-from-walls",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please move furniture away from the walls to be painted where possible; our team helps with light pieces.",
+        "active": true,
+        "internalNote": "[EXISTING_AUTHORITATIVE 2026-09-22.final] Why: Legacy guidance. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 6
+      },
+      {
+        "id": "room-ventilation",
+        "itemCode": "room-ventilation",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "customerNote": "Keep windows open while the paint dries.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Ventilation. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 7
+      },
+      {
+        "id": "safe-access-assessed-on-site",
+        "itemCode": "safe-access-assessed-on-site",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_AT_START",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "For exterior walls, our professional assesses safe access first; areas that cannot be reached safely are not painted.",
+        "active": true,
+        "partnerInstructions": "Exterior: assess access before starting; no improvised height access.",
+        "internalNote": "[INSPECTION_DEPENDENT 2026-09-22.final] Why: No work-at-height method exists for exterior walls. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 8
+      },
+      {
+        "id": "adult-present",
+        "itemCode": "adult-present",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please have an adult at home during the visit to take decisions with the professional.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Shade, scope and paint decisions are taken on site. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 9
+      }
+    ],
+    "hourly-bookings": [
+      {
+        "id": "priorities-shared",
+        "itemCode": "priorities-shared",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "customerNote": "You set the agenda — a written list helps the professional make the most of the time.",
+        "active": true,
+        "internalNote": "[EXISTING_AUTHORITATIVE 2026-09-22.final] Why: Stated by the description: 'you set the agenda'. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "household-cleaning-supplies",
+        "itemCode": "household-cleaning-supplies",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "We work with the supplies and tools already in your home.",
+        "active": true,
+        "partnerInstructions": "Ask for the task list and the supplies available before starting the clock.",
+        "internalNote": "[SYSTEM_INFERRED 2026-09-22.final] Why: Helper-style service. Assumption A1 (owner may override). Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "adult-present",
+        "itemCode": "adult-present",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please have an adult at home during the visit to take decisions with the professional.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: The customer directs the work. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      }
+    ],
+    "ironing-folding": [
+      {
+        "id": "garments-sorted",
+        "itemCode": "garments-sorted",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please point out delicate fabrics and anything that needs special handling.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Fabric care. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      }
+    ],
+    "kitchen-cabinet-cleaning": [
+      {
+        "id": "kitchen-degreaser",
+        "itemCode": "kitchen-degreaser",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cabinet interiors and fronts. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "cleaning-solutions",
+        "itemCode": "cleaning-solutions",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Shelf liners and drawers. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "fragile-items-identified",
+        "itemCode": "fragile-items-identified",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "We empty and re-layer the cabinets ourselves — please point out glassware and anything fragile first.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Breakage prevention; the professional handles the contents. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      }
+    ],
+    "kitchen-cleaning": [
+      {
+        "id": "kitchen-degreaser",
+        "itemCode": "kitchen-degreaser",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Degreasing is the service. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "cleaning-solutions",
+        "itemCode": "cleaning-solutions",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Counters and floor. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "loose-items-put-away",
+        "itemCode": "loose-items-put-away",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please clear the counters of utensils and groceries so every surface can be degreased.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Prevents damage to small or fragile items and the disputes that follow. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      }
+    ],
+    "kitchen-prep": [
+      {
+        "id": "food-safe-hygiene-kit",
+        "itemCode": "food-safe-hygiene-kit",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[EXISTING_AUTHORITATIVE 2026-09-22.final] Why: 'Hygienic' is stated by the description. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "ingredients-and-menu",
+        "itemCode": "ingredients-and-menu",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep the ingredients out and tell us the menu or recipes to follow.",
+        "active": true,
+        "partnerInstructions": "Confirm the menu and quantities with the customer before starting.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Nothing can be prepared without them. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "allergies-disclosed",
+        "itemCode": "allergies-disclosed",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please tell us about any food allergies at home before we start.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Disclosure only; the helper avoids the ingredient. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      }
+    ],
+    "laundry": [
+      {
+        "id": "laundry-detergent",
+        "itemCode": "laundry-detergent",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[EXISTING_AUTHORITATIVE 2026-09-22.final] Why: Stated by the description: 'premium detergents'. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "garments-sorted",
+        "itemCode": "garments-sorted",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please empty the pockets and point out delicate or special-care items; we follow the care labels.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Care-label handling and pocket contents are the usual dispute sources. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      }
+    ],
+    "mattress-sanitization": [
+      {
+        "id": "uv-sanitising-unit",
+        "itemCode": "uv-sanitising-unit",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[EXISTING_AUTHORITATIVE 2026-09-22.final] Why: UV treatment is stated by the description. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "vacuum-cleaner",
+        "itemCode": "vacuum-cleaner",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[EXISTING_AUTHORITATIVE 2026-09-22.final] Why: Deep vacuum is stated by the description. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "power-socket-access",
+        "itemCode": "power-socket-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a working power socket free near the work area.",
+        "active": true,
+        "partnerInstructions": "Confirm a working socket on arrival; carry your extension lead.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: The equipment runs off a standard socket. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "bed-linen-removed",
+        "itemCode": "bed-linen-removed",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please strip the sheets, covers and mattress protector before we arrive.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: The professional can strip a bed, so this is preparation advice. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      }
+    ],
+    "packing-unpacking": [
+      {
+        "id": "packing-material",
+        "itemCode": "packing-material",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Boxes, bubble wrap and tape are yours to provide.",
+        "active": true,
+        "partnerInstructions": "Check the material is sufficient on arrival; agree with the customer what to pack first.",
+        "internalNote": "[SYSTEM_INFERRED 2026-09-22.final] Why: Consumables are not part of the fixed price and no supply flow exists. Assumption A3 (owner may override). Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "fragile-items-identified",
+        "itemCode": "fragile-items-identified",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_AT_START",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please show us fragile and high-value items before packing starts so they are wrapped and labelled first.",
+        "active": true,
+        "partnerInstructions": "Do not start until fragile and high-value items are identified and labelled.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Breakage and dispute prevention; confirmed before work starts. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "priorities-shared",
+        "itemCode": "priorities-shared",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "customerNote": "Tell us which rooms to pack or unpack first.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Time-boxed work. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "adult-present",
+        "itemCode": "adult-present",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please have an adult at home during the visit to take decisions with the professional.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: What goes where is decided on site. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      }
+    ],
+    "pest-control": [
+      {
+        "id": "pest-treatment-products",
+        "itemCode": "pest-treatment-products",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "customerNote": "Applied as per the product label.",
+        "handlingNote": "Handle, store and apply strictly per the product label; keep the label available for the customer.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Treatment products are the service; applied per label. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "pest-application-equipment",
+        "itemCode": "pest-application-equipment",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Application equipment. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "pest-treatment-preparation",
+        "itemCode": "pest-treatment-preparation",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_BOOKING",
+        "verification": "CUSTOMER_ATTESTATION",
+        "customerNote": "Please cover food, utensils and pet bowls, and keep people and pets away from treated areas during the treatment and for the time the professional advises afterwards.",
+        "active": true,
+        "customerWarning": "Tell us in advance if anyone at home is pregnant, an infant, elderly, or has asthma, allergies or other respiratory conditions.",
+        "partnerInstructions": "Confirm the preparation on arrival; do not treat occupied rooms. Tell the customer the re-entry time for the product used, per its label.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Treatment cannot proceed safely in an occupied, unprepared home; this is the only confirmation that blocks a booking. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "access-to-all-areas",
+        "itemCode": "access-to-all-areas",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please unlock storerooms, lofts and the cabinets under sinks — treatment covers the areas we can reach.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Coverage gaps are the main complaint driver. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "adult-present",
+        "itemCode": "adult-present",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please have an adult at home during the visit to take decisions with the professional.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Re-entry advice and treated-area decisions are given on site. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      }
+    ],
+    "plant-care": [
+      {
+        "id": "gardening-tools",
+        "itemCode": "gardening-tools",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Pruning and repotting tools. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "pot-and-potting-mix",
+        "itemCode": "pot-and-potting-mix",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": true,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "If you would like a plant repotted, please keep the new pot and potting mix ready.",
+        "active": true,
+        "internalNote": "[SYSTEM_INFERRED 2026-09-22.final] Why: Repotting is in scope but the pot and soil are the customer's choice; no supply flow exists. Assumption A2 (owner may override). Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Watering is part of the service. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "plants-accessible",
+        "itemCode": "plants-accessible",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "customerNote": "Bring hanging or high plants within reach if you can, and tell us about pests or yellowing you have noticed.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Coverage and diagnosis. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      }
+    ],
+    "plumbing": [
+      {
+        "id": "plumbing-toolkit",
+        "itemCode": "plumbing-toolkit",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Hand tools. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "spare-parts-and-fittings",
+        "itemCode": "spare-parts-and-fittings",
+        "responsibility": "PROFESSIONAL",
+        "procurement": "PROFESSIONAL",
+        "charge": "SEPARATE_QUOTE",
+        "optional": true,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "customerNote": "Taps, pipes and fittings are confirmed with you before they are used.",
+        "active": true,
+        "internalNote": "[COMMERCIAL_HOLD 2026-09-22.final] Why: Repair and installation scope. No in-app quote → approval → payment chain exists (Phase 09); the professional confirms need and cost on site before use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "water-shutoff-access",
+        "itemCode": "water-shutoff-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_AT_START",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep the main water shut-off reachable — the professional may close the supply while working.",
+        "active": true,
+        "partnerInstructions": "Locate the shut-off valve before opening any joint.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Confirmed before any joint is opened. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Testing the repair needs running water. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "adult-present",
+        "itemCode": "adult-present",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please have an adult at home during the visit to take decisions with the professional.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Part and scope decisions are taken on site. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      }
+    ],
+    "pre-party-express-clean": [
+      {
+        "id": "cleaning-solutions",
+        "itemCode": "cleaning-solutions",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Surfaces and floors. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "mop-and-bucket",
+        "itemCode": "mop-and-bucket",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Floors. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "vacuum-cleaner",
+        "itemCode": "vacuum-cleaner",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Floors and upholstery. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "power-socket-access",
+        "itemCode": "power-socket-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a working power socket free near the work area.",
+        "active": true,
+        "partnerInstructions": "Confirm a working socket on arrival; carry your extension lead.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: The equipment runs off a standard socket. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      },
+      {
+        "id": "priorities-shared",
+        "itemCode": "priorities-shared",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "customerNote": "Tell us the rooms your guests will use so they come first.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Time-boxed refresh. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 6
+      }
+    ],
+    "salon-at-home": [
+      {
+        "id": "salon-products",
+        "itemCode": "salon-products",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Products and disposables are the service. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "salon-kit",
+        "itemCode": "salon-kit",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Sterilised tools. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "lit-space-with-chair",
+        "itemCode": "lit-space-with-chair",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please keep a well-lit spot with a chair, a nearby socket and access to a wash basin.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Workspace; the professional can adapt, so this is advice. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "allergies-disclosed",
+        "itemCode": "allergies-disclosed",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please tell us about allergies or skin sensitivities before any treatment.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Disclosure only; no medical guidance. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      }
+    ],
+    "sofa-deep-cleaning": [
+      {
+        "id": "upholstery-shampoo",
+        "itemCode": "upholstery-shampoo",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Fabric-safe shampoo and sanitiser are the service. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "upholstery-cleaning-machine",
+        "itemCode": "upholstery-cleaning-machine",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Extraction/shampoo machine. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "vacuum-cleaner",
+        "itemCode": "vacuum-cleaner",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Pre-clean and crevices. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "power-socket-access",
+        "itemCode": "power-socket-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a working power socket free near the work area.",
+        "active": true,
+        "partnerInstructions": "Confirm a working socket on arrival; carry your extension lead.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: The equipment runs off a standard socket. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      },
+      {
+        "id": "loose-items-put-away",
+        "itemCode": "loose-items-put-away",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please clear cushions, throws and anything stored under or behind the sofa.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Prevents damage to small or fragile items and the disputes that follow. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 6
+      },
+      {
+        "id": "drying-time-allowed",
+        "itemCode": "drying-time-allowed",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "customerNote": "Plan to keep the sofa unused for a few hours afterwards while it dries.",
+        "active": true,
+        "internalNote": "[EXISTING_AUTHORITATIVE 2026-09-22.final] Why: Legacy guidance; sets expectations. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 7
+      }
+    ],
+    "sweeping-mopping": [
+      {
+        "id": "household-cleaning-supplies",
+        "itemCode": "household-cleaning-supplies",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "We use your regular cleaning supplies — floor cleaner, dusting spray and cloths.",
+        "active": true,
+        "partnerInstructions": "Ask which products the customer prefers; report anything missing before starting.",
+        "internalNote": "[SYSTEM_INFERRED 2026-09-22.final] Why: Helper-style service: the home's own supplies are used. Assumption A1 (owner may override). Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "household-cleaning-tools",
+        "itemCode": "household-cleaning-tools",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "We use your broom, mop and bucket.",
+        "active": true,
+        "internalNote": "[SYSTEM_INFERRED 2026-09-22.final] Why: Helper-style service: the home's own tools are used. Assumption A1 (owner may override). Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "loose-items-put-away",
+        "itemCode": "loose-items-put-away",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please pick up cables, toys and small items from the floor.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Prevents damage to small or fragile items and the disputes that follow. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      }
+    ],
+    "utensil-washing": [
+      {
+        "id": "dishwashing-supplies",
+        "itemCode": "dishwashing-supplies",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "We use the dishwashing liquid and scrubber in your kitchen.",
+        "active": true,
+        "internalNote": "[SYSTEM_INFERRED 2026-09-22.final] Why: Helper-style service; the kitchen's own supplies. Assumption A1 (owner may override). Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      }
+    ],
+    "wardrobe-cleaning": [
+      {
+        "id": "cleaning-solutions",
+        "itemCode": "cleaning-solutions",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Shelf and interior wipe-down. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "vacuum-cleaner",
+        "itemCode": "vacuum-cleaner",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Dust and lint. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "wardrobe-valuables-removed",
+        "itemCode": "wardrobe-valuables-removed",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please remove cash, jewellery and documents before we declutter and re-organise.",
+        "active": true,
+        "partnerInstructions": "Ask the customer to confirm valuables are out before opening the wardrobe; do not proceed otherwise.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Dispute prevention: confirmed before the wardrobe is touched. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "priorities-shared",
+        "itemCode": "priorities-shared",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "customerNote": "Tell us how you would like things arranged, and what can be set aside for donation.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Re-organisation follows the customer's preference. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "adult-present",
+        "itemCode": "adult-present",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please have an adult at home during the visit to take decisions with the professional.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Decisions about what to keep, move or set aside are taken on site. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      }
+    ],
+    "window-cleaning": [
+      {
+        "id": "glass-cleaner",
+        "itemCode": "glass-cleaner",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Streak-free glass is the service. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 1
+      },
+      {
+        "id": "glass-cleaning-kit",
+        "itemCode": "glass-cleaning-kit",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Squeegee and track brushes. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 2
+      },
+      {
+        "id": "step-ladder",
+        "itemCode": "step-ladder",
+        "responsibility": "PROFESSIONAL",
+        "charge": "INCLUDED",
+        "optional": false,
+        "enforcement": "INFORMATIONAL",
+        "verification": "NONE",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Windows reachable from inside. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 3
+      },
+      {
+        "id": "running-water-access",
+        "itemCode": "running-water-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_BEFORE_ARRIVAL",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "Please keep a tap available for cleaning and rinsing.",
+        "active": true,
+        "partnerInstructions": "Confirm a usable tap on arrival before unpacking.",
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Cleaning and rinsing need a tap the professional can use. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 4
+      },
+      {
+        "id": "window-access",
+        "itemCode": "window-access",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "WARNING",
+        "verification": "NONE",
+        "customerNote": "Please unlock the grills and take down curtains or blinds so the glass and tracks are reachable.",
+        "active": true,
+        "internalNote": "[OWNER_APPROVED 2026-09-22.final] Why: Reachability. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 5
+      },
+      {
+        "id": "windows-reachable-from-inside",
+        "itemCode": "windows-reachable-from-inside",
+        "responsibility": "CUSTOMER",
+        "charge": "NOT_APPLICABLE",
+        "optional": false,
+        "enforcement": "REQUIRED_AT_START",
+        "verification": "PARTNER_CHECK",
+        "customerNote": "We clean what can be reached safely from inside; high or exterior glass is assessed when we arrive.",
+        "active": true,
+        "partnerInstructions": "Assess each window before starting. Do not lean out or climb externally; exclude any glass that cannot be reached safely from inside and tell the customer.",
+        "internalNote": "[INSPECTION_DEPENDENT 2026-09-22.final] Why: No work-at-height method is defined; the professional's on-site judgement is the rule. Not asserted: quantity, brand, specification, supplier.",
+        "sortOrder": 6
+      }
+    ]
+  }
+}

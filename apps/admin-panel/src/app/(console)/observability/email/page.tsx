@@ -80,7 +80,7 @@ export default function EmailHealthPage() {
 
       <div className="rounded-xl border border-[var(--color-biz-line)] p-4">
         <h2 className="mb-3 font-semibold">Recent delivery log</h2>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Recent delivery log table">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-[var(--color-biz-line)] text-[var(--color-biz-muted)]">

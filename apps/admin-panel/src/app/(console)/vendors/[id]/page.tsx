@@ -13,6 +13,7 @@ import { DataTable, StatusBadge } from "@/components/ui/DataTable";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ActivationChecklistPanel } from "@/components/acquisition/ActivationChecklistPanel";
 import { PartnerServiceSkills } from "@/components/vendors/PartnerServiceSkills";
+import { PartnerCapabilities } from "@/components/vendors/PartnerCapabilities";
 import { adminApi, type ProviderDetail } from "@/services/admin-api";
 import { useVerifyProviderMutation } from "@/hooks/use-admin-data";
 import { formatDate, inr } from "@/lib/format";
@@ -102,7 +103,7 @@ export default function VendorDetailPage() {
     return (
       <div className="mx-auto max-w-7xl space-y-6">
         <div className="flex items-start gap-3">
-          <Link href="/vendors" className="mt-1 rounded-lg border border-[var(--color-biz-line)] p-2">
+          <Link href="/vendors" aria-label="Back to partners" className="mt-1 rounded-lg border border-[var(--color-biz-line)] p-2">
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div>
@@ -134,7 +135,7 @@ export default function VendorDetailPage() {
       {/* ── Header ── */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
-          <Link href="/vendors" className="mt-1 rounded-lg border border-[var(--color-biz-line)] p-2 transition hover:bg-[var(--color-biz-elevated)]">
+          <Link href="/vendors" aria-label="Back to partners" className="mt-1 rounded-lg border border-[var(--color-biz-line)] p-2 transition hover:bg-[var(--color-biz-elevated)]">
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div className="flex items-center gap-3">
@@ -235,6 +236,9 @@ export default function VendorDetailPage() {
       ) : null}
 
       <PartnerServiceSkills providerId={d.id} />
+
+      {/* Phase 11 — capability review: declared skills/certifications/equipment/insurance/languages with computed validity + audit. */}
+      <PartnerCapabilities providerId={d.id} />
 
       <section className="biz-card p-5">
         <h2 className="mb-4 flex items-center gap-2 font-semibold">

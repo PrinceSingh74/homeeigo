@@ -110,6 +110,7 @@ export function LeadFollowUpModal({
           </label>
           <input
             type="datetime-local"
+            aria-label="Follow-up date and time"
             value={when}
             onChange={(e) => setWhen(e.target.value)}
             className="w-full rounded-xl border border-[var(--color-biz-line)] bg-[var(--color-biz-elevated)] px-3 py-2.5 text-sm outline-none ring-[var(--color-biz-accent)] focus:ring-2"

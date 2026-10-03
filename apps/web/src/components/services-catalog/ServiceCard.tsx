@@ -54,7 +54,9 @@ export const ServiceCard = memo(function ServiceCard({ service: svc, context, pr
   return (
     <article className={cn("group relative flex h-full flex-col overflow-hidden", cardSurface, cardHover, className)}>
       <div className="relative aspect-[4/3] overflow-hidden bg-canvas">
-        {live && svc.image ? (
+        {live && svc.video && !svc.image ? (
+          <video src={svc.video} muted playsInline className="absolute inset-0 h-full w-full object-cover" />
+        ) : live && svc.image ? (
           <Image
             src={svc.image}
             alt=""

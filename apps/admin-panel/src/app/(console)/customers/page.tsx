@@ -284,7 +284,7 @@ function InspectIdle({ matching }: { matching: number }) {
         </div>
       </div>
 
-      <div className="cu-dock__body">
+      <div className="cu-dock__body" tabIndex={0} role="region" aria-label="Customer file overview">
         <div className="cu-inspect__identity">
           <span className="cu-avatar cu-avatar--lg cu-avatar--ghost" aria-hidden>
             ?
@@ -300,7 +300,7 @@ function InspectIdle({ matching }: { matching: number }) {
           </div>
         </div>
 
-        <div className="cu-dock__stats">
+        <dl className="cu-dock__stats">
           {[
             ["Spent", "—"],
             ["Bookings", "—"],
@@ -312,7 +312,7 @@ function InspectIdle({ matching }: { matching: number }) {
               <dd>{value}</dd>
             </div>
           ))}
-        </div>
+        </dl>
 
         <div className="cu-guide">
           <p className="cu-intel__label">What opens here</p>
@@ -417,7 +417,7 @@ export default function CustomersPage() {
   const [confirmTarget, setConfirmTarget] = useState<{ user: AdminCustomer; action: ConfirmAction } | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
-  const users = data?.users ?? [];
+  const users = useMemo(() => data?.users ?? [], [data?.users]);
   const selected = users.find((u) => u.id === selectedId) ?? null;
   const filtersOn = Boolean(debouncedSearch) || statusFilter !== "all" || kycFilter !== "all" || sort !== "recent";
 
@@ -860,8 +860,8 @@ export default function CustomersPage() {
                 </button>
               </div>
 
-              <div className="cu-dock__body">
-                <div className="cu-dock__stats">
+              <div className="cu-dock__body" tabIndex={0} role="region" aria-label="Customer details">
+                <dl className="cu-dock__stats">
                   <div className="cu-stat">
                     <dt>Spent</dt>
                     <dd data-stat-value>{inr(selected.totalSpent, true)}</dd>
@@ -878,7 +878,7 @@ export default function CustomersPage() {
                     <dt>Referrals</dt>
                     <dd data-stat-value>{formatNumber(selected.referralCount ?? 0)}</dd>
                   </div>
-                </div>
+                </dl>
 
                 <div className="cu-intel">
                   <p className="cu-intel__label">Profile intel</p>

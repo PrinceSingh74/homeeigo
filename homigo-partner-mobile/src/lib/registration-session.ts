@@ -2,6 +2,7 @@ import { deleteSecureItem, getSecureItem, setSecureItem } from "@/lib/secure-sto
 
 const STORAGE_KEY = "homigo_partner_registration_token";
 const INVITE_KEY = "homigo_partner_application_invite";
+const REF_KEY = "homigo_partner_referral_code";
 
 export async function setRegistrationToken(token: string | null): Promise<void> {
   if (token) await setSecureItem(STORAGE_KEY, token);
@@ -27,4 +28,13 @@ export async function getApplicationInvite(): Promise<string | null> {
 
 export async function clearApplicationInvite(): Promise<void> {
   await deleteSecureItem(INVITE_KEY);
+}
+
+export async function setPendingReferralCode(code: string | null): Promise<void> {
+  if (code) await setSecureItem(REF_KEY, code.trim().toUpperCase());
+  else await deleteSecureItem(REF_KEY);
+}
+
+export async function getPendingReferralCode(): Promise<string | null> {
+  return getSecureItem(REF_KEY);
 }

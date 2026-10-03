@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { ToolDomainRejection } from "./errors";
 import prisma from "../../lib/prisma";
 import { logger } from "../../lib/logger";
 import { consumeRateLimitSmart } from "../../middleware/rate-limit.middleware";
@@ -54,6 +55,8 @@ function resolveResourceRef(args: Record<string, unknown>): string | undefined {
   }
   return undefined;
 }
+
+export { ToolDomainRejection };
 
 export class ToolExecutionError extends Error {
   constructor(
@@ -466,6 +469,55 @@ export async function executeTool(input: ToolExecuteInput): Promise<ToolExecuteR
   // this first, which short-circuited every high-risk request before its bindings were
   // ever evaluated — the gate became unreachable code. Authorization decides first.
   if (!tool.handler) {
+    /**
+     * The approval is already spent by the time we get here, so this must leave a record.
+     *
+     * `consumeApproval` claims the row (APPROVED → CONSUMED) before this check, and an approval is
+     * single-use. Throwing straight to NO_HANDLER therefore burned a human's authorisation and
+     * wrote nothing anywhere: `ai_tool_executions` had no row, and an auditor asking "what became
+     * of approval X?" could see only that it was consumed, with no execution to point at.
+     *
+     * This is not a corner case. The Phase-5 freeze ships 14 high-risk tools and zero handlers, so
+     * NO_HANDLER is the *only* outcome an approved high-risk request can have — every approval ever
+     * granted took this path.
+     *
+     * FAILED, not DENIED: the request was authorised. It failed because nothing is wired to carry
+     * it out, which is a different fact and the one worth being able to query.
+     *
+     * The consumption itself is deliberately NOT reversed. Releasing the claim on failure would
+     * make an approval replayable by anyone who can provoke an error after the gate, and a spent
+     * approval that must be re-granted by a human is the safer failure. Re-approving is cheap;
+     * an approval that can be spent twice is not.
+     */
+    if (input.approvalId) {
+      const approvalRow = await prisma.aiToolApproval
+        .findUnique({ where: { approvalId: input.approvalId }, select: { id: true } })
+        .catch(() => null);
+      await recordToolExecution({
+        executionId,
+        toolId: tool.toolId,
+        actorId: input.actor.actorId,
+        actorRole: input.actor.actorRole,
+        argumentsHash: hashArguments(input.arguments),
+        policyDecision: policy.decision,
+        status: "FAILED",
+        errorCode: "NO_HANDLER",
+        errorMessage: "Approval consumed but the tool has no execution handler",
+        durationMs: Date.now() - t0,
+        traceId: input.actor.traceId,
+        correlationId: input.actor.correlationId,
+        approvalId: approvalRow?.id,
+        idempotencyKey: derivedIdempotencyKey,
+        ipAddress: input.actor.ipAddress,
+      }).catch((auditErr) => {
+        // Best-effort for the same reason the rejected-approval audit is: the caller must receive
+        // NO_HANDLER rather than a database error that hides why nothing ran.
+        logger.error("ai-tools: failed to audit consumed approval with no handler", {
+          toolId: tool.toolId,
+          error: auditErr instanceof Error ? auditErr.message : "unknown",
+        });
+      });
+    }
     throw new ToolExecutionError("Tool has no execution handler", "NO_HANDLER");
   }
 
@@ -556,6 +608,8 @@ export async function executeTool(input: ToolExecuteInput): Promise<ToolExecuteR
        * reached the gateway. Retrying is the caller's decision to make with the audit row in
        * front of them, not a loop's.
        */
+      // Retrying a business rejection just asks the same question again.
+      if (lastError instanceof ToolDomainRejection) break;
       if (tool.category !== "HIGH_RISK" && retryCount < tool.maxRetries) {
         retryCount++;
         recordToolRetry(tool.toolId);
@@ -566,8 +620,13 @@ export async function executeTool(input: ToolExecuteInput): Promise<ToolExecuteR
   }
 
   const durationMs = Date.now() - t0;
-  const rawErrorCode = lastError instanceof ToolExecutionError ? lastError.code : "EXECUTION_FAILED";
-  recordCircuitFailure(tool.toolId);
+  const domainRejection = lastError instanceof ToolDomainRejection;
+  const rawErrorCode =
+    lastError instanceof ToolExecutionError || lastError instanceof ToolDomainRejection
+      ? lastError.code
+      : "EXECUTION_FAILED";
+  // A business rule saying "no" is not evidence that the tool is unhealthy.
+  if (!domainRejection) recordCircuitFailure(tool.toolId);
 
   /**
    * A side-effecting call that timed out has an UNKNOWN outcome, not a failed one.

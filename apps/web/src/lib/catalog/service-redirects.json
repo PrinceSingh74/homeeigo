@@ -712,6 +712,10 @@
     "destination": "/services/executive-concierge/personal-driver"
   },
   {
+    "source": "/services/personal-hygiene-bathing-care",
+    "destination": "/services/senior-care/personal-hygiene-bathing-care"
+  },
+  {
     "source": "/services/pest-control",
     "destination": "/services/specialized-care/pest-control"
   },

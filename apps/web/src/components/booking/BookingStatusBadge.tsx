@@ -1,15 +1,18 @@
 "use client";
 
-import { Clock, Truck, CheckCircle2, XCircle } from "lucide-react";
+import { Clock, Truck, CheckCircle2, XCircle, TimerOff, UserX, UserRoundX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BookingStatus } from "@/lib/bookings";
 import { STATUS_CONFIG } from "@/lib/booking-status";
 
-const ICONS = {
+const ICONS: Record<BookingStatus, typeof Clock> = {
   confirmed: Clock,
   in_progress: Truck,
   completed: CheckCircle2,
   cancelled: XCircle,
+  expired: TimerOff,
+  customer_no_show: UserX,
+  provider_no_show: UserRoundX,
 };
 
 export function BookingStatusBadge({

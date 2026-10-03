@@ -2,14 +2,24 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FileText, TrendingUp } from "lucide-react";
+import { AlertTriangle, FileText, TrendingUp } from "lucide-react";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { adminApi } from "@/services/admin-api";
-import { useAdminStore } from "@/stores/admin-store";
+import { apiRequestBlob } from "@/lib/api-client";
+import { ScheduledReportStatus } from "@/components/hq/ScheduledReportStatus";
+import { isRenderableNumber, MISSING, renderPercent, renderScore } from "@/lib/intelligence-render";
 import { inr } from "@/lib/format";
-import { resolveApiBase } from "@/lib/api-base";
 
 const PERIODS = ["daily", "weekly", "monthly", "quarterly", "yearly"] as const;
+
+/**
+ * Rupee formatting is kept — `inr()` is the platform's money formatter and switching the board page
+ * to a bare number would be a downgrade. The guard is only on the missing case: a figure the platform
+ * does not have renders as "Not reported", never as ₹0.
+ */
+function money(v: unknown): string {
+  return isRenderableNumber(v) ? inr(v, true) : MISSING;
+}
 
 export default function FinanceReportsPage() {
   const [exporting, setExporting] = useState<string | null>(null);
@@ -26,12 +36,8 @@ export default function FinanceReportsPage() {
     const key = `${period}-${format}`;
     setExporting(key);
     try {
-      const base = resolveApiBase();
-      const token = useAdminStore.getState().accessToken;
-      const url = `${base.replace(/\/$/, "")}/api/admin/finance/reports/export?period=${period}&format=${format}`;
-      const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
-      if (!res.ok) return;
-      const blob = await res.blob();
+      // Shared client: bearer + coordinated refresh; throws a typed error instead of silently returning.
+      const blob = await apiRequestBlob("/api/admin/finance/reports/export", { auth: true, query: { period, format } });
       const href = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = href;
@@ -85,11 +91,41 @@ export default function FinanceReportsPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Finance health" value={`${health.score ?? 0}/100`} icon={TrendingUp} loading={isLoading} />
-        <KpiCard label="GMV" value={inr(Number(report.gmv ?? 0), true)} icon={FileText} loading={isLoading} />
-        <KpiCard label="Net revenue" value={inr(Number(report.netRevenue ?? 0), true)} icon={FileText} loading={isLoading} />
-        <KpiCard label="Platform margin" value={`${report.platformMarginPct ?? 0}%`} icon={FileText} loading={isLoading} />
+        <KpiCard label="Finance health" value={renderScore(health.score)} icon={TrendingUp} loading={isLoading} />
+        <KpiCard label="GMV" value={money(report.gmv)} icon={FileText} loading={isLoading} />
+        <KpiCard label="Net revenue" value={money(report.netRevenue)} icon={FileText} loading={isLoading} />
+        <KpiCard label="Platform margin" value={renderPercent(report.platformMarginPct)} icon={FileText} loading={isLoading} />
       </div>
+
+      {/*
+        The figure above that cannot be read at face value, said plainly rather than left to a reader
+        to discover. It comes straight from the ledger-backed source; it is not recomputed here and
+        not smoothed. Hiding it on the page that produces the board PDF would be the one place it
+        could quietly become a board figure.
+
+        Net revenue is deliberately NOT listed. Its mixed-period defect was repaired at the source —
+        `getOverview` now subtracts in-window refunds rather than the all-time total, verified live at
+        30-day GMV 21,283 minus in-period refunds 2,732 = 18,551, where the old formula produced
+        -10,070.70. Leaving a warning about a defect that no longer exists would be its own kind of
+        lie, and would train readers to ignore the box.
+      */}
+      <div
+        role="note"
+        className="flex items-start gap-2.5 rounded-xl border border-[var(--color-biz-danger)]/30 bg-[var(--color-biz-danger)]/5 p-3"
+      >
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-biz-danger)]" aria-hidden />
+        <div className="min-w-0 text-xs">
+          <p className="font-semibold text-[var(--color-biz-danger)]">Known data-quality issue in these figures</p>
+          <p className="mt-0.5 text-[var(--color-biz-muted)]">
+            <strong>Platform margin</strong> is derived from figures on different period bases, and is
+            undefined when GMV is zero — the source returns 0, which is indistinguishable from a
+            genuine zero margin. It is carried unchanged from the authoritative source and is not
+            recomputed on this page.
+          </p>
+        </div>
+      </div>
+
+      <ScheduledReportStatus />
 
       <div className="rounded-xl border border-[var(--color-biz-border)] bg-[var(--color-biz-surface)] p-4">
         <h2 className="mb-3 font-semibold">Health components</h2>

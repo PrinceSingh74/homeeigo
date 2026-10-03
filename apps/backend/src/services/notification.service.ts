@@ -1,6 +1,9 @@
 import prisma from "../lib/prisma";
+import { isRetryablePrismaError } from "../lib/prisma-errors";
 import { createWsEnvelope, pushToUser } from "./notification-hub";
 import { pushDeliveryService } from "./push-delivery.service";
+import { logger } from "../lib/logger";
+import { recordNotificationFailed } from "../lib/notification-metrics";
 
 /**
  * Notification kinds emitted by services like booking-live and earnings-live.
@@ -54,6 +57,31 @@ export interface NotificationPayload {
   referenceType?: string;
 }
 
+/**
+ * Bounded pool-aware insert. P2024 retries use exponential backoff (not tight loops) so
+ * retries do not amplify connection pressure under connection_limit=8 soak load.
+ */
+async function createNotificationRow(
+  data: Parameters<typeof prisma.notification.create>[0]["data"],
+) {
+  const MAX_ATTEMPTS = 4;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      return await prisma.notification.create({ data });
+    } catch (err) {
+      lastErr = err;
+      if (isRetryablePrismaError(err) && attempt < MAX_ATTEMPTS - 1) {
+        // 80ms, 160ms, 320ms — leave room for other transactions to release slots
+        await new Promise((r) => setTimeout(r, 80 * 2 ** attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
 export class NotificationService {
   async createForUser(input: {
     userId: string;
@@ -65,8 +93,7 @@ export class NotificationService {
     imageUrl?: string;
     priority?: string;
   }) {
-    const n = await prisma.notification.create({
-      data: {
+    const n = await createNotificationRow({
         userId: input.userId,
         type: input.type,
         title: input.title,
@@ -75,8 +102,7 @@ export class NotificationService {
         referenceType: input.referenceType,
         imageUrl: input.imageUrl,
         priority: input.priority ?? "normal",
-      },
-    });
+      });
     pushToUser(
       input.userId,
       createWsEnvelope(
@@ -107,6 +133,60 @@ export class NotificationService {
       })
       .catch(() => undefined);
     return n;
+  }
+
+  /**
+   * Notify about something that has ALREADY happened, without letting the telling fail the doing.
+   *
+   * ── The defect this exists to remove ─────────────────────────────────────────
+   *
+   * Three money paths did `await notificationService.createForUser(...)` immediately after their
+   * transaction committed, with no catch:
+   *
+   *   payment.service.ts   — payment SUCCESS, ledger posted, `payment_success_total` incremented
+   *   wallet.service.ts    — top-up settled via webhook
+   *   wallet.service.ts    — top-up settled via customer verify
+   *
+   * A transient failure in `notification.create` (P2024 pool exhaustion is a documented mode in
+   * this codebase) therefore turned a completed payment into a 500. That alone would be bad; what
+   * made it permanent is the retry path. Re-verifying short-circuits on
+   * `status === SUCCESS && same razorpayPaymentId`, and re-reconciling returns on `alreadySettled`
+   * — so the second attempt never reaches the notification at all. The customer's money moved, the
+   * customer was told it failed, and the notification (plus, in the payment case, the receipt and
+   * invoice PDF queued on the lines below it) was lost for good.
+   *
+   * ── Why not just `.catch(() => undefined)` ───────────────────────────────────
+   *
+   * Because that is the opposite failure: a notification that silently never arrives, with nothing
+   * anywhere to say so. `partner-referral.service.ts` does exactly that today. This keeps the
+   * non-blocking behaviour and makes the failure visible — a log line naming the recipient and the
+   * type, and `notification_failed_total{type,reason}`, which already has a counter and can carry
+   * an alert.
+   *
+   * Use this after a committed operation. Use `createForUser` when the caller genuinely wants the
+   * failure (a tool handler that must report it, a job that should retry).
+   */
+  async createForUserDetached(
+    input: Parameters<NotificationService["createForUser"]>[0],
+    context?: Record<string, unknown>,
+  ): Promise<{ delivered: boolean }> {
+    try {
+      await this.createForUser(input);
+      return { delivered: true };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message.slice(0, 120) : String(err).slice(0, 120);
+      recordNotificationFailed(input.type, "create_failed");
+      logger.error("notification_create_failed", {
+        category: "APPLICATION",
+        notificationType: input.type,
+        userId: input.userId,
+        referenceId: input.referenceId,
+        referenceType: input.referenceType,
+        reason,
+        ...context,
+      });
+      return { delivered: false };
+    }
   }
 
   async list(userId: string, opts: { page: number; limit: number; type?: string; unreadOnly?: boolean }) {
@@ -175,13 +255,42 @@ export class NotificationService {
    * Emits via the same realtime envelope as `createForUser` so existing
    * frontend subscribers keep working unchanged.
    */
-  async sendNotification(
+  /**
+   * The in-app inbox on its own: the persistent row and the live envelope, and no device dispatch.
+   *
+   * `sendNotification` does three things at once — writes the row, pushes the WebSocket envelope and
+   * hands off to the device — which is fine for a caller that wants "tell this person", but it left
+   * the notification router unable to distinguish two genuinely different surfaces. A customer with
+   * no registered device still has an inbox; the router had no way to say so, so it resolved them to
+   * no channel at all and the row was never written.
+   *
+   * Deliberately delegates rather than reimplementing: one `prisma.notification.create` for the
+   * whole platform, and the same realtime envelope existing frontends already subscribe to.
+   */
+  async createInAppOnly(
     userId: string,
     type: NotificationKind | string,
     payload: NotificationPayload,
   ): Promise<string> {
-    const n = await prisma.notification.create({
-      data: {
+    return this.sendNotification(userId, type, payload, { deviceDispatch: false });
+  }
+
+  async sendNotification(
+    userId: string,
+    type: NotificationKind | string,
+    payload: NotificationPayload,
+    /**
+     * Whether to also hand this to the device. Defaults to true so every existing caller behaves
+     * exactly as before; only the IN_APP adapter turns it off, because pushing to a device is what
+     * the separate PUSH channel is for.
+     */
+    options: {
+      deviceDispatch?: boolean;
+      /** Set by the notification router's PUSH adapter, which has already applied preference. */
+      preferenceAlreadyApplied?: boolean;
+    } = {},
+  ): Promise<string> {
+    const n = await createNotificationRow({
         userId,
         type,
         title: payload.title,
@@ -197,8 +306,7 @@ export class NotificationService {
             ? JSON.stringify({ actions: payload.actions, data: payload.data })
             : undefined,
         priority: "normal",
-      },
-    });
+      });
 
     pushToUser(
       userId,
@@ -223,18 +331,21 @@ export class NotificationService {
       ),
     );
 
-    void pushDeliveryService
-      .sendToUser(userId, {
-        title: payload.title,
-        body: payload.body,
-        notificationId: n.id,
-        data: {
-          referenceId: payload.referenceId,
-          type,
-          ...(payload.data ?? {}),
-        },
-      })
-      .catch(() => undefined);
+    if (options.deviceDispatch !== false) {
+      void pushDeliveryService
+        .sendToUser(userId, {
+          title: payload.title,
+          body: payload.body,
+          notificationId: n.id,
+          preferenceAlreadyApplied: options.preferenceAlreadyApplied,
+          data: {
+            referenceId: payload.referenceId,
+            type,
+            ...(payload.data ?? {}),
+          },
+        })
+        .catch(() => undefined);
+    }
 
     return n.id;
   }
@@ -345,19 +456,23 @@ export class NotificationService {
     });
   }
 
-  /** Bulk send used for promotions/announcements. */
+  /**
+   * Bulk send used for promotions/announcements.
+   * Sequential writes (not Promise.all) — unbounded parallel create under connection_limit=8
+   * reproduces the support-admin P2024 pool-storm failure mode.
+   */
   async broadcastNotification(
     userIds: string[],
     type: NotificationKind | string,
     payload: NotificationPayload,
   ): Promise<void> {
-    await Promise.all(
-      userIds.map((userId) =>
-        this.sendNotification(userId, type, payload).catch((error) => {
-          console.error(`[Broadcast] Failed for ${userId}:`, error);
-        }),
-      ),
-    );
+    for (const userId of userIds) {
+      try {
+        await this.sendNotification(userId, type, payload);
+      } catch (error) {
+        console.error(`[Broadcast] Failed for ${userId}:`, error);
+      }
+    }
   }
 
   /** Convenience used by Part 6A WS routes that show unread on connect. */

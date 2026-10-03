@@ -83,7 +83,9 @@ export const otpVerifyAuthSchema = z.object({
 });
 
 export const refreshTokenSchema = z.object({
-  refreshToken: z.string().min(1, "Refresh token required"),
+  // Optional: a web client sends nothing and the token is read from its HttpOnly audience cookie
+  // (lib/auth-cookies.ts). The route rejects a request that has neither.
+  refreshToken: z.string().min(1, "Refresh token required").optional(),
   deviceId: z.string().max(128).optional(),
   deviceName: z.string().max(128).optional(),
   setAuthCookies: z.boolean().optional(),

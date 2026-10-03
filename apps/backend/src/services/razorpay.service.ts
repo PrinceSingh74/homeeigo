@@ -1,10 +1,114 @@
 import crypto from "crypto";
-import { razorpayBreaker } from "./../lib/circuit-breaker";
+import { AppError } from "../lib/app-error";
+import { CircuitOpenError, razorpayBreaker } from "./../lib/circuit-breaker";
 import { logger } from "../lib/logger";
+import { paymentMocksAllowed } from "../lib/payment-mocks";
+import { liveProviderAllowed } from "../lib/test-egress";
+import { resolvePaymentEnvironment, type PaymentEnvironmentVerdict } from "../lib/payment-environment";
 
-const KEY_ID = process.env.RAZORPAY_KEY_ID || "";
-const KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
+// A test runtime is treated as unconfigured (dev order ids, no gateway call) unless it opts in
+// with HOMIGO_REQUIRE_RAZORPAY=1 — see lib/test-egress.ts. `.env` holds REAL keys.
+const LIVE_GATEWAY = liveProviderAllowed("HOMIGO_REQUIRE_RAZORPAY");
+const KEY_ID = LIVE_GATEWAY ? process.env.RAZORPAY_KEY_ID || "" : "";
+const KEY_SECRET = LIVE_GATEWAY ? process.env.RAZORPAY_KEY_SECRET || "" : "";
 const WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || "";
+
+/* ------------------------------------------------------------------------------------------------
+ * Typed order-creation failures
+ *
+ * A failed gateway call used to throw a plain Error("Razorpay order failed: <body>") that the error
+ * middleware rendered as an UNKNOWN 500 — and a 2xx with a body that was not an order was committed
+ * as if it were one. Every failure now leaves createOrder as a PaymentGatewayError with a stable code;
+ * none of them ever claims the payment happened.
+ * ---------------------------------------------------------------------------------------------- */
+
+export type PaymentGatewayErrorCode =
+  /** network, timeout, DNS, egress refusal, circuit open, 429 or 5xx — worth retrying */
+  | "PAYMENT_GATEWAY_UNAVAILABLE"
+  /** gateway answered 4xx (bad request, auth) — retrying the same request will not help */
+  | "PAYMENT_GATEWAY_REJECTED"
+  /** 2xx whose body is not the order we asked for */
+  | "PAYMENT_GATEWAY_INVALID_RESPONSE"
+  /** production runtime without gateway credentials */
+  | "PAYMENT_GATEWAY_NOT_CONFIGURED";
+
+const GATEWAY_ERROR: Record<PaymentGatewayErrorCode, { status: number; message: string; retryable: boolean }> = {
+  PAYMENT_GATEWAY_UNAVAILABLE: {
+    status: 503,
+    message: "Payment could not be started right now. Your booking is saved — please try again in a moment.",
+    retryable: true,
+  },
+  PAYMENT_GATEWAY_REJECTED: {
+    status: 502,
+    message: "The payment provider declined to start this payment. Please try again later or contact support.",
+    retryable: false,
+  },
+  PAYMENT_GATEWAY_INVALID_RESPONSE: {
+    status: 502,
+    message: "The payment provider returned an unexpected response. No payment was taken — please try again.",
+    retryable: true,
+  },
+  PAYMENT_GATEWAY_NOT_CONFIGURED: {
+    status: 503,
+    message: "Online payment is not available right now.",
+    retryable: false,
+  },
+};
+
+export class PaymentGatewayError extends AppError {
+  readonly retryable: boolean;
+  constructor(
+    code: PaymentGatewayErrorCode,
+    readonly httpStatus?: number,
+  ) {
+    const spec = GATEWAY_ERROR[code];
+    super(spec.message, spec.status, code, { meta: { retryable: spec.retryable } });
+    this.name = "PaymentGatewayError";
+    this.retryable = spec.retryable;
+  }
+}
+
+/** Gateway answered with a non-2xx status (thrown inside the breaker so failures still count). */
+class GatewayHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`gateway HTTP ${status}`);
+  }
+}
+
+/** Classify anything thrown while creating a gateway order. */
+export function classifyGatewayOrderFailure(err: unknown): PaymentGatewayError {
+  if (err instanceof PaymentGatewayError) return err;
+  if (err instanceof CircuitOpenError) return new PaymentGatewayError("PAYMENT_GATEWAY_UNAVAILABLE");
+  if (err instanceof GatewayHttpError) {
+    if (err.status === 429 || err.status >= 500) return new PaymentGatewayError("PAYMENT_GATEWAY_UNAVAILABLE", err.status);
+    return new PaymentGatewayError("PAYMENT_GATEWAY_REJECTED", err.status);
+  }
+  // fetch rejections: TypeError (network/DNS/egress barrier), AbortError/TimeoutError (15 s budget).
+  return new PaymentGatewayError("PAYMENT_GATEWAY_UNAVAILABLE");
+}
+
+/** Test seam: the HTTP-status failure the adapter throws inside the breaker. */
+export function gatewayHttpFailure(status: number): Error {
+  return new GatewayHttpError(status);
+}
+
+/** Accept a gateway reply only if it is the order that was requested. */
+export function validateGatewayOrder(
+  body: unknown,
+  amountPaise: number,
+): { id: string; amount: number; currency: string } {
+  const o = body as { id?: unknown; amount?: unknown; currency?: unknown } | null;
+  if (
+    !o ||
+    typeof o.id !== "string" ||
+    !/^order_[A-Za-z0-9]+$/.test(o.id) ||
+    o.amount !== amountPaise ||
+    o.currency !== "INR"
+  ) {
+    throw new PaymentGatewayError("PAYMENT_GATEWAY_INVALID_RESPONSE");
+  }
+  return { id: o.id, amount: o.amount, currency: o.currency };
+}
 
 /** What is actually known about a gateway refund attempt. */
 export type GatewayRefundOutcome =
@@ -87,6 +191,18 @@ export function resetRazorpayCreateOrderInvocationCount(): void {
 }
 
 export class RazorpayService {
+  /**
+   * §8 — which Razorpay world these credentials belong to, derived from the key id itself rather
+   * than from a flag. Carries no secret: only the key's `rzp_test_` / `rzp_live_` prefix.
+   *
+   * Read the RAW environment variable, not the gated `KEY_ID`: a test runtime blanks the key so no
+   * gateway call can escape, and reporting "UNCONFIGURED" there would hide a live credential that
+   * is genuinely sitting in `.env` on someone's machine.
+   */
+  get paymentEnvironment(): PaymentEnvironmentVerdict {
+    return resolvePaymentEnvironment(process.env.RAZORPAY_KEY_ID);
+  }
+
   get isConfigured() {
     return Boolean(KEY_ID && KEY_SECRET);
   }
@@ -112,26 +228,43 @@ export class RazorpayService {
       const auth = Buffer.from(`${KEY_ID}:${KEY_SECRET}`).toString("base64");
       // Circuit breaker: isolate a failing Razorpay gateway so order creation fast-fails
       // (and the caller can surface a retry) instead of hanging the payment path.
-      const data = await razorpayBreaker.execute(async () => {
-        const res = await fetch("https://api.razorpay.com/v1/orders", {
-          method: "POST",
-          headers: {
-            Authorization: `Basic ${auth}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            amount: amountPaise,
-            currency: "INR",
-            receipt,
-            notes,
-          }),
+      let data: { id: string; amount: number; currency: string };
+      try {
+        data = await razorpayBreaker.execute(async () => {
+          const res = await fetch("https://api.razorpay.com/v1/orders", {
+            method: "POST",
+            headers: {
+              Authorization: `Basic ${auth}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              amount: amountPaise,
+              currency: "INR",
+              receipt,
+              notes,
+            }),
+            signal: AbortSignal.timeout(15_000),
+          });
+          if (!res.ok) {
+            const detail = await res.text().catch(() => "");
+            logger.warn("razorpay.gateway_order.rejected", { receipt, httpStatus: res.status, detail: detail.slice(0, 200) });
+            throw new GatewayHttpError(res.status);
+          }
+          const body = await res.json().catch(() => null);
+          return validateGatewayOrder(body, amountPaise);
         });
-        if (!res.ok) {
-          const err = await res.text();
-          throw new Error(`Razorpay order failed: ${err}`);
-        }
-        return (await res.json()) as { id: string; amount: number; currency: string };
-      });
+      } catch (err) {
+        const typed = classifyGatewayOrderFailure(err);
+        logger.warn("razorpay.gateway_order.failed", {
+          receipt,
+          amountPaise,
+          code: typed.code,
+          httpStatus: typed.httpStatus,
+          cause: err instanceof Error ? err.name : typeof err,
+          invocation,
+        });
+        throw typed;
+      }
       logger.info("razorpay.gateway_order.created", {
         receipt,
         amountInr,
@@ -143,7 +276,7 @@ export class RazorpayService {
       return { orderId: data.id, amount: data.amount, currency: data.currency };
     }
     if (process.env.NODE_ENV === "production") {
-      throw new Error("Razorpay is not configured");
+      throw new PaymentGatewayError("PAYMENT_GATEWAY_NOT_CONFIGURED");
     }
     const orderId = `order_dev_${crypto.randomBytes(8).toString("hex")}`;
     logger.info("razorpay.gateway_order.created", {
@@ -166,7 +299,8 @@ export class RazorpayService {
 
   verifyPaymentSignature(orderId: string, paymentId: string, signature: string): boolean {
     if (!KEY_SECRET) {
-      return process.env.NODE_ENV !== "production";
+      // No secret configured: only an explicitly mock-enabled dev/test process may accept.
+      return paymentMocksAllowed();
     }
     const expected = this.computePaymentSignature(orderId, paymentId);
     return safeEqual(expected, signature);
@@ -299,7 +433,7 @@ export class RazorpayService {
       return { ok: false, error: "RAZORPAY_ACCOUNT_NUMBER is empty" };
     }
 
-    let balancePaise = 0;
+    let balancePaise: number;
     try {
       const balance = await this.fetchBalance();
       balancePaise = balance.balancePaise;
@@ -498,16 +632,31 @@ export class RazorpayService {
     });
   }
 
-  /** Refunds recorded at the gateway for one payment — the reconciliation read path. */
-  async fetchRefundsForPayment(paymentId: string): Promise<GatewayRefundRecord[]> {
+  /**
+   * Refunds recorded at the gateway for one payment — the reconciliation read path.
+   *
+   * `null` means the gateway could not be READ, and it is deliberately not an empty list.
+   * Reconciliation treats "the gateway holds no refund for this operation" as proof the refund never
+   * existed and releases the payment for another attempt, so a failed read reported as `[]` turns an
+   * unknown outcome into a false "never happened" — the step before a second refund. Observed against
+   * Razorpay TEST on 2026-09-27: a burst of lookups returned `[]` for a payment holding a processed
+   * refund.
+   */
+  async fetchRefundsForPayment(paymentId: string): Promise<GatewayRefundRecord[] | null> {
     if (!this.isConfigured) return [];
     const auth = Buffer.from(`${KEY_ID}:${KEY_SECRET}`).toString("base64");
-    const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/refunds?count=100`, {
-      headers: { Authorization: `Basic ${auth}` },
-    });
-    if (!res.ok) return [];
-    const data = (await res.json()) as { items?: GatewayRefundRecord[] };
-    return data.items ?? [];
+    let res: Response;
+    try {
+      res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/refunds?count=100`, {
+        headers: { Authorization: `Basic ${auth}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      return null;
+    }
+    if (!res.ok) return null;
+    const data = (await res.json().catch(() => null)) as { items?: GatewayRefundRecord[] } | null;
+    return Array.isArray(data?.items) ? data.items : null;
   }
 }
 

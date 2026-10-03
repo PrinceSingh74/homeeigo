@@ -3,9 +3,8 @@
 import { Download } from "lucide-react";
 import { useWalletDerived } from "@/hooks/use-derived-selectors";
 import { useAppStore } from "@/stores/app-store";
-import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
-import { resolveApiBase } from "@/lib/api-base";
+import { apiRequestRaw } from "@/services/auth/api-client";
 
 export function WalletInvoicesTab() {
   const showToast = useAppStore((s) => s.showToast);
@@ -20,11 +19,7 @@ export function WalletInvoicesTab() {
       return;
     }
     try {
-      const token = useAuthStore.getState().accessToken;
-      const apiBase = resolveApiBase().replace(/\/$/, "");
-      const res = await fetch(`${apiBase}/api/payments/${inv.id}/invoice`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
+      const res = await apiRequestRaw(`/api/payments/${inv.id}/invoice`);
       if (!res.ok) throw new Error("not available");
       const html = await res.text();
       const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));

@@ -1,5 +1,6 @@
 import type { AiGatewayRole, AiMemoryType, AiProviderType, AiRequestStatus } from "@prisma/client";
 import type { AiGatewayContext, AiMessage } from "../ai/types";
+import type { Prisma } from "@prisma/client";
 
 export type ContextBuildRequest = {
   actorId: string;
@@ -28,7 +29,7 @@ export type EnterpriseBuiltContext = {
   systemContext: string;
   messages: AiMessage[];
   sections: ContextSection[];
-  metadata: Record<string, unknown>;
+  metadata: Prisma.InputJsonObject;
   contextHash: string;
   contextSize: number;
   tokenBudget: number;
@@ -40,13 +41,13 @@ export type MemoryStoreInput = {
   memoryType: AiMemoryType;
   ownerId?: string;
   tenantId?: string;
-  content: Record<string, unknown>;
+  content: Prisma.InputJsonObject;
   summary?: string;
   priority?: number;
   importance?: number;
   confidence?: number;
   ttlSeconds?: number;
-  metadata?: Record<string, unknown>;
+  metadata?: Prisma.InputJsonObject;
 };
 
 export type MemorySearchQuery = {
@@ -114,7 +115,7 @@ export type TimelineEntry = {
   blocked: boolean;
   blockReason?: string;
   resultHash?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Prisma.InputJsonObject;
 };
 
 export const CONTEXT_TOKEN_BUDGET = {

@@ -61,7 +61,7 @@ export function AvailabilityStep({
           {error}
         </Text>
       ) : null}
-      <Pressable accessibilityRole="button" style={styles.button} disabled={loading} onPress={onSubmit}>
+      <Pressable accessibilityRole="button" testID="onboarding-save-continue" style={styles.button} disabled={loading} onPress={onSubmit}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save & Continue</Text>}
       </Pressable>
     </View>

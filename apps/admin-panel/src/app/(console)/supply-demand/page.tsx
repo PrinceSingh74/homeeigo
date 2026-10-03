@@ -1,23 +1,29 @@
 "use client";
 
-import { Flame, MapPinned, Gauge } from "lucide-react";
+import { Flame, Gauge, MapPinned } from "lucide-react";
+import { OperationsPage } from "@/components/operations/OperationsPage";
 import { CommandHubPage } from "@/components/command/CommandHubPage";
-import { CommandCenterRail } from "@/components/command/CommandCenterRail";
 
 export default function SupplyDemandPage() {
   return (
-    <CommandHubPage
+    <OperationsPage
       icon={Flame}
-      tone="warning"
+      iconTone="warning"
       title="Supply-Demand"
-      subtitle="Canonical heatmap, coverage intelligence, and Command Center demand layers. No second matching engine."
-      links={[
-        { href: "/heatmap", label: "Demand heatmap", description: "Supply online vs demand cells", icon: Flame, tone: "danger" },
-        { href: "/coverage", label: "Coverage intelligence", description: "Gaps and zone coverage", icon: MapPinned },
-        { href: "/command-center", label: "Command Center map", description: "Live density, surge, demand", icon: Gauge, tone: "success" },
-      ]}
+      subtitle="Where demand outruns supply. Canonical heatmap, coverage, and Command Center demand layers — no second matching engine."
     >
-      <CommandCenterRail />
-    </CommandHubPage>
+      <CommandHubPage
+        embedded
+        icon={Flame}
+        tone="warning"
+        title="Open the live layers"
+        subtitle="Each destination is a real ops surface. Heatmap is cells, coverage is cities, Command Center is the live map."
+        links={[
+          { href: "/heatmap", label: "Demand heatmap", description: "Supply online vs demand cells", icon: Flame, tone: "danger" },
+          { href: "/coverage", label: "Coverage intelligence", description: "Gaps and zone coverage", icon: MapPinned },
+          { href: "/command-center", label: "Command Center map", description: "Live density, surge, demand", icon: Gauge, tone: "success" },
+        ]}
+      />
+    </OperationsPage>
   );
 }

@@ -5,11 +5,18 @@
  * Usage: bun --env-file=.env run scripts/ensure-demo-partner.ts
  */
 import prisma from "../src/lib/prisma";
+import { requireDeclaredTarget } from "./lib/script-target";
+import { userPiiService } from "../src/services/user-pii.service";
+import { financialLedgerService } from "../src/services/financial-ledger.service";
+requireDeclaredTarget({ label: "ensure-demo-partner" });
 
 const PARTNER_EMAIL = "partner@homigo.demo";
 
 async function main() {
-  const user = await prisma.user.findUnique({ where: { email: PARTNER_EMAIL } });
+  const emailHash = userPiiService.hashEmail(PARTNER_EMAIL);
+  const user =
+    (await prisma.user.findFirst({ where: { emailHash } })) ??
+    (await prisma.user.findFirst({ where: { email: PARTNER_EMAIL } }));
   if (!user) {
     console.error(`User ${PARTNER_EMAIL} not found — run db:seed first.`);
     process.exit(1);
@@ -62,6 +69,16 @@ async function main() {
       accuracy: 12,
     },
   });
+
+  await financialLedgerService.recordJournal(
+    financialLedgerService.journalForFixtureOpeningBalance({
+      idempotencyKey: `fixture_provider_payable:${provider.id}`,
+      referenceId: provider.id,
+      referenceType: "fixture_provider",
+      creditAccount: "PROVIDER_PAYABLE",
+      amount: 12480,
+    }),
+  );
 
   console.log(`Created demo provider ${provider.id} for ${PARTNER_EMAIL}`);
 }

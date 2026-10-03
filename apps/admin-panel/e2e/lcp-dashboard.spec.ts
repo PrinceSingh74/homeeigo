@@ -13,7 +13,7 @@ async function login(page: import("@playwright/test").Page) {
   await page.locator("#admin-email").fill(SEED_ADMIN.email);
   await page.locator("#admin-password").fill(SEED_ADMIN.password);
   await page.getByRole("button", { name: /enter business hq/i }).click();
-  await expect(page.getByRole("heading", { name: /business overview/i })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: /Executive HQ|business overview/i })).toBeVisible({ timeout: 30_000 });
 }
 
 async function measureLcp(page: import("@playwright/test").Page): Promise<number> {
@@ -29,7 +29,7 @@ async function measureLcp(page: import("@playwright/test").Page): Promise<number
   });
   // Cold load: clear caches by reloading the dashboard, then read the final LCP entry.
   await page.goto("/", { waitUntil: "networkidle" });
-  await expect(page.getByRole("heading", { name: /business overview/i })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: /Executive HQ|business overview/i })).toBeVisible({ timeout: 30_000 });
   return page.evaluate(
     () =>
       new Promise<number>((resolve) => {
@@ -48,6 +48,10 @@ async function measureLcp(page: import("@playwright/test").Page): Promise<number
 }
 
 test("admin dashboard LCP (production build) < 2500ms", async ({ page }) => {
+  test.skip(
+    process.env.E2E_ADMIN_PRODUCTION !== "1",
+    "Requires admin production build (next start) — set E2E_ADMIN_PRODUCTION=1 after npm run build",
+  );
   test.setTimeout(180_000);
   await login(page);
   const samples: number[] = [];

@@ -5,7 +5,22 @@ services:
     extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./rules:/etc/prometheus/rules:ro
+      # Canonical rules, NOT a copy under this directory.
+      #
+      # This used to mount `./rules`, a snapshot taken on 2026-07-04. By 2026-09-21 the repository
+      # defined 111 alerts and this stack was loading 27 — verified against /api/v1/rules on the
+      # running instance. Everything added in between was dead, including every money-integrity
+      # alert: WalletLiabilityDrift, WalletLiabilityMismatch, ProviderPayableDrift and
+      # FinancialIntegrityBelow100 were all absent at runtime while `financial_integrity_runs` had
+      # been recording a WALLET_LIABILITY_MISMATCH failure on every single run.
+      #
+      # The detector was firing into a table with nobody watching, because the alert that watches it
+      # was never loaded. A stale copy of an alert file is worse than no copy: the repository shows
+      # the coverage, the runtime does not have it, and nothing reconciles the two.
+      #
+      # All five alerts that existed only in the old snapshot (homigo-ai-tools-alerts.yml) are
+      # already present in the canonical set, so nothing is lost by this change.
+      - ../rules:/etc/prometheus/rules:ro
     ports: ["9090:9090"]
     depends_on: [alertmanager]
 

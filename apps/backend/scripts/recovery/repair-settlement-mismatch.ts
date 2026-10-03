@@ -92,7 +92,7 @@ async function apply(actions: Action[]) {
 
   if (actions.some((a) => a.kind === "SETTLEMENT_SYNC")) {
     const sync = await settlementSyncService.runSync();
-    audit.push(`SETTLEMENT_SYNC: synced=${sync.synced} discrepancies=${sync.discrepancies} accuracy=${sync.accuracyPct}%`);
+    audit.push(`SETTLEMENT_SYNC: synced=${sync.synced} discrepancies=${sync.discrepancies} accuracy=${sync.accuracyPct == null ? "UNMEASURED" : `${sync.accuracyPct}%`}`);
   }
 
   if (actions.some((a) => a.kind === "RECONCILIATION_RERUN")) {

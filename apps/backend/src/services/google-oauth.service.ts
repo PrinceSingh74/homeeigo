@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { provenanceForNewUser } from "../lib/data-provenance";
 import crypto from "crypto";
 import { OAuth2Client } from "google-auth-library";
 import { generateReferralCode } from "../lib/oauth-signup-fraud";
@@ -137,6 +138,7 @@ export class GoogleOAuthService {
       isNewUser = true;
       user = await this.prisma.user.create({
         data: {
+          ...provenanceForNewUser(email),
           email,
           phoneNumber: `oauth_${payload.sub}`,
           firstName,

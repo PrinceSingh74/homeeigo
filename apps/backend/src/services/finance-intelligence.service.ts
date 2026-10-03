@@ -1,6 +1,7 @@
 import prisma from "../lib/prisma";
 import { financeDashboardService } from "./finance-dashboard.service";
 import { financeConfigService } from "./finance-config.service";
+import { CREDITED_EARNING_WHERE } from "../lib/earning-settlement";
 
 /**
  * Finance Intelligence — additive, migration-safe CFO metrics.
@@ -75,7 +76,7 @@ export class FinanceIntelligenceService {
 
     const [gmvBlock, commissionAgg, subscriptionAgg, refundAgg, overview] = await Promise.all([
       this.getCanonicalGmv(days),
-      prisma.earning.aggregate({ where: { earningDate: { gte: since } }, _sum: { commission: true } }),
+      prisma.earning.aggregate({ where: { earningDate: { gte: since }, ...CREDITED_EARNING_WHERE }, _sum: { commission: true } }),
       prisma.subscriptionInvoice.aggregate({
         where: { status: "paid", createdAt: { gte: since } },
         _sum: { amount: true },

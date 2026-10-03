@@ -31,6 +31,9 @@ import { HowItWorks } from "@/components/services-catalog/TrustSections";
 import { HourlyHelpModule, hourlyBooking, type HourlySelection } from "@/components/services-catalog/HourlyHelpModule";
 import { BeautyAudienceSelector, BeautyProfessionalSelector } from "@/components/services-catalog/beauty/BeautySelectors";
 import { ServiceHero } from "@/components/services-catalog/detail/ServiceHero";
+import { HomeHelpHero } from "@/components/services-catalog/home-help/HomeHelpHero";
+import { HomeHelpShapes } from "@/components/services-catalog/home-help/HomeHelpShapes";
+import { BrandHeroWash, BrandMesh } from "@/components/layout/BrandCanvas";
 import { ComingSoonDetail } from "@/components/services-catalog/detail/ComingSoonDetail";
 import {
   QuantitySelector,
@@ -72,7 +75,8 @@ export function ServiceDetail({
   const service = state.status === "ready" ? state.catalog.bySlug.get(slug) : undefined;
 
   return (
-    <main className={cn("relative overflow-x-clip bg-canvas", pageMainBottom, "pb-[calc(10rem+env(safe-area-inset-bottom,0px))] lg:pb-20")}>
+    <main className={cn("relative overflow-x-clip bg-transparent", pageMainBottom, "pb-[calc(10rem+env(safe-area-inset-bottom,0px))] lg:pb-20")}>
+      <BrandMesh />
       {state.status === "ready" && service ? (
         <Loaded catalog={state.catalog} service={service} serverDetail={detail} />
       ) : (
@@ -133,14 +137,29 @@ function Loaded({
     { label: service.name },
   ];
 
+  const homeHelp = service.category === "home-help";
+
   return (
     <>
-      <div className={cn(pageSection, "pt-6 sm:pt-8")}>
-        <Breadcrumbs items={crumbs} />
-        <div className="mt-6 sm:mt-8">
-          <ServiceHero service={service} rating={content.rating} image={content.images[0]} />
+      {homeHelp ? (
+        <div className="relative overflow-hidden">
+          <BrandHeroWash />
+          <HomeHelpShapes />
+          <div className={cn(pageSection, "relative pb-12 pt-6 sm:pb-16 sm:pt-8")}>
+            <Breadcrumbs items={crumbs} />
+            <div className="mt-8 sm:mt-10">
+              <HomeHelpHero service={service} rating={content.rating} image={content.images[0]} />
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className={cn(pageSection, "pt-6 sm:pt-8")}>
+          <Breadcrumbs items={crumbs} />
+          <div className="mt-6 sm:mt-8">
+            <ServiceHero service={service} rating={content.rating} image={content.images[0]} />
+          </div>
+        </div>
+      )}
 
       <div className="mt-10 sm:mt-14">
         <ServiceCategoryNav active={service.category} />
@@ -244,7 +263,10 @@ function LiveBody({
     () => new Map((verdict?.addonAvailability ?? []).map((a) => [a.id, { available: a.available, reason: a.reason }])),
     [verdict?.addonAvailability],
   );
-  const serverIssues = verdict && !verdict.ok ? verdict.issues : [];
+  const serverIssues = useMemo(
+    () => (verdict && !verdict.ok ? verdict.issues : []),
+    [verdict],
+  );
 
   const summary: BookingSummary = useMemo(() => {
     const addonIds = chosenAddons.map((a) => a.id);

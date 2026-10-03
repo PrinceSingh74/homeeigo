@@ -24,7 +24,11 @@ describe("P0-1 Partner registration session tokens", () => {
       { sessionId: "sess-1", userId: "user-1", providerId: null, otpVerified: true },
       new Date(Date.now() + 3600000),
     );
-    const bad = token.slice(0, -4) + "XXXX";
+    // Overwrite the last 4 characters with something they are guaranteed NOT to already be (T-5 class:
+    // a fixed literal is a no-op when the token happens to end with it).
+    const tail = token.slice(-4);
+    const bad = token.slice(0, -4) + (tail === "XXXX" ? "YYYY" : "XXXX");
+    expect(bad).not.toBe(token);
     expect(sessionService.verifyToken(bad)).toBeNull();
   });
 
@@ -147,32 +151,11 @@ describe("P0-5 Wallet reservation math", () => {
     });
   }
 
-  test("concurrent 800+800 on 1000: only one fits", () => {
-    let wallet = 1000;
-    let reserved = 0;
-    const amounts = [800, 800];
-    let successes = 0;
-    for (const amount of amounts) {
-      const available = walletReservation.availableBalance(wallet, reserved);
-      if (available >= amount) {
-        reserved += amount;
-        successes += 1;
-      }
-    }
-    expect(successes).toBe(1);
-    expect(wallet - reserved).toBe(200);
-  });
-
-  test("final balance never negative after reservation simulation", () => {
-    let wallet = 1000;
-    let reserved = 0;
-    for (let i = 0; i < 20; i++) {
-      const amount = 100 + (i % 3) * 50;
-      const available = walletReservation.availableBalance(wallet, reserved);
-      if (available >= amount) reserved += amount;
-    }
-    expect(wallet - reserved).toBeGreaterThanOrEqual(0);
-  });
+  // The former "concurrent 800+800" and "never negative" cases here were sequential loops over a
+  // local accumulator — no DB, no lock, no concurrency — and could not detect the double-spend they
+  // were named for. The real race (Promise.all against reserveAndCreateWithdrawal under the row
+  // lock) lives in p0-financial-races.test.ts ("P0-5 Withdrawal reservation race") and
+  // money-matrix-certification.test.ts CASE 8.
 });
 
 describe("P0-3 Refund idempotency keys", () => {

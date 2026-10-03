@@ -31,6 +31,15 @@ export interface TwinResult<T> { data: T; confidence: number; freshness: string;
 
 const norm = (c: string | null | undefined) => (c ?? "").trim().toLowerCase();
 
+const emptyIntel = (data: unknown, source = "unavailable") => ({
+  data,
+  confidence: 0,
+  freshness: new Date().toISOString(),
+  source,
+  cached: false,
+  generatedAt: new Date().toISOString(),
+});
+
 export class DigitalTwinService {
   /** Live, fully-composed twin for one city (all 10 layers). */
   async cityTwin(city: string): Promise<TwinResult<unknown>> {
@@ -39,16 +48,17 @@ export class DigitalTwinService {
         geoIntelligenceService.surgePrediction(),
         geoIntelligenceService.providerDensity(),
         geoIntelligenceService.zoneScoring(),
-        geoIntelligenceService.fraudDetection(50),
-        geoIntelligenceService.demandForecast(24),
-        geoIntelligenceService.revenueForecast(),
+        geoIntelligenceService.fraudDetection(50).catch(() => emptyIntel({ events: [] })),
+        geoIntelligenceService.demandForecast(24).catch(() => emptyIntel({ points: [], totalPredicted: 0 })),
+        geoIntelligenceService.revenueForecast().catch(() => emptyIntel({ forecastDaily: null, forecastMonthly: null })),
         weatherService.getByCity(city).catch(() => null),
       ]);
-      const surge = (surgeR.data as SurgeZone[]).filter((z) => norm(z.city) === norm(city));
-      const density = (densityR.data as DensityZone[]).filter((z) => norm(z.city) === norm(city));
-      const score = new Map((scoreR.data as { ranked: ScoreZone[] }).ranked.map((z) => [z.zoneId, z]));
-      const densAll = densityR.data as DensityZone[];
-      const fraudEvents = (fraudR.data as { events: FraudEvent[] }).events.filter((e) => norm(this.cityOf(e, densAll)) === norm(city));
+      const surge = ((surgeR.data as SurgeZone[] | null) ?? []).filter((z) => norm(z.city) === norm(city));
+      const density = ((densityR.data as DensityZone[] | null) ?? []).filter((z) => norm(z.city) === norm(city));
+      const ranked = (scoreR.data as { ranked?: ScoreZone[] } | null)?.ranked ?? [];
+      const score = new Map(ranked.map((z) => [z.zoneId, z]));
+      const densAll = (densityR.data as DensityZone[] | null) ?? [];
+      const fraudEvents = ((fraudR.data as { events?: FraudEvent[] } | null)?.events ?? []).filter((e) => norm(this.cityOf(e, densAll)) === norm(city));
 
       // ── Supply twin ──
       const providers = density.reduce((s, z) => s + z.providers, 0);
@@ -59,12 +69,22 @@ export class DigitalTwinService {
 
       // ── Demand twin ──
       const demandNow = [...score.values()].filter((z) => norm(z.city) === norm(city)).reduce((s, z) => s + z.demand24h, 0);
-      const fc = (demandR.data as { points: Array<{ predicted: number }> }).points;
+      /**
+       * An expired forecast window contributes nothing to the twin.
+       *
+       * These points are summed into the city's 1h/6h/24h demand figures. When the warehouse model's
+       * window has already closed they describe past hours, and adding them would report June's
+       * demand as this city's next day. Zero here is not a fabricated forecast — the accompanying
+       * `demandForecastStale` flag says the figures are unavailable rather than low.
+       */
+      const demandData = demandR.data as { points?: Array<{ predicted: number }>; stale?: boolean } | null;
+      const demandForecastStale = Boolean(demandData?.stale);
+      const fc = demandForecastStale ? [] : (demandData?.points ?? []);
       const f1 = fc[0]?.predicted ?? 0, f6 = fc.slice(0, 6).reduce((s, p) => s + p.predicted, 0), f24 = fc.reduce((s, p) => s + p.predicted, 0);
 
       // ── Revenue twin ──
       const revenue24h = [...score.values()].filter((z) => norm(z.city) === norm(city)).reduce((s, z) => s + z.revenue24h, 0);
-      const rev = revenueR.data as { forecastDaily: number; forecastMonthly: number };
+      const rev = (revenueR.data as { forecastDaily?: number | null; forecastMonthly?: number | null } | null) ?? {};
 
       // ── Pricing twin ──
       const avgSurge = surge.length ? surge.reduce((s, z) => s + z.predictedSurge, 0) / surge.length : 1;
@@ -95,11 +115,30 @@ export class DigitalTwinService {
         city,
         zones: density.length,
         layers: {
-          demand: { current: demandNow, forecast1h: Math.round(f1 * 10) / 10, forecast6h: Math.round(f6 * 10) / 10, forecast24h: Math.round(f24 * 10) / 10 },
+          /**
+           * A null forecast is not a forecast of zero.
+           *
+           * When the warehouse window has expired the figures are withheld rather than sent as 0,
+           * because 0 reads as "no demand expected" and would be a fabricated prediction.
+           * `forecastUnavailableReason` names why, so a consumer can tell the two apart.
+           */
+          demand: demandForecastStale
+            ? {
+                current: demandNow,
+                forecast1h: null, forecast6h: null, forecast24h: null,
+                forecastUnavailableReason: "DEMAND_FORECAST_STALE",
+              }
+            : {
+                current: demandNow,
+                forecast1h: Math.round(f1 * 10) / 10,
+                forecast6h: Math.round(f6 * 10) / 10,
+                forecast24h: Math.round(f24 * 10) / 10,
+                forecastUnavailableReason: null,
+              },
           supply: { online: providers, busy, available, density: Math.round(avgDensity * 100) / 100, shortageRisk },
           traffic: { congestionIndex, level: congestionIndex > 66 ? "heavy" : congestionIndex > 33 ? "moderate" : "light" },
           weather: weather ? { condition: weather.condition, description: weather.description, severity: sev, rain1hMm: weather.rain1hMm, weatherImpactScore, floodRisk, aqi: null } : null,
-          revenue: { current24h: Math.round(revenue24h), projectedDaily: rev.forecastDaily, projectedMonthly: rev.forecastMonthly },
+          revenue: { current24h: Math.round(revenue24h), projectedDaily: rev.forecastDaily ?? null, projectedMonthly: rev.forecastMonthly ?? null },
           eta: { inflationPct: etaInflationPct, slowZones: slowZones.slice(0, 5) },
           pricing: { currentSurge: Math.round(avgSurge * 100) / 100, predictedSurge: Math.round(predictedSurge * 100) / 100, confidence: surgeR.confidence },
           fraud: { events: fraudEvents.length, pins: fraudEvents.slice(0, 20), riskScore: fraudEvents.length ? Math.min(100, Math.round(Math.max(...fraudEvents.map((e) => e.implied_kmh)) / 10)) : 0 },
@@ -194,7 +233,7 @@ export class DigitalTwinService {
       insights.push({ text: `Demand picking up in ${city}: ~${L.demand.forecast1h} bookings forecast next hour (quiet now).`, confidence: 0.7, severity: "info" });
     }
     // Revenue insight needs a non-trivial baseline to avoid divide-by-near-zero.
-    if (L.revenue.current24h >= 500 && L.revenue.projectedDaily > L.revenue.current24h * 1.1) insights.push({ text: `${city} revenue forecast exceeds the last-24h run-rate by ${Math.round((L.revenue.projectedDaily / L.revenue.current24h - 1) * 100)}%.`, confidence: 0.7, severity: "info" });
+    if (L.revenue.current24h >= 500 && (L.revenue.projectedDaily ?? 0) > L.revenue.current24h * 1.1) insights.push({ text: `${city} revenue forecast exceeds the last-24h run-rate by ${Math.round(((L.revenue.projectedDaily ?? 0) / L.revenue.current24h - 1) * 100)}%.`, confidence: 0.7, severity: "info" });
     if (L.pricing.predictedSurge >= 1.5) insights.push({ text: `Surge ×${L.pricing.predictedSurge} active/expected in ${city} — capture window.`, confidence: 0.8, severity: "info" });
     if (L.fraud.events > 0) insights.push({ text: `${L.fraud.events} GPS-fraud event(s) detected in ${city} — review high-risk providers.`, confidence: 0.9, severity: "critical" });
     if (L.weather && (L.weather.floodRisk !== "low" || ["severe", "extreme"].includes(L.weather.severity))) insights.push({ text: `Severe weather in ${city} (flood risk ${L.weather.floodRisk}) — ETA buffers + surge engaged.`, confidence: 0.85, severity: "warning" });

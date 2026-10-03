@@ -1,9 +1,28 @@
 import type { Prisma } from "@prisma/client";
+import { toInputJsonObject } from "../../lib/json-input";
 import type { EmitEventInput, HomigoEvent } from "./homigo-event";
 import { mergeEventContext } from "./event-context";
 import { assertNoProhibitedPii, sanitizeEventPayload } from "./pii";
 import { EVENT_VERSION } from "../catalog/event-types";
 import crypto from "crypto";
+
+/**
+ * The event, reduced to something a Json column accepts — validated, not asserted.
+ *
+ * Deliberately THROWS rather than returning null and letting the caller skip the row. Everywhere
+ * else in this audit an unstorable value means "do not cache" or "do not snapshot", which is
+ * harmless. Here the row IS the event: dropping it would silently break the transactional outbox
+ * guarantee, and the consumer that should have run simply never would. The throw aborts the
+ * enclosing transaction, so the business change and its event fail together — which is the whole
+ * point of writing them in one transaction.
+ */
+function outboxPayload(event: unknown): Prisma.InputJsonObject {
+  const payload = toInputJsonObject(event);
+  if (!payload) {
+    throw new Error("event_outbox: payload is not storable as JSON; refusing to publish a partial event");
+  }
+  return payload;
+}
 
 export function buildHomigoEvent<TData extends Record<string, unknown>>(
   input: EmitEventInput<TData>,
@@ -51,7 +70,7 @@ export async function emitInTransaction(
       aggregateId: event.homigo.aggregateId,
       actorType: event.homigo.actorType,
       actorId: event.homigo.actorId,
-      payload: event as unknown as Prisma.InputJsonValue,
+      payload: outboxPayload(event),
       metadata: {
         traceId: event.homigo.traceId,
         correlationId: event.homigo.correlationId,
@@ -77,7 +96,7 @@ export async function emitStandalone(
       aggregateId: event.homigo.aggregateId,
       actorType: event.homigo.actorType,
       actorId: event.homigo.actorId,
-      payload: event as unknown as Prisma.InputJsonValue,
+      payload: outboxPayload(event),
       metadata: {
         traceId: event.homigo.traceId,
         correlationId: event.homigo.correlationId,

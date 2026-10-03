@@ -19,6 +19,7 @@ import { DataTable, StatusBadge } from "@/components/ui/DataTable";
 import { StatTile } from "@/components/hq/primitives";
 import { SectionHead } from "@/components/hq/SectionHead";
 import { Icon3D } from "@/components/hq/Icon3D";
+import { OperationsWorkspaceRail, OpsEyebrow } from "@/components/operations/OperationsWorkspaceRail";
 import { adminApi } from "@/services/admin-api";
 import { formatNumber, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -79,7 +80,10 @@ export default function EtaIntelligencePage() {
   const q = quality.data as Record<string, unknown> | undefined;
   const r = readiness.data as Record<string, unknown> | undefined;
   const g = google.data as Record<string, unknown> | undefined;
-  const labeled = (d?.cities as Array<{ city: string; count: number }>) ?? [];
+  const labeled = useMemo(
+    () => (d?.cities as Array<{ city: string; count: number }>) ?? [],
+    [d?.cities],
+  );
 
   const cities = useMemo(() => {
     const counts = new Map<string, number>();
@@ -124,7 +128,14 @@ export default function EtaIntelligencePage() {
   );
 
   const readinessPct = Math.min(100, Number(r?.readinessPct ?? 0));
-  const qualityPct = Number(d?.avgQualityScore ?? 100);
+  /**
+   * UNMEASURED stays unmeasured.
+   *
+   * This read `?? 100`, so a dataset with no scored trip displayed a PERFECT data-quality score —
+   * the most reassuring possible number produced by the complete absence of evidence. The backend
+   * now sends null and the UI shows an em dash.
+   */
+  const qualityPct = d?.avgQualityScore != null ? Number(d.avgQualityScore) : null;
   const failRate = Number(g?.failureRate ?? 0);
   const rejections = (q?.rejectionReasons as Array<{ reason: string; count: number }>) ?? [];
 
@@ -142,6 +153,7 @@ export default function EtaIntelligencePage() {
         <div className="flex items-center gap-4">
           <Icon3D icon={Navigation} tone="cyan" size="lg" />
           <div>
+            <OpsEyebrow />
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <h1 className="biz-display text-[1.75rem] font-bold leading-none tracking-tight">ETA Intelligence</h1>
               <span className="cmd-live-pill">
@@ -159,6 +171,8 @@ export default function EtaIntelligencePage() {
           Refresh
         </button>
       </header>
+
+      <OperationsWorkspaceRail />
 
       {dashboard.isLoading ? (
         <div className="flex items-center justify-center py-20 text-[var(--color-biz-muted)]">
@@ -188,10 +202,17 @@ export default function EtaIntelligencePage() {
             />
             <StatTile
               label="Label Quality"
-              value={`${qualityPct.toFixed(1)}%`}
-              sub={`${formatNumber(Number(d?.rejected ?? 0))} rejected`}
+              value={qualityPct != null ? `${qualityPct.toFixed(1)}%` : "—"}
+              sub={
+                qualityPct != null
+                  ? `${formatNumber(Number(d?.rejected ?? 0))} rejected`
+                  : "no scored trips yet"
+              }
               icon={Target}
-              tone={qualityPct >= 80 ? "success" : qualityPct >= 60 ? "accent" : "danger"}
+              // Unmeasured is neutral, not "danger" — there is nothing to be alarmed about yet.
+              tone={
+                qualityPct == null ? "default" : qualityPct >= 80 ? "success" : qualityPct >= 60 ? "accent" : "danger"
+              }
             />
             <StatTile
               label="Google vs Actual"
@@ -233,8 +254,8 @@ export default function EtaIntelligencePage() {
               />
               <MetricRow
                 label="Overall quality"
-                value={`${Number(q?.overallScore ?? 100).toFixed(1)}%`}
-                heat={Number(q?.overallScore ?? 100) >= 80 ? "good" : "warn"}
+                value={q?.overallScore != null ? `${Number(q.overallScore).toFixed(1)}%` : "—"}
+                heat={q?.overallScore == null ? "warn" : Number(q.overallScore) >= 80 ? "good" : "warn"}
               />
             </div>
           </section>
@@ -248,7 +269,7 @@ export default function EtaIntelligencePage() {
               meta={`${cities.length} cities`}
             />
             {cities.length ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {cities.map((c) => (
                   <article key={c.city} className="rounded-[14px] border border-[var(--color-biz-line)] bg-[var(--color-biz-surface)] p-4">
                     <div className="flex items-start justify-between gap-2">

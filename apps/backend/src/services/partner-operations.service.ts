@@ -30,6 +30,36 @@ import {
 } from "../lib/partner-availability-fsm";
 import { canonicalizeLifecycle, isDispatchEligibleLifecycle, isLifecycleBlockingOnline } from "../lib/partner-lifecycle-fsm";
 import {
+  evaluateDispatchEligibility,
+  dispatchEligibilityBlockCode,
+  loadPresenceEvidence,
+} from "./dispatch-eligibility.service";
+import {
+  derivePresenceFreshness,
+  deriveLocationFreshness,
+} from "../lib/partner-presence-freshness";
+import { offerRequiresLivePresence } from "../lib/scheduled-offer-presence";
+import {
+  loadServiceGateContextCached,
+  recheckProviderCapability,
+  type ServiceGateContext,
+} from "./provider-capability-loader";
+
+/**
+ * Phase 11 — what the offer/accept re-check needs about the booking's service. Either a context the
+ * caller already built outside its transaction (dispatch builds one per booking), or the ids, in
+ * which case it is read through the caller's transaction.
+ */
+export type OfferCapabilityInput = ServiceGateContext | { serviceId: string; customerId: string | null };
+
+async function resolveGateContext(tx: Prisma.TransactionClient, input: OfferCapabilityInput): Promise<ServiceGateContext> {
+  // Ids path goes through the short-TTL memo: the context is read-only service-side state. Callers
+  // inside a transaction (accept, admin reassign, case re-offer) hold row locks, so the memo only
+  // serves them a settled value and otherwise reads through THEIR transaction — a base-client load
+  // there deadlocked concurrent broadcast accepts on the pool (2026-09-30).
+  return "requirements" in input ? input : loadServiceGateContextCached(input.serviceId, input.customerId, tx);
+}
+import {
   computeCapacity,
   MAX_JOBS_PER_DAY,
   MAX_CONCURRENT_JOBS,
@@ -203,10 +233,18 @@ export class PartnerOperationsService {
       where: { id: { in: providerIds } },
       select: { id: true, maxConcurrentJobs: true, maxJobsPerDay: true, timezone: true },
     });
-    const tz = providers[0]?.timezone || DEFAULT_PARTNER_TZ;
-    const { start, end } = zonedDayBounds(tz, at);
+    /**
+     * "Today" is each partner's own calendar day. This used to take the FIRST provider's timezone
+     * for the whole batch, so a partner in another zone had their daily quota counted over someone
+     * else's day. Providers are grouped by zone: one quota query per distinct zone (almost always 1).
+     */
+    const byTz = new Map<string, string[]>();
+    for (const p of providers) {
+      const tz = p.timezone || DEFAULT_PARTNER_TZ;
+      byTz.set(tz, [...(byTz.get(tz) ?? []), p.id]);
+    }
 
-    const [currentRows, offerRows, todayRows] = await Promise.all([
+    const [currentRows, offerRows, todayGroups] = await Promise.all([
       prisma.booking.groupBy({
         by: ["providerId"],
         where: { providerId: { in: providerIds }, status: { in: CONCURRENT_STATUSES } },
@@ -217,20 +255,25 @@ export class PartnerOperationsService {
         where: { providerId: { in: providerIds }, status: AssignmentAttemptStatus.SENT },
         _count: { _all: true },
       }),
-      prisma.booking.groupBy({
-        by: ["providerId"],
-        where: {
-          providerId: { in: providerIds },
-          status: { in: TODAY_QUOTA_STATUSES },
-          scheduledDate: { gte: start, lt: end },
-        },
-        _count: { _all: true },
-      }),
+      Promise.all(
+        [...byTz.entries()].map(([tz, ids]) => {
+          const { start, end } = zonedDayBounds(tz, at);
+          return prisma.booking.groupBy({
+            by: ["providerId"],
+            where: {
+              providerId: { in: ids },
+              status: { in: TODAY_QUOTA_STATUSES },
+              scheduledDate: { gte: start, lt: end },
+            },
+            _count: { _all: true },
+          });
+        }),
+      ),
     ]);
 
     const current = new Map(currentRows.map((r) => [r.providerId!, r._count._all]));
     const reserved = new Map(offerRows.map((r) => [r.providerId, r._count._all]));
-    const today = new Map(todayRows.map((r) => [r.providerId!, r._count._all]));
+    const today = new Map(todayGroups.flat().map((r) => [r.providerId!, r._count._all]));
 
     for (const p of providers) {
       map.set(
@@ -402,14 +445,49 @@ export class PartnerOperationsService {
   }
 
   /**
+   * Phase 11 — capability half of the offer check, on the BASE client, for callers that run their
+   * own long transaction (direct assignment inside booking create). Ten extra queries inside that
+   * transaction held its pool connection long enough that 100 concurrent creates on a 5-connection
+   * test pool starved each other into P2028 retry storms (measured 2026-09-26). Checking here,
+   * immediately before the transaction opens, keeps the guarantee — capability is evaluated at
+   * request time, revocations block — with the same freshness class as the gate-context memo.
+   */
+  async precheckOfferCapability(providerId: string, capability: OfferCapabilityInput): Promise<string | null> {
+    const blocked = await recheckProviderCapability(prisma, providerId, await resolveGateContext(prisma as unknown as Prisma.TransactionClient, capability));
+    return blocked ? blocked.reason : null;
+  }
+
+  /**
    * Re-check under a row lock. Used by dispatch offer + accept.
    * Returns null when eligible, otherwise a machine code.
    */
   async assertOfferEligible(
     tx: Prisma.TransactionClient,
     providerId: string,
-    job: { latitude: number; longitude: number; scheduledDate: Date },
+    job: {
+      latitude: number;
+      longitude: number;
+      scheduledDate: Date;
+      capability?: OfferCapabilityInput;
+      /** False only for an appointment more than a day away. Near jobs stay live-presence gated. */
+      livePresenceRequired?: boolean;
+    },
   ): Promise<string | null> {
+    /**
+     * Phase 11 — provenance + typed capability re-checked at offer time, in the same order matching
+     * applies them. A certificate that expired, or a capability/membership revoked, after the match
+     * blocks the offer with its reason code (dispatch records it as SKIP_OFFER:<code>).
+     *
+     * Deliberately BEFORE the provider row lock: capability revocations write their own tables, not
+     * the provider row, so the lock adds nothing to this check — and running it inside the lock
+     * multiplied the hold time under contention (measured: 50 concurrent direct-assign creates on
+     * one provider went from seconds to a 60s timeout, because 49 waiters queued behind a hold that
+     * now carried ~10 extra queries).
+     */
+    if (job.capability) {
+      const blocked = await recheckProviderCapability(tx, providerId, await resolveGateContext(tx, job.capability));
+      if (blocked) return blocked.reason;
+    }
     const rows = await tx.$queryRaw<
       Array<{
         id: string;
@@ -418,6 +496,7 @@ export class PartnerOperationsService {
         is_banned: boolean;
         is_active: boolean;
         is_approved: boolean;
+        compliance_restricted: boolean;
         lifecycle_state: string;
         max_concurrent_jobs: number;
         max_jobs_per_day: number | null;
@@ -432,7 +511,7 @@ export class PartnerOperationsService {
         base_longitude: number | null;
       }>
     >`
-      SELECT id, is_online, paused_at, is_banned, is_active, is_approved, lifecycle_state,
+      SELECT id, is_online, paused_at, is_banned, is_active, is_approved, compliance_restricted, lifecycle_state,
              max_concurrent_jobs, max_jobs_per_day, working_days, working_hours_start,
              working_hours_end, break_windows, timezone, service_radius_km, service_regions,
              base_latitude, base_longitude
@@ -442,11 +521,47 @@ export class PartnerOperationsService {
     `;
     const row = rows[0];
     if (!row) return "NOT_FOUND";
-    if (row.is_banned || !row.is_active) return "ACCOUNT_RESTRICTED";
+    // Real compliance state: it used to be hard-coded false here, so an expired mandatory document
+    // (which sets compliance_restricted) blocked going online but not a dispatch offer.
+    if (row.is_banned || !row.is_active || row.compliance_restricted) return "ACCOUNT_RESTRICTED";
     if (!isDispatchEligibleLifecycle(row.lifecycle_state)) return "ACCOUNT_RESTRICTED";
     if (!row.is_approved) return "APPROVAL_PENDING";
     if (!row.is_online) return "OFFLINE";
     if (row.paused_at) return "PAUSED";
+
+    const presence = await tx.partnerPresence.findUnique({
+      where: { providerId },
+      select: {
+        lastHeartbeatAt: true,
+        lastLocationAt: true,
+        lastLocationLat: true,
+        lastLocationLng: true,
+      },
+    });
+
+    const presenceGate = evaluateDispatchEligibility({
+      providerId,
+      lifecycleState: row.lifecycle_state,
+      isActive: row.is_active,
+      isApproved: row.is_approved,
+      isBanned: row.is_banned,
+      complianceRestricted: row.compliance_restricted,
+      isOnline: row.is_online,
+      pausedAt: row.paused_at,
+      lastHeartbeatAt: presence?.lastHeartbeatAt ?? null,
+      lastLocationAt: presence?.lastLocationAt ?? null,
+      lastLocationLat: presence?.lastLocationLat ?? null,
+      lastLocationLng: presence?.lastLocationLng ?? null,
+    });
+    // Default = the documented horizon rule (lib/scheduled-offer-presence), 2026-10-01. Callers that
+    // omitted the flag — direct-assign create, admin reassign, case re-offer — used to default to
+    // "required", so a booking a week ahead with a chosen partner was refused because that partner's
+    // phone was not pinging at that moment, while dispatch and accept apply the 24 h horizon to the
+    // very same job. One rule now; the slot grid projects it (service-availability: PARTNER_OFFLINE).
+    const livePresenceRequired = job.livePresenceRequired ?? offerRequiresLivePresence(job.scheduledDate);
+    if (livePresenceRequired && (!presenceGate.checks.presence || !presenceGate.checks.location)) {
+      return dispatchEligibilityBlockCode(presenceGate) ?? "STALE_PRESENCE";
+    }
 
     const schedule = {
       workingDays: row.working_days ?? [],
@@ -481,9 +596,11 @@ export class PartnerOperationsService {
      */
     const serviceRegions = row.service_regions ?? [];
     if (serviceRegions.length > 0) {
-      const jobZones = await geofenceService
-        .findContaining(job.latitude, job.longitude, { zoneType: "SERVICE_ZONE" })
-        .catch(() => []);
+      // Through `tx`: this runs inside the offer transaction, under the booking FOR SHARE and the
+      // provider FOR UPDATE taken above. No `.catch(() => [])` either — a failed query aborts the
+      // transaction, so swallowing it here only moved the error to the next statement while
+      // silently skipping the region gate.
+      const jobZones = await geofenceService.findContaining(job.latitude, job.longitude, { zoneType: "SERVICE_ZONE" }, tx);
       if (jobZones.length > 0) {
         const wants = serviceRegions.map((r) => r.trim().toLowerCase()).filter(Boolean);
         const hit = wants.some((w) =>
@@ -515,28 +632,74 @@ export class PartnerOperationsService {
     return null;
   }
 
-  async assertAcceptEligible(tx: Prisma.TransactionClient, providerId: string): Promise<string | null> {
+  async assertAcceptEligible(
+    tx: Prisma.TransactionClient,
+    providerId: string,
+    capability?: OfferCapabilityInput,
+    scheduledDate?: Date,
+  ): Promise<string | null> {
+    // Phase 11 — the offer on the partner's phone may predate an expiry or a revocation. Checked
+    // BEFORE the row lock for the same reason as assertOfferEligible: revocations do not write the
+    // provider row, and a long-held lock under contention starves every other waiter.
+    if (capability) {
+      const blocked = await recheckProviderCapability(tx, providerId, await resolveGateContext(tx, capability));
+      if (blocked) return blocked.reason;
+    }
     const rows = await tx.$queryRaw<
       Array<{
         is_online: boolean;
         paused_at: Date | null;
         is_banned: boolean;
         is_active: boolean;
+        is_approved: boolean;
+        compliance_restricted: boolean;
+        lifecycle_state: string;
         max_concurrent_jobs: number;
         max_jobs_per_day: number | null;
         timezone: string;
       }>
     >`
-      SELECT is_online, paused_at, is_banned, is_active, max_concurrent_jobs, max_jobs_per_day, timezone
+      SELECT is_online, paused_at, is_banned, is_active, is_approved, compliance_restricted, lifecycle_state,
+             max_concurrent_jobs, max_jobs_per_day, timezone
       FROM providers
       WHERE id = ${providerId}
       FOR UPDATE
     `;
     const row = rows[0];
     if (!row) return "NOT_FOUND";
-    if (row.is_banned || !row.is_active) return "ACCOUNT_RESTRICTED";
+    if (row.is_banned || !row.is_active || row.compliance_restricted) return "ACCOUNT_RESTRICTED";
     if (!row.is_online) return "PROVIDER_UNAVAILABLE";
     if (row.paused_at) return "PROVIDER_UNAVAILABLE";
+
+    const presence = await tx.partnerPresence.findUnique({
+      where: { providerId },
+      select: { lastHeartbeatAt: true, lastLocationAt: true, lastLocationLat: true, lastLocationLng: true },
+    });
+    /**
+     * Real lifecycle, not an assumed ACTIVE: an offer sent before a suspension is still
+     * sitting on the partner's phone, and accepting it must not be the one path back in.
+     */
+    const acceptGate = evaluateDispatchEligibility({
+      providerId,
+      lifecycleState: row.lifecycle_state,
+      isActive: row.is_active,
+      isApproved: row.is_approved,
+      isBanned: row.is_banned,
+      complianceRestricted: row.compliance_restricted,
+      isOnline: row.is_online,
+      pausedAt: row.paused_at,
+      lastHeartbeatAt: presence?.lastHeartbeatAt ?? null,
+      lastLocationAt: presence?.lastLocationAt ?? null,
+      lastLocationLat: presence?.lastLocationLat ?? null,
+      lastLocationLng: presence?.lastLocationLng ?? null,
+    });
+    if (!acceptGate.checks.lifecycle) return "ACCOUNT_RESTRICTED";
+    // A same-day job still needs a live ping at accept. An appointment more than a day
+    // out was offered from the partner's base, so accept does not wait on a GPS fix.
+    const livePresenceRequired = scheduledDate == null || offerRequiresLivePresence(scheduledDate);
+    if (livePresenceRequired && (!acceptGate.checks.presence || !acceptGate.checks.location)) {
+      return dispatchEligibilityBlockCode(acceptGate) ?? "STALE_PRESENCE";
+    }
 
     const { start, end } = zonedDayBounds(row.timezone || DEFAULT_PARTNER_TZ);
     const [currentJobs, jobsToday] = await Promise.all([
@@ -955,6 +1118,7 @@ export class PartnerOperationsService {
     const ids = rows.map((r) => r.id);
     const capMap = await this.loadCapacityMap(ids);
     const flagsMap = await this.loadJobFlagsMap(ids);
+    const presenceMap = await loadPresenceEvidence(ids);
 
     let items = rows.map((p) => {
       const flags = flagsMap.get(p.id) ?? {
@@ -986,11 +1150,40 @@ export class PartnerOperationsService {
         breakActive,
         outsideHours,
       });
+
+      /**
+       * Operational truth for ops: the four axes stay in their own columns, and dispatch
+       * eligibility is shown as the derived decision it is — never folded into `status`.
+       * A partner can read ACTIVE + AVAILABLE here and still be NOT ELIGIBLE, which is
+       * exactly the case ops needs to see rather than guess at.
+       */
+      const evidence = presenceMap.get(p.id) ?? null;
+      const eligibility = evaluateDispatchEligibility(
+        {
+          providerId: p.id,
+          lifecycleState: p.lifecycleState,
+          isActive: p.isActive,
+          isApproved: p.isApproved,
+          isBanned: p.isBanned,
+          complianceRestricted: p.complianceRestricted,
+          isOnline: p.isOnline,
+          pausedAt: p.pausedAt,
+          lastHeartbeatAt: evidence?.lastHeartbeatAt ?? null,
+          lastLocationAt: evidence?.lastLocationAt ?? null,
+          lastLocationLat: evidence?.lastLocationLat ?? null,
+          lastLocationLng: evidence?.lastLocationLng ?? null,
+          capacityOk: cap.availableSlots > 0,
+          scheduleOk: !outsideHours && !breakActive,
+        },
+        now,
+      );
+
       return {
         id: p.id,
         name: p.businessName || `${p.user.firstName} ${p.user.lastName}`.trim(),
         status,
         isOnline: p.isOnline,
+        lifecycleState: p.lifecycleState,
         city: p.city,
         zones: p.serviceRegions,
         skills: p.serviceCategories,
@@ -1003,6 +1196,13 @@ export class PartnerOperationsService {
         lastSeen: p.lastSeenAt?.toISOString() ?? p.currentLocation?.lastUpdated.toISOString() ?? null,
         nextAvailable: next?.toISOString() ?? null,
         rating: p.rating,
+        presence: derivePresenceFreshness({ lastHeartbeatAt: evidence?.lastHeartbeatAt ?? null, now }),
+        lastHeartbeatAt: evidence?.lastHeartbeatAt?.toISOString() ?? null,
+        locationFreshness: deriveLocationFreshness({ lastLocationAt: evidence?.lastLocationAt ?? null, now }),
+        lastLocationAt: evidence?.lastLocationAt?.toISOString() ?? null,
+        dispatchEligible: eligibility.eligible,
+        dispatchBlockedBy: dispatchEligibilityBlockCode(eligibility),
+        dispatchReasons: eligibility.reasons,
       };
     });
 

@@ -87,8 +87,8 @@ describe("Model Router", () => {
   test("circuit breaker starts closed", () => {
     resetCircuits();
     const states = getCircuitStates();
-    expect(states.GEMINI).toBe("closed");
-    expect(states.OPENAI).toBe("closed");
+    expect(states.GEMINI).toBe("CLOSED");
+    expect(states.OPENAI).toBe("CLOSED");
   });
 });
 

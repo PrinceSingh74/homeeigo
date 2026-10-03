@@ -12,6 +12,7 @@ import {
   seedAdversarialFixtures,
   cleanupAdversarialFixtures,
   deleteBookingsForUsers,
+  keepPresenceFresh,
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { bookingService } from "../services/booking.service";
@@ -39,6 +40,9 @@ let audit: Record<string, string | number> = {};
 let ctx: AdvCtx;
 let dbOk = false;
 
+/** The ceiling `providers_max_concurrent_jobs_range` enforces in the database. */
+const PROVIDER_MAX_CONCURRENT = 20;
+
 function soakSlot(hoursFromNow: number): Date {
   const capped = Math.min(hoursFromNow, 29 * 24 - 2);
   const d = new Date(Date.now() + capped * 3_600_000);
@@ -47,11 +51,16 @@ function soakSlot(hoursFromNow: number): Date {
 }
 
 beforeAll(async () => {
-  process.env.NODE_ENV = "development";
   process.env.RESCHEDULE_MAX_INFLIGHT = process.env.RESCHEDULE_MAX_INFLIGHT ?? "32";
   dbOk = await dbReachable();
   if (!dbOk) return;
   ctx = await seedAdversarialFixtures(RUN_ID);
+  // These suites pack one partner's calendar with bookings exactly 1 hour apart to load the
+  // booking / reschedule paths. Since owner decision D1 (2026-09-21) a DURATION-policy service
+  // reserves [start − 30, start + duration + 30), so 1-hour spacing is (correctly) refused. Slot width
+  // is not what these suites test — it is pinned by partner-slot-duration.integration.test.ts — so
+  // their fixture service keeps the fixed 60-minute window.
+  await prisma.service.update({ where: { id: ctx.serviceId }, data: { partnerSlotPolicy: "FIXED" } });
   await prisma.provider.update({
     where: { id: ctx.providerId },
     data: {
@@ -60,6 +69,22 @@ beforeAll(async () => {
       workingDays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
       isOnline: true,
     },
+  });
+  /**
+   * Give the fixture partner the platform's maximum concurrent-job capacity.
+   *
+   * This suite measures RESCHEDULE concurrency, and it seeded up to 50 bookings on one partner and
+   * marked each ACCEPTED. `partner-operations.assertOfferEligible` counts every booking in a
+   * concurrent status toward `maxConcurrentJobs`, which the fixture sets to 4 — so the fifth seed
+   * was refused with PROVIDER_UNAVAILABLE and the suite died in setup, never reaching the load it
+   * exists to apply. The failure was read as a scale problem; it was a capacity gate doing its job.
+   *
+   * 20 is the ceiling the database enforces (`providers_max_concurrent_jobs_range`), so the seed
+   * count below is clamped to it rather than assuming a partner can hold an unbounded forward book.
+   */
+  await prisma.provider.update({
+    where: { id: ctx.providerId },
+    data: { maxConcurrentJobs: PROVIDER_MAX_CONCURRENT },
   });
   await deleteBookingsForUsers([ctx.customerA.id, ctx.customerB.id]);
 
@@ -107,11 +132,13 @@ afterAll(async () => {
     "",
   ];
   fs.writeFileSync(DOCS, lines.join("\n"));
-  await prisma.$disconnect();
 }, 600_000);
 
 async function seedAcceptedBooking(hoursFromNow: number) {
   const slot = soakSlot(hoursFromNow);
+  // Presence is set once in beforeAll; by the 500 case the earlier cases have outlasted
+  // PRESENCE_FRESH_SEC and every direct create is refused as a stale partner (PROVIDER_UNAVAILABLE).
+  await keepPresenceFresh(ctx);
   const created = await bookingService.create(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
@@ -129,7 +156,9 @@ async function seedAcceptedBooking(hoursFromNow: number) {
 }
 
 async function runConcurrentReschedules(total: number) {
-  const bookingCount = Math.max(10, Math.min(50, Math.floor(total / 10)));
+  // Clamped to what one partner may actually hold concurrently — see beforeAll. The concurrency
+  // under test is the number of PARALLEL RESCHEDULES (`total`), not the size of the booking set.
+  const bookingCount = Math.max(10, Math.min(PROVIDER_MAX_CONCURRENT, Math.floor(total / 10)));
   await deleteBookingsForUsers([ctx.customerA.id]);
   const bookingIds: string[] = [];
   // Seed in 600h+ band; reschedule targets use 100h+ band (both within 29-day cap, no buffer overlap).
@@ -137,6 +166,7 @@ async function runConcurrentReschedules(total: number) {
     bookingIds.push(await seedAcceptedBooking(600 + i));
   }
 
+  await keepPresenceFresh(ctx);
   const tasks = Array.from({ length: total }, (_, i) => {
     const bookingId = bookingIds[i % bookingIds.length]!;
     // Unique target slots (≥1h apart) within the 29-day window.

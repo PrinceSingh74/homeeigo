@@ -9,6 +9,7 @@ import { useServicesQuery } from "@/hooks/use-core-data";
 import { bookUrl } from "@/lib/booking-url";
 import { useAppStore } from "@/stores/app-store";
 import { Input } from "@/components/ui/Input";
+import { IconButton } from "@/components/buttons/IconButton";
 import { ServiceImage } from "@/components/ui/ServiceImage";
 
 type ServiceSearchInputProps = {
@@ -102,8 +103,9 @@ export function ServiceSearchInput({
   }
 
   const micButton = (
-    <motion.button
-      type="button"
+    <IconButton
+      size={isHero ? 32 : 36}
+      label={listening ? "Stop voice search" : "Search by voice"}
       onClick={() => {
         setListening((v) => !v);
         if (!listening) {
@@ -117,22 +119,11 @@ export function ServiceSearchInput({
           }, 1200);
         }
       }}
-      whileHover={{ scale: 1.1 }}
-      whileTap={{ scale: 0.92 }}
-      aria-label={listening ? "Stop voice search" : "Search by voice"}
       aria-pressed={listening}
-      className={cn(
-        "grid shrink-0 place-items-center rounded-full transition-colors",
-        isHero ? "size-8 text-muted hover:text-primary" : "size-9",
-        !isHero &&
-          (listening
-            ? "bg-pink/15 text-pink animate-pulse-glow"
-            : "text-muted hover:text-primary"),
-        isHero && listening && "text-primary",
-      )}
+      className={cn("shrink-0", listening && "bg-brand/10 text-brand animate-pulse-glow")}
     >
-      <Mic size={isHero ? 16 : 20} />
-    </motion.button>
+      <Mic size={isHero ? 16 : 20} aria-hidden />
+    </IconButton>
   );
 
   return (
@@ -171,18 +162,18 @@ export function ServiceSearchInput({
         containerClassName={cn(
           isHero
             ? [
-                "h-14 rounded-[18px] border-line shadow-[0_8px_24px_rgb(0_0_0/0.08)]",
+                "h-14 rounded-xl border-line shadow-[0_8px_24px_rgb(0_0_0/0.08)]",
                 "focus-within:border-primary focus-within:shadow-[0_8px_32px_rgb(37_99_235/0.15)]",
               ]
             : [
-                "h-16 rounded-2xl glass-card border-line/50 shadow-e2",
-                "focus-within:shadow-[0_0_0_4px_rgb(37_99_235/0.14),0_16px_40px_-12px_rgb(15_23_42/0.25)]",
+                "h-14 rounded-xl glass-card border-line/50 shadow-e2",
+                "focus-within:border-emerald-500/50 focus-within:shadow-[0_0_0_4px_rgb(16_185_129/0.14),0_16px_40px_-12px_rgb(15_23_42/0.25)]",
               ],
           inputClassName,
         )}
         inputClassName={cn(
           isHero
-            ? "text-[15px] placeholder:text-muted"
+            ? "text-base placeholder:text-muted"
             : "text-base placeholder:italic",
         )}
       />
@@ -214,7 +205,7 @@ export function ServiceSearchInput({
                 <button
                   type="button"
                   onClick={() => goToService(s.id)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition hover:bg-primary/5"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition hover:bg-brand/5"
                 >
                   {s.img ? (
                     <ServiceImage
@@ -240,7 +231,7 @@ export function ServiceSearchInput({
               <button
                 type="button"
                 onClick={submitSearch}
-                className="w-full border-t border-line px-4 py-2.5 text-xs font-semibold text-primary hover:bg-primary/5"
+                className="w-full border-t border-line px-4 py-2.5 text-xs font-semibold text-brand hover:bg-brand/5"
               >
                 Search all results for &ldquo;{query}&rdquo;
               </button>

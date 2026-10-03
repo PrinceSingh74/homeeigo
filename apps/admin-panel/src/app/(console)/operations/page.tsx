@@ -18,6 +18,7 @@ import {
 import { StatTile } from "@/components/hq/primitives";
 import { SectionHead } from "@/components/hq/SectionHead";
 import { Icon3D } from "@/components/hq/Icon3D";
+import { OperationsWorkspaceRail, OpsEyebrow } from "@/components/operations/OperationsWorkspaceRail";
 import { useAdminOpsMapQuery } from "@/hooks/use-admin-data";
 import { useRenderProbe, useMountProbe } from "@/lib/render-probe";
 import { OPS_MAP_POLL_MS } from "@/lib/query-polling";
@@ -96,7 +97,7 @@ function AlertFeed({ alerts }: { alerts: OpsMapAlert[] }) {
         subtitle="Offline partners, delayed starts, ETA breaches"
         meta={`${alerts.length}`}
       />
-      <div className="min-h-0 flex-1 space-y-2 overflow-auto pr-1">
+      <div className="min-h-0 flex-1 space-y-2 overflow-auto pr-1" tabIndex={0} role="region" aria-label="Live alerts list">
         {sorted.length === 0 ? (
           <p className="rounded-[14px] border border-dashed border-[var(--color-biz-line)] px-4 py-8 text-center text-sm text-[var(--color-biz-muted)]">
             No active operational alerts.
@@ -198,6 +199,7 @@ function OperationsPageInner() {
         <div className="flex items-center gap-4">
           <Icon3D icon={Radio} tone="success" size="lg" />
           <div>
+            <OpsEyebrow />
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <h1 className="biz-display text-[1.75rem] font-bold leading-none tracking-tight">Live Operations</h1>
               <span className="cmd-live-pill">
@@ -206,7 +208,7 @@ function OperationsPageInner() {
               </span>
             </div>
             <p className="mt-2.5 max-w-2xl text-sm leading-relaxed text-[var(--color-biz-muted)]">
-              Real-time city command — partners, bookings, and service gaps · auto-refresh 60s
+              Real-time city command — live jobs, partner movement, and service gaps · auto-refresh 60s
             </p>
           </div>
         </div>
@@ -215,6 +217,8 @@ function OperationsPageInner() {
           Refresh
         </button>
       </header>
+
+      <OperationsWorkspaceRail />
 
       {q.isLoading ? (
         <div className="flex items-center justify-center py-20 text-[var(--color-biz-muted)]">
@@ -229,16 +233,16 @@ function OperationsPageInner() {
         <>
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <StatTile
-              label="Online providers"
+              label="Online partners"
               value={formatNumber(data.metrics.onlineProviders)}
-              sub={`${formatNumber(fleet.online)} idle · ${formatNumber(fleet.total)} located`}
+              sub={`${formatNumber(fleet.online)} idle · availability axis`}
               icon={Wifi}
               tone="success"
             />
             <StatTile
-              label="Busy"
+              label="On job"
               value={formatNumber(data.metrics.busyProviders)}
-              sub={`${formatPercent(fleet.utilization)} of live fleet`}
+              sub={`${formatPercent(fleet.utilization)} of live fleet · availability ON_JOB`}
               icon={Activity}
               tone={fleet.utilization > 0.85 ? "danger" : "accent"}
             />
@@ -359,7 +363,7 @@ function OperationsPageInner() {
               meta={`${zones.length} zones`}
             />
             {zones.length ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {zones.map((zone) => (
                   <article key={zone.id} className="rounded-[14px] border border-[var(--color-biz-line)] bg-[var(--color-biz-surface)] p-4">
                     <div className="flex items-start justify-between gap-2">

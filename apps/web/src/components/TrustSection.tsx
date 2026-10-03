@@ -34,11 +34,11 @@ export function TrustSection() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.5 }}
-        className="relative grid grid-cols-2 gap-4 overflow-hidden rounded-[24px] glass-card card-sheen p-5 sm:grid-cols-3 sm:gap-6 sm:rounded-[32px] sm:p-8 lg:grid-cols-6 lg:gap-8 lg:rounded-[36px] lg:p-12"
+        className="relative grid grid-cols-2 gap-4 overflow-hidden rounded-3xl glass-card card-sheen p-5 sm:grid-cols-3 sm:gap-6 sm:p-8 lg:grid-cols-6 lg:gap-8 lg:p-12"
       >
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-24 sheen rounded-t-[36px]"
+          className="pointer-events-none absolute inset-x-0 top-0 h-24 sheen rounded-t-3xl"
         />
         {TRUSTS.map((t, i) => {
           const Icon = t.icon;
@@ -52,7 +52,7 @@ export function TrustSection() {
               className="group relative flex flex-col items-center text-center"
             >
               <span
-                className="grid size-14 place-items-center rounded-2xl text-emerald-600 ring-1 ring-white/50 transition-transform duration-300 group-hover:scale-110 sm:size-20 sm:rounded-3xl dark:text-emerald-400"
+                className="grid size-14 place-items-center rounded-xl text-brand ring-1 ring-white/50 transition-transform duration-300 group-hover:scale-110 sm:size-20 sm:rounded-2xl"
                 style={{
                   background:
                     "linear-gradient(135deg, rgb(16 185 129 / 0.16) 0%, rgb(20 184 166 / 0.08) 100%)",

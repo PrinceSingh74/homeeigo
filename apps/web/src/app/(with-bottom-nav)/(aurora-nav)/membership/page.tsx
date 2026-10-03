@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { coreApi, type MembershipPlan } from "@/services/core/api";
 import { cn } from "@/lib/utils";
 import { MembershipBenefitsCenter } from "@/components/membership/MembershipBenefitsCenter";
+import { MEMBERSHIP_FAQS } from "@/lib/faq/faq-data";
 
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 const fmt = (iso: string | null) =>
@@ -243,20 +244,7 @@ export default function MembershipPage() {
         <section className="glass-card rounded-[28px] p-5 sm:p-6">
           <h2 className="font-display text-lg font-bold text-content">Frequently asked</h2>
           <div className="mt-3 flex flex-col gap-2">
-            {[
-              {
-                q: "How does billing work?",
-                a: "You pay once per billing period via Razorpay (UPI, card, or netbanking). With auto-renew on, your plan renews automatically at the end of each period.",
-              },
-              {
-                q: "Can I cancel anytime?",
-                a: "Yes. Cancelling stops auto-renew — your benefits stay active until the end of the period you've already paid for.",
-              },
-              {
-                q: "When do I get cashback?",
-                a: "Membership cashback is credited to your HOMEEIGO wallet after each eligible booking is completed and paid.",
-              },
-            ].map(({ q, a }) => (
+            {MEMBERSHIP_FAQS.map(({ q, a }) => (
               <details key={q} className="group rounded-2xl border border-line p-4">
                 <summary className="cursor-pointer list-none text-sm font-bold text-content">
                   {q}

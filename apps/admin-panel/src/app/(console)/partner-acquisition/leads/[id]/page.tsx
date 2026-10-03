@@ -44,10 +44,13 @@ export default function PartnerLeadDetailPage() {
   const [mergeCandidate, setMergeCandidate] = useState<PartnerDuplicateMatch | null>(null);
 
   const data = lead.data;
+  const serverLeadId = data?.id ?? null;
+  const serverNotes = data?.notes ?? "";
 
   useEffect(() => {
-    if (data) setNotesDraft(data.notes ?? "");
-  }, [data?.id, data?.notes]);
+    if (!serverLeadId) return;
+    setNotesDraft(serverNotes);
+  }, [serverLeadId, serverNotes]);
 
   const assigneeName = useMemo(() => {
     const id = data?.assignedToAdminId;

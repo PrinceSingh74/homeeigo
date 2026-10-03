@@ -3,14 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3001 --turbopack",
+    "dev": "node scripts/dev-with-warm.mjs -p 3001 --turbopack",
     "dev:webpack": "next dev -p 3001",
-    "dev:lan": "next dev -p 3001 -H 0.0.0.0 --turbopack",
+    "dev:lan": "node scripts/dev-with-warm.mjs -p 3001 -H 0.0.0.0 --turbopack",
     "dev:fresh": "node -e \"try{require('fs').rmSync('.next',{recursive:true,force:true})}catch(e){}\" && next dev -p 3001 --turbopack",
     "build": "next build",
+    "build:release": "node ../../scripts/check-release-env.cjs --app . --require-site-url && npm run build",
     "postbuild": "node ../../scripts/check-instrumentation-edge.mjs && node ../../scripts/check-frontend-perf-guards.mjs --app . && node ../../scripts/check-bundle-budget.mjs --app .",
     "start": "next start -p 3001",
     "lint": "next lint",
+    "test": "bun test tests",
     "type-check": "tsc --noEmit",
     "format": "prettier --write .",
     "storybook": "storybook dev -p 6006",
@@ -36,6 +38,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.60.0",
     "@storybook/addon-essentials": "^8.6.14",
     "@storybook/addon-interactions": "^8.6.14",

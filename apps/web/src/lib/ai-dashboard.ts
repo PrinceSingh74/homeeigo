@@ -186,12 +186,8 @@ export const AI_RECOMMENDED = {
   id: "ac-service",
   title: "AC General Service",
   image: "/svc-ac.png",
-  rating: 4.8,
-  reviews: "1.2k",
   provider: "Verified experts",
   tag: "Trending near you",
-  price: 499,
-  originalPrice: 799,
   href: "/book?service=ac-service",
 } as const;
 

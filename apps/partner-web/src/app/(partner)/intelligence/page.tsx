@@ -31,7 +31,7 @@ export default function PartnerIntelligencePage() {
   // Nearest zone = the partner's "current" zone; best = top expected-earnings zone.
   const sortedByDist = useMemo(() => [...intel.zones].filter((z) => z.distanceKm != null).sort((a, b) => (a.distanceKm! - b.distanceKm!)), [intel.zones]);
   const current = sortedByDist[0];
-  const best = useMemo(() => [...intel.zones].sort((a, b) => b.expectedEarnings2h.hi - a.expectedEarnings2h.hi)[0], [intel.zones]);
+  const best = useMemo(() => [...intel.zones].sort((a, b) => b.opportunityScore - a.opportunityScore || b.expectedEarnings2h.hi - a.expectedEarnings2h.hi)[0], [intel.zones]);
   const surgeSorted = useMemo(() => [...intel.zones].sort((a, b) => b.predictedSurge - a.predictedSurge), [intel.zones]);
   const avail = availability(dash?.isOnline ?? false, best, current);
 
@@ -91,10 +91,12 @@ export default function PartnerIntelligencePage() {
 
         {/* Zone Ranking */}
         <Card icon={<Trophy size={14} />} title="Zone Ranking" accent="text-amber-300">
-          {intel.bestEarning.slice(0, 3).map((z) => <Row key={z.zoneId} a={`🏆 ${z.name}`} b={inr(z.revenue24h)} />)}
+          {(intel.bestOpportunity.length ? intel.bestOpportunity : [...intel.zones].sort((a, b) => b.opportunityScore - a.opportunityScore)).slice(0, 3).map((z) => (
+            <Row key={z.zoneId} a={z.name} b={`gap ${z.gap ?? "—"}`} />
+          ))}
           {intel.worstService.slice(0, 1).map((z) => <Row key={z.zoneId} a={`🟢 Low competition: ${z.name}`} b={`${z.supply} live`} />)}
           {intel.highRisk.slice(0, 2).map((z) => <Row key={z.zoneId} a={`⚠ ${z.name}`} b={`risk ${z.riskScore}`} />)}
-          {!intel.bestEarning.length ? <Empty /> : null}
+          {!(intel.bestOpportunity.length || intel.zones.length) ? <Empty /> : null}
         </Card>
       </div>
 
@@ -105,7 +107,7 @@ export default function PartnerIntelligencePage() {
             <Metric label="Today" value={inr(dash.earnings.today)} />
             <Metric label="This Week" value={inr(dash.earnings.thisWeek)} />
             <Metric label="This Month" value={inr(dash.earnings.thisMonth)} />
-            <Metric label="Projected/mo" value={inr(dash.earnings.thisWeek * 4.3)} />
+            <Metric label="Pending" value={String(dash.counts.pendingRequests)} />
           </div>
         ) : <Empty />}
       </Card>

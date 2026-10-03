@@ -18,6 +18,15 @@ export function setFinancialGauge(name: string, value: number): void {
 export function renderFinancialMetrics(): string {
   const lines: string[] = [];
   const counterNames = [
+    // Recorded via recordFinancialMetric but previously missing from this allow-list, so they never
+    // reached /metrics; PayoutEventEmitFailed alerted on a series that did not exist.
+    "payout_event_emit_failed_total",
+    "payout_completion_no_wallet_movement_total",
+    "partner_incentive_payout_total",
+    "partner_referral_reward_total",
+    "refund_indeterminate_total",
+    "refund_indeterminate_replay_total",
+    "refund_indeterminate_resolved_total",
     "payment_success_total",
     "payment_failed_total",
     "refund_total",

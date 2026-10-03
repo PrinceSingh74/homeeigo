@@ -60,7 +60,8 @@ const VISUALS: Array<{ match: RegExp; visual: ServiceVisual }> = [
   { match: /balcony|terrace/i, visual: { icon: Fence, color: "#84cc16", photo: "/services/balcony-cleaning.png" } },
   { match: /fan/i, visual: { icon: Fan, color: "#14b8a6", photo: "/services/fan-cleaning.png" } },
   { match: /plant|garden/i, visual: { icon: Sprout, color: "#22c55e", photo: "/services/plant-care.png" } },
-  { match: /car|vehicle/i, visual: { icon: Car, color: "#64748b", photo: "/services/car-surface.png" } },
+  // Word boundary: "car" must not match "Carpet" or "Carpentry".
+  { match: /\bcar\b|vehicle|bike/i, visual: { icon: Car, color: "#64748b", photo: "/services/car-surface.png" } },
   // Existing catalog beyond the popular grid — same design language everywhere.
   { match: /\bac\b|air.?cond/i, visual: { icon: Snowflake, color: "#0ea5e9" } },
   { match: /plumb/i, visual: { icon: Wrench, color: "#f59e0b" } },
@@ -74,10 +75,15 @@ const VISUALS: Array<{ match: RegExp; visual: ServiceVisual }> = [
 
 const DEFAULT_VISUAL: ServiceVisual = { icon: Sparkles, color: "#7c3aed" };
 
-export function serviceVisual(name: string | undefined | null): ServiceVisual {
-  if (!name) return DEFAULT_VISUAL;
+/** The curated visual for a service name, or null when nothing matches. */
+export function matchServiceVisual(name: string | undefined | null): ServiceVisual | null {
+  if (!name) return null;
   for (const { match, visual } of VISUALS) {
     if (match.test(name)) return visual;
   }
-  return DEFAULT_VISUAL;
+  return null;
+}
+
+export function serviceVisual(name: string | undefined | null): ServiceVisual {
+  return matchServiceVisual(name) ?? DEFAULT_VISUAL;
 }

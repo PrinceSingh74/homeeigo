@@ -8,11 +8,11 @@ const SEED_ADMIN = { email: "admin@homigo.demo", password: "Homigo@123" };
 
 async function login(page: import("@playwright/test").Page) {
   await page.goto("/login");
-  await expect(page.getByRole("heading", { name: /HOMIGO Business HQ/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /HOMEEIGO Business HQ/i })).toBeVisible();
   await page.locator("#admin-email").fill(SEED_ADMIN.email);
   await page.locator("#admin-password").fill(SEED_ADMIN.password);
   await page.getByRole("button", { name: /enter business hq/i }).click();
-  await expect(page.getByRole("heading", { name: /business overview/i })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: /Executive HQ|business overview/i })).toBeVisible({ timeout: 30_000 });
 }
 
 test.describe.configure({ mode: "serial" });
@@ -24,7 +24,7 @@ test.describe("Enterprise Hardening — Alert Center + Heatmap", () => {
 
   test("Alert Center renders + connects to the realtime feed", async ({ page }) => {
     await login(page);
-    await page.getByRole("link", { name: /Alert Center/i }).click();
+    await page.goto("/alerts");
     await expect(page.getByRole("heading", { name: /Alert Center/i })).toBeVisible({ timeout: 20_000 });
     // The realtime status pill resolves to Live / Reconnecting / Polling.
     await expect(page.getByText(/Live|Reconnecting|Polling/).first()).toBeVisible({ timeout: 20_000 });
@@ -35,7 +35,7 @@ test.describe("Enterprise Hardening — Alert Center + Heatmap", () => {
 
   test("Demand Heatmap renders with CSV + PDF export", async ({ page }) => {
     await login(page);
-    await page.getByRole("link", { name: /Demand Heatmap/i }).click();
+    await page.goto("/heatmap");
     await expect(page.getByRole("heading", { name: /Demand Heatmap/i })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: /CSV/i })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: /PDF/i })).toBeVisible();

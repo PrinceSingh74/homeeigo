@@ -11,7 +11,9 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "playwright test"
+    "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"src/lib/__tests__/*.test.ts\"",
+    "test:e2e": "playwright test",
+    "android:release": "node scripts/android-release.cjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -29,6 +31,7 @@
     "expo-router": "~6.0.24",
     "expo-secure-store": "~15.0.8",
     "expo-status-bar": "~3.0.9",
+    "expo-task-manager": "~14.0.9",
     "lucide-react-native": "^0.468.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",

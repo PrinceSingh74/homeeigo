@@ -6,25 +6,29 @@ export type DeviceCoordinates = {
   longitude: number;
 };
 
-const DEFAULT_COORDS: DeviceCoordinates = {
-  latitude: 28.4595,
-  longitude: 77.0266,
-};
+export type DeviceLocationStatus = "pending" | "granted" | "denied" | "unavailable";
 
 let cachedCoords: DeviceCoordinates | null = null;
 
-/** Request device location once and cache for provider matching/search. */
+/**
+ * Request device location once and cache it for provider matching/search.
+ *
+ * No fabricated fallback: without a real fix `coords` is null and `status` says why. This used to
+ * return Gurugram (28.4595, 77.0266) whenever permission was denied or GPS failed, so "providers
+ * near you" silently listed partners near Gurugram with made-up distances and ETAs.
+ */
 export function useDeviceCoordinates() {
-  const [coords, setCoords] = useState<DeviceCoordinates>(cachedCoords ?? DEFAULT_COORDS);
-  const [ready, setReady] = useState(cachedCoords != null);
+  const [coords, setCoords] = useState<DeviceCoordinates | null>(cachedCoords);
+  const [status, setStatus] = useState<DeviceLocationStatus>(cachedCoords ? "granted" : "pending");
 
   useEffect(() => {
+    if (cachedCoords) return;
     let cancelled = false;
     void (async () => {
       try {
         const permission = await Location.requestForegroundPermissionsAsync();
         if (permission.status !== "granted") {
-          if (!cancelled) setReady(true);
+          if (!cancelled) setStatus("denied");
           return;
         }
         const pos = await Location.getCurrentPositionAsync({
@@ -37,10 +41,10 @@ export function useDeviceCoordinates() {
         cachedCoords = next;
         if (!cancelled) {
           setCoords(next);
-          setReady(true);
+          setStatus("granted");
         }
       } catch {
-        if (!cancelled) setReady(true);
+        if (!cancelled) setStatus("unavailable");
       }
     })();
     return () => {
@@ -48,9 +52,10 @@ export function useDeviceCoordinates() {
     };
   }, []);
 
-  return { coords, ready };
+  return { coords, status, ready: status !== "pending" };
 }
 
-export function getCachedDeviceCoordinates(): DeviceCoordinates {
-  return cachedCoords ?? DEFAULT_COORDS;
+/** The last real fix this session, or null — never a default city. */
+export function getCachedDeviceCoordinates(): DeviceCoordinates | null {
+  return cachedCoords;
 }

@@ -1,7 +1,9 @@
+import { devAffordancesAllowed } from "../lib/deployed-environment";
 import { Resend } from "resend";
 import { emailBreaker, CircuitOpenError } from "../lib/circuit-breaker";
+import { liveProviderAllowed } from "../lib/test-egress";
 
-const API_KEY = process.env.RESEND_API_KEY || "";
+const API_KEY = liveProviderAllowed("HOMIGO_REQUIRE_EMAIL") ? process.env.RESEND_API_KEY || "" : ""; // lib/test-egress.ts
 const FROM_ADDRESS = process.env.EMAIL_FROM || "HOMEEIGO <noreply@homigo.com>";
 const REPLY_TO = process.env.EMAIL_REPLY_TO || "";
 const FRONTEND_URL = (process.env.FRONTEND_URL || "http://localhost:3001").replace(/\/$/, "");
@@ -36,7 +38,13 @@ class EmailService {
 
   async send(args: SendArgs): Promise<SendResult> {
     if (!this.resend) {
-      if (process.env.NODE_ENV !== "production") {
+      // Console "delivery" is a developer-machine convenience only. It was gated on
+      // `NODE_ENV !== "production"`, which is true on staging (`.env.staging` ships
+      // NODE_ENV=development). A staging host with no email provider therefore printed every
+      // message body — password-reset links included — into its logs, and reported each one as
+      // `delivered: true`, so the application believed mail had reached customers that it never
+      // sent. See lib/deployed-environment.
+      if (devAffordancesAllowed()) {
         console.log(
           `[EMAIL:console] to=${args.to} subject=${args.subject}\n${args.text ?? this.stripHtml(args.html)}`,
         );

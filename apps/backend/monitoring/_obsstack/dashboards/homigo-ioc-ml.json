@@ -1,0 +1,642 @@
+{
+  "uid": "homigo-ioc-ml",
+  "title": "24 \u00b7 IOC \u2014 ML",
+  "tags": [
+    "homigo",
+    "enterprise",
+    "ioc"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Intelligence Operations",
+      "tags": [
+        "ioc"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true,
+      "icon": "external link"
+    }
+  ],
+  "panels": [
+    {
+      "id": 401,
+      "title": "Platform serviceability",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 402,
+      "title": "ML platform",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "NO DATA",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "NOT SERVICEABLE",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "SERVICEABLE",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "ml_platform_serviceable",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "description": "Whether the platform is in a state where its predictions describe the present. False means callers should use their deterministic fallback \u2014 it does not mean the models are absent."
+    },
+    {
+      "id": 403,
+      "title": "ETL pipeline",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "NO DATA",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "FAIL",
+                  "color": "red",
+                  "index": 0
+                },
+                "0.5": {
+                  "text": "WARN",
+                  "color": "yellow",
+                  "index": 1
+                },
+                "1": {
+                  "text": "OK",
+                  "color": "green",
+                  "index": 2
+                }
+              }
+            }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "ml_platform_check_state{check=\"etl_pipeline\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "description": "Whether the pipeline feeding every model has succeeded recently. Read from execution history, not a heartbeat."
+    },
+    {
+      "id": 404,
+      "title": "Warehouse freshness",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "NO DATA",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "FAIL",
+                  "color": "red",
+                  "index": 0
+                },
+                "0.5": {
+                  "text": "WARN",
+                  "color": "yellow",
+                  "index": 1
+                },
+                "1": {
+                  "text": "OK",
+                  "color": "green",
+                  "index": 2
+                }
+              }
+            }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "ml_platform_check_state{check=\"warehouse_freshness\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "description": "Age of the newest warehouse observation. Distinct from ETL health: a job can succeed and load nothing."
+    },
+    {
+      "id": 405,
+      "title": "Forecast horizon",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "NO DATA",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "FAIL",
+                  "color": "red",
+                  "index": 0
+                },
+                "0.5": {
+                  "text": "WARN",
+                  "color": "yellow",
+                  "index": 1
+                },
+                "1": {
+                  "text": "OK",
+                  "color": "green",
+                  "index": 2
+                }
+              }
+            }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "ml_platform_check_state{check=\"forecast_horizon\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "description": "Whether the production forecast model can still describe a future instant. ML.FORECAST projects from the end of *training* data, so a model can return confident numbers about a window that closed months ago. FAIL here is exactly that condition."
+    },
+    {
+      "id": 406,
+      "title": "Model registry",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 407,
+      "title": "Models in registry",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "NO DATA"
+        }
+      },
+      "targets": [
+        {
+          "expr": "ml_models_total",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "description": "Rows in the warehouse model registry. A row is not a serving model."
+    },
+    {
+      "id": 408,
+      "title": "Trained",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "NO DATA"
+        }
+      },
+      "targets": [
+        {
+          "expr": "ml_models_by_status{status=\"trained\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "description": "Status reported by the warehouse registry. TRAINED is not PRODUCTION."
+    },
+    {
+      "id": 409,
+      "title": "Partially trained",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "NO DATA",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "ml_models_by_status{status=\"partially_trained\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "description": "Models with a recorded blocker \u2014 see the registry's blocker_reason for each."
+    },
+    {
+      "id": 410,
+      "title": "Blocked",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "NO DATA",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "ml_models_by_status{status=\"blocked\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "description": "Models that cannot train, usually for want of labels. Not a fault of the serving path."
+    },
+    {
+      "id": 411,
+      "title": "Registry reconciliation",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 8,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "NO DATA",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "FAIL",
+                  "color": "red",
+                  "index": 0
+                },
+                "0.5": {
+                  "text": "WARN",
+                  "color": "yellow",
+                  "index": 1
+                },
+                "1": {
+                  "text": "OK",
+                  "color": "green",
+                  "index": 2
+                }
+              }
+            }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "ml_platform_check_state{check=\"registry_reconciliation\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "description": "Whether every model the warehouse calls production has a governed version with an approval on record. WARN means some are serving without one."
+    },
+    {
+      "id": 412,
+      "title": "Warehouse 'production' models",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 10,
+        "w": 8,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "NO DATA"
+        }
+      },
+      "targets": [
+        {
+          "expr": "ml_models_production",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "description": "What the warehouse registry labels production. Cross-read with the reconciliation panel: a warehouse label is not a governed promotion."
+    },
+    {
+      "id": 413,
+      "title": "Registry composition over time",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 10,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "NO DATA"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (ml_models_by_status)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "description": "How the registry has changed over the dashboard time range."
+    },
+    {
+      "id": 414,
+      "title": "Inference",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 415,
+      "title": "Inference rate by model",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "noValue": "NO DATA"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (model) (rate(model_inference_total[5m]))",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "{{model}}"
+        }
+      ],
+      "description": "Live prediction volume. A model with no line is not being called."
+    },
+    {
+      "id": 416,
+      "title": "Inference errors by model",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 19,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "noValue": "NO DATA"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (model) (rate(model_inference_errors_total[5m]))",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "{{model}}"
+        }
+      ],
+      "description": "Failed inference calls, per model."
+    },
+    {
+      "id": 417,
+      "title": "Prediction accuracy, drift and feature health",
+      "type": "text",
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 24,
+        "h": 7
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**ACCURACY_NOT_AVAILABLE.** Production accuracy needs a prediction paired with the outcome that later occurred. This platform captures that only for shadow predictions, and no model is serving in production, so there is no production accuracy to plot. A panel showing 100%, 0% or a training score relabelled as accuracy would each be a fabrication.\n\n**DRIFT \u2014 MEASUREMENT_ONLY.** Freshness and horizon expiry are measured above and are the drift signals this platform can currently support. Distribution drift (PSI / KL) has no defined threshold here, so it is not alerted: `ALERT_POLICY_UNSET`.\n\n**FEATURE HEALTH \u2014 partial.** Feature availability is measured through the readiness assessment (`/api/admin/ml/readiness`), which counts rows, missingness and leakage per model. It is a point-in-time API result rather than a time series, so it is not charted here; the runbook says where to read it."
+      }
+    }
+  ]
+}

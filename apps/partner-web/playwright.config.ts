@@ -7,6 +7,8 @@ const BASE_URL = (process.env.E2E_PARTNER_URL ?? `http://localhost:${PORT}`).rep
 
 export default defineConfig({
   testDir: "./e2e",
+  // Refuses to run unless the backend under test reports a disposable database (never live homigo_db).
+  globalSetup: path.join(__dirname, "../../scripts/e2e-assert-isolated-backend.mjs"),
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
@@ -38,7 +40,7 @@ export default defineConfig({
           timeout: 180_000,
           env: {
             ...process.env,
-            NEXT_PUBLIC_API_URL: API_URL,
+            BACKEND_ORIGIN: API_URL,
           },
         },
       ],

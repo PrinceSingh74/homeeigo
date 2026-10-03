@@ -1,10 +1,11 @@
+import { logger } from "../lib/logger";
 import { Elysia, t } from "elysia";
 import { roomManager, MessageType, WSConnection, generateConnectionId } from "@/lib/websocket";
 import { heartbeatManager } from "@/lib/heartbeat";
 import { earningsLiveService } from "@/services/earnings-live.service";
 import { authenticateWsConnection } from "@/lib/ws-connection-auth";
 import { validateWsChannelAccess } from "@/lib/ws-channel-access";
-import { getWsState, setWsState } from "./ws-state";
+import { getWsState, setWsState, markWsClosed, closedDuringOpen } from "./ws-state";
 
 export const earningsWs = new Elysia({ prefix: "/ws" }).ws("/earnings/:providerId", {
   params: t.Object({ providerId: t.String() }),
@@ -35,6 +36,15 @@ export const earningsWs = new Elysia({ prefix: "/ws" }).ws("/earnings/:providerI
       userId: auth.userId,
       userType: auth.userType,
       connectionId,
+      jti: auth.jti,
+      tokenExp: auth.exp,
+      close: (code: number, reason: string) => {
+        try {
+          ws.close(code, reason);
+        } catch {
+          /* already closed */
+        }
+      },
       connectedAt: new Date(),
       lastPing: new Date(),
       rooms: new Set(),
@@ -46,6 +56,10 @@ export const earningsWs = new Elysia({ prefix: "/ws" }).ws("/earnings/:providerI
         }
       },
     };
+
+    // The client may have left while the awaits above were pending; registering now would create a
+    // connection, room membership and heartbeat for a socket that is already closed. See ws-state.ts.
+    if (closedDuringOpen(ws)) return;
 
     roomManager.addToRoom(`earnings:${providerId}`, connection);
     heartbeatManager.startHeartbeat(connectionId, ws);
@@ -94,7 +108,7 @@ export const earningsWs = new Elysia({ prefix: "/ws" }).ws("/earnings/:providerI
             ? JSON.parse(data.toString())
             : data;
       const providerId = ws.data.params.providerId;
-      const state = getWsState(ws) as any;
+      const state = getWsState(ws);
 
       if (message.type === "get_breakdown") {
         const days = message.data?.days || 7;
@@ -166,7 +180,9 @@ export const earningsWs = new Elysia({ prefix: "/ws" }).ws("/earnings/:providerI
             timestamp: new Date(),
           })
         );
-        heartbeatManager.handlePong(state?.connectionId);
+        // `connectionId` is optional on WsState; with no id there is no heartbeat to record.
+        const connectionId = state?.connectionId;
+        if (connectionId) heartbeatManager.handlePong(connectionId);
       }
     } catch (error) {
       console.error("Earnings message error:", error);
@@ -181,6 +197,7 @@ export const earningsWs = new Elysia({ prefix: "/ws" }).ws("/earnings/:providerI
   },
 
   close: (ws) => {
+    markWsClosed(ws);
     const providerId = ws.data.params.providerId;
     const state = getWsState(ws);
 
@@ -192,6 +209,6 @@ export const earningsWs = new Elysia({ prefix: "/ws" }).ws("/earnings/:providerI
       roomManager.removeAllRooms(state.connection);
     }
 
-    console.log(`[WS] Earnings disconnected: ${providerId}`);
+    logger.debug("ws_earnings_disconnected", { providerId });
   },
 });

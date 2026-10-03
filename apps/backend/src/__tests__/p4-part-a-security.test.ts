@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll } from "bun:test";
+import { describe, expect, it, beforeAll, afterAll } from "bun:test";
 import {
   hashForLookup,
   packEncrypt,
@@ -12,10 +12,20 @@ import { maskEmail, maskPhone, normalizeEmail, normalizePhone } from "../lib/pii
 import { securityEventRetention } from "../services/enterprise-audit.service";
 
 describe("P4 Part A — encryption & PII utilities", () => {
+  const saved = {
+    ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+    HASH_HMAC_KEY: process.env.HASH_HMAC_KEY,
+    MASTER_ENCRYPTION_KEY: process.env.MASTER_ENCRYPTION_KEY,
+  };
   beforeAll(() => {
     process.env.ENCRYPTION_KEY = "a".repeat(64);
     process.env.HASH_HMAC_KEY = "test-hmac-pepper-key";
     process.env.MASTER_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+  });
+  afterAll(() => {
+    process.env.ENCRYPTION_KEY = saved.ENCRYPTION_KEY;
+    process.env.HASH_HMAC_KEY = saved.HASH_HMAC_KEY;
+    process.env.MASTER_ENCRYPTION_KEY = saved.MASTER_ENCRYPTION_KEY;
   });
 
   it("normalizes email and phone consistently", () => {

@@ -1,3 +1,4 @@
+import { analyticsWhere } from "../lib/analytics-scope";
 import { SubscriptionStatus } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { cacheService } from "./cache.service";
@@ -18,7 +19,6 @@ export class MembershipAnalyticsService {
   private async computeDashboard(period: AnalyticsPeriod) {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
 
     const activeSubs = await prisma.userSubscription.findMany({
@@ -281,7 +281,7 @@ export class MembershipAnalyticsService {
 
   private async upgradeFunnel() {
     const [totalUsers, everSubscribed, activeNow, withBenefitUsage] = await Promise.all([
-      prisma.user.count({ where: { role: "CUSTOMER", isBanned: false } }),
+      prisma.user.count({ where: { role: "CUSTOMER", isBanned: false, ...analyticsWhere() } }),
       prisma.userSubscription.groupBy({ by: ["userId"] }).then((r) => r.length),
       prisma.userSubscription.count({
         where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: new Date() } },

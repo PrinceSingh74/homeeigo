@@ -1,3 +1,13 @@
+export type PartnerRequirementLine = {
+  label: string;
+  quantity: string | null;
+  instructions: string | null;
+  handling: string | null;
+  customerWasTold: string | null;
+  optional: boolean;
+  chargeable: boolean;
+};
+
 export type ApiResponse<T = unknown> = {
   success: boolean;
   data?: T;
@@ -105,6 +115,8 @@ export type PartnerDashboard = {
 };
 
 export type PartnerOperations = {
+  axis?: "AVAILABILITY";
+  availabilityState?: string;
   operationalStatus: string;
   uiOnline: boolean;
   isOnline: boolean;
@@ -165,8 +177,59 @@ export type PartnerBooking = {
     /** Masked customer phone — never raw phoneNumber on booking payloads. */
     phoneMasked?: string | null;
   };
-  service: { id: string; name: string; icon: string | null; basePrice: number };
+  /** basePrice is null when the backend did not send one — it is never inferred from the job total. */
+  service: { id: string; name: string; icon: string | null; basePrice: number | null };
   address: { fullAddress: string; latitude: number | null; longitude: number | null };
+  /** Purchased add-ons; `price` is the line total. */
+  addons?: { id: string; name: string; price: number; unitPrice?: number; quantity?: number }[];
+  /** What was booked (variant, quantity, add-on units, duration) — backend partnerJobBrief. */
+  job?: {
+    variant: string | null;
+    audience: string | null;
+    quantity: number;
+    unit: string | null;
+    addons: { name: string; quantity: number }[];
+    durationMinutes: number | null;
+    duration: {
+      preparationMinutes: number;
+      serviceMinutes: number;
+      addonMinutes: number;
+      cleanupMinutes: number;
+      totalMinutes: number;
+    } | null;
+  };
+  /** Phase 06 preparation checklist recorded at booking (backend PartnerRequirementsBrief); null before Phase 06. */
+  requirements?: {
+    bringMaterials: PartnerRequirementLine[];
+    bringEquipment: PartnerRequirementLine[];
+    customerProvides: PartnerRequirementLine[];
+    preconditions: Array<PartnerRequirementLine & { check: "CONFIRMED_BY_CUSTOMER" | "VERIFY_ON_ARRIVAL" | "VERIFY_AT_START" | "INFORMATIONAL" }>;
+    empty: boolean;
+  } | null;
+  execution?: {
+    materials: string | null;
+    equipment: string | null;
+    quality: {
+      proofRequired: boolean;
+      beforeAfterPhotos: boolean;
+      checklist: string[];
+      warrantyDays: number;
+    } | null;
+    durationMinutes: number | null;
+  };
+  /**
+   * The live dispatch window, present ONLY on rows in the pending tab.
+   *
+   * `null` means the row is not an open offer (an accepted or finished job), never "an offer with
+   * no deadline" — the backend returns a pending row only while its window is open, so an offer and
+   * its deadline arrive together or not at all. The requests screen does not render a countdown
+   * yet; the field is declared so this mirror stays honest about what the API sends.
+   */
+  offer?: { dispatchedAt: string; expiresAt: string } | null;
+  /** §11: set on a case-created rework / revisit visit (backend partnerFollowUpFromSnapshot); null otherwise. */
+  followUp?: { kind: string; parentBookingNumber: string | null; caseNumber: string | null } | null;
+  /** The server's payment exemption (fee-waived follow-up or audited override); the action mirror reads it. */
+  paymentExempt?: boolean;
 };
 
 export type PartnerBookingsResponse = {
@@ -413,6 +476,34 @@ export type PartnerRankings = {
   categoryRanks: Array<{ category: string; rank: number; total: number; score: number }>;
 };
 
+export type PartnerScorecard = {
+  policyVersion: string;
+  overallScore: number | null;
+  band: string;
+  components: Record<string, { value: number | null; weight: number }>;
+  sample: { completedJobs: number; ratings: number; arrivals: number; assignments: number };
+  calculatedAt: string;
+  trends: Record<string, { delta: number | null; insufficient: boolean }>;
+};
+
+export type PartnerCareer = {
+  currentLevel: string;
+  nextLevel: string | null;
+  progressPct: number;
+  requirements: Array<{ id: string; label: string; current: number; target: number; met: boolean; unit: string }>;
+  remainingRequirements: Array<{ id: string; label: string; current: number; target: number; met: boolean }>;
+  qualificationState: string;
+  benefitsActive: boolean;
+  careerPriorityBoost: number;
+  badges: Array<{ code: string; label: string; awardedAt: string; reason: string }>;
+};
+
+export type PartnerLifecycle = {
+  lifecycleState: string;
+  dispatchEligible: boolean;
+  availability: { isOnline: boolean; currentStatus: string };
+};
+
 export type PartnerAcademy = {
   modules: Array<{
     id: string;
@@ -547,11 +638,16 @@ export type ZoneScore = {
   serviceHealth: number;
   riskScore: number;
   compositeScore: number;
+  opportunityScore?: number;
+  gap?: number;
+  interpretation?: string;
+  recommendation?: string | null;
 };
 
 export type ZoneScoring = {
   ranked: ZoneScore[];
   bestEarning: ZoneScore[];
+  bestOpportunity?: ZoneScore[];
   worstService: ZoneScore[];
   highRisk: ZoneScore[];
 };
@@ -568,4 +664,41 @@ export type GeoIntel<T> = {
   confidence: number;
   freshness: string;
   source: string;
+};
+
+/* ---- Phase 10 §6 — booking requirement state (mirror of backend BookingRequirementsView) ---- */
+export type RequirementEnforcementPoint = "BEFORE_BOOKING" | "BEFORE_ARRIVAL" | "AT_START";
+export type RequirementEffectiveState = "UNRESOLVED" | "SATISFIED" | "FAILED" | "EXPIRED";
+export type BlockingRequirement = {
+  code: string;
+  label: string;
+  kind: string;
+  enforcementPoint: RequirementEnforcementPoint;
+  responsibility: string;
+  verification: string;
+  state: RequirementEffectiveState;
+  reason: string;
+  remediation: { role: "PARTNER" | "CUSTOMER"; text: string };
+};
+export type RequirementGateResult = { target: "ARRIVAL" | "START"; ok: boolean; evaluated: number; blocking: BlockingRequirement[] };
+export type RequirementItemView = {
+  code: string;
+  label: string;
+  kind: string;
+  enforcementPoint: RequirementEnforcementPoint;
+  responsibility: string;
+  verification: string;
+  optional: boolean;
+  state: RequirementEffectiveState;
+  resolvedAt: string | null;
+  resolvedByRole: string | null;
+  note: string | null;
+  actions: Array<"CHECK" | "READY" | "ATTEST" | "RECHECK">;
+  blocking: Pick<BlockingRequirement, "reason" | "remediation"> | null;
+};
+export type BookingRequirementsView = {
+  enforced: boolean;
+  serviceVersion: number | null;
+  items: RequirementItemView[];
+  gate: { arrival: RequirementGateResult; start: RequirementGateResult };
 };

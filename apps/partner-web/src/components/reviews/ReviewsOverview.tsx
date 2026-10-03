@@ -105,6 +105,7 @@ export function ReviewsOverview() {
               <Loader2 className="h-3.5 w-3.5 animate-spin text-partner-muted" />
             ) : null}
             <select
+              aria-label="Sort reviews"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortBy)}
               className="rounded-lg border border-partner-line bg-partner-bg/60 px-3 py-1.5 text-xs font-medium outline-none focus:border-partner-primary"

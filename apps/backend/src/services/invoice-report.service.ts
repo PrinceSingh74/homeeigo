@@ -1,7 +1,13 @@
 import { prisma } from "../lib/prisma";
 import { PaymentStatus, GiftCardStatus } from "@prisma/client";
+import { CREDITED_EARNING_WHERE } from "../lib/earning-settlement";
 
-const TAX_RATE = 0.1; // GST component already baked into finalAmount
+/**
+ * Partner-side ESTIMATE shown on the partner tax report (applied to net earnings). It is NOT the
+ * customer tax on bookings — that is lib/pricing-policy TAX_POLICY — and must not be coupled to it.
+ * Value unchanged from the original constant.
+ */
+const TAX_RATE = 0.1;
 
 function csvCell(v: string | number | null | undefined): string {
   const s = String(v ?? "");
@@ -135,7 +141,7 @@ export class InvoiceReportService {
 
   async partnerTaxSummary(providerId: string) {
     const agg = await prisma.earning.aggregate({
-      where: { providerId },
+      where: { providerId, ...CREDITED_EARNING_WHERE },
       _sum: { grossAmount: true, commission: true, netEarning: true },
     });
     const settled = await prisma.withdrawal.aggregate({
@@ -169,6 +175,23 @@ export class InvoiceReportService {
     const serviceName = svc ?? "Service";
     const name = [e.provider.user.firstName, e.provider.user.lastName].filter(Boolean).join(" ");
     const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
+    /**
+     * `Earning.netEarning` is written as `finalAmount - commission + bonus - deduction`
+     * (`earnings.service.ts` — performance bonuses like the perfect-rating ₹50, and deductions,
+     * both computed at completion time), but only `grossAmount`/`commission`/`netEarning` are ever
+     * persisted on this row — `bonus`/`deduction` themselves are not columns on `Earning` and go
+     * only to the financial ledger. Gross minus commission has therefore never equalled the shown
+     * net whenever either was non-zero, with nothing on the invoice explaining the gap — exactly
+     * the "why doesn't this add up" a partner (or anyone checking the math) would hit. Recomputing
+     * the adjustment from the three values that *are* stored, rather than adding new columns,
+     * keeps this correct for every historical row without a migration or backfill: it is derived
+     * from numbers already guaranteed consistent with each other by construction.
+     */
+    const adjustment = Math.round((e.netEarning - (e.grossAmount - e.commission)) * 100) / 100;
+    const adjustmentRow =
+      adjustment !== 0
+        ? `<div class="row"><span>${adjustment > 0 ? "Performance bonus" : "Adjustment"}</span><span>${adjustment > 0 ? "+ " : "− "}${inr(Math.abs(adjustment))}</span></div>`
+        : "";
     return `<!doctype html><html><head><meta charset="utf-8"><title>Earning ERN-${e.id.slice(-8).toUpperCase()}</title>
 <style>body{font-family:system-ui,sans-serif;max-width:640px;margin:24px auto;color:#1f2937;padding:0 16px}
 .h{display:flex;justify-content:space-between;border-bottom:2px solid #7C3AED;padding-bottom:12px}
@@ -178,6 +201,7 @@ export class InvoiceReportService {
 <p>Partner: <b>${name}</b></p><p>Service: <b>${serviceName}</b></p>
 <div class="row"><span>Gross amount</span><span>${inr(e.grossAmount)}</span></div>
 <div class="row"><span>Platform commission</span><span>− ${inr(e.commission)}</span></div>
+${adjustmentRow}
 <div class="row total"><span>Net earning</span><span>${inr(e.netEarning)}</span></div>
 <p class="noprint" style="text-align:center;margin-top:24px"><button onclick="print()" style="background:#7C3AED;color:#fff;border:0;padding:10px 20px;border-radius:8px;cursor:pointer">Download / Print PDF</button></p>
 </body></html>`;

@@ -27,7 +27,8 @@ export type TrendingService = {
   rating: number | null;
   reviews: string;
   price: number;
-  duration: string;
+  /** null when the backend has no duration for the service. */
+  duration: string | null;
   imageUri: string;
   serviceId: string;
   categoryIds: number[];
@@ -216,7 +217,7 @@ export const WHY_FEATURES: WhyFeature[] = [
   { icon: "🔒", title: "Secure Payments", desc: "Safe, encrypted transactions always", color: "#0f766e", bg: "#CCFBF1" },
   { icon: "🤖", title: "AI Scheduling", desc: "Smart matching for best service quality", color: "#059669", bg: "#D1FAE5" },
   { icon: "📍", title: "Live Tracking", desc: "Know where your service partner is", color: "#14b8a6", bg: "#CCFBF1" },
-  { icon: "👥", title: "Verified Partners", desc: "10,000+ verified experts across India", color: "#15803d", bg: "#DCFCE7" },
+  { icon: "👥", title: "Verified Partners", desc: "Every partner is verified before their first job", color: "#15803d", bg: "#DCFCE7" },
   { icon: "💸", title: "Transparent Pricing", desc: "No hidden charges, no surprises", color: "#0d9488", bg: "#CCFBF1" },
 ];
 

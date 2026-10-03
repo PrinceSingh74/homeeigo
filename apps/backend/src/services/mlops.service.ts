@@ -6,18 +6,52 @@
  * the warehouse `model_registry` table (populated only after a model actually trains/evaluates).
  */
 import { BigQuery } from "@google-cloud/bigquery";
+import { assertBqAdcAvailable } from "../lib/bigquery-adc";
 import { cacheService } from "./cache.service";
 import { setGauge, registerScrapeSampler } from "../lib/metrics";
+import { assertRowArray, readWarehouse, withWarehouseDeadline } from "../lib/warehouse-read";
+
+/** Reason codes for the warehouse model registry / data-quality views not answering (X-88). */
+export const ML_REGISTRY_UNAVAILABLE = "ML_REGISTRY_SOURCE_UNAVAILABLE" as const;
+export const DATA_QUALITY_UNAVAILABLE = "DATA_QUALITY_SOURCE_UNAVAILABLE" as const;
+
+/**
+ * HTTP reads of the registry (X-88): the value, or a stated outage with no figures. The service
+ * methods themselves still throw — the Grafana sampler and model-identity catch that themselves.
+ */
+export function readRegistry<T>(run: () => Promise<T>) {
+  return readWarehouse(run, {
+    reasonCode: ML_REGISTRY_UNAVAILABLE,
+    logEvent: "ml_registry_unavailable",
+    reason: "The warehouse model registry did not answer.",
+  });
+}
+
+export function readDataQuality<T>(run: () => Promise<T>) {
+  return readWarehouse(run, {
+    reasonCode: DATA_QUALITY_UNAVAILABLE,
+    logEvent: "ml_data_quality_unavailable",
+    reason: "The warehouse data-quality view did not answer.",
+  });
+}
 
 const PROJECT_ID = process.env.GCP_PROJECT_ID ?? "homigo-497619";
 const DATASET = process.env.BQ_DATASET ?? "homigo_analytics";
 const LOCATION = process.env.BQ_LOCATION ?? "asia-south1";
 
 let _bq: BigQuery | null = null;
-const bq = () => (_bq ??= new BigQuery({ projectId: PROJECT_ID }));
+/**
+ * Refuses before constructing the client under NODE_ENV=test without ADC — see
+ * lib/bigquery-adc.ts. Without it this module made LIVE warehouse calls during tests, so the
+ * suite's result depended on network reachability and on what the warehouse happened to hold.
+ */
+const bq = () => {
+  assertBqAdcAvailable();
+  return (_bq ??= new BigQuery({ projectId: PROJECT_ID }));
+};
 async function q<T = Record<string, unknown>>(sql: string): Promise<T[]> {
-  const [rows] = await bq().query({ query: sql, location: LOCATION });
-  return rows as T[];
+  const [rows] = await withWarehouseDeadline(bq().query({ query: sql, location: LOCATION }));
+  return assertRowArray<T>(rows, "mlops query");
 }
 
 export type ModelRecord = { model_name: string; version: string; model_type: string; training_dataset: string; training_rows: number; status: string; lifecycle: string; owner: string; metrics: unknown; blocker_reason: string | null };

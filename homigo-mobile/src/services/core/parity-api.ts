@@ -1,5 +1,6 @@
 import type { ApiResponse } from "@/types/auth";
 import { apiRequest } from "@/services/auth/api-client";
+import type { BookingQuote, BookingSelection } from "@/lib/booking-quote";
 
 /**
  * Feature-parity API surface — endpoints the customer web app consumed but mobile previously lacked.
@@ -19,7 +20,28 @@ export type GeoAddress = {
 };
 export type EtaResult = { distanceKm: number; etaMinutes: number; source?: string; withTraffic?: boolean; weatherAdjusted?: boolean };
 export type WeatherNow = { tempC: number; feelsLikeC?: number; condition: string; humidity?: number; windSpeedKmh?: number; city?: string };
-export type PriceQuote = { total: number; base: number; discount: number; breakdown?: Array<{ label: string; amount: number }> };
+export type Serviceability = {
+  serviceable: boolean;
+  /** false = no service zones configured on the server (everything is serviceable). */
+  configured: boolean;
+  zones: Array<{ id: string; name: string }>;
+};
+/** POST /api/wallet/checkout/quote — amounts in rupees, derived by the server from the booking. */
+export type WalletCheckoutQuote = {
+  bookingId: string;
+  bookingAmount: number;
+  taxes: number;
+  finalAmount: number;
+  walletBalance: number;
+  walletApplicable: number;
+  razorpayRequired: number;
+  remainderDue: number;
+  fullyPayableFromWallet: boolean;
+  alreadyPaid: boolean;
+};
+export type SplitInitiateResult =
+  | { mode: "wallet_only"; status: "SUCCESS"; amountPaid: number; balance: number }
+  | { mode: "split"; razorpayOrderId: string; razorpayAmount: number; walletAmount: number; finalAmount: number; key?: string };
 export type SupportTicket = { id: string; subject: string; category: string; status: string; createdAt: string; ticketNumber?: string };
 export type PaymentMethod = { id: string; brand: string; last4: string; isDefault: boolean };
 // `amount` is in RUPEES (not paise); the invoice id field is `invoiceNumber`.
@@ -41,10 +63,17 @@ export const parityApi = {
         `/api/geo/autocomplete?${q({ q: input, lat: near?.lat, lng: near?.lng })}`,
         { auth: true },
       ).then((r) => r.data!.predictions),
+    /** `null` when the server has no geocoder configured or nothing is at that point. */
     reverse: (lat: number, lng: number) =>
-      apiRequest<ApiResponse<{ address: GeoAddress }>>(`/api/geo/reverse?${q({ lat, lng })}`, { auth: true }).then(
-        (r) => r.data!.address,
-      ),
+      apiRequest<ApiResponse<{ available?: boolean; address: GeoAddress | null }>>(
+        `/api/geo/reverse?${q({ lat, lng })}`,
+        { auth: true },
+      ).then((r) => r.data?.address ?? null),
+    /** Is this point inside a service zone? 400 OUT_OF_AREA outside India. */
+    serviceable: (lat: number, lng: number, category?: string) =>
+      apiRequest<ApiResponse<Serviceability>>(`/api/geo/serviceable?${q({ lat, lng, category })}`, {
+        auth: true,
+      }).then((r) => r.data!),
     eta: (from: { lat: number; lng: number }, to: { lat: number; lng: number }) =>
       apiRequest<ApiResponse<EtaResult>>(
         `/api/geo/eta?${q({ fromLat: from.lat, fromLng: from.lng, toLat: to.lat, toLng: to.lng })}`,
@@ -85,12 +114,54 @@ export const parityApi = {
   },
 
   bookings: {
-    priceQuote: (serviceId: string, scheduledDate: string, addressId: string) =>
-      apiRequest<ApiResponse<PriceQuote>>("/api/bookings/price-quote", {
+    /**
+     * The slots the SERVER says are bookable for one day (Wave 4).
+     *
+     * The reschedule panel used a hardcoded list of six times that no server had agreed to, so a
+     * customer could pick a slot the platform then refused. The grid, the operating window and each
+     * slot's verdict all come from the backend; this client only renders them.
+     */
+    availability: (params: {
+      serviceId: string;
+      date: string;
+      addressId?: string;
+      providerId?: string;
+      /** Rescheduling: the booking being moved does not block its own new time. */
+      excludeBookingId?: string;
+    }) => {
+      const qs = new URLSearchParams({ serviceId: params.serviceId, date: params.date });
+      if (params.addressId) qs.set("addressId", params.addressId);
+      if (params.providerId) qs.set("providerId", params.providerId);
+      if (params.excludeBookingId) qs.set("excludeBookingId", params.excludeBookingId);
+      return apiRequest<
+        ApiResponse<{
+          date: string;
+          timeZone: string;
+          slotMinutes: number;
+          durationMinutes: number;
+          operatingWindow: { start: string; end: string };
+          availableCount: number;
+          slots: { start: string; available: boolean; reason?: string }[];
+        }>
+      >(`/api/bookings/availability?${qs}`, { auth: true }).then((r) => r.data!);
+    },
+    /**
+     * Server price for a selection (bookingPriceQuoteSchema). The SAME pricing function runs inside
+     * POST /api/bookings, so this total is what the booking will be charged.
+     */
+    priceQuote: (selection: BookingSelection) =>
+      apiRequest<ApiResponse<{ quote: BookingQuote }>>("/api/bookings/price-quote", {
         method: "POST",
-        body: { serviceId, scheduledDate, addressId },
+        body: selection,
         auth: true,
-      }).then((r) => r.data!),
+      }).then((r) => r.data!.quote),
+    /** Customer reschedule — PUT /api/bookings/:id { scheduledDate } (conflicts → 409). */
+    reschedule: (bookingId: string, scheduledDate: string) =>
+      apiRequest<ApiResponse<unknown>>(`/api/bookings/${encodeURIComponent(bookingId)}`, {
+        method: "PUT",
+        body: { scheduledDate },
+        auth: true,
+      }),
   },
 
   support: {
@@ -111,9 +182,28 @@ export const parityApi = {
       apiRequest<ApiResponse<{ methods: PaymentMethod[] }>>("/api/wallet/payment-methods", { auth: true }).then(
         (r) => r.data!.methods,
       ),
-    checkoutQuote: (payload: { bookingId?: string; amount?: number; useWallet?: boolean; couponCode?: string }) =>
-      apiRequest<ApiResponse<{ payable: number; walletApplied: number; discount: number }>>(
-        "/api/wallet/checkout/quote",
+    checkoutQuote: (bookingId: string) =>
+      apiRequest<ApiResponse<WalletCheckoutQuote>>("/api/wallet/checkout/quote", {
+        method: "POST",
+        body: { bookingId },
+        auth: true,
+      }).then((r) => r.data!),
+    /** Pay the whole booking from wallet balance. */
+    checkoutPay: (bookingId: string) =>
+      apiRequest<ApiResponse<{ ok: boolean; alreadyPaid?: boolean; amountPaid: number; balance: number }>>(
+        "/api/wallet/checkout/pay",
+        { method: "POST", body: { bookingId }, auth: true },
+      ).then((r) => r.data!),
+    /** Wallet part now, remainder through a Razorpay order; the wallet leg commits on verify. */
+    splitInitiate: (bookingId: string, walletAmount: number) =>
+      apiRequest<ApiResponse<SplitInitiateResult>>("/api/wallet/checkout/split/initiate", {
+        method: "POST",
+        body: { bookingId, walletAmount },
+        auth: true,
+      }).then((r) => r.data!),
+    splitVerify: (payload: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }) =>
+      apiRequest<ApiResponse<{ ok: boolean; status: string; bookingId: string; walletApplied: number; razorpayApplied: number; balance: number }>>(
+        "/api/wallet/checkout/split/verify",
         { method: "POST", body: payload, auth: true },
       ).then((r) => r.data!),
   },

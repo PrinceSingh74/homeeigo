@@ -4,11 +4,34 @@
  */
 import { Elysia } from "elysia";
 import { authPlugin } from "../plugins/auth.plugin";
-import { mlopsService as svc } from "../services/mlops.service";
+import { mlopsService as svc, readDataQuality, readRegistry } from "../services/mlops.service";
 
+/**
+ * A warehouse outage is a stated `available: false` with a reason code and no figures — not a 500
+ * (X-88; the same contract as the X-84 demand forecast). The healthy answers are unchanged, plus
+ * `available: true`.
+ */
 export const mlopsRoutes = new Elysia({ prefix: "/api/mlops" })
   .use(authPlugin)
-  .get("/registry", async ({ requireRole }) => { requireRole("ADMIN"); return { success: true, ...(await svc.registry()) }; })
-  .get("/data-quality", async ({ requireRole }) => { requireRole("ADMIN"); return { success: true, data: await svc.dataQuality(), generatedAt: new Date().toISOString() }; })
-  .get("/health", async ({ requireRole }) => { requireRole("ADMIN"); return { success: true, data: await svc.health() }; })
-  .get("/metrics", async ({ requireRole }) => { requireRole("ADMIN"); return { success: true, ...(await svc.modelMetrics()) }; });
+  .get("/registry", async ({ requireRole }) => {
+    requireRole("ADMIN");
+    const r = await readRegistry(() => svc.registry());
+    return r.available ? { success: true, available: true, ...r.value } : { success: true, ...r };
+  })
+  .get("/data-quality", async ({ requireRole }) => {
+    requireRole("ADMIN");
+    const r = await readDataQuality(() => svc.dataQuality());
+    return r.available
+      ? { success: true, available: true, data: r.value, generatedAt: new Date().toISOString() }
+      : { success: true, ...r };
+  })
+  .get("/health", async ({ requireRole }) => {
+    requireRole("ADMIN");
+    const r = await readRegistry(() => svc.health());
+    return r.available ? { success: true, available: true, data: r.value } : { success: true, ...r };
+  })
+  .get("/metrics", async ({ requireRole }) => {
+    requireRole("ADMIN");
+    const r = await readRegistry(() => svc.modelMetrics());
+    return r.available ? { success: true, available: true, ...r.value } : { success: true, ...r };
+  });

@@ -1,3 +1,4 @@
+import type { PrismaClient } from "@prisma/client";
 import type { AiGatewayRole, AiProviderType } from "@prisma/client";
 import { aiConfig } from "../config";
 
@@ -54,12 +55,27 @@ export function computeTokenCost(
   return computeTokenCostDetailed(provider, promptTokens, completionTokens, cachedTokens).costUsd;
 }
 
+/**
+ * Narrow database ports for the cost functions.
+ *
+ * These were previously hand-written structural types whose methods took `args: unknown`. That is
+ * backwards: a parameter typed `unknown` obliges the implementation to accept ANY argument, and
+ * Prisma's delegates accept only their own args types — so the real `PrismaClient` was not
+ * assignable to a port meant to be permissive, and every call site failed to typecheck.
+ *
+ * It also silently disabled checking INSIDE these functions: with `args: unknown`, a misspelled
+ * field or a wrong `where` shape in the upsert below would have compiled fine and failed only at
+ * runtime, on the AI cost-accounting path.
+ *
+ * `Pick<PrismaClient, ...>` keeps the ports just as narrow — each function still receives only the
+ * delegates it uses, so the seam for substituting a client is intact — while being structurally
+ * accurate and fully typechecked against the real schema.
+ */
+type AiCostDb = Pick<PrismaClient, "aiGatewayCost">;
+type AiUsageDb = Pick<PrismaClient, "aiGatewayRequest" | "aiGatewayCost">;
+
 export async function recordDailyCost(
-  prisma: {
-    aiGatewayCost: {
-      upsert: (args: unknown) => Promise<unknown>;
-    };
-  },
+  prisma: AiCostDb,
   date: Date,
   provider: AiProviderType,
   actorRole: AiGatewayRole,
@@ -98,16 +114,7 @@ export type UsageSummary = {
 };
 
 export async function getUsageSummary(
-  prisma: {
-    aiGatewayRequest: {
-      aggregate: (args: unknown) => Promise<{ _count: { id: number }; _sum: { costUsd: number | null } }>;
-      groupBy: (args: unknown) => Promise<Array<{ provider: AiProviderType; _count: { id: number }; _sum: { costUsd: number | null } }>>;
-    };
-    aiGatewayCost: {
-      aggregate: (args: unknown) => Promise<{ _sum: { totalCostUsd: number | null } }>;
-      findMany: (args: unknown) => Promise<Array<{ date: Date; provider: AiProviderType; actorRole: AiGatewayRole; totalCostUsd: number; requestCount: number }>>;
-    };
-  },
+  prisma: AiUsageDb,
   since: Date,
 ): Promise<UsageSummary> {
   const [agg, byProvider, costs] = await Promise.all([

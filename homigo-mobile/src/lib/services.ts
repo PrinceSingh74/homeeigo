@@ -22,6 +22,16 @@ export type Service = {
   packages: ServicePackage[];
   keywords: string[];
   featured?: boolean;
+  /** Backend category (for serviceability checks). */
+  category?: string;
+  /** Quantity-priced service (server prices quantity × unit; package tiers do not apply). */
+  quantityRule?: { min: number; max?: number; step?: number; default?: number; unitLabel?: string } | null;
+  audiences?: string[];
+  variants?: { id: string; name: string; price: number; audiences?: string[] }[];
+  /** This service's own add-on catalogue; absent → no client-side add-on list. */
+  addons?: { id: string; name: string; desc: string; price: number }[];
+  /** Admin marked it "coming soon" — not bookable. */
+  comingSoon?: boolean;
 };
 
 export const LOCATIONS = [
@@ -33,144 +43,20 @@ export const LOCATIONS = [
 
 export type LocationId = (typeof LOCATIONS)[number]["id"];
 
-export const SERVICES: Service[] = [
-  {
-    id: "cleaning",
-    name: "Cleaning",
-    imageKey: "cleaning",
-    price: "₹199",
-    priceFrom: 199,
-    color: "#7C3AED",
-    title: "Home Cleaning",
-    tagline: "Professional home cleaning — neat, clean & hygienic.",
-    rating: "4.8",
-    reviews: "12.5k",
-    homes: "12K+ homes cleaned",
-    featured: true,
-    keywords: ["clean", "cleaning", "deep clean", "home", "sofa", "kitchen"],
-    packages: [
-      { name: "Basic", tag: "Essential Cleaning", price: 199, items: ["1 Bedroom", "1 Bathroom", "Kitchen Cleaning", "Floor Cleaning"] },
-      { name: "Standard", tag: "Deep Cleaning", price: 299, popular: true, items: ["2 Bedroom", "2 Bathroom", "Kitchen Cleaning", "Dusting & Wiping", "Floor Cleaning"] },
-      { name: "Premium", tag: "Full Home Cleaning", price: 499, items: ["3 Bedroom", "3 Bathroom", "Deep Cleaning", "Balcony Cleaning", "Windows Cleaning"] },
-    ],
-  },
-  {
-    id: "ac-service",
-    name: "AC Service",
-    imageKey: "ac",
-    price: "₹299",
-    priceFrom: 299,
-    color: "#06B6D4",
-    title: "AC Service & Repair",
-    tagline: "Cooling care by certified AC technicians.",
-    rating: "4.9",
-    reviews: "9.2k",
-    homes: "8K+ ACs serviced",
-    keywords: ["ac", "air conditioner", "cooling", "gas"],
-    packages: [
-      { name: "Basic", tag: "AC Cleaning", price: 299, items: ["1 AC Unit", "Filter Cleaning", "Cooling Check", "Basic Servicing"] },
-      { name: "Standard", tag: "Deep Service", price: 499, popular: true, items: ["2 AC Units", "Deep Coil Cleaning", "Gas Pressure Check", "Filter + Drain Clean"] },
-      { name: "Premium", tag: "Full AC Care", price: 899, items: ["3 AC Units", "Full Chemical Wash", "Gas Top-up", "1 Year Warranty", "Priority Support"] },
-    ],
-  },
-  {
-    id: "plumbing",
-    name: "Plumbing",
-    imageKey: "plumbing",
-    price: "₹249",
-    priceFrom: 249,
-    color: "#3B82F6",
-    title: "Plumbing Services",
-    tagline: "Leak-free homes by expert plumbers.",
-    rating: "4.7",
-    reviews: "7.8k",
-    homes: "10K+ jobs done",
-    keywords: ["plumber", "plumbing", "leak", "tap"],
-    packages: [
-      { name: "Basic", tag: "Quick Fix", price: 249, items: ["1 Tap / Faucet", "Leak Inspection", "Minor Repair", "30-day Warranty"] },
-      { name: "Standard", tag: "Full Repair", price: 449, popular: true, items: ["Up to 3 Fixtures", "Pipe Leak Repair", "Drain Cleaning", "60-day Warranty"] },
-      { name: "Premium", tag: "Home Plumbing", price: 799, items: ["Whole-home Check", "Pipe Replacement", "Tank Cleaning", "90-day Warranty"] },
-    ],
-  },
-  {
-    id: "electrician",
-    name: "Electrician",
-    imageKey: "electrician",
-    price: "₹199",
-    priceFrom: 199,
-    color: "#F59E0B",
-    title: "Electrician Services",
-    tagline: "Safe wiring & repairs by certified electricians.",
-    rating: "4.8",
-    reviews: "6.4k",
-    homes: "9K+ homes wired",
-    keywords: ["electric", "electrician", "wiring", "fan"],
-    packages: [
-      { name: "Basic", tag: "Quick Fix", price: 199, items: ["1 Switch / Socket", "Fault Inspection", "Minor Repair", "30-day Warranty"] },
-      { name: "Standard", tag: "Full Repair", price: 399, popular: true, items: ["Up to 4 Points", "Wiring Check", "Fan / Light Install", "60-day Warranty"] },
-      { name: "Premium", tag: "Home Electrical", price: 749, items: ["Full Home Audit", "MCB / Panel Work", "New Wiring", "90-day Warranty"] },
-    ],
-  },
-  {
-    id: "pest-control",
-    name: "Pest Control",
-    imageKey: "pest",
-    price: "₹299",
-    priceFrom: 299,
-    color: "#10B981",
-    title: "Pest Control",
-    tagline: "Pest-free homes with eco-safe treatment.",
-    rating: "4.9",
-    reviews: "5.6k",
-    homes: "7K+ homes treated",
-    keywords: ["pest", "cockroach", "termite"],
-    packages: [
-      { name: "Basic", tag: "Single Treatment", price: 299, items: ["1 BHK", "Cockroach + Ant", "Eco-safe Spray", "15-day Warranty"] },
-      { name: "Standard", tag: "Full Home", price: 549, popular: true, items: ["2 BHK", "All Common Pests", "Gel + Spray", "45-day Warranty"] },
-      { name: "Premium", tag: "Annual Shield", price: 1299, items: ["3 BHK", "Termite + Rodent", "4 Visits / Year", "1 Year Warranty"] },
-    ],
-  },
-  {
-    id: "salon",
-    name: "Salon",
-    iconKey: "scissors",
-    price: "₹199",
-    priceFrom: 199,
-    color: "#EC4899",
-    title: "Salon at Home",
-    tagline: "Premium salon services at your doorstep.",
-    rating: "4.9",
-    reviews: "11.3k",
-    homes: "15K+ appointments",
-    keywords: ["salon", "haircut", "facial", "spa"],
-    packages: [
-      { name: "Basic", tag: "Essentials", price: 199, items: ["Haircut", "Threading", "Basic Cleanup", "Hygienic Tools"] },
-      { name: "Standard", tag: "Glow Package", price: 499, popular: true, items: ["Haircut + Style", "Facial", "Manicure", "Premium Products"] },
-      { name: "Premium", tag: "Luxury Spa", price: 999, items: ["Hair Spa", "Gold Facial", "Mani + Pedi", "Body Massage", "Priority Stylist"] },
-    ],
-  },
-];
-
-export const PROMO_OFFERS = [
-  { code: "COOL100", serviceId: "ac-service", discount: "Flat ₹100 OFF", desc: "On AC Service" },
-  { code: "FRESH25", serviceId: "cleaning", discount: "25% OFF", desc: "On Deep Cleaning" },
-  { code: "FIX150", serviceId: "plumbing", discount: "Flat ₹150 OFF", desc: "On Plumbing" },
-] as const;
-
-export const RECOMMENDED = [
-  { title: "Sofa Deep Clean", price: "₹699", rating: "4.9", serviceId: "cleaning", packageIndex: 2, img: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&q=70" },
-  { title: "AC Gas Refill", price: "₹1,299", rating: "4.8", serviceId: "ac-service", packageIndex: 2, img: "https://images.unsplash.com/photo-1635048424329-a9bfb146d7aa?w=400&q=70" },
-  { title: "Kitchen Cleaning", price: "₹499", rating: "4.7", serviceId: "cleaning", packageIndex: 1, img: "https://images.unsplash.com/photo-1556911220-bff31c812dba?w=400&q=70" },
-  { title: "Bathroom Cleaning", price: "₹599", rating: "4.8", serviceId: "cleaning", packageIndex: 0, img: "https://images.unsplash.com/photo-1620626011761-996317b8d101?w=400&q=70" },
-];
-
-export const BOOKING_DATES = [
-  { d: "Today", n: "21 May" },
-  { d: "Wed", n: "22 May" },
-  { d: "Thu", n: "23 May" },
-  { d: "Fri", n: "24 May" },
-  { d: "Sat", n: "25 May" },
-  { d: "Sun", n: "26 May" },
+/**
+ * Search-only keyword index (query → service slug). It deliberately carries NO prices, ratings,
+ * review counts or "homes served" numbers: the old static catalogue shipped invented figures
+ * ("4.8", "12.5k" reviews, "12K+ homes cleaned") that could reach customers as if real. Every
+ * displayed service — price, rating, packages — comes from the backend catalogue
+ * (useCatalogServices → mapBackendServiceToMobile).
+ */
+export const SERVICE_SEARCH_INDEX: ReadonlyArray<{ id: string; name: string; title: string; keywords: string[] }> = [
+  { id: "cleaning", name: "Cleaning", title: "Home Cleaning", keywords: ["clean", "cleaning", "deep clean", "home", "sofa", "kitchen"] },
+  { id: "ac-service", name: "AC Service", title: "AC Service & Repair", keywords: ["ac", "air conditioner", "cooling", "gas"] },
+  { id: "plumbing", name: "Plumbing", title: "Plumbing Services", keywords: ["plumber", "plumbing", "leak", "tap"] },
+  { id: "electrician", name: "Electrician", title: "Electrician Services", keywords: ["electric", "electrician", "wiring", "fan"] },
+  { id: "pest-control", name: "Pest Control", title: "Pest Control", keywords: ["pest", "cockroach", "termite"] },
+  { id: "salon", name: "Salon", title: "Salon at Home", keywords: ["salon", "haircut", "facial", "spa"] },
 ];
 
 export const BOOKING_TIMES = [
@@ -182,22 +68,6 @@ export const BOOKING_TIMES = [
   "07:00 PM",
 ];
 
-// ids must match the server catalog (BOOKING_ADDONS in booking-pricing.service).
-export const ADDONS = [
-  { id: "fridge", name: "Fridge Cleaning", desc: "Deep cleaning & sanitization", price: 99 },
-  { id: "sofa", name: "Sofa Cleaning", desc: "Vacuum & stain removal", price: 149 },
-  { id: "microwave", name: "Microwave Cleaning", desc: "Interior cleaning", price: 79 },
-];
-
-export function getServiceById(id: string) {
-  return SERVICES.find((s) => s.id === id);
-}
-
-export function getServiceIndex(id: string) {
-  const i = SERVICES.findIndex((s) => s.id === id);
-  return i === -1 ? 0 : i;
-}
-
 export function popularPackageIndex(service: Service) {
   const p = service.packages.findIndex((x) => x.popular);
   return p === -1 ? 0 : p;
@@ -207,9 +77,3 @@ export function getLocation(id: LocationId) {
   return LOCATIONS.find((l) => l.id === id) ?? LOCATIONS[0];
 }
 
-export function promoDiscount(code: string | null, packagePrice: number) {
-  if (code === "COOL100") return 100;
-  if (code === "FIX150" || code === "HOME150") return 150;
-  if (code === "FRESH25") return Math.round(packagePrice * 0.25);
-  return 0;
-}

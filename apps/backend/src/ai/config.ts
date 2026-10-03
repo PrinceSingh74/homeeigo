@@ -1,4 +1,12 @@
 import type { AiProviderType } from "@prisma/client";
+import { liveProviderAllowed } from "../lib/test-egress";
+
+/**
+ * A test runtime has no model-provider credentials unless it opts in with HOMIGO_REQUIRE_AI=1
+ * (lib/test-egress.ts). Every adapter already treats a missing key as "provider unavailable", so the
+ * gateway degrades exactly as it does for an unconfigured deployment instead of calling the API.
+ */
+const aiKey = (v: string | undefined) => (liveProviderAllowed("HOMIGO_REQUIRE_AI") ? v : undefined);
 
 /**
  * Provider preference order: first entry is primary, the rest are fallbacks in order.
@@ -59,7 +67,7 @@ export const aiConfig = {
     maxMs: Number(process.env.AI_COOLDOWN_MAX_MS ?? 3_600_000),
   },
   anthropic: {
-    apiKey: process.env.ANTHROPIC_API_KEY,
+    apiKey: aiKey(process.env.ANTHROPIC_API_KEY),
     model: process.env.AI_ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
     baseUrl: process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com/v1",
     apiVersion: process.env.ANTHROPIC_API_VERSION ?? "2023-06-01",
@@ -70,16 +78,16 @@ export const aiConfig = {
     model: process.env.AI_GEMINI_MODEL ?? "gemini-2.0-flash",
     // An API key selects the Gemini Developer API; without one the adapter uses Vertex
     // with application-default credentials. The two transports are not interchangeable.
-    apiKey: process.env.GEMINI_API_KEY,
+    apiKey: aiKey(process.env.GEMINI_API_KEY),
     apiBaseUrl: process.env.GEMINI_API_BASE_URL ?? "https://generativelanguage.googleapis.com/v1beta",
   },
   groq: {
-    apiKey: process.env.GROQ_API_KEY,
+    apiKey: aiKey(process.env.GROQ_API_KEY),
     model: process.env.AI_GROQ_MODEL ?? "openai/gpt-oss-120b",
     baseUrl: process.env.GROQ_BASE_URL ?? "https://api.groq.com/openai/v1",
   },
   openai: {
-    apiKey: process.env.OPENAI_API_KEY,
+    apiKey: aiKey(process.env.OPENAI_API_KEY),
     model: process.env.AI_OPENAI_MODEL ?? "gpt-4o-mini",
     baseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
   },
@@ -101,6 +109,31 @@ export const aiConfig = {
   },
   dryRun: process.env.AI_GATEWAY_DRY_RUN === "true",
 } as const;
+
+/**
+ * Whether a call to this provider would actually reach it.
+ *
+ * Mirrors the condition every adapter uses before returning `mockResponse`: global dry-run, or no
+ * credential for that provider. Exported so accounting can tell a real completion from a canned one
+ * where the response itself does not carry the flag — a tool loop, for instance, assembles its own
+ * result shape from several turns.
+ */
+export function liveInferenceConfigured(provider: AiProviderType): boolean {
+  if (aiConfig.dryRun) return false;
+  switch (provider) {
+    case "ANTHROPIC":
+      return Boolean(aiConfig.anthropic.apiKey);
+    case "GEMINI":
+      // Vertex with application-default credentials is a second, non-interchangeable transport.
+      return Boolean(aiConfig.gemini.apiKey || process.env.GOOGLE_APPLICATION_CREDENTIALS);
+    case "GROQ":
+      return Boolean(aiConfig.groq.apiKey);
+    case "OPENAI":
+      return Boolean(aiConfig.openai.apiKey);
+    default:
+      return false;
+  }
+}
 
 export function isGeminiConfigured(): boolean {
   return Boolean(aiConfig.gemini.apiKey || process.env.GOOGLE_APPLICATION_CREDENTIALS);

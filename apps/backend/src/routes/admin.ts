@@ -1,9 +1,12 @@
+import { analyticsWhere } from "../lib/analytics-scope";
 import { Elysia, t } from "elysia";
 import { authPlugin } from "../plugins/auth.plugin";
 import { adminService, adminReviewService } from "../services/admin.service";
 import { heatmapService } from "../services/heatmap.service";
 import { opsMapService } from "../services/ops-map.service";
 import { catalogService } from "../services/catalog.service";
+import { requirementCatalogService } from "../services/requirement-catalog.service";
+import { REQUESTABLE_LIFECYCLES } from "../lib/service-domain";
 import { earningsService } from "../services/earnings.service";
 import { subscriptionService } from "../services/subscription.service";
 import { referralService } from "../services/referral.service";
@@ -15,8 +18,22 @@ import { cashbackService } from "../services/cashback.service";
 import { bookingPriorityService } from "../services/booking-priority.service";
 import { campaignService } from "../services/campaign.service";
 import { supportTicketService } from "../services/support-ticket.service";
+import { supportIntelligenceService } from "../services/support-intelligence.service";
+import { supportRecommendationStore, supportRecommendationReader } from "../services/support-recommendation-store.service";
+import { supportIntelligenceAnalyticsService } from "../services/support-intelligence-analytics.service";
+import { knowledgeIngestionService } from "../services/knowledge-ingestion.service";
+import { knowledgeEmbeddingService } from "../services/knowledge-embedding.service";
+import { knowledgeAnswerService } from "../services/knowledge-answer.service";
+import { knowledgeSeedService } from "../services/knowledge-seed.service";
+import { knowledgeAnalyticsService } from "../services/knowledge-analytics.service";
+import { knowledgeAuthorityService } from "../services/knowledge-authority.service";
+import { knowledgeEvalService } from "../services/knowledge-eval.service";
+import { AuditLogService } from "../services/audit-log.service";
+import { customerPolicyService } from "../services/customer-policy.service";
+import { knowledgeRetrievalService } from "../services/knowledge-retrieval.service";
 import { membershipAnalyticsService } from "../services/membership-analytics.service";
 import { assignmentEngine } from "../services/assignment-engine.service";
+import { matchingService } from "../services/matching.service";
 import { membershipCouponService } from "../services/membership-coupon.service";
 import prisma from "../lib/prisma";
 import { fraudAdminService } from "../services/fraud-admin.service";
@@ -45,6 +62,12 @@ import { gatewayReconciliationService } from "../services/gateway-reconciliation
 import { payoutOperationsService } from "../services/payout-operations.service";
 import { settlementResolutionService } from "../services/settlement-resolution.service";
 import { adminBookingOperationsService } from "../services/admin-booking-operations.service";
+import { bookingNoShowService } from "../services/booking-no-show.service";
+import { bookingRequirementService } from "../services/booking-requirement.service";
+import { bookingExecutionService } from "../services/booking-execution.service";
+import { bookingSafetyService } from "../services/booking-safety.service";
+import { bookingQualityService, QUALITY_ERRORS } from "../services/booking-quality.service";
+import { bookingCompletionService } from "../services/booking-completion.service";
 import { refundWorkflowService } from "../services/refund-workflow.service";
 import { financeAnalyticsService } from "../services/finance-analytics.service";
 import { financeIntelligenceService } from "../services/finance-intelligence.service";
@@ -74,6 +97,10 @@ import { adminIntelligenceRoutes } from "./admin-intelligence";
 import { adminAutomationRoutes } from "./admin-automation";
 import { enterpriseAuditService } from "../services/enterprise-audit.service";
 import { commandCenterOverviewService } from "../services/command-center-overview.service";
+import { razorpayService } from "../services/razorpay.service";
+import { describePaymentEnvironment } from "../lib/payment-environment";
+
+import { PRICING_MODELS } from "../lib/service-catalog-config";
 
 const createServiceBody = t.Object({
   name: t.String({ minLength: 2, maxLength: 120 }),
@@ -90,8 +117,68 @@ const createServiceBody = t.Object({
   isFeatured: t.Optional(t.Boolean()),
   premiumOnly: t.Optional(t.Boolean()),
   availableCities: t.Optional(t.Array(t.String())),
+  slug: t.Optional(t.String({ minLength: 2, maxLength: 120 })),
+  pricingModel: t.Optional(t.String({ pattern: `^(${PRICING_MODELS.join("|")})$` })),
+  thumbnail: t.Optional(t.String({ maxLength: 500 })),
+  images: t.Optional(t.Array(t.String({ maxLength: 500 }), { maxItems: 12 })),
+  includedServices: t.Optional(t.Array(t.String({ maxLength: 300 }), { maxItems: 20 })),
+  excludedServices: t.Optional(t.Array(t.String({ maxLength: 300 }), { maxItems: 20 })),
+  requirements: t.Optional(t.Array(t.String({ maxLength: 300 }), { maxItems: 20 })),
+  /** Structured booking/content config — validated by serviceCatalogConfigSchema. null clears it. */
+  catalogConfig: t.Optional(t.Union([t.Null(), t.Record(t.String(), t.Unknown())])),
+  capabilityProfile: t.Optional(t.String()),
+  displayName: t.Optional(t.String({ maxLength: 160 })),
+  shortName: t.Optional(t.String({ maxLength: 60 })),
+  serviceCode: t.Optional(t.String({ maxLength: 80 })),
+  internalServiceCode: t.Optional(t.String({ maxLength: 80 })),
+  /** Customer taxonomy by slug (service_categories). null clears it. */
+  categorySlug: t.Optional(t.Union([t.Null(), t.String({ maxLength: 80 })])),
+  subcategorySlug: t.Optional(t.Union([t.Null(), t.String({ maxLength: 80 })])),
+  seoTitle: t.Optional(t.String({ maxLength: 160 })),
+  seoDescription: t.Optional(t.String({ maxLength: 320 })),
+  seoKeywords: t.Optional(t.String({ maxLength: 320 })),
+  ownerTeam: t.Optional(t.String({ maxLength: 80 })),
+  operationsNotes: t.Optional(t.String({ maxLength: 2000 })),
+  /** D1: DURATION reserves the appointment length; FIXED keeps the 60-minute block (turnaround services). */
+  partnerSlotPolicy: t.Optional(t.Union([t.Literal("DURATION"), t.Literal("FIXED")])),
 });
-const updateServiceBody = t.Partial(createServiceBody);
+const updateServiceBody = t.Composite([
+  t.Partial(createServiceBody),
+  t.Object({
+    expectedVersion: t.Optional(t.Integer({ minimum: 1 })),
+    /** Optional human reason recorded in the audit trail for this change. */
+    changeReason: t.Optional(t.String({ maxLength: 500 })),
+  }),
+]);
+
+/** Stable admin error contract for service writes (code → HTTP status). */
+const SERVICE_WRITE_STATUS: Record<string, number> = {
+  INVALID_CONFIG: 400,
+  INVALID_IDENTITY: 400,
+  INVALID_MEDIA: 400,
+  INVALID_TAXONOMY: 400,
+  SERVICE_NOT_BOOKABLE: 400,
+  NOT_FOUND: 404,
+  DUPLICATE: 409,
+  VERSION_CONFLICT: 409,
+  SERVICE_CODE_IMMUTABLE: 409,
+  INVALID_LIFECYCLE_TRANSITION: 409,
+};
+
+function serviceWriteFailure(
+  set: { status?: number | string },
+  result: { error: string; message?: string; issues?: unknown; field?: string; from?: string; to?: string; allowed?: readonly string[] },
+) {
+  set.status = SERVICE_WRITE_STATUS[result.error] ?? 400;
+  return {
+    success: false,
+    error: result.error === "NOT_FOUND" ? "Service not found" : (result.message ?? result.error),
+    code: result.error,
+    ...(result.issues ? { issues: result.issues } : {}),
+    ...(result.field ? { field: result.field } : {}),
+    ...(result.allowed ? { from: result.from, to: result.to, allowed: result.allowed } : {}),
+  };
+}
 
 // A plan benefit: a plain display label, or a structured entitlement the
 // EntitlementService enforces (type + value [+ quota]).
@@ -258,6 +345,30 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     const data = await opsMapService.snapshot({ gridSize });
     return { success: true, data };
   })
+  // Read-only booking ↔ money ↔ assignment consistency report (never repairs anything).
+  .get("/integrity/booking-consistency", async () => {
+    const { bookingConsistencyService } = await import("../services/booking-consistency.service");
+    return { success: true, data: { checks: bookingConsistencyService.checks, ...(await bookingConsistencyService.run()) } };
+  })
+  // Shared, audited alert acknowledgement (was per-browser localStorage).
+  .get("/ops-alerts/acks", async () => {
+    const { opsAlertAckService } = await import("../services/ops-alert-ack.service");
+    return { success: true, data: { acks: await opsAlertAckService.active() } };
+  })
+  .post(
+    "/ops-alerts/acks",
+    async ({ body, requireAuth, set }) => {
+      const auth = requireAuth();
+      const { opsAlertAckService } = await import("../services/ops-alert-ack.service");
+      const result = await opsAlertAckService.acknowledge(body.keys, auth.userId);
+      if (result.acknowledged === 0) {
+        set.status = 400;
+        return { success: false, error: "No valid alert keys", code: "INVALID_ALERT_KEYS", details: result.rejected };
+      }
+      return { success: true, data: result };
+    },
+    { body: t.Object({ keys: t.Array(t.String({ minLength: 1, maxLength: 300 }), { minItems: 1, maxItems: 200 }) }) },
+  )
   .get("/partner-availability", async ({ query, adminContext, set }) => {
     const admin = adminContext!;
     try {
@@ -302,13 +413,21 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
         auth.userId,
         body.reason,
         ip ?? undefined,
+        body.refundPolicy ?? "customer_policy",
       );
       return { success: true, data: result };
     } catch (err) {
-      set.status = 400;
-      return { success: false, error: err instanceof Error ? err.message : "Cancel failed", code: "BOOKING_CANCEL_FAILED" };
+      const message = err instanceof Error ? err.message : "Cancel failed";
+      set.status = message === "BOOKING_NOT_FOUND" ? 404 : message === "BOOKING_NOT_CANCELLABLE" ? 409 : 400;
+      return { success: false, error: message, code: message === "BOOKING_NOT_CANCELLABLE" ? message : "BOOKING_CANCEL_FAILED" };
     }
-  }, { body: t.Object({ reason: t.String({ minLength: 3 }) }) })
+  }, {
+    body: t.Object({
+      reason: t.String({ minLength: 3 }),
+      // Admin chooses per cancellation; absent = the published customer policy.
+      refundPolicy: t.Optional(t.Union([t.Literal("customer_policy"), t.Literal("full")])),
+    }),
+  })
   .post("/bookings/:id/reschedule", async ({ params, body, requireAuth, request, set }) => {
     try {
       const auth = requireAuth();
@@ -336,13 +455,38 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
         body.providerId,
         body.reason,
         ip ?? undefined,
+        body.overridePaymentGate ?? false,
+        body.emergencyOverride
+          ? {
+              adminId: auth.userId,
+              reason: body.emergencyOverride.reason ?? body.reason,
+              overrideType: body.emergencyOverride.overrideType,
+              overrideAuditId: body.emergencyOverride.overrideAuditId,
+            }
+          : undefined,
       );
       return { success: true, data: result };
     } catch (err) {
-      set.status = 400;
+      set.status = err instanceof Error && err.message === "BOOKING_NOT_REASSIGNABLE" ? 409 : 400;
       return { success: false, error: err instanceof Error ? err.message : "Reassign failed", code: "BOOKING_REASSIGN_FAILED" };
     }
-  }, { body: t.Object({ providerId: t.String(), reason: t.String({ minLength: 3 }) }) })
+  }, {
+    body: t.Object({
+      providerId: t.String(),
+      reason: t.String({ minLength: 3 }),
+      overridePaymentGate: t.Optional(t.Boolean()),
+      emergencyOverride: t.Optional(
+        t.Object({
+          overrideType: t.Union([
+            t.Literal("EMERGENCY_DISPATCH"),
+            t.Literal("OPERATIONS_RECOVERY"),
+          ]),
+          reason: t.Optional(t.String({ minLength: 3 })),
+          overrideAuditId: t.Optional(t.String()),
+        }),
+      ),
+    }),
+  })
   .post("/bookings/:id/dispatch", async ({ params, body, requireAuth, request }) => {
     const auth = requireAuth();
     const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
@@ -371,6 +515,178 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
       return { success: false, error: err instanceof Error ? err.message : "Repair failed", code: "BOOKING_REPAIR_FAILED" };
     }
   }, { body: t.Object({ reason: t.String({ minLength: 3 }) }) })
+  /**
+   * §52 / §53 — support recording a no-show on either side.
+   *
+   * Support is the third authorised actor: the partner can report a customer no-show and the
+   * customer a provider one, but neither can report the other. A reason is mandatory because an
+   * admin acting here is overriding the evidence gate that binds the other two, and the audit row
+   * has to say on whose account.
+   */
+  .post("/bookings/:id/no-show", async ({ params, body, requireAuth, set }) => {
+    const auth = requireAuth();
+    const service = bookingNoShowService;
+    const result =
+      body.party === "customer"
+        ? await service.reportCustomerNoShow(params.id, { userId: auth.userId, isAdmin: true, reason: body.reason })
+        : await service.reportProviderNoShow(params.id, { userId: auth.userId, isAdmin: true, reason: body.reason });
+    if ("error" in result) {
+      set.status = result.error === "NOT_FOUND" ? 404 : result.error === "FORBIDDEN" ? 403 : 400;
+      return {
+        success: false,
+        error: "Unable to record a no-show for this booking",
+        code: result.reason ?? result.error,
+      };
+    }
+    return { success: true, data: result };
+  }, {
+    body: t.Object({
+      party: t.Union([t.Literal("customer"), t.Literal("provider")]),
+      reason: t.String({ minLength: 3 }),
+    }),
+  })
+  /** §9 — safety operations view: frozen safety rules, holds, open incidents and the hold audit. */
+  .get("/bookings/:id/safety", async ({ params, set }) => {
+    const view = await bookingSafetyService.viewFor(params.id, { role: "ADMIN" });
+    if ("error" in view) {
+      set.status = 404;
+      return { success: false, error: "Booking not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: { ...view, audit: await bookingSafetyService.auditFor(params.id) } };
+  })
+  /** X-55: safety operations place a hold themselves (source ADMIN), with a condition and a reason. */
+  .post("/bookings/:id/safety/holds", async ({ params, body, requireAuth, set }) => {
+    const auth = requireAuth();
+    const r = await bookingSafetyService.adminPlace({ bookingId: params.id, adminId: auth.userId, condition: body.condition, reason: body.reason });
+    if (!r.ok) {
+      set.status = r.error === "NOT_FOUND" ? 404 : r.error === "INVALID_STATUS" ? 409 : r.error === "SAFETY_UNAVAILABLE" ? 503 : 400;
+      return { success: false, error: "Unable to place a safety hold on this booking", code: r.error };
+    }
+    set.status = r.changed ? 201 : 200;
+    return { success: true, data: { holdId: r.holdId, changed: r.changed, gate: r.gate } };
+  }, { body: t.Object({ condition: t.String({ minLength: 3, maxLength: 200 }), reason: t.String({ minLength: 3, maxLength: 300 }) }) })
+  /**
+   * Safety operations clear a hold, with a reason. Resolving the linked incident is its own action in
+   * the safety queue — the response says whether START is open now (X-55), so "released" is never
+   * mistaken for "clear to work" while an incident still blocks it.
+   */
+  .post("/bookings/:id/safety/holds/:holdId/release", async ({ params, body, requireAuth, set }) => {
+    const auth = requireAuth();
+    const r = await bookingSafetyService.adminRelease({ bookingId: params.id, holdId: Number(params.holdId), adminId: auth.userId, reason: body.reason });
+    if (!r.ok) {
+      set.status = r.error === "HOLD_NOT_FOUND" ? 404 : r.error === "HOLD_NOT_ACTIVE" ? 409 : 400;
+      return { success: false, error: "Unable to release this hold", code: r.error };
+    }
+    return { success: true, data: { released: true, gate: r.gate } };
+  }, { body: t.Object({ reason: t.String({ minLength: 3, maxLength: 300 }) }) })
+  /**
+   * Phase 11 — why this booking matched whom: the canonical matcher run for the booking's service,
+   * address, slot and customer, with every provider the hard gates refused and the reason codes.
+   * Read-only: nothing is dispatched, no match score is persisted. Admin only (BOOKINGS READ).
+   */
+  .get("/bookings/:id/matching-diagnostics", async ({ params, query, set }) => {
+    // `?mode=` previews the match under the other capability mode. Read-only: it changes what this
+    // response computes, never the feature flag and never a dispatch.
+    const mode = (query as { mode?: string }).mode;
+    if (mode !== undefined && mode !== "STRICT" && mode !== "LEGACY_FALLBACK") {
+      set.status = 400;
+      return { success: false, error: "mode must be STRICT or LEGACY_FALLBACK", code: "INVALID_MODE" };
+    }
+    // `?includeOffline=1` evaluates offline partners too (presence refuses them), so a strict-vs-legacy
+    // comparison has candidates even when nobody is online. Read-only, like `mode`.
+    const offline = (query as { includeOffline?: string }).includeOffline;
+    if (offline !== undefined && offline !== "1" && offline !== "true" && offline !== "0" && offline !== "false") {
+      set.status = 400;
+      return { success: false, error: "includeOffline must be 1 or 0", code: "INVALID_INCLUDE_OFFLINE" };
+    }
+    const d = await matchingService.diagnosticsForBooking(params.id, { ...(mode ? { capabilityMode: mode } : {}), ...(offline === "1" || offline === "true" ? { includeOffline: true } : {}) });
+    if (!d) {
+      set.status = 404;
+      return { success: false, error: "Booking not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: d };
+  })
+  /** §10 — quality operations view: full verdict history, the completion row, warranty and both audits. */
+  .get("/bookings/:id/quality", async ({ params, set }) => {
+    const view = await bookingQualityService.viewFor(params.id, { role: "ADMIN" });
+    if ("error" in view) {
+      set.status = 404;
+      return { success: false, error: "Booking not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: { ...view, ...(await bookingCompletionService.adminDetail(params.id)) } };
+  })
+  /** The one admin quality action: a new verdict that supersedes the latest, with a reason. Never edits history. */
+  .post("/bookings/:id/quality/override", async ({ params, body, requireAuth, set }) => {
+    const auth = requireAuth();
+    const r = await bookingQualityService.adminOverride(params.id, auth.userId, { verdict: body.verdict, reason: body.reason });
+    if (!r.ok) {
+      const table: Record<string, number> = {
+        [QUALITY_ERRORS.NOT_FOUND]: 404, [QUALITY_ERRORS.NOTHING_TO_SUPERSEDE]: 409, [QUALITY_ERRORS.INVALID_STATUS]: 409,
+        [QUALITY_ERRORS.REASON_REQUIRED]: 400, [QUALITY_ERRORS.INVALID_VERDICT]: 400, [QUALITY_ERRORS.QUALITY_UNAVAILABLE]: 503,
+      };
+      set.status = table[r.error] ?? 400;
+      return { success: false, error: "Unable to override this verdict", code: r.error };
+    }
+    return { success: true, data: { verdict: { ...r.verdict, createdAt: r.verdict.createdAt.toISOString() }, supersedes: r.supersedes } };
+  }, { body: t.Object({ verdict: t.String({ minLength: 4, maxLength: 32 }), reason: t.String({ minLength: 3, maxLength: 500 }) }) })
+  /** §8 — execution operations view: steps, state, completion gate and the append-only step audit. */
+  .get("/bookings/:id/execution", async ({ params, set }) => {
+    const view = await bookingExecutionService.viewFor(params.id, { role: "ADMIN" });
+    if ("error" in view) {
+      set.status = 404;
+      return { success: false, error: "Booking not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: { ...view, audit: await bookingExecutionService.auditFor(params.id) } };
+  })
+  /** The one admin step action: send a FAILED/ESCALATED step back for a re-attempt, with a reason. Never "complete". */
+  .post("/bookings/:id/execution/:code/reset", async ({ params, body, requireAuth, set, request }) => {
+    const auth = requireAuth();
+    const r = await bookingExecutionService.transition({
+      bookingId: params.id, code: params.code, action: "RESET", actor: { role: "ADMIN", userId: auth.userId },
+      reason: body.reason, idempotencyKey: request.headers.get("idempotency-key"),
+    });
+    if (!r.ok) {
+      set.status = r.error === "NOT_FOUND" || r.error === "STEP_NOT_FOUND" ? 404 : r.error === "STEP_STATE_CONFLICT" || r.error === "STEP_NOT_RESETTABLE" ? 409 : 400;
+      return { success: false, error: "Unable to reset this step", code: r.error };
+    }
+    return { success: true, data: { code: params.code, state: r.state, changed: r.changed, gate: r.gate } };
+  }, { body: t.Object({ reason: t.String({ minLength: 3, maxLength: 300 }) }) })
+  /** §6.22 — requirement operations view: items, state, START gate and the append-only audit. */
+  .get("/bookings/:id/requirements", async ({ params, set }) => {
+    const view = await bookingRequirementService.viewFor(params.id, { role: "ADMIN" });
+    if ("error" in view) {
+      set.status = 404;
+      return { success: false, error: "Booking not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: view };
+  })
+  /**
+   * The ONE admin action: force a re-check, with a reason. There is deliberately no "mark satisfied":
+   * evidence about the customer's home belongs to whoever stood in it, and an admin override of it
+   * would be the bypass §6 exists to remove.
+   */
+  .post("/bookings/:id/requirements/:code/recheck", async ({ params, body, requireAuth, set, request }) => {
+    const auth = requireAuth();
+    const r = await bookingRequirementService.adminRecheck({
+      bookingId: params.id,
+      adminId: auth.userId,
+      code: params.code,
+      reason: body.reason,
+      idempotencyKey: request.headers.get("idempotency-key"),
+    });
+    if (!r.ok) {
+      set.status =
+        r.error === "NOT_FOUND" || r.error === "REQUIREMENT_NOT_FOUND"
+          ? 404
+          : r.error === "REQUIREMENT_TRANSITION_FORBIDDEN"
+            ? 403
+            : r.error === "REQUIREMENT_STATE_CONFLICT" || r.error === "INVALID_STATUS"
+              ? 409
+              : 400;
+      return { success: false, error: "Unable to request a re-check", code: r.error };
+    }
+    return { success: true, data: { code: r.row.code, state: r.row.state, changed: r.changed, gate: r.gate } };
+  }, { body: t.Object({ reason: t.String({ minLength: 3, maxLength: 300 }) }) })
   .post("/bookings/:id/refund", async ({ params, body, requireAuth, request, set }) => {
     try {
       const auth = requireAuth();
@@ -384,10 +700,16 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
       );
       return { success: true, data: result };
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Refund failed";
+      // §27 — LIVE/TEST gateway worlds disagree: a refusal (409 with its own code), never a 400.
+      if (message === "PAYMENT_ENV_MISMATCH") {
+        set.status = 409;
+        return { success: false, error: "Payment belongs to the other gateway environment", code: "PAYMENT_ENV_MISMATCH" };
+      }
       set.status = 400;
-      return { success: false, error: err instanceof Error ? err.message : "Refund failed", code: "BOOKING_REFUND_FAILED" };
+      return { success: false, error: message, code: "BOOKING_REFUND_FAILED" };
     }
-  }, { body: t.Object({ amount: t.Number({ minimum: 0 }), reason: t.String({ minLength: 3 }) }) })
+  }, { body: t.Object({ amount: t.Number({ exclusiveMinimum: 0, maximum: 10_000_000 }), reason: t.String({ minLength: 3 }) }) })
   .post("/bookings/:id/refund/retry", async ({ params, body, requireAuth, request, set }) => {
     try {
       const auth = requireAuth();
@@ -468,12 +790,13 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
   )
   .put(
     "/users/:id/ban",
-    async ({ params: rawParams, body: raw, set }) => {
+    async ({ params: rawParams, body: raw, set, requireAuth }) => {
       const params = validate(idParamSchema, rawParams);
       const body = parseBody(adminBanUserSchema, raw, { reason: { maxLen: 500 } });
+      const auth = requireAuth();
       let user;
       try {
-        user = await adminService.banUser(params.id, body.action, body.reason);
+        user = await adminService.banUser(params.id, body.action, body.reason, auth.userId);
       } catch {
         set.status = 404;
         return { success: false, error: "User not found", code: "NOT_FOUND" };
@@ -497,6 +820,37 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
       }),
     },
   )
+  /** Phase D — support sets or corrects a customer's date of birth, with a reason. The value is never logged or echoed. */
+  .put(
+    "/users/:id/date-of-birth",
+    async ({ params, body, requireAuth, set, request }) => {
+      const auth = requireAuth();
+      const r = await customerPolicyService.adminSetDateOfBirth({
+        adminId: auth.userId,
+        userId: params.id,
+        raw: body.dateOfBirth,
+        reason: body.reason,
+        ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+        userAgent: request.headers.get("user-agent") ?? undefined,
+      });
+      if (!r.ok) {
+        set.status = r.error === "NOT_FOUND" ? 404 : 400;
+        return { success: false, error: "Unable to update the date of birth", code: r.error };
+      }
+      return { success: true, data: { dateOfBirthSet: true } };
+    },
+    { body: t.Object({ dateOfBirth: t.String({ minLength: 10, maxLength: 10 }), reason: t.String({ minLength: 3, maxLength: 300 }) }) },
+  )
+  /** Phase D — age-policy decisions (outcome, reason, whole-year age / attestation inputs) — never a date of birth. */
+  .get("/customer-policy/decisions", async ({ query }) => {
+    const q = query as { customerId?: string; serviceId?: string; limit?: string };
+    const data = await customerPolicyService.listDecisions({
+      customerId: q.customerId?.slice(0, 64) || undefined,
+      serviceId: q.serviceId?.slice(0, 64) || undefined,
+      limit: q.limit ? Number(q.limit) || 50 : 50,
+    });
+    return { success: true, data };
+  })
   .get("/analytics", async ({ query }) => {
     const data = await adminService.analytics({
       startDate: query.startDate,
@@ -1187,7 +1541,35 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     const data = await financeIntelligenceService.getFinanceIntelligence(days);
     return { success: true, data };
   })
-  .get("/finance/config", async ({ query }) => {
+  /**
+   * §8/§76 — which Razorpay world this deployment is talking to.
+   *
+   * Behind SETTINGS/READ, because knowing whether a platform is on live credentials is operational
+   * intelligence, not public information. It returns the ENVIRONMENT and the key's prefix only —
+   * never a key, never a secret — and reports a credential/runtime mismatch so an operator can see
+   * "live keys on a machine that is not a deployed host" without reading anyone's `.env`.
+   */
+  .get("/payments/environment", async ({ adminContext, set }) => {
+    const admin = adminContext!;
+    try {
+      await rbacService.enforcePermission(admin, "SETTINGS", "READ");
+      const verdict = razorpayService.paymentEnvironment;
+      return {
+        success: true,
+        data: {
+          environment: verdict.environment,
+          keyPrefix: verdict.keyPrefix,
+          mismatch: verdict.mismatch,
+          gatewayConfigured: razorpayService.isConfigured,
+          summary: describePaymentEnvironment(verdict),
+        },
+      };
+    } catch (err) {
+      set.status = 403;
+      return { success: false, error: err instanceof Error ? err.message : "Failed" };
+    }
+  })
+  .get("/finance/config", async () => {
     const data = await financeConfigService.getAll();
     return { success: true, data };
   })
@@ -1306,42 +1688,96 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     );
     return { success: true, data };
   })
+  .get("/services/:id", async ({ params, set }) => {
+    const result = await catalogService.adminById(params.id);
+    if ("error" in result) {
+      set.status = 404;
+      return { success: false, error: "Service not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: result };
+  })
+  .get("/services/:id/versions", async ({ params, set }) => {
+    const result = await catalogService.adminVersions(params.id);
+    if ("error" in result) {
+      set.status = 404;
+      return { success: false, error: "Service not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: result };
+  })
+  .get("/service-categories", async () => {
+    const data = await catalogService.adminCategories();
+    return { success: true, data };
+  })
+  // Phase 06 — requirement catalogue. Assignments to a service go through PUT /services/:id
+  // (catalogConfig.requirements) so they share the editor's merge, version and 409 semantics.
+  .get("/requirement-items", async ({ query }) => {
+    const q = sanitizeQueryStrings(query as Record<string, string>);
+    const data = await requirementCatalogService.list({ kind: q.kind, includeInactive: q.includeInactive === "true" });
+    return { success: true, data };
+  })
+  .post(
+    "/requirement-items",
+    async ({ body, set, adminContext }) => {
+      const result = await requirementCatalogService.create(body, adminContext?.userId);
+      if ("error" in result) {
+        set.status = result.error === "DUPLICATE" ? 409 : 400;
+        return { success: false, error: result.message, code: result.error };
+      }
+      return { success: true, message: "Requirement item created", data: result };
+    },
+    {
+      body: t.Object({
+        code: t.String({ maxLength: 60 }),
+        kind: t.Union([t.Literal("MATERIAL"), t.Literal("EQUIPMENT"), t.Literal("CUSTOMER_PRECONDITION")]),
+        name: t.String({ maxLength: 120 }),
+        customerLabel: t.Optional(t.Nullable(t.String({ maxLength: 160 }))),
+        description: t.Optional(t.Nullable(t.String({ maxLength: 1000 }))),
+      }),
+    },
+  )
+  .put(
+    "/requirement-items/:id",
+    async ({ params, body, set, adminContext }) => {
+      const result = await requirementCatalogService.update(params.id, body, adminContext?.userId);
+      if ("error" in result) {
+        set.status = result.error === "NOT_FOUND" ? 404 : result.error === "VERSION_CONFLICT" || result.error === "IN_USE" ? 409 : 400;
+        return { success: false, error: "message" in result ? result.message : "Requirement item not found", code: result.error };
+      }
+      return { success: true, message: "Requirement item updated", data: result };
+    },
+    {
+      body: t.Object({
+        expectedVersion: t.Integer({ minimum: 1 }),
+        name: t.Optional(t.String({ maxLength: 120 })),
+        customerLabel: t.Optional(t.Nullable(t.String({ maxLength: 160 }))),
+        description: t.Optional(t.Nullable(t.String({ maxLength: 1000 }))),
+        isActive: t.Optional(t.Boolean()),
+      }),
+    },
+  )
   .post(
     "/services",
-    async ({ body, set }) => {
-      const result = await catalogService.create(body);
-      if ("error" in result) {
-        set.status = 409;
-        return { success: false, error: "A service with this name already exists", code: result.error };
-      }
+    async ({ body, set, adminContext }) => {
+      const result = await catalogService.create(body, adminContext?.userId);
+      if ("error" in result && result.error) return serviceWriteFailure(set, result);
       return { success: true, message: "Service created", data: result };
     },
     { body: createServiceBody },
   )
   .put(
     "/services/:id",
-    async ({ params, body, set }) => {
-      const result = await catalogService.update(params.id, body);
-      if ("error" in result) {
-        set.status = result.error === "NOT_FOUND" ? 404 : 409;
-        return {
-          success: false,
-          error: result.error === "NOT_FOUND" ? "Service not found" : "A service with this name already exists",
-          code: result.error,
-        };
-      }
+    async ({ params, body, set, adminContext }) => {
+      const result = await catalogService.update(params.id, body, adminContext?.userId);
+      if ("error" in result && result.error) return serviceWriteFailure(set, result);
       return { success: true, message: "Service updated", data: result };
     },
     { body: updateServiceBody },
   )
   .patch(
     "/services/:id/status",
-    async ({ params, body, set }) => {
-      const result = await catalogService.setActive(params.id, body.isActive);
-      if ("error" in result) {
-        set.status = 404;
-        return { success: false, error: "Service not found", code: "NOT_FOUND" };
-      }
+    async ({ params, body, set, adminContext }) => {
+      const result = await catalogService.setActive(params.id, body.isActive, adminContext?.userId);
+      if ("error" in result && result.error) return serviceWriteFailure(set, result);
       return {
         success: true,
         message: body.isActive ? "Service activated" : "Service deactivated",
@@ -1349,6 +1785,20 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
       };
     },
     { body: t.Object({ isActive: t.Boolean() }) },
+  )
+  .post(
+    "/services/:id/lifecycle",
+    async ({ params, body, set, adminContext }) => {
+      const result = await catalogService.transition(params.id, body.to, adminContext?.userId, body.expectedVersion);
+      if ("error" in result && result.error) return serviceWriteFailure(set, result);
+      return { success: true, message: `Service moved to ${result.service.lifecycleStatus}`, data: result };
+    },
+    {
+      body: t.Object({
+        to: t.Union(REQUESTABLE_LIFECYCLES.map((l) => t.Literal(l))),
+        expectedVersion: t.Optional(t.Integer({ minimum: 1 })),
+      }),
+    },
   )
   .delete("/services/:id", async ({ params, set }) => {
     const result = await catalogService.remove(params.id);
@@ -1474,8 +1924,10 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     return { success: true, data };
   })
   .get("/membership/matching/analytics", async () => {
-    const premiumMatched = await prisma.booking.count({ where: { premiumMatched: true } });
-    const total = await prisma.booking.count();
+    const premiumMatched = await prisma.booking.count({ where: { premiumMatched: true, ...analyticsWhere() } });
+    // Same population as the numerator. Scoping one side of a ratio and not the other produces a
+    // number that is wrong without looking wrong.
+    const total = await prisma.booking.count({ where: analyticsWhere() });
     return {
       success: true,
       data: {
@@ -1674,6 +2126,355 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     }
     return { success: true, data: { ticket } };
   })
+  /**
+   * Phase 10 — support intelligence for one ticket.
+   *
+   * Mounted under the existing `/support/tickets/:id` family on purpose: the intelligence is a view
+   * of a ticket, not a new domain, and giving it its own top-level namespace would have invited a
+   * parallel support surface. The RBAC rule added for it is `DISPUTES/READ` — the same permission
+   * that already governs reading the ticket it describes, so nothing here widens access.
+   *
+   * Read-only: the pipeline has no executor and this handler writes nothing.
+   */
+  .get("/support/tickets/:id/intelligence", async ({ params, requireAuth, set }) => {
+    const auth = requireAuth();
+    const result = await supportIntelligenceService.analyze(params.id, {
+      actorRole: "admin",
+      actorUserId: auth.userId,
+    });
+    if (!result) {
+      set.status = 404;
+      return { success: false, error: "Ticket not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: result };
+  })
+
+  /**
+   * The recommendation history for one ticket — what was advised, by whom it was acted on, and
+   * whether they followed it.
+   *
+   * This is what makes the lifecycle observable. Without it an operator sees the current advice and
+   * nothing about what came before, which is the difference between a recommendation panel and an
+   * audit trail.
+   */
+  .get("/support/tickets/:id/recommendations", async ({ params, requireAuth, set }) => {
+    requireAuth();
+    const ticket = await prisma.supportTicket.findUnique({
+      where: { id: params.id }, select: { id: true },
+    });
+    if (!ticket) {
+      set.status = 404;
+      return { success: false, error: "Ticket not found", code: "NOT_FOUND" };
+    }
+    const history = await supportRecommendationReader.history(params.id);
+    return { success: true, data: { history } };
+  })
+
+  /**
+   * A person's explicit verdict on the current recommendation.
+   *
+   * Deliberately does **not** execute anything. Accepting advice and carrying it out are two events,
+   * and this records only the first — the existing respond / escalate / resolve routes remain the
+   * only way anything actually happens to a ticket.
+   */
+  .post("/support/tickets/:id/recommendation/verdict", async ({ params, body, requireAuth, set }) => {
+    const { userId } = requireAuth();
+    const result = await supportRecommendationStore.recordVerdict({
+      ticketId: params.id,
+      actorId: userId,
+      verdict: body.verdict,
+      note: body.note,
+    });
+    if (!result.matched) {
+      set.status = 409;
+      return {
+        success: false,
+        error: "No open recommendation for this ticket",
+        code: "NO_OPEN_RECOMMENDATION",
+      };
+    }
+    return { success: true, data: result };
+  }, {
+    body: t.Object({
+      verdict: t.Union([t.Literal("APPROVED"), t.Literal("REJECTED")]),
+      note: t.Optional(t.String({ maxLength: 500 })),
+    }),
+  })
+
+  /**
+   * Phase-11 knowledge base — administration.
+   *
+   * Mounted under the existing admin router so it inherits the real auth plugin and RBAC middleware.
+   * Reads take `SETTINGS/READ`, mutations `SETTINGS/UPDATE`, and approval `SETTINGS/APPROVE` — the
+   * same resource the existing platform-configuration routes use, because official knowledge is
+   * platform configuration rather than a customer record.
+   */
+  .get("/knowledge/documents", async ({ query }) => {
+    const where: Record<string, unknown> = {};
+    if (query.status) where.status = query.status;
+    if (query.type) where.type = query.type;
+    const documents = await prisma.knowledgeDocument.findMany({
+      where,
+      orderBy: [{ documentKey: "asc" }, { version: "desc" }],
+      take: 200,
+      select: {
+        id: true, documentKey: true, version: true, type: true, title: true, status: true,
+        audience: true, sourceRef: true, owner: true, effectiveFrom: true, effectiveTo: true,
+        approvedBy: true, approvedAt: true, supersededById: true, withdrawnAt: true,
+        indexState: true, indexError: true, indexedAt: true, chunkCount: true,
+        embeddingModel: true, embeddingDim: true, contentHash: true,
+        createdAt: true, updatedAt: true,
+      },
+    });
+    return { success: true, data: { documents } };
+  }, { query: t.Object({ status: t.Optional(t.String()), type: t.Optional(t.String()) }) })
+
+  /**
+   * Author a knowledge document.
+   *
+   * The route that makes FAQ, Partner SOP and Training Documents loadable without a code change.
+   * Everything before this could only ingest content the seeder already knew how to find, which
+   * meant a real Partner SOP — a document this platform does not have — had no way in at all.
+   *
+   * It lands in DRAFT like every other ingestion. Authoring cannot approve its own output, so the
+   * upload path grants no more authority than the seeder does.
+   */
+  .post("/knowledge/documents", async ({ body, requireAuth, set }) => {
+    const { userId } = requireAuth();
+    const r = await knowledgeIngestionService.ingest({
+      documentKey: body.documentKey,
+      type: body.type,
+      title: body.title,
+      rawContent: body.content,
+      sourceRef: body.sourceRef,
+      audience: body.audience,
+      owner: body.owner ?? userId,
+      format: body.format,
+      effectiveFrom: body.effectiveFrom ? new Date(body.effectiveFrom) : null,
+      effectiveTo: body.effectiveTo ? new Date(body.effectiveTo) : null,
+    });
+    if (r.state !== "OK" || !r.documentId) {
+      set.status = 400;
+      return { success: false, error: r.detail, code: r.state };
+    }
+    void AuditLogService.success("KNOWLEDGE_CREATED", {
+      userId,
+      details: {
+        documentId: r.documentId, documentKey: body.documentKey, type: body.type,
+        version: r.version, audience: body.audience, sourceRef: body.sourceRef,
+        unchanged: r.unchanged,
+      },
+    });
+    return { success: true, data: r };
+  }, {
+    body: t.Object({
+      documentKey: t.String({ minLength: 3, maxLength: 120 }),
+      type: t.Union([
+        t.Literal("FAQ"), t.Literal("CANCELLATION_POLICY"), t.Literal("REFUND_POLICY"),
+        t.Literal("TERMS"), t.Literal("PARTNER_SOP"), t.Literal("SERVICE_INFORMATION"),
+        t.Literal("TRAINING_DOCUMENT"),
+      ]),
+      title: t.String({ minLength: 3, maxLength: 200 }),
+      content: t.String({ minLength: 1, maxLength: 200000 }),
+      /**
+       * Required, and deliberately not defaulted. A citation has to lead somewhere a person can
+       * check, and a document whose source is "the admin panel" is not traceable to anything.
+       */
+      sourceRef: t.String({ minLength: 3, maxLength: 300 }),
+      audience: t.Union([
+        t.Literal("PUBLIC"), t.Literal("CUSTOMER"), t.Literal("PARTNER"), t.Literal("INTERNAL"),
+      ]),
+      owner: t.Optional(t.String({ maxLength: 120 })),
+      format: t.Optional(t.String({ maxLength: 20 })),
+      effectiveFrom: t.Optional(t.String()),
+      effectiveTo: t.Optional(t.String()),
+    }),
+  })
+
+  .post("/knowledge/documents/:id/submit-review", async ({ params, requireAuth, set }) => {
+    const { userId } = requireAuth();
+    const r = await knowledgeIngestionService.submitForReview(params.id, userId);
+    if (!r.ok) { set.status = 400; return { success: false, error: r.detail, code: "REVIEW_FAILED" }; }
+    return { success: true, data: r };
+  })
+
+  /** The full text of one version, for the reviewer who has to read it before approving. */
+  .get("/knowledge/documents/:id", async ({ params, set }) => {
+    const doc = await prisma.knowledgeDocument.findUnique({
+      where: { id: params.id },
+      include: {
+        chunks: {
+          orderBy: { chunkIndex: "asc" },
+          /**
+           * `embedding` is excluded by naming the columns instead of taking the whole row. A
+           * 3072-float vector per chunk is megabytes of response no reviewer reads, and leaving it
+           * out by selection rather than by post-filter means it cannot come back through a
+           * careless include.
+           */
+          select: {
+            id: true, chunkIndex: true, section: true, content: true,
+            startOffset: true, endOffset: true, tokenEstimate: true,
+            embeddingModel: true, contentHash: true,
+          },
+        },
+      },
+    });
+    if (!doc) { set.status = 404; return { success: false, error: "Document not found.", code: "NOT_FOUND" }; }
+    return { success: true, data: { document: doc } };
+  })
+
+  .post("/knowledge/documents/:id/approve", async ({ params, requireAuth, set }) => {
+    const { userId } = requireAuth();
+    const r = await knowledgeIngestionService.approve(params.id, userId);
+    if (!r.ok) { set.status = 400; return { success: false, error: r.detail, code: "APPROVE_FAILED" }; }
+    return { success: true, data: r };
+  })
+
+  .post("/knowledge/documents/:id/withdraw", async ({ params, body, requireAuth, set }) => {
+    const { userId } = requireAuth();
+    const r = await knowledgeIngestionService.withdraw(params.id, userId, body.reason);
+    if (!r.ok) { set.status = 400; return { success: false, error: r.detail, code: "WITHDRAW_FAILED" }; }
+    return { success: true, data: r };
+  }, { body: t.Object({ reason: t.String({ minLength: 3, maxLength: 500 }) }) })
+
+  .post("/knowledge/documents/:id/reindex", async ({ params }) => {
+    const r = await knowledgeEmbeddingService.indexDocument(params.id);
+    return { success: true, data: r };
+  })
+
+  /** Loads the knowledge base from the platform's own official content. Idempotent. */
+  .post("/knowledge/seed", async ({ requireAuth }) => {
+    const { userId } = requireAuth();
+    const report = await knowledgeSeedService.seed(userId);
+    return { success: true, data: report };
+  })
+
+  /** Knowledge-base analytics from the tables themselves. Read-only. */
+  .get("/knowledge/analytics", async () => {
+    const data = await knowledgeAnalyticsService.summary();
+    return { success: true, data };
+  })
+
+  /**
+   * Run the retrieval evaluation set against the corpus that is actually loaded here.
+   *
+   * ── Why this is a route and not a script ───────────────────────────────────
+   *
+   * `knowledge-eval.service.ts` existed, was quoted in a certification report, and nothing in the
+   * application, the test suite or any script imported it — the numbers in that report could not be
+   * reproduced by anyone running this platform. An evaluation that cannot be re-run is a claim, not
+   * a measurement.
+   *
+   * Read-only and side-effect free: it issues retrievals and writes nothing. Every result carries
+   * the run's own `integrity` block, so a lexical-only run reports itself as degraded instead of
+   * being mistaken for this platform's retrieval quality.
+   */
+  .get("/knowledge/evaluation", async ({ requireAuth }) => {
+    const { userId } = requireAuth();
+    const data = await knowledgeEvalService.run(userId);
+    return { success: true, data };
+  })
+
+  /**
+   * Knowledge authority — the declared precedence between knowledge types.
+   *
+   * Reads report the platform's real state, which today is "nothing declared". Writes are a
+   * governance act: they decide which of two official documents the platform will answer from, so
+   * they take the same admin permission as every other platform-configuration change and are
+   * recorded in the security audit rather than only in the application log.
+   */
+  .get("/knowledge/authority", async () => {
+    const data = await knowledgeAuthorityService.list();
+    return { success: true, data };
+  })
+
+  .post("/knowledge/authority", async ({ body, requireAuth, set }) => {
+    const { userId } = requireAuth();
+    const r = await knowledgeAuthorityService.declare({
+      type: body.type,
+      rank: body.rank,
+      rationale: body.rationale,
+      actorId: userId,
+      effectiveFrom: body.effectiveFrom ? new Date(body.effectiveFrom) : null,
+      effectiveTo: body.effectiveTo ? new Date(body.effectiveTo) : null,
+    });
+    if (!r.ok) { set.status = 400; return { success: false, error: r.detail, code: "AUTHORITY_INVALID" }; }
+    return { success: true, data: r };
+  }, {
+    body: t.Object({
+      type: t.Union([
+        t.Literal("FAQ"), t.Literal("CANCELLATION_POLICY"), t.Literal("REFUND_POLICY"),
+        t.Literal("TERMS"), t.Literal("PARTNER_SOP"), t.Literal("SERVICE_INFORMATION"),
+        t.Literal("TRAINING_DOCUMENT"),
+      ]),
+      rank: t.Integer({ minimum: 0, maximum: 1000 }),
+      rationale: t.String({ minLength: 10, maxLength: 1000 }),
+      effectiveFrom: t.Optional(t.String()),
+      effectiveTo: t.Optional(t.String()),
+    }),
+  })
+
+  .delete("/knowledge/authority/:type", async ({ params, body, requireAuth, set }) => {
+    const { userId } = requireAuth();
+    const r = await knowledgeAuthorityService.revoke(params.type as never, userId, body.reason);
+    if (!r.ok) { set.status = 400; return { success: false, error: r.detail, code: "AUTHORITY_NOT_FOUND" }; }
+    return { success: true, data: r };
+  }, { body: t.Object({ reason: t.String({ minLength: 3, maxLength: 500 }) }) })
+
+  /**
+   * Retrieval diagnostics: what the ranking did, without invoking the model.
+   *
+   * Separate from `/knowledge/ask` on purpose. An operator debugging why a document was or was not
+   * used should not have to spend a model call to find out, and should see the arms, ranks and fused
+   * scores that a generated answer necessarily hides.
+   */
+  .post("/knowledge/retrieve", async ({ body, requireAuth }) => {
+    const { userId } = requireAuth();
+    const result = await knowledgeRetrievalService.retrieve({
+      actor: { actorId: userId, role: "admin" },
+      question: body.question,
+      topK: body.topK,
+    });
+    return { success: true, data: result };
+  }, {
+    body: t.Object({
+      question: t.String({ minLength: 3, maxLength: 2000 }),
+      topK: t.Optional(t.Number({ minimum: 1, maximum: 20 })),
+    }),
+  })
+
+  /**
+   * Ask the knowledge base. Permission is resolved from the caller and applied inside retrieval,
+   * before any candidate is ranked — never as a filter over results.
+   */
+  .post("/knowledge/ask", async ({ body, requireAuth }) => {
+    const { userId } = requireAuth();
+    const answer = await knowledgeAnswerService.answer({
+      actor: { actorId: userId, role: "admin" },
+      question: body.question,
+      topK: body.topK,
+    });
+    return { success: true, data: answer };
+  }, {
+    body: t.Object({
+      question: t.String({ minLength: 3, maxLength: 2000 }),
+      topK: t.Optional(t.Number({ minimum: 1, maximum: 20 })),
+    }),
+  })
+
+  /**
+   * Phase-10 support intelligence analytics.
+   *
+   * A sibling of the existing `/support/analytics` rather than a replacement: that endpoint reports
+   * ticket operations (volume, response times, resolution), this one reports how the intelligence
+   * layer behaved. Merging them would have meant rewriting a working endpoint the admin panel
+   * already consumes.
+   */
+  .get("/support/intelligence/analytics", async () => {
+    const data = await supportIntelligenceAnalyticsService.summary();
+    return { success: true, data };
+  })
+
   .get("/support/analytics", async () => {
     const data = await supportTicketService.adminAnalytics();
     return { success: true, data };
@@ -1692,6 +2493,21 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
         set.status = 404;
         return { success: false, error: "Ticket not found", code: "NOT_FOUND" };
       }
+      /**
+       * Close the audit loop.
+       *
+       * The action itself was performed by the existing support service above — this only records
+       * that a person did it and whether it matched the advice they were shown. `void` because a
+       * failed audit write must never fail the agent's action: the reply has already happened, and
+       * refusing it afterwards would be worse than an incomplete measurement.
+       */
+      void supportRecommendationStore.markActed({
+        ticketId: params.id,
+        actorId: userId,
+        // An internal note is not a customer-facing answer, so the two are recorded differently.
+        actedAction: body.internal === true ? "REQUEST_MORE_INFORMATION" : "RESOLVE_WITH_STANDARD_RESPONSE",
+        lifecycle: "EXECUTED",
+      });
       return { success: true, message: "Response recorded", data: { ticket } };
     },
     {
@@ -1710,6 +2526,20 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
         set.status = 404;
         return { success: false, error: "Ticket not found", code: "NOT_FOUND" };
       }
+      /**
+       * Close the audit loop.
+       *
+       * The action itself was performed by the existing support service above — this only records
+       * that a person did it and whether it matched the advice they were shown. `void` because a
+       * failed audit write must never fail the agent's action: the reply has already happened, and
+       * refusing it afterwards would be worse than an incomplete measurement.
+       */
+      void supportRecommendationStore.markActed({
+        ticketId: params.id,
+        actorId: userId,
+        actedAction: "ESCALATE",
+        lifecycle: "EXECUTED",
+      });
       return { success: true, message: "Ticket escalated", data: { ticket } };
     },
     { body: t.Object({ note: t.Optional(t.String({ maxLength: 2000 })) }) },
@@ -1966,7 +2796,7 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
         return { success: true, message: "Role granted" };
       } catch (err) {
         const message = err instanceof Error ? err.message : "Grant failed";
-        set.status = message.includes("Permission denied") ? 403 : 400;
+        set.status = /Permission denied|FORBIDDEN|REQUIRES_SUPER_ADMIN|LAST_SUPER_ADMIN/.test(message) ? 403 : 400;
         return { success: false, error: message, code: "RBAC_ERROR" };
       }
     },
@@ -1974,7 +2804,7 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
   )
   .post(
     "/users/:id/force-logout",
-    async ({ params, body, adminContext, set, request }) => {
+    async ({ params, adminContext, set, request }) => {
       const admin = adminContext!;
       try {
         await rbacService.enforcePermission(admin, "USERS", "FORCE_LOGOUT");
@@ -1990,7 +2820,7 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
         return { success: true, message: "User signed out from all devices" };
       } catch (err) {
         const message = err instanceof Error ? err.message : "Force logout failed";
-        set.status = message.includes("Permission denied") ? 403 : 400;
+        set.status = /Permission denied|FORBIDDEN|REQUIRES_SUPER_ADMIN|LAST_SUPER_ADMIN/.test(message) ? 403 : 400;
         return { success: false, error: message, code: "FORCE_LOGOUT_FAILED" };
       }
     },
@@ -2005,7 +2835,7 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
         return { success: true, message: "Role revoked" };
       } catch (err) {
         const message = err instanceof Error ? err.message : "Revoke failed";
-        set.status = message.includes("Permission denied") ? 403 : 400;
+        set.status = /Permission denied|FORBIDDEN|REQUIRES_SUPER_ADMIN|LAST_SUPER_ADMIN/.test(message) ? 403 : 400;
         return { success: false, error: message, code: "RBAC_ERROR" };
       }
     },
@@ -2052,6 +2882,11 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     const admin = adminContext!;
     try {
       await rbacService.enforcePermission(admin, "USERS", "APPROVE");
+      // The document must belong to the provider in the path: `:id` is not decoration.
+      if (!(await prisma.providerDocument.findFirst({ where: { id: params.docId, providerId: params.id }, select: { id: true } }))) {
+        set.status = 404;
+        return { success: false, error: "Document not found for this provider", code: "NOT_FOUND" };
+      }
       const { documentUploadService } = await import("../services/document-upload.service");
       const doc = await documentUploadService.verifyDocument(params.docId, admin.adminId, body?.notes, {
         expiryDate: body?.expiryDate ? new Date(body.expiryDate) : undefined,
@@ -2076,6 +2911,10 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
       if (!body?.reason?.trim()) {
         set.status = 400;
         return { success: false, error: "Rejection reason is required" };
+      }
+      if (!(await prisma.providerDocument.findFirst({ where: { id: params.docId, providerId: params.id }, select: { id: true } }))) {
+        set.status = 404;
+        return { success: false, error: "Document not found for this provider", code: "NOT_FOUND" };
       }
       const { documentUploadService } = await import("../services/document-upload.service");
       const doc = await documentUploadService.rejectDocument(params.docId, body.reason.trim());

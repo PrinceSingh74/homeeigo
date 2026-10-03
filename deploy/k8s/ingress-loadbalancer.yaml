@@ -38,27 +38,9 @@ spec:
   minAvailable: 3
   selector:
     matchLabels: { app: homigo-backend }
----
-# Queue workers — dispatch matching, payment settlement, notifications, retention
-# purge — run OFF the request path (own Deployment, own HPA on queue depth).
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: homigo-workers
-  labels: { app: homigo-workers }
-spec:
-  replicas: 2
-  selector:
-    matchLabels: { app: homigo-workers }
-  template:
-    metadata:
-      labels: { app: homigo-workers }
-    spec:
-      containers:
-        - name: worker
-          image: ghcr.io/homigo/backend:latest
-          command: ["bun", "run", "src/worker.ts"]
-          envFrom: [{ secretRef: { name: homigo-secrets } }]
-          resources:
-            requests: { cpu: "500m", memory: "512Mi" }
-            limits:   { cpu: "1",    memory: "1Gi" }
+# Background work (dispatch ticks, settlement sweeps, notifications, retention purge) runs INSIDE the
+# API process under leader locks (src/lib/distributed-scheduler.ts — one runner cluster-wide per job,
+# anchors on their own connection pool), so it scales with the backend Deployment above. A separate
+# "homigo-workers" Deployment that ran `bun run src/worker.ts` was removed 2026-10-01: that entrypoint
+# never existed, so the pods could only crash-loop. Splitting workers out is a future design change,
+# not a manifest edit.

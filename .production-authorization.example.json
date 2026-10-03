@@ -1,0 +1,28 @@
+{
+  "_comment": "COPY to .production-authorization.json and fill in. That file is gitignored and must never be committed. Every field is required; the release script refuses on any missing or altered field.",
+
+  "authorizedBy": "name and role of the person authorizing this release",
+  "authorizedAt": "ISO-8601 timestamp — the script refuses an authorization older than 24h",
+  "target": "CLOUD_RUN | VM_SYSTEMD",
+  "databaseTarget": "where production PostgreSQL lives for this release, e.g. 'Cloud SQL instance homigo-prod' or 'existing VM postgres 5433'",
+
+  "approvedMigrations": [
+    "20260609130000_baseline_repair_db_push_drift",
+    "20260817110000_notification_delivery_claim",
+    "20260903090000_support_ai_recommendations",
+    "20260904090000_knowledge_base",
+    "20260905090000_knowledge_authority",
+    "20260906090000_ml_model_governance",
+    "20260907090000_phase14_governance",
+    "20260907090100_audit_trace_not_unique",
+    "20260907090200_retention_categories",
+    "20260907100000_partner_lifecycle_verified",
+    "20260908090000_phase15_workflow_drafts",
+    "20260909090000_booking_slot_half_open_ranges"
+  ],
+
+  "ledgerReconciliation": "RECONCILED | EXPLICITLY_ACCEPTED",
+  "ledgerDecisionBy": "who decided what happens to the 14 CREDITED fixture earnings (Rs.6,286.40)",
+
+  "statement": "I authorize this production release and accept responsibility for the migrations listed above."
+}

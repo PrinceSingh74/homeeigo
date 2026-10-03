@@ -51,7 +51,6 @@ export function assertLogGovernance(): void {
       `[log-governance] FATAL: LOG_DB_PERSIST_LEVELS contains non-allowed level(s): ${illegal.join(", ")}. ` +
       `Only ERROR and CRITICAL may persist to the database (INFO/WARN/DEBUG → console/file/Loki only). ` +
       `Refusing to start to prevent unbounded log growth.`;
-    // eslint-disable-next-line no-console
     console.error(msg);
     throw new Error(msg);
   }

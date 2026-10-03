@@ -1,5 +1,14 @@
 import type { AiGatewayRole, AiProviderType, AiRequestStatus } from "@prisma/client";
 
+/**
+ * Re-exported because `ai/index.ts` publishes it as `AiRole` from this module. It was only ever
+ * imported here, so the façade's `export type { AiGatewayRole as AiRole } from "./types"` had
+ * nothing to bind to. This module is the declared type surface for `ai/`, and it already builds on
+ * the enum, so re-exporting it here keeps the public alias working without moving the façade off
+ * its type module.
+ */
+export type { AiGatewayRole };
+
 export type AiMessage = {
   role: "user" | "assistant" | "system" | "tool";
   content: string;
@@ -50,6 +59,16 @@ export type AiProviderResponse = {
   latencyMs: number;
   /** Provider's own stop reason, normalised to a string. Undefined when not reported. */
   finishReason?: string;
+  /**
+   * True when no provider was contacted and the adapter returned a canned dry-run answer — which
+   * happens whenever `AI_GATEWAY_DRY_RUN=true` or the provider has no API key.
+   *
+   * It exists because a mock was previously indistinguishable from a real completion by the time
+   * it reached accounting: identical shape, plausible token counts, and therefore a token cost that
+   * was aggregated into `homigo_ai_daily_cost_usd` exactly like real provider spend. With no
+   * credential configured, every rupee on that gauge was imaginary.
+   */
+  mocked?: boolean;
 };
 
 /** One attempt against one provider — the unit the router audits and returns. */

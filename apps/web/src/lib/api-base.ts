@@ -22,6 +22,27 @@ function isLocalhostHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
 
+/**
+ * localhost and 127.0.0.1 are different sites. The refresh cookie is SameSite=Strict
+ * and host-scoped, so a page on one host drops Set-Cookie from the other: login
+ * still returns 200 and omits the refresh token, but the cookie never lands.
+ * Only the loopback hostname is rewritten. Scheme, port, and non-loopback
+ * production origins stay as configured.
+ */
+export function alignLoopbackApiOrigin(env: string, pageHostname: string): string {
+  const trimmed = env.replace(/\/+$/, "");
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return trimmed;
+  }
+  if (!isLocalhostHost(url.hostname) || !isLocalhostHost(pageHostname)) return trimmed;
+  if (url.hostname === pageHostname) return trimmed;
+  url.hostname = pageHostname;
+  return url.toString().replace(/\/$/, "");
+}
+
 /** True when NEXT_PUBLIC_API_URL=localhost but the page is opened from a LAN device. */
 function isMisboundLocalhostEnv(env: string): boolean {
   if (typeof window === "undefined") return false;
@@ -34,7 +55,7 @@ export function resolveApiBase(): string {
 
   if (typeof window !== "undefined") {
     // Browser: same-origin proxy unless a valid explicit API URL is set.
-    const resolved = env && !isMisboundLocalhostEnv(env) ? env : "";
+    const resolved = env && !isMisboundLocalhostEnv(env) ? alignLoopbackApiOrigin(env, window.location.hostname) : "";
     if (!_loggedApiBase) {
       _loggedApiBase = true;
       console.log("API_BASE", resolved || `(proxy ${window.location.origin}/api/*)`);
@@ -57,6 +78,13 @@ export function resolveApiBase(): string {
 export function resolveWsBase(): string {
   const env = process.env.NEXT_PUBLIC_WS_URL?.replace(/\/+$/, "");
   if (env) return env;
+  // An explicit API origin in effect is the backend: sockets must reach the SAME server. Deriving from
+  // the page host instead sent HTTP to one backend and WebSockets to another (tokens refused → 4401).
+  const api = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
+  if (api && /^https?:\/\//.test(api) && !isMisboundLocalhostEnv(api)) {
+    const aligned = typeof window !== "undefined" ? alignLoopbackApiOrigin(api, window.location.hostname) : api;
+    return aligned.replace(/^http/, "ws");
+  }
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
     const wsProto = protocol === "https:" ? "wss" : "ws";

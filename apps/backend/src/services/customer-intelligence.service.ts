@@ -1,4 +1,6 @@
 import prisma from "../lib/prisma";
+import { Prisma } from "@prisma/client";
+import { analyticsSqlPredicate, analyticsWhereVia } from "../lib/analytics-scope";
 import { supportTicketService } from "./support-ticket.service";
 import { matchingService } from "./matching.service";
 
@@ -26,7 +28,8 @@ export class CustomerIntelligenceService {
         select: { score: true },
       }),
       prisma.rating.findMany({
-        where: { createdAt: { gte: since } },
+        // Business population only: a fixture booking's rating must not move NPS/CSAT.
+        where: { createdAt: { gte: since }, ...analyticsWhereVia("rating") },
         select: { stars: true, bookingId: true },
       }),
       prisma.supportTicket.findMany({
@@ -40,11 +43,13 @@ export class CustomerIntelligenceService {
                  WHERE user_id IN (
                    SELECT user_id FROM bookings
                    WHERE status = 'COMPLETED' AND user_id IS NOT NULL
+                     AND ${Prisma.raw(analyticsSqlPredicate("bookings"))}
                    GROUP BY user_id HAVING COUNT(*) > 1
                  )
                )::int AS repeaters
         FROM bookings
-        WHERE created_at >= ${since} AND user_id IS NOT NULL`,
+        WHERE created_at >= ${since} AND user_id IS NOT NULL
+          AND ${Prisma.raw(analyticsSqlPredicate("bookings"))}`,
     ]);
 
     const nps = this.computeNps(surveyNps.map((s) => s.score), ratings.map((r) => r.stars));

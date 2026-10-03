@@ -31,7 +31,7 @@ export default function SupportTicketsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <ScreenHeader title="Support" />
-      <FlatList
+      <FlatList keyboardShouldPersistTaps="handled"
         data={ticketsQ.data ?? []}
         keyExtractor={(t) => t.id}
         contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }}

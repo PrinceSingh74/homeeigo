@@ -113,19 +113,25 @@ export function recordToolRetry(toolId: string): void {
   incCounter("homigo_ai_tool_retry", { tool_id: toolId });
 }
 
+  /**
+   * Histograms are deliberately NOT seeded.
+   *
+   * Seeding a counter at zero states a true fact. Observing a zero into a histogram fabricates a
+   * measurement: it increments `_count`, lands a sample in the lowest bucket, and drags
+   * percentiles toward zero for as long as the seed sits inside the rate window after a restart.
+   * A latency panel reading ~0ms before any request has been made is worse than one reading
+   * NO DATA, because only one of them is true.
+   */
 export function initAiToolsMetricsAtZero(): void {
   for (const category of ["READ", "WRITE", "HIGH_RISK"]) {
     incCounter("homigo_ai_tool_requests_total", { role: "CUSTOMER", category, tool_id: "init" }, 0);
     incCounter("homigo_ai_tool_success_total", { category, tool_id: "init" }, 0);
     incCounter("homigo_ai_tool_failure_total", { category, reason: "init" }, 0);
-    observeHist("homigo_ai_tool_latency", 0, { category });
-    observeHist("homigo_ai_tool_execution_time", 0, { category });
   }
   incCounter("homigo_ai_tool_denied", { tool_id: "init", reason: "init" }, 0);
   incCounter("homigo_ai_tool_requires_approval", { tool_id: "init" }, 0);
   incCounter("homigo_ai_tool_timeout", { tool_id: "init" }, 0);
   incCounter("homigo_ai_tool_retry", { tool_id: "init" }, 0);
-  observeHist("homigo_ai_tool_cost", 0, { tool_id: "init" });
   setGauge("homigo_ai_tool_pending_approvals", 0);
 }
 

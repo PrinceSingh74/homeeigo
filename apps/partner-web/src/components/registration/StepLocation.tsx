@@ -62,14 +62,23 @@ export function StepLocation({
     }
   }, [regions]);
 
+  const latRef = useRef(lat);
+  const lngRef = useRef(lng);
+  const radiusRef = useRef(radius);
+  const applyPointRef = useRef(applyPoint);
+  latRef.current = lat;
+  lngRef.current = lng;
+  radiusRef.current = radius;
+  applyPointRef.current = applyPoint;
+
   useEffect(() => {
     const g = window.google?.maps as {
       Map: new (el: HTMLElement, opts: Record<string, unknown>) => { panTo: (p: { lat: number; lng: number }) => void; addListener: (e: string, fn: (ev: { latLng?: { lat: () => number; lng: () => number } }) => void) => void };
       Marker: new (opts: Record<string, unknown>) => NonNullable<typeof marker.current>;
       Circle: new (opts: Record<string, unknown>) => NonNullable<typeof circle.current>;
     } | undefined;
-    if (!maps.loaded || !mapRef.current || !g) return;
-    const start = { lat: lat ?? 19.076, lng: lng ?? 72.8777 };
+    if (!maps.loaded || !mapRef.current || !g || mapObj.current) return;
+    const start = { lat: latRef.current ?? 19.076, lng: lngRef.current ?? 72.8777 };
     const map = new g.Map(mapRef.current, {
       center: start,
       zoom: 12,
@@ -82,7 +91,7 @@ export function StepLocation({
     circle.current = new g.Circle({
       map,
       center: start,
-      radius: radius * 1000,
+      radius: radiusRef.current * 1000,
       fillColor: "#2563eb",
       fillOpacity: 0.12,
       strokeColor: "#2563eb",
@@ -90,11 +99,11 @@ export function StepLocation({
     });
     map.addListener("click", (e) => {
       if (!e.latLng) return;
-      void applyPoint(e.latLng.lat(), e.latLng.lng());
+      void applyPointRef.current(e.latLng.lat(), e.latLng.lng());
     });
     marker.current.addListener("dragend", () => {
       const pos = marker.current?.getPosition();
-      if (pos) void applyPoint(pos.lat(), pos.lng());
+      if (pos) void applyPointRef.current(pos.lat(), pos.lng());
     });
   }, [maps.loaded]);
 

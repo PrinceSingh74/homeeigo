@@ -13,7 +13,13 @@ export function OnboardingField(props: {
   maxLength?: number;
   editable?: boolean;
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  autoCorrect?: boolean;
+  autoComplete?: "off" | "name" | "tel" | "email" | "password" | "username";
+  spellCheck?: boolean;
+  textContentType?: "none" | "name" | "telephoneNumber" | "emailAddress" | "password";
+  importantForAutofill?: "auto" | "no" | "yes" | "noExcludeDescendants" | "yesExcludeDescendants";
   prefix?: string;
+  testID?: string;
 }) {
   return (
     <View style={styles.field}>
@@ -30,6 +36,12 @@ export function OnboardingField(props: {
           maxLength={props.maxLength}
           editable={props.editable !== false}
           autoCapitalize={props.autoCapitalize}
+          autoCorrect={props.autoCorrect ?? false}
+          autoComplete={props.autoComplete ?? "off"}
+          spellCheck={props.spellCheck ?? false}
+          textContentType={props.textContentType}
+          importantForAutofill={props.importantForAutofill ?? "no"}
+          testID={props.testID}
           style={[styles.input, props.prefix ? styles.inputFlex : null, props.error ? styles.inputError : null]}
           placeholderTextColor="#94a3b8"
         />

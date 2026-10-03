@@ -1,23 +1,29 @@
 import crypto from "crypto";
-import type { AiGatewayRole, AiProviderType, AiRequestStatus } from "@prisma/client";
-import { aiConfig } from "../config";
+import type { AiProviderType, AiRequestStatus } from "@prisma/client";
+import { aiConfig, liveInferenceConfigured } from "../config";
 import type { AiActorContext, AiGatewayInput, AiGatewayResult } from "../types";
 import { AI_TIMEOUT_MS } from "../types";
 import { validateAiInput } from "../security/input-validator";
-import { validatePromptSecurity, isolateSystemPrompt } from "../security/prompt-security";
+import { validatePromptSecurity, isolateSystemPrompt, hashContent } from "../security/prompt-security";
 import { validateAiOutput } from "../security/output-validator";
 import { authorizeAiRequest, getRolePermissions } from "../security/authorization";
 import { checkAiRateLimit } from "../rate-limit/ai-rate-limit";
+import { estimateTokens } from "../providers/model-providers";
+import { checkAndReserveBudget, settleBudget, abandonBudget, currentEligibleProviders } from "../../services/ai-budget.service";
 import { buildEnterpriseContext } from "../../ai-brain/context/enterprise-context-builder";
 import { composePrompt, injectHallucinationGuard } from "../../ai-brain/prompts/prompt-intelligence";
 import { recordTimelineEntry } from "../../ai-brain/timeline/activity-timeline";
 import { validateBrainInput, validateBrainOutput } from "../../ai-brain/security/brain-security";
 import { persistGatewayTurn } from "../../ai-brain/gateway/conversation-bridge";
 import { aiBrainConfig } from "../../ai-brain/config";
+import { bindAiContextToActor } from "../../ai-tools/execution/actor-resolver";
 import { buildAiContext } from "../context/context-engine";
 import { getTemplate, renderUserPrompt } from "../templates/prompt-templates";
+import type { PromptTemplate } from "../templates/prompt-templates";
 import { routeModelRequest, RouterDeadlineError, RouterExhaustedError } from "../router/model-router";
-import { runToolConversation } from "../../ai-tools/bridge/tool-bridge";
+// NOTE: the tool bridge is imported lazily inside invokeAiGateway (see the tools branch). A static
+// import here closed a 7-hop cycle: tool-registry → handlers → support services → THIS gateway →
+// tool-bridge → tool-registry, whose correctness depended on module load order.
 import type { AiProviderType as AiProviderResponseProvider } from "@prisma/client";
 import { recordAiAudit, recordAiRequest, hashResponse } from "../audit/ai-audit.service";
 import { computeTokenCostDetailed, recordDailyCost } from "../cost/ai-cost.service";
@@ -30,6 +36,7 @@ import {
   recordAiLatency,
   recordAiCost,
   recordAiTokens,
+  recordMockedResponse,
 } from "../../lib/ai-metrics";
 
 export type GatewayInvokeOptions = {
@@ -45,7 +52,7 @@ export type GatewayInvokeOptions = {
    */
   tools?: {
     enabled: boolean;
-    intent?: import("../intent/intent-classifier").AiIntent;
+    intent?: import("../intent/intent-classifier").AiIntent | string;
     /** Underlying application role, for tool handlers that resolve a provider record. */
     userRole?: string;
     /** Only true where the caller can present a confirmation to the user. */
@@ -54,6 +61,9 @@ export type GatewayInvokeOptions = {
 };
 
 export class AiGatewayError extends Error {
+  /** Diagnostic detail for logs and audit only. Never part of a response. */
+  internalReason?: string;
+
   constructor(
     message: string,
     public code: string,
@@ -66,6 +76,22 @@ export class AiGatewayError extends Error {
 }
 
 /**
+ * The only text a caller ever sees for a blocked prompt.
+ *
+ * The firewall's reason names the rule that matched (`injection_pattern:<first 40 characters of the
+ * regex>`), and every AI route returns `err.message` to the client — so a blocked prompt used to hand
+ * any signed-in user the pattern to rephrase around. The reason still reaches the audit row, the
+ * timeline and the logs; the response says only that the message was refused.
+ */
+export const PROMPT_BLOCKED_PUBLIC_MESSAGE = "This message can't be processed. Please rephrase it and try again.";
+
+export function promptBlockedError(reason: string | undefined): AiGatewayError {
+  const err = new AiGatewayError(PROMPT_BLOCKED_PUBLIC_MESSAGE, "PROMPT_BLOCKED", "BLOCKED");
+  err.internalReason = reason ?? "prompt blocked";
+  return err;
+}
+
+/**
  * Gateway error code → HTTP status, defined once.
  *
  * Every route that fronts the gateway maps errors through this table so the same
@@ -73,6 +99,10 @@ export class AiGatewayError extends Error {
  * listed is an upstream provider fault and becomes 502.
  */
 export const AI_ERROR_STATUS: Record<string, number> = {
+  /** 402: the request was well-formed and permitted; the platform has run out of AI budget. */
+  BUDGET_EXCEEDED: 402,
+  /** 402 too: a well-formed request refused because no spend cap has been agreed on a deployed host. */
+  BUDGET_POLICY_REQUIRED: 402,
   FORBIDDEN: 403,
   RATE_LIMITED: 429,
   PROMPT_BLOCKED: 400,
@@ -171,7 +201,15 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
         actorRole: actor.actorRole,
         action: "prompt_blocked",
         reason: security.reason,
-        promptHash: security.promptHash,
+        /**
+         * `PromptSecurityResult`'s unsafe variant is `{ safe: false, reason, category }` — it
+         * carries NO `promptHash`. Only `validateBrainInput` (the ai-brain path) always returns
+         * one, so with ai-brain disabled every BLOCKED prompt was audited with
+         * `promptHash: undefined`, losing the hash on exactly the records a security review needs.
+         * Derived from the message when the variant omits it, using the same `hashContent` the
+         * safe path uses, so blocked and allowed records hash identically.
+         */
+        promptHash: "promptHash" in security ? security.promptHash : hashContent(input.message),
         promptTokens: 0,
         completionTokens: 0,
         costUsd: 0,
@@ -188,10 +226,12 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
         latencyMs: Date.now() - t0,
       }),
     ]);
-    throw new AiGatewayError(security.reason ?? "Prompt blocked", "PROMPT_BLOCKED", "BLOCKED");
+    throw promptBlockedError(security.reason);
   }
 
   recordAiMetric(actor.actorRole, endpoint);
+
+  input.context = await bindAiContextToActor(actor, input.context);
 
   const permissions = getRolePermissions(actor.actorRole);
 
@@ -222,8 +262,19 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
     : null;
 
   const legacyTemplate = await getTemplate(input.templateId, actor.actorRole);
-  const template = composed
-    ? { templateId: composed.promptId, maxTokens: legacyTemplate.maxTokens, systemPrompt: composed.systemPrompt }
+  // Spread the legacy template rather than rebuilding a partial one.
+  //
+  // The three fields anything downstream reads are unchanged: `templateId` and `systemPrompt` are
+  // still overridden by the composed prompt and `maxTokens` still comes from the legacy template.
+  // The difference is that `template` is now a real `PromptTemplate` instead of a three-field
+  // object, so it satisfies `renderUserPrompt` without widening that signature.
+  //
+  // It also closes a latent trap: the partial object dropped `userTemplate`, so if the composed
+  // path ever did reach `renderUserPrompt` — today it cannot, because `ComposedPrompt.userPrompt`
+  // is a required string and `??` short-circuits — it would have silently fallen back to the
+  // generic "User: {message}" rendering instead of the template's own user format.
+  const template: PromptTemplate = composed
+    ? { ...legacyTemplate, templateId: composed.promptId, systemPrompt: composed.systemPrompt }
     : legacyTemplate;
 
   const built = enterpriseCtx ?? await buildAiContext(actor.actorRole, security.sanitized, input.context, input.history);
@@ -234,6 +285,57 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
     `${hallucinationGuard}\n${userPrompt}`,
   );
 
+  /**
+   * Phase 14 — the spend cap.
+   *
+   * Placed here, and not earlier, because a reservation must be priced against the prompt that is
+   * actually about to be sent: before composition the prompt does not exist yet, and pricing a
+   * guess would make reserved and settled spend disagree for reasons nobody could trace.
+   *
+   * Placed here, and not later, because this is the last point at which nothing has been spent.
+   * A cap enforced after the provider answers is a report, not a control.
+   *
+   * With no policy configured this is one counter increment and a pass-through — the platform's
+   * behaviour is unchanged until somebody sets a limit.
+   */
+  const budget = await checkAndReserveBudget({
+    eligibleProviders: currentEligibleProviders(),
+    actorRole: actor.actorRole,
+    actorId: actor.actorId,
+    endpoint,
+    estimatedPromptTokens: estimateTokens({ messages: built.messages, systemPrompt }),
+    maxOutputTokens: template.maxTokens,
+    traceId,
+  });
+
+  if (!budget.allowed) {
+    // "Out of budget" and "no budget has been agreed" are different facts for an operator and a
+    // client; reporting the second as BUDGET_EXCEEDED sends someone looking for spend that never
+    // happened. Both remain refusals.
+    const code = budget.decision === "NO_POLICY_CONFIGURED" ? "BUDGET_POLICY_REQUIRED" : "BUDGET_EXCEEDED";
+    await recordBlockedTimeline({
+      requestId,
+      actor,
+      reason: budget.reason,
+      code,
+      templateId: input.templateId,
+      latencyMs: Date.now() - t0,
+    });
+    throw new AiGatewayError(budget.reason, code, "BLOCKED");
+  }
+
+  /**
+   * Every exit from here on must release the reservation. Success settles it to the measured cost;
+   * any failure abandons it, because a request that never reached a provider spent nothing and must
+   * not hold budget for the rest of the window. The flag makes a double release impossible.
+   */
+  let budgetSettled = false;
+  const releaseBudget = async (actual?: { costUsd: number; costStatus: "COMPUTED" | "UNKNOWN" }) => {
+    if (budgetSettled || budget.reservations.length === 0) return;
+    budgetSettled = true;
+    await (actual ? settleBudget(budget.reservations, actual) : abandonBudget(budget.reservations));
+  };
+
   try {
     // Tool-enabled turns run the model↔tool conversation; everything else routes once.
     //
@@ -241,8 +343,11 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
     // behind the same single entry: the RBAC check, rate limit, prompt screening and audit
     // above have already run, and the result below is validated and audited like any other.
     const toolContext = options.tools;
+    const runToolConversation = toolContext?.enabled
+      ? (await import("../../ai-tools/bridge/tool-bridge")).runToolConversation
+      : null;
     const routed = await Promise.race([
-      toolContext?.enabled
+      toolContext?.enabled && runToolConversation
         ? runToolConversation({
             actor: {
               actorId: actor.actorId,
@@ -276,6 +381,13 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
             finishReason: undefined as string | undefined,
             toolCalls: r.toolCalls,
             loopLimitHit: r.loopLimitHit,
+            /**
+             * A tool loop reaches providers through the same router, so its turns are dry-runs
+             * under exactly the conditions a direct call is. The bridge does not surface that per
+             * turn, so it is derived from the configuration that decides it — the alternative is a
+             * tool-assisted answer being billed as real spend while a plain one is not.
+             */
+            mocked: !liveInferenceConfigured(r.provider as AiProviderResponseProvider),
           }))
         : routeModelRequest({
             systemPrompt,
@@ -307,12 +419,31 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
       throw new AiGatewayError(output.reason ?? "Output validation failed", "OUTPUT_VALIDATION_FAILED", "FAILED");
     }
 
-    const { costUsd, costStatus } = computeTokenCostDetailed(
+    const estimated = computeTokenCostDetailed(
       routed.provider,
       routed.promptTokens,
       routed.completionTokens,
       routed.cachedTokens,
     );
+
+    /**
+     * A dry-run contacted no provider, so it cost nothing. The token figures attached to it are an
+     * estimate of what the canned string WOULD have cost, and were previously aggregated as actual
+     * spend — on a deployment with no provider credential, every rupee reported by
+     * `homigo_ai_daily_cost_usd` was imaginary.
+     *
+     * Actual cost is therefore forced to zero for a mock, and the estimate is reported separately
+     * so nothing is lost: an operator can still see what the traffic would cost once a key is
+     * configured, without that number ever being mistaken for money already spent.
+     */
+    const costStatus = estimated.costStatus;
+    const costUsd = routed.mocked ? 0 : estimated.costUsd;
+    if (routed.mocked) {
+      recordMockedResponse(routed.provider, actor.actorRole, estimated.costUsd, costStatus);
+    }
+    // Settle before anything else can throw: the measured cost is known now, and an audit or
+    // persistence failure below must not leave the reservation held for the rest of the window.
+    await releaseBudget({ costUsd, costStatus });
     recordAiTokens(routed.provider, routed.promptTokens, routed.completionTokens);
     const latencyMs = Date.now() - t0;
     const status: AiRequestStatus = routed.fallbackUsed ? "FALLBACK" : "SUCCESS";
@@ -418,7 +549,7 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
 
     recordAiSuccess(actor.actorRole, routed.provider);
     recordAiLatency(latencyMs, routed.provider);
-    recordAiCost(costUsd, routed.provider, actor.actorRole);
+    recordAiCost(costUsd, routed.provider, actor.actorRole, costStatus);
 
     return {
       requestId,
@@ -439,6 +570,15 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
       conversationId,
     };
   } catch (err) {
+    /**
+     * Abandon, not settle. The request failed, so whatever it may have cost is not knowable from
+     * here — a provider error can arrive after tokens were billed or before a connection was made,
+     * and the platform has no figure for either. Settling a fabricated cost would put an invented
+     * number into the budget accumulator; holding the reservation would leak headroom until the
+     * window rolls. Releasing it un-settled is the only honest option, and the request is still
+     * counted by `request_count`, which the reservation already incremented.
+     */
+    await releaseBudget();
     const latencyMs = Date.now() - t0;
     // Router outcomes carry their own meaning: a spent deadline is a timeout, not a
     // provider fault, and must not be reported as one.
@@ -478,6 +618,13 @@ export async function invokeAiGateway(options: GatewayInvokeOptions): Promise<Ai
         actorId: actor.actorId,
         actorRole: actor.actorRole,
         templateId: input.templateId,
+        /**
+         * §23 — the failure path recorded no prompt version, so a request that resolved a prompt
+         * and then failed could not be traced back to the prompt text that produced it. Failures
+         * are exactly where that trace is wanted: "which prompt version was serving when this
+         * started erroring" is unanswerable if only successes carry the version.
+         */
+        promptVersion: composed?.promptVersion,
         promptHash: security.promptHash,
         status,
         latencyMs,

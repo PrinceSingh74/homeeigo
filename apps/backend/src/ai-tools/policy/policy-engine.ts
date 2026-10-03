@@ -1,6 +1,6 @@
 import prisma from "../../lib/prisma";
 import type { PolicyEvaluationInput, PolicyEvaluationResult } from "../types";
-import { POLICY_RULES } from "./policy-rules";
+import { POLICY_RULES, POLICY_RULESET_VERSION } from "./policy-rules";
 import { recordToolPolicyDecision } from "../audit/tool-audit.service";
 
 export async function evaluatePolicy(input: PolicyEvaluationInput): Promise<PolicyEvaluationResult> {
@@ -14,6 +14,7 @@ export async function evaluatePolicy(input: PolicyEvaluationInput): Promise<Poli
         decision: result.decision,
         reason: result.reason,
         ruleMatched: result.ruleMatched,
+        policyVersion: POLICY_RULESET_VERSION,
         traceId: input.actor.traceId,
       });
       return result;

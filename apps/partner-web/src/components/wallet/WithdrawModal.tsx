@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ArrowUpRight, Loader2, X } from "lucide-react";
 import { useWithdrawMutation } from "@/hooks/use-partner-data";
 import { getErrorMessage } from "@/lib/api-error";
@@ -21,6 +21,8 @@ export function WithdrawModal({ open, onClose, walletBalance }: Props) {
   const [bankAccountNumber, setBankAccountNumber] = useState("");
   const [ifscCode, setIfscCode] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const submittingRef = useRef(false);
+  const idempotencyKeyRef = useRef<string>("");
 
   useEffect(() => {
     if (open) {
@@ -29,6 +31,8 @@ export function WithdrawModal({ open, onClose, walletBalance }: Props) {
       setBankAccountNumber("");
       setIfscCode("");
       setFormError(null);
+      submittingRef.current = false;
+      idempotencyKeyRef.current = "";
     }
   }, [open]);
 
@@ -51,6 +55,7 @@ export function WithdrawModal({ open, onClose, walletBalance }: Props) {
   const numericAmount = Number(amount);
 
   async function handleSubmit() {
+    if (submittingRef.current || withdrawMutation.isPending) return;
     setFormError(null);
     if (!accountHolder.trim()) {
       setFormError("Enter the account holder name");
@@ -68,16 +73,26 @@ export function WithdrawModal({ open, onClose, walletBalance }: Props) {
       setFormError(`Amount must be between ₹1 and ${formatInr(walletBalance)}`);
       return;
     }
+    if (!idempotencyKeyRef.current) {
+      idempotencyKeyRef.current =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `wd-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+    submittingRef.current = true;
     try {
       await withdrawMutation.mutateAsync({
         amount: Math.floor(numericAmount),
         bankAccountNumber: bankAccountNumber.replace(/\s/g, ""),
         ifscCode: ifscCode.trim().toUpperCase(),
         accountHolder: accountHolder.trim(),
+        idempotencyKey: idempotencyKeyRef.current,
       });
       onClose();
     } catch (error) {
       setFormError(getErrorMessage(error));
+    } finally {
+      submittingRef.current = false;
     }
   }
 
@@ -123,6 +138,7 @@ export function WithdrawModal({ open, onClose, walletBalance }: Props) {
           <Field label="Amount (₹)" htmlFor="wf-amount">
             <input
               id="wf-amount"
+              data-testid="withdraw-amount"
               type="number"
               inputMode="numeric"
               min={1}
@@ -138,6 +154,7 @@ export function WithdrawModal({ open, onClose, walletBalance }: Props) {
           <Field label="Account holder name" htmlFor="wf-holder">
             <input
               id="wf-holder"
+              data-testid="withdraw-holder"
               type="text"
               disabled={isSubmitting}
               value={accountHolder}
@@ -150,6 +167,7 @@ export function WithdrawModal({ open, onClose, walletBalance }: Props) {
           <Field label="Bank account number" htmlFor="wf-acct">
             <input
               id="wf-acct"
+              data-testid="withdraw-account"
               type="text"
               inputMode="numeric"
               disabled={isSubmitting}
@@ -165,6 +183,7 @@ export function WithdrawModal({ open, onClose, walletBalance }: Props) {
           <Field label="IFSC code" htmlFor="wf-ifsc">
             <input
               id="wf-ifsc"
+              data-testid="withdraw-ifsc"
               type="text"
               disabled={isSubmitting}
               value={ifscCode}
@@ -197,6 +216,7 @@ export function WithdrawModal({ open, onClose, walletBalance }: Props) {
           </button>
           <button
             type="button"
+            data-testid="withdraw-submit"
             onClick={() => void handleSubmit()}
             disabled={isSubmitting}
             className="flex items-center justify-center gap-2 rounded-lg bg-partner-primary px-3 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"

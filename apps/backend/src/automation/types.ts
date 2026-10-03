@@ -51,11 +51,46 @@ export type WorkflowDefinitionInput = {
   /** Event type that starts this workflow, e.g. "homigo.payment.failed". */
   trigger: string;
   steps: WorkflowStep[];
+  /**
+   * Whether this workflow acts, or only works out what it would have done.
+   *
+   * Absent means LIVE, so every workflow written before shadow mode existed keeps behaving exactly
+   * as it did. A shadow workflow runs the same conditions, the same governance and the same channel
+   * selection; only the three points where the world changes — the delivery claim, the cadence
+   * reservation and the provider call — are replaced by evidence.
+   *
+   * Not part of the step fingerprint: it says how a definition runs, not what it does, so flipping
+   * it does not count as editing an activated version.
+   */
+  executionMode?: "LIVE" | "SHADOW";
+  /**
+   * Present only on Phase-6G business automations, and its absence is meaningful.
+   *
+   * A definition without a risk class is a legacy workflow — the engine self-test, anything written
+   * before 6G — and the certification gate deliberately does not apply to it. Declaring a class is
+   * how a definition opts into being governed; it is not itself permission to act.
+   */
+  riskClass?: "LOW" | "MEDIUM" | "HIGH";
+  /**
+   * How far this version has travelled from idea to permission. Separate from `executionMode`:
+   * CERTIFIED + SHADOW is a real and normal state, and the one every automation passes through.
+   */
+  certificationStatus?: "DRAFT" | "SHADOW" | "CERTIFIED" | "DISABLED" | "DEPRECATED";
   /** Guards against immortal instances — both enforced by the step executor on every step. */
   maxAgeMs: number;
   maxSteps: number;
   metadata?: Record<string, unknown>;
 };
+
+/**
+ * Action names that move money or account state.
+ *
+ * Lives here rather than beside either of its users because both need it and neither owns it: the
+ * shadow guard in the step executor refuses to simulate them, and the 6G registry refuses to let a
+ * LOW or MEDIUM workflow contain one. Matched by substring so a later `refund_partial` or
+ * `wallet_adjust_v2` is caught by the same net rather than having to be remembered.
+ */
+export const HIGH_RISK_ACTIONS = ["refund", "payout", "settle", "wallet", "ledger", "freeze"] as const;
 
 /** Outcomes recorded per step. Shared vocabulary with the decision audit added in 6C. */
 export const STEP_OUTCOME = {

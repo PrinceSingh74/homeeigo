@@ -13,7 +13,8 @@ const STATUS_META: Record<
   COMING_SOON: { label: "Coming soon", dot: "bg-slate-400", text: "text-slate-500 dark:text-slate-400", ring: "ring-slate-400/20" },
 };
 
-const nf = (n: number) => n.toLocaleString("en-IN");
+/** null = the coverage engine has no partner count for that city, which is not the same as zero. */
+const nf = (n: number | null) => (n == null ? null : n.toLocaleString("en-IN"));
 
 /**
  * Where Homeeigo Operates — read-only network coverage for partners, backed by
@@ -79,10 +80,12 @@ export function NetworkCitiesSection() {
                 </div>
 
                 <div className="mt-3 flex items-center gap-4 text-xs text-partner-muted">
-                  <span className="inline-flex items-center gap-1">
-                    <Users className="h-3.5 w-3.5" />
-                    <strong className="font-bold text-partner-text">{nf(city.activePartners)}</strong> partners
-                  </span>
+                  {city.activePartners != null && (
+                    <span className="inline-flex items-center gap-1">
+                      <Users className="h-3.5 w-3.5" />
+                      <strong className="font-bold text-partner-text">{nf(city.activePartners)}</strong> partners
+                    </span>
+                  )}
                   <span className="inline-flex items-center gap-1">
                     <Building2 className="h-3.5 w-3.5" />
                     {city.areaCount} areas

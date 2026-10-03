@@ -16,7 +16,6 @@ import {
 } from "../../lib/ai-brain-metrics";
 import type { ContextBuildRequest, ContextSection, EnterpriseBuiltContext } from "../types";
 import { CONTEXT_TOKEN_BUDGET } from "../types";
-import { aiBrainConfig } from "../config";
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -225,7 +224,6 @@ export async function buildEnterpriseContext(
 }
 
 export async function rebuildContext(req: ContextBuildRequest, requestId?: string): Promise<EnterpriseBuiltContext> {
-  const cacheKey = `${req.actorId}:${req.actorRole}:${req.conversationId ?? "none"}:rebuild`;
   await prisma.aiContextCache.deleteMany({ where: { cacheKey: { startsWith: req.actorId } } }).catch(() => undefined);
   return buildEnterpriseContext({ ...req, featureFlags: { ...req.featureFlags, forceRebuild: true } }, requestId);
 }

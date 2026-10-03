@@ -8,6 +8,7 @@ import { HqLandingShell } from "@/components/hq/HqLandingShell";
 import { HqQuickLinkGrid } from "@/components/hq/HqQuickLinkGrid";
 import { SectionHeading } from "@/components/hq/primitives";
 import { GrowthWorkspaceRail } from "@/components/growth/GrowthWorkspaceRail";
+import { OperationsWorkspaceRail } from "@/components/operations/OperationsWorkspaceRail";
 import { useRenderProbe, useMountProbe } from "@/lib/render-probe";
 
 const VALID_SECTIONS: HqSectionId[] = [
@@ -105,6 +106,7 @@ export default function HqLandingPage() {
   }, [sectionId]);
 
   const isGrowth = sectionId === "growth";
+  const isOperations = sectionId === "operations";
 
   return (
     <HqLandingShell
@@ -113,9 +115,17 @@ export default function HqLandingPage() {
       iconTone={section.iconTone}
       title={section.label}
       subtitle={section.description}
-      className={sectionId === "marketplace" ? "max-w-[1600px]" : undefined}
+      eyebrow={isGrowth ? "Growth HQ" : isOperations ? "Operations HQ" : undefined}
+      className={
+        sectionId === "marketplace"
+          ? "max-w-[1600px]"
+          : isOperations
+            ? "space-y-8"
+            : undefined
+      }
     >
       {isGrowth ? <GrowthWorkspaceRail /> : null}
+      {isOperations ? <OperationsWorkspaceRail /> : null}
       {Dashboard}
 
       <section>

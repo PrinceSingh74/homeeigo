@@ -38,7 +38,8 @@ export const MOBILE_STEPPER = [
   { id: "kyc", label: "KYC" },
   { id: "documents", label: "Documents" },
   { id: "assessment", label: "Assessment" },
-  { id: "done", label: "Review" },
+  { id: "training", label: "Training" },
+  { id: "review", label: "Review" },
 ] as const;
 
 export function mapSkillToServiceId(skill?: string | null): string | null {
@@ -66,5 +67,7 @@ export function stepperIdForStep(step: string): (typeof MOBILE_STEPPER)[number][
   if (step === "kyc") return "kyc";
   if (step === "documents") return "documents";
   if (step === "assessment") return "assessment";
-  return "done";
+  if (step === "training") return "training";
+  if (step === "review") return "review";
+  return "review";
 }

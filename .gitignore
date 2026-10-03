@@ -24,12 +24,18 @@ Thumbs.db
 
 # Build outputs
 .next/
+# Alternate build outputs (NEXT_DIST_DIR) used to measure a production build while `next dev`
+# holds `.next` — see apps/web/next.config.js.
+.next-*/
 dist/
 build/
 out/
 
 # Testing
 coverage/
+# ...but only coverage REPORTS: source directories named "coverage" (web lib/coverage, the admin
+# /coverage route) were silently ignored, so no commit could ever include them.
+!**/src/**/coverage/
 .nyc_output/
 playwright-report/
 test-results/
@@ -66,3 +72,35 @@ measurements/
 
 # Local database dumps — data, not source.
 backups/
+
+# Production release authorization — must never be committed
+.production-authorization.json
+
+# Local editor / agent configuration — per machine, never project source.
+/.claude/
+/.serena/
+/.windsurf/
+
+# Stray Windows artefacts: empty files from mistyped redirects, and `> nul` written as a file.
+/Code.exe
+/.taskkill
+nul
+
+# Runtime uploads and scratch output — data, not source.
+/uploads/
+apps/backend/scratch-*/
+apps/backend/tmp-*
+
+# Generated E2E screenshots and mobile bundle exports (re-created by every run). Files already
+# tracked under __artifacts__ stay tracked; this only keeps new run output out of the index.
+apps/*/e2e/__artifacts__/
+homigo-partner-mobile/e2e/__artifacts__/
+homigo-partner-mobile/dist-*/
+
+# One-off scratch scripts that open the DEFAULT (live, dotenv) database — kept out of the repo.
+/list-admins.cjs
+/list-active-services.cjs
+apps/backend/list-admins*.cjs
+
+# Local staging container secrets (deploy/local-staging/deploy-backend.ps1) � generated per machine.
+deploy/local-staging/backend.env

@@ -52,7 +52,7 @@ export default function FinanceLiabilitiesPage() {
         {daily.length === 0 ? (
           <p className="text-sm text-[var(--color-biz-muted)]">No snapshots captured yet.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Daily liability trend table">
             <table className="w-full text-left text-sm">
               <thead className="text-[var(--color-biz-muted)]">
                 <tr>

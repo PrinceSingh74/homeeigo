@@ -159,7 +159,7 @@ export default function AiBrainConsolePage() {
               <FileText size={16} />
               Prompt Registry ({promptList.length})
             </h2>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Prompt registry table">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--color-biz-line)] text-left text-[var(--color-biz-muted)]">

@@ -1,140 +1,93 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { prisma, dbReachable, seedAdversarialFixtures, cleanupAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
+import { chargebackEvidenceAccessService } from "../services/chargeback-evidence-access.service";
+import { objectStorageService } from "../services/object-storage.service";
 import { generateStorageKey } from "../lib/storage-key";
 
-const TOKEN_TTL_MS = 5 * 60 * 1000;
+/**
+ * P0-2 Chargeback evidence access control — against the REAL guard.
+ *
+ * The previous version of this file defined its own `validateTokenAccess()` mock at the top and
+ * tested that mock's branches; the production guard could have had no check at all and the suite
+ * stayed green. Every case below goes through `consumeDownloadToken`.
+ */
+const RUN = `cbacc-${Date.now().toString(36)}`;
+let ctx: AdvCtx | null = null;
+let evidenceId = "";
+const spies: Array<{ mockRestore: () => void }> = [];
 
-type MockToken = {
-  token: string;
-  adminId: string;
-  expiresAt: Date;
-  usedAt: Date | null;
-};
+beforeAll(async () => {
+  if (!(await dbReachable())) return;
+  ctx = await seedAdversarialFixtures(RUN);
+  const chargeback = await prisma.chargeback.create({
+    data: { amount: 500, amountPaise: 50_000n, razorpayDisputeId: `disp_${RUN}` },
+  });
+  const evidence = await prisma.chargebackEvidence.create({
+    data: {
+      chargebackId: chargeback.id,
+      storageKey: `${generateStorageKey()}-${RUN}.pdf`,
+      fileName: "evidence.pdf",
+      mimeType: "application/pdf",
+      uploadedBy: ctx.financeAdmin.id,
+    },
+  });
+  evidenceId = evidence.id;
+}, 60_000);
+afterEach(() => {
+  for (const s of spies.splice(0)) s.mockRestore();
+});
+afterAll(async () => {
+  if (!ctx) return;
+  await prisma.chargeback.deleteMany({ where: { razorpayDisputeId: `disp_${RUN}` } });
+  await cleanupAdversarialFixtures(RUN);
+}, 60_000);
 
-function validateTokenAccess(
-  row: MockToken | null,
-  adminId: string,
-  now: Date,
-): "ok" | "invalid" | "wrong_admin" | "expired" | "reused" {
-  if (!row) return "invalid";
-  if (row.adminId !== adminId) return "wrong_admin";
-  if (row.usedAt) return "reused";
-  if (row.expiresAt < now) return "expired";
-  return "ok";
-}
+const issue = (adminId: string) => chargebackEvidenceAccessService.createDownloadToken(evidenceId, adminId);
+const consume = (token: string, adminId: string) =>
+  (async () => chargebackEvidenceAccessService.consumeDownloadToken(token, adminId))();
 
 describe("P0-2 Chargeback evidence access control", () => {
-  test("anonymous access denied (no token row)", () => {
-    expect(validateTokenAccess(null, "admin-1", new Date())).toBe("invalid");
+  test("an unknown token is refused before any storage access", async () => {
+    if (!ctx) return;
+    const head = spyOn(objectStorageService, "headObject");
+    spies.push(head);
+    await expect(consume("not-a-token", ctx.financeAdmin.id)).rejects.toThrow(/FORBIDDEN/);
+    expect(head).not.toHaveBeenCalled();
   });
 
-  test("customer role cannot use admin token", () => {
-    const row: MockToken = {
-      token: "tok-1",
-      adminId: "admin-1",
-      expiresAt: new Date(Date.now() + TOKEN_TTL_MS),
-      usedAt: null,
-    };
-    expect(validateTokenAccess(row, "customer-1", new Date())).toBe("wrong_admin");
+  test("a token issued to one admin cannot be used by another admin, and the attempt does not burn it", async () => {
+    if (!ctx) return;
+    const { token } = await issue(ctx.financeAdmin.id);
+    await expect(consume(token, ctx.supportAdmin.id)).rejects.toThrow(/not issued to this admin/);
+    const row = await prisma.chargebackEvidenceDownloadToken.findUniqueOrThrow({ where: { token } });
+    expect(row.usedAt).toBeNull();
   });
 
-  test("provider role cannot use admin token", () => {
-    const row: MockToken = {
-      token: "tok-2",
-      adminId: "admin-1",
-      expiresAt: new Date(Date.now() + TOKEN_TTL_MS),
-      usedAt: null,
-    };
-    expect(validateTokenAccess(row, "provider-1", new Date())).toBe("wrong_admin");
+  test("the issuing admin can download once; the second use is refused", async () => {
+    if (!ctx) return;
+    const head = spyOn(objectStorageService, "headObject").mockResolvedValue(true);
+    const s3 = spyOn(objectStorageService, "isS3Enabled").mockReturnValue(true);
+    const get = spyOn(objectStorageService, "getObjectBuffer").mockResolvedValue(Buffer.from("%PDF-1.4"));
+    spies.push(head, s3, get);
+    const { token } = await issue(ctx.financeAdmin.id);
+    const first = await chargebackEvidenceAccessService.consumeDownloadToken(token, ctx.financeAdmin.id);
+    expect(first.evidenceId).toBe(evidenceId);
+    expect(first.fileName).toBe("evidence.pdf");
+    await expect(consume(token, ctx.financeAdmin.id)).rejects.toThrow(/already used/);
   });
 
-  test("admin with valid token succeeds", () => {
-    const row: MockToken = {
-      token: "tok-3",
-      adminId: "admin-1",
-      expiresAt: new Date(Date.now() + TOKEN_TTL_MS),
-      usedAt: null,
-    };
-    expect(validateTokenAccess(row, "admin-1", new Date())).toBe("ok");
+  test("an expired token is refused even for the issuing admin", async () => {
+    if (!ctx) return;
+    const { token } = await issue(ctx.financeAdmin.id);
+    await prisma.chargebackEvidenceDownloadToken.update({ where: { token }, data: { expiresAt: new Date(Date.now() - 1_000) } });
+    await expect(consume(token, ctx.financeAdmin.id)).rejects.toThrow(/expired/);
   });
 
-  test("expired token returns 403 semantics", () => {
-    const row: MockToken = {
-      token: "tok-exp",
-      adminId: "admin-1",
-      expiresAt: new Date(Date.now() - 1000),
-      usedAt: null,
-    };
-    expect(validateTokenAccess(row, "admin-1", new Date())).toBe("expired");
+  test("a valid token whose file is missing is NOT_FOUND, not a silent success", async () => {
+    if (!ctx) return;
+    const head = spyOn(objectStorageService, "headObject").mockResolvedValue(false);
+    spies.push(head);
+    const { token } = await issue(ctx.financeAdmin.id);
+    await expect(consume(token, ctx.financeAdmin.id)).rejects.toThrow(/NOT_FOUND/);
   });
-
-  test("reused token returns 403 semantics", () => {
-    const row: MockToken = {
-      token: "tok-used",
-      adminId: "admin-1",
-      expiresAt: new Date(Date.now() + TOKEN_TTL_MS),
-      usedAt: new Date(),
-    };
-    expect(validateTokenAccess(row, "admin-1", new Date())).toBe("reused");
-  });
-
-  test("public uploads route removed from contract", async () => {
-    const uploads = await import("../routes/uploads");
-    expect(uploads.uploadsRoutes).toBeDefined();
-  });
-
-  test("storage keys are not guessable from chargeback id", () => {
-    const chargebackId = "cb_abc123";
-    for (let i = 0; i < 20; i++) {
-      const key = generateStorageKey();
-      expect(key.includes(chargebackId)).toBe(false);
-    }
-  });
-
-  test("token TTL is 5 minutes", () => {
-    expect(TOKEN_TTL_MS).toBe(300000);
-  });
-
-  test("single-use: second consume fails", () => {
-    let usedAt: Date | null = null;
-    const first = usedAt === null;
-    if (first) usedAt = new Date();
-    const second = usedAt !== null && first;
-    expect(first).toBe(true);
-    expect(second).toBe(true);
-    const row: MockToken = {
-      token: "single",
-      adminId: "admin-1",
-      expiresAt: new Date(Date.now() + TOKEN_TTL_MS),
-      usedAt,
-    };
-    expect(validateTokenAccess(row, "admin-1", new Date())).toBe("reused");
-  });
-});
-
-describe("P0-2 Evidence download authorization matrix", () => {
-  const roles = ["anonymous", "customer", "provider", "admin"] as const;
-  const scenarios: Array<{ role: (typeof roles)[number]; hasValidToken: boolean; expected: string }> = [
-    { role: "anonymous", hasValidToken: false, expected: "denied" },
-    { role: "customer", hasValidToken: false, expected: "denied" },
-    { role: "provider", hasValidToken: false, expected: "denied" },
-    { role: "admin", hasValidToken: true, expected: "allowed" },
-    { role: "admin", hasValidToken: false, expected: "denied" },
-  ];
-
-  for (const s of scenarios) {
-    test(`${s.role} token=${s.hasValidToken} => ${s.expected}`, () => {
-      const adminId = s.role === "admin" ? "admin-1" : `${s.role}-1`;
-      const row: MockToken | null = s.hasValidToken
-        ? {
-            token: "t",
-            adminId: "admin-1",
-            expiresAt: new Date(Date.now() + TOKEN_TTL_MS),
-            usedAt: null,
-          }
-        : null;
-      const result = validateTokenAccess(row, adminId, new Date());
-      if (s.expected === "allowed") expect(result).toBe("ok");
-      else expect(result).not.toBe("ok");
-    });
-  }
 });

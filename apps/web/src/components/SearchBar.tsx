@@ -4,9 +4,15 @@ import { m as motion } from "framer-motion";
 import { SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { pageSection } from "@/lib/page-layout";
+import { Button } from "@/components/buttons/Button";
 import { ServiceSearchInput } from "@/components/ServiceSearchInput";
 import { useAppStore } from "@/stores/app-store";
 
+/**
+ * Home search group — the search field and the Quick Filters button share the
+ * same control height (h-14) and radius so they read as one control row; the
+ * row itself centres them vertically.
+ */
 export function SearchBar() {
   const openOverlay = useAppStore((s) => s.openOverlay);
 
@@ -17,25 +23,20 @@ export function SearchBar() {
       viewport={{ once: true, amount: 0.4 }}
       transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
       className={cn(pageSection, "-mt-4 sm:-mt-6")}
+      aria-label="Find a service"
     >
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <ServiceSearchInput />
-
-        <motion.button
+        <Button
           type="button"
+          variant="secondary"
+          size="xl"
+          icon={<SlidersHorizontal size={18} aria-hidden />}
           onClick={() => openOverlay("quick-filters")}
-          whileHover={{ y: -2 }}
-          whileTap={{ scale: 0.97 }}
-          className={cn(
-            "flex h-16 items-center justify-center gap-2 rounded-2xl ring-aurora card-sheen px-7",
-            "text-base font-semibold text-primary sm:w-auto",
-            "shadow-e2 transition-shadow hover:shadow-[0_16px_40px_-12px_rgb(37_99_235/0.3)]",
-            "outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-          )}
+          className="w-full sm:w-auto sm:shrink-0"
         >
-          <SlidersHorizontal size={18} />
           Quick Filters
-        </motion.button>
+        </Button>
       </div>
     </motion.section>
   );

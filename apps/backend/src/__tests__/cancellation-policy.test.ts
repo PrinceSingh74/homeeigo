@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cancellationPolicyService } from "../services/cancellation-policy.service";
+import { cancellationPolicyService, CANCELLATION_POLICY_V1 } from "../services/cancellation-policy.service";
 
 describe("CancellationPolicyService", () => {
   const scheduled = new Date("2026-12-25T14:00:00Z");
@@ -29,7 +29,13 @@ describe("CancellationPolicyService", () => {
     expect(q.feePercent).toBe(0);
   });
 
-  test("user cancel 2-24h has 10% fee", () => {
+  /**
+   * Owner decision 2026-09-23 (§54) published cancellation.v2: 2 hours or more before the service is
+   * now free, where v1 charged 10% between 2 and 24 hours. Both are asserted — the active policy for
+   * a new booking, and v1 for a booking that froze it — because the whole point of versioning is
+   * that yesterday's booking keeps yesterday's terms.
+   */
+  test("v2 (active): 2-24 hours before service is free", () => {
     const now = new Date("2026-12-25T02:00:00Z");
     const q = cancellationPolicyService.calculate({
       paidAmount: 1000,
@@ -37,6 +43,21 @@ describe("CancellationPolicyService", () => {
       bookingStatus: "ACCEPTED",
       cancelledBy: "user",
       now,
+    });
+    expect(q.refundAmount).toBe(1000);
+    expect(q.feeAmount).toBe(0);
+    expect(q.tier).toBe("free");
+  });
+
+  test("v1 (frozen on an older booking): the same cancellation still charges 10%", () => {
+    const now = new Date("2026-12-25T02:00:00Z");
+    const q = cancellationPolicyService.calculate({
+      paidAmount: 1000,
+      scheduledDate: scheduled,
+      bookingStatus: "ACCEPTED",
+      cancelledBy: "user",
+      now,
+      policy: CANCELLATION_POLICY_V1,
     });
     expect(q.refundAmount).toBe(900);
     expect(q.feeAmount).toBe(100);

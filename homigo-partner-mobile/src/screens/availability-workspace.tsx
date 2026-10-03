@@ -4,6 +4,10 @@ import * as Location from "expo-location";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { EmptyState, ErrorBlock, HqCard, HqCardTitle, HqMuted, LoadingBlock, StatRow } from "@/components/HqUi";
 import { PartnerScreen } from "@/components/PartnerScreen";
+import {
+  partnerPresenceHealthCopy,
+  usePartnerPresenceHealth,
+} from "@/hooks/use-partner-presence-heartbeat";
 import { partnerApi } from "@/services/partner-api";
 import { partnerColors } from "@/theme/colors";
 
@@ -12,6 +16,7 @@ const PAUSE = ["break", "personal", "travel", "other"] as const;
 
 export function AvailabilityWorkspaceScreen() {
   const qc = useQueryClient();
+  const presence = usePartnerPresenceHealth();
   const ops = useQuery({ queryKey: ["partner", "operations"], queryFn: () => partnerApi.operations() });
   const [days, setDays] = useState<string[]>([...DAYS.slice(0, 5)]);
   const [start, setStart] = useState("09:00");
@@ -116,6 +121,12 @@ export function AvailabilityWorkspaceScreen() {
 
   const d = ops.data!;
   const online = d.uiOnline && !d.isPaused && !d.isSuspended;
+  const presenceLine = partnerPresenceHealthCopy({
+    receiveJobs: online,
+    connected: presence.connected,
+    reconnecting: presence.reconnecting,
+    presenceFreshness: presence.presenceFreshness,
+  });
   const mapUri =
     lat != null && lng != null
       ? `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=13&size=640x360&markers=${lat},${lng},red-pushpin`
@@ -138,6 +149,13 @@ export function AvailabilityWorkspaceScreen() {
                 ? "New offers are paused. Current jobs continue."
                 : "You're offline and won't receive new job offers."}
           </HqMuted>
+          {presenceLine ? (
+            presenceLine.tone === "ok" ? (
+              <HqMuted>{presenceLine.text}</HqMuted>
+            ) : (
+              <Text style={styles.warn}>{presenceLine.text}</Text>
+            )
+          ) : null}
           {d.readiness.blockers.map((b) => (
             <Text key={b.code} style={styles.warn}>{b.message}</Text>
           ))}

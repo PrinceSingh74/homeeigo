@@ -1,3 +1,4 @@
+import { analyticsWhere } from "../../../lib/analytics-scope";
 import prisma from "../../../lib/prisma";
 
 export async function collectOperationsContext(): Promise<Record<string, unknown>> {
@@ -18,7 +19,7 @@ export async function collectOperationsContext(): Promise<Record<string, unknown
     prisma.booking.count({ where: { status: "PENDING" } }),
     prisma.provider.count({ where: { isOnline: true } }),
     prisma.provider.count({ where: { isActive: true } }),
-    prisma.booking.count({ where: { status: "COMPLETED", completedAt: { gte: todayStart } } }).catch(() => 0),
+    prisma.booking.count({ where: { status: "COMPLETED", completedAt: { gte: todayStart }, ...analyticsWhere() } }).catch(() => 0),
     prisma.booking.count({
       where: {
         status: { in: ["CANCELLED_BY_USER", "CANCELLED_BY_PROVIDER"] },

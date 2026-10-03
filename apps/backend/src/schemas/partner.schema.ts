@@ -36,6 +36,8 @@ export const partnerVerifyOtpSchema = z.object({
   email: emailSchema,
   otp: z.string().length(6).regex(/^\d{6}$/),
   userId: idSchema,
+  inviteToken: z.string().trim().min(16).max(2000).optional(),
+  referralCode: z.string().trim().min(4).max(32).optional(),
 });
 
 export const partnerServicesSchema = z.object({

@@ -58,7 +58,7 @@ export const IsoBarChart = memo(function IsoBarChart({
   const source = useMemo(
     () =>
       isLoading || data.length === 0
-        ? Array.from({ length: 7 }).map((_, i) => ({ label: "—", value: 0 }))
+        ? Array.from({ length: 7 }, () => ({ label: "—", value: 0 }))
         : data,
     [data, isLoading],
   );

@@ -15,12 +15,12 @@ function extractExpoDevHost(): string | null {
   const hostUri = Constants.expoConfig?.hostUri;
   if (hostUri) {
     const host = hostUri.split(":")[0];
-    if (host && !isLoopbackBase(`http://${host}`)) return host;
+    if (host && !isLoopbackBase(`http://${host}`) && host !== "10.0.2.2" && host !== "10.0.3.2") return host;
   }
   const debuggerHost = Constants.expoGoConfig?.debuggerHost;
   if (debuggerHost) {
     const host = debuggerHost.split(":")[0];
-    if (host && !isLoopbackBase(`http://${host}`)) return host;
+    if (host && !isLoopbackBase(`http://${host}`) && host !== "10.0.2.2" && host !== "10.0.3.2") return host;
   }
   return null;
 }
@@ -32,7 +32,8 @@ function resolveDevApiBase(configured: string): string {
   const expoHost = extractExpoDevHost();
   if (expoHost) return `http://${expoHost}:${port}`;
   if (isLoopbackBase(configured) && Platform.OS === "android") {
-    return `http://10.0.2.2:${port}`;
+    // This Windows emulator hangs on 10.0.2.2. Metro --localhost + adb reverse uses 127.0.0.1.
+    return `http://127.0.0.1:${port}`;
   }
   return configured;
 }
@@ -46,5 +47,6 @@ export function getApiBaseUrl(): string {
     return productionUrl.replace(/\/$/, "");
   }
   const configured = (fromEnv ?? fromExtra ?? `http://localhost:${DEFAULT_API_PORT}`).replace(/\/$/, "");
-  return resolveDevApiBase(configured);
+  const resolved = resolveDevApiBase(configured);
+  return resolved;
 }

@@ -11,6 +11,7 @@ export const HqLandingShell = memo(function HqLandingShell({
   iconTone = "default",
   title,
   subtitle,
+  eyebrow,
   children,
   actions,
   className,
@@ -20,13 +21,14 @@ export const HqLandingShell = memo(function HqLandingShell({
   iconTone?: Icon3DTone;
   title: string;
   subtitle: string;
+  eyebrow?: string;
   children: ReactNode;
   actions?: ReactNode;
   className?: string;
 }) {
   return (
     <div className={cn("mx-auto max-w-7xl space-y-6 biz-page-enter", className)}>
-      <header className="biz-hq-hero border-b border-[var(--color-biz-line)] pb-5">
+      <header className="biz-hq-hero border-b border-[var(--color-biz-line)] pb-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3.5">
             {Icon ? (
@@ -40,6 +42,11 @@ export const HqLandingShell = memo(function HqLandingShell({
               </span>
             )}
             <div className="space-y-1">
+              {eyebrow ? (
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-biz-muted)]">
+                  {eyebrow}
+                </p>
+              ) : null}
               <h1 className="biz-display text-2xl font-bold tracking-tight md:text-[1.75rem]">
                 {title}
               </h1>

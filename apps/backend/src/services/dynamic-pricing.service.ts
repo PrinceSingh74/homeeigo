@@ -14,10 +14,11 @@
  *
  * Every result carries confidence + freshness (consistent with the geo-intel envelope).
  */
+import { analyticsWhere } from "../lib/analytics-scope";
 import prisma from "../lib/prisma";
 import { mapsService } from "./maps.service";
 import { weatherService } from "./weather.service";
-import { geoIntelligenceService } from "./geo-intelligence.service";
+import { geoIntelligenceService, DEMAND_FORECAST_UNAVAILABLE } from "./geo-intelligence.service";
 import { cacheService } from "./cache.service";
 import { distanceKm } from "../lib/geo";
 import { incCounter, observeHist } from "../lib/metrics";
@@ -47,16 +48,85 @@ let _baseConv = { v: 0.5, at: 0 };
 async function baseConversion(): Promise<number> {
   if (Date.now() - _baseConv.at < 300_000) return _baseConv.v;
   const since = new Date(Date.now() - 7 * 86400_000);
+  // Scoped so this reports the real business. It does NOT change any price.
+  //
+  // An earlier revision of this comment claimed certification traffic "moves the multiplier for
+  // everyone". That was wrong, and it was wrong twice over:
+  //
+  //   - `revenueOptimal` takes an argmax of `subtotal · m · base · e^(−e·(m−1))`, in which `base`
+  //     is a constant factor across every candidate m, so it cannot change which m wins. It scales
+  //     `expectedConversion` and `expectedRevenue`, which are reported, not charged. (There WAS one
+  //     channel by which it leaked into the price — the optimizer compared an exact revenue against
+  //     a rounded running best — and that is fixed and pinned in
+  //     `__tests__/dynamic-pricing-population.test.ts`.)
+  //
+  //   - nothing customer-facing reads this service. Its only caller is `routes/pricing.ts`, booking
+  //     creation and checkout never touch it, and `/api/pricing/*` has no consumer in any of the
+  //     three web apps or either mobile app.
+  //
+  // (An earlier revision said 14.6% of bookings were fixture rows; that figure came from a provenance
+  // rule since withdrawn — the corroborated share is under 1%.) So the effect on the *reported*
+  // conversion today is small; the scope keeps it correct as declared fixture traffic accumulates.
+  // Either way it is a reporting-accuracy concern, not a money one.
   const [created, completed] = await Promise.all([
-    prisma.booking.count({ where: { createdAt: { gte: since } } }),
-    prisma.booking.count({ where: { createdAt: { gte: since }, status: "COMPLETED" } }),
+    prisma.booking.count({ where: { createdAt: { gte: since }, ...analyticsWhere() } }),
+    prisma.booking.count({ where: { createdAt: { gte: since }, status: "COMPLETED", ...analyticsWhere() } }),
   ]);
   _baseConv = { v: created > 0 ? clamp(completed / created, 0.05, 0.95) : 0.5, at: Date.now() };
   return _baseConv.v;
 }
 
 /** conversion(m) = base · e^(-elasticity·(m−1)) — falls as the price multiplier rises. */
-const conversionAt = (base: number, m: number, elasticity: number) => clamp(base * Math.exp(-elasticity * (m - 1)), 0, 1);
+export const conversionAt = (base: number, m: number, elasticity: number) =>
+  clamp(base * Math.exp(-elasticity * (m - 1)), 0, 1);
+
+export type OptimalPrice = { multiplier: number; price: number; expectedConversion: number; expectedRevenue: number };
+
+/**
+ * Revenue-optimal multiplier: argmax over m ∈ [1, ceiling] of price(m) · conversion(m).
+ *
+ * Extracted so the question "does the realized-conversion anchor move the recommended price?" can be
+ * answered by measurement instead of by reading. It does not — and that matters, because a previous
+ * pass claimed it did.
+ *
+ * revenue(m) = subtotal · m · clamp(base · e^(−e·(m−1)), 0, 1)
+ *
+ * `base` is clamped to [0.05, 0.95] by its caller and e^(−e·(m−1)) ≤ 1 for m ≥ 1, so the inner
+ * clamp can never bind and `base` factors out as a constant across every m. The argmax is therefore
+ * independent of `base`: contaminating realized conversion scales `expectedConversion` and
+ * `expectedRevenue` — the two *reported* figures — and leaves `multiplier` and `price` untouched.
+ */
+export function revenueOptimal(subtotal: number, base: number, ceiling: number, elasticity: number): OptimalPrice {
+  let bestMultiplier = 1;
+  let bestConv = base;
+  // Compared unrounded, and rounded only on the way out.
+  //
+  // The original loop stored `Math.round(rev)` as the running best and then compared the next
+  // candidate's exact `rev` against it. Rounding is a fixed ±0.5 perturbation, so it is
+  // proportionally larger when revenues are small — which made the winner in a near-flat region of
+  // the curve depend on the absolute scale of the revenue, and therefore on `base`. Measured: the
+  // same inputs at base 0.1 and base 0.9 chose multipliers 1.25 and 1.30, a 4% price difference
+  // decided entirely by rounding.
+  //
+  // That is the only channel through which the realized-conversion anchor could reach a price at
+  // all; the algebra otherwise makes `base` factor out of the argmax completely.
+  let bestRevenue = subtotal * base;
+  for (let mm = 1; mm <= ceiling + 1e-9; mm += 0.05) {
+    const conv = conversionAt(base, mm, elasticity);
+    const rev = subtotal * mm * conv;
+    if (rev > bestRevenue) {
+      bestRevenue = rev;
+      bestMultiplier = mm;
+      bestConv = conv;
+    }
+  }
+  return {
+    multiplier: Math.round(bestMultiplier * 100) / 100,
+    price: Math.round(subtotal * bestMultiplier),
+    expectedConversion: Math.round(bestConv * 1000) / 1000,
+    expectedRevenue: Math.round(bestRevenue),
+  };
+}
 
 export class DynamicPricingService {
   /** Resolve the nearest operating zone's surge + scarcity signals for a point. */
@@ -113,13 +183,7 @@ export class DynamicPricingService {
 
         // Revenue-optimal multiplier: argmax over m∈[1, signal] of price(m)·conversion(m).
         // We never recommend more than the raw demand signal justifies.
-        let best = { multiplier: 1, price: subtotal, expectedConversion: base, expectedRevenue: subtotal * base };
-        for (let mm = 1; mm <= m.combined + 1e-9; mm += 0.05) {
-          const price = subtotal * mm;
-          const conv = conversionAt(base, mm, effElasticity);
-          const rev = price * conv;
-          if (rev > best.expectedRevenue) best = { multiplier: Math.round(mm * 100) / 100, price: Math.round(price), expectedConversion: Math.round(conv * 1000) / 1000, expectedRevenue: Math.round(rev) };
-        }
+        const best = revenueOptimal(subtotal, base, m.combined, effElasticity);
 
         // The engine RECOMMENDS the revenue-optimal price (surge tempered by elasticity).
         const data: PriceBreakdown = {
@@ -143,33 +207,118 @@ export class DynamicPricingService {
   }
 
   /** Surge forecast: current vs predicted multiplier for a point, with confidence + duration. */
-  async surgeForecast(pt: { lat: number; lng: number }): Promise<{ data: { current: number; predicted: number; trend: "rising" | "falling" | "stable"; expectedDurationMin: number; zone?: string }; confidence: number; freshness: string; source: string }> {
-    const [signals, demand] = await Promise.all([this.zoneSignals(pt), geoIntelligenceService.demandForecast(6)]);
+  async surgeForecast(pt: { lat: number; lng: number }): Promise<{ data: { current: number; predicted: number; trend: "rising" | "falling" | "stable" | "unknown"; expectedDurationMin: number; zone?: string; trendBasis: "demand-forecast" | "UNAVAILABLE_STALE_FORECAST" | typeof DEMAND_FORECAST_UNAVAILABLE }; confidence: number; freshness: string; source: string }> {
+    // The forecast is read through the non-throwing path: a warehouse outage used to reject this
+    // Promise.all and 500 the whole answer, including the live multiplier that does not depend on it (X-85).
+    const [signals, demand] = await Promise.all([this.zoneSignals(pt), geoIntelligenceService.demandForecastSafe(6)]);
+    const sourceUnavailable = !demand.available;
     const current = Math.round(clamp(signals.weather * signals.demand * signals.scarcity, 1, 3) * 100) / 100;
-    const pts = (demand.data as { points: Array<{ predicted: number }> }).points ?? [];
-    // demand-forecast slope → projected surge direction over the next hours.
-    const slope = pts.length >= 2 ? (pts[Math.min(2, pts.length - 1)].predicted - pts[0].predicted) / Math.max(pts[0].predicted, 1) : 0;
+    const demandData = demand.data as { points?: Array<{ predicted: number }>; stale?: boolean } | null;
+    const pts = demandData?.points ?? [];
+
+    /**
+     * A slope taken across an expired forecast window is a direction about the wrong days.
+     *
+     * The warehouse model projects forward from the end of its training data, so when that window has
+     * already closed these points describe past hours. Reading a gradient across them and reporting
+     * it as "surge is rising" would be inventing a trend — so when the forecast is stale the trend is
+     * reported as unknown and `predicted` stays at the current multiplier rather than being nudged by
+     * a number that means nothing.
+     *
+     * `current` is unaffected: it comes from live zone signals, not from the forecast.
+     */
+    const forecastUsable = !sourceUnavailable && !demandData?.stale && pts.length >= 2;
+    const slope = forecastUsable
+      ? (pts[Math.min(2, pts.length - 1)]!.predicted - pts[0]!.predicted) / Math.max(pts[0]!.predicted, 1)
+      : 0;
     const predicted = Math.round(clamp(current * (1 + slope * 0.5), 1, 3) * 100) / 100;
-    const trend = predicted > current * 1.05 ? "rising" : predicted < current * 0.95 ? "falling" : "stable";
+    const trend: "rising" | "falling" | "stable" | "unknown" = !forecastUsable
+      ? "unknown"
+      : predicted > current * 1.05 ? "rising" : predicted < current * 0.95 ? "falling" : "stable";
     return {
-      data: { current, predicted, trend, expectedDurationMin: trend === "rising" ? 60 : 30, zone: signals.zone },
-      confidence: (demand.confidence ?? 0.6) * 0.9,
+      data: {
+        current, predicted, trend,
+        expectedDurationMin: trend === "rising" ? 60 : 30,
+        zone: signals.zone,
+        /** Stated so a caller can tell "no change expected" apart from "we cannot say". */
+        // "Stale" and "unavailable" are different causes; a caller must not be told the wrong one.
+        trendBasis: forecastUsable ? "demand-forecast" : sourceUnavailable ? DEMAND_FORECAST_UNAVAILABLE : "UNAVAILABLE_STALE_FORECAST",
+      },
+      confidence: forecastUsable ? (demand.confidence ?? 0.6) * 0.9 : 0,
       freshness: new Date().toISOString(),
-      source: "geo-intel:surge+demand-forecast",
+      source: forecastUsable ? "geo-intel:surge+demand-forecast" : sourceUnavailable ? "geo-intel:surge (demand forecast unavailable)" : "geo-intel:surge (demand forecast stale)",
     };
   }
 
   /**
-   * Deterministic A/B price-experiment assignment (stateless, sticky per customer).
-   * Records exposure as a Prometheus counter for revenue/conversion analysis — no schema
-   * change, no fabricated cohorts. Call `recordConversion(variant)` on booking completion.
+   * Deterministic A/B price-experiment assignment — sticky per customer, and now governed.
+   *
+   * ── §87, the stop switch ──────────────────────────────────────────────────────
+   *
+   * This used to assign unconditionally. There was no way to turn it off: the registry row in
+   * `platform_experiments` was never consulted, so setting an experiment to `paused` or deleting
+   * it entirely changed nothing — every caller kept being bucketed and every exposure kept being
+   * counted. A control with no off switch is not a control. The status is now read on every
+   * assignment, and anything other than `running` returns control for everybody and records no
+   * exposure, so a stopped experiment stops producing data as well as stopping acting.
+   *
+   * Bucketing itself is unchanged: sha256 over `experiment:customerId`, so the same customer
+   * lands in the same arm across restarts without storing an assignment table.
+   *
+   * ── What is deliberately NOT fixed here ───────────────────────────────────────
+   *
+   * `priceMultiplier` returns 1.0 for both arms. That is not an oversight introduced here — the
+   * previous line read `variant === "treatment" ? 1.0 : 1.0` under a comment claiming the arms
+   * differed. They do not, and so the experiment cannot measure anything: any gap between the
+   * arms is noise. Making the treatment arm actually move prices would be inventing pricing
+   * policy, which is a business decision and not one to smuggle in behind a governance fix. The
+   * state is surfaced honestly instead — `differentiated: false` says the arms are identical —
+   * and choosing what treatment should do is recorded as a human decision.
    */
-  assignExperiment(customerId: string, experiment = "surge_v1"): { variant: "control" | "treatment"; priceMultiplier: number } {
+  async assignExperiment(
+    customerId: string,
+    experiment = "surge_v1",
+  ): Promise<{
+    variant: "control" | "treatment";
+    priceMultiplier: number;
+    active: boolean;
+    differentiated: boolean;
+    reason: string;
+  }> {
+    const registered = await prisma.platformExperiment
+      .findUnique({ where: { key: experiment }, select: { status: true } })
+      .catch(() => null);
+
+    // Unregistered or not running: everyone gets control, and nothing is counted. An experiment
+    // that was never registered has no owner and no stop switch, so it is treated as stopped
+    // rather than as running-by-default.
+    if (registered?.status !== "running") {
+      incCounter("pricing_experiment_suppressed_total", {
+        experiment,
+        reason: registered ? registered.status : "unregistered",
+      });
+      return {
+        variant: "control",
+        priceMultiplier: 1.0,
+        active: false,
+        differentiated: false,
+        reason: registered
+          ? `Experiment ${experiment} is ${registered.status}, not running`
+          : `Experiment ${experiment} is not registered in platform_experiments`,
+      };
+    }
+
     const bucket = parseInt(createHash("sha256").update(`${experiment}:${customerId}`).digest("hex").slice(0, 8), 16) % 100;
     const variant = bucket < 50 ? "control" : "treatment";
-    const priceMultiplier = variant === "treatment" ? 1.0 : 1.0; // treatment applies the dynamic multiplier; control caps at 1.0
     incCounter("pricing_experiment_exposure_total", { experiment, variant });
-    return { variant, priceMultiplier };
+    return {
+      variant,
+      // Both arms, identically. See the note above: the treatment behaviour is undecided.
+      priceMultiplier: 1.0,
+      active: true,
+      differentiated: false,
+      reason: "Assigned; arms are not yet differentiated, so no effect is measurable",
+    };
   }
   recordConversion(experiment: string, variant: "control" | "treatment", revenue: number): void {
     incCounter("pricing_experiment_conversion_total", { experiment, variant });

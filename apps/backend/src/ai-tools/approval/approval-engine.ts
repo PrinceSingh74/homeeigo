@@ -4,6 +4,18 @@ import type { AiToolApprovalStatus } from "@prisma/client";
 import type { ApprovalDecisionInput, ApprovalRequestInput } from "../types";
 import { aiToolsConfig } from "../config";
 import { redactArguments } from "../security/tool-security";
+import { toInputJsonObject } from "../../lib/json-input";
+
+/** Redacted, display-only preview of the arguments, reduced to something a Json column accepts. */
+function previewForStorage(preview: Record<string, unknown> | undefined) {
+  if (!preview) return undefined;
+  const redacted = redactArguments(preview);
+  return (
+    toInputJsonObject(redacted) ?? {
+      unavailable: "Arguments preview could not be stored; review the tool audit for this execution.",
+    }
+  );
+}
 
 export async function createApprovalRequest(input: ApprovalRequestInput) {
   const approvalId = crypto.randomUUID();
@@ -18,9 +30,15 @@ export async function createApprovalRequest(input: ApprovalRequestInput) {
       argumentsHash: input.argumentsHash,
       // Display-only, and redacted on the way in. The approver needs to see the amount and
       // the target; they never need to see a token or a card number.
-      argumentsPreview: input.argumentsPreview
-        ? (redactArguments(input.argumentsPreview) as never)
-        : undefined,
+      //
+      // Validated rather than asserted. `redactValue` passes primitives through untouched, so a
+      // programmatically-built argument set can carry `undefined`/NaN/BigInt into the redacted
+      // copy — values a Json column cannot store. The old `as never` would have let those reach
+      // the write and fail it, which would mean failing to create the APPROVAL itself: a
+      // high-risk action's human control lost because its preview would not serialise. If the
+      // preview is unstorable the approval is still created, and the approver is told the
+      // preview is missing rather than being shown a blank that looks like "no arguments".
+      argumentsPreview: previewForStorage(input.argumentsPreview),
       resourceRef: input.resourceRef,
       riskScore: input.riskScore,
       approvalMode: input.approvalMode ?? "SINGLE",

@@ -24,7 +24,7 @@ export const pageLead =
 
 /** Section headings — fluid scale across viewports. */
 export const sectionTitle =
-  "font-display text-2xl font-bold tracking-tight text-content sm:text-3xl md:text-4xl lg:text-[2.75rem]";
+  "font-display type-title font-bold tracking-tight text-content";
 
 /** Section header row (title + action) — editorial, no box */
 export const sectionHeaderRow =
@@ -36,11 +36,11 @@ export const sectionSubtitle =
 
 /** Marketing hero headline */
 export const heroTitle =
-  "font-display font-bold leading-[1.08] tracking-tight text-content text-[clamp(2.25rem,6vw,4rem)]";
+  "font-display type-display font-bold tracking-tight text-content";
 
 /** Inline section action link */
 export const sectionAction =
-  "rounded-md text-sm font-semibold text-primary outline-none transition-colors hover:text-primary/80 focus-visible:ring-2 focus-visible:ring-primary/60 sm:text-base";
+  "rounded-lg text-sm font-semibold text-brand outline-none transition-colors hover:text-brand/80 focus-visible:ring-2 focus-visible:ring-brand/60 sm:text-base";
 
 /** Dashboard / page H1 */
 export const pageTitle =

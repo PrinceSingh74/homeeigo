@@ -102,8 +102,13 @@ async function main() {
     }),
   ]);
 
+  // Demo accounts are fixtures, born classified exactly as ensure-demo-users.ts creates them. Left NULL
+  // (UNKNOWN = business), ensure-demo-users only updates them and never classifies, so a seeded DB put
+  // the demo partner in the business population: CERTIFICATION/synthetic bookings then failed the
+  // provenance gate (PROVENANCE_INVALID) and synthetic signups found no partner at all.
   const customer = await prisma.user.create({
     data: {
+      dataOrigin: "FIXTURE",
       email: "customer@homigo.demo",
       phoneNumber: "+919876543210",
       firstName: "Arjun",
@@ -121,6 +126,7 @@ async function main() {
 
   const vendorUser = await prisma.user.create({
     data: {
+      dataOrigin: "FIXTURE",
       email: "partner@homigo.demo",
       phoneNumber: "+919876543211",
       firstName: "Rahul",
@@ -134,6 +140,7 @@ async function main() {
 
   await prisma.user.create({
     data: {
+      dataOrigin: "FIXTURE",
       email: "admin@homigo.demo",
       phoneNumber: "+919876543212",
       firstName: "Homigo",
@@ -171,6 +178,9 @@ async function main() {
       serviceRegions: ["Noida", "Delhi"],
       isVerified: true,
       isApproved: true,
+      // Approved + active is ACTIVE (the 20260829140000 backfill rule). Left at the APPLIED default,
+      // the demo partner is outside DISPATCHABLE_PROVIDER_WHERE and every slot reads "no professional".
+      lifecycleState: "ACTIVE",
       isOnline: true,
       rating: 4.8,
       totalReviews: 320,
@@ -270,6 +280,11 @@ async function main() {
     },
   });
 
+  // Its own 14:00 slot, as its scheduledTime says. It used to reuse `scheduled` (10:00), overlapping
+  // the customer's 10:00–12:00 booking above, and the migrated schema's bookings_user_slot_excl
+  // rejected the seed (23P01) — so the seed could not complete on a database built by migrations.
+  const pendingScheduled = new Date(scheduled);
+  pendingScheduled.setHours(14, 0, 0, 0);
   const pendingBooking = await prisma.booking.create({
     data: {
       bookingNumber: bookingNumber(2),
@@ -277,7 +292,7 @@ async function main() {
       serviceId: acService.id,
       addressId: address.id,
       status: BookingStatus.PENDING,
-      scheduledDate: scheduled,
+      scheduledDate: pendingScheduled,
       scheduledTime: "02:00 PM",
       estimatedDuration: 60,
       baseAmount: 599,

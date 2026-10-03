@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* The app switches theme with html.dark (ThemeProvider); without this, every `dark:` utility
+   followed the OS preference instead of the partner's choice. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* HOMIGO Pro — Partner / Vendor Design System */
 
 @theme {
@@ -16,6 +20,14 @@
   --color-partner-success: #15803d;
   --color-partner-warning: #b45309;
   --color-partner-danger: #dc2626;
+  /* Fills keep the AA shades in BOTH themes: white text on the vivid dark-theme shades fails
+     (#60a5fa 2.5:1, #4ade80 1.7:1, #f87171 2.8:1). html.dark brightens the text tokens only. */
+  --background-color-partner-primary: #2563eb;
+  --background-color-partner-success: #15803d;
+  --background-color-partner-warning: #b45309;
+  --background-color-partner-danger: #dc2626;
+  /* amber-400 as text on light tints is 1.5:1 */
+  --text-color-amber-400: #b45309;
   --color-partner-text: #0f172a;
   --color-partner-text-secondary: #334155;
   --color-partner-muted: #475569;
@@ -76,7 +88,9 @@ html.dark {
   --color-partner-text: #f8fafc;
   --color-partner-text-secondary: #cbd5e1;
   --color-partner-muted: #94a3b8;
-  --color-partner-muted-dim: #64748b;
+  /* #64748b on the dark card is 3.75:1 */
+  --color-partner-muted-dim: #8b98ad;
+  --text-color-amber-400: #fbbf24;
   --color-partner-line: rgb(96 165 250 / 0.18);
   --color-partner-surface: #0a1530;
   --color-partner-border: rgb(148 163 184 / 0.2);

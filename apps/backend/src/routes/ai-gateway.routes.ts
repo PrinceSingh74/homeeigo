@@ -6,6 +6,7 @@ import { getUsageSummary } from "../ai/cost/ai-cost.service";
 import { clientIp, traceId } from "../lib/request-identity";
 import prisma from "../lib/prisma";
 import type { AiGatewayRole } from "@prisma/client";
+import { partnerRoleChat, adminRoleChat } from "../ai/surfaces/role-chat";
 
 async function handleGatewayRequest(
   request: Request,
@@ -13,7 +14,7 @@ async function handleGatewayRequest(
   userRole: string,
   endpoint: "customer" | "partner" | "admin" | "chat",
   body: unknown,
-  set: { status: number },
+  set: { status?: number | string },
 ) {
   const aiRole = mapUserRoleToAiRole(userRole, endpoint);
   if (!aiRole) {
@@ -32,14 +33,36 @@ async function handleGatewayRequest(
       endpoint,
       input: body,
     });
-    return { success: true, data: result };
+    return { success: true, data: { ...result, mode: "llm" as const } };
   } catch (err) {
     if (err instanceof AiGatewayError) {
+      if (err.code === "PROVIDER_ERROR" || err.code === "TIMEOUT" || err.code === "GATEWAY_DISABLED") {
+        return {
+          success: true,
+          data: {
+            content: "I don't have enough verified data to complete that right now.",
+            provider: "DETERMINISTIC",
+            model: "role-fallback",
+            fallbackUsed: true,
+            requestId: `det_${Date.now()}`,
+            mode: "deterministic_fallback" as const,
+          },
+        };
+      }
       set.status = AI_ERROR_STATUS[err.code] ?? 502;
       return { success: false, error: err.message, code: err.code };
     }
-    set.status = 502;
-    return { success: false, error: "AI Gateway error", code: "PROVIDER_ERROR" };
+    return {
+      success: true,
+      data: {
+        content: "I don't have enough verified data to complete that right now.",
+        provider: "DETERMINISTIC",
+        model: "role-fallback",
+        fallbackUsed: true,
+        requestId: `det_${Date.now()}`,
+        mode: "deterministic_fallback" as const,
+      },
+    };
   }
 }
 
@@ -97,7 +120,17 @@ export const aiGatewayRoutes = new Elysia({ prefix: "/api/ai" })
     "/partner",
     async ({ requireAuth, body, request, set }) => {
       const { userId, role } = requireAuth();
-      return handleGatewayRequest(request, userId, role, "partner", body, set);
+      try {
+        const data = await partnerRoleChat({ userId, userRole: role, request, body });
+        return { success: true, data };
+      } catch (err) {
+        if (err instanceof AiGatewayError) {
+          set.status = AI_ERROR_STATUS[err.code] ?? 502;
+          return { success: false, error: err.message, code: err.code };
+        }
+        set.status = 502;
+        return { success: false, error: "AI Gateway error", code: "PROVIDER_ERROR" };
+      }
     },
     { body: aiBodySchema },
   )
@@ -105,7 +138,17 @@ export const aiGatewayRoutes = new Elysia({ prefix: "/api/ai" })
     "/admin",
     async ({ requireAuth, body, request, set }) => {
       const { userId, role } = requireAuth();
-      return handleGatewayRequest(request, userId, role, "admin", body, set);
+      try {
+        const data = await adminRoleChat({ userId, userRole: role, request, body });
+        return { success: true, data };
+      } catch (err) {
+        if (err instanceof AiGatewayError) {
+          set.status = AI_ERROR_STATUS[err.code] ?? 502;
+          return { success: false, error: err.message, code: err.code };
+        }
+        set.status = 502;
+        return { success: false, error: "AI Gateway error", code: "PROVIDER_ERROR" };
+      }
     },
     { body: aiBodySchema },
   )

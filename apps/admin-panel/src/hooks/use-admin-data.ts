@@ -1,5 +1,6 @@
 "use client";
 
+import type { RequestableLifecycle } from "@/services/admin-api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { adminApi, type ServiceInput, type AdminPlanInput } from "@/services/admin-api";
 import type {
@@ -281,6 +282,11 @@ export function useProcessWithdrawalMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => adminApi.processWithdrawal(id),
+    // A failed payout used to be invisible: no onError, the row refetched unchanged. Callers must
+    // render `mutation.error`; this log guarantees the failure at least reaches the console.
+    onError: (err, id) => {
+      console.error("[admin] processWithdrawal failed", { id, error: err instanceof Error ? err.message : String(err) });
+    },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: adminKeys.dashboard });
     },
@@ -328,6 +334,51 @@ export function useSetServiceStatusMutation() {
   return useMutation({
     mutationFn: (vars: { id: string; isActive: boolean }) =>
       adminApi.services.setStatus(vars.id, vars.isActive),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: adminKeys.servicesAll }),
+  });
+}
+
+/** Customer taxonomy tree (categories → subcategories) for the service editor. */
+export function useServiceTaxonomyQuery() {
+  return useQuery({
+    queryKey: ["admin", "services", "taxonomy"] as const,
+    queryFn: () => adminApi.services.categories(),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Phase 06 requirement catalogue for the service editor (active items). */
+export function useRequirementItemsQuery() {
+  return useQuery({
+    queryKey: ["admin", "services", "requirement-items"] as const,
+    queryFn: () => adminApi.services.requirementItems(),
+    staleTime: 60_000,
+  });
+}
+
+/** Mutations never retry (QueryProvider): a failed create is shown, not silently repeated. */
+export function useCreateRequirementItemMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof adminApi.services.createRequirementItem>[0]) => adminApi.services.createRequirementItem(body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "services", "requirement-items"] }),
+  });
+}
+
+export function useServiceVersionsQuery(id: string | null) {
+  return useQuery({
+    queryKey: ["admin", "services", "versions", id] as const,
+    queryFn: () => adminApi.services.versions(id!),
+    enabled: Boolean(id),
+    staleTime: 15_000,
+  });
+}
+
+export function useServiceTransitionMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; to: RequestableLifecycle; expectedVersion?: number }) =>
+      adminApi.services.transition(vars.id, vars.to, vars.expectedVersion),
     onSuccess: () => void qc.invalidateQueries({ queryKey: adminKeys.servicesAll }),
   });
 }

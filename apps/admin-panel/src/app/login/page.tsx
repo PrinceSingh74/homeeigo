@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { AlertTriangle, Building2, Loader2, Lock } from "lucide-react";
 import { useAdminStore } from "@/stores/admin-store";
 
@@ -9,7 +8,6 @@ export default function AdminLoginPage() {
   const login = useAdminStore((s) => s.login);
   const storeError = useAdminStore((s) => s.error);
   const setError = useAdminStore((s) => s.setError);
-  const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,11 +25,10 @@ export default function AdminLoginPage() {
     setIsLoading(true);
     const result = await login(email.trim().toLowerCase(), password);
     setIsLoading(false);
-    if (result.ok) {
-      router.replace("/");
-    } else {
-      setLocalError(result.message);
-    }
+    // Navigation belongs to AdminAuthGuard alone (`isAuthenticated && isPublic → replace("/")`);
+    // a second router.replace("/") here raced it and could leave the navigation uncommitted — the
+    // same defect traced in partner-web's login form (2026-09-21).
+    if (!result.ok) setLocalError(result.message);
   }
 
   const errorToShow = localError || storeError;

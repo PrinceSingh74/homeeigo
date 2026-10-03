@@ -1,12 +1,53 @@
-import { AssignmentAttemptStatus, BookingStatus, Prisma } from "@prisma/client";
+import { analyticsWhere } from "../lib/analytics-scope";
+import { AssignmentAttemptStatus, AssignmentJobStatus, BookingStatus, Prisma } from "@prisma/client";
+import { CUSTOMER_CATALOG_WHERE, PARTNER_OPERATIONAL_WHERE, partnerJobBrief } from "../lib/service-domain";
+import { partnerRequirementsFromSnapshot } from "../lib/service-requirements";
+import { partnerFollowUpFromSnapshot } from "../lib/booking-case-policy";
+import { paymentExemptBookingIds } from "./booking-payment-gate";
 import prisma from "../lib/prisma";
 import { distanceKm, etaMinutes } from "../lib/geo";
+
+/**
+ * ── OWNER DECISION #7: public discovery reports distance to the kilometre ──
+ *
+ * `/api/providers/nearby` and `/search` are unauthenticated by design — customers browse before
+ * signing in — and both returned distance rounded to 100 m from a caller-CHOSEN point. Three
+ * anonymous queries from three different points therefore trilaterate a working partner's live
+ * position to within about a hundred metres. The partner never consented to that and cannot see it
+ * happening.
+ *
+ * Two options were on the table: require a session, or coarsen the number. Requiring a session
+ * removes pre-login browsing, which is a deliberate product behaviour documented on the availability
+ * route, so it trades a real feature for a fix that coarsening also achieves. At 1 km the answer a
+ * customer actually needs — "is somebody near me?" — survives intact, while the residual position
+ * inference collapses to roughly a square kilometre, which is no more than "this partner works in
+ * this area" and is inherent to offering the service at all.
+ *
+ * Rounded rather than floored so a partner 200 m away does not read as 0 km, and applied in one
+ * place so the two public surfaces cannot drift apart.
+ */
+export const PUBLIC_DISTANCE_PRECISION_KM = 1;
+
+export function publicDistanceKm(exactKm: number): number {
+  if (!Number.isFinite(exactKm) || exactKm < 0) return 0;
+  return Math.max(
+    PUBLIC_DISTANCE_PRECISION_KM,
+    Math.round(exactKm / PUBLIC_DISTANCE_PRECISION_KM) * PUBLIC_DISTANCE_PRECISION_KM,
+  );
+}
 import { parsePagination } from "../lib/pagination";
 import { bookingStatusApi, paymentStatusApi } from "../lib/format";
 import { commissionRateForVolume } from "./earnings.service";
 import { addressPiiService } from "./address-pii.service";
 import { encryptionService } from "./encryption.service";
 import { partnerOperationsService } from "./partner-operations.service";
+import { serviceOfferWhere } from "./provider-capability-loader";
+import { DISPATCHABLE_PROVIDER_WHERE } from "../lib/partner-four-axis";
+import {
+  customerAvailableNow,
+  loadPresenceEvidence,
+} from "./dispatch-eligibility.service";
+import { CREDITED_EARNING_WHERE } from "../lib/earning-settlement";
 
 function startOfDayUtc(d = new Date()): Date {
   const c = new Date(d);
@@ -36,9 +77,17 @@ const ACCEPTED_TAB_STATUSES: BookingStatus[] = [
   BookingStatus.IN_PROGRESS,
 ];
 
-/** Provider is busy — includes dispatched-but-not-yet-accepted requests. */
-const BUSY_STATUSES: BookingStatus[] = [BookingStatus.PENDING, ...ACCEPTED_TAB_STATUSES];
-
+/**
+ * Partner job-list FILTERS (query `?status=`), not statuses. Each key is a named set:
+ *   pending     offered / unclaimed
+ *   accepted    claimed but work NOT started (ACCEPTED, ASSIGNED, EN_ROUTE) — "upcoming"
+ *   in_progress work started
+ *   active      ALL claimed work incl. IN_PROGRESS — what an "Active jobs" view means
+ *   completed / cancelled
+ * "accepted" is not "active": the partner mobile app used it for its Active tab and IN_PROGRESS
+ * jobs disappeared (and their GPS publisher stopped). Clients import the same names from their
+ * shared booking-status module; do not add another alias.
+ */
 const STATUS_MAP: Record<string, BookingStatus[]> = {
   pending: [BookingStatus.PENDING],
   accepted: [BookingStatus.ACCEPTED, BookingStatus.ASSIGNED, BookingStatus.EN_ROUTE],
@@ -51,6 +100,17 @@ const STATUS_MAP: Record<string, BookingStatus[]> = {
   ],
   active: ACCEPTED_TAB_STATUSES,
 };
+
+/** Upper bound on rows hydrated for a geo search before the exact-radius filter. */
+const PROVIDER_SCAN_CAP = 500;
+
+/** Lat/lng box that contains every point within `radiusKm` (1° lat ≈ 111 km; lng shrinks with cos φ). */
+function boundingBox(lat: number, lng: number, radiusKm: number) {
+  const dLat = radiusKm / 111;
+  const cos = Math.max(0.1, Math.cos((lat * Math.PI) / 180));
+  const dLng = radiusKm / (111 * cos);
+  return { minLat: lat - dLat, maxLat: lat + dLat, minLng: lng - dLng, maxLng: lng + dLng };
+}
 
 export class ProviderService {
   private providerName(p: { user: { firstName: string; lastName: string }; businessName: string | null }) {
@@ -68,19 +128,32 @@ export class ProviderService {
     limit?: number;
   }) {
     const { page, limit, skip } = parsePagination({ page: body.page, limit: body.limit });
-    const radius = body.radius ?? 10;
+    const radius = Math.min(50, Math.max(1, body.radius ?? 10));
+    // Radius is the most selective predicate; pushing a bounding box into SQL means the DB returns
+    // the neighbourhood instead of every approved provider in the system (which was then
+    // haversine-filtered and paginated in JS, hydrating the full user row per provider).
+    const box = boundingBox(body.latitude, body.longitude, radius);
+    // Phase 11: the SAME "offers this service" predicate and account gates matching applies, so a
+    // partner listed here is one dispatch could offer. `null` = unknown service: nobody offers it.
+    const offersWhere = await serviceOfferWhere(body.serviceId);
+    if (!offersWhere) return { providers: [], total: 0, page };
     const providers = await prisma.provider.findMany({
       where: {
-        isActive: true,
-        isApproved: true,
-        serviceCategories: { has: body.serviceId },
+        ...offersWhere,
+        ...DISPATCHABLE_PROVIDER_WHERE,
         rating: body.minRating ? { gte: body.minRating } : undefined,
         completionRate: body.minCompletionRate ? { gte: body.minCompletionRate } : undefined,
+        currentLocation: { is: { latitude: { gte: box.minLat, lte: box.maxLat }, longitude: { gte: box.minLng, lte: box.maxLng } } },
+        // Customer-facing listing: business partners only (see matchingService.candidatePopulation).
+        user: analyticsWhere() as Prisma.UserWhereInput,
       },
-      include: { user: true, currentLocation: true },
+      include: { user: { select: { firstName: true, lastName: true, profileImage: true } }, currentLocation: true },
+      // Bounded even in a dense box: the exact-radius filter and sort below act on at most this many.
+      take: PROVIDER_SCAN_CAP,
     });
 
-    const service = await prisma.service.findUnique({ where: { id: body.serviceId } });
+    // Customer-visible commercial services only: a fixture id must not echo a price to anonymous callers.
+    const service = await prisma.service.findFirst({ where: { id: body.serviceId, ...CUSTOMER_CATALOG_WHERE } });
     const filtered = providers
       .map((p) => {
         const loc = p.currentLocation;
@@ -93,20 +166,40 @@ export class ProviderService {
       .sort((a, b) => a.dist - b.dist);
 
     const slice = filtered.slice(skip, skip + limit);
+    const now = new Date();
+    const presenceMap = await loadPresenceEvidence(slice.map(({ p }) => p.id));
     return {
-      providers: slice.map(({ p, dist }) => ({
-        id: p.id,
-        name: this.providerName(p),
-        rating: p.rating,
-        reviewCount: p.totalReviews,
-        profileImage: p.profileImage ?? p.user.profileImage,
-        completionRate: p.completionRate,
-        responseRate: p.responseRate,
-        isOnline: p.isOnline,
-        distance: Math.round(dist * 10) / 10,
-        eta: etaMinutes(dist),
-        basePrice: service?.basePrice ?? 0,
-      })),
+      providers: slice.map(({ p, dist }) => {
+        const evidence = presenceMap.get(p.id) ?? null;
+        const customer = customerAvailableNow({
+          providerId: p.id,
+          lifecycleState: p.lifecycleState,
+          isActive: p.isActive,
+          isApproved: p.isApproved,
+          isBanned: p.isBanned,
+          complianceRestricted: p.complianceRestricted,
+          isOnline: p.isOnline,
+          pausedAt: p.pausedAt,
+          lastHeartbeatAt: evidence?.lastHeartbeatAt ?? null,
+          lastLocationAt: evidence?.lastLocationAt ?? null,
+          lastLocationLat: evidence?.lastLocationLat ?? null,
+          lastLocationLng: evidence?.lastLocationLng ?? null,
+        }, now);
+        return {
+          id: p.id,
+          name: this.providerName(p),
+          rating: p.rating,
+          reviewCount: p.totalReviews,
+          profileImage: p.profileImage ?? p.user.profileImage,
+          completionRate: p.completionRate,
+          responseRate: p.responseRate,
+          availableNow: customer.availableNow,
+          availabilityLabel: customer.availabilityLabel,
+          distance: publicDistanceKm(dist),
+          eta: etaMinutes(dist),
+          basePrice: service?.basePrice ?? 0,
+        };
+      }),
       total: filtered.length,
       page,
     };
@@ -119,8 +212,23 @@ export class ProviderService {
     });
     if (!p) return null;
     const services = await prisma.service.findMany({
-      where: { id: { in: p.serviceCategories } },
+      where: { id: { in: p.serviceCategories }, ...CUSTOMER_CATALOG_WHERE },
       select: { id: true, name: true },
+    });
+    const evidence = (await loadPresenceEvidence([p.id])).get(p.id) ?? null;
+    const customer = customerAvailableNow({
+      providerId: p.id,
+      lifecycleState: p.lifecycleState,
+      isActive: p.isActive,
+      isApproved: p.isApproved,
+      isBanned: p.isBanned,
+      complianceRestricted: p.complianceRestricted,
+      isOnline: p.isOnline,
+      pausedAt: p.pausedAt,
+      lastHeartbeatAt: evidence?.lastHeartbeatAt ?? null,
+      lastLocationAt: evidence?.lastLocationAt ?? null,
+      lastLocationLat: evidence?.lastLocationLat ?? null,
+      lastLocationLng: evidence?.lastLocationLng ?? null,
     });
     return {
       id: p.id,
@@ -135,13 +243,14 @@ export class ProviderService {
       responseRate: p.responseRate,
       onTimeRate: p.onTimeRate,
       avgResponseTime: p.avgResponseTime,
-      isOnline: p.isOnline,
-      onlineSince: p.onlineSince,
+      availableNow: customer.availableNow,
+      availabilityLabel: customer.availabilityLabel,
       workingHoursStart: p.workingHoursStart,
       workingHoursEnd: p.workingHoursEnd,
       workingDays: p.workingDays,
       services,
       certifications: p.certifications,
+      badges: p.badges,
       isVerified: p.isVerified,
       verificationDate: p.verificationDate?.toISOString().slice(0, 10),
     };
@@ -194,7 +303,7 @@ export class ProviderService {
     const dayStart = new Date(`${date}T00:00:00`);
     const cap = await partnerOperationsService.loadCapacityFor(providerId, dayStart);
     const snap = await partnerOperationsService.snapshot(providerId);
-    const isAvailable = cap.availableSlots > 0 && snap.operationalStatus !== "suspended" && snap.operationalStatus !== "paused";
+    const isAvailable = cap.availableSlots > 0 && !snap.isSuspended && !snap.isPaused;
     const start = snap.workingHoursStart ?? "09:00";
     const end = snap.workingHoursEnd ?? "18:00";
     const slots =
@@ -210,7 +319,9 @@ export class ProviderService {
       isAvailable,
       availableSlots: slots.filter((s) => s.startTime < s.endTime),
       nextAvailableDate: date,
-      capacity: cap,
+      // Field-picked: the raw capacity snapshot carries live job counts, reserved offers and
+      // per-day limits — operational data about a partner that an anonymous caller has no use for.
+      capacity: { remainingSlots: Math.max(0, cap.availableSlots) },
       serviceId,
     };
   }
@@ -223,13 +334,30 @@ export class ProviderService {
     limit?: number;
   }) {
     const limit = Math.min(50, Number(query.limit) || 10);
-    const radius = query.radius ?? 10;
-    const where: Record<string, unknown> = { isActive: true, isApproved: true, isOnline: true };
-    if (query.serviceId) where.serviceCategories = { has: query.serviceId };
+    const radius = Math.min(50, Math.max(1, query.radius ?? 10));
+    const box = boundingBox(query.latitude, query.longitude, radius);
+    // Phase 11: shared account gates (compliance, lifecycle, pause, ban) — a public map pin is a
+    // partner dispatch could actually offer work to.
+    const where: Prisma.ProviderWhereInput = {
+      ...DISPATCHABLE_PROVIDER_WHERE,
+      isOnline: true,
+      // Map screens poll this; without the box every online provider in the system was loaded per poll.
+      currentLocation: { is: { latitude: { gte: box.minLat, lte: box.maxLat }, longitude: { gte: box.minLng, lte: box.maxLng } } },
+      // Public and anonymous, so the viewer is the business population. The only partner this
+      // returned for central Bangalore on 2026-09-21 was a certification fixture left online by
+      // whole-project-integration-cert.ts. Inert until the provenance backfill runs.
+      user: analyticsWhere() as Prisma.UserWhereInput,
+    };
+    if (query.serviceId) {
+      const offersWhere = await serviceOfferWhere(query.serviceId);
+      if (!offersWhere) return { providers: [], total: 0 };
+      Object.assign(where, offersWhere);
+    }
 
     const providers = await prisma.provider.findMany({
       where,
-      include: { user: true, currentLocation: true },
+      include: { user: { select: { firstName: true, lastName: true, profileImage: true } }, currentLocation: true },
+      take: PROVIDER_SCAN_CAP,
     });
 
     const list = providers
@@ -244,15 +372,35 @@ export class ProviderService {
       .sort((a, b) => a.dist - b.dist)
       .slice(0, limit);
 
+    const now = new Date();
+    const presenceMap = await loadPresenceEvidence(list.map(({ p }) => p.id));
     return {
-      providers: list.map(({ p, dist }) => ({
-        id: p.id,
-        name: this.providerName(p),
-        distance: Math.round(dist * 10) / 10,
-        rating: p.rating,
-        isOnline: p.isOnline,
-        eta: etaMinutes(dist),
-      })),
+      providers: list.map(({ p, dist }) => {
+        const evidence = presenceMap.get(p.id) ?? null;
+        const customer = customerAvailableNow({
+          providerId: p.id,
+          lifecycleState: p.lifecycleState,
+          isActive: p.isActive,
+          isApproved: p.isApproved,
+          isBanned: p.isBanned,
+          complianceRestricted: p.complianceRestricted,
+          isOnline: p.isOnline,
+          pausedAt: p.pausedAt,
+          lastHeartbeatAt: evidence?.lastHeartbeatAt ?? null,
+          lastLocationAt: evidence?.lastLocationAt ?? null,
+          lastLocationLat: evidence?.lastLocationLat ?? null,
+          lastLocationLng: evidence?.lastLocationLng ?? null,
+        }, now);
+        return {
+          id: p.id,
+          name: this.providerName(p),
+          distance: publicDistanceKm(dist),
+          rating: p.rating,
+          availableNow: customer.availableNow,
+          availabilityLabel: customer.availabilityLabel,
+          eta: etaMinutes(dist),
+        };
+      }),
       total: list.length,
     };
   }
@@ -268,7 +416,7 @@ export class ProviderService {
     });
     if (!p) return null;
     const services = await prisma.service.findMany({
-      where: { id: { in: p.serviceCategories } },
+      where: { id: { in: p.serviceCategories }, ...PARTNER_OPERATIONAL_WHERE },
       select: { id: true, name: true },
     });
     return {
@@ -398,19 +546,53 @@ export class ProviderService {
   ) {
     const { page, limit, skip } = parsePagination(query);
     let where: Prisma.BookingWhereInput = { providerId };
+    /** Populated for the pending tab only — the live offer window behind each card. */
+    let offerByBookingId = new Map<string, { dispatchedAt: Date; expiresAt: Date }>();
 
     if (query.status === "pending") {
-      // Only live dispatches waiting for accept/reject — not already-accepted jobs.
-      const openAttempts = await prisma.assignmentAttempt.findMany({
+      /**
+       * Only offers the partner can still ACT on.
+       *
+       * `status: SENT` alone was not that. An attempt stays SENT until something closes it, and two
+       * things stop closing it: `timeoutAt` is cleared when a job leaves the dispatch states, and a
+       * job that exhausts its attempts used to abandon its open offers outright. The result was a
+       * feed of offers that could never be accepted — measured on live data, one partner was holding
+       * four, dispatched 24 to 41 days earlier against a five-minute window.
+       *
+       * The partner cannot tell those apart from a real offer, so they tap Accept and get an error.
+       * That is the defect behind "accept doesn't work": the Accept button was real, the card was
+       * not.
+       *
+       * Liveness is now three conditions, all of which must hold: the job is still DISPATCHED, its
+       * window has not closed, and the booking is still unclaimed. The sweeper remains the authority
+       * that closes the attempt row — this is the read-side guarantee that a lagging sweep can never
+       * show the partner work that is already gone.
+       */
+      const offers = await prisma.assignmentAttempt.findMany({
         where: {
           providerId,
           status: AssignmentAttemptStatus.SENT,
-          job: { booking: { status: BookingStatus.PENDING } },
+          job: {
+            status: AssignmentJobStatus.DISPATCHED,
+            timeoutAt: { gt: new Date() },
+            booking: { status: BookingStatus.PENDING },
+          },
         },
-        select: { job: { select: { bookingId: true } } },
+        select: { dispatchedAt: true, job: { select: { bookingId: true, timeoutAt: true } } },
       });
-      const openBookingIds = [...new Set(openAttempts.map((a) => a.job.bookingId))];
-      where = { id: { in: openBookingIds }, status: BookingStatus.PENDING };
+      /**
+       * Carried to the client so the card can show the deadline it is counting down to.
+       *
+       * Nothing in the response used to mention that an offer expires at all, which is why the UI
+       * could not warn anyone: a five-minute window rendered as a card with no clock on it.
+       */
+      offerByBookingId = new Map(
+        offers.map((o) => [
+          o.job.bookingId,
+          { dispatchedAt: o.dispatchedAt, expiresAt: o.job.timeoutAt! },
+        ]),
+      );
+      where = { id: { in: [...offerByBookingId.keys()] }, status: BookingStatus.PENDING };
     } else if (query.status && query.status !== "all") {
       where = {
         providerId,
@@ -461,29 +643,35 @@ export class ProviderService {
       prisma.booking.count({ where }),
     ]);
 
+    // What start()/accept() will actually allow without money: the partner apps' action mirrors read it.
+    const exempt = await paymentExemptBookingIds(rows);
+
     return {
       bookings: await Promise.all(
         rows.map(async (b) => {
           // The provider is assigned to this booking, so they are authorized to see the
           // customer's full address + contact to deliver the service. Address PII is stored
           // encrypted (plaintext columns are blank) — decrypt it here.
-          const address = b.address ? await addressPiiService.viewForFulfilment(b.address) : null;
+          const addressRaw = b.address ? await addressPiiService.viewForFulfilment(b.address) : null;
           const rawPhone =
             b.user.phoneNumber ||
             (b.user.phoneEncrypted ? await encryptionService.decrypt(b.user.phoneEncrypted, "PHONE") : null);
-          // Google-login users can carry a non-phone identifier (e.g. "oauth_…") — only
-          // surface something that actually looks like a callable number.
-          const phoneNumber = rawPhone && /^\+?\d[\d\s-]{6,}$/.test(rawPhone) ? rawPhone : null;
-          const { maskPhoneForPartner } = await import("../lib/pii-normalize");
+          const { toPartnerSafeAddress, toPartnerSafeCustomer } = await import("../lib/privacy-policy.engine");
+          const privacyCtx = {
+            audience: "partner" as const,
+            purpose: (["ACCEPTED", "ASSIGNED", "EN_ROUTE", "IN_PROGRESS"] as string[]).includes(String(b.status))
+              ? ("booking_fulfilment" as const)
+              : ("booking_history" as const),
+            bookingId: b.id,
+            bookingStatus: String(b.status),
+            authorizedPartnerId: providerId,
+          };
           return {
             id: b.id,
             bookingNumber: b.bookingNumber,
             status: bookingStatusApi(b.status),
             scheduledDate: b.scheduledDate,
             completedAt: b.completedAt,
-            // Lifecycle anchors — arrival does not change `status`, so the partner UI
-            // needs these to know whether to offer "On my way", "I've arrived" or
-            // "Start job". Omitting them locked the card on "I've arrived" forever.
             enRouteAt: b.enRouteAt,
             arrivedAt: b.arrivedAt,
             startedAt: b.startedAt,
@@ -491,19 +679,43 @@ export class ProviderService {
             finalAmount: b.finalAmount,
             addons: b.addons ?? undefined,
             paymentStatus: paymentStatusApi(b.paymentStatus),
+            /** Audited override or a fee-waived rework / revisit — the same exemption the job gates apply. */
+            paymentExempt: exempt.has(b.id),
             description: b.description,
             eta: b.eta,
-            customer: {
-              firstName: b.user.firstName,
-              lastName: b.user.lastName,
-              profileImage: b.user.profileImage,
-              // List payloads never include raw phone — Call Customer reveals dial URI once.
-              phoneMasked: phoneNumber ? maskPhoneForPartner(phoneNumber) : null,
-            },
-            service: b.service,
-            address,
+            customer: toPartnerSafeCustomer(
+              {
+                firstName: b.user.firstName,
+                lastName: b.user.lastName,
+                profileImage: b.user.profileImage,
+                phone: rawPhone,
+              },
+              b.providerId === providerId ? "owner" : "offer",
+            ),
+            // Explicit whitelist — never pass the selected row through, so widening the select
+            // cannot leak catalogue internals (codes, config, notes) to partners.
+            service: { id: b.service.id, name: b.service.name, icon: b.service.icon, basePrice: b.service.basePrice },
+            /** What was booked (variant, quantity, add-ons, duration) from the immutable snapshot. */
+            job: partnerJobBrief(b.serviceSelection, b.addons, b.estimatedDuration),
+            // Phase 06: the job detail page reads bookings from this list — the preparation brief must ride here too,
+            // from the booking's own snapshot (never the service's current configuration).
+            requirements: partnerRequirementsFromSnapshot(b.serviceConfigSnapshot),
+            /** §11: a case-created rework / revisit visit says so (null for an ordinary booking). */
+            followUp: partnerFollowUpFromSnapshot(b.serviceConfigSnapshot),
+            address: toPartnerSafeAddress(addressRaw, privacyCtx),
             ratingGiven: !!b.rating,
             rating: b.rating?.stars ?? null,
+            /**
+             * Present only while this is a live offer. `null` is not "no deadline" — it means this
+             * row is not an offer at all (an accepted or finished job), so the card must not render
+             * a countdown for it.
+             */
+            offer: offerByBookingId.get(b.id)
+              ? {
+                  dispatchedAt: offerByBookingId.get(b.id)!.dispatchedAt,
+                  expiresAt: offerByBookingId.get(b.id)!.expiresAt,
+                }
+              : null,
           };
         }),
       ),
@@ -535,22 +747,23 @@ export class ProviderService {
       monthlyCompletedForTier,
     ] = await Promise.all([
       prisma.earning.aggregate({
-        where: { providerId, createdAt: { gte: todayStart } },
+        where: { providerId, createdAt: { gte: todayStart }, ...CREDITED_EARNING_WHERE },
         _sum: { netEarning: true, commission: true },
       }),
       prisma.earning.aggregate({
         where: {
           providerId,
           createdAt: { gte: yesterdayStart, lt: todayStart },
+          ...CREDITED_EARNING_WHERE,
         },
         _sum: { netEarning: true },
       }),
       prisma.earning.aggregate({
-        where: { providerId, createdAt: { gte: weekStart } },
+        where: { providerId, createdAt: { gte: weekStart }, ...CREDITED_EARNING_WHERE },
         _sum: { netEarning: true, commission: true, grossAmount: true },
       }),
       prisma.earning.aggregate({
-        where: { providerId, createdAt: { gte: monthStart } },
+        where: { providerId, createdAt: { gte: monthStart }, ...CREDITED_EARNING_WHERE },
         _sum: { netEarning: true },
       }),
       prisma.booking.count({
@@ -578,7 +791,7 @@ export class ProviderService {
         where: { providerId, status: { in: ACCEPTED_TAB_STATUSES } },
       }),
       prisma.earning.findMany({
-        where: { providerId, createdAt: { gte: weekStart } },
+        where: { providerId, createdAt: { gte: weekStart }, ...CREDITED_EARNING_WHERE },
         select: { createdAt: true, netEarning: true },
         orderBy: { createdAt: "asc" },
       }),
@@ -663,7 +876,7 @@ export class ProviderService {
   async myEarningsSummary(providerId: string, days = 30) {
     const start = daysAgo(days - 1);
     const earnings = await prisma.earning.findMany({
-      where: { providerId, createdAt: { gte: start } },
+      where: { providerId, createdAt: { gte: start }, ...CREDITED_EARNING_WHERE },
       select: {
         grossAmount: true,
         commission: true,

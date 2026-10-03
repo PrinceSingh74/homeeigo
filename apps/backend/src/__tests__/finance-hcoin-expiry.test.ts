@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { hcoinExpiryService } from "../services/hcoin-expiry.service";
 import { financialLedgerService } from "../services/financial-ledger.service";
-import { COIN_TO_RUPEE } from "../services/hcoin.service";
+import { COIN_TO_RUPEE, hcoinLiabilityFromCoins } from "../services/hcoin.service";
 import { HCoinTxnType, JournalEntryType } from "@prisma/client";
 
 describe("Phase 4 — H-Coin Expiry Accounting", () => {
@@ -40,6 +40,42 @@ describe("Phase 4 — H-Coin Expiry Accounting", () => {
     const balance = 200;
     const expirable = Math.min(Math.max(0, aged - lifetimeRedeemed - priorExpired), balance);
     expect(expirable).toBe(200);
+  });
+
+  test("fixture opening journals fund promo expense and never invent bank cash", () => {
+    const customer = financialLedgerService.journalForFixtureOpeningBalance({
+      idempotencyKey: "fixture_wallet:user",
+      referenceId: "user",
+      referenceType: "fixture_user",
+      creditAccount: "CUSTOMER_WALLET",
+      amount: 5000,
+    });
+    const provider = financialLedgerService.journalForFixtureOpeningBalance({
+      idempotencyKey: "fixture_provider_payable:provider",
+      referenceId: "provider",
+      referenceType: "fixture_provider",
+      creditAccount: "PROVIDER_PAYABLE",
+      amount: 12480,
+    });
+    for (const journal of [customer, provider]) {
+      const debit = journal.lines.reduce((s, l) => s + l.debit, 0);
+      const credit = journal.lines.reduce((s, l) => s + l.credit, 0);
+      expect(debit).toBe(credit);
+      expect(journal.lines.some((l) => l.accountCode === "BANK_SETTLEMENT")).toBe(false);
+      expect(journal.lines.some((l) => l.accountCode === "PROMO_EXPENSE" && l.debit === debit)).toBe(true);
+    }
+    expect(customer.lines.some((l) => l.accountCode === "CUSTOMER_WALLET" && l.credit === 5000)).toBe(true);
+    expect(provider.lines.some((l) => l.accountCode === "PROVIDER_PAYABLE" && l.credit === 12480)).toBe(true);
+  });
+
+  test("ops liability subtracts expired coins the same way the expiry journal releases them", () => {
+    const open = hcoinLiabilityFromCoins(1000, 200, 0);
+    const afterExpiry = hcoinLiabilityFromCoins(1000, 200, 300);
+    expect(open.outstanding).toBe(800);
+    expect(open.liabilityRupees).toBe(80);
+    expect(afterExpiry.outstanding).toBe(500);
+    expect(afterExpiry.liabilityRupees).toBe(50);
+    expect(afterExpiry.liabilityRupees).toBeLessThan(open.liabilityRupees);
   });
 
   test("breakage value uses COIN_TO_RUPEE", () => {

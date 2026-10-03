@@ -29,6 +29,7 @@ import { adminApi } from "@/services/admin-api";
 import { daysAgoIso, formatNumber, formatPercent, inr, todayIso } from "@/lib/format";
 import { AdminApiError, getApiLoadHint, getErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/cn";
+import { pipelineView } from "@/lib/warehouse-availability-view";
 
 const AdminAnalyticsCharts = dynamic(
   () =>
@@ -257,7 +258,7 @@ export default function AnalyticsPage() {
                 Fresh datasets
               </p>
               <p className="biz-num mt-1 text-lg font-semibold">
-                {pipeline.data?.pipeline.freshness ?? 0} / {pipeline.data?.pipeline.totalDatasets ?? 0}
+                {pipeline.data ? pipelineView(pipeline.data.pipeline).freshnessLabel : "0 / 0"}
               </p>
             </div>
             <div>
@@ -265,7 +266,8 @@ export default function AnalyticsPage() {
                 Quality score
               </p>
               <p className="biz-num mt-1 text-lg font-semibold">
-                {Number(pipeline.data?.pipeline.qualityScore ?? 0).toFixed(0)}%
+                {/* X-90: null = no rule could be evaluated (warehouse down) — "—", never 0%. */}
+                {pipeline.data ? pipelineView(pipeline.data.pipeline).qualityLabel : "—"}
               </p>
             </div>
             <div>
@@ -273,7 +275,7 @@ export default function AnalyticsPage() {
                 MLOps
               </p>
               <p className="mt-1 text-lg font-semibold capitalize">
-                {String(pipeline.data?.pipeline.mlops?.status ?? "—")}
+                {pipeline.data ? pipelineView(pipeline.data.pipeline).mlopsLabel : "—"}
               </p>
             </div>
           </div>

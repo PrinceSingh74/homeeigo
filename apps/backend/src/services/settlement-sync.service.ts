@@ -6,7 +6,7 @@ import { recordFinancialMetric } from "../lib/financial-metrics";
 import { financeAlertService } from "./finance-alert.service";
 
 export class SettlementSyncService {
-  async runSync(): Promise<{ runId: string; synced: number; discrepancies: number; accuracyPct: number }> {
+  async runSync(): Promise<{ runId: string; synced: number; discrepancies: number; accuracyPct: number | null }> {
     const run = await prisma.settlementSyncRun.create({
       data: { status: SettlementSyncStatus.STARTED },
     });
@@ -136,10 +136,14 @@ export class SettlementSyncService {
         synced += 1;
       }
 
+      // A sync that saw zero gateway settlements measured nothing. Writing 100 here stamped a
+      // perfect accuracy row into settlement_sync_runs, which then raised the platform-wide
+      // average that the finance dashboard reads -- a fabrication that compounds every time the
+      // gateway returns an empty page. `accuracy_pct` is nullable; null means UNMEASURED.
       const accuracyPct =
         gatewaySettlements.length > 0
           ? round2(((gatewaySettlements.length - discrepancies) / gatewaySettlements.length) * 100)
-          : 100;
+          : null;
 
       await prisma.settlementSyncRun.update({
         where: { id: run.id },
@@ -202,11 +206,16 @@ export class SettlementSyncService {
       prisma.settlementDiscrepancy.count({ where: { resolved: false } }),
       prisma.settlementSyncRun.aggregate({ where: { status: SettlementSyncStatus.COMPLETED }, _avg: { accuracyPct: true } }),
     ]);
+    // No completed sync run means accuracy has never been measured. Reporting 100 here would
+    // present "never reconciled" as "reconciled perfectly" -- the most misleading value the field
+    // can hold. null means UNMEASURED and is rendered as such.
+    // A duplicate reconciliation KPI published this same number under a second name with no
+    // consumer; one measurement under two labels reads as two independent confirmations. Removed.
+    const measuredAccuracy = avgAccuracy._avg.accuracyPct;
     return {
       latestRun: latest,
       openDiscrepancies,
-      settlementAccuracyPct: round2(avgAccuracy._avg.accuracyPct ?? 100),
-      reconciliationSuccessPct: round2(avgAccuracy._avg.accuracyPct ?? 100),
+      settlementAccuracyPct: measuredAccuracy == null ? null : round2(Number(measuredAccuracy)),
       outstandingVariance: openDiscrepancies,
     };
   }

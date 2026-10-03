@@ -202,6 +202,42 @@ beforeAll(async () => {
   const online = await partnerOperationsService.setOnline(ctx.providerId, true);
   expect(online.isOnline).toBe(true);
 
+  const presenceNow = new Date();
+  await prisma.partnerPresence.upsert({
+    where: { providerId: ctx.providerId },
+    create: {
+      providerId: ctx.providerId,
+      lastHeartbeatAt: presenceNow,
+      lastSeenAt: presenceNow,
+      lastLocationAt: presenceNow,
+      lastLocationReceivedAt: presenceNow,
+      lastLocationLat: JOB_LAT,
+      lastLocationLng: JOB_LNG,
+    },
+    update: {
+      lastHeartbeatAt: presenceNow,
+      lastSeenAt: presenceNow,
+      lastLocationAt: presenceNow,
+      lastLocationReceivedAt: presenceNow,
+      lastLocationLat: JOB_LAT,
+      lastLocationLng: JOB_LNG,
+    },
+  });
+  await prisma.location.upsert({
+    where: { providerId: ctx.providerId },
+    create: {
+      providerId: ctx.providerId,
+      latitude: JOB_LAT,
+      longitude: JOB_LNG,
+      accuracy: 12,
+    },
+    update: {
+      latitude: JOB_LAT,
+      longitude: JOB_LNG,
+      accuracy: 12,
+    },
+  });
+
   // One real ACCEPTED job so the JOB axis holds a live, non-terminal value.
   const scheduled = futureSlot(40);
   const created = await bookingService.create(ctx.customerA.id, {
@@ -216,9 +252,17 @@ beforeAll(async () => {
   bookingId = created.booking.id;
   await settleBookingPayment(bookingId, ctx.customerA.id, created.booking.finalAmount);
   await assignmentEngine.createJob(bookingId);
+  // Shared homigo_test retains leftover isOnline+presence partners from other suites.
+  // Matching would otherwise offer a higher-scoring stranger and this accept would 404.
+  await prisma.provider.updateMany({
+    where: { id: { not: ctx.providerId } },
+    data: { isOnline: false },
+  });
   await assignmentEngine.dispatchBookingNow(bookingId);
   const accept = await bookingService.accept(ctx.providerId, bookingId);
-  expect(accept.ok).toBe(true);
+  if (!accept.ok) {
+    throw new Error(`orthogonality beforeAll accept failed: ${JSON.stringify(accept)}`);
+  }
   await assignmentEngine.onProviderAccepted(bookingId, ctx.providerId);
   const acceptedDb = await prisma.booking.findUniqueOrThrow({ where: { id: bookingId } });
   expect(acceptedDb.status).toBe(BookingStatus.ACCEPTED);
@@ -670,6 +714,10 @@ describe.serial("Pass 13 four-axis product-surface negatives (real DB, real serv
     const slot = futureSlot(48);
     const { matchingService } = await import("../services/matching.service");
     const matches = await matchingService.findBestProviders({
+      // W2-D4: matching is scoped to the customer's population; a customer-less query is
+      // a business query and the harness's partner is classified at creation. Ask within
+      // the fixture world by naming the fixture customer.
+      customerId: ctx.customerA.id,
       serviceId: ctx.serviceId,
       latitude: JOB_LAT,
       longitude: JOB_LNG,

@@ -37,7 +37,11 @@ export function LocationStep({
   const [zones, setZones] = useState<string[]>([]);
   const lat = Number(latitude);
   const lng = Number(longitude);
-  const hasPoint = Number.isFinite(lat) && Number.isFinite(lng);
+  const hasPoint =
+    Boolean(latitude?.trim()) &&
+    Boolean(longitude?.trim()) &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng);
 
   useEffect(() => {
     if (error && /outside|service area/i.test(error) && (latitude || longitude)) {
@@ -91,6 +95,7 @@ export function LocationStep({
       await applyCoords(result.address.latitude, result.address.longitude);
     } catch (e) {
       setLocalError(e instanceof Error ? e.message : "Search failed");
+      onChange({ latitude: "", longitude: "" });
     }
   }
 
@@ -134,7 +139,7 @@ export function LocationStep({
           {localError || error}
         </Text>
       ) : null}
-      <Pressable accessibilityRole="button" style={styles.button} disabled={loading} onPress={onSubmit}>
+      <Pressable accessibilityRole="button" testID="onboarding-save-continue" style={styles.button} disabled={loading} onPress={onSubmit}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save & Continue</Text>}
       </Pressable>
     </View>

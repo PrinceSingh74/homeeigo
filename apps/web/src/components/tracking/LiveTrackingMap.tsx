@@ -332,7 +332,7 @@ export function LiveTrackingMap({
           </p>
         </div>
       ) : null}
-      <div ref={divRef} className="h-full w-full" aria-label="Live tracking map" />
+      <div ref={divRef} className="h-full w-full" role="region" aria-label="Live tracking map" />
     </div>
   );
 }

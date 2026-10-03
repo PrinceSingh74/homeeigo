@@ -12,6 +12,7 @@ import { getWatermark, updateWatermark, resetWatermark } from "./checkpoint";
 import { ETL_JOB_REGISTRY } from "./jobs";
 import type { EtlJobContext } from "./types";
 import { recordEtlMetrics } from "../../src/lib/etl-metrics";
+import type { Prisma } from "@prisma/client";
 
 export type RunEtlOptions = {
   jobIds?: string[];
@@ -57,7 +58,7 @@ async function createExecution(
 async function finalizeExecution(
   executionId: string,
   status: EtlJobStatus,
-  result: { rowsProcessed: number; rowsLoaded: number; lowWatermark: Date | null; highWatermark: Date | null; cursorEnd: string | null; durationMs: number; errorMessage?: string; metadata?: Record<string, unknown> },
+  result: { rowsProcessed: number; rowsLoaded: number; lowWatermark: Date | null; highWatermark: Date | null; cursorEnd: string | null; durationMs: number; errorMessage?: string; metadata?: Prisma.InputJsonObject },
 ): Promise<void> {
   await prisma.etlJobExecution.update({
     where: { id: executionId },

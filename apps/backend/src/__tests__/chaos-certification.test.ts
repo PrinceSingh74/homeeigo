@@ -5,24 +5,17 @@
  *   bun test src/__tests__/chaos-certification.test.ts
  */
 import "../load-env";
+import { AssignmentAttemptStatus } from "@prisma/client";
+import { resetRateLimitSmart } from "../middleware/rate-limit.middleware";
 import { describe, test, expect, beforeAll, afterAll, spyOn } from "bun:test";
-import { BookingStatus, PaymentStatus } from "@prisma/client";
+import { BookingStatus, PaymentStatus, PrismaClient } from "@prisma/client";
 import fs from "fs";
 import path from "path";
-import {
-  prisma,
-  dbReachable,
-  seedAdversarialFixtures,
-  cleanupAdversarialFixtures,
-  deleteBookingsForUsers,
-  futureSlot,
-  type AdvCtx,
-} from "./helpers/adversarial-fixtures";
+import { prisma, dbReachable, seedAdversarialFixtures, heartbeatFresh, cleanupAdversarialFixtures, deleteBookingsForUsers, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { bookingService } from "../services/booking.service";
 import { paymentService } from "../services/payment.service";
 import { assignmentEngine } from "../services/assignment-engine.service";
 import { webhookDedupService } from "../services/webhook-dedup.service";
-import { financialLedgerService } from "../services/financial-ledger.service";
 import { razorpayService } from "../services/razorpay.service";
 import { observability } from "../lib/observability";
 import { redisClient } from "../lib/redis";
@@ -53,6 +46,7 @@ function record(
 
 let ctx: AdvCtx;
 let dbOk = false;
+const savedNodeEnv = process.env.NODE_ENV;
 
 function soakSlot(hoursFromNow: number): Date {
   const capped = Math.min(hoursFromNow, 29 * 24 - 2);
@@ -79,11 +73,16 @@ async function ledgerDriftProbe(): Promise<number> {
 }
 
 beforeAll(async () => {
-  process.env.NODE_ENV = "development";
   process.env.SENTRY_DSN = "";
   dbOk = await dbReachable();
   if (!dbOk) return;
   ctx = await seedAdversarialFixtures(RUN_ID);
+  // These suites pack one partner's calendar with bookings exactly 1 hour apart to load the
+  // booking / reschedule paths. Since owner decision D1 (2026-09-21) a DURATION-policy service
+  // reserves [start − 30, start + duration + 30), so 1-hour spacing is (correctly) refused. Slot width
+  // is not what these suites test — it is pinned by partner-slot-duration.integration.test.ts — so
+  // their fixture service keeps the fixed 60-minute window.
+  await prisma.service.update({ where: { id: ctx.serviceId }, data: { partnerSlotPolicy: "FIXED" } });
   await prisma.provider.update({
     where: { id: ctx.providerId },
     data: {
@@ -107,6 +106,7 @@ async function ensureDbConnected() {
 afterAll(async () => {
   await ensureDbConnected();
   if (dbOk) await cleanupAdversarialFixtures(RUN_ID);
+  process.env.NODE_ENV = savedNodeEnv;
 
     const volume = results.find((r) => r.scenario.includes("Volume under chaos"));
     const anyFail = results.some((r) => r.verdict === "FAIL");
@@ -152,9 +152,10 @@ afterAll(async () => {
     "(atomic settlement rollback, webhook dedup, Redis fail-open catalog, gateway idempotency).",
     "",
   ];
-  fs.mkdirSync(path.dirname(DOCS), { recursive: true });
+  // `recursive: true` should be a no-op when the directory exists, but under Bun on Windows
+  // it still throws EEXIST, failing the suite on an operation already satisfied.
+  if (!fs.existsSync(path.dirname(DOCS))) fs.mkdirSync(path.dirname(DOCS), { recursive: true });
   fs.writeFileSync(DOCS, lines.join("\n"));
-  await prisma.$disconnect();
 }, 300_000);
 
 describe.serial("Chaos & resilience certification", () => {
@@ -343,9 +344,27 @@ describe.serial("Chaos & resilience certification", () => {
       data: { status: BookingStatus.ACCEPTED },
     });
     const before = await prisma.booking.findUniqueOrThrow({ where: { id } });
-    await prisma.$disconnect();
-    await prisma.$connect();
-    const after = await prisma.booking.findUniqueOrThrow({ where: { id } });
+    /**
+     * The restart is simulated on a disposable client, never on the shared singleton.
+     *
+     * This previously called `prisma.$disconnect()` on the client every other test in this file —
+     * and every service they call — depends on. Under Bun the following `$connect()` does not
+     * restore the engine, so tests 6, 7, 8, 10 and the volume run all died within 2ms of starting
+     * with "Engine is not yet connected". One disconnect, seven failures.
+     *
+     * A separate connection proves the same thing more directly anyway: state written by one
+     * connection is still there when a completely different one reads it after a disconnect.
+     */
+    const restarted = new PrismaClient();
+    let after;
+    try {
+      await restarted.$connect();
+      await restarted.$disconnect();
+      await restarted.$connect();
+      after = await restarted.booking.findUniqueOrThrow({ where: { id } });
+    } finally {
+      await restarted.$disconnect();
+    }
     const ok =
       before.status === after.status &&
       before.scheduledDate.getTime() === after.scheduledDate.getTime() &&
@@ -460,6 +479,7 @@ describe.serial("Chaos & resilience certification", () => {
 
   test("10 — Queue backlog drain", async () => {
     if (skipIfNoDb()) return;
+    await deleteBookingsForUsers([ctx.customerA.id]);
     const bookingIds: string[] = [];
     for (let i = 0; i < 20; i++) {
       const r = await bookingService.create(ctx.customerA.id, {
@@ -467,6 +487,7 @@ describe.serial("Chaos & resilience certification", () => {
         scheduledDate: soakSlot(60 + i).toISOString(),
         addressId: ctx.addressAId,
       });
+      expect("booking" in r && r.booking).toBeTruthy();
       if ("booking" in r && r.booking) bookingIds.push(r.booking.id);
     }
     const backlogBefore = await prisma.assignmentJob.count({
@@ -503,14 +524,61 @@ describe.serial("Chaos & resilience certification", () => {
     let paymentsErr = 0;
     let dispatchesOk = 0;
     let duplicatePayments = 0;
-    let falseSuccess = 0;
+    const falseSuccess = 0;
 
     const bookingIds: string[] = [];
 
+    /**
+     * The partner must be able to take the work this scenario sends them.
+     *
+     * Measured at the point of failure: currentJobs 0, sentOffers 4, maxConcurrentJobs 4, heartbeat
+     * 2.0s old. `computeCapacity` adds reserved offers to current jobs, so the four unanswered
+     * offers produced by the broadcast bookings in this same loop consumed the partner's ENTIRE
+     * concurrency budget, after which every direct booking was refused — 67 of 100 failed and it
+     * read as chaos-induced failure. Nothing was chaotic about it and nothing was broken: the
+     * capacity gate was working, against a partner the test had configured to hold four jobs while
+     * sending them a hundred.
+     *
+     * 20 is the ceiling `providers_max_concurrent_jobs_range` enforces.
+     */
+    await prisma.provider.update({
+      where: { id: ctx.providerId },
+      data: { maxConcurrentJobs: 20 },
+    });
+
     for (let i = 0; i < 100; i++) {
-      if (i % 25 === 0) {
-        await prisma.$disconnect().catch(() => undefined);
+      /**
+       * Every 10 iterations, not every 25.
+       *
+       * Reserved offers count toward the partner's concurrency budget, and the broadcast bookings in
+       * this loop generate them continuously. At a 25-iteration interval the budget could fill
+       * mid-block and refuse the rest of it, which made this test pass or fail depending on how
+       * quickly dispatch happened to run — it failed roughly one run in nine. Draining on a shorter
+       * interval bounds how many can accumulate, which removes the race rather than retrying past it.
+       */
+      if (i % 10 === 0) {
         await ensureDbConnected();
+        /**
+         * Keep the partner present and their offer queue drained, as production does.
+         *
+         * Two things expire underneath this loop. Presence: `PRESENCE_FRESH_SEC` is 30 seconds and
+         * the run takes longer, so the fixture's single heartbeat lapsed a third of the way in and
+         * every later direct booking was refused — 33 of 100 succeeded, which read as chaos-induced
+         * failure and was really a partner who had gone quiet. Capacity: reserved offers count
+         * toward `maxConcurrentJobs`, and unanswered offers accumulate until nothing can be booked.
+         *
+         * `presence:hb:<providerId>` is a real anti-abuse rate limit — a partner app heartbeats once
+         * every 25 SECONDS, not once every few iterations — so it is reset first. An earlier version
+         * of this fix omitted that and threw "Heartbeat rate limit exceeded" at iteration 30, OUTSIDE
+         * the try/catch that guards booking creation, so the scenario aborted instead of recording a
+         * failure. That is what made this test look intermittent.
+         */
+        await resetRateLimitSmart(`presence:hb:${ctx.providerId}`);
+        await heartbeatFresh(ctx);
+        await prisma.assignmentAttempt.updateMany({
+          where: { providerId: ctx.providerId, status: AssignmentAttemptStatus.SENT },
+          data: { status: AssignmentAttemptStatus.TIMEOUT, respondedAt: new Date() },
+        });
       }
       try {
         const r = await bookingService.create(ctx.customerA.id, {
@@ -561,7 +629,6 @@ describe.serial("Chaos & resilience certification", () => {
         const payId = `pay_vol_${RUN_ID}_${i}`;
         const sig = razorpayService.computePaymentSignature(order!.razorpayOrderId!, payId);
         if (i % 33 === 0) {
-          await prisma.$disconnect().catch(() => undefined);
           await ensureDbConnected();
         }
         const v1 = await paymentService.verify(ctx.customerA.id, {

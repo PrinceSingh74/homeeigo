@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { provenanceForNewUser } from "../lib/data-provenance";
 import https from "https";
 import jsonwebtoken from "jsonwebtoken";
 import { generateReferralCode } from "../lib/oauth-signup-fraud";
@@ -105,6 +106,7 @@ export class AppleOAuthService {
       isNewUser = true;
       user = await this.prisma.user.create({
         data: {
+          ...provenanceForNewUser(email),
           email,
           phoneNumber: `apple_${decoded?.sub || Date.now()}`,
           firstName,

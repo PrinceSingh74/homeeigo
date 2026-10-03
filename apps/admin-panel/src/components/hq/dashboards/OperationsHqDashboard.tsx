@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Maximize2, Minimize2, Radio, AlertTriangle, Clock, Users, Activity, IndianRupee } from "lucide-react";
+import { Maximize2, Minimize2, Radio, AlertTriangle, Clock, Users, Activity, CheckCircle2, IndianRupee } from "lucide-react";
 import { adminApi } from "@/services/admin-api";
 import { inr, formatNumber } from "@/lib/format";
 import { GlassPanel } from "../GlassPanel";
@@ -54,7 +54,7 @@ export function OperationsHqDashboard() {
       ref={containerRef}
       data-fullscreen={isFullscreen ? "true" : undefined}
       className={cn(
-        "space-y-6",
+        "space-y-8",
         isFullscreen && "biz-wallscreen overflow-y-auto bg-[var(--color-biz-bg)] p-8",
       )}
     >
@@ -80,25 +80,25 @@ export function OperationsHqDashboard() {
 
       <section
         className={cn(
-          "grid gap-3",
+          "grid gap-4",
           isFullscreen ? "grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-4",
         )}
       >
-        <StatTile label="GMV Today" value={k ? inr(k.gmv, true) : "—"} icon={IndianRupee} loading={kpis.isLoading} tone="accent" />
-        <StatTile label="Bookings Today" value={k ? formatNumber(k.bookingsToday) : "—"} icon={Activity} loading={kpis.isLoading} />
-        <StatTile label="Completion" value={k ? `${(k.completionRate * (k.completionRate <= 1 ? 100 : 1)).toFixed(0)}%` : "—"} loading={kpis.isLoading} tone="success" />
-        <StatTile label="Online Partners" value={k ? formatNumber(k.onlineProviders) : "—"} sub={k ? `${formatNumber(k.activeCustomers)} active customers` : undefined} icon={Users} loading={kpis.isLoading} />
+        <StatTile label="GMV Today" value={k ? inr(k.gmv, true) : "—"} sub="Booked revenue today" icon={IndianRupee} loading={kpis.isLoading} tone="accent" />
+        <StatTile label="Bookings Today" value={k ? formatNumber(k.bookingsToday) : "—"} sub="Jobs created today" icon={Activity} loading={kpis.isLoading} />
+        <StatTile label="Completion" value={k ? `${(k.completionRate * (k.completionRate <= 1 ? 100 : 1)).toFixed(0)}%` : "—"} sub="Job axis — finished vs started" icon={CheckCircle2} loading={kpis.isLoading} tone="success" />
+        <StatTile label="Online Partners" value={k ? formatNumber(k.onlineProviders) : "—"} sub={k ? `${formatNumber(k.activeCustomers)} active customers` : "Availability ONLINE — not lifecycle"} icon={Users} loading={kpis.isLoading} />
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Active Bookings" value={metrics ? formatNumber(metrics.activeBookings) : "—"} icon={Radio} loading={opsMap.isLoading} />
-        <StatTile label="Busy Partners" value={metrics ? formatNumber(metrics.busyProviders) : "—"} loading={opsMap.isLoading} />
-        <StatTile label="Avg ETA" value={metrics ? `${Math.round(metrics.averageEtaMin)}m` : "—"} icon={Clock} loading={opsMap.isLoading} />
-        <StatTile label="Service Gaps" value={metrics ? formatNumber(metrics.serviceGaps) : "—"} icon={AlertTriangle} tone={(metrics?.serviceGaps ?? 0) > 0 ? "danger" : "success"} loading={opsMap.isLoading} />
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile label="Active Bookings" value={metrics ? formatNumber(metrics.activeBookings) : "—"} sub="Jobs in flight now" icon={Radio} loading={opsMap.isLoading} />
+        <StatTile label="Busy Partners" value={metrics ? formatNumber(metrics.busyProviders) : "—"} sub="Availability ON_JOB" icon={Activity} loading={opsMap.isLoading} />
+        <StatTile label="Avg ETA" value={metrics ? `${Math.round(metrics.averageEtaMin)}m` : "—"} sub="Minutes to arrival" icon={Clock} loading={opsMap.isLoading} />
+        <StatTile label="Service Gaps" value={metrics ? formatNumber(metrics.serviceGaps) : "—"} sub="Demand with no nearby supply" icon={AlertTriangle} tone={(metrics?.serviceGaps ?? 0) > 0 ? "danger" : "success"} loading={opsMap.isLoading} />
       </section>
 
       <GlassPanel glow="red" className="p-5">
-        <SectionHeading title="Live Alert Feed" hint={`${alerts.length} active`} />
+        <SectionHeading title="Live Alert Feed" hint={`${alerts.length} active`} icon={AlertTriangle} iconTone="danger" />
         {opsMap.isLoading ? (
           <div className="biz-skeleton h-24 w-full rounded" />
         ) : alerts.length > 0 ? (

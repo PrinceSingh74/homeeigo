@@ -1,11 +1,14 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { Clock, Truck, CheckCircle2, XCircle } from "lucide-react-native";
+import { Clock, Truck, CheckCircle2, XCircle, TimerOff, UserX, UserRoundX } from "lucide-react-native";
 import type { BookingStatus } from "@/lib/store";
 import { STATUS_CONFIG } from "@/lib/booking-status";
 import { radius, spacing, type } from "@/lib/typography";
 
 const ICONS = {
+  "timer-off": TimerOff,
+  "user-x": UserX,
+  "user-round-x": UserRoundX,
   clock: Clock,
   truck: Truck,
   check: CheckCircle2,

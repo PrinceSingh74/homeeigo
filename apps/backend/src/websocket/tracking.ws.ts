@@ -1,11 +1,11 @@
 import { Elysia, t } from "elysia";
-import { roomManager, MessageType, type WSConnection, generateConnectionId } from "../lib/websocket";
+import { roomManager, type WSConnection, generateConnectionId } from "../lib/websocket";
 import { heartbeatManager } from "../lib/heartbeat";
 import { trackingService } from "../services/tracking.service";
 import prisma from "../lib/prisma";
 import { authenticateWsConnection } from "../lib/ws-connection-auth";
 import { validateWsChannelAccess } from "../lib/ws-channel-access";
-import { getWsState, setWsState } from "./ws-state";
+import { getWsState, setWsState, markWsClosed, closedDuringOpen } from "./ws-state";
 
 export const trackingWs = new Elysia().ws("/ws/tracking/:bookingId", {
   params: t.Object({ bookingId: t.String() }),
@@ -29,11 +29,28 @@ export const trackingWs = new Elysia().ws("/ws/tracking/:bookingId", {
       return;
     }
 
+    // Resolved once here, not once per location frame: pings arrive every few seconds per active
+    // partner and most are discarded by the server-side throttle — a per-ping lookup was the
+    // single most frequent query in the system for zero information.
+    const providerId =
+      auth.userType === "vendor"
+        ? (await prisma.provider.findUnique({ where: { userId: auth.userId }, select: { id: true } }))?.id
+        : undefined;
+
     const connectionId = generateConnectionId();
     const connection: WSConnection = {
       userId: auth.userId,
       userType: auth.userType,
       connectionId,
+      jti: auth.jti,
+      tokenExp: auth.exp,
+      close: (code: number, reason: string) => {
+        try {
+          ws.close(code, reason);
+        } catch {
+          /* already closed */
+        }
+      },
       connectedAt: new Date(),
       lastPing: new Date(),
       rooms: new Set(),
@@ -46,6 +63,10 @@ export const trackingWs = new Elysia().ws("/ws/tracking/:bookingId", {
       },
     };
 
+    // The client may have left while the awaits above were pending; registering now would create a
+    // connection, room membership and heartbeat for a socket that is already closed. See ws-state.ts.
+    if (closedDuringOpen(ws)) return;
+
     roomManager.addToRoom(`tracking:${bookingId}`, connection);
     heartbeatManager.startHeartbeat(connectionId, ws);
 
@@ -55,6 +76,7 @@ export const trackingWs = new Elysia().ws("/ws/tracking/:bookingId", {
       connectionId,
       connection,
       bookingId,
+      providerId,
     });
   },
   async message(ws, message) {
@@ -65,10 +87,9 @@ export const trackingWs = new Elysia().ws("/ws/tracking/:bookingId", {
     const state = getWsState(ws);
     if (!state) return;
 
-    const provider = await prisma.provider.findUnique({ where: { userId: state.userId } });
-    if (!provider || m.latitude == null || m.longitude == null) return;
+    if (!state.providerId || m.latitude == null || m.longitude == null) return;
 
-    await trackingService.updateLocation(provider.id, {
+    await trackingService.updateLocation(state.providerId, {
       bookingId: ws.data.params.bookingId,
       latitude: m.latitude,
       longitude: m.longitude,
@@ -76,6 +97,7 @@ export const trackingWs = new Elysia().ws("/ws/tracking/:bookingId", {
     });
   },
   close(ws) {
+    markWsClosed(ws);
     const state = getWsState(ws);
     if (state?.connectionId) heartbeatManager.stopHeartbeat(state.connectionId);
     if (state?.connection) roomManager.removeAllRooms(state.connection);

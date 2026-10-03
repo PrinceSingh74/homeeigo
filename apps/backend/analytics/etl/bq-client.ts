@@ -1,10 +1,16 @@
 import { BigQuery } from "@google-cloud/bigquery";
 import { ANALYTICS_CONFIG, BQ_DATASETS } from "../config";
 import { projectRows } from "./table-schemas";
+import { assertBqAdcAvailable } from "../../src/lib/bigquery-adc";
 
 let _bq: BigQuery | null = null;
 
+/**
+ * Same egress barrier as the src/ services (lib/bigquery-adc.ts). Without it an isolated NODE_ENV=test
+ * runtime (load harness, e2e backend on homigo_test) ran the ETL against the LIVE warehouse.
+ */
 export function getBigQuery(): BigQuery {
+  assertBqAdcAvailable();
   if (!_bq) _bq = new BigQuery({ projectId: ANALYTICS_CONFIG.projectId });
   return _bq;
 }
@@ -14,7 +20,18 @@ export function fqTable(layer: keyof typeof BQ_DATASETS, tableId: string): strin
   return `\`${ANALYTICS_CONFIG.projectId}.${dataset}.${tableId}\``;
 }
 
+let _testQuery: ((sql: string) => Promise<unknown[]>) | null = null;
+
+/**
+ * Tests only: stand in for `bqQuery` so outage shapes (hang, refused, a single rule's 404) can be
+ * produced without egress. `null` restores the real client and its egress barrier.
+ */
+export function __setBqQueryForTests(fn: ((sql: string) => Promise<unknown[]>) | null): void {
+  _testQuery = fn;
+}
+
 export async function bqQuery<T = Record<string, unknown>>(sql: string): Promise<T[]> {
+  if (_testQuery) return (await _testQuery(sql)) as T[];
   const [rows] = await getBigQuery().query({ query: sql, location: ANALYTICS_CONFIG.location });
   return rows as T[];
 }

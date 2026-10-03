@@ -2,7 +2,8 @@ import { BookingStatus, QueuePriority } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { resolveTierPriorityScore } from "../lib/membership-tiers";
 import { fromWaitTimeMsBigInt, toWaitTimeMsBigInt } from "../lib/wait-time-ms";
-import { entitlementService, type Entitlements } from "./entitlement.service";
+import { type Entitlements } from "./entitlement.service";
+import { pendingNoPaymentFollowUpIds } from "./booking-payment-gate";
 
 const PENDING_STATUSES: BookingStatus[] = ["PENDING"];
 
@@ -58,21 +59,23 @@ export class BookingPriorityService {
       id: { not: bookingId },
     } as const;
 
-    let queuePosition: number;
-    if (priority === QueuePriority.HIGH) {
-      queuePosition =
-        (await prisma.booking.count({
-          where: { ...pendingWhere, queuePriority: QueuePriority.HIGH },
-        })) + 1;
-    } else {
-      const highCount = await prisma.booking.count({
-        where: { ...pendingWhere, queuePriority: QueuePriority.HIGH },
-      });
-      const normalAhead = await prisma.booking.count({
-        where: { ...pendingWhere, queuePriority: QueuePriority.NORMAL },
-      });
-      queuePosition = highCount + normalAhead + 1;
-    }
+    /**
+     * One grouped count instead of one or two separate ones: a NORMAL booking needs both the HIGH
+     * and the NORMAL backlog, which used to be two sequential round trips on the booking-creation
+     * path. Backed by the partial index `bookings_queue_pending_idx`
+     * (migration 20260920110000), so this reads only pending unassigned rows rather than the table.
+     */
+    const grouped = await prisma.booking.groupBy({
+      by: ["queuePriority"],
+      where: pendingWhere,
+      _count: { _all: true },
+    });
+    const ahead = (p: QueuePriority) =>
+      grouped.find((g) => g.queuePriority === p)?._count._all ?? 0;
+    const queuePosition =
+      priority === QueuePriority.HIGH
+        ? ahead(QueuePriority.HIGH) + 1
+        : ahead(QueuePriority.HIGH) + ahead(QueuePriority.NORMAL) + 1;
 
     await prisma.booking.update({
       where: { id: bookingId },
@@ -90,11 +93,35 @@ export class BookingPriorityService {
   }
 
   /** Ordered queue for provider assignment — HIGH priority first, then FIFO. */
-  async getAssignmentQueue(limit = 50) {
+  /**
+   * `dispatchableOnly` (the dispatcher): only PAID bookings. An unpaid booking cannot be offered
+   * (dispatchToNextProvider withholds it without spending an attempt), so it never reached
+   * EXHAUSTED — and with oldest-first ordering, MAX_DISPATCH_PER_TICK unpaid bookings at the front
+   * took every slot of every tick while paid bookings behind them waited on the inline dispatch
+   * alone. Payment settlement re-dispatches immediately (onBookingPaymentSettled), so nothing is
+   * lost by leaving unpaid work out of the cron scan. The admin queue view still sees everything.
+   */
+  async getAssignmentQueue(limit = 50, opts: { dispatchableOnly?: boolean } = {}) {
     const rows = await prisma.booking.findMany({
       where: {
         status: { in: PENDING_STATUSES },
         providerId: null,
+        // §11: plus case-created follow-ups whose fee was waived — they owe nothing and are never marked paid.
+        ...(opts.dispatchableOnly
+          ? { OR: [{ paymentStatus: "SUCCESS" as const }, { id: { in: await pendingNoPaymentFollowUpIds(limit) } }] }
+          : {}),
+        /**
+         * A booking whose AssignmentJob already reached EXHAUSTED needs a human, not another
+         * automatic retry — that is the entire point of the EXHAUSTED status. But this query has
+         * no other awareness of AssignmentJob at all: reaching EXHAUSTED does not touch the
+         * booking row (status stays PENDING, providerId stays null), so without this exclusion an
+         * exhausted booking occupies a `take: limit` slot in this FIFO forever. With the cron
+         * processing at most `limit` items per tick, enough exhausted bookings accumulate at the
+         * front of the queue (oldest-first) to consume the entire tick's budget on jobs that were
+         * never going to be dispatched — starving every genuinely-retriable booking behind them,
+         * including brand new ones.
+         */
+        assignmentJob: { isNot: { status: "EXHAUSTED" } },
       },
       orderBy: [{ priorityScore: "desc" }, { queuePriority: "asc" }, { queuedAt: "asc" }],
       take: limit,

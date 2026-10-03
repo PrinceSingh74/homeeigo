@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { PartnerButton } from "@/components/ui/PartnerButton";
 
@@ -24,6 +24,7 @@ type Props = {
   otpSent: boolean;
   devOtpHint: string | null;
   loading: boolean;
+  initialValues?: Partial<Pick<Step1AccountData, "firstName" | "lastName" | "email" | "phoneNumber">>;
   onRegister: (data: Step1AccountData) => Promise<void>;
   onVerifyOtp: (otp: string) => Promise<void>;
 };
@@ -35,19 +36,35 @@ export function Step1Basic({
   otpSent,
   devOtpHint,
   loading,
+  initialValues,
   onRegister,
   onVerifyOtp,
 }: Props) {
   const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phoneNumber: "",
+    firstName: initialValues?.firstName ?? "",
+    lastName: initialValues?.lastName ?? "",
+    email: initialValues?.email ?? "",
+    phoneNumber: initialValues?.phoneNumber ?? "",
     password: "",
     confirmPassword: "",
     otp: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const seedFirstName = initialValues?.firstName;
+  const seedLastName = initialValues?.lastName;
+  const seedEmail = initialValues?.email;
+  const seedPhone = initialValues?.phoneNumber;
+
+  useEffect(() => {
+    if (seedFirstName == null && seedLastName == null && seedEmail == null && seedPhone == null) return;
+    setFormData((prev) => ({
+      ...prev,
+      firstName: prev.firstName || seedFirstName || "",
+      lastName: prev.lastName || seedLastName || "",
+      email: prev.email || seedEmail || "",
+      phoneNumber: prev.phoneNumber || seedPhone || "",
+    }));
+  }, [seedFirstName, seedLastName, seedEmail, seedPhone]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
@@ -94,93 +111,143 @@ export function Step1Basic({
       >
         <div className="grid grid-cols-2 gap-3">
           <div>
+            <label htmlFor="reg-firstName" className="mb-1 block text-sm font-medium">
+              First name
+            </label>
             <input
+              id="reg-firstName"
               type="text"
               name="firstName"
-              placeholder="First name"
+              placeholder="Rahul"
               value={formData.firstName}
               onChange={handleChange}
               disabled={otpSent}
+              aria-invalid={Boolean(errors.firstName)}
+              aria-describedby={errors.firstName ? "reg-firstName-error" : undefined}
               className={inputClass}
             />
             {errors.firstName ? (
-              <p className="mt-1 text-xs text-red-400">{errors.firstName}</p>
+              <p id="reg-firstName-error" role="alert" className="mt-1 text-xs text-red-400">
+                {errors.firstName}
+              </p>
             ) : null}
           </div>
           <div>
+            <label htmlFor="reg-lastName" className="mb-1 block text-sm font-medium">
+              Last name
+            </label>
             <input
+              id="reg-lastName"
               type="text"
               name="lastName"
-              placeholder="Last name"
+              placeholder="Sharma"
               value={formData.lastName}
               onChange={handleChange}
               disabled={otpSent}
+              aria-invalid={Boolean(errors.lastName)}
+              aria-describedby={errors.lastName ? "reg-lastName-error" : undefined}
               className={inputClass}
             />
             {errors.lastName ? (
-              <p className="mt-1 text-xs text-red-400">{errors.lastName}</p>
+              <p id="reg-lastName-error" role="alert" className="mt-1 text-xs text-red-400">
+                {errors.lastName}
+              </p>
             ) : null}
           </div>
         </div>
 
         <div>
+          <label htmlFor="reg-email" className="mb-1 block text-sm font-medium">
+            Email
+          </label>
           <input
+            id="reg-email"
             type="email"
             name="email"
-            placeholder="Email"
+            placeholder="you@email.com"
             value={formData.email}
             onChange={handleChange}
             disabled={otpSent}
+            aria-invalid={Boolean(errors.email)}
+            aria-describedby={errors.email ? "reg-email-error" : undefined}
             className={inputClass}
           />
-          {errors.email ? <p className="mt-1 text-xs text-red-400">{errors.email}</p> : null}
+          {errors.email ? (
+            <p id="reg-email-error" role="alert" className="mt-1 text-xs text-red-400">
+              {errors.email}
+            </p>
+          ) : null}
         </div>
 
-        <div className="flex gap-2">
-          <span className="flex items-center rounded-lg border border-[var(--color-partner-border)] bg-[var(--color-partner-surface)] px-3 text-sm text-[var(--color-partner-muted)]">
-            +91
-          </span>
-          <input
-            type="tel"
-            name="phoneNumber"
-            placeholder="10-digit mobile"
-            value={formData.phoneNumber}
-            onChange={handleChange}
-            disabled={otpSent}
-            maxLength={10}
-            className={`${inputClass} flex-1`}
-          />
+        <div>
+          <label htmlFor="reg-phone" className="mb-1 block text-sm font-medium">
+            Mobile
+          </label>
+          <div className="flex gap-2">
+            <span className="flex items-center rounded-lg border border-[var(--color-partner-border)] bg-[var(--color-partner-surface)] px-3 text-sm text-[var(--color-partner-muted)]">
+              +91
+            </span>
+            <input
+              id="reg-phone"
+              type="tel"
+              name="phoneNumber"
+              placeholder="10-digit mobile"
+              value={formData.phoneNumber}
+              onChange={handleChange}
+              disabled={otpSent}
+              maxLength={10}
+              aria-invalid={Boolean(errors.phoneNumber)}
+              aria-describedby={errors.phoneNumber ? "reg-phone-error" : undefined}
+              className={`${inputClass} flex-1`}
+            />
+          </div>
+          {errors.phoneNumber ? (
+            <p id="reg-phone-error" role="alert" className="mt-1 text-xs text-red-400">
+              {errors.phoneNumber}
+            </p>
+          ) : null}
         </div>
-        {errors.phoneNumber ? (
-          <p className="-mt-3 text-xs text-red-400">{errors.phoneNumber}</p>
-        ) : null}
 
         {!otpSent ? (
           <div className="grid grid-cols-2 gap-3">
             <div>
+              <label htmlFor="reg-password" className="mb-1 block text-sm font-medium">
+                Password
+              </label>
               <input
+                id="reg-password"
                 type="password"
                 name="password"
-                placeholder="Password"
+                placeholder="Min 8 characters"
                 value={formData.password}
                 onChange={handleChange}
+                aria-invalid={Boolean(errors.password)}
                 className={inputClass}
               />
               {errors.password ? (
-                <p className="mt-1 text-xs text-red-400">{errors.password}</p>
+                <p role="alert" className="mt-1 text-xs text-red-400">
+                  {errors.password}
+                </p>
               ) : null}
             </div>
             <div>
+              <label htmlFor="reg-confirm" className="mb-1 block text-sm font-medium">
+                Confirm password
+              </label>
               <input
+                id="reg-confirm"
                 type="password"
                 name="confirmPassword"
                 placeholder="Confirm"
                 value={formData.confirmPassword}
                 onChange={handleChange}
+                aria-invalid={Boolean(errors.confirmPassword)}
                 className={inputClass}
               />
               {errors.confirmPassword ? (
-                <p className="mt-1 text-xs text-red-400">{errors.confirmPassword}</p>
+                <p role="alert" className="mt-1 text-xs text-red-400">
+                  {errors.confirmPassword}
+                </p>
               ) : null}
             </div>
           </div>
@@ -195,17 +262,27 @@ export function Step1Basic({
                 OTP sent to +91{formData.phoneNumber}
               </p>
             )}
+            <label htmlFor="reg-otp" className="mb-1 block text-sm font-medium">
+              OTP
+            </label>
             <input
+              id="reg-otp"
               type="text"
               name="otp"
               placeholder="6-digit OTP"
               value={formData.otp}
               onChange={handleChange}
               maxLength={6}
+              inputMode="numeric"
+              autoComplete="one-time-code"
               className={inputClass}
               autoFocus
             />
-            {errors.otp ? <p className="text-xs text-red-400">{errors.otp}</p> : null}
+            {errors.otp ? (
+              <p role="alert" className="text-xs text-red-400">
+                {errors.otp}
+              </p>
+            ) : null}
           </>
         )}
 

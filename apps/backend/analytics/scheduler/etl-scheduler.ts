@@ -13,6 +13,7 @@ import { refreshAllFreshness } from "../freshness/service";
 import { createVersion } from "../versioning/service";
 import { drainFeatureStagingBacklog } from "../feature-store/service";
 import { recordSchedulerMetrics } from "../../src/lib/etl-metrics";
+import { bigQueryAllowed, warehouseEgressDecision } from "../../src/lib/bigquery-adc";
 
 const ETL_LOCK_KEY = "maintenance:etl_scheduler";
 const ETL_LOCK_TTL = 900;
@@ -91,6 +92,9 @@ export async function triggerManualEtl(jobIds?: string[], runMode: EtlRunMode = 
 }
 
 export async function triggerEventEtl(eventType: string, aggregateId: string): Promise<void> {
+  // Same barrier as startEtlScheduler: in a test runtime every job would be refused by the BigQuery
+  // barrier anyway, after three backed-off retries per job that only burn CPU under load.
+  if (!bigQueryAllowed()) return;
   const domainMap: Record<string, string[]> = {
     "homigo.booking.completed": ["etl.booking", "etl.aggregates", "etl.eta"],
     "homigo.payment.captured": ["etl.payment", "etl.ledger"],
@@ -110,6 +114,14 @@ export async function triggerEventEtl(eventType: string, aggregateId: string): P
 export function startEtlScheduler(): void {
   if (etlTimer) return;
   if (process.env.ENABLE_ETL_SCHEDULER === "false") return;
+  // A test-mode runtime (isolated homigo_test DB) must not push its fixtures into the live warehouse,
+  // and neither may a developer machine that has not explicitly authorized it (lib/bigquery-adc.ts).
+  // load-env re-applies .env.test after harness overrides, so the env flag alone was not enough.
+  const warehouse = warehouseEgressDecision();
+  if (!warehouse.allowed) {
+    logger.info("etl_scheduler_skipped", { category: "APPLICATION", reason: warehouse.reason, target: warehouse.target });
+    return;
+  }
 
   void runEtlSchedulerTick();
   etlTimer = setInterval(() => void runEtlSchedulerTick(), ANALYTICS_CONFIG.incrementalIntervalMs);

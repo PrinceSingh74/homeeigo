@@ -91,6 +91,7 @@ export function AssessmentStep({
         </View>
         <Pressable
           accessibilityRole="button"
+          testID="onboarding-continue-training"
           style={styles.button}
           disabled={loading}
           onPress={() => {

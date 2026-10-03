@@ -209,13 +209,12 @@ export class FinancialLedgerService {
     const g = round2(gross);
     const n = round2(net);
     let b = round2(bonus);
-    let d = round2(deduction);
+    const d = round2(deduction);
 
     // Backfill rows only store gross/commission/net — infer bonus vs deduction.
     if (b === 0 && d === 0) {
       const delta = round2(n + round2(commission) - g);
       if (delta > 0) b = delta;
-      else if (delta < 0) d = round2(-delta);
     }
 
     const lines: LedgerLineInput[] = [
@@ -265,6 +264,14 @@ export class FinancialLedgerService {
     bonus = 0,
     deduction = 0,
   ) {
+    /**
+     * §11: a job that earned nothing and cost nothing (a waived-fee rework / revisit) has no money
+     * movement to journal. Posting it anyway failed LEDGER_UNBALANCED (a zero journal) and rolled the
+     * completion back, so such a job could never be completed.
+     */
+    if (round2(gross) === 0 && round2(commission) === 0 && round2(net) === 0 && round2(bonus) === 0 && round2(deduction) === 0) {
+      return null;
+    }
     return this.recordJournalInTransaction(
       tx,
       this.journalForProviderEarning(bookingId, gross, commission, net, bonus, deduction),
@@ -276,10 +283,19 @@ export class FinancialLedgerService {
    * Positive delta = ledger exceeds ops → debit liability to reduce.
    * Negative delta = ledger below ops → credit liability to increase.
    */
+  /**
+   * Post a correcting ADJUSTMENT for a liability delta.
+   *
+   * `reason` is written into the journal description because a journal entry is the one record
+   * that survives: an adjustment with no stated reason is indistinguishable, a year later, from
+   * one that papered over a defect. Callers go through `ledgerReconciliationService.reconcile`,
+   * which refuses to post without one.
+   */
   async recordLiabilityReconciliation(
     liabilityAccountCode: string,
     delta: number,
     idempotencyKey: string,
+    reason?: string,
   ): Promise<boolean> {
     const amount = Math.abs(round2(delta));
     if (amount <= 0.01) return false;
@@ -305,7 +321,9 @@ export class FinancialLedgerService {
       type: JournalEntryType.ADJUSTMENT,
       referenceType: "liability_reconciliation",
       idempotencyKey,
-      description: `Reconcile ${liabilityAccountCode} delta ${delta}`,
+      description: reason
+        ? `Reconcile ${liabilityAccountCode} delta ${delta} — reason: ${reason}`
+        : `Reconcile ${liabilityAccountCode} delta ${delta}`,
       lines,
     });
     return true;
@@ -335,6 +353,44 @@ export class FinancialLedgerService {
       lines: [
         { accountCode: "PLATFORM_ESCROW", debit: amount, credit: 0 },
         { accountCode: "CUSTOMER_WALLET", debit: 0, credit: amount },
+      ],
+    };
+  }
+
+  /**
+   * Admin-initiated (possibly partial) wallet refund. Keyed per refund request rather than per
+   * booking so a second, distinct partial refund posts its own journal instead of being deduped
+   * against the first one.
+   */
+  journalForWalletAdminRefund(bookingId: string, amount: number, refundIdempotencyKey: string): LedgerJournalInput {
+    return {
+      type: JournalEntryType.REFUND,
+      referenceId: bookingId,
+      referenceType: "booking_admin_refund",
+      idempotencyKey: `wallet_admin_refund:${refundIdempotencyKey}`,
+      description: `Admin wallet refund for booking ${bookingId}`,
+      lines: [
+        { accountCode: "PLATFORM_ESCROW", debit: amount, credit: 0 },
+        { accountCode: "CUSTOMER_WALLET", debit: 0, credit: amount },
+      ],
+    };
+  }
+
+  /**
+   * Customer tip, funded from the customer's wallet and owed to the partner in full.
+   * Debit Customer Wallet liability, Credit Provider Payable — no platform revenue line, because
+   * no commission is taken on tips (the pre-existing behaviour, now recorded instead of implied).
+   */
+  journalForBookingTip(bookingId: string, amount: number): LedgerJournalInput {
+    return {
+      type: JournalEntryType.PROVIDER_EARNING,
+      referenceId: bookingId,
+      referenceType: "booking_tip",
+      idempotencyKey: `booking_tip:${bookingId}`,
+      description: `Customer tip for booking ${bookingId}`,
+      lines: [
+        { accountCode: "CUSTOMER_WALLET", debit: amount, credit: 0 },
+        { accountCode: "PROVIDER_PAYABLE", debit: 0, credit: amount },
       ],
     };
   }
@@ -387,6 +443,24 @@ export class FinancialLedgerService {
       lines: [
         { accountCode: "CUSTOMER_FUNDS", debit: amount, credit: 0 },
         { accountCode: "PLATFORM_ESCROW", debit: 0, credit: amount },
+      ],
+    };
+  }
+
+  /**
+   * Gift card void refunded to its original gateway payment: the exact reverse of the purchase
+   * (Debit Platform Escrow, Credit Customer Funds). Keyed by card so a retry never journals twice.
+   */
+  journalForGiftCardVoidRefund(giftCardId: string, amount: number, gatewayRefundId: string): LedgerJournalInput {
+    return {
+      type: JournalEntryType.REFUND,
+      referenceId: giftCardId,
+      referenceType: "gift_card",
+      idempotencyKey: `gift_card_void:${giftCardId}`,
+      description: `Gift card ${giftCardId} voided; refund ${gatewayRefundId} to the original payment`,
+      lines: [
+        { accountCode: "PLATFORM_ESCROW", debit: amount, credit: 0 },
+        { accountCode: "CUSTOMER_FUNDS", debit: 0, credit: amount },
       ],
     };
   }
@@ -588,6 +662,69 @@ export class FinancialLedgerService {
   }
 
   /**
+   * Partner incentive bonus: DR Promotional Expense, CR Provider Payable.
+   * Idempotent per (provider, rule, period) via payout id.
+   */
+  journalForPartnerIncentive(opts: {
+    payoutId: string;
+    providerId: string;
+    ruleCode: string;
+    amount: number;
+    periodKey: string;
+  }): LedgerJournalInput {
+    const amount = round2(opts.amount);
+    return {
+      type: JournalEntryType.PARTNER_INCENTIVE,
+      referenceId: opts.payoutId,
+      referenceType: "partner_incentive_payout",
+      idempotencyKey: `partner_incentive:${opts.providerId}:${opts.payoutId}`,
+      description: `Partner incentive ${opts.ruleCode} (${opts.periodKey}) → provider ${opts.providerId}`,
+      lines: [
+        { accountCode: "PROMO_EXPENSE", debit: amount, credit: 0 },
+        { accountCode: "PROVIDER_PAYABLE", debit: 0, credit: amount },
+      ],
+    };
+  }
+
+  async recordPartnerIncentiveInTransaction(
+    tx: Prisma.TransactionClient,
+    opts: Parameters<FinancialLedgerService["journalForPartnerIncentive"]>[0],
+  ) {
+    return this.recordJournalInTransaction(tx, this.journalForPartnerIncentive(opts));
+  }
+
+  /**
+   * Partner referral reward: DR Referral Marketing Expense, CR Provider Payable.
+   * Distinct from customer REFERRAL_COMMISSION (customer wallet) and PARTNER_INCENTIVE.
+   */
+  journalForPartnerReferralReward(opts: {
+    rewardId: string;
+    referralId: string;
+    providerId: string;
+    amount: number;
+  }): LedgerJournalInput {
+    const amount = round2(opts.amount);
+    return {
+      type: JournalEntryType.PARTNER_REFERRAL_REWARD,
+      referenceId: opts.rewardId,
+      referenceType: "partner_referral_reward",
+      idempotencyKey: `partner_referral_reward:${opts.referralId}`,
+      description: `Partner referral reward → provider ${opts.providerId} (referral ${opts.referralId})`,
+      lines: [
+        { accountCode: "REFERRAL_MARKETING_EXPENSE", debit: amount, credit: 0 },
+        { accountCode: "PROVIDER_PAYABLE", debit: 0, credit: amount },
+      ],
+    };
+  }
+
+  async recordPartnerReferralRewardInTransaction(
+    tx: Prisma.TransactionClient,
+    opts: Parameters<FinancialLedgerService["journalForPartnerReferralReward"]>[0],
+  ) {
+    return this.recordJournalInTransaction(tx, this.journalForPartnerReferralReward(opts));
+  }
+
+  /**
    * Referral commission credited to wallet: DR Referral Marketing Expense,
    * CR Customer Wallet Liability. Keyed by the wallet transaction id so the
    * ledger CUSTOMER_WALLET balance stays in lock-step with the ops wallet.
@@ -669,6 +806,31 @@ export class FinancialLedgerService {
       ],
     };
     return opts.tx ? this.recordJournalInTransaction(opts.tx, input) : this.recordJournal(input);
+  }
+
+  /**
+   * Opening balance for a fixture account created in this process.
+   * Funded from promo expense. Never BANK_SETTLEMENT — that account means cash actually arrived.
+   * Callers must use this only on the create path. Re-posting an existing column balance widens ledger surplus.
+   */
+  journalForFixtureOpeningBalance(opts: {
+    idempotencyKey: string;
+    referenceId: string;
+    referenceType: "fixture_user" | "fixture_provider";
+    creditAccount: "CUSTOMER_WALLET" | "PROVIDER_PAYABLE";
+    amount: number;
+  }): LedgerJournalInput {
+    return {
+      type: JournalEntryType.ADJUSTMENT,
+      referenceId: opts.referenceId,
+      referenceType: opts.referenceType,
+      idempotencyKey: opts.idempotencyKey,
+      description: `Fixture opening balance ${opts.referenceType} ${opts.referenceId}`,
+      lines: [
+        { accountCode: "PROMO_EXPENSE", debit: opts.amount, credit: 0 },
+        { accountCode: opts.creditAccount, debit: 0, credit: opts.amount },
+      ],
+    };
   }
 
   journalForCashback(cashbackId: string, amount: number): LedgerJournalInput {

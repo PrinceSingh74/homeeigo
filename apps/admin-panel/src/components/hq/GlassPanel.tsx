@@ -6,7 +6,7 @@ export const GlassPanel = memo(function GlassPanel({
   className,
   glow,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   className?: string;
   glow?: "amber" | "blue" | "emerald" | "red" | "none";
 }) {

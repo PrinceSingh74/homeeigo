@@ -7,8 +7,13 @@ import { userPiiService } from "./user-pii.service";
 type CustomerEmailFields = Parameters<typeof userPiiService.resolveEmail>[0] & { id: string };
 
 /**
- * Resolve pinned partner provider IDs for this customer. Empty when the
- * customer is not pinned, or the partner is missing / not lifecycle ACTIVE.
+ * Resolve pinned partner provider IDs for this customer — development/test only (the pin map
+ * is empty on every deployed host). Empty when the customer is not pinned, or the partner is
+ * missing / not lifecycle ACTIVE.
+ *
+ * W2-D2: the result is a SOFT preference consumed by `preferPinnedAmongEligible`, which can only
+ * reorder partners matching already admitted. `isMustIncludePinnedProvider` was removed with the
+ * arrive/start GPS substitution it existed to serve.
  */
 export async function resolveMustIncludeProviderIds(user: CustomerEmailFields): Promise<string[]> {
   const email = await userPiiService.resolveEmail(user, { actorId: user.id, authorized: true });
@@ -38,13 +43,4 @@ export async function resolveMustIncludeProviderIds(user: CustomerEmailFields): 
     logger.info("dispatch_must_include_resolved", { userId: user.id, providerCount: ids.length });
   }
   return ids;
-}
-
-export async function isMustIncludePinnedProvider(
-  customer: CustomerEmailFields | null | undefined,
-  providerId: string,
-): Promise<boolean> {
-  if (!customer) return false;
-  const ids = await resolveMustIncludeProviderIds(customer);
-  return ids.includes(providerId);
 }

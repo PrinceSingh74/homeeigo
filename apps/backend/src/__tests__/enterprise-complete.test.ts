@@ -29,7 +29,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (dbOk) await cleanupAdversarialFixtures(RUN_ID);
-  await prisma.$disconnect();
 }, 60_000);
 
 function skipIfNoDb() {
@@ -129,6 +128,8 @@ describe.serial("Enterprise complete flows", () => {
       paymentMethodPreference: "upi",
       upiId: `partner-${RUN_ID}@upi`,
     });
+    // The update helper returns `T | null`; assert it actually succeeded rather than assuming it.
+    if (!updated) throw new Error("partner profile update returned null");
     expect(updated.workingHoursStart).toBe("08:00");
     expect(updated.upiId).toContain(RUN_ID);
 

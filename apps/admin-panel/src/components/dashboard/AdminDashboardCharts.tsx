@@ -15,7 +15,6 @@ type DayPoint = { date: string; count?: number; revenue?: number };
 export const AdminDashboardCharts = memo(function AdminDashboardCharts({
   bookingsByDay,
   revenueByDay,
-  maxRevenue: _maxRevenue,
   isLoading,
   activeNow,
   thisMonthRevenue,

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { buildBookingCreatedEvent } from "../catalog/booking.events";
 import { validateEventEnvelope } from "../core/validation";
 import { computeRetryDelayMs, isTransientConsumerError } from "../core/retry";
-import { bindEventContextFromRequest, getEventContext, runWithEventContext } from "../core/event-context";
+import { bindActorContext, bindEventContextFromRequest, getEventContext, runWithEventContext } from "../core/event-context";
 import { buildPartnerArrivedEvent } from "../catalog/partner.events";
 
 describe("failure scenarios (Phase 0)", () => {
@@ -56,8 +56,20 @@ describe("failure scenarios (Phase 0)", () => {
       const ctx = getEventContext();
       expect(ctx.traceId).toBe("t1");
       expect(ctx.correlationId).toBe("req_abc");
+      expect(ctx.requestId).toBe("req_abc");
       expect(ctx.causationId).toBe("pay_evt");
     });
+  });
+
+  test("actor and partner bind onto the existing request context", () => {
+    bindEventContextFromRequest({ traceId: "t2", requestId: "req_actor", deviceId: "dev_1" });
+    bindActorContext({ actorId: "user_1", actorType: "partner", partnerId: "prov_1" });
+    const ctx = getEventContext();
+    expect(ctx.actorId).toBe("user_1");
+    expect(ctx.actorType).toBe("partner");
+    expect(ctx.partnerId).toBe("prov_1");
+    expect(ctx.deviceId).toBe("dev_1");
+    expect(ctx.requestId).toBe("req_actor");
   });
 
   test("ETA label event includes travelDurationMin without fabrication", () => {

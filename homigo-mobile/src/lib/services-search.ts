@@ -1,4 +1,4 @@
-import { SERVICES } from "./services";
+import { SERVICE_SEARCH_INDEX } from "./services";
 import {
   CATEGORIES,
   TRENDING_SERVICES,
@@ -9,7 +9,7 @@ export function resolveServiceIdFromQuery(query: string): string {
   const q = query.trim().toLowerCase();
   if (!q) return "cleaning";
 
-  const direct = SERVICES.find(
+  const direct = SERVICE_SEARCH_INDEX.find(
     (s) =>
       s.id === q ||
       s.name.toLowerCase().includes(q) ||

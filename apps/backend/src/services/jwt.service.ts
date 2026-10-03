@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import jsonwebtoken from "jsonwebtoken";
 import type { JwtPayload } from "../types/auth.types";
+import { devAffordancesAllowed } from "../lib/deployed-environment";
 
 /** Parse durations like "1h", "30d", "15m", "900s" (or a raw number of seconds). */
 function parseDurationToSeconds(value: string | undefined, fallbackSeconds: number): number {
@@ -35,9 +36,11 @@ function isInsecureSecret(secret: string): boolean {
 
 function resolveSecret(envValue: string | undefined, devFallback: string): string {
   if (envValue && !isInsecureSecret(envValue)) return envValue;
-  if (process.env.NODE_ENV === "production") {
+  // Any deployed host, not only NODE_ENV=production: staging runs NODE_ENV=development, and a
+  // placeholder signing secret there lets anyone mint tokens for any account.
+  if (!devAffordancesAllowed()) {
     throw new Error(
-      "A strong JWT_SECRET and JWT_REFRESH_SECRET are required in production. Generate with: openssl rand -hex 32",
+      "A strong JWT_SECRET and JWT_REFRESH_SECRET are required on a deployed host. Generate with: openssl rand -hex 32",
     );
   }
   if (envValue && isInsecureSecret(envValue)) {

@@ -3,7 +3,10 @@
  * Checkout pricing remains owned by booking-pricing.service; this exposes the live
  * multiplier stack, revenue-optimal price, surge forecast and A/B assignment.
  *
- * RBAC: any authenticated user (quotes/forecasts are customer + partner + admin facing).
+ * RBAC (2026-09-21): /quote and /experiment are ADMIN-only. `/quote` returns a *recommended* price that
+ * checkout never charges; exposing it to customers created a second, contradictory "quote" beside the
+ * authoritative POST /api/bookings/price-quote. No frontend consumed it. /surge-forecast (demand
+ * pressure, no money) stays available to any authenticated user.
  * Every response carries confidence + freshness.
  */
 import { Elysia, t } from "elysia";
@@ -13,8 +16,8 @@ import { dynamicPricingService as svc } from "../services/dynamic-pricing.servic
 export const pricingRoutes = new Elysia({ prefix: "/api/pricing" })
   .use(authPlugin)
 
-  .get("/quote", async ({ requireAuth, query, set }) => {
-    requireAuth();
+  .get("/quote", async ({ requireRole, query, set }) => {
+    requireRole("ADMIN");
     const baseFare = Number(query.baseFare);
     const fromLat = Number(query.fromLat), fromLng = Number(query.fromLng), toLat = Number(query.toLat), toLng = Number(query.toLng);
     if ([baseFare, fromLat, fromLng, toLat, toLng].some((n) => Number.isNaN(n))) {
@@ -34,7 +37,7 @@ export const pricingRoutes = new Elysia({ prefix: "/api/pricing" })
     return { success: true, ...(await svc.surgeForecast({ lat, lng })) };
   }, { query: t.Object({ lat: t.String(), lng: t.String() }) })
 
-  .get("/experiment", async ({ requireAuth }) => {
-    const u = requireAuth();
-    return { success: true, data: svc.assignExperiment(u.userId), generatedAt: new Date().toISOString() };
+  .get("/experiment", async ({ requireRole }) => {
+    const u = requireRole("ADMIN");
+    return { success: true, data: await svc.assignExperiment(u.userId), generatedAt: new Date().toISOString() };
   });

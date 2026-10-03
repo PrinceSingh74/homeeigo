@@ -9,14 +9,14 @@ import { setSentryUser } from "@/lib/sentry";
 import { authApi } from "@/services/auth/auth-api";
 import { configureApiClient } from "@/services/auth/api-client";
 import type { AuthStatus, AuthUser, PendingRegistration } from "@/types/auth";
+import { AUTH_PERSIST_VERSION, migrateAuthSnapshot } from "./auth-persist";
 
 type AuthState = {
   user: AuthUser | null;
   accessToken: string | null;
-  refreshToken: string | null;
   status: AuthStatus;
   error: string | null;
-  setSession: (user: AuthUser, accessToken: string, refreshToken: string) => void;
+  setSession: (user: AuthUser, accessToken: string) => void;
   clearSession: () => void;
   setError: (message: string | null) => void;
   bootstrap: () => Promise<void>;
@@ -42,17 +42,15 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       accessToken: null,
-      refreshToken: null,
       status: "idle",
       error: null,
 
-      setSession: (user, accessToken, refreshToken) => {
+      setSession: (user, accessToken) => {
         setSessionCookie();
         setSentryUser({ id: (user as { id?: string })?.id, role: (user as { role?: string })?.role });
         set({
           user,
           accessToken,
-          refreshToken,
           status: "authenticated",
           error: null,
         });
@@ -64,7 +62,6 @@ export const useAuthStore = create<AuthState>()(
         set({
           user: null,
           accessToken: null,
-          refreshToken: null,
           status: "unauthenticated",
           error: null,
         });
@@ -73,13 +70,14 @@ export const useAuthStore = create<AuthState>()(
       setError: (error) => set({ error }),
 
       bootstrap: async () => {
-        const { refreshToken, status } = get();
+        const { user, status } = get();
         if (status === "initializing") return;
         const { markBootstrapStart, markBootstrapComplete } = await import("@/lib/auth/bootstrap-gate");
         markBootstrapStart();
         set({ status: "initializing", error: null });
 
-        if (!refreshToken) {
+        // A persisted user means "a refresh cookie may exist" — the refresh call is what proves it.
+        if (!user) {
           set({ status: "unauthenticated" });
           markBootstrapComplete();
           return;
@@ -105,38 +103,38 @@ export const useAuthStore = create<AuthState>()(
       login: async (email, password) => {
         set({ error: null });
         const session = await authApi.login(email, password);
-        get().setSession(session.user, session.accessToken, session.refreshToken);
+        get().setSession(session.user, session.accessToken);
       },
 
       signInWithGoogle: async (code, state) => {
         set({ error: null });
         const session = await authApi.googleCallback(code, state);
-        get().setSession(session.user, session.accessToken, session.refreshToken);
+        get().setSession(session.user, session.accessToken);
       },
 
       signInWithApple: async (code, state, user) => {
         set({ error: null });
         const session = await authApi.appleCallback(code, state, user);
-        get().setSession(session.user, session.accessToken, session.refreshToken);
+        get().setSession(session.user, session.accessToken);
       },
 
       register: async (payload) => {
         set({ error: null });
         const session = await authApi.register(payload);
         clearPendingRegistration();
-        get().setSession(session.user, session.accessToken, session.refreshToken);
+        get().setSession(session.user, session.accessToken);
       },
 
       logout: async () => {
-        const token = get().refreshToken;
-        get().clearSession();
-        if (token) {
-          try {
-            await authApi.logout(token);
-          } catch {
-            /* ignore — client session already cleared */
-          }
+        // Tell the API first (it revokes the cookie's session and clears the cookie), then drop
+        // local state — the browser holds the credential, so a local-only clear would leave the
+        // refresh session alive server-side.
+        try {
+          await authApi.logout();
+        } catch {
+          /* ignore — the local session is cleared regardless */
         }
+        get().clearSession();
       },
 
       sendOtp: async (phoneNumber, userId) => {
@@ -161,14 +159,11 @@ export const useAuthStore = create<AuthState>()(
       },
 
       refreshSession: async () => {
-        const currentRefresh = get().refreshToken;
-        if (!currentRefresh) return false;
+        // The cookie is the credential; a persisted user says a session may exist.
+        if (!get().user && !get().accessToken) return false;
         try {
-          const data = await authApi.refresh(currentRefresh);
-          set({
-            accessToken: data.accessToken,
-            refreshToken: data.refreshToken,
-          });
+          const data = await authApi.refresh();
+          set({ accessToken: data.accessToken });
           return true;
         } catch {
           get().clearSession();
@@ -183,13 +178,28 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "homigo-auth",
+      version: AUTH_PERSIST_VERSION,
+      // Older snapshots carried tokens: keep the profile, drop the rest (see auth-persist.ts).
+      migrate: (persisted, fromVersion) => migrateAuthSnapshot(persisted, fromVersion) as unknown as AuthState,
+      /**
+       * NO TOKENS IN localStorage. The access token is memory-only and the refresh token is an
+       * HttpOnly, SameSite=Strict, audience-scoped cookie the browser holds for /api/auth — so an
+       * XSS read of localStorage yields a user profile, not a session. Only the profile is persisted,
+       * to render the signed-in shell before the first refresh returns.
+       */
       partialize: (state) => ({
         user: state.user,
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
       }),
+      // Never let a stale localStorage snapshot replace store actions.
+      merge: (persisted, current) => {
+        const p = persisted as { user?: AuthUser | null } | undefined;
+        return {
+          ...current,
+          user: p && "user" in p ? (p.user ?? null) : current.user,
+        };
+      },
       onRehydrateStorage: () => (state) => {
-        if (state?.refreshToken) {
+        if (state?.user) {
           state.status = "idle";
           // Keep the middleware marker cookie in sync with the persisted session.
           setSessionCookie();
@@ -204,9 +214,10 @@ export const useAuthStore = create<AuthState>()(
 
 configureApiClient({
   getAccessToken: () => useAuthStore.getState().accessToken,
-  getRefreshToken: () => useAuthStore.getState().refreshToken,
-  setTokens: (accessToken, refreshToken) => {
-    useAuthStore.setState({ accessToken, refreshToken });
+  // A persisted user is the session marker; the refresh token itself is an HttpOnly cookie now.
+  hasSession: () => Boolean(useAuthStore.getState().user),
+  setAccessToken: (accessToken) => {
+    useAuthStore.setState({ accessToken });
   },
   clearSession: () => useAuthStore.getState().clearSession(),
 });

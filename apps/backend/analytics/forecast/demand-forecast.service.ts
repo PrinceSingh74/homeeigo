@@ -9,17 +9,26 @@
  * gracefully instead of failing an admin page — see `forecastSafe`.
  */
 import { BigQuery } from "@google-cloud/bigquery";
+import { assertBqAdcAvailable } from "../../src/lib/bigquery-adc";
+import { assertRowArray, withWarehouseDeadline } from "../../src/lib/warehouse-read";
 import { ANALYTICS_CONFIG } from "../config";
 import { recordForecastMetrics } from "../../src/lib/etl-metrics";
 import { cacheService } from "../../src/services/cache.service";
 import { logger } from "../../src/lib/logger";
+import { incCounter } from "../../src/lib/metrics";
+import { demandBaselineService } from "./demand-baseline.service";
 
 const P = ANALYTICS_CONFIG.projectId;
 const D = ANALYTICS_CONFIG.dataset;
 const LOC = ANALYTICS_CONFIG.location;
 
 let _bq: BigQuery | null = null;
-const bq = () => (_bq ??= new BigQuery({ projectId: P }));
+// Same egress barrier as the src/ services (lib/bigquery-adc.ts): a NODE_ENV=test runtime without ADC
+// must never reach the live warehouse.
+const bq = () => {
+  assertBqAdcAvailable();
+  return (_bq ??= new BigQuery({ projectId: P }));
+};
 
 export type ForecastGranularity = "hourly" | "daily" | "weekly";
 export type ForecastScope = "zone" | "city" | "partner_earnings";
@@ -47,7 +56,7 @@ const METRICS_L1_TTL_S = 300;
 
 /** Thrown for caller error (unknown scope/granularity) so routes can answer 400, not 500. */
 export class ForecastUnavailableError extends Error {
-  constructor(message: string, readonly reason: "UNKNOWN_MODEL" | "INVALID_INPUT") {
+  constructor(message: string, readonly reason: "UNKNOWN_MODEL" | "INVALID_INPUT" | "EXPIRED_HORIZON") {
     super(message);
     this.name = "ForecastUnavailableError";
   }
@@ -66,8 +75,23 @@ export type ForecastMeta = {
 export type ForecastResult = { forecasts: Record<string, unknown>[]; meta: ForecastMeta };
 
 export type SafeForecastResult =
-  | (ForecastResult & { available: true })
-  | { available: false; reason: string; scope: ForecastScope; granularity: ForecastGranularity };
+  | (ForecastResult & { available: true; source: "warehouse" })
+  /**
+   * Served by the deterministic forecaster because the warehouse model could not answer.
+   *
+   * `source` is on every arm so a caller can never present a fallback as a warehouse forecast by
+   * accident. `reason` says why the warehouse was not used, and is shown rather than swallowed.
+   */
+  | {
+      available: true;
+      source: "deterministic_fallback";
+      reason: string;
+      forecasts: Record<string, unknown>[];
+      meta: ForecastMeta;
+      degraded: boolean;
+      limitations: string[];
+    }
+  | { available: false; source: "none"; reason: string; scope: ForecastScope; granularity: ForecastGranularity };
 
 function resolveModelKey(scope: ForecastScope, granularity: ForecastGranularity): string {
   return scope === "partner_earnings" ? "partner_earnings:hourly" : `${scope}:${granularity}`;
@@ -78,6 +102,31 @@ function clampHorizon(granularity: ForecastGranularity, requested?: number): num
   const fallback = DEFAULT_HORIZONS[granularity];
   if (requested === undefined || !Number.isFinite(requested)) return fallback;
   return Math.max(1, Math.min(Math.floor(requested), MAX_HORIZONS[granularity]));
+}
+
+/**
+ * The latest instant any returned row describes, in epoch ms, or null when no row carries one.
+ *
+ * BigQuery hands timestamps back as `{ value: "..." }` objects rather than Dates, so this reads both
+ * shapes. Returning null when the column is absent is deliberate: an unknown horizon must not be
+ * treated as an expired one, or a model with a differently-named timestamp column would be
+ * permanently refused.
+ */
+function latestForecastInstant(rows: Record<string, unknown>[]): number | null {
+  let latest: number | null = null;
+  for (const row of rows) {
+    const raw = row.forecast_timestamp;
+    const iso =
+      raw && typeof raw === "object" && "value" in (raw as Record<string, unknown>)
+        ? String((raw as { value: unknown }).value)
+        : typeof raw === "string"
+          ? raw
+          : null;
+    if (!iso) continue;
+    const t = Date.parse(iso);
+    if (Number.isFinite(t) && (latest === null || t > latest)) latest = t;
+  }
+  return latest;
 }
 
 function clampConfidence(requested?: number): number {
@@ -118,11 +167,34 @@ export class DemandForecastService {
       async () => {
         const t0 = Date.now();
         // h and conf are numeric and clamped above, so interpolation is safe here.
-        const [rows] = await bq().query({
+        // Bounded: a hung warehouse used to hold the request open (lib/warehouse-read, X-88).
+        const [rows] = await withWarehouseDeadline(bq().query({
           query: `SELECT * FROM ML.FORECAST(MODEL \`${model}\`, STRUCT(${h} AS horizon, ${conf} AS confidence_level))`,
           location: LOC,
-        });
+        }));
+        assertRowArray(rows, "ML.FORECAST");
         recordForecastMetrics(model.split(".").pop() ?? model, Date.now() - t0, h);
+        /**
+         * An expired horizon is worse than an outage, because it looks like a forecast.
+         *
+         * ML.FORECAST projects forward from the end of the model's *training* data, not from now.
+         * `model_demand_forecast` was trained on data ending 2026-06-20, so today it returns 168
+         * confident hourly points covering 2026-06-20 to 2026-06-27 — a week that ended 69 days
+         * ago — and nothing in the response says so. Callers rendered them as the coming week.
+         *
+         * So the horizon is checked against the clock here, and a forecast that cannot describe any
+         * future instant is refused rather than returned. `forecastSafe` turns that refusal into the
+         * deterministic fallback.
+         */
+        const horizonEnd = latestForecastInstant(rows as Record<string, unknown>[]);
+        if (horizonEnd !== null && horizonEnd < Date.now()) {
+          const daysAgo = Math.floor((Date.now() - horizonEnd) / 86_400_000);
+          throw new ForecastUnavailableError(
+            `${model.split(".").pop() ?? model} can only forecast up to ${new Date(horizonEnd).toISOString()}, which ended ${daysAgo} days ago. ` +
+            `ML.FORECAST projects from the end of training data, so this model cannot describe today until it is retrained.`,
+            "EXPIRED_HORIZON",
+          );
+        }
         return {
           forecasts: rows as Record<string, unknown>[],
           meta: {
@@ -167,13 +239,57 @@ export class DemandForecastService {
   ): Promise<SafeForecastResult> {
     try {
       const result = await this.forecastDetailed(scope, granularity, horizon, confidenceLevel);
-      return { available: true, ...result };
+      return { available: true, source: "warehouse", ...result };
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       if (!(err instanceof ForecastUnavailableError)) {
         logger.warn("forecast_unavailable", { scope, granularity, error: reason });
       }
-      return { available: false, reason, scope, granularity };
+
+      /**
+       * A caller error is not a reason to serve a different model.
+       *
+       * Asking for a scope that has no model is a mistake in the request; answering it with a
+       * fallback would hide the mistake and return numbers for something nobody asked about.
+       */
+      if (err instanceof ForecastUnavailableError && err.reason === "UNKNOWN_MODEL") {
+        return { available: false, source: "none", reason, scope, granularity };
+      }
+
+      /**
+       * Everything else — an outage, an expired horizon, a billing failure — falls back to the
+       * deterministic forecaster, which needs only the series and beat every alternative on a
+       * 14-day holdout. Zone/daily is the only shape it produces, so other scopes still return
+       * unavailable rather than being answered with a series about something else.
+       */
+      // Zone/DAILY only: an hourly or weekly request used to receive daily points under
+      // meta.granularity "hourly"/"weekly" (and a week-count horizon read as days) — independent
+      // review, release certification 2026-09-20.
+      if (scope !== "zone" || granularity !== "daily") {
+        return { available: false, source: "none", reason, scope, granularity };
+      }
+      const fallback = await demandBaselineService.forecast(clampHorizon(granularity, horizon));
+      if ("unavailable" in fallback) {
+        return { available: false, source: "none", reason: `${reason} | fallback: ${fallback.reason}`, scope, granularity };
+      }
+      incCounter("demand_forecast_fallback_total", { scope, granularity });
+      logger.warn("forecast_served_by_fallback", { scope, granularity, reason: reason.slice(0, 200) });
+      return {
+        available: true,
+        source: "deterministic_fallback",
+        reason,
+        forecasts: fallback.points.map((p) => ({ forecast_date: p.date, forecast_value: p.predicted })),
+        meta: {
+          model: "demand_forecast_baseline",
+          scope, granularity,
+          horizon: fallback.points.length,
+          confidenceLevel: 0,
+          generatedAt: fallback.generatedAt,
+          rowCount: fallback.points.length,
+        },
+        degraded: fallback.degraded,
+        limitations: fallback.limitations,
+      };
     }
   }
 
@@ -222,26 +338,26 @@ export class DemandForecastService {
   async surgePlanning(limit = 100): Promise<Record<string, unknown>[]> {
     const n = Math.max(1, Math.min(Math.floor(Number(limit) || 100), 1000));
     return cacheService.getOrFetch(`forecast:surge:${n}`, FORECAST_CACHE_TTL_S, async () => {
-      const [rows] = await bq().query({
+      const [rows] = await withWarehouseDeadline(bq().query({
         query: `SELECT * FROM \`${P}.${D}.vw_surge_planning\` ORDER BY hour_ts DESC LIMIT ${n}`,
         location: LOC,
-      });
-      return rows as Record<string, unknown>[];
+      }));
+      return assertRowArray<Record<string, unknown>>(rows, "vw_surge_planning");
     }, FORECAST_L1_TTL_S);
   }
 
   async capacityPlanning(city?: string): Promise<Record<string, unknown>[]> {
     const filter = city ? `WHERE city = '${city.replace(/'/g, "''")}'` : "";
     return cacheService.getOrFetch(`forecast:capacity:${city ?? "all"}`, FORECAST_CACHE_TTL_S, async () => {
-      const [rows] = await bq().query({
+      const [rows] = await withWarehouseDeadline(bq().query({
         query: `
         SELECT city, zone_id, AVG(bookings) AS avg_hourly_demand, MAX(bookings) AS peak_demand,
                AVG(completed) AS avg_completed, AVG(revenue) AS avg_revenue
         FROM \`${P}.${D}_analytics.agg_hourly_demand\` ${filter}
         GROUP BY city, zone_id ORDER BY peak_demand DESC LIMIT 50`,
         location: LOC,
-      });
-      return rows as Record<string, unknown>[];
+      }));
+      return assertRowArray<Record<string, unknown>>(rows, "agg_hourly_demand");
     }, FORECAST_L1_TTL_S);
   }
 }

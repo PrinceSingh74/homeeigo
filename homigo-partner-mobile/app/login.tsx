@@ -40,6 +40,7 @@ export default function LoginScreen() {
       <View style={styles.card}>
         <Text style={styles.label}>Email</Text>
         <TextInput
+          testID="partner-login-email"
           autoCapitalize="none"
           keyboardType="email-address"
           value={email}
@@ -50,6 +51,7 @@ export default function LoginScreen() {
         />
         <Text style={styles.label}>Password</Text>
         <TextInput
+          testID="partner-login-password"
           secureTextEntry
           value={password}
           onChangeText={setPassword}
@@ -59,6 +61,7 @@ export default function LoginScreen() {
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable
+          testID="partner-login-submit"
           onPress={() => void onSubmit()}
           disabled={loading || !email || !password}
           style={[styles.button, (loading || !email || !password) && styles.buttonDisabled]}

@@ -14,52 +14,46 @@ export type RegisterPushTokenInput = {
 export class DevicePushService {
   async upsertToken(input: RegisterPushTokenInput) {
     const now = new Date();
-    const existing = await prisma.userDevice.findUnique({
-      where: { userId_deviceId: { userId: input.userId, deviceId: input.deviceId } },
-    });
-
-    if (existing) {
-      const tokenChanged = existing.expoPushToken !== input.expoPushToken;
-      if (tokenChanged) {
-        await prisma.userDevice.updateMany({
-          where: { expoPushToken: input.expoPushToken, id: { not: existing.id } },
-          data: { isActive: false, revokedAt: now },
-        });
-      }
-      return prisma.userDevice.update({
-        where: { id: existing.id },
-        data: {
+    return prisma.$transaction(async (tx) => {
+      /**
+       * A push token identifies one app install on one phone. If it is held by ANOTHER
+       * (userId, deviceId) — a different account signed in on the same phone, or a stale row — that
+       * row is removed, not deactivated: `expo_push_token` is UNIQUE, so a deactivated row kept the
+       * token and the new owner's registration failed with P2002, while the old owner's row was
+       * already switched off. The token must reach exactly one account.
+       *
+       * Scoped with NOT (userId, deviceId): concurrent registrations of the SAME device must never
+       * remove each other's row (4 concurrent identical registrations once left zero active devices).
+       */
+      await tx.userDevice.deleteMany({
+        where: {
           expoPushToken: input.expoPushToken,
-          platform: input.platform,
-          deviceName: input.deviceName,
-          appVersion: input.appVersion,
-          osVersion: input.osVersion,
-          tokenUpdatedAt: tokenChanged ? now : existing.tokenUpdatedAt,
-          lastSeenAt: now,
-          isActive: true,
-          revokedAt: null,
+          NOT: { userId: input.userId, deviceId: input.deviceId },
         },
       });
-    }
 
-    await prisma.userDevice.updateMany({
-      where: { expoPushToken: input.expoPushToken },
-      data: { isActive: false, revokedAt: now },
-    });
-
-    return prisma.userDevice.create({
-      data: {
-        userId: input.userId,
-        deviceId: input.deviceId,
+      const existing = await tx.userDevice.findUnique({
+        where: { userId_deviceId: { userId: input.userId, deviceId: input.deviceId } },
+        select: { expoPushToken: true },
+      });
+      const tokenChanged = !existing || existing.expoPushToken !== input.expoPushToken;
+      const fields = {
         expoPushToken: input.expoPushToken,
         platform: input.platform,
         deviceName: input.deviceName,
         appVersion: input.appVersion,
         osVersion: input.osVersion,
-        tokenUpdatedAt: now,
         lastSeenAt: now,
         isActive: true,
-      },
+        revokedAt: null,
+      };
+
+      // Upsert, so the losers of a concurrent same-device race converge onto the winner's row.
+      return tx.userDevice.upsert({
+        where: { userId_deviceId: { userId: input.userId, deviceId: input.deviceId } },
+        create: { userId: input.userId, deviceId: input.deviceId, ...fields, tokenUpdatedAt: now },
+        update: { ...fields, ...(tokenChanged ? { tokenUpdatedAt: now } : {}) },
+      });
     });
   }
 
@@ -86,12 +80,36 @@ export class DevicePushService {
     });
   }
 
-  async getActiveTokens(userId: string): Promise<string[]> {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { pushNotifications: true },
-    });
-    if (!user?.pushNotifications) return [];
+  /**
+   * The push tokens a user can be reached on.
+   *
+   * ── Two questions, deliberately separable ──────────────────────────────────
+   *
+   * "Does this person have a device?" is a capability question. "May we push to them?" is a policy
+   * question, and the notification router already answers it through `evaluatePreference`, which
+   * knows that SECURITY and TRANSACTIONAL categories cannot be refused.
+   *
+   * Answering both here — as this method did unconditionally — meant a recipient who had ever
+   * turned push off lost it for *every* category, including the mandatory ones. The router could
+   * not even see the channel to make its own decision: the target simply vanished before
+   * governance ran.
+   *
+   * The legacy default keeps the preference gate, because `pushDeliveryService` is called directly
+   * by the imperative notification path, which has no governance layer of its own and would
+   * otherwise start pushing to people who opted out. `includeOptedOut` is for callers that apply
+   * preference themselves — today only the recipient resolver.
+   */
+  async getActiveTokens(
+    userId: string,
+    options: { includeOptedOut?: boolean } = {},
+  ): Promise<string[]> {
+    if (!options.includeOptedOut) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { pushNotifications: true },
+      });
+      if (!user?.pushNotifications) return [];
+    }
 
     const devices = await prisma.userDevice.findMany({
       where: { userId, isActive: true },

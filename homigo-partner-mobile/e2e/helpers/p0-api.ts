@@ -28,12 +28,14 @@ export function uniqueClientIp(): string {
 
 export function uniqueKyc(holder = "Rahul Sharma") {
   kycSeq += 1;
-  const n = Date.now() * 100 + kycSeq * 13 + Math.floor(Math.random() * 97);
+  const n = Math.abs(Date.now() + kycSeq * 9973 + Math.floor(Math.random() * 97));
   const d4 = String(n % 10000).padStart(4, "0");
+  const l1 = String.fromCharCode(65 + (kycSeq % 26));
+  const l2 = String.fromCharCode(65 + ((kycSeq * 7 + (n % 26)) % 26));
   const aadharNumber = `${(n % 9) + 1}${String(n).slice(-11).padStart(11, "0")}`.slice(0, 12);
   const bankAccountNumber = `${((n + 3) % 8) + 2}${String(n + 91).slice(-11).padStart(11, "0")}`.slice(0, 12);
   return {
-    panNumber: `AAAPA${d4}Z`,
+    panNumber: `ZZ${l1}${l2}A${d4}P`,
     aadharNumber,
     bankAccountNumber,
     bankAccountHolder: holder,

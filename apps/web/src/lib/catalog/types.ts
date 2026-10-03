@@ -67,7 +67,7 @@ export type CategoryDef = {
   /** Accent hex used for icon tints only — surfaces stay neutral. */
   tone: string;
   treatment: CategoryTreatment;
-  subgroups?: { id: string; name: string }[];
+  subgroups?: { id: string; name: string; description?: string }[];
   /** Backend `category` values that fall back into this category. */
   backendCategories?: string[];
   /** Shown on a category's coming-soon services. */
@@ -151,6 +151,8 @@ export type ServiceView = {
   price?: PriceInfo;
   durationMin?: number;
   image?: string;
+  /** Admin video URL (https or a site path). Absent when none was saved. */
+  video?: string;
   icon: LucideIcon;
   tone: string;
   popular: boolean;

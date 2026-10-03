@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { ArrowUpRight, BookOpen, IndianRupee, Loader2, Wallet } from "lucide-react";
 import { PartnerCard } from "@/components/ui/PartnerCard";
 import { PartnerButton } from "@/components/ui/PartnerButton";
@@ -10,7 +10,6 @@ import { WithdrawModal } from "@/components/wallet/WithdrawModal";
 import {
   usePartnerMeQuery,
   usePartnerPayoutsQuery,
-  useWalletBalanceQuery,
   useWalletTransactionsQuery,
 } from "@/hooks/use-partner-data";
 import { usePartnerEarningsStream } from "@/hooks/use-partner-earnings-stream";
@@ -18,7 +17,6 @@ import { formatDate, formatInr, formatTime } from "@/lib/format";
 
 export function WalletDashboard() {
   const me = usePartnerMeQuery();
-  const balanceQuery = useWalletBalanceQuery();
   const payoutsQuery = usePartnerPayoutsQuery();
   const transactionsQuery = useWalletTransactionsQuery({ page: 1, limit: 20 });
   // Live wallet + earnings tiles. REST queries remain the source of truth;
@@ -27,16 +25,18 @@ export function WalletDashboard() {
 
   const [withdrawOpen, setWithdrawOpen] = useState(false);
 
+  const walletLoading = payoutsQuery.isLoading && !payoutsQuery.data;
+  // /api/wallet/balance reads the CUSTOMER wallet (users.wallet_balance) and was the third
+  // fallback here — a partner with a failed payouts query would have seen a stranger's number.
   const totalBalance =
     liveEarnings?.walletBalance ??
     payoutsQuery.data?.currentBalance ??
-    balanceQuery.data?.balance ??
-    me.data?.walletBalance ??
-    0;
-  const available =
-    payoutsQuery.data?.availableBalance ?? totalBalance;
-  const reserved = Math.max(0, totalBalance - available);
-  const availablePct = totalBalance > 0 ? (available / totalBalance) * 100 : 0;
+    me.data?.walletBalance;
+  const available = payoutsQuery.data?.availableBalance ?? totalBalance;
+  const reserved =
+    totalBalance != null && available != null ? Math.max(0, totalBalance - available) : undefined;
+  const availablePct =
+    totalBalance && totalBalance > 0 && available != null ? (available / totalBalance) * 100 : 0;
 
   const transactions = transactionsQuery.data?.transactions ?? [];
 
@@ -49,21 +49,26 @@ export function WalletDashboard() {
           <span className="text-xs uppercase tracking-wider">Total balance</span>
         </div>
         <motion.p
-          key={totalBalance}
+          key={totalBalance ?? "loading"}
           className="font-display mt-2 text-4xl font-bold tracking-tight"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
+          data-testid="wallet-total-balance"
         >
-          {balanceQuery.isLoading && payoutsQuery.isLoading ? "—" : formatInr(totalBalance)}
+          {walletLoading || totalBalance == null ? "Loading wallet…" : formatInr(totalBalance)}
         </motion.p>
         <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
           <div>
             <p className="text-[10px] uppercase tracking-wider text-partner-muted">Available</p>
-            <p className="font-semibold">{formatInr(available)}</p>
+            <p className="font-semibold" data-testid="wallet-available-balance">
+              {walletLoading || available == null ? "Loading…" : formatInr(available)}
+            </p>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-partner-muted">Reserved</p>
-            <p className="font-semibold">{formatInr(reserved)}</p>
+            <p className="text-[10px] uppercase tracking-wider text-partner-muted">Pending</p>
+            <p className="font-semibold" data-testid="wallet-pending-balance">
+              {walletLoading || reserved == null ? "Loading…" : formatInr(payoutsQuery.data?.pendingBalance ?? reserved)}
+            </p>
           </div>
         </div>
         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/20">
@@ -74,8 +79,9 @@ export function WalletDashboard() {
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <PartnerButton
-            disabled={available <= 0 || balanceQuery.isLoading}
+            disabled={available == null || available <= 0 || walletLoading}
             onClick={() => setWithdrawOpen(true)}
+            data-testid="wallet-withdraw-cta"
           >
             <ArrowUpRight className="h-4 w-4" />
             Withdraw
@@ -165,7 +171,7 @@ export function WalletDashboard() {
       <WithdrawModal
         open={withdrawOpen}
         onClose={() => setWithdrawOpen(false)}
-        walletBalance={available}
+        walletBalance={available ?? 0}
       />
     </div>
   );

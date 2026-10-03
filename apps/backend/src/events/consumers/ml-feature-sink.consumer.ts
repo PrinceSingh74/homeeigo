@@ -1,4 +1,5 @@
 import prisma from "../../lib/prisma";
+import { getPrismaErrorCode } from "../../lib/prisma-errors";
 import { logger } from "../../lib/logger";
 import type { HomigoEvent } from "../core/homigo-event";
 import { EVENT_TYPES } from "../catalog/event-types";
@@ -29,9 +30,20 @@ export async function mlFeatureSinkConsumer(event: HomigoEvent): Promise<void> {
     eventId: event.id,
   };
 
-  await prisma.mlFeatureStaging.create({
-    data: { sinkType: "eta_labels", eventId: event.id, bookingId: data.bookingId, payload },
-  });
+  // The staging insert is the idempotency claim (unique event_id). On redelivery the second run
+  // stops here, so the WRITE_APPEND into BigQuery below happens once per event rather than once
+  // per delivery — a duplicate there is a label counted twice by whatever trains on it.
+  try {
+    await prisma.mlFeatureStaging.create({
+      data: { sinkType: "eta_labels", eventId: event.id, bookingId: data.bookingId, payload },
+    });
+  } catch (err) {
+    if (getPrismaErrorCode(err) === "P2002") {
+      logger.info("ml_feature_sink_already_staged", { eventId: event.id });
+      return;
+    }
+    throw err;
+  }
 
   try {
     await loadRows("feature", "ml_eta_labels", [{

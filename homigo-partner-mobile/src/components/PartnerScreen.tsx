@@ -19,7 +19,8 @@ export function PartnerScreen({ title, subtitle, children, footer, showBack, onB
   return (
     <LinearGradient colors={[partnerColors.cream, partnerColors.sage]} style={styles.root}>
       <SafeAreaView style={styles.safe} edges={["top"]}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        {/* "handled": a tap on a button while the keyboard is open reaches the button (X-69) instead of only dismissing the keyboard. */}
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           {showBack ? (
             <Pressable onPress={() => (onBack ? onBack() : router.back())} style={styles.backBtn}>
               <ChevronLeft color={partnerColors.primary} size={22} />
@@ -27,8 +28,12 @@ export function PartnerScreen({ title, subtitle, children, footer, showBack, onB
             </Pressable>
           ) : null}
           <View style={styles.header}>
-            <Text style={styles.brand}>HOMEEIGO Partner</Text>
-            <Text style={styles.title}>{title}</Text>
+            <Text accessibilityRole="header" accessibilityLabel="HOMEEIGO Partner" style={styles.brand}>
+              HOMEEIGO Partner
+            </Text>
+            <Text accessibilityRole="header" style={styles.title}>
+              {title}
+            </Text>
             {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
           </View>
           {children}

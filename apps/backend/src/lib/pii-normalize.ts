@@ -44,3 +44,18 @@ export function maskPhone(phone: string): string {
   if (norm.length < 6) return "****";
   return `${norm.slice(0, 3)}******${norm.slice(-2)}`;
 }
+
+/** Partner-facing display: +91 •••• 4821 (never full number). */
+export function maskPhoneForPartner(phone: string): string {
+  const norm = normalizePhone(phone);
+  if (norm.startsWith("oauth_")) return "Unavailable";
+  const digits = norm.replace(/\D/g, "");
+  if (digits.length < 4) return "••••";
+  const last4 = digits.slice(-4);
+  if (digits.startsWith("91") && digits.length >= 12) return `+91 •••• ${last4}`;
+  if (norm.startsWith("+") && norm.length > 4) {
+    const cc = norm.slice(0, Math.min(3, norm.length - 4));
+    return `${cc} •••• ${last4}`;
+  }
+  return `•••• ${last4}`;
+}

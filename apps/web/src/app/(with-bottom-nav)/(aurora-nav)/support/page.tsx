@@ -6,29 +6,13 @@ import { ArrowLeft, Clock, Headphones, LifeBuoy, Mail, Phone } from "lucide-reac
 import { PageShell } from "@/components/layout/PageShell";
 import { SupportCenter } from "@/components/support/SupportCenter";
 import { pageLead, pageTitle } from "@/lib/page-layout";
+import { SUPPORT_FAQS } from "@/lib/faq/faq-data";
 import { useAuthStore } from "@/stores/auth-store";
 
 const SUPPORT_PHONE = "+918000123456";
 const SUPPORT_EMAIL = "support@homigo.app";
 
-const FAQS = [
-  {
-    q: "How do I reschedule or cancel a booking?",
-    a: "Open Bookings, select the booking and choose Reschedule or Cancel. Cancellations before the pro is assigned are free; later cancellations may have a small fee.",
-  },
-  {
-    q: "When will I get my refund?",
-    a: "Wallet refunds are instant. Refunds to your original payment method (card/UPI) take 5–7 business days depending on your bank.",
-  },
-  {
-    q: "How does the HOMEEIGO wallet work?",
-    a: "Add money via Razorpay (UPI, card, netbanking) and pay for any booking instantly. Cashback and referral earnings also land in your wallet.",
-  },
-  {
-    q: "Are HOMEEIGO professionals verified?",
-    a: "Yes — every pro completes ID verification, background checks, and skill assessment before going live on the platform.",
-  },
-];
+const FAQS = SUPPORT_FAQS;
 
 export default function SupportPage() {
   const isAuthenticated = useAuthStore((s) => s.status === "authenticated");

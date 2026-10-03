@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { BookingRequestCard } from "@/components/requests/BookingRequestCard";
+import { JobOfferCard } from "@/components/requests/JobOfferCard";
 import { PartnerRequestsList } from "@/components/requests/PartnerRequestsList";
 import { usePartnerMeQuery } from "@/hooks/use-partner-data";
 import { partnerLayout } from "@/lib/partner-layout";
@@ -62,9 +63,14 @@ export default function RequestsPage() {
         ))}
       </div>
 
+      {/*
+        An offer and a job are different objects. The pending tab renders live dispatches, which
+        carry a deadline and a race against other partners; every other tab renders work that is
+        already the partner's. Sharing one card is what left the offer with no clock on it.
+      */}
       <PartnerRequestsList
         status={tab}
-        Card={BookingRequestCard}
+        Card={tab === "pending" ? JobOfferCard : BookingRequestCard}
         onAccepted={tab === "pending" ? () => setTab("active") : undefined}
       />
     </div>

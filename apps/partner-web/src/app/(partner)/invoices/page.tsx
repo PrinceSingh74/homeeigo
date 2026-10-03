@@ -3,8 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Download, FileText, IndianRupee, Receipt, Wallet } from "lucide-react";
 import { partnerApi } from "@/services/partner-api";
-import { usePartnerStore } from "@/stores/partner-store";
-import { resolveApiBase } from "@/lib/api-base";
+import { apiRequestRaw } from "@/lib/api-client";
+import { useToastStore } from "@/stores/toast-store";
 
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 const fmt = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
@@ -14,12 +14,11 @@ export default function PartnerInvoicesPage() {
   const { data: tax } = useQuery({ queryKey: ["partner", "tax"], queryFn: () => partnerApi.taxSummary() });
 
   const downloadPdf = async (earningId: string) => {
-    const base = (resolveApiBase()).replace(/\/$/, "");
-    const token = usePartnerStore.getState().accessToken;
-    const res = await fetch(`${base}/api/providers/me/earnings/${earningId}/invoice`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    });
-    if (!res.ok) return;
+    const res = await apiRequestRaw(`/api/providers/me/earnings/${earningId}/invoice`).catch(() => null);
+    if (!res || !res.ok) {
+      useToastStore.getState().showToast("Could not open the invoice. Please try again.", "error");
+      return;
+    }
     const html = await res.text();
     const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
     window.open(url, "_blank", "noopener");

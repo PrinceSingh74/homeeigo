@@ -18,6 +18,7 @@ export function ComingSoonCard({ category, className }: { category: CategoryView
       </div>
       <h3 className="mt-5 font-display text-xl font-semibold text-content">{def.name}</h3>
       <p className="mt-1.5 text-sm leading-relaxed text-muted">{def.tagline}</p>
+      <p className="mt-2 text-sm leading-relaxed text-muted">{def.description}</p>
       <p className="mt-5 text-xs font-semibold uppercase tracking-[0.14em] text-muted">Planned services</p>
       <ul className="mt-2.5 flex flex-wrap gap-1.5">
         {shown.map((s) => (

@@ -3,6 +3,23 @@ import prisma from "../lib/prisma";
 import { maskEmail, maskPhone, normalizeEmail, normalizePhone } from "../lib/pii-normalize";
 import { encryptionService } from "./encryption.service";
 
+/**
+ * Per-resolver PII shapes.
+ *
+ * `resolveEmail` reads only the email pair and `resolvePhone` only the phone pair, but both
+ * previously demanded the full `UserPiiFields` — which requires `email` AND `phoneNumber`. That
+ * forced a caller wanting just a phone number (e.g. booking-contact) to select the user's email as
+ * well, i.e. to fetch and hold PII it never uses. Narrowing each signature to the fields it
+ * actually reads reduces the PII surface rather than widening a type to silence the compiler.
+ *
+ * `UserPiiFields` is unchanged and still satisfies both, so every existing caller keeps working.
+ */
+type EmailPiiFields = Pick<User, "id" | "email"> &
+  Partial<Pick<User, "emailEncrypted" | "emailHash" | "emailEncryptionKeyVersion" | "dataEncryptionStatus">>;
+
+type PhonePiiFields = Pick<User, "id" | "phoneNumber"> &
+  Partial<Pick<User, "phoneEncrypted" | "phoneHash" | "phoneEncryptionKeyVersion" | "dataEncryptionStatus">>;
+
 type UserPiiFields = Pick<User, "id" | "email" | "phoneNumber"> &
   Partial<
     Pick<
@@ -109,7 +126,7 @@ export class UserPiiService {
     return Boolean(user);
   }
 
-  async resolveEmail(user: UserPiiFields, opts?: { actorId?: string; authorized?: boolean }): Promise<string | null> {
+  async resolveEmail(user: EmailPiiFields, opts?: { actorId?: string; authorized?: boolean }): Promise<string | null> {
     if (user.email) return user.email;
     if (!user.emailEncrypted) return null;
     return encryptionService.decrypt(user.emailEncrypted, "EMAIL", {
@@ -118,7 +135,7 @@ export class UserPiiService {
     });
   }
 
-  async resolvePhone(user: UserPiiFields, opts?: { actorId?: string; authorized?: boolean }): Promise<string | null> {
+  async resolvePhone(user: PhonePiiFields, opts?: { actorId?: string; authorized?: boolean }): Promise<string | null> {
     if (user.phoneNumber) return user.phoneNumber;
     if (!user.phoneEncrypted) return null;
     return encryptionService.decrypt(user.phoneEncrypted, "PHONE", {

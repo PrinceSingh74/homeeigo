@@ -153,9 +153,13 @@ export function ServicesCatalogModal({
                 <span className="min-w-0 flex-1">
                   <span className="block font-semibold text-content">{svc.name}</span>
                   <span className="flex items-center gap-1 text-xs text-muted">
-                    <Star size={12} className="fill-amber-400 text-amber-400" />
-                    {(svc.rating ?? 4.8).toFixed(1)} · ₹
-                    {(svc.basePrice ?? svc.minPrice ?? 0).toLocaleString("en-IN")}
+                    {svc.rating != null && svc.rating > 0 && (svc.reviewCount ?? 0) > 0 ? (
+                      <>
+                        <Star size={12} className="fill-amber-400 text-amber-400" />
+                        {svc.rating.toFixed(1)} ·{" "}
+                      </>
+                    ) : null}
+                    ₹{(svc.basePrice ?? svc.minPrice ?? 0).toLocaleString("en-IN")}
                   </span>
                 </span>
                 <ArrowRight size={18} className="shrink-0 text-primary" />

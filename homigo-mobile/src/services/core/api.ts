@@ -1,4 +1,5 @@
 import type { ApiResponse } from "@/types/auth";
+import type { BookingRequirementsView } from "@/types/backend";
 import type {
   BackendAddress,
   BackendAvailabilitySlot,
@@ -229,6 +230,65 @@ export const coreApi = {
       apiRequest<ApiResponse<{ booking: BackendBooking }>>(`/api/bookings/${id}`, {
         auth: true,
       }).then((r) => r.data!),
+    /** Phase 10 §6 — the booking's gated requirements, their state and what blocks the start. */
+    requirements: (id: string) =>
+      apiRequest<ApiResponse<BookingRequirementsView>>(`/api/bookings/${id}/requirements`, { auth: true }).then((r) => r.data!),
+    /** Phase 10 §9 — safety information and any safety hold (customer projection). */
+    safety: (id: string) =>
+      apiRequest<ApiResponse<{
+        gate: { ok: boolean; message: string };
+        safety: { warnings: string[]; customerRequirements: string[]; information: string | null; medicalDisclaimer: string | null; emergencyProtocol: string | null } | null;
+        holds: Array<{ condition: string }>;
+      }>>(`/api/bookings/${id}/safety`, { auth: true }).then((r) => r.data!),
+    /** Phase 10 §8 — the booking's work steps (titles + states only for the customer). */
+    execution: (id: string) =>
+      apiRequest<ApiResponse<{ enforced: boolean; steps: Array<{ code: string; stepNumber: number; title: string; mandatory: boolean; state: string }> }>>(`/api/bookings/${id}/execution`, { auth: true }).then((r) => r.data!),
+    /** Phase 10 §10 — the latest quality verdict, in plain words (customer projection). */
+    quality: (id: string) =>
+      apiRequest<ApiResponse<{
+        enforced: boolean;
+        latest: { verdict: string; label: string; reasons: string[]; at: string } | null;
+      }>>(`/api/bookings/${id}/quality`, { auth: true }).then((r) => r.data!),
+    /** Phase 10 §10 — the confirmation axis: state, confirm-by, verdict summary and warranty window. */
+    completion: (id: string) =>
+      apiRequest<ApiResponse<{
+        enforced: boolean;
+        bookingStatus: string;
+        completedAt: string | null;
+        completion: { state: "PENDING_CUSTOMER" | "CONFIRMED" | "AUTO_CONFIRMED" | "ISSUE_REPORTED"; confirmBy: string; resolvedAt: string | null; canConfirm: boolean } | null;
+        verdict: { verdict: string; label: string; reasons: string[]; at: string } | null;
+        warranty: { state: string; startsAt: string; expiresAt: string } | null;
+      }>>(`/api/bookings/${id}/completion`, { auth: true }).then((r) => r.data!),
+    /** The customer confirms the completed job (owner only; replay is a 200 with changed=false). */
+    confirmCompletion: (id: string) =>
+      apiRequest<ApiResponse<{ changed: boolean; completion: { state: string } }>>(
+        `/api/bookings/${id}/confirm-completion`,
+        { method: "POST", auth: true },
+      ).then((r) => r.data!),
+    /** Phase 10 §11 — the customer's cases on this booking (customerView). */
+    cases: (id: string) =>
+      apiRequest<ApiResponse<{
+        available: boolean;
+        cases: Array<{
+          id: string; caseNumber: string; bookingId: string; type: string; category: string; state: string;
+          description: string | null; createdAt: string; closedAt: string | null;
+          resolution: { action: string | null; status: string | null; refundPaise: number | null; followUpBookingId: string | null } | null;
+          timeline: Array<{ state: string; at: string }>;
+        }>;
+        categories: string[];
+      }>>(`/api/bookings/${id}/cases`, { auth: true }).then((r) => r.data!),
+    /** Phase 10 §11 — report an issue on a completed booking (idempotent per booking + category). */
+    reportCase: (id: string, payload: { category: string; description?: string }) =>
+      apiRequest<ApiResponse<{ replayed: boolean; case: { id: string; caseNumber: string; state: string } }>>(
+        `/api/bookings/${id}/cases`,
+        { method: "POST", auth: true, body: payload },
+      ).then((r) => r.data!),
+    /** READY = "it is in place now, please check again". A customer can never mark a partner check satisfied. */
+    requirementAction: (id: string, code: string, action: "READY" | "ATTEST", note?: string) =>
+      apiRequest<ApiResponse<{ code: string; state: string; changed: boolean }>>(
+        `/api/bookings/${id}/requirements/${encodeURIComponent(code)}/customer`,
+        { method: "POST", auth: true, body: { action, ...(note ? { note } : {}) } },
+      ).then((r) => r.data!),
     /**
      * Owner-only service-start PIN (Urban-Company style). "active" carries the
      * plaintext PIN the customer shares in person with the partner at the door.
@@ -242,12 +302,82 @@ export const coreApi = {
           verifiedAt: string | null;
         }>
       >(`/api/bookings/${id}/start-pin`, { auth: true }).then((r) => r.data!),
+    /** Booking-scoped chat — same conversation as customer web + partner clients. */
+    listChat: (id: string, query: { cursor?: string; limit?: number } = {}) => {
+      const qs = new URLSearchParams();
+      if (query.cursor) qs.set("cursor", query.cursor);
+      if (query.limit != null) qs.set("limit", String(query.limit));
+      const suffix = qs.toString() ? `?${qs}` : "";
+      return apiRequest<
+        ApiResponse<{
+          messages: Array<{
+            id: string;
+            body: string;
+            senderUserId: string;
+            createdAt: string;
+            clientMessageId?: string | null;
+          }>;
+          nextCursor: string | null;
+        }>
+      >(`/api/bookings/${id}/chat${suffix}`, { auth: true }).then((r) => r.data!);
+    },
+    sendChat: (id: string, body: string, clientMessageId?: string) =>
+      apiRequest<
+        ApiResponse<{
+          message: {
+            id: string;
+            body: string;
+            senderUserId: string;
+            createdAt: string;
+            clientMessageId?: string | null;
+          };
+          created: boolean;
+        }>
+      >(`/api/bookings/${id}/chat`, {
+        method: "POST",
+        auth: true,
+        body: { body, clientMessageId },
+      }).then((r) => r.data!),
+    markChatRead: (id: string) =>
+      apiRequest<ApiResponse<{ ok: boolean }>>(`/api/bookings/${id}/chat/read`, {
+        method: "POST",
+        auth: true,
+      }).then((r) => r.data!),
+    partnerContact: (id: string) =>
+      apiRequest<ApiResponse<{ phoneMasked: string | null; canCall: boolean }>>(
+        `/api/bookings/${id}/partner-contact`,
+        { auth: true },
+      ).then((r) => r.data!),
+    partnerCall: (id: string) =>
+      apiRequest<
+        ApiResponse<{ dialUri: string; phoneMasked: string; expiresInSec: number }>
+      >(`/api/bookings/${id}/partner-call`, { method: "POST", auth: true }).then((r) => r.data!),
     cancel: (id: string, reason: string, cancelledBy: "user" | "provider") =>
       apiRequest<ApiResponse<{ booking: BackendBooking }>>(`/api/bookings/${id}/cancel`, {
         method: "POST",
         body: { reason, cancelledBy },
         auth: true,
       }).then((r) => r.data!),
+    /** §53 — the customer reporting that nobody turned up. Never charges them. */
+    reportProviderNoShow: (id: string) =>
+      apiRequest<
+        ApiResponse<{ status: string; feeAmount: number; refundAmount: number; refundStatus: string }>
+      >(`/api/bookings/${id}/provider-no-show`, { method: "POST", body: {}, auth: true }).then((r) => r.data!),
+    /** §45 / O6 — what moving this booking costs, from the server's frozen policy. */
+    rescheduleQuote: (id: string) =>
+      apiRequest<
+        ApiResponse<{
+          quote: {
+            version: string;
+            disposition: "FREE" | "LATE_FEE" | "NOT_PERMITTED";
+            feeBps: number;
+            feeAmountPaise: number;
+            feeAmount: number;
+            hoursUntilAppointment: number | null;
+            message: string;
+          };
+        }>
+      >(`/api/bookings/${id}/reschedule-quote`, { auth: true }).then((r) => r.data!),
     /** Exact refund/fee for cancelling this booking, per the live policy tiers. */
     cancellationQuote: (id: string) =>
       apiRequest<ApiResponse<{ quote: CancellationQuote }>>(
@@ -372,6 +502,11 @@ export const coreApi = {
         ApiResponse<{
           id: string;
           title: string | null;
+          /**
+           * Optional on purpose: `/api/ai/conversations/latest` does not send it today (only the
+           * list endpoint does), so readers must fall back to the newest message's `createdAt`.
+           */
+          updatedAt?: string | null;
           messages: Array<{ id: string; role: "user" | "assistant"; content: string; createdAt: string }>;
         } | null>
       >("/api/ai/conversations/latest", { auth: true }).then((r) => r.data),
@@ -651,7 +786,7 @@ export const coreApi = {
         body: { code, amount },
       }).then((r) => r.data!),
     void: (id: string) =>
-      apiRequest<ApiResponse<{ refunded: number; walletBalance: number }>>(`/api/giftcards/${id}/void`, {
+      apiRequest<ApiResponse<{ refunded: number; walletBalance: number; refundedTo?: "ORIGINAL_PAYMENT" }>>(`/api/giftcards/${id}/void`, {
         method: "POST",
         auth: true,
       }).then((r) => r.data!),

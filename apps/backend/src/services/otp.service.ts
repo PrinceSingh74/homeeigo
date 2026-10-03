@@ -1,3 +1,9 @@
+import { devAffordancesAllowed } from "../lib/deployed-environment";
+
+/** Comparisons allowed per issued code. */
+const MAX_OTP_ATTEMPTS = 3;
+import { logger } from "../lib/logger";
+import { liveProviderAllowed } from "../lib/test-egress";
 import type { PrismaClient } from "@prisma/client";
 import crypto from "crypto";
 import twilio from "twilio";
@@ -5,16 +11,28 @@ import { userPiiService } from "./user-pii.service";
 import { consumeRateLimitSmart } from "../middleware/rate-limit.middleware";
 
 export class OTPService {
-  private readonly twilioPhoneNumber: string;
-  private readonly twilioClient: twilio.Twilio | null;
   private readonly otpSecret: string;
 
   constructor(private readonly prisma: PrismaClient) {
-    this.twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER || "";
     this.otpSecret = process.env.OTP_SECRET || "unsafe-dev-otp-secret";
-    const sid = process.env.TWILIO_ACCOUNT_SID;
-    const token = process.env.TWILIO_AUTH_TOKEN;
-    this.twilioClient = sid && token ? twilio(sid, token) : null;
+  }
+
+  /**
+   * Tests inspect this to prove `NODE_ENV=test` never constructs a Twilio client.
+   * Credentials are read live from env (same TWILIO_* keys used across OTP, start-PIN, and SMS).
+   */
+  get twilioClient(): twilio.Twilio | null {
+    return this.resolveTwilio().client;
+  }
+
+  private resolveTwilio(): { client: twilio.Twilio | null; from: string } {
+    const sid = process.env.TWILIO_ACCOUNT_SID?.trim() ?? "";
+    const token = process.env.TWILIO_AUTH_TOKEN?.trim() ?? "";
+    const from = process.env.TWILIO_PHONE_NUMBER?.trim() ?? "";
+    if (!sid || !token || !from || !liveProviderAllowed("HOMIGO_REQUIRE_SMS")) {
+      return { client: null, from: "" };
+    }
+    return { client: twilio(sid, token), from };
   }
 
   private generateOTP(): string {
@@ -27,8 +45,8 @@ export class OTPService {
 
   async sendOTP(phoneNumber: string, userId?: string) {
     const phoneHash = userPiiService.hashPhone(phoneNumber);
-    // Production stays strict; local dev needs a higher ceiling for repeated testing.
-    const hourlyLimit = process.env.NODE_ENV === "production"
+    // Deployed hosts (production AND staging) stay strict; a developer machine needs a higher ceiling.
+    const hourlyLimit = !devAffordancesAllowed()
       ? 3
       : Number(process.env.OTP_HOURLY_LIMIT) || 50;
 
@@ -53,7 +71,8 @@ export class OTPService {
       return { success: false, message: "Too many OTP requests", error: "RATE_LIMIT_EXCEEDED" };
     }
 
-    if (process.env.NODE_ENV === "production" && (!this.twilioClient || !this.twilioPhoneNumber)) {
+    const { client: twilioClient, from: twilioFrom } = this.resolveTwilio();
+    if (!devAffordancesAllowed() && (!twilioClient || !twilioFrom)) {
       return {
         success: false,
         message: "SMS provider is not configured",
@@ -73,40 +92,64 @@ export class OTPService {
     });
 
     const smsEnabled = process.env.SMS_ENABLED !== "false";
-    const usingTwilio = smsEnabled && Boolean(this.twilioClient && this.twilioPhoneNumber);
-    if (usingTwilio && this.twilioClient) {
+    const usingTwilio = smsEnabled && Boolean(twilioClient && twilioFrom);
+    if (usingTwilio && twilioClient) {
       try {
-        const message = await this.twilioClient.messages.create({
+        const message = await twilioClient.messages.create({
           body: `Your HOMEEIGO verification code is: ${otp}. Expires in 5 minutes.`,
-          from: this.twilioPhoneNumber,
+          from: twilioFrom,
           to: phoneNumber,
         });
-        if (process.env.NODE_ENV !== "production") {
-          console.log(`[OTP] Twilio SMS sent sid=${message.sid} to=${phoneNumber}`);
+        if (devAffordancesAllowed()) {
+          console.log(`[OTP] Twilio SMS queued sid=${message.sid}`);
         }
+        return { success: true, message: "OTP sent successfully", smsSent: true };
       } catch (err) {
         const twilioMsg = err instanceof Error ? err.message : "SMS delivery failed";
-        // Non-production: Twilio trial accounts cannot SMS arbitrary numbers — keep OTP for E2E/dev.
-        if (process.env.NODE_ENV !== "production") {
-          console.warn(`[OTP] Twilio send failed (dev fallback) to=${phoneNumber}:`, twilioMsg);
+        // Developer machine only: Twilio trial cannot SMS unverified numbers — keep OTP for login/E2E.
+        if (devAffordancesAllowed()) {
+          console.warn(`[OTP] Twilio send failed (on-screen fallback):`, twilioMsg);
           return {
             success: true,
             message: "OTP sent successfully (dev fallback — Twilio SMS skipped)",
+            smsSent: false,
             devOtp: otp,
           };
         }
         await this.prisma.oTP.deleteMany({ where: { phoneHash, otpHash: this.hashOTP(otp) } });
-        console.error(`[OTP] Twilio send failed to=${phoneNumber}:`, twilioMsg);
+        console.error(`[OTP] Twilio send failed:`, twilioMsg);
         return {
           success: false,
           message: twilioMsg.includes("unverified")
             ? "This phone number must be verified in Twilio before SMS can be sent (trial account)."
             : "Could not send SMS. Please try again.",
           error: "SMS_DELIVERY_FAILED",
+          smsSent: false,
         };
       }
     } else if (!smsEnabled) {
-      console.log(`[OTP] SMS_ENABLED=false — logging OTP for ${phoneNumber}`);
+      console.log(`[OTP] SMS_ENABLED=false — logging OTP`);
+    } else if (!devAffordancesAllowed()) {
+      /**
+       * Deployed, SMS enabled, and no Twilio transport: the code cannot be delivered.
+       *
+       * This branch used to print the OTP to the console with no environment condition at all —
+       * only "is Twilio configured". A staging host without Twilio credentials therefore wrote
+       * every login code into its logs, where anyone with log access could sign in as that user.
+       *
+       * Failing loudly is the correct outcome. An OTP nobody can receive is an outage; an OTP in a
+       * log is an account takeover, and the second one looks like it is working.
+       */
+      logger.error("otp.transport_unavailable", {
+        category: "SECURITY",
+        reason: "SMS enabled but no Twilio transport configured; OTP was NOT logged and NOT sent",
+      });
+      return {
+        success: false,
+        message: "Could not send OTP. Please try again.",
+        error: "SMS_TRANSPORT_UNAVAILABLE",
+        smsSent: false,
+      };
     } else {
       console.log(
         [
@@ -123,11 +166,14 @@ export class OTPService {
       );
     }
 
-    // In non-production we surface the OTP so the UI can show it without SMS.
-    const exposeDevOtp = !usingTwilio && process.env.NODE_ENV !== "production";
+    // Only on a developer machine is the OTP surfaced so the UI can show it without SMS. Keyed on the
+    // deployed-environment check, not NODE_ENV: a staging host runs NODE_ENV=development
+    // (.env.staging), and returning the code there signed anyone in as any phone number.
+    const exposeDevOtp = !usingTwilio && devAffordancesAllowed();
     return {
       success: true,
       message: "OTP sent successfully",
+      smsSent: false,
       ...(exposeDevOtp ? { devOtp: otp } : {}),
     };
   }
@@ -143,23 +189,33 @@ export class OTPService {
       orderBy: { createdAt: "desc" },
     });
     if (!storedOTP) return { isValid: false, error: "No valid OTP found" };
-    if (storedOTP.attemptCount >= 3) return { isValid: false, error: "Max attempts exceeded" };
+
+    /**
+     * Claim the attempt BEFORE comparing, atomically. The count used to be read here and incremented
+     * only after a wrong guess, in a separate statement — so N concurrent guesses all read
+     * attemptCount=0, all compared, and the three-guess cap allowed as many guesses as an attacker
+     * could send at once. The conditional increment admits at most MAX_OTP_ATTEMPTS comparisons per
+     * code whatever the concurrency.
+     */
+    const claimed = await this.prisma.oTP.updateMany({
+      where: { id: storedOTP.id, isUsed: false, attemptCount: { lt: MAX_OTP_ATTEMPTS } },
+      data: { attemptCount: { increment: 1 } },
+    });
+    if (claimed.count === 0) return { isValid: false, error: "Max attempts exceeded" };
 
     if (storedOTP.otpHash !== this.hashOTP(otp)) {
-      await this.prisma.oTP.update({
-        where: { id: storedOTP.id },
-        data: { attemptCount: { increment: 1 } },
-      });
-      if (process.env.NODE_ENV !== "production") {
+      if (devAffordancesAllowed()) {
         console.warn(`[OTP] failed attempt phone=${phoneNumber} id=${storedOTP.id}`);
       }
       return { isValid: false, error: "Invalid OTP" };
     }
 
-    await this.prisma.oTP.update({
-      where: { id: storedOTP.id },
+    // Single use under concurrency too: only the request that flips isUsed may sign in.
+    const consumed = await this.prisma.oTP.updateMany({
+      where: { id: storedOTP.id, isUsed: false },
       data: { isUsed: true, usedAt: new Date() },
     });
+    if (consumed.count === 0) return { isValid: false, error: "No valid OTP found" };
     return { isValid: true, userId: storedOTP.userId ?? undefined };
   }
 

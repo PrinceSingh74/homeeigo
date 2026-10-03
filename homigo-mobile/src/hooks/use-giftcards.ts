@@ -106,7 +106,7 @@ export function useVoidGiftCard() {
         qc.invalidateQueries({ queryKey: qk.walletBalance }),
         qc.invalidateQueries({ queryKey: qk.walletTx }),
       ]);
-      showToast(`₹${r.refunded.toLocaleString("en-IN")} refunded to your wallet`);
+      showToast(`₹${r.refunded.toLocaleString("en-IN")} refunded to your original payment method`);
       return true;
     } catch {
       showToast("Could not refund this gift card.");

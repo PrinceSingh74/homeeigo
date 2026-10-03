@@ -14,6 +14,9 @@ type HqPageShellProps = {
   stats?: HqStat[];
   children?: React.ReactNode;
   className?: string;
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 };
 
 export function HqPageShell({
@@ -23,6 +26,9 @@ export function HqPageShell({
   stats,
   children,
   className,
+  loading = false,
+  error,
+  onRetry,
 }: HqPageShellProps) {
   return (
     <div className={cn("space-y-6", className)}>
@@ -40,7 +46,37 @@ export function HqPageShell({
         </div>
       </header>
 
-      {stats && stats.length > 0 ? (
+      {error ? (
+        <div className="partner-card space-y-3 p-5" role="alert">
+          <p className="text-sm font-semibold text-partner-text">Could not load this page</p>
+          <p className="text-sm text-partner-muted">{error}</p>
+          {onRetry ? (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="inline-flex min-h-11 items-center rounded-lg border border-partner-line px-4 text-sm font-semibold"
+            >
+              Retry
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {loading ? (
+        <div
+          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+          role="status"
+          aria-busy="true"
+          aria-label="Loading metrics"
+        >
+          {[0, 1, 2, 3].map((i) => (
+            <article key={i} className="partner-card p-4">
+              <div className="h-3 w-20 animate-pulse rounded bg-partner-line/60" />
+              <div className="mt-3 h-8 w-28 animate-pulse rounded bg-partner-line/50" />
+            </article>
+          ))}
+        </div>
+      ) : stats && stats.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {stats.map((stat) => (
             <article key={stat.label} className="partner-card partner-card-hover p-4">
@@ -52,7 +88,14 @@ export function HqPageShell({
         </div>
       ) : null}
 
-      {children}
+      {loading ? (
+        <div className="space-y-3" aria-hidden>
+          <div className="h-24 animate-pulse rounded-2xl bg-partner-line/40" />
+          <div className="h-24 animate-pulse rounded-2xl bg-partner-line/30" />
+        </div>
+      ) : error ? null : (
+        children
+      )}
     </div>
   );
 }

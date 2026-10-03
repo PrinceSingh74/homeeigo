@@ -10,8 +10,9 @@ services:
       - --web.enable-lifecycle
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./rules/homigo-alerts.yml:/etc/prometheus/rules/homigo-alerts.yml:ro
-      - ./rules/homigo-enterprise-alerts.yml:/etc/prometheus/rules/homigo-enterprise-alerts.yml:ro
+      # Mount the whole directory: prometheus.yml lists every file in it, and a rule file that is
+      # referenced but not mounted stops Prometheus from starting at all.
+      - ./rules:/etc/prometheus/rules:ro
       - ./secrets/ops-token:/etc/prometheus/secrets/ops-token:ro
       - prom-data:/prometheus
     ports:

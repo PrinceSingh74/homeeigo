@@ -1,3 +1,5 @@
+import { devAffordancesAllowed } from "../lib/deployed-environment";
+import { liveProviderAllowed } from "../lib/test-egress";
 import crypto from "crypto";
 import twilio from "twilio";
 import prisma from "../lib/prisma";
@@ -70,7 +72,7 @@ class BookingStartOtpService {
   constructor() {
     const sid = process.env.TWILIO_ACCOUNT_SID;
     const token = process.env.TWILIO_AUTH_TOKEN;
-    this.twilioClient = sid && token ? twilio(sid, token) : null;
+    this.twilioClient = sid && token && liveProviderAllowed("HOMIGO_REQUIRE_SMS") ? twilio(sid, token) : null; // lib/test-egress.ts
     this.twilioFrom = process.env.TWILIO_PHONE_NUMBER || "";
   }
 
@@ -240,7 +242,10 @@ class BookingStartOtpService {
       data: { channels },
     });
 
-    if (process.env.NODE_ENV !== "production") {
+    // The service-start PIN authorises a partner to begin work at a customer's home. Gated on
+    // deployment, not NODE_ENV: `.env.staging` ships NODE_ENV=development, so this printed live
+    // PINs into staging logs. See lib/deployed-environment.
+    if (devAffordancesAllowed()) {
       console.log(
         [
           "",
@@ -373,7 +378,7 @@ class BookingStartOtpService {
       return { ok: true, state: "waiting", pin: null, expiresAt: null, verifiedAt: null };
     }
 
-    let pin: string | null = null;
+    let pin: string;
     try {
       pin = await encryptionService.decrypt(record.otpCiphertext, "PII", {
         actorId: userId,

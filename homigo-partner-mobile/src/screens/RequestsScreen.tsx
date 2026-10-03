@@ -1,143 +1,89 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import * as Location from "expo-location";
-import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { EmptyState, ErrorBlock, HqCard, HqCardTitle, LoadingBlock, StatRow } from "@/components/HqUi";
+import { useQuery } from "@tanstack/react-query";
+import { router } from "expo-router";
+import { useMemo, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { EmptyState, ErrorBlock, HqCard, LoadingBlock, StatRow } from "@/components/HqUi";
 import { PartnerScreen } from "@/components/PartnerScreen";
+import { useOfferCountdown, useServerNowTick } from "@/hooks/use-offer-countdown";
+import { useRealtimeFallbackInterval } from "@/hooks/use-partner-realtime";
 import { usePartnerTrackingPublisher } from "@/hooks/use-partner-tracking-publisher";
+import {
+  BOOKING_LIST_FILTER,
+  bookingStatusLabel,
+  bookingStatusRank,
+  isActiveWorkStatus,
+  type BookingListFilter,
+} from "@/lib/booking-status";
 import { customerName, formatCurrency, formatDateTime } from "@/lib/format";
-import { partnerApi } from "@/services/partner-api";
+import { formatCountdown, isOfferLive } from "@/lib/offer";
 import { OnlineToggleCard } from "@/screens/hq-work-earnings";
+import { partnerApi } from "@/services/partner-api";
 import { partnerColors } from "@/theme/colors";
+import type { PartnerBooking } from "@/types/partner";
 
 type Tab = "pending" | "active" | "completed";
 
-const TABS: { id: Tab; label: string; status: string }[] = [
-  { id: "pending", label: "New requests", status: "pending" },
-  { id: "active", label: "Active", status: "accepted" },
-  { id: "completed", label: "Completed", status: "completed" },
+/**
+ * Query key + params per tab. Keys and params match JobDetailScreen's list queries exactly, so the
+ * two screens share one cache entry instead of fighting over it with different params.
+ */
+const TABS: { id: Tab; label: string; filter: BookingListFilter; sortBy: "recent" | "upcoming" }[] = [
+  { id: "pending", label: "New requests", filter: BOOKING_LIST_FILTER.OFFERS, sortBy: "recent" },
+  // ACTIVE_WORK = ACCEPTED | ASSIGNED | EN_ROUTE | IN_PROGRESS. "accepted" would drop started jobs.
+  { id: "active", label: "Active", filter: BOOKING_LIST_FILTER.ACTIVE_WORK, sortBy: "upcoming" },
+  { id: "completed", label: "Completed", filter: BOOKING_LIST_FILTER.COMPLETED, sortBy: "recent" },
 ];
 
-async function getCoords() {
-  const { status } = await Location.requestForegroundPermissionsAsync();
-  if (status !== "granted") throw new Error("Location permission required to start/complete jobs.");
-  const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-  return { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-}
-
-function BookingActions({
-  bookingId,
-  status,
-  enRouteAt,
-  arrivedAt,
-}: {
-  bookingId: string;
-  status: string;
-  enRouteAt: string | null;
-  arrivedAt: string | null;
-}) {
-  const qc = useQueryClient();
-  const invalidate = () => void qc.invalidateQueries({ queryKey: ["partner", "bookings"] });
-  const accept = useMutation({ mutationFn: () => partnerApi.acceptBooking(bookingId, 30), onSuccess: invalidate });
-  const reject = useMutation({ mutationFn: () => partnerApi.rejectBooking(bookingId, "Not available"), onSuccess: invalidate });
-  const enRoute = useMutation({
-    mutationFn: async () => {
-      const c = await getCoords();
-      return partnerApi.markEnRoute(bookingId, c.latitude, c.longitude);
-    },
-    onSuccess: invalidate,
-  });
-  const arrived = useMutation({
-    mutationFn: async () => {
-      const c = await getCoords();
-      return partnerApi.markArrived(bookingId, c.latitude, c.longitude);
-    },
-    onSuccess: invalidate,
-  });
-  const start = useMutation({
-    mutationFn: async () => {
-      const c = await getCoords();
-      return partnerApi.startBooking(bookingId, c.latitude, c.longitude);
-    },
-    onSuccess: invalidate,
-  });
-  const complete = useMutation({
-    mutationFn: async () => {
-      const c = await getCoords();
-      return partnerApi.completeBooking(bookingId, c.latitude, c.longitude);
-    },
-    onSuccess: invalidate,
-  });
-  const busy =
-    accept.isPending ||
-    reject.isPending ||
-    enRoute.isPending ||
-    arrived.isPending ||
-    start.isPending ||
-    complete.isPending;
-
-  if (status === "pending") {
-    return (
-      <View style={styles.actions}>
-        <Pressable disabled={busy} onPress={() => accept.mutate()} style={styles.acceptBtn}>
-          <Text style={styles.acceptText}>Accept</Text>
-        </Pressable>
-        <Pressable disabled={busy} onPress={() => reject.mutate()} style={styles.rejectBtn}>
-          <Text style={styles.rejectText}>Reject</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
-  // Arrival does not change `status`, so the stage comes from the lifecycle timestamps.
-  // Offering only the one legal next action is what stops a partner from skipping the
-  // travel-start anchor that the ETA training label's duration is measured from.
-  if (status === "accepted" || status === "assigned" || status === "en_route") {
-    if (!enRouteAt && (status === "accepted" || status === "assigned")) {
-      return (
-        <Pressable disabled={busy} onPress={() => enRoute.mutate()} style={styles.acceptBtn}>
-          {enRoute.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.acceptText}>On my way</Text>}
-        </Pressable>
-      );
-    }
-    if (!arrivedAt) {
-      return (
-        <Pressable disabled={busy} onPress={() => arrived.mutate()} style={styles.acceptBtn}>
-          {arrived.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.acceptText}>I&apos;ve arrived</Text>}
-        </Pressable>
-      );
-    }
-    return (
-      <Pressable disabled={busy} onPress={() => start.mutate()} style={styles.acceptBtn}>
-        {start.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.acceptText}>Start job</Text>}
-      </Pressable>
-    );
-  }
-
-  if (status === "in_progress") {
-    return (
-      <Pressable disabled={busy} onPress={() => complete.mutate()} style={styles.acceptBtn}>
-        {complete.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.acceptText}>Complete job</Text>}
-      </Pressable>
-    );
-  }
-  return null;
+function OfferDeadline({ booking }: { booking: PartnerBooking }) {
+  const countdown = useOfferCountdown(booking.offer ?? null);
+  if (!countdown) return null;
+  const color =
+    countdown.urgency === "critical"
+      ? partnerColors.danger
+      : countdown.urgency === "warning"
+        ? partnerColors.warning
+        : partnerColors.success;
+  return (
+    <Text style={[styles.deadline, { color }]}>
+      {countdown.expired ? "Offer closed" : `Respond within ${formatCountdown(countdown.secondsLeft)}`}
+    </Text>
+  );
 }
 
 export function RequestsScreen({ embedded }: { embedded?: boolean }) {
   const [tab, setTab] = useState<Tab>("pending");
   const current = TABS.find((t) => t.id === tab)!;
+  // The socket pushes offers/transitions; polling is only the safety net (fast when it is down).
+  const pendingPollMs = useRealtimeFallbackInterval(10_000, 60_000);
+
   const bookings = useQuery({
     queryKey: ["partner", "bookings", tab],
-    queryFn: () => partnerApi.listBookings({ status: current.status, limit: 20, sortBy: tab === "pending" ? "recent" : "upcoming" }),
+    queryFn: () => partnerApi.listBookings({ status: current.filter, limit: 20, sortBy: current.sortBy }),
+    refetchInterval: tab === "pending" ? pendingPollMs : false,
+    refetchIntervalInBackground: false,
   });
 
-  // Closes the parity gap with partner-web, which has streamed GPS app-wide since the
-  // beginning. Mobile partners previously produced no tracking telemetry at all.
-  const liveJob = (bookings.data?.bookings ?? []).find((b) =>
-    ["accepted", "assigned", "en_route", "in_progress"].includes(b.status),
-  );
+  /**
+   * GPS publishing must not depend on which tab is visible (it used to stop whenever the partner
+   * looked at "New requests"), and must include IN_PROGRESS jobs.
+   */
+  const active = useQuery({
+    queryKey: ["partner", "bookings", "active"],
+    queryFn: () =>
+      partnerApi.listBookings({ status: BOOKING_LIST_FILTER.ACTIVE_WORK, limit: 20, sortBy: "upcoming" }),
+  });
+  const liveJob = useMemo(() => {
+    const rows = (active.data?.bookings ?? []).filter((b) => isActiveWorkStatus(b.status));
+    return rows.sort((a, b) => bookingStatusRank(b.status) - bookingStatusRank(a.status))[0] ?? null;
+  }, [active.data]);
   usePartnerTrackingPublisher({ bookingId: liveJob?.id ?? null, enabled: !!liveJob });
+
+  // Offers disappear the moment their window closes (server-time estimate), not on the next poll.
+  const now = useServerNowTick(tab === "pending");
+  const rows = useMemo(() => {
+    const all = bookings.data?.bookings ?? [];
+    return tab === "pending" ? all.filter((b) => isOfferLive(b.offer, now)) : all;
+  }, [bookings.data, tab, now]);
 
   const body = (
     <>
@@ -153,25 +99,40 @@ export function RequestsScreen({ embedded }: { embedded?: boolean }) {
         <LoadingBlock />
       ) : bookings.isError ? (
         <ErrorBlock message="Could not load bookings." />
-      ) : (bookings.data?.bookings ?? []).length === 0 ? (
-        <EmptyState message={tab === "pending" ? "No pending requests — you're all caught up!" : `No ${tab} jobs.`} />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          message={tab === "pending" ? "No pending requests — you're all caught up!" : `No ${tab} jobs.`}
+        />
       ) : (
-        bookings.data!.bookings.map((b) => (
-          <HqCard key={b.id}>
-            <Text style={styles.bookingTitle}>{b.service.name}</Text>
-            <StatRow label="Customer" value={customerName(b.customer)} />
-            <StatRow label="When" value={formatDateTime(b.scheduledDate)} />
-            <StatRow label="Amount" value={formatCurrency(b.finalAmount || b.amount)} />
-            <StatRow label="Address" value={b.address.fullAddress} />
-            <StatRow label="Status" value={b.status} />
-            <BookingActions
-              bookingId={b.id}
-              status={b.status}
-              enRouteAt={b.enRouteAt}
-              arrivedAt={b.arrivedAt}
-            />
-          </HqCard>
-        ))
+        rows.map((b) => {
+          const name = customerName(b.customer);
+          return (
+            <Pressable
+              key={b.id}
+              onPress={() => router.push(`/job/${b.id}`)}
+              accessibilityRole="button"
+              accessibilityLabel={`Open job ${b.service.name}`}
+            >
+              <HqCard>
+                <Text style={styles.bookingTitle}>{b.service.name}</Text>
+                {tab === "pending" ? <OfferDeadline booking={b} /> : null}
+                <StatRow label="Customer" value={name} />
+                {b.customer.phoneMasked ? (
+                  <StatRow label="Phone" value={b.customer.phoneMasked} />
+                ) : null}
+                <StatRow label="When" value={formatDateTime(b.scheduledDate)} />
+                <StatRow label="Amount" value={formatCurrency(b.finalAmount || b.amount)} />
+                <StatRow label="Address" value={b.address.fullAddress} />
+                <StatRow label="Status" value={bookingStatusLabel(b.status, b.arrivedAt)} />
+                <View style={styles.openRow}>
+                  <Text style={styles.openText}>
+                    {tab === "pending" ? "Review & accept →" : "Open job workspace →"}
+                  </Text>
+                </View>
+              </HqCard>
+            </Pressable>
+          );
+        })
       )}
     </>
   );
@@ -191,15 +152,20 @@ export function RequestsScreen({ embedded }: { embedded?: boolean }) {
 }
 
 const styles = StyleSheet.create({
-  tabs: { flexDirection: "row", gap: 6, marginBottom: 12, backgroundColor: "rgba(255,255,255,0.6)", borderRadius: 12, padding: 4 },
+  tabs: {
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: 12,
+    backgroundColor: "rgba(255,255,255,0.6)",
+    borderRadius: 12,
+    padding: 4,
+  },
   tab: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
   tabActive: { backgroundColor: "rgba(61,107,79,0.15)" },
   tabText: { fontSize: 11, fontWeight: "600", color: partnerColors.textMuted },
   tabTextActive: { color: partnerColors.primary },
   bookingTitle: { fontSize: 15, fontWeight: "700", color: partnerColors.text, marginBottom: 4 },
-  actions: { flexDirection: "row", gap: 8, marginTop: 8 },
-  acceptBtn: { flex: 1, backgroundColor: partnerColors.primary, borderRadius: 10, paddingVertical: 10, alignItems: "center" },
-  acceptText: { color: "#fff", fontWeight: "700" },
-  rejectBtn: { flex: 1, borderWidth: 1, borderColor: partnerColors.line, borderRadius: 10, paddingVertical: 10, alignItems: "center" },
-  rejectText: { color: partnerColors.textMuted, fontWeight: "700" },
+  deadline: { fontSize: 13, fontWeight: "700", marginBottom: 6 },
+  openRow: { marginTop: 10, alignItems: "flex-end" },
+  openText: { fontSize: 12, fontWeight: "700", color: partnerColors.primary },
 });

@@ -1,4 +1,7 @@
 import { Elysia, t } from "elysia";
+import { MERGE_FIELDS } from "../services/partner-lead-merge";
+import type { PartnerLeadStatus, PartnerLeadSource, PartnerLeadActivityType } from "@prisma/client";
+import type { ApplicationPipeline } from "../services/partner-acquisition-queues.service";
 import { adminRbacPlugin } from "../middleware/admin-rbac";
 import { partnerLeadService } from "../services/partner-lead.service";
 import { getAllowedLeadTransitions } from "../services/partner-lead-state-machine";
@@ -34,6 +37,46 @@ function mapError(err: unknown, set: { status?: number | string }) {
   }
 }
 
+/**
+ * Request schemas derived from the real domain unions.
+ *
+ * Twelve call sites in this module pushed raw request values into typed service parameters with
+ * `as never`, and the GET routes declared no query schema at all — so any string reached filters
+ * and enum columns, failing at the query as a 500 instead of at the edge as a 400. (The tell was
+ * `followUp` in /leads, which was already given a proper union while its neighbours were not.)
+ *
+ * `as const satisfies` ties each list to its source union, so adding a member without updating the
+ * route is a compile error rather than a value the API silently rejects at runtime.
+ */
+const LEAD_STATUSES = [
+  "NEW", "CONTACTED", "INTERESTED", "APPLICATION_STARTED", "APPLICATION_SUBMITTED",
+  "KYC_PENDING", "VERIFICATION", "TRAINING", "APPROVED", "ACTIVATED",
+  "DORMANT", "REJECTED", "DUPLICATE", "INVALID", "WITHDRAWN",
+] as const satisfies readonly PartnerLeadStatus[];
+
+const LEAD_SOURCES = [
+  "APNA", "JOBHAI", "REFERRAL", "RWA", "CONTRACTOR", "LOCAL_SHOP",
+  "DIRECT", "SOCIAL", "CAMPAIGN", "PARTNER_REFERRAL",
+] as const satisfies readonly PartnerLeadSource[];
+
+const LEAD_ACTIVITY_TYPES = [
+  "NOTE", "CALL", "MESSAGE", "STATUS_CHANGE", "ASSIGNMENT", "FOLLOW_UP",
+  "DUPLICATE_CHECK", "APPLICATION_LINKED", "MERGE", "SYSTEM",
+] as const satisfies readonly PartnerLeadActivityType[];
+
+const APPLICATION_PIPELINES = [
+  "started", "submitted", "kyc", "assessment", "training", "ready", "rejected", "changes_requested",
+] as const satisfies readonly ApplicationPipeline[];
+
+const u = (values: readonly string[]) => t.Union(values.map((v) => t.Literal(v)));
+
+const LEAD_STATUS_SCHEMA = u(LEAD_STATUSES);
+const LEAD_SOURCE_SCHEMA = u(LEAD_SOURCES);
+const LEAD_ACTIVITY_TYPE_SCHEMA = u(LEAD_ACTIVITY_TYPES);
+const APPLICATION_PIPELINE_SCHEMA = u(APPLICATION_PIPELINES);
+const VERIFICATION_STATUS_SCHEMA = u(["pending", "verified", "needs_attention", "rejected"]);
+const APPROVAL_STATUS_SCHEMA = u(["ready", "pending", "approved", "rejected", "changes_requested"]);
+
 export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acquisition" })
   .use(adminRbacPlugin)
   .get("/dashboard", async ({ query, set }) => {
@@ -59,8 +102,8 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
   .get("/leads", async ({ query, set }) => {
     try {
       const data = await partnerLeadService.listLeads({
-        status: query.status as never,
-        source: query.source as never,
+        status: query.status,
+        source: query.source,
         assignedToAdminId: query.assignedTo,
         city: query.city,
         zone: query.zone,
@@ -72,7 +115,7 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
         createdTo: query.createdTo,
         lastActivityFrom: query.lastActivityFrom,
         lastActivityTo: query.lastActivityTo,
-        followUp: query.followUp as "today" | "overdue" | "upcoming" | "tomorrow" | "none" | undefined,
+        followUp: query.followUp,
         stalled: query.stalled === "true" || query.stalled === "1",
         noNextAction: query.noNextAction === "true" || query.noNextAction === "1",
         includeMerged: query.includeMerged === "true",
@@ -84,6 +127,32 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
     } catch (err) {
       return mapError(err, set);
     }
+  }, {
+    query: t.Object({
+      status: t.Optional(LEAD_STATUS_SCHEMA),
+      source: t.Optional(LEAD_SOURCE_SCHEMA),
+      assignedTo: t.Optional(t.String()),
+      city: t.Optional(t.String()),
+      zone: t.Optional(t.String()),
+      skill: t.Optional(t.String()),
+      campaign: t.Optional(t.String()),
+      minScore: t.Optional(t.String()),
+      maxScore: t.Optional(t.String()),
+      createdFrom: t.Optional(t.String()),
+      createdTo: t.Optional(t.String()),
+      lastActivityFrom: t.Optional(t.String()),
+      lastActivityTo: t.Optional(t.String()),
+      followUp: t.Optional(t.Union([
+        t.Literal("today"), t.Literal("overdue"), t.Literal("upcoming"),
+        t.Literal("tomorrow"), t.Literal("none"),
+      ])),
+      stalled: t.Optional(t.String()),
+      noNextAction: t.Optional(t.String()),
+      includeMerged: t.Optional(t.String()),
+      search: t.Optional(t.String()),
+      page: t.Optional(t.String()),
+      limit: t.Optional(t.String()),
+    }),
   })
   .post(
     "/leads/check-duplicates",
@@ -102,7 +171,7 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
     async ({ body, set, requireAdminContext }) => {
       try {
         const admin = requireAdminContext();
-        const lead = await partnerLeadService.createLead(body as never, admin.adminId);
+        const lead = await partnerLeadService.createLead(body, admin.adminId);
         set.status = 201;
         return { success: true, data: lead };
       } catch (err) {
@@ -114,7 +183,7 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
         name: t.String(),
         phone: t.String(),
         email: t.Optional(t.String()),
-        source: t.String(),
+        source: LEAD_SOURCE_SCHEMA,
         sourceCampaign: t.Optional(t.String()),
         channel: t.Optional(t.String()),
         skillInterest: t.Optional(t.String()),
@@ -149,7 +218,7 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
     async ({ params, body, set, requireAdminContext }) => {
       try {
         const admin = requireAdminContext();
-        const data = await partnerLeadService.transitionStatus(params.id, body.status as never, admin.adminId, {
+        const data = await partnerLeadService.transitionStatus(params.id, body.status, admin.adminId, {
           reason: body.reason,
         });
         return { success: true, data };
@@ -157,7 +226,7 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
         return mapError(err, set);
       }
     },
-    { body: t.Object({ status: t.String(), reason: t.Optional(t.String()) }) },
+    { body: t.Object({ status: LEAD_STATUS_SCHEMA, reason: t.Optional(t.String()) }) },
   )
   .patch(
     "/leads/:id/assign",
@@ -213,7 +282,7 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
       try {
         const admin = requireAdminContext();
         const data = await partnerLeadService.logActivity(params.id, {
-          type: body.type as never,
+          type: body.type,
           title: body.title,
           description: body.description,
           actorId: admin.adminId,
@@ -225,7 +294,7 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
     },
     {
       body: t.Object({
-        type: t.String(),
+        type: LEAD_ACTIVITY_TYPE_SCHEMA,
         title: t.String(),
         description: t.Optional(t.String()),
       }),
@@ -301,7 +370,7 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
         const admin = requireAdminContext();
         const data = await mergeLeads(params.id, body.duplicateLeadId, admin.adminId, {
           reason: body.reason,
-          resolutions: body.resolutions as never,
+          resolutions: body.resolutions,
         });
         return { success: true, data };
       } catch (err) {
@@ -312,14 +381,26 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
       body: t.Object({
         duplicateLeadId: t.String(),
         reason: t.String(),
-        resolutions: t.Optional(t.Record(t.String(), t.String())),
+        // Keys and values both constrained: `MergeResolutions` is
+        // `Partial<Record<MergeFieldKey, "primary" | "duplicate">>`, so a free-form
+        // `Record<string, string>` forced in with `as never` could carry an unknown field or an
+        // invalid choice into a merge that rewrites lead data.
+        resolutions: t.Optional(
+          t.Partial(
+            t.Object(
+              Object.fromEntries(
+                MERGE_FIELDS.map((f) => [f, t.Union([t.Literal("primary"), t.Literal("duplicate")])]),
+              ),
+            ),
+          ),
+        ),
       }),
     },
   )
   .get("/applications", async ({ query, set }) => {
     try {
       const data = await partnerAcquisitionQueueService.listApplications({
-        pipeline: query.pipeline as never,
+        pipeline: query.pipeline,
         search: query.search,
         page: query.page ? Number(query.page) : 1,
         limit: query.limit ? Number(query.limit) : 30,
@@ -328,11 +409,18 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
     } catch (err) {
       return mapError(err, set);
     }
+  }, {
+    query: t.Object({
+      pipeline: t.Optional(APPLICATION_PIPELINE_SCHEMA),
+      search: t.Optional(t.String()),
+      page: t.Optional(t.String()),
+      limit: t.Optional(t.String()),
+    }),
   })
   .get("/verification", async ({ query, set }) => {
     try {
       const data = await partnerAcquisitionQueueService.listVerification({
-        status: query.status as never,
+        status: query.status,
         page: query.page ? Number(query.page) : 1,
         limit: query.limit ? Number(query.limit) : 30,
       });
@@ -340,11 +428,18 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
     } catch (err) {
       return mapError(err, set);
     }
+  }, {
+    query: t.Object({
+      status: t.Optional(VERIFICATION_STATUS_SCHEMA),
+      search: t.Optional(t.String()),
+      page: t.Optional(t.String()),
+      limit: t.Optional(t.String()),
+    }),
   })
   .get("/approvals", async ({ query, set }) => {
     try {
       const data = await partnerAcquisitionQueueService.listApprovals({
-        status: query.status as never,
+        status: query.status,
         page: query.page ? Number(query.page) : 1,
         limit: query.limit ? Number(query.limit) : 30,
       });
@@ -352,24 +447,36 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
     } catch (err) {
       return mapError(err, set);
     }
+  }, {
+    query: t.Object({
+      status: t.Optional(APPROVAL_STATUS_SCHEMA),
+      search: t.Optional(t.String()),
+      page: t.Optional(t.String()),
+      limit: t.Optional(t.String()),
+    }),
   })
   .get("/spend", async ({ query, set }) => {
     try {
       const data = await acquisitionSpendService.list({
-        source: query.source as never,
+        source: query.source,
         campaign: query.campaign,
       });
       return { success: true, data };
     } catch (err) {
       return mapError(err, set);
     }
+  }, {
+    query: t.Object({
+      source: t.Optional(LEAD_SOURCE_SCHEMA),
+      campaign: t.Optional(t.String()),
+    }),
   })
   .post(
     "/spend",
     async ({ body, set, requireAdminContext }) => {
       try {
         const admin = requireAdminContext();
-        const data = await acquisitionSpendService.create(body as never, admin.adminId);
+        const data = await acquisitionSpendService.create(body, admin.adminId);
         set.status = 201;
         return { success: true, data };
       } catch (err) {
@@ -378,7 +485,7 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
     },
     {
       body: t.Object({
-        source: t.String(),
+        source: LEAD_SOURCE_SCHEMA,
         campaign: t.Optional(t.String()),
         channel: t.Optional(t.String()),
         periodStart: t.String(),
@@ -393,7 +500,7 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
     "/spend/:id",
     async ({ params, body, set }) => {
       try {
-        const data = await acquisitionSpendService.update(params.id, body as never);
+        const data = await acquisitionSpendService.update(params.id, body);
         return { success: true, data };
       } catch (err) {
         return mapError(err, set);
@@ -401,7 +508,7 @@ export const adminPartnerAcquisitionRoutes = new Elysia({ prefix: "/partner-acqu
     },
     {
       body: t.Object({
-        source: t.Optional(t.String()),
+        source: t.Optional(LEAD_SOURCE_SCHEMA),
         campaign: t.Optional(t.String()),
         channel: t.Optional(t.String()),
         periodStart: t.Optional(t.String()),

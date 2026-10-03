@@ -32,12 +32,22 @@ test.describe("Customer journey", () => {
     );
 
     const token = await apiLoginCustomer(user.email, user.password);
-    await ensureDefaultAddress(token);
+    // Bathroom Cleaning is published for Delhi, not Gurugram. The address has to be a city the
+    // service actually covers.
+    await ensureDefaultAddress(token, {
+      addressLine1: "Connaught Place",
+      city: "Delhi",
+      state: "Delhi",
+      zipCode: "110001",
+      latitude: 28.6315,
+      longitude: 77.2167,
+    });
 
     await mockRazorpayCheckout(page);
-    await page.goto("/book", { waitUntil: "networkidle" });
-    await page.reload({ waitUntil: "networkidle" });
+    await page.goto("/book", { waitUntil: "domcontentloaded" });
     await expect(page.getByText(/loading booking/i)).toBeHidden({ timeout: 60_000 });
+    // /book opens on the service list. A time grid exists only after a service is chosen.
+    await page.getByRole("button", { name: /Bathroom Cleaning/i }).first().click();
 
     await confirmBookingAndWait(page);
   });

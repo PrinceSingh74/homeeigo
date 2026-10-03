@@ -53,16 +53,23 @@ describe("P1 — Production config keys", () => {
 
 describe("P1 — Ops auth", () => {
   test("production metrics require OPS_AUTH_TOKEN", async () => {
-    const prev = process.env.NODE_ENV;
+    const prev = { NODE_ENV: process.env.NODE_ENV, OPS_AUTH_TOKEN: process.env.OPS_AUTH_TOKEN };
     process.env.NODE_ENV = "production";
     process.env.OPS_AUTH_TOKEN = "secret-ops-token";
-    const { assertOpsAuthorized } = await import("../lib/ops-auth");
-    const ok = assertOpsAuthorized(
-      new Request("http://localhost/metrics", {
-        headers: { authorization: "Bearer secret-ops-token" },
-      }),
-    );
-    expect(ok).toBe(true);
-    process.env.NODE_ENV = prev;
+    try {
+      const { assertOpsAuthorized } = await import("../lib/ops-auth");
+      const ok = assertOpsAuthorized(
+        new Request("http://localhost/metrics", {
+          headers: { authorization: "Bearer secret-ops-token" },
+        }),
+      );
+      expect(ok).toBe(true);
+    } finally {
+      // OPS_AUTH_TOKEN used to be left set, which switched ops auth on for every later suite in the
+      // process: /ready then answered 401 to boot-health whenever this file ran first.
+      process.env.NODE_ENV = prev.NODE_ENV;
+      if (prev.OPS_AUTH_TOKEN === undefined) delete process.env.OPS_AUTH_TOKEN;
+      else process.env.OPS_AUTH_TOKEN = prev.OPS_AUTH_TOKEN;
+    }
   });
 });

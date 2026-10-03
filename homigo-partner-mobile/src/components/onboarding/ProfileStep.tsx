@@ -80,6 +80,13 @@ export function ProfileStep({
         value={emergencyName}
         placeholder="Name"
         error={errors.emergencyName}
+        autoCapitalize="words"
+        autoCorrect={false}
+        autoComplete="off"
+        spellCheck={false}
+        textContentType="none"
+        importantForAutofill="no"
+        testID="onboarding-emergency-name"
         onChangeText={(v) => onChange({ emergencyName: v })}
       />
       <OnboardingField
@@ -91,7 +98,7 @@ export function ProfileStep({
         error={errors.emergencyPhone}
         onChangeText={(v) => onChange({ emergencyPhone: v.replace(/\D/g, "").slice(0, 10) })}
       />
-      <Pressable accessibilityRole="button" style={styles.button} disabled={loading} onPress={onSubmit}>
+      <Pressable accessibilityRole="button" testID="onboarding-save-continue" style={styles.button} disabled={loading} onPress={onSubmit}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save & Continue</Text>}
       </Pressable>
     </View>

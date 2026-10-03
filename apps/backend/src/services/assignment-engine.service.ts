@@ -1,3 +1,6 @@
+import { evictProviderFromBooking } from "../lib/ws-eviction";
+import { acceptanceRatePct, acceptanceWindowStart } from "../lib/acceptance-rate";
+import { isNoPaymentFollowUp, isSettled } from "./booking-payment-gate";
 import {
   AssignmentAttemptStatus,
   AssignmentJobStatus,
@@ -9,17 +12,19 @@ import prisma from "../lib/prisma";
 import { logger } from "../lib/logger";
 import { redisClient } from "../lib/redis";
 import { bookingPriorityService } from "./booking-priority.service";
-import { matchingService, type ProviderMatch } from "./matching.service";
+import { matchingService } from "./matching.service";
 import { resolveMustIncludeProviderIds } from "./dispatch-must-include.service";
-import { canBypassMustIncludeBlock, mergeMustIncludeFront } from "../lib/dispatch-must-include";
+import { preferPinnedAmongEligible } from "../lib/dispatch-must-include";
 import { createWsEnvelope, pushToUser } from "./notification-hub";
 import { notificationService } from "./notification.service";
-import { incCounter } from "../lib/metrics";
+import { incCounter, observeHist, setGauge } from "../lib/metrics";
 import { fromWaitTimeMsBigInt } from "../lib/wait-time-ms";
 import { eventPlatformConfig } from "../events/core/config";
 import { emitInTransaction } from "../events/core/event-publisher";
 import { buildPartnerDispatchedEvent } from "../events/catalog/partner.events";
 import { partnerOperationsService } from "./partner-operations.service";
+import { setBookingAuditContext } from "../lib/booking-audit-context";
+import { loadServiceGateContext } from "./provider-capability-loader";
 import { offerRequiresLivePresence } from "../lib/scheduled-offer-presence";
 
 const DISPATCH_TIMEOUT_MS = Number(process.env.ASSIGNMENT_DISPATCH_TIMEOUT_MS || 300_000);
@@ -31,6 +36,33 @@ const MAX_DISPATCH_PER_TICK = Number(process.env.ASSIGNMENT_MAX_PER_TICK || 10);
 // feed. Set ASSIGNMENT_BROADCAST=false to revert to legacy single-offer.
 const BROADCAST_DISPATCH = process.env.ASSIGNMENT_BROADCAST !== "false";
 const BROADCAST_FANOUT = Number(process.env.ASSIGNMENT_BROADCAST_FANOUT || 25);
+/**
+ * Pair each dispatch candidate with its provider row, in CANDIDATE order.
+ *
+ * Dispatch offers customer-pinned partners first and records `offeredProviderIds[0]` as the job's
+ * current provider, so offer order is a product contract, not an implementation detail. The provider
+ * rows come from one `findMany ... WHERE id IN (...)`, which carries no ORDER BY — Postgres may
+ * return them in any order at all. Iterating that result instead of the candidate list would unpin
+ * customers, and would do it intermittently rather than reproducibly.
+ *
+ * Keeping the pairing here makes that ordering explicit and directly testable, instead of leaving it
+ * as a property of a loop header that a later refactor can quietly invert.
+ *
+ * A candidate with no provider row is dropped, exactly as a null `findUnique` dropped it.
+ */
+export function orderedDispatchTargets<C extends { providerId: string }, P>(
+  targets: C[],
+  providerById: Map<string, P>,
+): Array<{ candidate: C; provider: P }> {
+  const paired: Array<{ candidate: C; provider: P }> = [];
+  for (const candidate of targets) {
+    const provider = providerById.get(candidate.providerId);
+    if (!provider) continue;
+    paired.push({ candidate, provider });
+  }
+  return paired;
+}
+
 const LOCK_KEY = "assignment:processor";
 const LOCK_TTL_SEC = 25;
 /** Interactive tx must survive pool wait under connection_limit=8; Prisma default timeout is 5s. */
@@ -50,19 +82,40 @@ const MAX_INLINE_DISPATCH = 2;
 export class AssignmentEngine {
   private inlineSlots = MAX_INLINE_DISPATCH;
   private readonly inlineWaiters: Array<() => void> = [];
+  private readonly dispatchesInFlight = new Map<string, Promise<boolean>>();
 
   private async acquireInlineSlot(): Promise<void> {
     if (this.inlineSlots > 0) {
       this.inlineSlots -= 1;
+      this.publishInlineBacklog();
       return;
     }
-    await new Promise<void>((resolve) => this.inlineWaiters.push(resolve));
+    const queued = new Promise<void>((resolve) => this.inlineWaiters.push(resolve));
+    this.publishInlineBacklog();
+    await queued;
   }
 
   private releaseInlineSlot(): void {
     const next = this.inlineWaiters.shift();
     if (next) next();
     else this.inlineSlots += 1;
+    this.publishInlineBacklog();
+  }
+
+  /**
+   * The background-dispatch backlog. Waiters are unbounded by design (201 must return at once), so a
+   * create burst can leave a booking's inline dispatch queued for a long time — and when it finally runs
+   * it races whatever else touches that job (the cron tick, an accept). Visible as a gauge so a backlog
+   * is never inferred after the fact.
+   */
+  inlineDispatchBacklog(): { inFlight: number; waiting: number } {
+    return { inFlight: MAX_INLINE_DISPATCH - this.inlineSlots, waiting: this.inlineWaiters.length };
+  }
+
+  private publishInlineBacklog(): void {
+    const { inFlight, waiting } = this.inlineDispatchBacklog();
+    setGauge("assignment_inline_dispatch_in_flight", inFlight);
+    setGauge("assignment_inline_dispatch_waiting", waiting);
   }
 
   /**
@@ -126,7 +179,7 @@ export class AssignmentEngine {
     try {
       await this.handleTimeouts();
 
-      const queue = await bookingPriorityService.getAssignmentQueue(MAX_DISPATCH_PER_TICK);
+      const queue = await bookingPriorityService.getAssignmentQueue(MAX_DISPATCH_PER_TICK, { dispatchableOnly: true });
       for (const item of queue) {
         if (Date.now() >= tickDeadlineMs) {
           logger.warn("assignment_process_queue_tick_deadline", {
@@ -150,11 +203,7 @@ export class AssignmentEngine {
           continue;
         }
         if (activeJob.dispatchAttempts >= activeJob.maxAttempts) {
-          await prisma.assignmentJob.update({
-            where: { id: activeJob.id },
-            data: { status: AssignmentJobStatus.EXHAUSTED },
-          });
-          await this.audit(activeJob.id, "EXHAUSTED", {});
+          await this.exhaustJob(activeJob.id);
           continue;
         }
 
@@ -203,8 +252,61 @@ export class AssignmentEngine {
     return { processed, dispatched };
   }
 
+  /**
+   * Give up on a job — and close the offers it still has open.
+   *
+   * This used to be a two-line `update` that set the job EXHAUSTED and walked away. Every
+   * `AssignmentAttempt` still in SENT stayed in SENT, forever: nothing else in the engine touches an
+   * attempt once its job has left the dispatch states, and `timeoutAt` is cleared on the way out so
+   * even the timeout sweeper can no longer see it.
+   *
+   * The partner is the one who pays for that. `myBookings(status="pending")` lists their SENT
+   * attempts, so an abandoned offer keeps rendering as a live "New request" indefinitely — four such
+   * cards were sitting in one partner's feed, dispatched 24 to 41 days earlier, on a five-minute
+   * offer window. Tapping Accept on one is the failure the partner actually reports: the job is long
+   * gone, and the only feedback is a red toast.
+   *
+   * TIMEOUT rather than a new status because that is what the attempt was: an offer whose window
+   * closed without an answer. It already means "expired unanswered" everywhere else — the acceptance
+   * rate, the dispatch metrics and the partner's own history — and inventing a second word for it
+   * would split every one of those readings in two.
+   */
+  private async exhaustJob(jobId: string): Promise<void> {
+    const now = new Date();
+    const abandoned = await prisma.$transaction(async (tx) => {
+      const open = await tx.assignmentAttempt.findMany({
+        where: { jobId, status: AssignmentAttemptStatus.SENT },
+        select: { providerId: true },
+      });
+      await tx.assignmentAttempt.updateMany({
+        where: { jobId, status: AssignmentAttemptStatus.SENT },
+        data: { status: AssignmentAttemptStatus.TIMEOUT, respondedAt: now },
+      });
+      await tx.assignmentJob.update({
+        where: { id: jobId },
+        data: { status: AssignmentJobStatus.EXHAUSTED, timeoutAt: null, currentProviderId: null },
+      });
+      return open.map((a) => a.providerId);
+    }, TX_OPTS);
+
+    await this.audit(jobId, "EXHAUSTED", { expiredOffers: abandoned.length });
+    if (abandoned.length > 0) incCounter("dispatch_timeout_total", undefined, abandoned.length);
+
+    // The offer is gone, so the booking-room grant that came with it is gone too — same reasoning
+    // as the timeout path, which learned this lesson already.
+    const job = await prisma.assignmentJob.findUnique({
+      where: { id: jobId },
+      select: { bookingId: true },
+    });
+    if (!job) return;
+    for (const providerId of new Set(abandoned)) {
+      await evictProviderFromBooking(job.bookingId, providerId, "offer_expired");
+    }
+  }
+
   private async handleTimeouts() {
     const now = new Date();
+    const timedOutProviderIds: string[] = [];
     const expired = await prisma.assignmentJob.findMany({
       where: {
         status: AssignmentJobStatus.DISPATCHED,
@@ -258,10 +360,15 @@ export class AssignmentEngine {
 
         // Broadcast: expire ALL pending offers for this job (not just one) so every provider's
         // requests feed clears when the window lapses with no acceptance.
+        const expiredOffers = await tx.assignmentAttempt.findMany({
+          where: { jobId: job.id, status: AssignmentAttemptStatus.SENT },
+          select: { providerId: true },
+        });
         await tx.assignmentAttempt.updateMany({
           where: { jobId: job.id, status: AssignmentAttemptStatus.SENT },
           data: { status: AssignmentAttemptStatus.TIMEOUT, respondedAt: now },
         });
+        timedOutProviderIds.push(...expiredOffers.map((a) => a.providerId));
         incCounter("dispatch_timeout_total");
         await tx.assignmentJob.update({
           where: { id: job.id },
@@ -274,6 +381,7 @@ export class AssignmentEngine {
         });
         // Release the tentative assignment so the next dispatch can claim it
         // (only un-accepted PENDING bookings reach here).
+        await setBookingAuditContext(tx, { actorType: "system", actorId: null, reason: "offer timed out; tentative partner released" });
         await tx.booking.updateMany({
           where: { id: job.bookingId, status: BookingStatus.PENDING },
           data: { providerId: null },
@@ -282,10 +390,43 @@ export class AssignmentEngine {
           data: { jobId: job.id, action: "TIMEOUT", details: JSON.stringify({ bookingId: job.bookingId, expiredAllOffers: true }) },
         });
       }, TX_OPTS);
+      // The offered partners' booking-room grant died with the offer; the reject path already
+      // evicts, the timeout path did not — the same stale socket, four hundred lines apart.
+      for (const pid of new Set(timedOutProviderIds)) {
+        void evictProviderFromBooking(job.bookingId, pid, "offer_timeout");
+      }
     }
   }
 
-  private async dispatchToNextProvider(jobId: string): Promise<boolean> {
+  /**
+   * One dispatch of a job at a time in this process; a caller arriving mid-flight shares that run.
+   *
+   * create's background dispatch, the settlement hook, a reject and the cron tick all funnel here, and
+   * nothing stopped two of them working the same job at once. The second one re-read the same attempts,
+   * re-matched, re-locked the booking FOR SHARE and every candidate's provider row FOR UPDATE, and then
+   * lost each insert to the (job_id, provider_id) unique index — 7 P2002s in the 2026-10-01 failing
+   * run, each one a transaction that had held the booking row while concurrent accepts waited on it.
+   * Across instances the unique index remains the arbiter; this removes the duplicate work in-process.
+   */
+  private dispatchToNextProvider(jobId: string): Promise<boolean> {
+    const inFlight = this.dispatchesInFlight.get(jobId);
+    if (inFlight) {
+      incCounter("assignment_dispatch_coalesced_total");
+      return inFlight;
+    }
+    const run: Promise<boolean> = this.dispatchToNextProviderOnce(jobId).finally(() => {
+      if (this.dispatchesInFlight.get(jobId) === run) this.dispatchesInFlight.delete(jobId);
+    });
+    this.dispatchesInFlight.set(jobId, run);
+    return run;
+  }
+
+  /** Dispatches of a job currently running in this process (for tests and diagnostics). */
+  dispatchInFlight(jobId: string): boolean {
+    return this.dispatchesInFlight.has(jobId);
+  }
+
+  private async dispatchToNextProviderOnce(jobId: string): Promise<boolean> {
     const job = await prisma.assignmentJob.findUnique({
       where: { id: jobId },
       include: {
@@ -310,8 +451,63 @@ export class AssignmentEngine {
       return false;
     }
 
-    const lat = booking.address?.latitude ?? 19.076;
-    const lng = booking.address?.longitude ?? 72.8777;
+    /**
+     * ── OWNER DECISION #1: an unpaid booking is not offered to anyone ─────────
+     *
+     * Accept is payment-gated, so a partner offered an unsettled booking is offered work they will
+     * be refused if they take it. Measured across the database when this was decided: 2,566 of 3,451
+     * assignment jobs — 74% — were for bookings that had not settled, so three quarters of all
+     * dispatch traffic was unactionable.
+     *
+     * It is not merely noise. An unanswered offer holds a place against the partner's concurrency
+     * budget until it times out, and a timed-out offer counts as a REFUSAL in the acceptance rate
+     * the platform ranks them by. Partners were being measured on, and throttled by, offers they
+     * were never permitted to accept — and the cause was the customer's payment, not their own
+     * behaviour.
+     *
+     * The job row is still created at booking time and left PENDING; only the fan-out waits.
+     * `onBookingPaymentSettled` dispatches on settlement and the assignment cron re-dispatches
+     * PENDING jobs every 30 seconds, so the machinery to start matching the moment money arrives
+     * already exists — this removes a premature call rather than adding anything.
+     *
+     * The gate lives here because every path funnels through this method: the inline call at
+     * creation, the cron, and the settlement hook. A rule placed at any one of them would be a rule
+     * the other two could bypass.
+     */
+    // §11: a case-created follow-up with its fee waived owes nothing (never marked paid).
+    if (!isSettled(booking.paymentStatus) && !(await isNoPaymentFollowUp(booking.id))) {
+      logger.debug("dispatch_withheld_unpaid", {
+        category: "APPLICATION",
+        bookingId: booking.id,
+        jobId,
+        paymentStatus: booking.paymentStatus,
+      });
+      return false;
+    }
+
+    /**
+     * Phase 11 — no fabricated job location. A booking without coordinates used to be matched
+     * around central Mumbai (19.076, 72.8777), so a job anywhere else could be offered to whoever
+     * happened to be near Mumbai. With no position nobody can be shown to be inside a service area:
+     * no candidates, reason LOCATION_GATE_FAILED, counted as an attempt like any NO_PROVIDER outcome
+     * so the job still reaches EXHAUSTED and the ops alert instead of retrying forever.
+     */
+    const lat = booking.address?.latitude;
+    const lng = booking.address?.longitude;
+    if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      incCounter("matching_rejection_total", { reason: "LOCATION_GATE_FAILED", scope: "job" });
+      logger.warn("dispatch_job_location_missing", { category: "APPLICATION", bookingId: booking.id, jobId });
+      await prisma.assignmentJob.update({
+        where: { id: jobId },
+        data: { dispatchAttempts: { increment: 1 } },
+      });
+      await this.audit(jobId, "NO_PROVIDER", {
+        serviceId: booking.serviceId,
+        matchCount: 0,
+        reason: "LOCATION_GATE_FAILED",
+      });
+      return false;
+    }
     const excluded = job.attempts.map((a) => a.providerId);
 
     const matches = await matchingService.findBestProviders({
@@ -326,12 +522,26 @@ export class AssignmentEngine {
     const mustIncludeIds = new Set(
       (await resolveMustIncludeProviderIds(booking.user)).filter((id) => !excluded.includes(id)),
     );
-    const mustIncludeMatches = [...mustIncludeIds].map((providerId) => mustIncludeMatch(providerId));
 
     const ranked = matches
       .filter((m) => !excluded.includes(m.providerId))
       .sort((a, b) => b.totalScore - a.totalScore);
-    const eligible = mergeMustIncludeFront(ranked, mustIncludeMatches);
+    /**
+     * W2-D2. A pin is a SOFT preference over partners matching already admitted — never an entry
+     * ticket. It used to synthesise a 10,000-score match for the pinned partner and merge it in,
+     * which put a partner who had failed every hard gate at the front of the offer list. Now a
+     * pinned partner who is not in `ranked` is simply not offered.
+     */
+    const eligible = preferPinnedAmongEligible(ranked, mustIncludeIds);
+    const pinnedAdmitted = eligible.filter((m) => mustIncludeIds.has(m.providerId)).length;
+    if (mustIncludeIds.size > 0) {
+      logger.info("dispatch_pin_preference", {
+        jobId,
+        pinned: mustIncludeIds.size,
+        // A pinned partner that failed hard eligibility shows up here as the gap between the two.
+        pinnedAdmitted,
+      });
+    }
 
     if (eligible.length === 0) {
       /**
@@ -359,27 +569,45 @@ export class AssignmentEngine {
     // request. The booking stays PENDING (providerId null) during the offer window; the FIRST
     // provider to accept claims it under the Serializable accept + slot-exclusion lock
     // (resolveAcceptingProvider). Legacy single-offer when ASSIGNMENT_BROADCAST=false.
-    // A customer pin (must-include) always broadcasts so nearby partners still see the job.
     const now = new Date();
+    const livePresenceRequired = offerRequiresLivePresence(booking.scheduledDate, now);
     const untilSlotMs = booking.scheduledDate.getTime() - now.getTime();
-    const offerWindowMs = offerRequiresLivePresence(booking.scheduledDate, now)
+    const offerWindowMs = livePresenceRequired
       ? DISPATCH_TIMEOUT_MS
       : Math.min(SCHEDULED_OFFER_TIMEOUT_MS, Math.max(DISPATCH_TIMEOUT_MS, untilSlotMs - 2 * 60 * 60 * 1000));
     const timeoutAt = new Date(now.getTime() + offerWindowMs);
-    const broadcast = BROADCAST_DISPATCH || mustIncludeIds.size > 0;
+    // W2-D2: a pin no longer forces broadcast mode. It changes ORDER among eligible partners and
+    // nothing about how dispatch fans out.
+    const broadcast = BROADCAST_DISPATCH;
     const pinned = eligible.filter((m) => mustIncludeIds.has(m.providerId));
     const others = eligible.filter((m) => !mustIncludeIds.has(m.providerId));
     const targets = broadcast
       ? [...pinned, ...others.slice(0, Math.max(0, BROADCAST_FANOUT - pinned.length))]
       : eligible.slice(0, 1);
 
+    /**
+     * One lookup for the whole broadcast, not one per candidate.
+     *
+     * This loop reads exactly two fields off the row — `id` and `userId` — yet it used to issue a
+     * `findUnique` per candidate with `include: { user: true }`, hydrating a 97-column provider row
+     * joined to a 66-column user row (including that user's encrypted PII) to use two strings. At
+     * BROADCAST_FANOUT=25 and MAX_DISPATCH_PER_TICK=10 that is 250 round trips per 30-second tick.
+     *
+     * Measured against homigo_test, 25 candidates: 139.3 ms → 3.4 ms, 25 queries → 1, returning an
+     * identical set of (id, userId) pairs. `orderedDispatchTargets` keeps the skip semantics: a
+     * candidate whose provider row is missing is dropped exactly as a null `findUnique` dropped it.
+     */
+    const candidateProviders = await prisma.provider.findMany({
+      where: { id: { in: targets.map((t) => t.providerId) } },
+      select: { id: true, userId: true },
+    });
+    // Phase 11: the service side of the capability re-check, built once per booking OUTSIDE the
+    // per-offer transactions (each offer then costs one query per capability table, nothing more).
+    const capabilityCtx = await loadServiceGateContext(booking.serviceId, booking.userId);
+    const providerById = new Map(candidateProviders.map((p) => [p.id, p]));
+
     const offeredProviderIds: string[] = [];
-    for (const candidate of targets) {
-      const provider = await prisma.provider.findUnique({
-        where: { id: candidate.providerId },
-        include: { user: true },
-      });
-      if (!provider) continue;
+    for (const { provider } of orderedDispatchTargets(targets, providerById)) {
 
       try {
         await prisma.$transaction(async (tx) => {
@@ -390,22 +618,26 @@ export class AssignmentEngine {
           if (!stillThere) {
             throw new Error("SKIP_OFFER:JOB_GONE");
           }
+          // Re-checked under a share lock: the PENDING read above is unlocked, and a cancel or claim
+          // committing in between used to leave a fresh SENT offer on a closed booking. FOR SHARE
+          // makes a concurrent cancel wait for this offer to commit (its closeOffersInTx then closes
+          // it), or makes this offer see the committed cancel and skip.
+          const live = await tx.$queryRaw<Array<{ status: string; provider_id: string | null }>>`
+            SELECT status, provider_id FROM bookings WHERE id = ${booking.id} FOR SHARE`;
+          if (!live[0] || live[0].status !== BookingStatus.PENDING || live[0].provider_id) {
+            throw new Error("SKIP_OFFER:BOOKING_CLOSED");
+          }
           const blocked = await partnerOperationsService.assertOfferEligible(tx, provider.id, {
             latitude: lat,
             longitude: lng,
             scheduledDate: booking.scheduledDate,
+            capability: capabilityCtx,
+            livePresenceRequired,
           });
           if (blocked) {
-            const pinnedOffer = mustIncludeIds.has(provider.id) && canBypassMustIncludeBlock(blocked);
-            if (!pinnedOffer) {
-              incCounter("final_revalidation_failures", { reason: blocked });
-              throw new Error(`SKIP_OFFER:${blocked}`);
-            }
-            logger.info("dispatch_must_include_offer_bypass", {
-              jobId,
-              providerId: provider.id,
-              reason: blocked,
-            });
+            // W2-D2: no partner — pinned or not — is offered past a failed offer-time gate.
+            incCounter("final_revalidation_failures", { reason: blocked });
+            throw new Error(`SKIP_OFFER:${blocked}`);
           }
           await tx.assignmentAttempt.create({
             data: { jobId, providerId: provider.id, status: AssignmentAttemptStatus.SENT, dispatchedAt: now },
@@ -435,6 +667,8 @@ export class AssignmentEngine {
       }
       offeredProviderIds.push(provider.id);
       incCounter("dispatch_attempts_total");
+      // How long a customer waited between creating the booking and a partner actually being offered it.
+      observeHist("assignment_dispatch_latency_seconds", Math.max(0, (Date.now() - booking.createdAt.getTime()) / 1000));
 
       /**
        * The AssignmentAttempt this provider needs to see the job in `myBookings()` is already
@@ -459,9 +693,10 @@ export class AssignmentEngine {
           data: {
             bookingId: booking.id,
             price: booking.finalAmount,
-            customerName: `${booking.user.firstName} ${booking.user.lastName}`,
+            // Every offered partner receives this, most of whom will never hold the job: first name only.
+            customerName: booking.user.firstName,
             serviceName: booking.service.name,
-            assignmentJobId: jobId,
+            // X-29: no internal assignment-job id — no partner client reads it; the booking id is enough.
           },
         });
 
@@ -525,8 +760,39 @@ export class AssignmentEngine {
     const job = await prisma.assignmentJob.findUnique({ where: { bookingId } });
     if (!job) return;
 
-    const now = new Date();
+    // accept() already did this inside its own transaction (markAcceptedInTx); this pass is the
+    // idempotent catch-up for any other caller. Refuses if the booking has since moved to another
+    // partner (admin reassign), so it can never rewrite the job to a displaced partner.
+    let current = false;
     await prisma.$transaction(async (tx) => {
+      const owner = await tx.$queryRaw<Array<{ provider_id: string | null }>>`
+        SELECT provider_id FROM bookings WHERE id = ${bookingId} FOR UPDATE`;
+      if (owner[0]?.provider_id !== providerId) return;
+      current = true;
+      await this.markAcceptedInTx(tx, bookingId, providerId);
+    }, TX_OPTS);
+    if (!current) return;
+
+    incCounter("dispatch_success_total");
+    incCounter("booking_assigned_total");
+    await bookingPriorityService.recordAssignmentWait(bookingId);
+    void this.refreshProviderAcceptanceRate(providerId);
+  }
+
+  /**
+   * The accepting partner's offer → ACCEPTED, every other open offer closed, job ACCEPTED — in the
+   * caller's transaction (accept() runs it in the same transaction as the booking's ACCEPTED write,
+   * so a crash can no longer leave rival offers open on a claimed booking). Idempotent.
+   */
+  async markAcceptedInTx(tx: Prisma.TransactionClient, bookingId: string, providerId: string) {
+    const job = await tx.assignmentJob.findUnique({ where: { bookingId } });
+    if (!job) return;
+    if (job.status === AssignmentJobStatus.ACCEPTED && job.currentProviderId === providerId) {
+      const open = await tx.assignmentAttempt.count({ where: { jobId: job.id, status: AssignmentAttemptStatus.SENT } });
+      if (open === 0) return;
+    }
+    const now = new Date();
+    {
       const attempt = await tx.assignmentAttempt.findFirst({
         where: { jobId: job.id, providerId, status: AssignmentAttemptStatus.SENT },
         orderBy: { dispatchedAt: "desc" },
@@ -559,12 +825,7 @@ export class AssignmentEngine {
       await tx.assignmentAudit.create({
         data: { jobId: job.id, action: "ACCEPT", details: JSON.stringify({ providerId, broadcast: BROADCAST_DISPATCH }) },
       });
-    }, TX_OPTS);
-
-    incCounter("dispatch_success_total");
-    incCounter("booking_assigned_total");
-    await bookingPriorityService.recordAssignmentWait(bookingId);
-    void this.refreshProviderAcceptanceRate(providerId);
+    }
   }
 
   /** Provider rejected — auto-reassign on next cron tick. */
@@ -599,20 +860,73 @@ export class AssignmentEngine {
       });
       // Release the tentative assignment ONLY if this provider still holds it and
       // the booking is unclaimed — never disturb a booking already accepted elsewhere.
+      await setBookingAuditContext(tx, { actorType: "partner", actorId: providerId, reason: `offer rejected${reason ? `: ${reason}` : ""}` });
       await tx.booking.updateMany({ where: { id: bookingId, providerId, status: "PENDING" }, data: { providerId: null } });
       await tx.assignmentAudit.create({
         data: { jobId: job.id, action: "REJECT", details: JSON.stringify({ providerId, reason }) },
       });
     }, TX_OPTS);
+    void evictProviderFromBooking(bookingId, providerId, "offer_rejected");
     void this.refreshProviderAcceptanceRate(providerId);
   }
 
   /** Booking cancelled by customer or provider — close open dispatch. */
+  /**
+   * Close every open offer on a booking's job INSIDE the caller's transaction — the same transaction
+   * that makes the booking terminal (cancel) or hands it to someone else (admin reassign). Done
+   * post-commit, a crash in between left SENT offers open: the booking still showed in partners'
+   * feeds and each open offer held that partner's capacity forever.
+   *
+   * Returns the partners whose offers were closed so the caller can evict their sockets after commit.
+   */
+  async closeOffersInTx(
+    tx: Prisma.TransactionClient,
+    bookingId: string,
+    outcome:
+      | { kind: "cancelled" }
+      | { kind: "reassigned"; providerId: string; adminId: string },
+  ): Promise<string[]> {
+    const job = await tx.assignmentJob.findUnique({ where: { bookingId } });
+    if (!job) return [];
+    const now = new Date();
+    const open = await tx.assignmentAttempt.findMany({
+      where: { jobId: job.id, status: AssignmentAttemptStatus.SENT },
+      select: { providerId: true },
+    });
+    await tx.assignmentAttempt.updateMany({
+      where: { jobId: job.id, status: AssignmentAttemptStatus.SENT },
+      data: {
+        status: outcome.kind === "cancelled" ? AssignmentAttemptStatus.TIMEOUT : AssignmentAttemptStatus.SUPERSEDED,
+        respondedAt: now,
+      },
+    });
+    await tx.assignmentJob.update({
+      where: { id: job.id },
+      data:
+        outcome.kind === "cancelled"
+          ? { status: AssignmentJobStatus.CANCELLED, currentProviderId: null, timeoutAt: null }
+          : { status: AssignmentJobStatus.ACCEPTED, currentProviderId: outcome.providerId, acceptedAt: now, timeoutAt: null },
+    });
+    await tx.assignmentAudit.create({
+      data: {
+        jobId: job.id,
+        action: outcome.kind === "cancelled" ? "CANCEL" : "ADMIN_REASSIGN",
+        details: JSON.stringify(
+          outcome.kind === "cancelled"
+            ? { bookingId, closedOffers: open.length }
+            : { bookingId, providerId: outcome.providerId, adminId: outcome.adminId, closedOffers: open.length },
+        ),
+      },
+    });
+    return [...new Set(open.map((a) => a.providerId))];
+  }
+
   async onBookingCancelled(bookingId: string) {
     const job = await prisma.assignmentJob.findUnique({ where: { bookingId } });
     if (!job) return;
 
     const now = new Date();
+    const cancelledOfferProviderIds: string[] = [];
     await prisma.$transaction(async (tx) => {
       /**
        * Broadcast dispatch (the default — see BROADCAST_DISPATCH) offers a job to several
@@ -627,6 +941,11 @@ export class AssignmentEngine {
        * any new offers at all. `updateMany` closes every open attempt on this job, matching the
        * same broadcast-wide expiry `handleTimeouts()` already does for the ordinary timeout path.
        */
+      const openOffers = await tx.assignmentAttempt.findMany({
+        where: { jobId: job.id, status: AssignmentAttemptStatus.SENT },
+        select: { providerId: true },
+      });
+      cancelledOfferProviderIds.push(...openOffers.map((a) => a.providerId));
       await tx.assignmentAttempt.updateMany({
         where: { jobId: job.id, status: AssignmentAttemptStatus.SENT },
         data: { status: AssignmentAttemptStatus.TIMEOUT, respondedAt: now },
@@ -643,6 +962,9 @@ export class AssignmentEngine {
         data: { jobId: job.id, action: "CANCEL", details: JSON.stringify({ bookingId }) },
       });
     }, TX_OPTS);
+    for (const pid of new Set(cancelledOfferProviderIds)) {
+      void evictProviderFromBooking(bookingId, pid, "offer_withdrawn");
+    }
   }
 
   private async audit(jobId: string, action: string, details: Record<string, unknown>) {
@@ -653,7 +975,7 @@ export class AssignmentEngine {
 
   /** Keep providers.acceptance_rate aligned with live dispatch outcomes (30d window). */
   private async refreshProviderAcceptanceRate(providerId: string) {
-    const since = new Date(Date.now() - 30 * 24 * 3600_000);
+    const since = acceptanceWindowStart();
     const [accepted, rejected] = await Promise.all([
       prisma.assignmentAttempt.count({
         where: { providerId, status: AssignmentAttemptStatus.ACCEPTED, dispatchedAt: { gte: since } },
@@ -695,7 +1017,8 @@ export class AssignmentEngine {
       return;
     }
 
-    const rate = Math.round((accepted / total) * 10000) / 100;
+    // Shared definition — see lib/acceptance-rate.ts. Non-null here because total > 0.
+    const rate = acceptanceRatePct(accepted, total) ?? 0;
     await prisma.provider
       .update({
         where: { id: providerId },
@@ -750,9 +1073,16 @@ export class AssignmentEngine {
     const sent = acceptanceAttempts.find((a) => a.status === AssignmentAttemptStatus.SENT)?._count ?? 0;
     const acceptedCount =
       acceptanceAttempts.find((a) => a.status === AssignmentAttemptStatus.ACCEPTED)?._count ?? 0;
+    /**
+     * The same definition the provider column uses, not a second one.
+     *
+     * This divided by `attempts - sent` with no time window and resolved an empty sample to 0 — so
+     * the admin dispatch panel could report "0% acceptance" on a platform that had simply not
+     * dispatched anything yet, while the provider column deliberately writes nothing in that case.
+     * Two different answers to the same question, and the fabricated one was the visible one.
+     */
     const totalResponses = attempts - sent;
-    const acceptanceRate =
-      totalResponses > 0 ? Math.round((acceptedCount / totalResponses) * 1000) / 10 : 0;
+    const acceptanceRate = acceptanceRatePct(acceptedCount, totalResponses);
 
     const dispatchTimes = await prisma.assignmentAttempt.findMany({
       where: { responseMs: { not: null } },
@@ -790,39 +1120,17 @@ export class AssignmentEngine {
         }),
         accepted,
         exhausted,
-        conversionPct:
-          totalJobs > 0 ? Math.round((accepted / totalJobs) * 1000) / 10 : 0,
+        /**
+         * Null, not zero, when no job has been dispatched.
+         *
+         * A different question from the partner acceptance rate — this is a FUNNEL ratio over jobs,
+         * not offers — but the same fallback problem: 0% conversion on a platform that has dispatched
+         * nothing asserts total failure rather than an absence of data.
+         */
+        conversionPct: totalJobs > 0 ? Math.round((accepted / totalJobs) * 1000) / 10 : null,
       },
     };
   }
-}
-
-function mustIncludeMatch(providerId: string): ProviderMatch {
-  return {
-    providerId,
-    name: "Preferred partner",
-    rating: 0,
-    totalReviews: 0,
-    distance: 0,
-    eta: 0,
-    totalScore: 10_000,
-    scoreBreakdown: {
-      ratingScore: 0,
-      distanceScore: 0,
-      availabilityScore: 20,
-      responseScore: 0,
-      completionScore: 0,
-    },
-    isOnline: true,
-    availableNow: true,
-    availabilityLabel: "Available now",
-    availability: true,
-  };
-}
-
-function isProviderSlotConflict(err: unknown): boolean {
-  const text = err instanceof Error ? `${err.message} ${String(err)}` : String(err);
-  return text.includes("bookings_provider_slot_excl") || text.includes("23P01");
 }
 
 export const assignmentEngine = new AssignmentEngine();

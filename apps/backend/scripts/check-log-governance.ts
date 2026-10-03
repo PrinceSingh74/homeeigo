@@ -19,11 +19,11 @@ const GOVERNED_PERSISTER = "src/services/log-aggregation.service.ts";
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name === ".next" || name === "dist") continue;
+    if (name === "node_modules" || name === ".next" || name === "dist" || name === "__tests__") continue;
     const p = join(dir, name);
     const st = statSync(p);
     if (st.isDirectory()) walk(p, out);
-    else if (/\.(ts|tsx)$/.test(name)) out.push(p);
+    else if (/\.(ts|tsx)$/.test(name) && !/\.(test|spec)\.tsx?$/.test(name)) out.push(p);
   }
   return out;
 }
@@ -35,7 +35,7 @@ const files = walk(SRC);
 for (const f of files) {
   const rel = f.slice(ROOT.length + 1).replace(/\\/g, "/");
   const src = readFileSync(f, "utf8");
-  if (/appLogEntry\s*\.\s*create\b/.test(src) || /prisma\.appLogEntry\.create/.test(src)) {
+  if (/appLogEntry\s*\.\s*create\b/.test(src) || /prisma\.appLogEntry\.create\b/.test(src)) {
     if (rel !== GOVERNED_PERSISTER) {
       violations.push(`[C1] ${rel}: writes app_log_entries outside the governed persister. All DB log writes MUST go through ${GOVERNED_PERSISTER}.`);
     } else if (!/evaluateLogPersistence\s*\(/.test(src)) {

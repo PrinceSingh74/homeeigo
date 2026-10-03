@@ -3,7 +3,7 @@ import { AppState } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { scheduleLocalNotification } from "@/hooks/use-push-notifications";
 import { useAuthStore } from "@/stores/auth-store";
-import { useAppStore } from "@/lib/store";
+import { useAppStore, collapseCustomerBookingStatus } from "@/lib/store";
 import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import { getApiBaseUrl, toWsBase } from "@/lib/api-config";
 import { qk, upsertNotificationInCache } from "@/hooks/use-core-data";
@@ -65,7 +65,8 @@ export function RealtimeBridge() {
             msg.referenceId,
             Number.isNaN(incomingTs) ? Date.now() : incomingTs,
           );
-          updateBookingStatus(msg.referenceId, msg.status);
+          // Backend is authoritative; collapse the raw status to the customer's 4-state view.
+          updateBookingStatus(msg.referenceId, collapseCustomerBookingStatus(msg.status), msg.status);
           shouldRefreshBookings = true;
         }
         if (msg.id && (msg.notificationType || msg.type) && msg.title && msg.message) {

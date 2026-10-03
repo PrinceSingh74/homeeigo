@@ -12,5 +12,5 @@ export function resolveTierPriorityScore(tier: string | null | undefined): numbe
   return TIER_PRIORITY_SCORE[key] ?? TIER_PRIORITY_SCORE.free;
 }
 
-/** Platform visit fee waived for FREE_DELIVERY benefit. */
-export const PLATFORM_VISIT_FEE_INR = 49;
+// PLATFORM_VISIT_FEE_INR (₹49) was removed 2026-09-21: no visit fee was ever charged, so "waiving" it
+// was a discount against a fee that did not exist. Fees live in booking-pricing PLATFORM_FEES.

@@ -22,8 +22,12 @@ const PartnerNavMap = dynamic(
 
 const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 const TRAFFIC: Record<NavRoute["trafficLevel"], { t: string; c: string }> = {
+  unknown: { t: "", c: "" },
   light: { t: "Clear", c: "text-emerald-400" }, moderate: { t: "Moderate traffic", c: "text-amber-400" }, heavy: { t: "Heavy traffic", c: "text-red-400" },
 };
+const ROUTE_SOURCE: Record<string, string> = { google: "Google Maps route", osrm: "OpenStreetMap route", haversine: "Straight-line estimate" };
+const googleDirectionsUrl = (d: { lat: number; lng: number }) =>
+  `https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}&travelmode=driving`;
 
 /** Google maneuver string → arrow icon (the visual language every nav app speaks). */
 function ManeuverIcon({ maneuver, size = 26, className = "" }: { maneuver: string; size?: number; className?: string }) {
@@ -59,7 +63,13 @@ export default function PartnerNavigationPage() {
 
   const activeQ = usePartnerActiveBookingsQuery();
   const active = (activeQ.data as { bookings?: Array<{ id: string; customer?: { name?: string }; address?: { fullAddress?: string; latitude: number | null; longitude: number | null } }> } | undefined)?.bookings?.find((b) => b.address?.latitude != null && b.address?.longitude != null);
-  const destination = active?.address?.latitude != null && active?.address?.longitude != null ? { lat: active.address.latitude, lng: active.address.longitude } : undefined;
+  const destination = useMemo(
+    () =>
+      active?.address?.latitude != null && active?.address?.longitude != null
+        ? { lat: active.address.latitude, lng: active.address.longitude }
+        : undefined,
+    [active?.address?.latitude, active?.address?.longitude],
+  );
 
   const intel = usePartnerIntelligence(position);
   const best = useMemo(() => [...intel.zones].sort((a, b) => b.expectedEarnings2h.hi - a.expectedEarnings2h.hi)[0], [intel.zones]);
@@ -208,6 +218,24 @@ export default function PartnerNavigationPage() {
             </ol>
           ) : null}
         </div>
+      ) : destination ? (
+        <div className="absolute left-3 right-3 top-3 z-10 flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/90 p-3 backdrop-blur-xl">
+          <RouteIcon size={18} className="shrink-0 text-sky-300" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-white">Route preview</p>
+            <p className="truncate text-xs text-slate-400">
+              {route?.available === false ? "Route unavailable right now" : ROUTE_SOURCE[route?.summary ?? ""] ?? "Loading route…"} · turn-by-turn opens in Google Maps
+            </p>
+          </div>
+          <a
+            href={googleDirectionsUrl(destination)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 rounded-lg bg-sky-500 px-3 py-2 text-xs font-bold text-white hover:bg-sky-400"
+          >
+            Navigate
+          </a>
+        </div>
       ) : !destination ? (
         <div className="absolute left-3 right-3 top-3 z-10 rounded-2xl border border-white/10 bg-slate-900/85 p-3 text-center text-sm text-slate-300 backdrop-blur-xl">
           <Navigation2 size={16} className="mr-1 inline text-sky-400" /> No active trip — positioning for the best next zone
@@ -220,11 +248,13 @@ export default function PartnerNavigationPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="flex items-center gap-1.5 text-[11px] text-slate-400"><Clock size={12} /> ETA to customer</p>
-              <p className="text-3xl font-bold text-white">{route ? `${route.etaMin} min` : "—"}</p>
-              {route ? (
+              <p className="text-3xl font-bold text-white">{route?.available ? `${route.etaMin} min` : "—"}</p>
+              {route?.available ? (
                 <p className="text-xs text-slate-400">
                   by <span className="font-semibold text-white">{arrivalClock(route.etaMin)}</span>
-                  <span className={`ml-1.5 ${TRAFFIC[route.trafficLevel].c}`}>· {TRAFFIC[route.trafficLevel].t}</span>
+                  {TRAFFIC[route.trafficLevel].t ? (
+                    <span className={`ml-1.5 ${TRAFFIC[route.trafficLevel].c}`}>· {TRAFFIC[route.trafficLevel].t}</span>
+                  ) : null}
                 </p>
               ) : null}
             </div>

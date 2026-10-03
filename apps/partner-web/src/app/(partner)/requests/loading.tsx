@@ -4,7 +4,12 @@ import { cn } from "@/lib/cn";
 
 export default function RequestsLoading() {
   return (
-    <div className={cn(partnerLayout.page, "flex flex-col gap-6 py-2")} aria-busy="true" aria-label="Loading requests">
+    <div
+      className={cn(partnerLayout.page, "flex flex-col gap-6 py-2")}
+      role="status"
+      aria-busy="true"
+      aria-label="Loading requests"
+    >
       <div className="space-y-3">
         <StaticSkeleton shimmer className="h-8 w-48 rounded-xl" />
         <StaticSkeleton className="h-4 w-72 rounded-full" />

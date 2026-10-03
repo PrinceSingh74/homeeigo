@@ -3,7 +3,7 @@ import { roomManager, MessageType, type WSConnection, generateConnectionId } fro
 import { heartbeatManager } from "../lib/heartbeat";
 import { authenticateWsConnection } from "../lib/ws-connection-auth";
 import { validateWsChannelAccess } from "../lib/ws-channel-access";
-import { getWsState, setWsState } from "./ws-state";
+import { getWsState, setWsState, markWsClosed, closedDuringOpen } from "./ws-state";
 import { ADMIN_OPS_ROOM } from "../lib/admin-alert-broadcast";
 
 /**
@@ -37,6 +37,15 @@ export const adminOpsWs = new Elysia().ws("/ws/admin-ops", {
       userId: auth.userId,
       userType: auth.userType,
       connectionId,
+      jti: auth.jti,
+      tokenExp: auth.exp,
+      close: (code: number, reason: string) => {
+        try {
+          ws.close(code, reason);
+        } catch {
+          /* already closed */
+        }
+      },
       connectedAt: new Date(),
       lastPing: new Date(),
       rooms: new Set(),
@@ -48,6 +57,10 @@ export const adminOpsWs = new Elysia().ws("/ws/admin-ops", {
         }
       },
     };
+
+    // The client may have left while the awaits above were pending; registering now would create a
+    // connection, room membership and heartbeat for a socket that is already closed. See ws-state.ts.
+    if (closedDuringOpen(ws)) return;
 
     roomManager.addToRoom(ADMIN_OPS_ROOM, connection);
     heartbeatManager.startHeartbeat(connectionId, ws);
@@ -87,6 +100,7 @@ export const adminOpsWs = new Elysia().ws("/ws/admin-ops", {
     }
   },
   close(ws) {
+    markWsClosed(ws);
     const state = getWsState(ws);
     if (state?.connectionId) heartbeatManager.stopHeartbeat(state.connectionId);
     if (state?.connection) roomManager.removeAllRooms(state.connection);

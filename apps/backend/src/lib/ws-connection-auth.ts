@@ -13,6 +13,8 @@ export type WsConnectionAuth = {
   userRole: UserRole;
   email?: string;
   jti?: string;
+  /** Access-token expiry (unix seconds); bounds the socket lifetime. */
+  exp?: number;
 };
 
 function extractBearer(ws: { data?: { headers?: Record<string, unknown>; query?: Record<string, unknown> } }): string {
@@ -81,6 +83,7 @@ export async function authenticateWsConnection(
     userType: mapUserRoleToWsType(user.role),
     email: user.email ?? undefined,
     jti: payload.jti,
+    exp: payload.exp,
   };
 }
 

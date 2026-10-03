@@ -79,10 +79,29 @@ export const authApi = {
     return mapSession(res.data!);
   },
 
-  logout(refreshToken: string) {
+  /**
+   * Unlink this device's push token (sign-out). The server's /api/auth/logout keeps push devices
+   * active when a refresh token is sent, so this DELETE is the only unlink. It authenticates with
+   * the access token captured before `clearSession()` and never refreshes: a sign-out must not
+   * rotate the session it is ending.
+   */
+  async unregisterPushDevice(accessToken: string) {
+    const deviceId = await ensureDeviceId();
+    return apiRequest<ApiResponse<unknown>>(`/api/users/me/devices/${encodeURIComponent(deviceId)}`, {
+      method: "DELETE",
+      auth: true,
+      accessToken,
+      skipRefresh: true,
+    });
+  },
+
+  /** `accessToken`: the session's token captured before `clearSession()` — the server needs it to revoke. */
+  logout(refreshToken: string, accessToken?: string | null) {
     return apiRequest<ApiResponse<unknown>>("/api/auth/logout", {
       method: "POST",
       auth: true,
+      accessToken: accessToken ?? undefined,
+      skipRefresh: true,
       body: { refreshToken, clearAuthCookies: true },
     });
   },

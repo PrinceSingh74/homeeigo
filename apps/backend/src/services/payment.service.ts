@@ -9,8 +9,6 @@ import { walletService } from "./wallet.service";
 import { invoiceNumberFor, invoiceService } from "./invoice.service";
 import { emailDeliveryService } from "./email-delivery.service";
 import { userPiiService } from "./user-pii.service";
-import { validateAdminRefundAmount } from "../lib/payment-refund-rules";
-import { AuditLogService } from "./audit-log.service";
 import { giftCardService } from "./gift-card.service";
 import { subscriptionService } from "./subscription.service";
 import { settlementChargebackService } from "./settlement-chargeback.service";
@@ -19,17 +17,60 @@ import { financialTransactionManager } from "./financial-transaction-manager.ser
 import { refundLedgerSyncService } from "./refund-ledger-sync.service";
 import { earningsService } from "./earnings.service";
 import { recordFinancialMetric } from "../lib/financial-metrics";
-import { financialRiskService } from "./financial-risk.service";
+import { incCounter } from "../lib/metrics";
+import { logger } from "../lib/logger";
+import { onBookingPaymentSettledBackground } from "../lib/booking-payment-settled";
+import {
+  processGatewayEnvironment,
+  readPaymentEnvironment,
+  stampPaymentEnvironment,
+} from "../lib/payment-environment-column";
+import { applyBookingPaymentSuccess, isCapturedPaymentStatus } from "../lib/booking-payment-settlement";
+import { isPayableBookingStatus } from "../lib/booking-state-machine";
+
+/** Same literal as booking-refund.service SPLIT_PAYMENT_METHOD (not imported: that module imports this one). */
+const SPLIT_PAYMENT_METHOD = "wallet_razorpay_split";
 import { refundOrchestratorService } from "./refund-orchestrator.service";
 import { eventPlatformConfig } from "../events/core/config";
-import { emitPaymentFailedInTransaction, emitPaymentSuccessInTransaction } from "../events/core/payment-outbox";
+import { rupeesToPaise } from "../lib/money-paise";
+import {
+  emitCheckoutStartedInTransaction,
+  emitPaymentFailedInTransaction,
+  emitPaymentSuccessInTransaction,
+} from "../events/core/payment-outbox";
 
 type PaymentOrderMetadata = {
   previousRazorpayOrderIds?: string[];
+  /** Set when a capture arrived after PAYMENT_PENDING_TTL closed the window (needs a refund). */
+  capturedAfterExpiry?: { gatewayPaymentId: string; amountPaise: number | null; at: string };
 };
 
 const GATEWAY_ORDER_POLL_MS = 50;
 const GATEWAY_ORDER_TIMEOUT_MS = 10_000;
+
+/**
+ * The shape this service reads out of a Razorpay webhook body.
+ *
+ * Exported so the route declares the SAME contract instead of describing the body loosely as
+ * `{ event: string; payload: Record<string, unknown> }` and then forcing it in with `as never`.
+ * One type, stated once, on a money path.
+ *
+ * Every field below `payload` is optional on purpose: the body is authenticated (the route
+ * verifies the HMAC signature before parsing) but its shape is still the gateway's to change, so
+ * the reconciliation logic optional-chains through all of it rather than assuming a field is there.
+ */
+export type RazorpayWebhookEvent = {
+  event: string;
+  /**
+   * Razorpay does not document a live/test marker on webhook bodies today; if one ever appears
+   * it wins over the process credential when deriving the webhook's environment (§27).
+   */
+  livemode?: boolean;
+  payload: {
+    payment?: { entity?: { id?: string; order_id?: string; status?: string; amount?: number } };
+    refund?: { entity?: { id?: string; payment_id?: string; status?: string; amount?: number } };
+  };
+};
 
 export class PaymentService {
   buildOrderIdempotencyKey(bookingId: string): string {
@@ -38,6 +79,28 @@ export class PaymentService {
 
   private isPendingGatewayOrder(orderId: string): boolean {
     return orderId.startsWith("pending:");
+  }
+
+  /** A reservation whose gateway call is KNOWN to have failed (see releaseFailedReservation). */
+  private isReleasedReservation(orderId: string): boolean {
+    return orderId.startsWith("pending:released:");
+  }
+
+  /**
+   * The gateway call behind this reservation failed with a typed error, so no request will ever commit
+   * it. Mark it released (still `pending:`, still INITIATED — nothing is claimed paid, the booking is not
+   * touched) so the next attempt reclaims it at once instead of polling out the 10 s in-flight window.
+   * Guarded on the exact placeholder: a reservation someone else already took over is left alone.
+   */
+  private async releaseFailedReservation(bookingId: string, placeholder: string): Promise<void> {
+    await prisma.payment
+      .updateMany({
+        where: { bookingId, razorpayOrderId: placeholder, status: PaymentStatus.INITIATED },
+        data: { razorpayOrderId: `pending:released:${bookingId}:${crypto.randomUUID()}` },
+      })
+      .catch((err: unknown) =>
+        logger.warn("payment.reservation_release_failed", { bookingId, error: err instanceof Error ? err.message : String(err) }),
+      );
   }
 
   private parsePaymentMetadata(raw: string | null): PaymentOrderMetadata {
@@ -104,7 +167,7 @@ export class PaymentService {
     placeholder: string,
     reservedAt: Date,
   ): Promise<{ payment: Payment; createdReservation: boolean }> {
-    if (Date.now() - reservedAt.getTime() > GATEWAY_ORDER_TIMEOUT_MS) {
+    if (this.isReleasedReservation(placeholder) || Date.now() - reservedAt.getTime() > GATEWAY_ORDER_TIMEOUT_MS) {
       return this.reclaimAbandonedReservation(bookingId, placeholder);
     }
     try {
@@ -149,6 +212,9 @@ export class PaymentService {
           status: PaymentStatus.INITIATED,
         },
       });
+      // §27 — record which gateway world this payment belongs to, from the ACTIVE credential.
+      // Probe-guarded and non-throwing: a pre-migration database skips it silently.
+      await stampPaymentEnvironment(prisma, payment.id);
       return { payment, createdReservation: true };
     } catch (error) {
       if (
@@ -177,7 +243,14 @@ export class PaymentService {
       history.push(payment.razorpayOrderId);
     }
 
-    const order = await razorpayService.createOrder(booking.finalAmount, booking.bookingNumber, {
+    // A split row stays a split on retry: the gateway is charged only the remainder after the
+    // wallet share, which settleSplitCapture debits on capture. Re-issuing the order for the full
+    // total (the old behaviour) charged the customer the total PLUS the wallet share.
+    const walletShare = payment.paymentMethod === SPLIT_PAYMENT_METHOD ? Number((metadata as { walletAmount?: number }).walletAmount ?? 0) : 0;
+    const gatewayAmount = Math.round((booking.finalAmount - walletShare) * 100) / 100;
+    if (!(gatewayAmount > 0)) return { error: "RETRY_CONFLICT" as const };
+
+    const order = await razorpayService.createOrder(gatewayAmount, booking.bookingNumber, {
       bookingId: booking.id,
     });
 
@@ -188,7 +261,8 @@ export class PaymentService {
         razorpayOrderId: payment.razorpayOrderId,
       },
       data: {
-        amount: booking.finalAmount,
+        amount: gatewayAmount,
+        amountPaise: Math.round(gatewayAmount * 100),
         razorpayOrderId: order.orderId,
         status: PaymentStatus.INITIATED,
         failedAt: null,
@@ -204,6 +278,9 @@ export class PaymentService {
       if (raced) return this.orderResponse(raced, booking.id);
       return { error: "RETRY_CONFLICT" as const };
     }
+
+    // §27 — a retried order re-asserts the environment (fills NULL only, never rewrites).
+    await stampPaymentEnvironment(prisma, payment.id, order.orderId);
 
     await prisma.booking.update({
       where: { id: booking.id },
@@ -224,17 +301,20 @@ export class PaymentService {
   async createOrder(userId: string, bookingId: string) {
     const booking = await prisma.booking.findFirst({ where: { id: bookingId, userId } });
     if (!booking) return null;
+    if (!isPayableBookingStatus(booking.status)) return { error: "BOOKING_NOT_PAYABLE" as const };
 
     const idempotencyKey = this.buildOrderIdempotencyKey(bookingId);
     const finalAmount = booking.finalAmount;
 
-    let { payment, createdReservation } = await this.reservePaymentIntent(
+    const reservation = await this.reservePaymentIntent(
       userId,
       bookingId,
       idempotencyKey,
       finalAmount,
       booking.paymentMethod,
     );
+    const { createdReservation } = reservation;
+    let { payment } = reservation;
 
     if (payment.status === PaymentStatus.SUCCESS) {
       return this.orderResponse(payment, bookingId);
@@ -261,9 +341,20 @@ export class PaymentService {
     }
 
     const placeholder = payment.razorpayOrderId;
-    const order = await razorpayService.createOrder(finalAmount, booking.bookingNumber, {
-      bookingId,
-    });
+    let order: Awaited<ReturnType<typeof razorpayService.createOrder>>;
+    try {
+      order = await razorpayService.createOrder(finalAmount, booking.bookingNumber, {
+        bookingId,
+      });
+    } catch (err) {
+      // No order exists at the gateway: free the reservation for an immediate retry, then surface the
+      // typed PaymentGatewayError (503/502) instead of an UNKNOWN 500.
+      await this.releaseFailedReservation(bookingId, placeholder);
+      incCounter("payment_order_create_failed_total", {
+        code: (err as { code?: string })?.code ?? "UNTYPED",
+      });
+      throw err;
+    }
 
     const updated = await prisma.payment.updateMany({
       where: {
@@ -283,9 +374,38 @@ export class PaymentService {
       throw new Error("PAYMENT_COMMIT_FAILED");
     }
 
-    await prisma.booking.update({
-      where: { id: bookingId },
-      data: { paymentStatus: PaymentStatus.INITIATED },
+    // §27 — the committed gateway order settles the environment (a dev-mock order IS test).
+    await stampPaymentEnvironment(prisma, payment.id, order.orderId);
+
+    /**
+     * The booking is marked INITIATED and the checkout event is written together, or neither is.
+     *
+     * This is the only structural change to the checkout path, and it is deliberately the smallest
+     * one available: the `booking.update` that was already here now runs inside a transaction with
+     * the outbox write, exactly as `verify()` does for payment success and failure. Nothing about
+     * the amount, the gateway order, the reservation logic or the payment status is touched — the
+     * event is observational and cannot alter any of them.
+     *
+     * Emitting outside a transaction would have been simpler and wrong: a checkout could be marked
+     * INITIATED with no event, so recovery would never learn about it, or an event could survive a
+     * failed update and start recovery for a checkout that never began.
+     */
+    await prisma.$transaction(async (tx) => {
+      await tx.booking.update({
+        where: { id: bookingId },
+        data: { paymentStatus: PaymentStatus.INITIATED },
+      });
+      await emitCheckoutStartedInTransaction(
+        tx,
+        {
+          bookingId,
+          userId: booking.userId,
+          paymentId: payment.id,
+          amountPaise: rupeesToPaise(finalAmount),
+          razorpayOrderId: order.orderId,
+        },
+        new Date(),
+      );
     });
 
     return {
@@ -349,10 +469,26 @@ export class PaymentService {
     );
     if (!valid) return { error: "INVALID_SIGNATURE" as const };
 
-    if (payment.status === PaymentStatus.SUCCESS && payment.razorpayPaymentId === body.razorpayPaymentId) {
+    if (payment.paymentMethod === SPLIT_PAYMENT_METHOD) {
+      // A split order's gateway capture is only the remainder. Settling it here as a plain payment
+      // marked the booking fully paid without debiting the wallet share — a customer could pay ₹1 for
+      // a ₹1000 booking by calling this endpoint instead of the split verify. Same settlement as the
+      // split endpoint and the webhook.
+      const { walletCheckoutService } = await import("./wallet-checkout.service");
+      const r = await walletCheckoutService.settleSplitCapture(payment.id, body.razorpayPaymentId, body.razorpaySignature, "razorpay_verify_split");
+      if ("error" in r) {
+        if (r.error === "NOT_FOUND") return { error: "NOT_FOUND" as const };
+        if (r.error === "INVALID_SIGNATURE") return { error: "INVALID_SIGNATURE" as const };
+        if (r.error === "WALLET_DEBIT_FAILED") return { error: "FAILED" as const };
+        return { error: "ALREADY_SETTLED" as const };
+      }
       return { paymentId: payment.id, status: "success", bookingId: payment.bookingId };
     }
-    if (payment.status === PaymentStatus.SUCCESS && payment.razorpayPaymentId !== body.razorpayPaymentId) {
+
+    if (isCapturedPaymentStatus(payment.status) && payment.razorpayPaymentId === body.razorpayPaymentId) {
+      return { paymentId: payment.id, status: "success", bookingId: payment.bookingId };
+    }
+    if (isCapturedPaymentStatus(payment.status) && payment.razorpayPaymentId !== body.razorpayPaymentId) {
       return { error: "ALREADY_SETTLED" as const };
     }
 
@@ -360,9 +496,10 @@ export class PaymentService {
       await financialTransactionManager.executeWithLedger({
         journal: financialLedgerService.journalForBookingPayment(payment.id, payment.amount),
         mutate: async (tx) => {
+          await tx.$queryRaw`SELECT id FROM payments WHERE id = ${payment.id} FOR UPDATE`;
           const locked = await tx.payment.findUnique({ where: { id: payment.id } });
           if (!locked) throw new Error("PAYMENT_NOT_FOUND");
-          if (locked.status === PaymentStatus.SUCCESS) {
+          if (isCapturedPaymentStatus(locked.status)) {
             if (locked.razorpayPaymentId === body.razorpayPaymentId) return locked;
             throw new Error("PAYMENT_ALREADY_SETTLED");
           }
@@ -383,12 +520,13 @@ export class PaymentService {
               status: PaymentStatus.SUCCESS,
               completedAt: new Date(),
               amountPaid: payment.amount,
+              amountPaidPaise: rupeesToPaise(payment.amount),
               invoiceNumber: invoiceNumberFor(payment.booking.bookingNumber),
             },
           }).then(async (updated) => {
-            await tx.booking.update({
-              where: { id: payment.bookingId },
-              data: { paymentStatus: PaymentStatus.SUCCESS, status: payment.booking.providerId ? "ACCEPTED" : "PENDING" },
+            await applyBookingPaymentSuccess(tx, payment.bookingId, {
+              capturedAmount: payment.amount,
+              source: "razorpay_verify",
             });
             if (eventPlatformConfig.outboxEnabled && eventPlatformConfig.paymentEventsEnabled && payment.userId) {
               await emitPaymentSuccessInTransaction(tx, payment, updated.completedAt ?? new Date());
@@ -404,17 +542,29 @@ export class PaymentService {
       throw error;
     }
 
+    // §27 — a payment that settled through verify gets its environment recorded if creation
+    // predates the column (fills NULL only).
+    await stampPaymentEnvironment(prisma, payment.id, body.razorpayOrderId);
+
+    onBookingPaymentSettledBackground(payment.bookingId, "razorpay_verify");
+
     if (payment.userId) {
       recordFinancialMetric("payment_success_total", 1);
 
-      await notificationService.createForUser({
-        userId: payment.userId,
-        type: "payment_completed",
-        title: "Payment Received",
-        message: `Payment of ₹${payment.amount} received for booking`,
-        referenceId: payment.id,
-        priority: "high",
-      });
+      // Detached: the payment is committed and counted. A transient notification failure must not
+      // turn a settled payment into a 500 — and must not skip the receipt/invoice email below, which
+      // a re-verify can never reach because it short-circuits on `status === SUCCESS`.
+      await notificationService.createForUserDetached(
+        {
+          userId: payment.userId,
+          type: "payment_completed",
+          title: "Payment Received",
+          message: `Payment of ₹${payment.amount} received for booking`,
+          referenceId: payment.id,
+          priority: "high",
+        },
+        { paymentId: payment.id, bookingId: payment.bookingId },
+      );
 
       // Payment receipt + invoice PDF email — never blocks the response.
       const u = await prisma.user.findUnique({
@@ -464,7 +614,7 @@ export class PaymentService {
       idempotencyKey: refundOrchestratorService.buildIdempotencyKey(id, amount, "admin", actor.userId),
     });
     if ("error" in result) {
-      return { error: result.error as "FORBIDDEN" | "NOT_FOUND" | "INVALID_AMOUNT" | "NOT_REFUNDABLE" | "AMOUNT_EXCEEDS_REFUNDABLE" };
+      return { error: result.error as "FORBIDDEN" | "NOT_FOUND" | "INVALID_AMOUNT" | "NOT_REFUNDABLE" | "AMOUNT_EXCEEDS_REFUNDABLE" | "PAYMENT_ENV_MISMATCH" };
     }
     return { refundId: result.refundId, status: result.status, amount: result.amount };
   }
@@ -503,32 +653,331 @@ export class PaymentService {
   }
 
   /** Retry-safe activation for gift cards / subscriptions missed by client verify. */
-  async reconcilePendingOrders(): Promise<{ giftCards: number; subscriptions: number }> {
-    const [giftCards, subscriptions] = await Promise.all([
+  async reconcilePendingOrders(): Promise<{ giftCards: number; subscriptions: number; bookings: number }> {
+    const [giftCards, subscriptions, bookings] = await Promise.all([
       giftCardService.reconcilePendingFromOrders(),
       subscriptionService.reconcilePendingFromOrders(),
+      this.reconcilePendingBookingPayments(),
     ]);
-    const recovered = giftCards + subscriptions;
+    const recovered = giftCards + subscriptions + bookings.settled;
     if (recovered > 0) {
       const adminEmail = process.env.ADMIN_EMAIL;
       if (adminEmail) {
         emailDeliveryService.sendRecoveryAlert(
           adminEmail,
           "Payment reconciliation recovered orders",
-          `Recovered ${giftCards} gift card(s) and ${subscriptions} subscription(s) from pending Razorpay orders.`,
+          `Recovered ${giftCards} gift card(s), ${subscriptions} subscription(s) and ${bookings.settled} booking payment(s) from pending Razorpay orders.`,
         );
       }
     }
-    return { giftCards, subscriptions };
+    return { giftCards, subscriptions, bookings: bookings.settled };
   }
 
-  async reconcileFromWebhook(event: {
-    event: string;
-    payload: {
-      payment?: { entity?: { id?: string; order_id?: string; status?: string; amount?: number } };
-      refund?: { entity?: { id?: string; payment_id?: string; status?: string; amount?: number } };
+  /** Booking payments a lost capture webhook would leave unsettled: real gateway order, still open. */
+  static readonly RECONCILE_MIN_AGE_MINUTES = 10;
+
+  /**
+   * Phase 09 — the booking half of missed-webhook reconciliation.
+   *
+   * Gift cards and subscriptions were already reconciled from pending orders; booking payments were
+   * not, so a booking whose `payment.captured` webhook never arrived stayed PENDING with the customer
+   * charged. This asks the gateway what it holds for each open order and, when it reports a capture,
+   * hands that capture to `reconcileFromWebhook` — the SAME path the webhook takes, with the same
+   * idempotency (ALREADY_RECONCILED), split handling and ledger journal. Nothing is settled here on
+   * this method's own authority; the gateway's answer is the evidence and the webhook path is the
+   * arbiter.
+   *
+   * Only orders older than RECONCILE_MIN_AGE_MINUTES are considered, so a capture whose webhook is
+   * merely a few seconds behind is left to the webhook. An order the gateway shows as unpaid is left
+   * alone — expiring it is owner decision O2 (pending-payment TTL), not something to infer here.
+   */
+  async reconcilePendingBookingPayments(
+    limit = 50,
+    /** Narrow the sweep to one payment — support answering "reconcile this booking now". */
+    opts?: { paymentId?: string },
+  ): Promise<{ scanned: number; settled: number; unpaid: number; errors: number }> {
+    const out = { scanned: 0, settled: 0, unpaid: 0, errors: 0 };
+    if (!razorpayService.isConfigured) return out;
+    const olderThan = new Date(Date.now() - PaymentService.RECONCILE_MIN_AGE_MINUTES * 60_000);
+    const open = await prisma.payment.findMany({
+      where: {
+        ...(opts?.paymentId ? { id: opts.paymentId } : {}),
+        status: { in: [PaymentStatus.PENDING, PaymentStatus.INITIATED, PaymentStatus.PROCESSING] },
+        updatedAt: { lt: olderThan },
+      },
+      select: { id: true, bookingId: true, razorpayOrderId: true },
+      orderBy: { updatedAt: "asc" },
+      take: limit,
+    });
+    for (const row of open) {
+      const orderId = row.razorpayOrderId;
+      if (!orderId || this.isPendingGatewayOrder(orderId)) continue;
+      out.scanned += 1;
+      try {
+        const payments = await razorpayService.fetchOrderPayments(orderId);
+        const captured = payments.find((p) => p.status === "captured");
+        if (!captured) {
+          out.unpaid += 1;
+          continue;
+        }
+        const result = await this.reconcileFromWebhook({
+          event: "payment.captured",
+          payload: { payment: { entity: { id: captured.id, order_id: orderId, status: "captured", amount: captured.amount } } },
+        });
+        if (result.handled) {
+          out.settled += 1;
+          incCounter("payment_reconcile_booking_total", { outcome: "settled" });
+          logger.warn("payment_reconcile_booking_settled", {
+            category: "PAYMENT",
+            paymentId: row.id,
+            bookingId: row.bookingId,
+            orderId,
+            gatewayPaymentId: captured.id,
+            reason: result.reason,
+          });
+        } else {
+          out.errors += 1;
+          incCounter("payment_reconcile_booking_total", { outcome: "unhandled" });
+          logger.error("payment_reconcile_booking_unhandled", {
+            category: "PAYMENT",
+            paymentId: row.id,
+            bookingId: row.bookingId,
+            orderId,
+            gatewayPaymentId: captured.id,
+            reason: result.reason,
+          });
+        }
+      } catch (err) {
+        out.errors += 1;
+        incCounter("payment_reconcile_booking_total", { outcome: "error" });
+        logger.error("payment_reconcile_booking_failed", {
+          category: "PAYMENT",
+          paymentId: row.id,
+          orderId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return out;
+  }
+
+  /** The booking payment whose retry history contains this gateway order id (metadata is a JSON string). */
+  private async findPaymentByReplacedOrder(orderId: string): Promise<Payment | null> {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM payments WHERE metadata LIKE ${`%"${orderId}"%`} LIMIT 5`;
+    for (const { id } of rows) {
+      const row = await prisma.payment.findUnique({ where: { id } });
+      if (row && (this.parsePaymentMetadata(row.metadata).previousRazorpayOrderIds ?? []).includes(orderId)) return row;
+    }
+    return null;
+  }
+
+  /**
+   * A capture arrived for an order that a retry replaced. If the booking payment is still unsettled
+   * and the captured amount is exactly what the row expects, the row is re-bound to the order the
+   * customer actually paid and settled through the normal path (split rows included). If the row was
+   * already settled by another capture (the customer paid twice) or the amount does not match, NOTHING
+   * is settled: a CRITICAL ops alert carries every identifier so the duplicate is refunded, never lost.
+   */
+  private async reconcileReplacedOrderCapture(
+    event: RazorpayWebhookEvent,
+    payment: Payment,
+    captured: { id: string; orderId: string; amountPaise?: number },
+  ): Promise<{ handled: boolean; reason: string }> {
+    if (isCapturedPaymentStatus(payment.status) && payment.razorpayPaymentId === captured.id) {
+      return { handled: true, reason: "ALREADY_RECONCILED" };
+    }
+    const expectedPaise = Math.round(payment.amount * 100);
+    const orphan = async (why: "ALREADY_SETTLED_BY_OTHER_CAPTURE" | "AMOUNT_MISMATCH") => {
+      incCounter("payment_orphan_capture_total", { reason: why });
+      const { opsAlertService } = await import("./ops-alert.service");
+      await opsAlertService.raise("payment_orphan_capture", "CRITICAL", `Gateway capture ${captured.id} on replaced order ${captured.orderId} needs a refund (${why})`, {
+        bookingId: payment.bookingId, paymentId: payment.id, gatewayPaymentId: captured.id, gatewayOrderId: captured.orderId,
+        capturedPaise: captured.amountPaise ?? null, expectedPaise, reason: why,
+      });
+      return { handled: true, reason: `ORPHAN_CAPTURE_ALERTED:${why}` };
     };
-  }): Promise<{ handled: boolean; reason: string }> {
+    if (isCapturedPaymentStatus(payment.status)) return orphan("ALREADY_SETTLED_BY_OTHER_CAPTURE");
+    if (captured.amountPaise == null || captured.amountPaise !== expectedPaise) return orphan("AMOUNT_MISMATCH");
+
+    const history = this.parsePaymentMetadata(payment.metadata).previousRazorpayOrderIds ?? [];
+    const nextHistory = [...history.filter((o) => o !== captured.orderId), payment.razorpayOrderId];
+    const rebound = await prisma.payment.updateMany({
+      where: { id: payment.id, razorpayOrderId: payment.razorpayOrderId, status: { notIn: [PaymentStatus.SUCCESS, PaymentStatus.REFUNDED, PaymentStatus.PARTIALLY_REFUNDED, PaymentStatus.REFUNDING] } },
+      data: {
+        razorpayOrderId: captured.orderId,
+        metadata: JSON.stringify({ ...this.parsePaymentMetadata(payment.metadata), previousRazorpayOrderIds: nextHistory } satisfies PaymentOrderMetadata),
+      },
+    });
+    if (rebound.count === 0) {
+      const fresh = await prisma.payment.findUnique({ where: { id: payment.id } });
+      return fresh ? this.reconcileReplacedOrderCapture(event, fresh, captured) : { handled: false, reason: "PAYMENT_NOT_FOUND" };
+    }
+    incCounter("payment_replaced_order_capture_rebound_total");
+    return this.reconcileFromWebhook(event);
+  }
+
+  /**
+   * O10 — money captured AFTER the payment window closed (owner policy 2026-09-23: GUARDED
+   * auto-refund).
+   *
+   * The booking was expired and its capacity RELEASED, so the slot may already belong to someone
+   * else. Confirming the booking here could double-book a partner, so this path never confirms.
+   *
+   * It refunds automatically ONLY when every question has a single unambiguous answer:
+   *   * the payment maps to exactly this booking's order;
+   *   * the captured amount equals the expected amount exactly;
+   *   * the booking has not been recovered (it is still EXPIRED);
+   *   * this booking has exactly one payment row;
+   *   * nothing has been refunded yet and no refund is in flight.
+   *
+   * Anything else — amount mismatch, wrong order, several payments, a partial capture, an existing
+   * or concurrent refund, a recovered booking — is RECONCILIATION_REQUIRED and is alerted for a
+   * human. Refunding an ambiguous financial event automatically is how money gets returned twice.
+   *
+   * The refund goes through the ONE refund authority (`refundOrchestratorService`), which owns
+   * idempotency, the reservation, the gateway call and the INDETERMINATE outcome. Under Razorpay
+   * TEST credentials this performs a Test Mode refund operation; the code path is identical in Live
+   * Mode and nothing is weakened because no real money is currently moving.
+   */
+  private async resolveLateCapture(
+    payment: Payment,
+    captured: { id: string; orderId: string; amountPaise?: number },
+  ): Promise<{ handled: boolean; reason: string }> {
+    const { opsAlertService } = await import("./ops-alert.service");
+    const expectedPaise = Number(payment.amountPaise ?? rupeesToPaise(payment.amount));
+
+    const reconciliationRequired = async (why: string, extra: Record<string, unknown> = {}) => {
+      incCounter("late_capture_total", { outcome: "reconciliation_required", why });
+      await opsAlertService.raise(
+        "payment_captured_after_expiry",
+        "CRITICAL",
+        `Gateway capture ${captured.id} arrived after booking ${payment.bookingId} expired and could NOT be auto-refunded (${why}) — needs review`,
+        {
+          bookingId: payment.bookingId,
+          paymentId: payment.id,
+          gatewayPaymentId: captured.id,
+          gatewayOrderId: captured.orderId,
+          capturedPaise: captured.amountPaise ?? null,
+          expectedPaise,
+          why,
+          ...extra,
+        },
+      );
+      logger.error("late_capture_reconciliation_required", {
+        category: "PAYMENT", bookingId: payment.bookingId, paymentId: payment.id, gatewayPaymentId: captured.id, why,
+      });
+      return { handled: true, reason: `RECONCILIATION_REQUIRED:${why}` };
+    };
+
+    incCounter("late_capture_total", { outcome: "detected" });
+
+    // Identity: the capture must belong to the order this row holds.
+    if (captured.orderId !== payment.razorpayOrderId) return reconciliationRequired("ORDER_MISMATCH");
+    // Amount: an exact match, never "close enough" — a partial capture is a different conversation.
+    if (captured.amountPaise == null || captured.amountPaise !== expectedPaise) {
+      return reconciliationRequired("AMOUNT_MISMATCH");
+    }
+    // Nothing refunded yet, and no second payment row for the same booking.
+    if ((payment.refundedAmount ?? 0) > 0) return reconciliationRequired("REFUND_ALREADY_EXISTS");
+    if (payment.bookingId) {
+      const paymentRows = await prisma.payment.count({ where: { bookingId: payment.bookingId } });
+      if (paymentRows !== 1) return reconciliationRequired("MULTIPLE_PAYMENTS", { paymentRows });
+      const booking = await prisma.booking.findUnique({
+        where: { id: payment.bookingId },
+        select: { status: true, paymentStatus: true },
+      });
+      if (!booking) return reconciliationRequired("BOOKING_NOT_FOUND");
+      // Recovered in the meantime: the money may now belong to a live booking, so do not refund it.
+      if (String(booking.status) !== "EXPIRED") {
+        return reconciliationRequired("BOOKING_RECOVERED", { bookingStatus: booking.status });
+      }
+    }
+
+    // Bind the capture to the row first: the refund authority refunds `razorpayPaymentId`, and the
+    // money must be traceable to this booking even if the refund itself does not complete.
+    await prisma.payment.updateMany({
+      where: { id: payment.id, status: payment.status },
+      data: {
+        razorpayPaymentId: captured.id,
+        // Record what the gateway actually took. This is the fact the refund ceiling is computed
+        // from (`amountPaid - refundedAmount`), which is what makes refund_total <= captured_total
+        // true by construction rather than by a separate check.
+        amountPaid: payment.amount,
+        amountPaidPaise: BigInt(expectedPaise),
+        metadata: JSON.stringify({
+          ...this.parsePaymentMetadata(payment.metadata),
+          capturedAfterExpiry: { gatewayPaymentId: captured.id, amountPaise: captured.amountPaise ?? null, at: new Date().toISOString() },
+        } as PaymentOrderMetadata),
+      },
+    });
+
+    incCounter("late_capture_total", { outcome: "auto_refund_eligible" });
+    const { refundOrchestratorService } = await import("./refund-orchestrator.service");
+    const result = await refundOrchestratorService.executeRefund({
+      paymentId: payment.id,
+      amount: payment.amount,
+      reason: "Payment captured after the booking's payment window expired",
+      actorUserId: "system:late-capture",
+      // A platform-authorised refund, not a customer or admin action. `source: "workflow"` keeps it
+      // distinguishable in the refund audit from a support-issued refund.
+      isAdmin: true,
+      source: "workflow",
+      idempotencyKey: `late_capture:${payment.id}:${captured.id}`,
+      bookingId: payment.bookingId ?? undefined,
+    });
+
+    if ("refundId" in result) {
+      incCounter("late_capture_total", { outcome: "auto_refunded" });
+      logger.warn("late_capture_auto_refunded", {
+        category: "PAYMENT",
+        bookingId: payment.bookingId,
+        paymentId: payment.id,
+        gatewayPaymentId: captured.id,
+        gatewayRefundId: result.refundId,
+        amount: result.amount,
+      });
+      return { handled: true, reason: "LATE_CAPTURE_AUTO_REFUNDED" };
+    }
+    // The refund authority refused or could not determine the outcome. Both are reconciliation
+    // matters; neither is retried here, because retrying an unknown refund is how one becomes two.
+    return reconciliationRequired(`REFUND_${result.error}`, { indeterminate: result.indeterminate ?? false });
+  }
+
+  /**
+   * §27 — a webhook may not flip the state of a payment that belongs to the OTHER gateway world.
+   *
+   * The webhook's environment is the payload's `livemode` when present (Razorpay does not send
+   * one today), otherwise the world this process's credential belongs to — the same credential
+   * whose webhook secret verified the delivery. A stored environment that disagrees means a test
+   * event is aimed at a live-stamped payment (or the reverse): the state change is refused and
+   * left to reconciliation. UNKNOWN (NULL — historical) rows keep the historical behaviour.
+   * Never throws: an unreadable column must not take the webhook path down.
+   */
+  private async webhookEnvironmentRefusal(
+    event: RazorpayWebhookEvent,
+    paymentId: string,
+  ): Promise<{ handled: boolean; reason: string } | null> {
+    try {
+      const stored = await readPaymentEnvironment(prisma, paymentId);
+      if (!stored) return null;
+      const webhookEnv =
+        typeof event.livemode === "boolean" ? (event.livemode ? "LIVE" : "TEST") : processGatewayEnvironment();
+      if (!webhookEnv || webhookEnv === stored) return null;
+      incCounter("webhook_env_mismatch_total", { stored, webhook: webhookEnv });
+      logger.error("payments.webhook.environment_mismatch — refusing state change", {
+        paymentId,
+        stored,
+        webhookEnvironment: webhookEnv,
+        event: event.event,
+      });
+      return { handled: false, reason: "PAYMENT_ENV_MISMATCH" };
+    } catch {
+      return null;
+    }
+  }
+
+  async reconcileFromWebhook(event: RazorpayWebhookEvent): Promise<{ handled: boolean; reason: string }> {
     const kind = event.event;
 
     if (kind === "payment.authorized") {
@@ -541,6 +990,11 @@ export class PaymentService {
 
       const payment = await prisma.payment.findFirst({ where: { razorpayOrderId: p.order_id } });
       if (!payment) {
+        // A capture on an order a retry REPLACED used to fall through to PAYMENT_NOT_FOUND and be
+        // marked processed — real money silently dropped. Resolve it against the replaced order first.
+        const replaced = await this.findPaymentByReplacedOrder(p.order_id);
+        if (replaced) return this.reconcileReplacedOrderCapture(event, replaced, { id: p.id, orderId: p.order_id, amountPaise: p.amount });
+
         const walletResult = await walletService.reconcileTopUpFromWebhook(p.order_id, p.id);
         if (walletResult.handled) return { handled: walletResult.handled, reason: walletResult.reason };
 
@@ -553,10 +1007,48 @@ export class PaymentService {
         return { handled: false, reason: "PAYMENT_NOT_FOUND" };
       }
 
-      if (payment.status === PaymentStatus.SUCCESS && payment.razorpayPaymentId === p.id) {
+      if (isCapturedPaymentStatus(payment.status) && payment.razorpayPaymentId === p.id) {
         return { handled: true, reason: "ALREADY_RECONCILED" };
       }
-      if (payment.status === PaymentStatus.SUCCESS && payment.razorpayPaymentId !== p.id) {
+
+      const envRefusal = await this.webhookEnvironmentRefusal(event, payment.id);
+      if (envRefusal) return envRefusal;
+
+      /**
+       * Money captured AFTER the payment window closed (PAYMENT_PENDING_TTL).
+       *
+       * The booking was expired and its capacity RELEASED — the slot may already belong to someone
+       * else. Settling this capture would confirm a booking that no longer holds a slot, and could
+       * double-book a partner. So this path deliberately does not confirm anything.
+       *
+       * What it does instead: bind the gateway payment id to the row so the money is traceable to a
+       * real booking, record that this was a late capture, and raise a CRITICAL ops alert naming
+       * every identifier needed to refund it. The refund itself is NOT issued automatically — moving
+       * a customer's money back is an instruction, not an inference, and the platform's refund path
+       * is owner-operated. Returning `handled` stops the gateway retrying a delivery nothing more
+       * can be done with.
+       */
+      if (payment.status === ("EXPIRED" as typeof payment.status)) {
+        incCounter("payment_captured_after_expiry_total");
+        await prisma.payment.updateMany({
+          where: { id: payment.id, status: payment.status },
+          data: {
+            razorpayPaymentId: p.id,
+            metadata: JSON.stringify({
+              ...this.parsePaymentMetadata(payment.metadata),
+              capturedAfterExpiry: { gatewayPaymentId: p.id, amountPaise: p.amount ?? null, at: new Date().toISOString() },
+            } as PaymentOrderMetadata),
+          },
+        });
+        return this.resolveLateCapture(payment, { id: p.id, orderId: p.order_id!, amountPaise: p.amount });
+      }
+      if (payment.paymentMethod === SPLIT_PAYMENT_METHOD) {
+        // A split order's capture is only the gateway leg. Settling it here as a plain payment marked
+        // the booking fully paid while the wallet share was never debited.
+        const { walletCheckoutService } = await import("./wallet-checkout.service");
+        return walletCheckoutService.settleSplitFromWebhook(payment.id, p.id);
+      }
+      if (isCapturedPaymentStatus(payment.status) && payment.razorpayPaymentId !== p.id) {
         return { handled: false, reason: "PAYMENT_ID_CONFLICT" };
       }
 
@@ -564,9 +1056,10 @@ export class PaymentService {
         await financialTransactionManager.executeWithLedger({
           journal: financialLedgerService.journalForBookingPayment(payment.id, payment.amount),
           mutate: async (tx) => {
+            await tx.$queryRaw`SELECT id FROM payments WHERE id = ${payment.id} FOR UPDATE`;
             const locked = await tx.payment.findUnique({ where: { id: payment.id }, include: { booking: true } });
             if (!locked) throw new Error("PAYMENT_NOT_FOUND");
-            if (locked.status === PaymentStatus.SUCCESS) {
+            if (isCapturedPaymentStatus(locked.status)) {
               if (locked.razorpayPaymentId === p.id) return locked;
               throw new Error("PAYMENT_ALREADY_SETTLED");
             }
@@ -583,15 +1076,13 @@ export class PaymentService {
                 status: PaymentStatus.SUCCESS,
                 completedAt: new Date(),
                 amountPaid: locked.amount,
+                amountPaidPaise: rupeesToPaise(locked.amount),
                 invoiceNumber: invoiceNumberFor(locked.booking.bookingNumber),
               },
             });
-            await tx.booking.update({
-              where: { id: locked.bookingId },
-              data: {
-                paymentStatus: PaymentStatus.SUCCESS,
-                status: locked.booking.providerId ? "ACCEPTED" : "PENDING",
-              },
+            await applyBookingPaymentSuccess(tx, locked.bookingId, {
+              capturedAmount: locked.amount,
+              source: "razorpay_webhook",
             });
             await emitPaymentSuccessInTransaction(tx, locked, updated.completedAt ?? new Date());
             return updated;
@@ -607,6 +1098,7 @@ export class PaymentService {
       if (payment.userId) {
         recordFinancialMetric("payment_success_total", 1);
       }
+      onBookingPaymentSettledBackground(payment.bookingId, "razorpay_webhook");
 
       return { handled: true, reason: "RECONCILED" };
     }
@@ -617,20 +1109,27 @@ export class PaymentService {
       const payment = await prisma.payment.findFirst({ where: { razorpayOrderId: p.order_id } });
       if (!payment) return { handled: false, reason: "PAYMENT_NOT_FOUND" };
       if (payment.status === PaymentStatus.SUCCESS) return { handled: true, reason: "IGNORED_ALREADY_SUCCESS" };
+      const envRefusal = await this.webhookEnvironmentRefusal(event, payment.id);
+      if (envRefusal) return envRefusal;
       const failedAt = new Date();
-      await prisma.$transaction(async (tx) => {
-        await tx.payment.update({
-          where: { id: payment.id },
+      const marked = await prisma.$transaction(async (tx) => {
+        // Guarded: a capture that committed after the read above must not be overwritten by a
+        // late or out-of-order failure of an earlier attempt on the same order.
+        const failed = await tx.payment.updateMany({
+          where: { id: payment.id, status: { notIn: [PaymentStatus.SUCCESS, PaymentStatus.REFUNDED, PaymentStatus.PARTIALLY_REFUNDED, PaymentStatus.REFUNDING] } },
           data: { status: PaymentStatus.FAILED },
         });
-        await tx.booking.update({
-          where: { id: payment.bookingId },
+        if (failed.count === 0) return false;
+        await tx.booking.updateMany({
+          where: { id: payment.bookingId, paymentStatus: { not: PaymentStatus.SUCCESS } },
           data: { paymentStatus: PaymentStatus.FAILED },
         });
         if (eventPlatformConfig.outboxEnabled && eventPlatformConfig.paymentEventsEnabled && payment.userId) {
           await emitPaymentFailedInTransaction(tx, payment, "gateway_failed", failedAt);
         }
+        return true;
       });
+      if (!marked) return { handled: true, reason: "IGNORED_ALREADY_SETTLED" };
       recordFinancialMetric("payment_failed_total", 1);
       return { handled: true, reason: "MARKED_FAILED" };
     }

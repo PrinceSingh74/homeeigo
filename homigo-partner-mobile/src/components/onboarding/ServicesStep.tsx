@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { OnboardingField } from "@/components/onboarding/OnboardingField";
-import { ONBOARDING_CITIES, ONBOARDING_SERVICES } from "@/lib/onboarding-catalog";
+import { ONBOARDING_CITIES } from "@/lib/onboarding-catalog";
+import { partnerRegistrationApi } from "@/services/partner-registration-api";
 import { partnerColors } from "@/theme/colors";
 
 export function ServicesStep({
@@ -24,12 +26,35 @@ export function ServicesStep({
   onExperience: (years: string) => void;
   onSubmit: () => void;
 }) {
+  const [options, setOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    partnerRegistrationApi
+      .serviceOptions()
+      .then((data) => {
+        if (cancelled) return;
+        setOptions(data.options);
+        setCatalogError(null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setOptions([]);
+        setCatalogError("This option is unavailable for this service.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <View style={styles.wrap}>
       <Text style={styles.title}>Services & location</Text>
       <Text style={styles.copy}>Which services do you provide?</Text>
+      {catalogError ? <Text style={styles.error}>{catalogError}</Text> : null}
       <View style={styles.grid}>
-        {ONBOARDING_SERVICES.map((service) => {
+        {options.map((service) => {
           const on = serviceCategories.includes(service.id);
           return (
             <Pressable
@@ -75,7 +100,7 @@ export function ServicesStep({
           {error}
         </Text>
       ) : null}
-      <Pressable accessibilityRole="button" style={styles.button} disabled={loading} onPress={onSubmit}>
+      <Pressable accessibilityRole="button" testID="onboarding-save-continue" style={styles.button} disabled={loading} onPress={onSubmit}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save & Continue</Text>}
       </Pressable>
     </View>

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Expo } from "expo-server-sdk";
 
 export const aiChatSchema = z.object({
   message: z.string().trim().min(1).max(2000),
@@ -20,7 +21,13 @@ export type AiChatInput = z.infer<typeof aiChatSchema>;
 
 export const registerPushTokenSchema = z.object({
   deviceId: z.string().trim().min(8).max(128),
-  expoPushToken: z.string().trim().min(10).max(512),
+  // A raw FCM/APNs device token would be stored and then silently skipped by the sender.
+  expoPushToken: z
+    .string()
+    .trim()
+    .min(10)
+    .max(512)
+    .refine((t) => Expo.isExpoPushToken(t), { message: "expoPushToken must be an Expo push token" }),
   platform: z.enum(["IOS", "ANDROID", "WEB"]),
   deviceName: z.string().trim().max(120).optional(),
   appVersion: z.string().trim().max(32).optional(),

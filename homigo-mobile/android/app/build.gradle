@@ -83,6 +83,21 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 apply from: new File(["node", "--print", "require('path').dirname(require.resolve('@sentry/react-native/package.json'))"].execute().text.trim(), "sentry.gradle")
 
+/** Maps key from -PgoogleMapsApiKey, then the GOOGLE_MAPS_API_KEY env var (EAS secret), then homigo-mobile/.env. */
+def googleMapsApiKey() {
+    def fromProp = findProperty('googleMapsApiKey')
+    if (fromProp) return fromProp
+    def fromEnv = System.getenv('GOOGLE_MAPS_API_KEY')
+    if (fromEnv) return fromEnv
+    def dotenv = new File(rootDir.parentFile, '.env')
+    if (dotenv.exists()) {
+        def line = dotenv.readLines().find { it.trim().startsWith('GOOGLE_MAPS_API_KEY=') }
+        if (line) return line.substring(line.indexOf('=') + 1).trim()
+    }
+    logger.warn('GOOGLE_MAPS_API_KEY is not set — maps will not render in this build')
+    return ''
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
 
@@ -98,6 +113,9 @@ android {
         versionName "1.0.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
+        // Google Maps SDK key: never committed. EAS injects GOOGLE_MAPS_API_KEY (secret); local builds read
+        // homigo-mobile/.env (git-ignored) or -PgoogleMapsApiKey=… .
+        manifestPlaceholders = [googleMapsApiKey: googleMapsApiKey()]
     }
     signingConfigs {
         debug {

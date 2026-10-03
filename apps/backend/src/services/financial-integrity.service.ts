@@ -1,4 +1,4 @@
-import { CashbackStatus, FinancialIntegrityStatus, WalletTxnStatus, WalletTxnType } from "@prisma/client";
+import { CashbackStatus, FinancialIntegrityStatus, PaymentStatus, WalletTxnStatus, WalletTxnType } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { financeAlertService } from "./finance-alert.service";
 import { recordFinancialMetric } from "../lib/financial-metrics";
@@ -81,17 +81,119 @@ export class FinancialIntegrityService {
       });
     }
 
+    /**
+     * ── A refund is only a mismatch if the payment never succeeded ──────────
+     *
+     * This allowed exactly REFUNDED and SUCCESS, so every PARTIALLY_REFUNDED payment was reported as
+     * an integrity issue — a status `booking-refund.service` sets DELIBERATELY while a refund is
+     * still short of the full amount, and which `admin.service` and `invoice-report.service` already
+     * treat as a normal refunded state. The rule predates partial refunds and was never updated.
+     *
+     * The cost was not cosmetic. Nine partially-refunded payments kept every integrity run at FAIL,
+     * which pinned `serviceHealth.finance` to "degraded" permanently. A health signal that is always
+     * red carries no information, and a real refund mismatch would have arrived as the tenth line of
+     * a list operators had already learned to scroll past.
+     *
+     * What actually cannot be true is money refunded against a payment that never took any: PENDING,
+     * INITIATED, PROCESSING and FAILED are the mismatch, and REFUNDING is a legitimate in-flight
+     * state. Measured across the database: 9 PARTIALLY_REFUNDED, 14 REFUNDED, and zero refunds
+     * against a payment that never succeeded — so every issue this rule was raising was false.
+     */
+    const REFUNDABLE_PAYMENT_STATES: PaymentStatus[] = [
+      PaymentStatus.SUCCESS,
+      PaymentStatus.REFUNDED,
+      PaymentStatus.PARTIALLY_REFUNDED,
+      PaymentStatus.REFUNDING,
+    ];
     const refundMismatches = await prisma.payment.findMany({
-      where: { refundedAmount: { gt: 0 }, status: { notIn: ["REFUNDED", "SUCCESS"] } },
-      select: { id: true, refundedAmount: true, status: true },
-      take: 20,
+      where: { refundedAmount: { gt: 0 }, status: { notIn: REFUNDABLE_PAYMENT_STATES } },
+      select: { id: true, refundedAmount: true, status: true, amountPaid: true },
+      take: 40,
     });
     for (const p of refundMismatches) {
+      /**
+       * O10: a capture that lands after PAYMENT_PENDING_TTL closed the window is refunded while the
+       * row stays EXPIRED — the booking was never confirmed, but the money was genuinely taken and
+       * `amountPaid` records how much. That refund is correct, and the over-refund rule below is
+       * what polices its ceiling. Flagging it here would raise a warning on every correct
+       * auto-refund for ever, and a control that always fires is scrolled past exactly like one
+       * that never does. An EXPIRED row with NOTHING captured is still the mismatch it always was.
+       */
+      const capturedAfterExpiry = p.status === PaymentStatus.EXPIRED && (p.amountPaid ?? 0) > 0;
+      if (capturedAfterExpiry) continue;
       issues.push({
         category: "REFUND_MISMATCH",
         severity: "MEDIUM",
         referenceId: p.id,
-        details: `Refund amount ${p.refundedAmount} with status ${p.status}`,
+        details: `Refund amount ${p.refundedAmount} recorded against a payment in status ${p.status}, which never took payment`,
+      });
+    }
+
+    /**
+     * Refunded more than was ever paid. This is the integrity failure the rule above was NOT
+     * checking: it inspected the status and never compared the amounts, so a payment refunded twice
+     * over would have passed as long as its status read REFUNDED. Currently zero across the database.
+     */
+    const overRefunds = await prisma.$queryRaw<Array<{ id: string; amount: number; refunded: number }>>`
+      SELECT id, amount::float AS amount, refunded_amount::float AS refunded
+      FROM payments
+      WHERE refunded_amount > amount + 0.01
+      LIMIT 20
+    `;
+    for (const p of overRefunds) {
+      issues.push({
+        category: "REFUND_MISMATCH",
+        severity: "HIGH",
+        referenceId: p.id,
+        details: `Refunded ${p.refunded} against a payment of ${p.amount} — more money returned than was taken`,
+      });
+    }
+
+    /**
+     * Refunded more than was paid, per BOOKING and across every tender.
+     *
+     * The payment-row check above cannot see a wallet refund: a wallet-only booking has no payments
+     * row, and a split keeps only its gateway share there. This check adds the wallet leg — the
+     * booking's wallet debits against its wallet refunds — for exactly those bookings. A legacy wallet
+     * payments row already carries its wallet refunds in refunded_amount, so its wallet transactions are
+     * not counted a second time. Also flags a wallet leg refunded beyond what the wallet paid, even
+     * when the total happens to fit.
+     */
+    const bookingOverRefunds = await prisma.$queryRaw<
+      Array<{ id: string; gw_paid: bigint; gw_refunded: bigint; w_paid: bigint; w_refunded: bigint }>
+    >`
+      WITH w AS (
+        SELECT reference_id AS booking_id,
+               coalesce(sum(amount_paise) FILTER (WHERE type::text = 'DEBIT' AND reference_type = 'booking_wallet_payment'), 0)::bigint AS paid,
+               coalesce(sum(amount_paise) FILTER (WHERE type::text = 'REFUND' AND reference_type IN ('booking_cancel_refund', 'booking_admin_refund')), 0)::bigint AS refunded
+          FROM wallet_transactions
+         WHERE status::text = 'COMPLETED'
+           AND reference_type IN ('booking_wallet_payment', 'booking_cancel_refund', 'booking_admin_refund')
+         GROUP BY reference_id
+      ), t AS (
+        SELECT b.id,
+               CASE WHEN p.status::text IN ('SUCCESS', 'PARTIALLY_REFUNDED', 'REFUNDED', 'REFUNDING')
+                    THEN round(coalesce(p.amount_paid, 0)::numeric * 100)::bigint ELSE 0 END AS gw_paid,
+               round(coalesce(p.refunded_amount, 0)::numeric * 100)::bigint AS gw_refunded,
+               CASE WHEN p.id IS NULL OR p.payment_method = 'wallet_razorpay_split' THEN w.paid ELSE 0 END AS w_paid,
+               CASE WHEN p.id IS NULL OR p.payment_method = 'wallet_razorpay_split' THEN w.refunded ELSE 0 END AS w_refunded
+          FROM w
+          JOIN bookings b ON b.id = w.booking_id
+          LEFT JOIN payments p ON p.booking_id = b.id
+      )
+      SELECT id, gw_paid, gw_refunded, w_paid, w_refunded
+        FROM t
+       WHERE gw_refunded + w_refunded > gw_paid + w_paid OR w_refunded > w_paid
+       LIMIT 20
+    `;
+    for (const b of bookingOverRefunds) {
+      issues.push({
+        category: "REFUND_MISMATCH",
+        severity: "HIGH",
+        referenceId: b.id,
+        details:
+          `Booking refunded ${Number(b.gw_refunded + b.w_refunded) / 100} (gateway ${Number(b.gw_refunded) / 100} + wallet ${Number(b.w_refunded) / 100}) ` +
+          `against ${Number(b.gw_paid + b.w_paid) / 100} paid (gateway ${Number(b.gw_paid) / 100} + wallet ${Number(b.w_paid) / 100})`,
       });
     }
 
@@ -220,19 +322,37 @@ export class FinancialIntegrityService {
         type: { in: [WalletTxnType.DEBIT, WalletTxnType.REVERSAL] },
         status: WalletTxnStatus.COMPLETED,
       },
-      select: { id: true, amount: true },
+      select: { id: true, amount: true, referenceType: true, referenceId: true },
       take: 100,
       orderBy: { createdAt: "desc" },
     });
     for (const txn of walletDebits) {
-      const key = `wallet_debit:${txn.id}`;
+      /**
+       * Which journal proves a debit was recorded depends on what the debit WAS.
+       *
+       * A peer-to-peer transfer is booked at the moment it happens as a matched pair keyed on the
+       * transfer — `wallet_transfer_out:<transferId>` debiting CUSTOMER_WALLET and
+       * `wallet_transfer_in:<transferId>` crediting it back — because money moving between two
+       * customers leaves the platform owing the same total. Demanding a `wallet_debit:` journal for
+       * those was the same false premise that made `ledger-backfill` write a second, wrong journal
+       * booking each transfer as a bank withdrawal. Looking for the journal that should actually
+       * exist keeps the check able to fire: a transfer with no journal at all is still reported.
+       */
+      // A tip is booked at the moment it happens as `booking_tip:<bookingId>` (CUSTOMER_WALLET →
+      // PROVIDER_PAYABLE, in `rating.service`), for the same reason and with the same consequence.
+      const key =
+        txn.referenceType === "p2p_transfer" && txn.referenceId
+          ? `wallet_transfer_out:${txn.referenceId}`
+          : txn.referenceType === "booking_tip" && txn.referenceId
+            ? `booking_tip:${txn.referenceId}`
+            : `wallet_debit:${txn.id}`;
       const journal = await prisma.journalEntry.findUnique({ where: { idempotencyKey: key } });
       if (!journal) {
         issues.push({
           category: "MISSING_LEDGER_ENTRY",
           severity: "HIGH",
           referenceId: txn.id,
-          details: "Completed wallet debit/reversal missing WALLET_DEBIT journal",
+          details: `Completed wallet debit/reversal missing its ledger journal (${key})`,
         });
         break;
       }

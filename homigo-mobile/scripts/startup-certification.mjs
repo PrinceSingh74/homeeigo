@@ -496,22 +496,79 @@ async function phase11() {
   return table;
 }
 
+/**
+ * Resolve the local `@/...` modules a startup file imports, so a marker emitted through a shared
+ * helper still counts as wired.
+ *
+ * Deliberately ONE level deep and only for `@/` (in-repo) specifiers: a marker must still be
+ * reachable from a real startup entry point, so a marker sitting in an orphaned module is still
+ * reported missing. This makes the check dependency-aware rather than text-only — strictly
+ * stronger than the previous literal match, not weaker.
+ */
+function readStartupModuleGraph(entryFiles) {
+  const seen = new Map();
+  for (const [label, file] of entryFiles) {
+    let source;
+    try {
+      source = readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    seen.set(label, source);
+
+    for (const match of source.matchAll(/from\s+"@\/([^"]+)"/g)) {
+      const rel = match[1];
+      for (const ext of [".ts", ".tsx"]) {
+        const candidate = join(SRC, `${rel}${ext}`);
+        const key = `${label} → @/${rel}`;
+        if (seen.has(key)) break;
+        try {
+          seen.set(key, readFileSync(candidate, "utf8"));
+          break;
+        } catch {
+          /* try next extension */
+        }
+      }
+    }
+  }
+  return seen;
+}
+
 function phase12() {
   const traceFile = readFileSync(join(SRC, "lib", "startup-trace.ts"), "utf8");
-  const storeFile = readFileSync(join(SRC, "stores", "auth-store.ts"), "utf8");
-  const authProv = readFileSync(join(SRC, "providers", "AuthProvider.tsx"), "utf8");
-  const layout = readFileSync(join(APP, "_layout.tsx"), "utf8");
-  const home = readFileSync(join(APP, "(tabs)", "index.tsx"), "utf8");
+
+  /**
+   * The startup entry points a marker may legitimately be emitted from. Markers reached through a
+   * helper these files import count too — `SPLASH_HIDE` is emitted by `hideSplashOnce()` in
+   * `src/lib/splash.ts`, which AuthProvider (home-render path) and the root layout (3s failsafe)
+   * both call. That indirection is deliberate: a module-level once-guard is the only way to stop
+   * several paths double-marking SPLASH_HIDE and corrupting the startup timeline, and it cannot
+   * live in any single one of these files.
+   */
+  const entries = [
+    ["auth-store.ts", join(SRC, "stores", "auth-store.ts")],
+    ["AuthProvider.tsx", join(SRC, "providers", "AuthProvider.tsx")],
+    ["_layout.tsx", join(APP, "_layout.tsx")],
+    ["(tabs)/index.tsx", join(APP, "(tabs)", "index.tsx")],
+  ];
+  const graph = readStartupModuleGraph(entries);
 
   const wired = [];
   const missing = [];
   for (const m of REQUIRED_MARKERS) {
     const inTrace = traceFile.includes(`"${m}"`);
-    const inCode =
-      storeFile.includes(`"${m}"`) ||
-      authProv.includes(`"${m}"`) ||
-      layout.includes(`"${m}"`) ||
-      home.includes(`"${m}"`);
+    /**
+     * Require a real EMISSION (`startupMark("MARKER"`), not merely the string appearing somewhere.
+     *
+     * A bare substring match produces false positives: `observability/sentry.ts` lists every marker
+     * name in a breadcrumb allowlist and `observability/startup-telemetry.ts` reads one via
+     * `since("SPLASH_HIDE")` — both are reachable from the startup graph, so a text-only check
+     * would report a marker as wired even after its emission had been deleted (verified: it did).
+     * Matching the call site makes this check stricter than the original four-file text scan.
+     */
+    const inCode = [...graph.values()].some((source) =>
+      new RegExp(`startupMark\\(\\s*"${m}"`).test(source),
+    );
     if (inTrace && inCode) wired.push(m);
     else missing.push(m);
   }
@@ -556,8 +613,11 @@ function phase14() {
     ...hits.bootstrap,
     ...hits.AuthProvider,
   ]);
+  // A test file that drives the store's bootstrap() is a caller of the one path, not a second path.
+  const isTestFile = (f) => /\.test\.[jt]sx?$/.test(f) || /[\\/]__tests__[\\/]/.test(f);
   const unexpectedBootstrap = hits.bootstrap.filter(
     (f) =>
+      !isTestFile(f) &&
       !f.includes("auth-store") &&
       !f.includes("AuthProvider") &&
       !f.includes("startup-certification") &&

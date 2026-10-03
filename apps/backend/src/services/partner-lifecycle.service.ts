@@ -1,3 +1,4 @@
+import { evictUserEverywhere } from "../lib/ws-eviction";
 import type { PartnerLifecycleActor, PartnerLifecycleReason, PartnerLifecycleState } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { eventPlatformConfig } from "../events/core/config";
@@ -148,6 +149,28 @@ export class PartnerLifecycleService {
       select: { lifecycleState: true, userId: true, isApproved: true, isActive: true },
     });
     if (!current) return { error: "NOT_FOUND" as const };
+    /**
+     * A partner may only move between ACTIVE and PAUSED by themselves. The FSM also allows
+     * UNDER_REVIEW → ACTIVE, TRAINING → ACTIVE and REACTIVATED → ACTIVE, and `sideEffects(ACTIVE)`
+     * writes isApproved/isActive — so without this gate a partner placed under review by the risk
+     * engine could "resume" straight back to ACTIVE with no admin involved.
+     */
+    if (input.actorType === "PARTNER") {
+      const fromCanonical = canonicalizeLifecycle(current.lifecycleState);
+      const toCanonical = canonicalizeLifecycle(input.to);
+      const selfService =
+        (fromCanonical === "ACTIVE" && toCanonical === "PAUSED") ||
+        (fromCanonical === "PAUSED" && toCanonical === "ACTIVE") ||
+        fromCanonical === toCanonical;
+      if (!selfService) {
+        return {
+          error: "FORBIDDEN_FOR_ACTOR" as const,
+          from: current.lifecycleState,
+          to: input.to,
+          allowed: fromCanonical === "ACTIVE" ? ["PAUSED"] : fromCanonical === "PAUSED" ? ["ACTIVE"] : [],
+        };
+      }
+    }
     // Assert against the raw write target. Canonicalizing first would turn
     // APPROVED → ACTIVE (or unknown tokens → APPLIED) into a real hop.
     try {
@@ -227,6 +250,7 @@ export class PartnerLifecycleService {
       }
     }
 
+    if (to === "SUSPENDED") evictUserEverywhere(current.userId, "partner_suspended");
     await this.notifyPartner(current.userId, { ...input, to });
     if (to === "ACTIVE") {
       const { partnerReferralService } = await import("./partner-referral.service");

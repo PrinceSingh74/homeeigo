@@ -251,9 +251,25 @@ function DataTableInner({
   );
 }
 
-function rowsSignature(rows: (string | React.ReactNode)[][]): string {
-  if (rows.length === 0) return "0";
-  return `${rows.length}:${rows[0]?.length ?? 0}`;
+/**
+ * Rows are equal only when every cell is: strings/numbers by value, React elements by reference.
+ *
+ * This used to compare `rows.length:columns` only, so a table whose VALUES changed without its row
+ * count changing never re-rendered — a status flipped to RELEASED/REFUNDED/COMPLETED on the server
+ * kept showing the old value (found by the Phase 10 §9 browser run: a released safety hold still
+ * read "Active" with a live "Release hold" button). Cheap cell-wise compare keeps the memo benefit
+ * when a parent re-renders with identical data and is correct when anything changes.
+ */
+function rowsEqual(a: (string | React.ReactNode)[][], b: (string | React.ReactNode)[][]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const ra = a[i]!, rb = b[i]!;
+    if (ra === rb) continue;
+    if (ra.length !== rb.length) return false;
+    for (let j = 0; j < ra.length; j++) if (!Object.is(ra[j], rb[j])) return false;
+  }
+  return true;
 }
 
 export const DataTable = memo(DataTableInner, (prev, next) => {
@@ -264,7 +280,7 @@ export const DataTable = memo(DataTableInner, (prev, next) => {
     prev.flush === next.flush &&
     prev.emptyMessage === next.emptyMessage &&
     prev.errorMessage === next.errorMessage &&
-    rowsSignature(prev.rows) === rowsSignature(next.rows) &&
+    rowsEqual(prev.rows, next.rows) &&
     (prev.headers ?? prev.columns)?.join("|") === (next.headers ?? next.columns)?.join("|")
   );
 });
@@ -300,6 +316,7 @@ const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "info" | "n
   in_review: "warning",
   requested: "info",
   accepted: "info",
+  assigned: "info",
   en_route: "info",
   processing: "info",
   coming_soon: "info",
@@ -309,6 +326,12 @@ const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "info" | "n
   rejected: "danger",
   cancelled_by_user: "danger",
   cancelled_by_provider: "danger",
+  /** A partner who did not appear is an operational failure an admin should see as one. */
+  provider_no_show: "danger",
+  /** The customer missed it: a fact to record, not a platform failure. */
+  customer_no_show: "warning",
+  // A booking whose payment window closed renders through the existing `expired` tone above —
+  // shared with gift cards and coupons, and not re-toned here just to suit bookings.
   banned: "danger",
   high: "danger",
   failed: "danger",

@@ -38,6 +38,19 @@ describe("forecast model routing", () => {
     }
   });
 
+  test("the deterministic fallback never answers an hourly request with daily points", async () => {
+    // In a test runtime the warehouse is refused (lib/bigquery-adc), so zone/hourly takes the
+    // fallback branch. The fallback only produces zone/DAILY; before the fix it returned daily
+    // points labelled meta.granularity "hourly" (independent review, 2026-09-20).
+    const result = await svc.forecastSafe("zone", "hourly");
+    if (result.available) {
+      expect(result.source).toBe("warehouse"); // only a real warehouse answer may be hourly
+    } else {
+      expect(result.source).toBe("none");
+      expect(result.granularity).toBe("hourly");
+    }
+  });
+
   test("unknown scope is reported with the available options", async () => {
     const result = await svc.forecastSafe("galaxy" as never, "hourly");
     expect(result.available).toBe(false);

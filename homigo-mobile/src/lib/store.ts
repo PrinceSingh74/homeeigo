@@ -8,7 +8,16 @@ export type BookingStatus =
   | "confirmed"
   | "in_progress"
   | "completed"
-  | "cancelled";
+  | "cancelled"
+  /**
+   * PAYMENT_PENDING_TTL closed the payment window and the slot was released. Its own state: nobody
+   * cancelled it, and letting it fall through to "confirmed" told the customer a released booking
+   * was still going ahead.
+   */
+  | "expired"
+  /** Nobody was served. WHO failed to appear decides both the money and the wording (§53). */
+  | "customer_no_show"
+  | "provider_no_show";
 
 export type TimelineEvent = {
   id: string;

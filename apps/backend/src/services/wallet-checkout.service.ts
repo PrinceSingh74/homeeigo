@@ -8,9 +8,29 @@ import { giftCardService } from "./gift-card.service";
 import { hcoinService, COIN_TO_RUPEE } from "./hcoin.service";
 import { recordFeatureEvent } from "../lib/metrics";
 import { recordFinancialMetric } from "../lib/financial-metrics";
+import { onBookingPaymentSettledBackground } from "../lib/booking-payment-settled";
+import { stampPaymentEnvironment } from "../lib/payment-environment-column";
+import { applyBookingPaymentSuccess, isCapturedPaymentStatus } from "../lib/booking-payment-settlement";
+import { isPayableBookingStatus, paymentDispositionFor } from "../lib/booking-state-machine";
+import { incCounter } from "../lib/metrics";
+import { logger } from "../lib/logger";
+import { parseCatalogConfig } from "../lib/service-catalog-config";
+import { assertSplitAllowed, assertWalletAllowed } from "../lib/service-runtime-policy";
 
 const toPaise = (inr: number): bigint => BigInt(Math.round(inr * 100));
 const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+async function paymentConfigForBooking(bookingId: string) {
+  const row = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    select: { serviceConfigSnapshot: true, service: { select: { catalogConfig: true } } },
+  });
+  const snap = row?.serviceConfigSnapshot;
+  if (snap && typeof snap === "object" && !Array.isArray(snap) && "payment" in snap) {
+    return { payment: (snap as { payment?: unknown }).payment } as { payment?: { walletAllowed?: boolean; splitPaymentAllowed?: boolean } };
+  }
+  return parseCatalogConfig(row?.service?.catalogConfig);
+}
 
 export type WalletCheckoutQuote = {
   bookingId: string;
@@ -27,7 +47,7 @@ export type WalletCheckoutQuote = {
 
 type PayResult =
   | { ok: true; alreadyPaid: boolean; walletTransactionId: string | null; amountPaid: number; balance: number }
-  | { error: "BOOKING_NOT_FOUND" | "ALREADY_PAID" | "INSUFFICIENT_WALLET_BALANCE" | "INVALID_AMOUNT" };
+  | { error: "BOOKING_NOT_FOUND" | "ALREADY_PAID" | "INSUFFICIENT_WALLET_BALANCE" | "INVALID_AMOUNT" | "BOOKING_NOT_PAYABLE" | "WALLET_NOT_ALLOWED" };
 
 /**
  * Phase 18 — wallet-funded booking checkout, built on the EXISTING ledger primitives
@@ -72,7 +92,13 @@ export const walletCheckoutService = {
   /** Pay a booking IN FULL from wallet balance. Returns ALREADY_PAID if settled, or
    *  INSUFFICIENT_WALLET_BALANCE if the wallet cannot cover finalAmount. */
   async payBookingFromWallet(userId: string, bookingId: string): Promise<PayResult> {
-    return withTxRetry(() =>
+    const cfg = await paymentConfigForBooking(bookingId);
+    const blocked = assertWalletAllowed(cfg);
+    if (blocked) {
+      incCounter("service_payment_policy_rejected_total", { reason: "wallet" });
+      return { error: "WALLET_NOT_ALLOWED" };
+    }
+    const result = await withTxRetry(() =>
       prisma.$transaction(
         async (tx) => {
           // Serialize concurrent debits for this wallet across processes.
@@ -87,12 +113,15 @@ export const walletCheckoutService = {
             return { ok: true, alreadyPaid: true, walletTransactionId: prior.id, amountPaid: prior.amount, balance: prior.walletBalanceAfter } satisfies PayResult;
           }
 
+          // Locked: serialises with cancel, which re-checks payment_status before it commits.
+          await tx.$executeRaw`SELECT id FROM bookings WHERE id = ${bookingId} AND user_id = ${userId} FOR UPDATE`;
           const booking = await tx.booking.findFirst({
             where: { id: bookingId, userId },
-            select: { id: true, finalAmount: true, paymentStatus: true, providerId: true, bookingNumber: true },
+            select: { id: true, finalAmount: true, paymentStatus: true, providerId: true, bookingNumber: true, status: true },
           });
           if (!booking) return { error: "BOOKING_NOT_FOUND" } satisfies PayResult;
           if (booking.paymentStatus === "SUCCESS") return { error: "ALREADY_PAID" } satisfies PayResult;
+          if (!isPayableBookingStatus(booking.status)) return { error: "BOOKING_NOT_PAYABLE" } satisfies PayResult;
 
           const amount = booking.finalAmount;
           if (!Number.isFinite(amount) || amount <= 0) return { error: "INVALID_AMOUNT" } satisfies PayResult;
@@ -142,14 +171,7 @@ export const walletCheckoutService = {
             ],
           });
 
-          await tx.booking.update({
-            where: { id: bookingId },
-            data: {
-              paymentStatus: "SUCCESS",
-              paymentMethod: "wallet",
-              status: booking.providerId ? "ACCEPTED" : undefined,
-            },
-          });
+          await applyBookingPaymentSuccess(tx, bookingId, { capturedAmount: amount, source: "wallet", paymentMethod: "wallet" });
 
           recordFeatureEvent("checkout", "wallet_paid");
           // Reuse the existing financial counters (rendered by financial-metrics) — no duplicate names.
@@ -160,6 +182,10 @@ export const walletCheckoutService = {
         { isolationLevel: "Serializable" },
       ),
     );
+    if ("ok" in result && result.ok && !result.alreadyPaid) {
+      onBookingPaymentSettledBackground(bookingId, "wallet");
+    }
+    return result;
   },
 
   /**
@@ -172,10 +198,20 @@ export const walletCheckoutService = {
   async initiateSplit(userId: string, bookingId: string, walletAmount: number): Promise<SplitInitResult> {
     const booking = await prisma.booking.findFirst({
       where: { id: bookingId, userId },
-      select: { id: true, finalAmount: true, paymentStatus: true, bookingNumber: true },
+      select: { id: true, finalAmount: true, paymentStatus: true, bookingNumber: true, status: true },
     });
     if (!booking) return { error: "BOOKING_NOT_FOUND" };
     if (booking.paymentStatus === "SUCCESS") return { error: "ALREADY_PAID" };
+    if (!isPayableBookingStatus(booking.status)) return { error: "BOOKING_NOT_PAYABLE" };
+    const cfg = await paymentConfigForBooking(bookingId);
+    if (assertWalletAllowed(cfg)) {
+      incCounter("service_payment_policy_rejected_total", { reason: "wallet" });
+      return { error: "WALLET_NOT_ALLOWED" };
+    }
+    if (assertSplitAllowed(cfg)) {
+      incCounter("service_payment_policy_rejected_total", { reason: "split" });
+      return { error: "SPLIT_NOT_ALLOWED" };
+    }
 
     const final = booking.finalAmount;
     const wallet = round2(walletAmount);
@@ -187,7 +223,7 @@ export const walletCheckoutService = {
     const remainder = round2(final - wallet);
     if (remainder <= 0) {
       const r = await this.payBookingFromWallet(userId, bookingId);
-      if ("error" in r) return { error: r.error === "ALREADY_PAID" ? "ALREADY_PAID" : r.error === "BOOKING_NOT_FOUND" ? "BOOKING_NOT_FOUND" : r.error === "INSUFFICIENT_WALLET_BALANCE" ? "INSUFFICIENT_WALLET_BALANCE" : "INVALID_AMOUNT" };
+      if ("error" in r) return { error: r.error };
       return { mode: "wallet_only", status: "SUCCESS", walletTransactionId: r.walletTransactionId, amountPaid: r.amountPaid, balance: r.balance };
     }
 
@@ -195,13 +231,23 @@ export const walletCheckoutService = {
     const existing = await prisma.payment.findUnique({ where: { bookingId } });
     if (existing) {
       if (existing.status === PaymentStatus.SUCCESS) return { error: "ALREADY_PAID" };
+      if (existing.status === PaymentStatus.FAILED) {
+        // A failed split is retried through the one retry path (which keeps the wallet share and
+        // charges the gateway only the remainder) instead of handing back the dead order.
+        const { paymentService } = await import("./payment.service");
+        const retried = await paymentService.createOrder(userId, bookingId);
+        if (!retried || "error" in retried) return { error: "RETRY_CONFLICT" };
+        const fresh = await prisma.payment.findUniqueOrThrow({ where: { bookingId } });
+        const w = Number((safeJson(fresh.metadata)?.walletAmount as number) ?? 0);
+        return { mode: "split", razorpayOrderId: fresh.razorpayOrderId, razorpayAmount: fresh.amount, walletAmount: w, finalAmount: final, key: razorpayService.keyId };
+      }
       const storedWallet = Number((safeJson(existing.metadata)?.walletAmount as number) ?? 0);
       return { mode: "split", razorpayOrderId: existing.razorpayOrderId, razorpayAmount: existing.amount, walletAmount: storedWallet, finalAmount: final, key: razorpayService.keyId };
     }
 
     const order = await razorpayService.createOrder(remainder, booking.bookingNumber, { bookingId });
     try {
-      await prisma.payment.create({
+      const created = await prisma.payment.create({
         data: {
           bookingId,
           userId,
@@ -214,6 +260,8 @@ export const walletCheckoutService = {
           metadata: JSON.stringify({ walletAmount: wallet, finalAmount: final }),
         },
       });
+      // §27 — record the gateway world the split's gateway leg belongs to (probe-guarded, never throws).
+      await stampPaymentEnvironment(prisma, created.id, order.orderId);
     } catch (e: unknown) {
       // Lost the create race — return the winner's order.
       const raced = await prisma.payment.findUnique({ where: { bookingId } });
@@ -228,10 +276,8 @@ export const walletCheckoutService = {
   },
 
   /**
-   * Phase 18.2 — verify the Razorpay leg AND commit the wallet leg ATOMICALLY. Either both
-   * post (booking paid) or the whole transaction rolls back. If the wallet can no longer
-   * cover its portion at commit, returns WALLET_DEBIT_FAILED so the caller can refund the
-   * gateway charge — no partial/half-paid booking is ever left behind.
+   * Phase 18.2 — verify the Razorpay leg (client signature) and settle both legs atomically.
+   * The settlement itself is `settleSplitCapture`, shared with the webhook.
    */
   async verifySplit(
     userId: string,
@@ -239,14 +285,48 @@ export const walletCheckoutService = {
   ): Promise<SplitVerifyResult> {
     const payment = await prisma.payment.findFirst({
       where: { razorpayOrderId: body.razorpayOrderId, userId },
-      include: { booking: { select: { bookingNumber: true, providerId: true } } },
+      select: { id: true },
     });
     if (!payment) return { error: "NOT_FOUND" };
     if (!razorpayService.verifyPaymentSignature(body.razorpayOrderId, body.razorpayPaymentId, body.razorpaySignature)) {
       return { error: "INVALID_SIGNATURE" };
     }
-    if (payment.status === PaymentStatus.SUCCESS) {
-      return payment.razorpayPaymentId === body.razorpayPaymentId
+    return this.settleSplitCapture(payment.id, body.razorpayPaymentId, body.razorpaySignature, "wallet_razorpay_split");
+  },
+
+  /** Webhook `payment.captured` for a split order (the webhook signature is already verified). */
+  async settleSplitFromWebhook(paymentId: string, razorpayPaymentId: string): Promise<{ handled: boolean; reason: string }> {
+    const r = await this.settleSplitCapture(paymentId, razorpayPaymentId, null, "razorpay_webhook_split");
+    if ("ok" in r) return { handled: true, reason: "RECONCILED" };
+    if (r.error === "WALLET_DEBIT_FAILED") return { handled: true, reason: "SPLIT_WALLET_SHORTFALL_REFUNDING" };
+    return { handled: false, reason: r.error };
+  },
+
+  /**
+   * Settle a captured split order. The gateway money has ARRIVED, so it is always recorded
+   * (payment SUCCESS + journal), whatever else happens:
+   *
+   *  - booking servable + wallet covers its share → debit the wallet leg; booking paid.
+   *  - booking cancelled/rejected → the wallet leg is NOT charged; the captured gateway leg is
+   *    marked for a full refund (applyBookingPaymentSuccess) and the booking stays terminal.
+   *  - the wallet no longer covers its share → the wallet is not touched, the booking stays unpaid
+   *    (payment_status FAILED) and the captured gateway leg is refunded in full. Before, the whole
+   *    transaction rolled back: the captured money was recorded nowhere and never returned.
+   */
+  async settleSplitCapture(
+    paymentId: string,
+    razorpayPaymentId: string,
+    razorpaySignature: string | null,
+    source: string,
+  ): Promise<SplitVerifyResult> {
+    const payment = await prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { booking: { select: { bookingNumber: true } } },
+    });
+    if (!payment || !payment.userId) return { error: "NOT_FOUND" };
+    const userId = payment.userId;
+    if (isCapturedPaymentStatus(payment.status)) {
+      return payment.razorpayPaymentId === razorpayPaymentId
         ? { ok: true, status: "SUCCESS", bookingId: payment.bookingId, walletApplied: 0, razorpayApplied: payment.amount, balance: 0 }
         : { error: "ALREADY_SETTLED" };
     }
@@ -254,67 +334,80 @@ export const walletCheckoutService = {
     const walletAmount = round2(Number((safeJson(payment.metadata)?.walletAmount as number) ?? 0));
     const remainder = payment.amount;
 
+    type Settled = SplitVerifyResult | { shortfall: true };
+    let result: Settled;
     try {
-      return await withTxRetry(() =>
+      result = await withTxRetry(() =>
         prisma.$transaction(
-          async (tx): Promise<SplitVerifyResult> => {
+          async (tx): Promise<Settled> => {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"wallet_pay:" + userId}))`;
+            await tx.$executeRaw`SELECT id FROM payments WHERE id = ${payment.id} FOR UPDATE`;
 
             const locked = await tx.payment.findUniqueOrThrow({ where: { id: payment.id } });
-            if (locked.status === PaymentStatus.SUCCESS) {
-              if (locked.razorpayPaymentId === body.razorpayPaymentId) {
+            if (isCapturedPaymentStatus(locked.status)) {
+              if (locked.razorpayPaymentId === razorpayPaymentId) {
                 return { ok: true, status: "SUCCESS", bookingId: payment.bookingId, walletApplied: walletAmount, razorpayApplied: remainder, balance: 0 };
               }
               throw new Error("ALREADY_SETTLED");
             }
-            const reused = await tx.payment.findFirst({ where: { razorpayPaymentId: body.razorpayPaymentId, NOT: { id: payment.id } }, select: { id: true } });
+            const reused = await tx.payment.findFirst({ where: { razorpayPaymentId, NOT: { id: payment.id } }, select: { id: true } });
             if (reused) throw new Error("ALREADY_SETTLED");
 
+            const bookingRows = await tx.$queryRaw<Array<{ status: string }>>`
+              SELECT status FROM bookings WHERE id = ${payment.bookingId} FOR UPDATE`;
+            const servable = paymentDispositionFor(bookingRows[0]?.status ?? "") === "APPLY";
+
             let newBalance = 0;
-            // --- wallet leg ---
-            if (walletAmount > 0) {
+            let walletApplied = 0;
+            let shortfall = false;
+            // --- wallet leg (only for a booking that can still be served) ---
+            if (servable && walletAmount > 0) {
               const rows = await tx.$queryRaw<Array<{ wallet_balance: number }>>`SELECT wallet_balance FROM users WHERE id = ${userId} FOR UPDATE`;
               const before = Number(rows[0]?.wallet_balance ?? 0);
-              if (before < walletAmount) throw new Error("WALLET_DEBIT_FAILED");
-              newBalance = round2(before - walletAmount);
-              const wtxn = await tx.walletTransaction.create({
-                data: {
-                  transactionNumber: await nextWalletTxnNumber(tx),
-                  userId,
-                  amount: walletAmount,
-                  amountPaise: toPaise(walletAmount),
-                  walletBalanceBefore: before,
-                  walletBalanceBeforePaise: toPaise(before),
-                  walletBalanceAfter: newBalance,
-                  walletBalanceAfterPaise: toPaise(newBalance),
-                  type: WalletTxnType.DEBIT,
-                  status: WalletTxnStatus.COMPLETED,
-                  description: `Wallet share of split payment for booking ${payment.booking.bookingNumber}`,
-                  referenceId: payment.bookingId,
-                  referenceType: "booking_wallet_payment",
-                  completedAt: new Date(),
-                },
-              });
-              await tx.user.update({ where: { id: userId }, data: { walletBalance: newBalance, walletBalancePaise: toPaise(newBalance) } });
-              await financialLedgerService.recordJournalInTransaction(tx, {
-                type: JournalEntryType.WALLET_DEBIT,
-                referenceId: wtxn.id,
-                referenceType: "wallet_transaction",
-                idempotencyKey: `wallet_debit:${wtxn.id}`,
-                description: `Wallet share of split for booking ${payment.booking.bookingNumber}`,
-                lines: [
-                  { accountCode: "CUSTOMER_WALLET", debit: walletAmount, credit: 0 },
-                  { accountCode: "PLATFORM_ESCROW", debit: 0, credit: walletAmount },
-                ],
-              });
+              if (before < walletAmount) {
+                shortfall = true;
+              } else {
+                newBalance = round2(before - walletAmount);
+                const wtxn = await tx.walletTransaction.create({
+                  data: {
+                    transactionNumber: await nextWalletTxnNumber(tx),
+                    userId,
+                    amount: walletAmount,
+                    amountPaise: toPaise(walletAmount),
+                    walletBalanceBefore: before,
+                    walletBalanceBeforePaise: toPaise(before),
+                    walletBalanceAfter: newBalance,
+                    walletBalanceAfterPaise: toPaise(newBalance),
+                    type: WalletTxnType.DEBIT,
+                    status: WalletTxnStatus.COMPLETED,
+                    description: `Wallet share of split payment for booking ${payment.booking.bookingNumber}`,
+                    referenceId: payment.bookingId,
+                    referenceType: "booking_wallet_payment",
+                    completedAt: new Date(),
+                  },
+                });
+                await tx.user.update({ where: { id: userId }, data: { walletBalance: newBalance, walletBalancePaise: toPaise(newBalance) } });
+                await financialLedgerService.recordJournalInTransaction(tx, {
+                  type: JournalEntryType.WALLET_DEBIT,
+                  referenceId: wtxn.id,
+                  referenceType: "wallet_transaction",
+                  idempotencyKey: `wallet_debit:${wtxn.id}`,
+                  description: `Wallet share of split for booking ${payment.booking.bookingNumber}`,
+                  lines: [
+                    { accountCode: "CUSTOMER_WALLET", debit: walletAmount, credit: 0 },
+                    { accountCode: "PLATFORM_ESCROW", debit: 0, credit: walletAmount },
+                  ],
+                });
+                walletApplied = walletAmount;
+              }
             }
 
-            // --- razorpay leg ---
+            // --- razorpay leg: captured at the gateway, so recorded whatever happens next ---
             await tx.payment.update({
               where: { id: payment.id },
               data: {
-                razorpayPaymentId: body.razorpayPaymentId,
-                razorpaySignature: body.razorpaySignature,
+                razorpayPaymentId,
+                ...(razorpaySignature ? { razorpaySignature } : {}),
                 status: PaymentStatus.SUCCESS,
                 amountPaid: remainder,
                 amountPaidPaise: toPaise(remainder),
@@ -325,22 +418,76 @@ export const walletCheckoutService = {
               await financialLedgerService.recordJournalInTransaction(tx, financialLedgerService.journalForBookingPayment(payment.id, remainder));
             }
 
-            await tx.booking.update({
-              where: { id: payment.bookingId },
-              data: { paymentStatus: PaymentStatus.SUCCESS, paymentMethod: "wallet_razorpay_split", status: payment.booking.providerId ? "ACCEPTED" : undefined },
-            });
+            if (shortfall) {
+              await tx.booking.update({ where: { id: payment.bookingId }, data: { paymentStatus: PaymentStatus.FAILED } });
+              return { shortfall: true };
+            }
 
-            return { ok: true, status: "SUCCESS", bookingId: payment.bookingId, walletApplied: walletAmount, razorpayApplied: remainder, balance: newBalance };
+            await applyBookingPaymentSuccess(tx, payment.bookingId, {
+              capturedAmount: remainder,
+              source,
+              paymentMethod: "wallet_razorpay_split",
+            });
+            return { ok: true, status: "SUCCESS", bookingId: payment.bookingId, walletApplied, razorpayApplied: remainder, balance: newBalance };
           },
           { isolationLevel: "Serializable" },
         ),
       );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (msg === "WALLET_DEBIT_FAILED") return { error: "WALLET_DEBIT_FAILED" };
       if (msg === "ALREADY_SETTLED") return { error: "ALREADY_SETTLED" };
       throw e;
     }
+
+    if ("shortfall" in result) {
+      incCounter("split_wallet_shortfall_total", { source });
+      logger.warn("split_wallet_shortfall_refunding_gateway_leg", { category: "PAYMENT", paymentId: payment.id, bookingId: payment.bookingId, walletAmount });
+      void this.refundSplitShortfall(payment.id).catch(() => undefined);
+      return { error: "WALLET_DEBIT_FAILED" };
+    }
+    if ("ok" in result && result.ok) {
+      onBookingPaymentSettledBackground(payment.bookingId, source);
+    }
+    return result;
+  },
+
+  /** Return a split's captured gateway leg in full when its wallet share could not be charged. */
+  async refundSplitShortfall(paymentId: string) {
+    const payment = await prisma.payment.findUnique({ where: { id: paymentId }, select: { amountPaid: true, amount: true } });
+    if (!payment) return { error: "NOT_FOUND" as const };
+    const { refundOrchestratorService } = await import("./refund-orchestrator.service");
+    return refundOrchestratorService.executeRefund({
+      paymentId,
+      amount: payment.amountPaid || payment.amount,
+      reason: "Split payment: wallet share could not be charged — gateway leg returned",
+      actorUserId: "system",
+      isAdmin: true,
+      source: "workflow",
+      idempotencyKey: `split-shortfall:${paymentId}`,
+    });
+  },
+
+  /**
+   * Durable backstop for `refundSplitShortfall`: a split whose gateway leg was captured while the
+   * booking stayed unpaid, and whose shortfall refund never started (the process died after commit).
+   */
+  async recoverSplitShortfallRefunds(limit = 25): Promise<{ scanned: number; started: number }> {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT p.id FROM payments p
+      JOIN bookings b ON b.id = p.booking_id
+      WHERE p.payment_method = 'wallet_razorpay_split'
+        AND p.status::text = 'SUCCESS'
+        AND b.payment_status::text = 'FAILED'
+        AND p.completed_at < NOW() - INTERVAL '60 seconds'
+        AND NOT EXISTS (SELECT 1 FROM refund_requests r WHERE r.idempotency_key = 'split-shortfall:' || p.id)
+      ORDER BY p.completed_at ASC
+      LIMIT ${limit}`;
+    let started = 0;
+    for (const r of rows) {
+      const res = await this.refundSplitShortfall(r.id);
+      if (!("error" in res)) started++;
+    }
+    return { scanned: rows.length, started };
   },
 
   /**
@@ -401,9 +548,11 @@ export const walletCheckoutService = {
     bookingId: string,
     opts: { giftCardCode?: string; hCoinCoins?: number; useWallet?: boolean },
   ): Promise<MultiSourcePayResult> {
-    const booking = await prisma.booking.findFirst({ where: { id: bookingId, userId }, select: { finalAmount: true, paymentStatus: true } });
+    const booking = await prisma.booking.findFirst({ where: { id: bookingId, userId }, select: { finalAmount: true, paymentStatus: true, status: true } });
     if (!booking) return { error: "BOOKING_NOT_FOUND" };
     if (booking.paymentStatus === "SUCCESS") return { error: "ALREADY_PAID" };
+    // Before any gift card or H-Coin is redeemed for it.
+    if (!isPayableBookingStatus(booking.status)) return { error: "BOOKING_NOT_PAYABLE" };
     const final = booking.finalAmount;
 
     let giftCardUsed = 0;
@@ -467,7 +616,7 @@ function safeJson(s: string | null): Record<string, unknown> | null {
 type SplitInitResult =
   | { mode: "wallet_only"; status: "SUCCESS"; walletTransactionId: string | null; amountPaid: number; balance: number }
   | { mode: "split"; razorpayOrderId: string; razorpayAmount: number; walletAmount: number; finalAmount: number; key: string | undefined }
-  | { error: "BOOKING_NOT_FOUND" | "ALREADY_PAID" | "INVALID_AMOUNT" | "INSUFFICIENT_WALLET_BALANCE" };
+  | { error: "BOOKING_NOT_FOUND" | "ALREADY_PAID" | "INVALID_AMOUNT" | "INSUFFICIENT_WALLET_BALANCE" | "BOOKING_NOT_PAYABLE" | "WALLET_NOT_ALLOWED" | "SPLIT_NOT_ALLOWED" | "RETRY_CONFLICT" };
 
 type SplitVerifyResult =
   | { ok: true; status: "SUCCESS"; bookingId: string; walletApplied: number; razorpayApplied: number; balance: number }

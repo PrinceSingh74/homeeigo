@@ -5,6 +5,7 @@ import { classifyAdminIntent } from "../ai/intent/admin-intent";
 import { detectPromptInjection } from "../ai/security/prompt-security";
 import { authorizeAiRequest, mapUserRoleToAiRole } from "../ai/security/authorization";
 import { mayAttachPlatformFinance } from "../ai-brain/context/platform-scope";
+import { bindAiContextToActor } from "../ai-tools/execution/actor-resolver";
 
 describe("Section 08 partner copilot governance", () => {
   it("classifies earnings, demand, mutation, and cross-partner probes", () => {
@@ -46,6 +47,16 @@ describe("Section 08 partner copilot governance", () => {
     expect(mayAttachPlatformFinance("PARTNER")).toBe(false);
     expect(mayAttachPlatformFinance("CUSTOMER")).toBe(false);
     expect(mayAttachPlatformFinance("ADMIN")).toBe(true);
+  });
+
+  it("strips client partnerId/customerId so a customer cannot attach another party", async () => {
+    const bound = await bindAiContextToActor(
+      { actorId: "cust-self", actorRole: "CUSTOMER" },
+      { partnerId: "other-partner", customerId: "other-customer", userId: "other-user" },
+    );
+    expect(bound?.customerId).toBe("cust-self");
+    expect(bound?.userId).toBe("cust-self");
+    expect(bound?.partnerId).toBeUndefined();
   });
 
   it("admin supply-short intent is demand-supply, mutation is refused", () => {

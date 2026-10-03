@@ -46,23 +46,51 @@ export async function adminLogin(page: Page) {
     localStorage.clear();
     sessionStorage.clear();
   });
-  await page.goto("/login", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#admin-email")).toBeVisible({ timeout: 60_000 });
-  await expect(page.locator("#admin-email")).toBeEnabled({ timeout: 30_000 });
-  await page.locator("#admin-email").click();
-  await page.locator("#admin-email").fill("");
-  await page.locator("#admin-email").pressSequentially(SEED_ADMIN.email, { delay: 20 });
-  await page.locator("#admin-password").click();
-  await page.locator("#admin-password").fill("");
-  await page.locator("#admin-password").pressSequentially(SEED_ADMIN.password, { delay: 20 });
 
-  const res = page.waitForResponse(
-    (r) => r.request().method() === "POST" && r.url().includes("/api/auth/login") && r.status() === 200,
-    { timeout: 60_000 },
-  );
-  await page.getByRole("button", { name: /enter business hq/i }).click();
-  await res;
-  await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await page.goto("/login", { waitUntil: "networkidle", timeout: 60_000 }).catch(() =>
+        page.goto("/login", { waitUntil: "domcontentloaded" }),
+      );
+      const email = page.locator("#admin-email");
+      const password = page.locator("#admin-password");
+      await expect(email).toBeVisible({ timeout: 60_000 });
+      await expect(email).toBeEnabled({ timeout: 30_000 });
+      // Controlled React inputs: clear + type so onChange commits state (fill alone can leave state empty → no POST).
+      await email.click();
+      await email.fill("");
+      await email.pressSequentially(SEED_ADMIN.email, { delay: 15 });
+      await password.click();
+      await password.fill("");
+      await password.pressSequentially(SEED_ADMIN.password, { delay: 15 });
+      await expect(email).toHaveValue(SEED_ADMIN.email);
+      await expect(password).toHaveValue(SEED_ADMIN.password);
+
+      const button = page.getByRole("button", { name: /enter business hq/i });
+      await expect(button).toBeEnabled({ timeout: 15_000 });
+      const resPromise = page.waitForResponse(
+        (r) => r.request().method() === "POST" && r.url().includes("/api/auth/login"),
+        { timeout: 45_000 },
+      );
+      await button.click();
+      const res = await resPromise;
+      if (res.status() === 429) {
+        await page.waitForTimeout(2_000 * (attempt + 1));
+        throw new Error(`login rate-limited (429) attempt ${attempt + 1}`);
+      }
+      if (res.status() !== 200) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`login HTTP ${res.status()}: ${body.slice(0, 300)}`);
+      }
+      await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
+      return;
+    } catch (err) {
+      lastErr = err;
+      await page.waitForTimeout(500 * (attempt + 1));
+    }
+  }
+  throw lastErr;
 }
 
 export async function adminApiToken() {

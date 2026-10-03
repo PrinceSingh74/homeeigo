@@ -22,6 +22,7 @@ export function CommandHubPage({
   subtitle,
   links,
   children,
+  embedded = false,
 }: {
   icon: LucideIcon;
   tone?: Icon3DTone;
@@ -29,19 +30,24 @@ export function CommandHubPage({
   subtitle: string;
   links: readonly CommandHubLink[];
   children?: ReactNode;
+  embedded?: boolean;
 }) {
   return (
-    <div className="mx-auto max-w-7xl space-y-6 biz-page-enter">
-      <SectionHead icon={icon} tone={tone} title={title} subtitle={subtitle} as="h1" />
+    <div className={embedded ? "space-y-5" : "mx-auto max-w-7xl space-y-6 biz-page-enter"}>
+      {embedded ? (
+        <SectionHead icon={icon} tone={tone} title={title} subtitle={subtitle} as="h2" />
+      ) : (
+        <SectionHead icon={icon} tone={tone} title={title} subtitle={subtitle} as="h1" />
+      )}
       {children}
-      <nav aria-label={`${title} destinations`} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <nav aria-label={`${title} destinations`} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {links.map((link) => {
           const Icon = link.icon;
           return (
             <Link
               key={link.href}
               href={link.href}
-              className="biz-glass-panel group flex items-start gap-3 p-4 transition hover:border-[var(--color-biz-accent)]/40"
+              className="biz-glass-panel group flex items-start gap-3.5 p-5 transition hover:border-[var(--color-biz-accent)]/40"
             >
               <Icon3D icon={Icon} tone={link.tone ?? tone} size="sm" />
               <div className="min-w-0 flex-1">

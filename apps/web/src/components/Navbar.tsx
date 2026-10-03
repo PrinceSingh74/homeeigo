@@ -17,7 +17,7 @@ const NAVBAR_HEIGHT = "3.5rem";
 
 function navLinkClass(active: boolean) {
   return active
-    ? "rounded-full bg-primary/10 px-3 py-2 text-sm font-semibold text-primary outline-none focus-visible:ring-2 focus-visible:ring-primary/60 xl:px-4"
+    ? "rounded-full bg-primary/10 px-3 py-2 text-sm font-semibold text-primary-strong outline-none focus-visible:ring-2 focus-visible:ring-primary/60 xl:px-4"
     : "rounded-full px-3 py-2 text-sm font-semibold text-content transition-colors hover:bg-primary/5 hover:text-primary outline-none focus-visible:ring-2 focus-visible:ring-primary/60 xl:px-4";
 }
 

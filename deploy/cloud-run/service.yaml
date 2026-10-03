@@ -38,27 +38,57 @@ spec:
               memory: 1Gi
           env:
             - { name: NODE_ENV, value: "production" }
-            - { name: SECRETS_SOURCE, value: "gsm" }
+            - { name: APP_ENV, value: "production" }
             - { name: GCP_PROJECT_ID, value: "PROJECT_ID" }
+            # Behind Google's front end. Set TRUST_PROXY_HOPS once the hop count is measured on the real
+            # service (boot logs production_config_warning until then) — see src/lib/client-ip.ts.
+            - { name: TRUST_PROXY, value: "true" }
             # ---- PHASE 2: secrets from Secret Manager (no plaintext in the manifest/image) ----
+            # 2026-10-01: aligned with what the code reads and what assertProductionConfig requires.
+            # The previous list omitted REDIS_URL, JWT_REFRESH_SECRET, ENCRYPTION_KEY, OTP_SECRET,
+            # RAZORPAY_KEY_ID, RAZORPAY_ACCOUNT_NUMBER and RESEND_API_KEY, so a revision built from it
+            # refused to boot; it also injected PII_MASTER_KEY, which no code reads (the PII layer reads
+            # MASTER_ENCRYPTION_KEY — mapped from the existing secret below). Secrets not yet created in
+            # Secret Manager are an owner action; nothing here invents a value.
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: DATABASE_URL, key: latest } }
+            - name: REDIS_URL
+              valueFrom: { secretKeyRef: { name: REDIS_URL, key: latest } }
             - name: JWT_SECRET
               valueFrom: { secretKeyRef: { name: JWT_SECRET, key: latest } }
-            - name: PII_MASTER_KEY
+            - name: JWT_REFRESH_SECRET
+              valueFrom: { secretKeyRef: { name: JWT_REFRESH_SECRET, key: latest } }
+            - name: ENCRYPTION_KEY
+              valueFrom: { secretKeyRef: { name: ENCRYPTION_KEY, key: latest } }
+            - name: MASTER_ENCRYPTION_KEY
               valueFrom: { secretKeyRef: { name: PII_MASTER_KEY, key: latest } }
+            - name: HASH_HMAC_KEY
+              valueFrom: { secretKeyRef: { name: HASH_HMAC_KEY, key: latest } }
+            - name: OTP_SECRET
+              valueFrom: { secretKeyRef: { name: OTP_SECRET, key: latest } }
+            - name: OPS_AUTH_TOKEN
+              valueFrom: { secretKeyRef: { name: OPS_AUTH_TOKEN, key: latest } }
+            - name: RAZORPAY_KEY_ID
+              valueFrom: { secretKeyRef: { name: RAZORPAY_KEY_ID, key: latest } }
             - name: RAZORPAY_KEY_SECRET
               valueFrom: { secretKeyRef: { name: RAZORPAY_KEY_SECRET, key: latest } }
             - name: RAZORPAY_WEBHOOK_SECRET
               valueFrom: { secretKeyRef: { name: RAZORPAY_WEBHOOK_SECRET, key: latest } }
+            - name: RAZORPAY_ACCOUNT_NUMBER
+              valueFrom: { secretKeyRef: { name: RAZORPAY_ACCOUNT_NUMBER, key: latest } }
+            - name: RESEND_API_KEY
+              valueFrom: { secretKeyRef: { name: RESEND_API_KEY, key: latest } }
           # ---- PHASE 1: cold-start / health gating ----
+          # /readyz answers 503 until the database does (/health always answered 200, so a revision
+          # with an unreachable database took traffic). Liveness is /livez: process only, so a
+          # database outage does not restart every healthy instance.
           startupProbe:
-            httpGet: { path: /health, port: 8080 }
+            httpGet: { path: /readyz, port: 8080 }
             initialDelaySeconds: 2
             periodSeconds: 3
             failureThreshold: 10                # up to ~30s for a cold container to become ready
           livenessProbe:
-            httpGet: { path: /health, port: 8080 }
+            httpGet: { path: /livez, port: 8080 }
             periodSeconds: 15
             timeoutSeconds: 3
   traffic:

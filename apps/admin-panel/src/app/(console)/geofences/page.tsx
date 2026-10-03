@@ -25,6 +25,7 @@ import {
 import { StatTile } from "@/components/hq/primitives";
 import { SectionHead } from "@/components/hq/SectionHead";
 import { Icon3D, type Icon3DTone } from "@/components/hq/Icon3D";
+import { OperationsWorkspaceRail, OpsEyebrow } from "@/components/operations/OperationsWorkspaceRail";
 import { IsoBarChart } from "@/components/hq/IsoBarChart";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { MapDOMIsolationBoundary } from "@/components/perf/MapDOMIsolationBoundary";
@@ -223,7 +224,7 @@ export default function GeofencesPage() {
     },
   });
 
-  const geofences = list.data ?? [];
+  const geofences = useMemo(() => list.data ?? [], [list.data]);
   const analyticsById = useMemo(() => {
     const map = new Map<string, ZoneAnalyticsRow>();
     for (const z of analyticsQ.data?.zones ?? []) map.set(z.id, z);
@@ -246,7 +247,7 @@ export default function GeofencesPage() {
     });
   }, [geofences, search, typeFilter, statusFilter]);
 
-  const events = eventsQ.data ?? [];
+  const events = useMemo(() => eventsQ.data ?? [], [eventsQ.data]);
   const events24h = useMemo(() => {
     const since = Date.now() - 86_400_000;
     return events.filter((e) => new Date(e.createdAt).getTime() >= since);
@@ -417,6 +418,7 @@ export default function GeofencesPage() {
         <div className="flex min-w-0 items-start gap-4">
           <Icon3D icon={MapPinned} tone="cyan" size="lg" />
           <div className="min-w-0">
+            <OpsEyebrow />
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <h1 className="biz-display text-[1.75rem] font-bold leading-none tracking-tight">Zone Control</h1>
               <span className="cmd-live-pill">
@@ -440,6 +442,8 @@ export default function GeofencesPage() {
           </button>
         </div>
       </header>
+
+      <OperationsWorkspaceRail />
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
@@ -690,6 +694,7 @@ export default function GeofencesPage() {
               </div>
               <input
                 type="range"
+                aria-label="Radius"
                 min={80}
                 max={20000}
                 step={20}
@@ -712,6 +717,7 @@ export default function GeofencesPage() {
               </div>
               <input
                 type="range"
+                aria-label="Surge multiplier"
                 min={1}
                 max={2.5}
                 step={0.05}
@@ -723,11 +729,11 @@ export default function GeofencesPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={fieldLabel}>Latitude</label>
-                <input className={field} type="number" step="0.0001" value={form.centerLat} onChange={(e) => setForm({ ...form, centerLat: Number(e.target.value) })} />
+                <input className={field} aria-label="Latitude" type="number" step="0.0001" value={form.centerLat} onChange={(e) => setForm({ ...form, centerLat: Number(e.target.value) })} />
               </div>
               <div>
                 <label className={fieldLabel}>Longitude</label>
-                <input className={field} type="number" step="0.0001" value={form.centerLng} onChange={(e) => setForm({ ...form, centerLng: Number(e.target.value) })} />
+                <input className={field} aria-label="Longitude" type="number" step="0.0001" value={form.centerLng} onChange={(e) => setForm({ ...form, centerLng: Number(e.target.value) })} />
               </div>
             </div>
             {err ? <p className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-400">{err}</p> : null}
@@ -907,7 +913,9 @@ export default function GeofencesPage() {
         confirmLabel="Delete zone"
         destructive
         isLoading={deleteM.isPending}
-        onConfirm={() => pendingDelete && deleteM.mutate(pendingDelete.id)}
+        onConfirm={() => {
+          if (pendingDelete) deleteM.mutate(pendingDelete.id);
+        }}
         onClose={() => setPendingDelete(null)}
       />
     </div>

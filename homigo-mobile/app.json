@@ -21,9 +21,6 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.homigo.mobile",
       "buildNumber": "1",
-      "config": {
-        "googleMapsApiKey": "AIzaSyCHxF9zmbEdcgoO0G66PB42Ln3vif6pZNY"
-      },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "HOMIGO uses your location to find nearby providers and track your service.",
         "ITSAppUsesNonExemptEncryption": false
@@ -33,11 +30,6 @@
       "package": "com.homigo.mobile",
       "versionCode": 1,
       "softwareKeyboardLayoutMode": "pan",
-      "config": {
-        "googleMaps": {
-          "apiKey": "AIzaSyCHxF9zmbEdcgoO0G66PB42Ln3vif6pZNY"
-        }
-      },
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"

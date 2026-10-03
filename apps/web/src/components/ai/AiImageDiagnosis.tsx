@@ -1,40 +1,20 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { Cloud, Loader2 } from "lucide-react";
-import { m as motion } from "framer-motion";
+import { Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAppStore } from "@/stores/app-store";
 import { AI_SECTION_IDS } from "@/lib/ai-page-actions";
 import { aiGlassPanel, aiSectionShell, aiSectionTitle } from "@/components/ai/ai-page-layout";
 
+/**
+ * This section previously "diagnosed" any uploaded photo with a hardcoded, fabricated
+ * result ("possible AC airflow issue detected") after a fake 2.2s delay — no upload, no AI
+ * call, same claim for every image. Real, certified photo-based AI analysis exists at
+ * /vision (vision-intelligence.service.ts, SHADOW-only). Whether this section should call
+ * that pipeline directly or simply link there is a product decision, not made here — this
+ * is the smallest fix that stops presenting a fabricated finding as a real one: an honest
+ * "coming soon" state, matching the project's standing convention for unbacked features.
+ */
 export function AiImageDiagnosis() {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [dragging, setDragging] = useState(false);
-  const [scanning, setScanning] = useState(false);
-  const showToast = useAppStore((s) => s.showToast);
-
-  const handleFiles = useCallback(
-    (files: FileList | null) => {
-      if (!files?.length) return;
-      const file = files[0];
-      if (!file.type.startsWith("image/")) {
-        showToast("Please upload a JPG or PNG image", "error");
-        return;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        showToast("Image must be under 10MB", "error");
-        return;
-      }
-      setScanning(true);
-      window.setTimeout(() => {
-        setScanning(false);
-        showToast("AI diagnosis complete — possible AC airflow issue detected", "success");
-      }, 2200);
-    },
-    [showToast],
-  );
-
   return (
     <section
       id={AI_SECTION_IDS.diagnosis}
@@ -42,49 +22,20 @@ export function AiImageDiagnosis() {
     >
       <h2 className={aiSectionTitle}>AI Image Diagnosis</h2>
 
-      <input
-        id="ai-diagnosis-file-input"
-        ref={inputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        className="sr-only"
-        onChange={(e) => handleFiles(e.target.files)}
-      />
-
-      <motion.button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragging(false);
-          handleFiles(e.dataTransfer.files);
-        }}
-        whileHover={{ scale: 1.01 }}
+      <div
         className={cn(
-          "ai-diagnosis-zone mt-3 flex h-[min(44vw,200px)] min-h-[168px] w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed transition sm:mt-4 sm:h-[220px] sm:gap-3 lg:h-[240px]",
+          "ai-diagnosis-zone mt-3 flex h-[min(44vw,200px)] min-h-[168px] w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-emerald-400/20 opacity-70 sm:mt-4 sm:h-[220px] sm:gap-3 lg:h-[240px]",
           aiGlassPanel,
-          dragging && "is-dragging scale-[1.02] border-emerald-400",
-          !dragging &&
-            "border-emerald-400/30 hover:border-emerald-400/60 hover:shadow-[0_8px_24px_rgb(16_185_129/0.25)]",
-          scanning && "animate-pulse border-emerald-400",
         )}
       >
-        {scanning ? (
-          <Loader2 size={48} className="animate-spin text-emerald-400" />
-        ) : (
-          <Cloud size={48} className="text-emerald-400 opacity-80" />
-        )}
+        <Camera size={48} className="text-emerald-400/60" />
         <span className="font-display text-base font-bold tracking-tight text-ink">
-          Upload image of the issue
+          Photo diagnosis — coming soon
         </span>
-        <span className="text-[13px] text-slate">Drag & drop or click to upload</span>
-        <span className="text-[11px] text-emerald-200/40">JPG, PNG up to 10MB</span>
-      </motion.button>
+        <span className="max-w-xs text-center text-[13px] text-slate">
+          Upload-a-photo AI diagnosis isn&apos;t live here yet.
+        </span>
+      </div>
     </section>
   );
 }

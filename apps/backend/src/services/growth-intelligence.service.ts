@@ -1,4 +1,6 @@
 import prisma from "../lib/prisma";
+import { Prisma } from "@prisma/client";
+import { analyticsSqlPredicate } from "../lib/analytics-scope";
 import { financeAnalyticsService } from "./finance-analytics.service";
 import { financeIntelligenceService } from "./finance-intelligence.service";
 import { campaignService } from "./campaign.service";
@@ -33,7 +35,8 @@ export class GrowthIntelligenceService {
       prisma.$queryRaw<Array<{ gmv: number }>>`
         SELECT COALESCE(SUM(b.total_amount), 0)::float AS gmv
         FROM referral_transactions rt
-        JOIN bookings b ON b.user_id = rt.referee_id AND b.status = 'COMPLETED' AND b.created_at >= ${since}`,
+        JOIN bookings b ON b.user_id = rt.referee_id AND b.status = 'COMPLETED' AND b.created_at >= ${since}
+          AND ${Prisma.raw(analyticsSqlPredicate("b"))}`,
     ]);
 
     const cac = unit.cac;

@@ -1,8 +1,13 @@
 /**
  * Seeds deterministic ops data for Playwright enterprise certification.
- * Usage: bun --env-file=.env run scripts/enterprise/seed-playwright-ops-data.ts
+ * Usage: bun --env-file=.env.test run scripts/enterprise/seed-playwright-ops-data.ts
+ *
+ * Declared target (scripts/lib/script-target.ts): it writes chargebacks, withdrawals and settlement
+ * rows, so it refuses any non-test database unless `--allow-live` is on the command line. The old
+ * usage line pointed it at `.env` — the live homigo_db — by default.
  */
 import "../../src/load-env";
+import { requireDeclaredTarget } from "../lib/script-target";
 import { ChargebackStatus, SettlementDiscrepancyType, SettlementSyncStatus, WithdrawalStatus } from "@prisma/client";
 import { PrismaClient } from "@prisma/client";
 import prisma from "../../src/lib/prisma";
@@ -21,32 +26,41 @@ const RUN_ID = "pw-ops-seed";
 const OUT = path.join(import.meta.dir, "../../../admin-panel/e2e/enterprise/ops-seed.json");
 
 async function main() {
+  requireDeclaredTarget({ label: "seed-playwright-ops-data" });
   const admin = await prisma.user.findFirst({ where: { email: "admin@homigo.demo" } });
   if (!admin) throw new Error("admin@homigo.demo not found — run db:seed");
 
-  const provider = await prisma.provider.findFirst({ include: { user: true } });
-  if (!provider) throw new Error("No provider — run db:seed");
-
-  let withdrawal = await prisma.withdrawal.findFirst({
-    where: { status: WithdrawalStatus.REQUESTED, providerId: provider.id },
+  const demoPartner = await prisma.user.findFirst({
+    where: { email: "partner@homigo.demo" },
+    select: { id: true },
   });
-  if (!withdrawal) {
-    withdrawal = await prisma.withdrawal.create({
-      data: {
-        providerId: provider.id,
-        amount: 500,
-        netAmount: 490,
-        processingFee: 10,
-        status: WithdrawalStatus.REQUESTED,
-        withdrawalNumber: `PW-${Date.now()}`,
-        accountHolderName: provider.businessName ?? "Demo Provider",
-        accountNumber: provider.bankAccountNumber ?? "1234567890",
-        ifscCode: provider.bankIfscCode ?? "HDFC0001234",
-        bankName: provider.bankName ?? "HDFC",
-        paymentMethod: "bank_transfer",
-      },
-    });
-  }
+  // A negative wallet fails payout-batch integrity (PROVIDER_NEGATIVE). Prefer the demo partner.
+  const provider =
+    (await prisma.provider.findFirst({
+      where: { walletBalance: { gte: 0 }, ...(demoPartner ? { userId: demoPartner.id } : {}) },
+      include: { user: true },
+    })) ??
+    (await prisma.provider.findFirst({
+      where: { walletBalance: { gte: 0 } },
+      include: { user: true },
+    }));
+  if (!provider) throw new Error("No provider with a non-negative wallet — run db:seed");
+
+  let withdrawal = await prisma.withdrawal.create({
+    data: {
+      providerId: provider.id,
+      amount: 500,
+      netAmount: 490,
+      processingFee: 10,
+      status: WithdrawalStatus.REQUESTED,
+      withdrawalNumber: `PW-${Date.now()}`,
+      accountHolderName: provider.businessName ?? "Demo Provider",
+      accountNumber: provider.bankAccountNumber ?? "1234567890",
+      ifscCode: provider.bankIfscCode ?? "HDFC0001234",
+      bankName: provider.bankName ?? "HDFC",
+      paymentMethod: "bank_transfer",
+    },
+  });
 
   const financeRole = await prisma.adminRole.findFirst({ where: { name: "FINANCE_ADMIN" } });
   const approverEmail = "finance-approver@homigo.demo";
@@ -125,7 +139,7 @@ async function main() {
     },
   });
 
-  const customer = await prisma.user.findFirst({ where: { role: "CUSTOMER", email: { contains: "customer" } } });
+  const customer = await prisma.user.findFirst({ where: { email: "customer@homigo.demo" } });
   const service = await prisma.service.findFirst({ where: { isActive: true } });
   const address = customer
     ? await prisma.address.findFirst({ where: { userId: customer.id } })
@@ -145,7 +159,10 @@ async function main() {
     seededAt: new Date().toISOString(),
   };
 
-  fs.mkdirSync(path.dirname(OUT), { recursive: true });
+  const outDir = path.dirname(OUT);
+  if (!fs.existsSync(outDir)) {
+    fs.mkdirSync(outDir, { recursive: true });
+  }
   fs.writeFileSync(OUT, JSON.stringify(payload, null, 2));
   console.log("✅ Playwright ops seed written:", OUT);
   console.log(JSON.stringify(payload, null, 2));

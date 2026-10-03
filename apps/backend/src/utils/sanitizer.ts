@@ -108,6 +108,18 @@ export function sanitizeHtml(dirty: string): string {
  * prevent stored-XSS through nested payloads. Non-string primitives pass
  * through untouched.
  */
+/**
+ * RETAINED CASTS (2), and why they cannot be removed.
+ *
+ * Inside a generic, narrowing `input` to `string` tells TypeScript nothing about how the RETURN
+ * relates to `T` — the language cannot express "if T is string, the result is string" for a
+ * recursive identity function like this one. The casts are therefore language limitation, not a
+ * hidden defect: every branch provably returns the same shape it received, which is exactly what
+ * `T` claims.
+ *
+ * Nothing here is untrusted or stale, so there is no boundary to validate and no source type to
+ * fix. Removable only if TypeScript gains a way to relate narrowed inputs to a generic return.
+ */
 export function sanitizeJson<T>(input: T): T {
   if (typeof input === "string") {
     return sanitizeUserInput(input) as unknown as T;

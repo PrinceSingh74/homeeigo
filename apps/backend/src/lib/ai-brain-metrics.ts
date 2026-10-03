@@ -91,13 +91,18 @@ export function recordPromptCompression(ratio: number): void {
   observeHist("homigo_prompt_compression_ratio", ratio);
 }
 
+  /**
+   * Histograms are deliberately NOT seeded.
+   *
+   * Seeding a counter at zero states a true fact. Observing a zero into a histogram fabricates a
+   * measurement: it increments `_count`, lands a sample in the lowest bucket, and drags
+   * percentiles toward zero for as long as the seed sits inside the rate window after a restart.
+   * A latency panel reading ~0ms before any request has been made is worse than one reading
+   * NO DATA, because only one of them is true.
+   */
 export function initAiBrainMetricsAtZero(): void {
   for (const role of ["CUSTOMER", "PARTNER", "ADMIN", "SUPPORT", "SYSTEM", "AUTOMATION"]) {
     incCounter("homigo_context_build_total", { role }, 0);
-    observeHist("homigo_context_latency", 0, { role, cached: "false" });
-    observeHist("homigo_context_latency", 0, { role, cached: "true" });
-    observeHist("homigo_context_size", 0, { role });
-    observeHist("homigo_prompt_tokens", 0, { role });
     incCounter("homigo_prompt_blocked_total", { reason: "token_budget_exceeded", role }, 0);
   }
 

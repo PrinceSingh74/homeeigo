@@ -27,7 +27,7 @@ const INJECTION_PATTERNS = [
   /developer\s+mode/i,
   // "Developer message:" / "System message:" are injected-authority framings the spec
   // calls out by name. Bare "system" stays allowed — customers legitimately say it.
-  /\b(developer|system|assistant)\s+message\s*[:\-]/i,
+  /\b(developer|system|assistant)\s+message\s*[:-]/i,
   /\b(you\s+are\s+)?(now\s+)?unrestricted\b/i,
 
   // ── system-context exfiltration ──
@@ -51,6 +51,7 @@ const INJECTION_PATTERNS = [
   /<script[\s>]/i,
   /javascript:/i,
   /onerror\s*=/i,
+  /(give|grant|provide)\s+(me\s+)?(direct\s+)?database\s+access/i,
 ];
 
 const FORBIDDEN_INSTRUCTIONS = [
@@ -100,18 +101,37 @@ export function sanitizeInput(raw: string): string {
 /**
  * Folds away the cheap obfuscations that defeat literal matching.
  *
- * Probes that reached the provider unmodified included `Ig​nore previous
- * instructions` (zero-width space inside a word) and `ignore-previous-instructions!!!`
- * (separators instead of spaces). Matching happens against BOTH the original text and
+ * Probes that reached the provider unmodified included a zero-width space (U+200B)
+ * inside a word, and separators instead of spaces (`ignore-previous-instructions!!!`).
+ * Matching happens against BOTH the original text and
  * this normalised form, so widening the fold can only add detections, never remove them.
+ *
+ * ── Line breaks are preserved, deliberately ──────────────────────────────────────
+ *
+ * This previously collapsed every whitespace run — newlines included — into a single space, which
+ * folded an entire multi-line prompt onto one logical line. One pattern here matches with `.*`
+ * (`SELECT … FROM`), and `.` does not cross a newline, so flattening silently widened that pattern
+ * from "a SQL statement" to "these two English words appear anywhere in the document".
+ *
+ * It fired on HOMEEIGO's own approved FAQ: "Open Bookings, **select** the booking" on one line and
+ * "carries authority **from** this platform" forty lines later were read as a SQL payload, and the
+ * platform's most common support question became permanently unanswerable — a deterministic block,
+ * not an intermittent one.
+ *
+ * Keeping newlines removes no intended detection. Every other pattern separates its tokens with
+ * `\s+`, and `\s` matches a newline, so an injection split across two lines is still caught. Only the
+ * proximity-based pattern is affected, and it is returned to the same-line meaning the raw-text pass
+ * already gives it.
  */
 function normalizeForDetection(input: string): string {
   return input
     // Zero-width and bidi controls carry no meaning in a user prompt.
-    .replace(/[​-‏‪-‮⁠﻿]/g, "")
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2060\ufeff]/g, "")
     // Full-width and lookalike separators collapse to a plain space.
     .replace(/[_\-‐-―.]+/g, " ")
-    .replace(/\s+/g, " ")
+    // Horizontal whitespace only. Newlines survive, so `.` still cannot cross a line.
+    .replace(/[^\S\r\n]+/g, " ")
+    .replace(/[ \t]*(?:\r\n|\n|\r)[ \t]*/g, "\n")
     .trim();
 }
 

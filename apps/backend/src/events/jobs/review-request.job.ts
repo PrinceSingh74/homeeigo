@@ -2,6 +2,7 @@ import prisma from "../../lib/prisma";
 import { logger } from "../../lib/logger";
 import { notificationService, NotificationType } from "../../services/notification.service";
 import type { ScheduledJobContext } from "../core/job-registry";
+import { isSupersededByLiveWorkflow } from "../../automation/registry/legacy-path-guard";
 
 export const REVIEW_REQUEST_JOB_TYPE = "automation.review_request";
 
@@ -26,6 +27,22 @@ export async function reviewRequestJobHandler(
 
   if (typeof bookingId !== "string" || typeof userId !== "string") {
     throw new Error("review_request payload missing bookingId or userId");
+  }
+
+  /**
+   * Asked again at execution, not only at enqueue.
+   *
+   * Jobs are scheduled two hours ahead, so certifying the replacing workflow leaves a two-hour tail
+   * of already-queued legacy jobs. Without this check those would each send a second, ungoverned
+   * review request alongside the workflow's governed one.
+   */
+  if (isSupersededByLiveWorkflow(REVIEW_REQUEST_JOB_TYPE)) {
+    logger.info("review_request_skipped", {
+      jobId: ctx.jobId,
+      bookingId,
+      reason: "superseded_by_live_workflow",
+    });
+    return;
   }
 
   const booking = await prisma.booking.findUnique({

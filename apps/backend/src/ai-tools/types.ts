@@ -1,4 +1,5 @@
 import type {
+  Prisma,
   AiGatewayRole,
   AiToolApprovalMode,
   AiToolApprovalStatus,
@@ -27,7 +28,7 @@ export type ToolDefinition = {
   requiredPolicy: string;
   riskLevel: AiToolRiskLevel;
   parameters: ToolParameterDef[];
-  validationSchema: Record<string, unknown>;
+  validationSchema: Prisma.InputJsonObject;
   timeoutMs: number;
   maxRetries: number;
   auditRequired: boolean;
@@ -103,7 +104,7 @@ export type ApprovalRequestInput = {
   riskScore: number;
   approvalMode?: AiToolApprovalMode;
   requiredApprovers?: number;
-  metadata?: Record<string, unknown>;
+  metadata?: Prisma.InputJsonObject;
   /** Redacted arguments for human review. Never consulted when validating an approval. */
   argumentsPreview?: Record<string, unknown>;
   /** Human-readable target, e.g. a booking id, so the approver sees what is affected. */

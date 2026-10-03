@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { JWTService } from "@/services/jwt.service";
 import { redisClient } from "@/lib/redis";
 import { incCounter } from "@/lib/metrics";
+import { logger } from "@/lib/logger";
 
 export enum MessageType {
   LOCATION_UPDATE = "LOCATION_UPDATE",
@@ -43,14 +44,52 @@ export interface WSConnection {
   lastPing: Date;
   rooms: Set<string>;
   send: (message: string) => void;
+  /**
+   * Revocable identity. Room membership is granted by a point-in-time check at `open()`; these
+   * fields let that grant be withdrawn later (reassignment, suspension, session revocation,
+   * token expiry) instead of living until the client decides to disconnect.
+   */
+  jti?: string;
+  /** Access-token `exp` (unix seconds). The socket must not outlive the credential it was opened with. */
+  tokenExp?: number;
+  close?: (code: number, reason: string) => void;
 }
+
+/** Close codes the clients understand: 4401 → refresh credentials and reconnect, 4403 → do not reconnect. */
+export const WS_CLOSE_UNAUTHORIZED = 4401;
+export const WS_CLOSE_FORBIDDEN = 4403;
+
+export type EvictionCriteria = {
+  userId: string;
+  /** Limit to these rooms; the connection is closed only when it has no room left. Omit = everywhere. */
+  roomIds?: string[];
+  /** Only connections opened with this token. */
+  jti?: string;
+  code: number;
+  reason: string;
+};
 
 /** Redis channel carrying cross-instance WebSocket fan-out envelopes. */
 const WS_FANOUT_CHANNEL = "ws:fanout";
 
-type FanoutEnvelope =
-  | { kind: "room"; origin: string; roomId: string; message: WSMessage }
-  | { kind: "user"; origin: string; userId: string; message: WSMessage };
+/**
+ * Optional audience filter for a room broadcast (X-29): one room can hold a customer and a partner,
+ * and some frames carry fields only one of them may read. Carried in the fan-out envelope so a peer
+ * instance applies the same filter.
+ */
+export type RoomAudience = { onlyUserType?: WSConnection["userType"]; exceptUserType?: WSConnection["userType"] };
+
+function inAudience(connection: WSConnection, audience?: RoomAudience): boolean {
+  if (!audience) return true;
+  if (audience.onlyUserType && connection.userType !== audience.onlyUserType) return false;
+  if (audience.exceptUserType && connection.userType === audience.exceptUserType) return false;
+  return true;
+}
+
+export type FanoutEnvelope =
+  | { kind: "room"; origin: string; roomId: string; message: WSMessage; audience?: RoomAudience }
+  | { kind: "user"; origin: string; userId: string; message: WSMessage }
+  | { kind: "evict"; origin: string; criteria: EvictionCriteria };
 
 export class RoomManager {
   private rooms = new Map<string, Set<WSConnection>>();
@@ -79,9 +118,7 @@ export class RoomManager {
     connection.rooms.add(roomId);
     this.connectionMap.set(connection.connectionId, connection);
 
-    console.log(
-      `[Room] ${connection.userId} joined ${roomId} (total: ${room.size})`
-    );
+    logger.debug("ws_room_joined", { userId: connection.userId, roomId, size: room.size });
   }
 
   removeAllRooms(connection: WSConnection): void {
@@ -114,9 +151,11 @@ export class RoomManager {
       }
       this.connectionMap.delete(connection.connectionId);
     }
-    console.log(
-      `[Room] ${connection.userId} left ${roomId} (remaining: ${this.rooms.get(roomId)?.size || 0})`
-    );
+    logger.debug("ws_room_left", {
+      userId: connection.userId,
+      roomId,
+      remaining: this.rooms.get(roomId)?.size || 0,
+    });
   }
 
   getRoom(roomId: string): Set<WSConnection> {
@@ -128,10 +167,11 @@ export class RoomManager {
   }
 
   /** Deliver to this instance's local connections only (no fan-out). */
-  private localBroadcast(roomId: string, message: WSMessage): number {
+  private localBroadcast(roomId: string, message: WSMessage, audience?: RoomAudience): number {
     const room = this.getRoom(roomId);
     let successCount = 0;
     room.forEach((connection) => {
+      if (!inAudience(connection, audience)) return;
       try {
         connection.send(JSON.stringify(message));
         successCount++;
@@ -142,18 +182,33 @@ export class RoomManager {
     return successCount;
   }
 
-  broadcast(roomId: string, message: WSMessage): number {
+  /**
+   * Deliver to this instance's members AND to every peer instance.
+   *
+   * The fan-out publish is unconditional. It used to be skipped when the LOCAL room was empty
+   * (`if (roomSize === 0) return 0` before the publish), which is only correct on a single instance:
+   * room membership is per-instance, so an empty room here says nothing about whether a peer is
+   * holding the subscriber. On two instances that shortcut silently dropped every room broadcast
+   * produced on the node that happened not to host a member — measured as 0 of 1 `BOOKING_STATUS`
+   * frames delivered while the `sendToUser` envelope for the same transition arrived normally,
+   * because `sendToUser` never had the shortcut.
+   *
+   * The rooms without a per-user fallback were the ones that lost the most: `admin:ops` alerts,
+   * `tracking:{bookingId}` and `geofence:{key}` are broadcast-only, so for them the shortcut meant
+   * the event simply never left the producing node.
+   *
+   * A PUBLISH with no subscribers is O(1) in Redis and delivers nothing, so the cost of always
+   * publishing is one round trip on a path that already performs one for every `sendToUser`.
+   */
+  broadcast(roomId: string, message: WSMessage, audience?: RoomAudience): number {
     const roomSize = this.getRoom(roomId).size;
-    if (roomSize === 0) return 0;
-    const successCount = this.localBroadcast(roomId, message);
+    const successCount = this.localBroadcast(roomId, message, audience);
     if (successCount > 0) {
-      console.log(
-        `[Broadcast] ${message.type} sent to ${successCount}/${roomSize} in ${roomId}`
-      );
+      logger.debug("ws_broadcast", { type: String(message.type), roomId, delivered: successCount, roomSize });
     }
     void redisClient.publish(
       WS_FANOUT_CHANNEL,
-      JSON.stringify({ kind: "room", origin: this.instanceId, roomId, message } as FanoutEnvelope),
+      JSON.stringify({ kind: "room", origin: this.instanceId, roomId, message, ...(audience ? { audience } : {}) } as FanoutEnvelope),
     );
     return successCount;
   }
@@ -176,7 +231,7 @@ export class RoomManager {
   sendToUser(userId: string, message: WSMessage): void {
     const successCount = this.localSendToUser(userId, message);
     if (successCount > 0) {
-      console.log(`[SendToUser] ${message.type} sent to ${userId} (${successCount} connections)`);
+      logger.debug("ws_send_to_user", { type: String(message.type), userId, connections: successCount });
     }
     void redisClient.publish(
       WS_FANOUT_CHANNEL,
@@ -195,16 +250,14 @@ export class RoomManager {
     const unsub = await redisClient.subscribe(WS_FANOUT_CHANNEL, (raw) => {
       try {
         const env = JSON.parse(raw) as FanoutEnvelope;
-        if (!env || env.origin === this.instanceId) return; // ignore our own echoes
-        if (env.kind === "room") this.localBroadcast(env.roomId, env.message);
-        else if (env.kind === "user") this.localSendToUser(env.userId, env.message);
+        this.applyFanoutEnvelope(env);
       } catch (err) {
         console.error("[WS Fanout] bad envelope:", err);
       }
     });
     if (!unsub) return false;
     this.fanoutUnsub = unsub;
-    console.log(`[WS Fanout] subscribed (instance ${this.instanceId})`);
+    logger.info("ws_fanout_subscribed", { instanceId: this.instanceId });
     return true;
   }
 
@@ -234,20 +287,105 @@ export class RoomManager {
     };
   }
 
-  removeAllUserConnections(userId: string): void {
-    const connections = this.userConnections.get(userId);
-    if (connections) {
-      const roomsToClean = new Set<string>();
-      connections.forEach((conn) => {
-        conn.rooms.forEach((room) => roomsToClean.add(room));
-      });
-      roomsToClean.forEach((room) => {
-        connections.forEach((conn) => {
-          this.removeFromRoom(room, conn);
-        });
-      });
-      this.userConnections.delete(userId);
+  /** Apply a peer instance's envelope to local connections. Own echoes are ignored. Exposed for tests. */
+  applyFanoutEnvelope(env: FanoutEnvelope): void {
+    if (!env || env.origin === this.instanceId) return;
+    if (env.kind === "room") this.localBroadcast(env.roomId, env.message, env.audience);
+    else if (env.kind === "user") this.localSendToUser(env.userId, env.message);
+    else if (env.kind === "evict") this.localEvict(env.criteria);
+  }
+
+  /**
+   * Withdraw a user's room membership on this instance. With `roomIds` only those rooms are left and
+   * the socket is closed once it has no room left (a booking socket lives in exactly one room, a
+   * notifications socket keeps its `user:` room); without, every room is left and the socket closed.
+   * Returns the number of connections closed locally.
+   */
+  private localEvict(criteria: EvictionCriteria): number {
+    const connections = Array.from(this.getUserConnections(criteria.userId));
+    let closed = 0;
+    for (const conn of connections) {
+      if (criteria.jti && conn.jti !== criteria.jti) continue;
+      const targetRooms = criteria.roomIds
+        ? criteria.roomIds.filter((r) => conn.rooms.has(r))
+        : Array.from(conn.rooms);
+      if (targetRooms.length === 0) continue;
+      for (const roomId of targetRooms) this.removeFromRoom(roomId, conn);
+      if (conn.rooms.size === 0) {
+        this.connectionMap.delete(conn.connectionId);
+        try {
+          conn.close?.(criteria.code, criteria.reason);
+        } catch {
+          /* already gone */
+        }
+        closed++;
+      }
     }
+    if (closed > 0 || connections.length > 0) {
+      incCounter("websocket_evictions_total", { reason: criteria.reason });
+      logger.info("ws_evicted", {
+        userId: criteria.userId,
+        rooms: criteria.roomIds ?? "all",
+        reason: criteria.reason,
+        closed,
+      });
+    }
+    return closed;
+  }
+
+  /**
+   * Withdraw a user's room membership everywhere: locally now, and on every peer instance via the
+   * fan-out channel (membership is per instance, so eviction has to travel the same way frames do).
+   */
+  evictUser(criteria: EvictionCriteria): number {
+    const closed = this.localEvict(criteria);
+    void redisClient.publish(
+      WS_FANOUT_CHANNEL,
+      JSON.stringify({ kind: "evict", origin: this.instanceId, criteria } as FanoutEnvelope),
+    );
+    return closed;
+  }
+
+  /**
+   * Close every socket whose access token has expired. A socket is opened with a credential that
+   * expires; the transport must not extend that credential. Local only — every instance sweeps its
+   * own sockets. Returns the number closed.
+   */
+  sweepExpiredTokens(nowSec = Math.floor(Date.now() / 1000)): number {
+    let closed = 0;
+    for (const conn of Array.from(this.connectionMap.values())) {
+      if (conn.tokenExp == null || conn.tokenExp > nowSec) continue;
+      closed += this.localEvict({
+        userId: conn.userId,
+        jti: conn.jti,
+        code: WS_CLOSE_UNAUTHORIZED,
+        reason: "token_expired",
+      });
+    }
+    return closed;
+  }
+
+  private expirySweep: ReturnType<typeof setInterval> | null = null;
+
+  startTokenExpirySweep(intervalMs = 30_000): void {
+    if (this.expirySweep) return;
+    this.expirySweep = setInterval(() => {
+      try {
+        this.sweepExpiredTokens();
+      } catch (err) {
+        logger.error("ws_expiry_sweep_failed", { error: err instanceof Error ? err.message : String(err) });
+      }
+    }, intervalMs);
+    this.expirySweep.unref?.();
+  }
+
+  stopTokenExpirySweep(): void {
+    if (this.expirySweep) clearInterval(this.expirySweep);
+    this.expirySweep = null;
+  }
+
+  removeAllUserConnections(userId: string, reason = "removed"): void {
+    this.localEvict({ userId, code: WS_CLOSE_FORBIDDEN, reason });
   }
 }
 

@@ -1,5 +1,6 @@
 import prisma from "../lib/prisma";
 import { SubscriptionStatus, CashbackStatus } from "@prisma/client";
+import { analyticsWhere, analyticsWhereVia } from "../lib/analytics-scope";
 import { membershipAnalyticsService } from "./membership-analytics.service";
 
 export class MembershipInsightsService {
@@ -9,12 +10,15 @@ export class MembershipInsightsService {
     const [topPlans, topBenefits, churnRisk, highValue] = await Promise.all([
       prisma.membershipPlan.findMany({
         where: { isActive: true },
-        include: { _count: { select: { subscriptions: true } } },
+        // Subscriber counts are a business figure: fixture subscriptions must not inflate them.
+        // (The orderBy still ranks on the unfiltered relation count — Prisma cannot filter there.)
+        include: { _count: { select: { subscriptions: { where: { ...analyticsWhereVia("userSubscription") } } } } },
         orderBy: { subscriptions: { _count: "desc" } },
         take: 5,
       }),
       prisma.membershipBenefitUsage.groupBy({
         by: ["benefitType"],
+        where: { ...analyticsWhereVia("membershipBenefitUsage") },
         _sum: { amount: true, count: true },
         orderBy: { _sum: { amount: "desc" } },
         take: 8,
@@ -23,6 +27,7 @@ export class MembershipInsightsService {
         where: {
           status: SubscriptionStatus.ACTIVE,
           expiresAt: { lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+          ...analyticsWhereVia("userSubscription"),
         },
         include: { user: { select: { id: true, email: true, firstName: true, lastName: true } }, plan: true },
         take: 20,
@@ -47,6 +52,7 @@ export class MembershipInsightsService {
       where: {
         subscriptions: { none: { status: SubscriptionStatus.ACTIVE } },
         totalSpent: { gte: 5000 },
+        ...analyticsWhere(),
       },
       select: { id: true, email: true, firstName: true, lastName: true, totalSpent: true },
       take: 15,

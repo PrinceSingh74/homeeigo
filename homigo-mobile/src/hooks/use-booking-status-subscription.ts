@@ -22,6 +22,11 @@ function mapBackendStatus(raw: string | undefined): BookingStatus | null {
   ) {
     return "cancelled";
   }
+  // Released by PAYMENT_PENDING_TTL. Mapped explicitly: null meant a live EXPIRED transition
+  // changed nothing on screen and the customer kept watching a booking that no longer existed.
+  if (v === "expired") return "expired";
+  if (v === "customer_no_show") return "customer_no_show";
+  if (v === "provider_no_show") return "provider_no_show";
   return null;
 }
 

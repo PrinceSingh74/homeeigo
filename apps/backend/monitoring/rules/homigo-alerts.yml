@@ -9,13 +9,30 @@ groups:
         annotations:
           summary: HTTP 5xx error rate above 5%
 
+      # Consolidated from two definitions. `RedisDownP1` in homigo-enterprise-alerts.yml had the
+      # identical `expr` and `for` and the same `severity: critical`, differing only by carrying
+      # `priority: P1`, `team: L2` and a summary that says what breaks. Both files load everywhere,
+      # so one Redis outage produced two alerts — and because Alertmanager deduplicates on the label
+      # set, two different label sets can never dedupe. The bare copy, having no `priority`, fell
+      # past the P1 route to the ordinary critical receiver, so a single outage paged two chains and
+      # the vaguer message arrived alongside the useful one.
+      #
+      # This is the same defect as the duplicated FinancialIntegrityBelow100, with one difference
+      # that matters: the names were different, so a duplicate-NAME check could not see it. It was
+      # found by comparing expressions across layers instead.
+      #
+      # The surviving alert keeps the name `RedisDown` because `scripts/production-certification.ts`
+      # requires that exact name in its required-alert list, and it keeps the P1 labels because
+      # routing is the thing that was being lost. Runbooks that refer to `RedisDownP1` mean this.
       - alert: RedisDown
         expr: redis_up == 0
         for: 2m
         labels:
           severity: critical
+          priority: P1
+          team: L2
         annotations:
-          summary: Redis is unreachable
+          summary: Redis down — WS fan-out + distributed locks degraded
 
       - alert: HighMemory
         expr: process_resident_memory_bytes > 1073741824
@@ -57,13 +74,20 @@ groups:
         annotations:
           summary: Provider payout mismatch detected
 
-      - alert: FinancialIntegrityBelow100
-        expr: financial_integrity_score < 100
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: Financial integrity score below 100
+      # FinancialIntegrityBelow100 is deliberately NOT defined here.
+      #
+      # It was, with the identical `expr` and `for` but a bare `severity: critical` label set, while
+      # homigo-enterprise-alerts.yml defines it with `priority: P0`, `team: L3` and a runbook. Both
+      # files are loaded by every Prometheus config, so the condition produced TWO alerts.
+      #
+      # That is worse than noise. Alertmanager deduplicates on the label set, so two different label
+      # sets are two different alerts that can never dedupe; and because this copy carried no
+      # `priority`, it fell past the P0 route in alertmanager.yml to the ordinary critical receiver.
+      # The same ledger drift therefore paged two chains, one of them the wrong one, with the copy
+      # that had no runbook arriving alongside the copy that did.
+      #
+      # Observed on 2026-09-21: a single `financial_integrity_score = 92` delivered
+      # FinancialIntegrityBelow100 twice in one webhook batch with differing labels.
 
       - alert: ReconciliationMatchRateLow
         expr: payment_reconciliation_match_pct < 98
@@ -131,15 +155,23 @@ groups:
 
       # --- P2 additions: close the gaps surfaced by alert-reliability validator ---
 
-      # Database outage: the readiness probe returns 503 (scrape fails) when the DB
-      # is unreachable, so Prometheus marks the homigo-ready target down.
+      # Database outage, keyed on a dedicated 0/1 gauge the backend publishes from a `SELECT 1`.
+      #
+      # This was `up{job="homigo-ready"} == 0`, on the reasoning that the readiness probe returns 503
+      # when the DB is unreachable so the scrape would fail. The reasoning was sound; the premise was
+      # not. `/ready` answers 200 with `application/json`, which Prometheus cannot parse, so that
+      # target was down on EVERY scrape regardless of database state — the alert was permanently
+      # true and a database outage looked exactly like a healthy database.
+      #
+      # `database_up` mirrors the `redis_up` gauge that has always existed. The `and on()` guard
+      # means a backend that is itself down raises BackendDown rather than both at once.
       - alert: DatabaseDown
-        expr: up{job="homigo-ready"} == 0
+        expr: database_up == 0 and on() up{job="homigo-backend"} == 1
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: Database unreachable (readiness probe failing)
+          summary: Database unreachable (SELECT 1 failing while the backend is up)
 
       - alert: BackendDown
         expr: up{job="homigo-backend"} == 0
@@ -417,6 +449,75 @@ groups:
         annotations:
           summary: More than 5 ETL job failures in 24 hours
 
+      # An execution row is created RUNNING and finalized by `finalizeExecution`. A row still RUNNING
+      # after 12h means the process died and nothing closed it. These never resolve on their own:
+      # on 2026-09-21 there were 111, the oldest from 2026-08-07, and the old
+      # `homigo_etl_jobs_running` gauge reported them as active work on a pipeline that had not
+      # succeeded in a month.
+      # INDETERMINATE means the gateway was called and never gave a definite answer, so the customer
+      # may or may not have been paid. The refund orchestrator treats it as terminal for automation
+      # precisely to avoid a double refund — which means nothing will move these except a person.
+      # On 2026-09-21 there were 53 of them aged 16-35 days and no series any alert could key on.
+      - alert: RefundIndeterminateBacklog
+        expr: homigo_refund_indeterminate_stale > 0
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: Refunds with an unknown outcome are waiting for a human
+          description: >-
+            {{ $value }} refund(s) have been INDETERMINATE for more than 2 days. Automation will not
+            resolve these by design. Reconcile against the provider before deciding.
+          runbook: docs/enterprise-2035-finance-reconciliation.md
+
+      # A count alone understates it: 53 rows that appeared this morning is an incident in progress,
+      # 53 rows a month old is money nobody has accounted for.
+      - alert: RefundIndeterminateAging
+        expr: homigo_refund_indeterminate_oldest_days > 14
+        for: 6h
+        labels:
+          severity: warning
+        annotations:
+          summary: Oldest unresolved refund is over two weeks old
+          description: Oldest INDETERMINATE refund is {{ $value }} days old.
+
+      # The queue an operator actually works through. Growth here means intake is outpacing review.
+      - alert: RefundActionableBacklogHigh
+        expr: homigo_refund_backlog_actionable > 100
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: Refund review queue is growing
+          description: >-
+            {{ $value }} actionable refunds. The admin queue pages at 100, so beyond this an operator
+            cannot see the whole backlog in one view.
+
+      - alert: EtlExecutionsAbandoned
+        expr: homigo_etl_jobs_abandoned > 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: ETL executions crashed mid-run and were never finalized
+          description: >-
+            {{ $value }} execution(s) have been RUNNING for over 12h. They will not resolve without a
+            reaper. Check whether the worker is restarting mid-run.
+
+      # Retrying forever is not the same as working. Sustained retries with no successes is the
+      # signature of a failure that retrying cannot fix — a disabled BigQuery billing account, for
+      # instance, which produced ~9 rows/day indefinitely.
+      - alert: EtlRetryingWithoutSuccess
+        expr: homigo_etl_jobs_recovering_24h > 0 and increase(homigo_etl_jobs_total{status="success"}[24h]) == 0
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: ETL is retrying but has not succeeded in 24h
+          description: >-
+            {{ $value }} retry attempt(s) in the last day with zero successes. Retrying is not
+            progress; check the upstream error rather than the scheduler.
+
       # Phase 2 — ETA Intelligence
       - alert: EtaMissingLabels
         expr: homigo_eta_missing_labels > 10
@@ -481,6 +582,21 @@ groups:
 
   - name: homigo_ai_core
     rules:
+      # A dry-run answer means no provider was contacted. The assistant is replying, and not with a
+      # model — which is invisible from the response itself, and was previously invisible from the
+      # cost gauge too, because the estimated price of a canned string was aggregated as real spend.
+      - alert: AiServingMockedResponses
+        expr: increase(homigo_ai_mocked_responses_total[1h]) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: AI gateway is serving dry-run responses, not model output
+          description: >-
+            {{ $value }} mocked response(s) in the last hour. Either AI_GATEWAY_DRY_RUN is set or the
+            provider has no API key. homigo_ai_daily_cost_usd is 0 for these by design — the
+            would-have-cost is on homigo_ai_mocked_estimated_cost_usd_total.
+
       - alert: AiGeminiUnavailable
         expr: sum(homigo_ai_provider_usage{provider="GEMINI",status="failure"}) / clamp_min(sum(homigo_ai_provider_usage{provider="GEMINI"}), 1) > 0.8
         for: 5m
@@ -612,3 +728,186 @@ groups:
           severity: critical
         annotations:
           summary: Potential AI tool abuse detected — request rate anomaly
+
+  # ── Reliability counters that previously had no alert ─────────────────────────────────────
+  # Every metric here is a failure COUNTER. The gauge alerts above (backlog, lag, unresolved DLQ)
+  # go DOWN when work fails terminally — a burst of terminal failures looks like healthy drainage.
+  # Only the counters distinguish the two.
+  - name: homigo_reliability
+    rules:
+      - alert: FinancialLiabilityDrift
+        expr: increase(financial_liability_drift_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: Ledger liability no longer matches wallet/payable balances (auto-adjustment is disabled by design — investigate)
+
+      - alert: BootDegraded
+        expr: increase(boot_degraded_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: A backend instance booted with a degraded component ({{ $labels.component }}); /ready is returning 503
+
+      - alert: LockFallbackActive
+        expr: increase(homigo_lock_fallback_total{reason=~"redis_unavailable|redis_error|redis_error_release"}[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Distributed locks degraded to per-process fallback for {{ $labels.key }} — non-exclusive jobs may run on every node
+
+      # `pg_advisory` no longer exists as a reason. Exclusive jobs now ALWAYS take the Postgres
+      # anchor (reason=exclusive_anchor, routine and deliberately not alertable), and the case the
+      # old rule cared about — Redis not answering — arrives as reason=redis_unavailable, already
+      # covered by LockFallbackActive above. What is new and worth waking someone for is neither
+      # arbiter being able to answer, because the exclusive job then does not run at all.
+      - alert: LockNoArbiter
+        expr: increase(homigo_lock_fallback_total{reason="no_arbiter"}[10m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: Exclusive job {{ $labels.key }} was SKIPPED — neither Redis nor Postgres could arbitrate leadership
+
+      - alert: LeaderLeaseLost
+        expr: increase(homigo_lock_lease_lost_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: A running job lost its leader lease ({{ $labels.key }}) — Redis stopped answering mid-job. Exclusive jobs stay protected by their Postgres anchor; non-exclusive ones may have overlapped a second node
+
+      - alert: OutboxTerminalFailures
+        expr: increase(homigo_outbox_publish_total{result="failed_terminal"}[15m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: Domain events exhausted retries and went to the DLQ
+
+      - alert: ScheduledJobTerminalFailures
+        expr: increase(homigo_scheduled_job_executions_total{result="failed_terminal"}[15m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: Scheduled jobs ({{ $labels.job_type }}) exhausted retries
+
+      - alert: DlqPersistFailed
+        expr: increase(homigo_dlq_persist_failed_total[15m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: A dead-letter record could not be written — the failure itself was lost
+
+      - alert: DlqGrowthRate
+        expr: sum(rate(homigo_dlq_total[15m])) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Dead-letter queue growing faster than 6 events/minute
+
+      - alert: PayoutEventEmitFailed
+        expr: increase(payout_event_emit_failed_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: A payout state change was committed but its domain event was not emitted
+
+      - alert: PartnerEventEmitFailed
+        expr: increase(partner_event_emit_failed_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: A partner-facing event ({{ $labels.event }}) was committed but not emitted
+
+      - alert: BookingLoyaltyCreditFailed
+        expr: increase(booking_loyalty_credit_failed_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: Booking completed but the {{ $labels.kind }} credit failed — customer is owed loyalty value
+
+      - alert: EmailWebhookSecretMissing
+        expr: increase(email_webhook_rejected_total{reason="secret_not_configured"}[30m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: Resend delivery webhooks are being rejected because RESEND_WEBHOOK_SECRET is unset — bounces are not suppressed
+
+      - alert: WebSocketEvictionSpike
+        expr: sum(rate(websocket_evictions_total{reason!="token_expired"}[10m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Unusual rate of forced WebSocket evictions ({{ $labels.reason }})
+
+  # AI spend controls.
+  #
+  # `ai-budget.service` emits a decision counter for every request and has done since it was
+  # written. Nothing watched it. On 2026-09-21 there were zero alerts matching `ai_budget` in any
+  # rule file, while the service carried six decision values — including two that mean money is
+  # moving with no cap in force.
+  #
+  # That is the same shape as the refund detector writing into a table nobody read: a control that
+  # produces a signal and no consumer.
+  - name: homigo_ai_budget
+    rules:
+      # The one that matters. `NO_POLICY_CONFIGURED` alone is not an incident — on a machine with no
+      # provider keys nothing can spend, and paging about it would train people to ignore this group
+      # before it ever caught anything real. Paired with a live provider key it means uncapped spend.
+      - alert: AiSpendingWithoutBudgetPolicy
+        expr: homigo_ai_live_inference_any == 1 and homigo_ai_budget_policies_active == 0
+        for: 15m
+        labels:
+          severity: critical
+          priority: P1
+          team: L3
+        annotations:
+          summary: AI provider credentials are live and no active budget policy caps spend
+          runbook: "PUT /api/admin/governance/ai-budgets (admin; there is no UI for this — API only)"
+
+      # Fail-open in effect. The service returns allowed:true when the policy store is unreachable
+      # and its own comment says the condition is "made loudly visible" — this is what makes that
+      # true. Without it the sentence was aspirational.
+      - alert: AiBudgetStoreUnavailable
+        expr: increase(homigo_ai_budget_decision_total{decision="BUDGET_UNAVAILABLE"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          priority: P1
+          team: L3
+        annotations:
+          summary: AI budget store unreachable — requests are proceeding with no cap evaluated
+
+      - alert: AiBudgetExceeded
+        expr: increase(homigo_ai_budget_decision_total{decision="BUDGET_EXCEEDED"}[1h]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          priority: P2
+          team: L3
+        annotations:
+          summary: An AI budget cap refused spend — surfaces are degrading to their fallbacks
+
+      # Spend that cannot be measured is spend that cannot be capped, whichever way the fail mode
+      # resolves it.
+      - alert: AiSpendingUnpricedProvider
+        expr: increase(homigo_ai_budget_decision_total{decision="UNPRICED_PROVIDER"}[1h]) > 0
+        for: 15m
+        labels:
+          severity: warning
+          priority: P2
+          team: L3
+        annotations:
+          summary: AI requests are routing to a provider with no pricing entry — cost is unmeasured

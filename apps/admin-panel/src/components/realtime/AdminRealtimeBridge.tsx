@@ -81,14 +81,13 @@ export function AdminRealtimeBridge() {
 
         const kind = (msg.notificationType ?? msg.type ?? "").toLowerCase();
 
-        if (
-          kind.startsWith("booking_") ||
-          kind === "booking_status" ||
-          kind === "service_started" ||
-          kind === "service_completed"
-        ) {
+        // `booking.status` is the authoritative transition frame broadcast to the
+        // admin:notifications room (lib/booking-realtime.ts); the rest are legacy types.
+        if (kind === "booking.status" || kind.startsWith("booking_") || kind === "service_started") {
           debouncedInvalidate(queryClient, adminKeys.bookingsAll);
           debouncedInvalidate(queryClient, adminKeys.dashboard);
+          // Detail page key (bookings/[id]/page.tsx) is not under the bookingsAll prefix.
+          if (msg.referenceId) debouncedInvalidate(queryClient, ["admin", "booking", msg.referenceId]);
         }
 
         if (kind === "customer_updated" || kind === "user_created") {

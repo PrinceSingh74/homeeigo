@@ -496,7 +496,8 @@ export function extrasToInput(e: ServiceExtras, base?: ServiceCatalogConfig | nu
     put("quality", { notApplicable: true });
   } else {
     const checklist = list(e.qualityChecklist);
-    const { notApplicable: _na, ...prevQuality } = base?.quality ?? {};
+    const { notApplicable, ...prevQuality } = base?.quality ?? {};
+    void notApplicable;
     put(
       "quality",
       clean({

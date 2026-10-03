@@ -1,6 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { createSerialQueue } from "./serial-queue";
 
 /**
  * Long-lived refresh token storage. On iOS/Android the token lives in the hardware-backed
@@ -11,30 +12,38 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
  */
 const KEY = "homigo_refresh_token";
 const isWeb = Platform.OS === "web";
+/** Reads and writes run in call order: a rotation write started before a logout never lands after its clear. */
+const serial = createSerialQueue();
 
 export const secureTokens = {
-  async get(): Promise<string | null> {
-    try {
-      return isWeb ? await AsyncStorage.getItem(KEY) : await SecureStore.getItemAsync(KEY);
-    } catch {
-      return null;
-    }
+  get(): Promise<string | null> {
+    return serial(async () => {
+      try {
+        return isWeb ? await AsyncStorage.getItem(KEY) : await SecureStore.getItemAsync(KEY);
+      } catch {
+        return null;
+      }
+    });
   },
-  async set(token: string): Promise<void> {
-    try {
-      if (isWeb) await AsyncStorage.setItem(KEY, token);
-      else await SecureStore.setItemAsync(KEY, token, { keychainAccessible: SecureStore.WHEN_UNLOCKED });
-    } catch {
-      /* storage unavailable — session simply won't persist */
-    }
+  set(token: string): Promise<void> {
+    return serial(async () => {
+      try {
+        if (isWeb) await AsyncStorage.setItem(KEY, token);
+        else await SecureStore.setItemAsync(KEY, token, { keychainAccessible: SecureStore.WHEN_UNLOCKED });
+      } catch {
+        /* storage unavailable — session simply won't persist */
+      }
+    });
   },
-  async clear(): Promise<void> {
-    try {
-      if (isWeb) await AsyncStorage.removeItem(KEY);
-      else await SecureStore.deleteItemAsync(KEY);
-    } catch {
-      /* ignore */
-    }
+  clear(): Promise<void> {
+    return serial(async () => {
+      try {
+        if (isWeb) await AsyncStorage.removeItem(KEY);
+        else await SecureStore.deleteItemAsync(KEY);
+      } catch {
+        /* ignore */
+      }
+    });
   },
   /** One-time migration: pull any token left in the old AsyncStorage persist blob into SecureStore. */
   async migrateFromLegacy(): Promise<string | null> {

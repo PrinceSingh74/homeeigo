@@ -1,4 +1,5 @@
 import { Elysia, t } from "elysia";
+import type { RazorpayWebhookEvent } from "../services/payment.service";
 import { authPlugin } from "../plugins/auth.plugin";
 import { createAdminRbacPlugin } from "../middleware/admin-rbac";
 import { rbacService } from "../services/rbac.service";
@@ -12,7 +13,8 @@ import { webhookDedupService } from "../services/webhook-dedup.service";
 import { setCausationId } from "../events/core/event-context";
 import { logger } from "../lib/logger";
 import { observability } from "../lib/observability";
-import { incCounter } from "../lib/metrics";
+import { incCounter, observeHist } from "../lib/metrics";
+import { paymentMocksAllowed } from "../lib/payment-mocks";
 
 /** Throttle for the "webhook secret not configured" warn — prevents alert storms (see webhook handler). */
 let lastUnconfiguredWarnAt = 0;
@@ -39,7 +41,9 @@ const paymentRefundRoutes = createAdminRbacPlugin("admin-rbac-payment-refund").g
                 ? 404
                 : code === "AMOUNT_EXCEEDS_REFUNDABLE" || code === "INVALID_AMOUNT"
                   ? 400
-                  : 422;
+                  : code === "PAYMENT_ENV_MISMATCH"
+                    ? 409 // §27 — LIVE/TEST worlds disagree; refusal, not a validation error
+                    : 422;
           return { success: false, error: code, code };
         }
         return { success: true, message: "Refund initiated", data };
@@ -83,7 +87,7 @@ export const paymentsRoutes = new Elysia()
         return { success: false, error: "Invalid signature", code: "INVALID_SIGNATURE" };
       }
 
-      let event: { event: string; payload: Record<string, unknown> };
+      let event: RazorpayWebhookEvent;
       try {
         event = JSON.parse(raw);
       } catch {
@@ -92,7 +96,11 @@ export const paymentsRoutes = new Elysia()
       }
 
       const gatewayEventId = request.headers.get("x-razorpay-event-id") ?? undefined;
-      const eventId = gatewayEventId ?? crypto.createHash("sha256").update(raw).digest("hex");
+      // Dedup on the SIGNED body, not the event-id header (2026-10-01). The header is outside the
+      // signature, so a captured, validly signed body replayed with a fresh header value used to pass
+      // dedup. Razorpay's own retries resend the identical body, so they still collapse to one key;
+      // the header is kept as metadata for correlation with the dashboard.
+      const eventId = crypto.createHash("sha256").update(raw).digest("hex");
       const begin = await webhookDedupService.beginProcessing(eventId, event.event, gatewayEventId);
       if (begin === "SKIP") {
         return { success: true, ignored: true, reason: "DUPLICATE_EVENT" };
@@ -100,7 +108,16 @@ export const paymentsRoutes = new Elysia()
 
       try {
         setCausationId(eventId);
-        const result = await paymentService.reconcileFromWebhook(event as never);
+        /**
+         * Settlement latency: how long the money path takes from an authenticated gateway webhook to
+         * a settled payment. This is the customer-visible "did my payment go through" delay, and it
+         * is the metric that moves first when the database or the event loop is saturated.
+         */
+        const settleStart = Date.now();
+        const result = await paymentService.reconcileFromWebhook(event);
+        observeHist("payment_webhook_settlement_seconds", (Date.now() - settleStart) / 1000, {
+          outcome: result.handled ? "handled" : String(result.reason ?? "unhandled"),
+        });
         if (!result.handled) {
           if (result.reason === "PAYMENT_ID_CONFLICT") {
             await webhookDedupService.markFailed(eventId, result.reason);
@@ -132,7 +149,7 @@ export const paymentsRoutes = new Elysia()
   .post(
     "/e2e/mock-signature",
     async ({ body, set }) => {
-      if (process.env.NODE_ENV === "production") {
+      if (!paymentMocksAllowed()) {
         set.status = 404;
         return { success: false, error: "Not found", code: "NOT_FOUND" };
       }
@@ -166,6 +183,21 @@ export const paymentsRoutes = new Elysia()
       if (!order) {
         set.status = 404;
         return { success: false, error: "Booking not found", code: "NOT_FOUND" };
+      }
+      if ("error" in order) {
+        set.status = 409;
+        // RETRY_CONFLICT (another retry already replaced the failed order) is not a cancellation.
+        const error =
+          order.error === "BOOKING_NOT_PAYABLE"
+            ? "This booking was cancelled and can no longer be paid"
+            : "This payment is already being retried — refresh and try again";
+        return { success: false, error, code: order.error };
+      }
+      // Current clients send no amount. One that matches the charge in neither paise nor rupees is a
+      // stale client or tampering — still charged the booking total, but made visible.
+      if (body.amount != null && body.amount !== order.amount && Math.round(body.amount * 100) !== order.amount) {
+        incCounter("payment_amount_mismatch_attempt_total");
+        logger.warn("payment_amount_mismatch_attempt", { bookingId: body.bookingId, userId, chargedPaise: order.amount });
       }
       return { success: true, data: order };
     },

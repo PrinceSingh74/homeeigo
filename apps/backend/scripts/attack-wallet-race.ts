@@ -31,10 +31,12 @@ async function attack(N: number): Promise<boolean> {
   const pass = after.walletBalance === 500 && completed === 1 && journals === 1 && rejected === 0;
   console.log(`  N=${String(N).padStart(4)}  walletBalance=${after.walletBalance} (want 500)  completed=${completed} (want 1)  journals=${journals} (want 1)  rejected=${rejected} (want 0)  → ${pass ? "✅ NO double-credit" : "❌ FAIL"}`);
 
-  // cleanup (isolated DB, but tidy)
-  await prisma.journalEntry.deleteMany({ where: { referenceId: txn.id } }).catch(() => {});
-  await prisma.walletTransaction.deleteMany({ where: { userId: user.id } }).catch(() => {});
-  await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
+  // No cleanup, deliberately. The credited user, its wallet transaction, the journal, its ledger lines
+  // and balance snapshots form one consistent accounting trail on SHARED ledger accounts. The old
+  // cleanup deleted the journal first — it only ever failed on its foreign keys (ledger_entries,
+  // ledger_balance_snapshots), silently, so the trail survived intact. Deleting any subset breaks the
+  // books instead: stripping ledger lines left ORPHAN_JOURNALs, and deleting the user while keeping
+  // its lines leaves WALLET_LIABILITY_MISMATCH (both measured on homigo_test, 2026-09-30).
   return pass;
 }
 

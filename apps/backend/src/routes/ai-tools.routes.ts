@@ -45,7 +45,7 @@ function resolveAiRole(userRole: string): AiGatewayRole | null {
   return mapUserRoleToAiRole(userRole, "chat");
 }
 
-function requireAdmin(role: string, set: { status: number }) {
+function requireAdmin(role: string, set: { status?: number | string }) {
   if (role !== "ADMIN") {
     set.status = 403;
     return { success: false, error: "Admin only", code: "FORBIDDEN" };

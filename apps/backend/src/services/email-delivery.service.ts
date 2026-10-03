@@ -27,6 +27,7 @@ export type EmailType =
   | "gift_card"
   | "partner_approval"
   | "partner_rejection"
+  | "partner_changes_requested"
   | "partner_registration_admin"
   | "admin_alert"
   | "fraud_alert"
@@ -43,14 +44,29 @@ type DispatchArgs = {
 };
 
 class EmailDeliveryService {
+  /**
+   * Redis is the fast path, not the record. `suppress()` always writes a durable
+   * `bounce_suppression` row; when Redis is unavailable, restarted or flushed, that row is what keeps
+   * a bounced address from being mailed again (it used to be ignored — coding-phase gap closure
+   * 2026-09-28). Same 90-day window as the Redis key, case-insensitive like the key.
+   */
   async isSuppressed(email: string): Promise<boolean> {
     const key = `${SUPPRESS_PREFIX}${email.toLowerCase()}`;
     try {
-      const v = await redisClient.get(key);
-      return v === "1";
+      if ((await redisClient.get(key)) === "1") return true;
     } catch {
-      return false;
+      /* fall through to the durable record */
     }
+    const row = await prisma.emailLog.findFirst({
+      where: {
+        to: { equals: email, mode: "insensitive" },
+        emailType: "bounce_suppression",
+        status: "bounced",
+        createdAt: { gte: new Date(Date.now() - SUPPRESS_TTL_SEC * 1000) },
+      },
+      select: { id: true },
+    });
+    return row !== null;
   }
 
   async suppress(email: string, reason: string): Promise<void> {
@@ -257,6 +273,21 @@ class EmailDeliveryService {
       subject: "HOMEEIGO Partner Application Status",
       html: `<p>Hi ${firstName ?? "Partner"},</p><p>Unfortunately we cannot approve your application at this time.</p>${reason ? `<p>Reason: ${reason}</p>` : ""}`,
       metadata: { reason },
+    });
+  }
+
+  sendPartnerChangesRequested(
+    to: string,
+    firstName: string | null,
+    stepLabel: string,
+    notes?: string,
+  ) {
+    this.enqueue({
+      to,
+      emailType: "partner_changes_requested",
+      subject: "Action needed — update your HOMEEIGO partner application",
+      html: `<p>Hi ${firstName ?? "Partner"},</p><p>Our team reviewed your application and needs you to update <strong>${stepLabel}</strong> before we can proceed.</p>${notes ? `<p>${notes}</p>` : ""}<p>Sign in to your partner application to continue from the requested step.</p>`,
+      metadata: { stepLabel, notes },
     });
   }
 

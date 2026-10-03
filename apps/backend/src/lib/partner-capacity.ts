@@ -3,6 +3,29 @@
  * must all use these helpers — never a second counter.
  */
 
+/**
+ * ── OWNER DECISION #10/#11: concurrency is a WORKLOAD cap, not a simultaneity cap ──
+ *
+ * `currentJobs` counts every booking in a concurrent status with no time bound, and `reservedOffers`
+ * counts every unanswered offer the same way. That reads wrong against the field's name, and the
+ * first instinct — and the one taken and then reversed while deciding this — is to scope both to the
+ * booking's own time slot so "concurrent" means "at the same time".
+ *
+ * That is wrong, for a structural reason. `bookings_provider_slot_excl` is an EXCLUDE constraint over
+ * (provider_id, slot range) with NO status filter, so the database already makes it impossible for
+ * one partner to hold two bookings whose slots overlap. Under a time-scoped reading `currentJobs`
+ * could therefore never exceed 1, and a limit whose default is 4 and whose ceiling is 20 would be
+ * dead code. Proven rather than argued: seeding two accepted bookings twenty minutes apart for one
+ * partner is rejected by the database with 23P01.
+ *
+ * So true simultaneity is already enforced one layer down, and this limit is the only thing capping
+ * how much unfinished work a partner may hold at once — accepted jobs plus offers they have not yet
+ * answered. That is a coherent rule, it is the behaviour the platform has always had, and partners
+ * can raise it to 20 themselves in settings. It is kept.
+ *
+ * The name is the part that misleads, and this note is where that is recorded: `maxConcurrentJobs`
+ * means "jobs in flight", not "jobs at the same instant".
+ */
 export const DEFAULT_MAX_CONCURRENT_JOBS = 4;
 export const MIN_CONCURRENT_JOBS = 1;
 export const MAX_CONCURRENT_JOBS = 20;

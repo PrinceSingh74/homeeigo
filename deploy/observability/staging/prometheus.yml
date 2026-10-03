@@ -8,6 +8,7 @@ global:
 rule_files:
   - /etc/prometheus/rules/homigo-alerts.yml
   - /etc/prometheus/rules/homigo-enterprise-alerts.yml
+  - /etc/prometheus/rules/homigo-agent-alerts.yml
 
 alerting:
   alertmanagers:

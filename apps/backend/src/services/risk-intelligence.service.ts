@@ -36,7 +36,10 @@ export class RiskIntelligenceService {
     const paymentRiskScore = clamp(100 - (chargebacks.chargebackRatio ?? 0) * 5);
     const complianceRiskScore =
       complianceOpen > 0 ? clamp(100 - (complianceOverdue / complianceOpen) * 100) : 100;
-    const financeHealth = integrity.score ?? 70;
+    // `integrity.score` is a non-nullable number (financial-integrity computes 100 - penalty), so
+    // the previous `?? 70` fallback was unreachable. Removed rather than left in place: a dead
+    // magic constant becomes a silently fabricated score the moment the upstream type loosens.
+    const financeHealth = integrity.score;
     const customerTrust = fraudConfidence;
     const partnerTrust = clamp(100 - (fraudOverview.fraudRatePct ?? 0));
 

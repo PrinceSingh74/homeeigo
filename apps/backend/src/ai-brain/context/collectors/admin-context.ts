@@ -1,3 +1,4 @@
+import { analyticsWhere } from "../../../lib/analytics-scope";
 import prisma from "../../../lib/prisma";
 
 export async function collectAdminContext(): Promise<Record<string, unknown>> {
@@ -13,19 +14,21 @@ export async function collectAdminContext(): Promise<Record<string, unknown>> {
     unresolvedDlq,
     pendingOutbox,
   ] = await Promise.all([
-    prisma.booking.count({ where: { createdAt: { gte: todayStart } } }),
+    // The AI answers questions about the business, so it is given the business population. An
+    // assistant that reports today's bookings including certification runs is confidently wrong.
+    prisma.booking.count({ where: { createdAt: { gte: todayStart }, ...analyticsWhere() } }),
     prisma.booking.count({
       where: { status: { in: ["PENDING", "ACCEPTED", "ASSIGNED", "EN_ROUTE", "IN_PROGRESS"] } },
     }),
     prisma.provider.count({ where: { isOnline: true } }),
     prisma.provider.count({ where: { isActive: true } }),
-    prisma.refundRequest.count({ where: { status: "REQUESTED" } }).catch(() => 0),
+    prisma.refundRequest.count({ where: { status: "REQUESTED", ...analyticsWhere() } }).catch(() => 0),
     prisma.eventDeadLetter.count({ where: { resolvedAt: null } }).catch(() => 0),
     prisma.eventOutbox.count({ where: { status: "PENDING" } }).catch(() => 0),
   ]);
 
   const revenueToday = await prisma.booking.aggregate({
-    where: { createdAt: { gte: todayStart }, status: "COMPLETED" },
+    where: { createdAt: { gte: todayStart }, status: "COMPLETED", ...analyticsWhere() },
     _sum: { totalAmount: true },
   }).catch(() => ({ _sum: { totalAmount: 0 } }));
 

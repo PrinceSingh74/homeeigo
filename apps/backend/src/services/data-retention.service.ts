@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import { gunzipSync, gzipSync } from "zlib";
 import type { Prisma, RetentionCategory } from "@prisma/client";
 import prisma from "../lib/prisma";
@@ -19,7 +18,14 @@ export type RetentionConfig = {
   archiveAfterDays: number;
 };
 
-const DEFAULT_RETENTION: Record<RetentionCategory, RetentionConfig> = {
+/**
+ * Defaults for the categories this project has actually agreed on.
+ *
+ * `Partial`: the Phase-14 telemetry categories intentionally have no default. A category with no
+ * entry sweeps as NO_POLICY and deletes nothing, which is the honest behaviour for a retention
+ * period nobody has decided.
+ */
+const DEFAULT_RETENTION: Partial<Record<RetentionCategory, RetentionConfig>> = {
   SECURITY_EVENTS: { category: "SECURITY_EVENTS", retentionDays: 7 * 365, archiveAfterDays: 365 },
   PAYMENT_EVENTS: { category: "PAYMENT_EVENTS", retentionDays: 8 * 365, archiveAfterDays: 2 * 365 },
   FINANCIAL_LEDGER: { category: "FINANCIAL_LEDGER", retentionDays: 10 * 365, archiveAfterDays: 3 * 365 },
@@ -252,7 +258,11 @@ export class DataRetentionService {
       let recordsProcessed = 0;
 
       for (const policy of policies) {
-        const archiveAfterDays = policy.archiveAfterDays ?? DEFAULT_RETENTION[policy.category].archiveAfterDays;
+        // A policy row for a category with no built-in default must state its own archive window.
+        // Falling back to another category's number would archive AI telemetry on the schedule
+        // agreed for login events.
+        const archiveAfterDays = policy.archiveAfterDays ?? DEFAULT_RETENTION[policy.category]?.archiveAfterDays;
+        if (archiveAfterDays === undefined) continue;
         const cutoff = new Date(Date.now() - archiveAfterDays * 24 * 60 * 60 * 1000);
 
         for (;;) {
@@ -413,6 +423,99 @@ export class DataRetentionService {
     }
 
     return report;
+  }
+
+
+  /**
+   * Phase 14 §64 — retention for the telemetry classes that had none.
+   *
+   * ── Why these tables ─────────────────────────────────────────────────────────
+   *
+   * Measured in production: activity_logs 113,704 rows growing since 2026-06-08,
+   * ai_tool_policy_logs 14,607, workflow_step_runs 4,053, ai_gateway_requests 2,249,
+   * ai_gateway_audit 1,913 — and not one of them reachable by any retention job. The sharpest
+   * version of the problem: `AuditLogService.record` writes the same governance event into
+   * `enterprise_audit_logs` (archived, purged, policy-driven) AND into `activity_logs`
+   * (ungoverned, kept forever). One event, two lifetimes, and the longer one was the accident.
+   *
+   * ── Why it deletes nothing today ─────────────────────────────────────────────
+   *
+   * Every class here is driven by an `audit_retention_policies` row, and this project has agreed
+   * no retention period for AI telemetry, workflow history or activity logs. So the sweep reports
+   * `NO_POLICY` and returns for any category without a row. Picking "90 days" to make the feature
+   * look finished would silently decide how far back an incident stays investigable, and would do
+   * it on a table holding the policy-decision history of an AI system.
+   *
+   * The categories deliberately differ per class rather than sharing one global number: AI request
+   * telemetry, workflow step history and the operational activity log are not the same kind of
+   * record and should not be assumed to expire together.
+   */
+  async enforceTelemetryRetention(): Promise<{
+    swept: Array<{ category: RetentionCategory; table: string; state: "NO_POLICY" | "PURGED"; recordsProcessed: number; retentionDays?: number }>;
+  }> {
+    const targets: Array<{ category: RetentionCategory; table: string; purge: (cutoff: Date) => Promise<number> }> = [
+      {
+        category: "AI_TELEMETRY", table: "ai_gateway_requests",
+        purge: async (c) => (await prisma.aiGatewayRequest.deleteMany({ where: { createdAt: { lt: c } } })).count,
+      },
+      {
+        category: "AI_TELEMETRY", table: "ai_gateway_audit",
+        purge: async (c) => (await prisma.aiGatewayAudit.deleteMany({ where: { createdAt: { lt: c } } })).count,
+      },
+      {
+        category: "AI_TELEMETRY", table: "ai_tool_policy_logs",
+        purge: async (c) => (await prisma.aiToolPolicyLog.deleteMany({ where: { createdAt: { lt: c } } })).count,
+      },
+      {
+        category: "AUTOMATION_TELEMETRY", table: "workflow_step_runs",
+        // Only steps belonging to instances that have finished. Purging the history of a running
+        // instance would delete the record of what it has already done to a customer.
+        purge: async (c) => (await prisma.workflowStepRun.deleteMany({
+          where: {
+            createdAt: { lt: c },
+            instance: { status: { in: ["COMPLETED", "SKIPPED", "FAILED", "CANCELLED"] } },
+          },
+        })).count,
+      },
+      {
+        category: "OPERATIONAL_ACTIVITY", table: "activity_logs",
+        purge: async (c) => (await prisma.activityLog.deleteMany({ where: { createdAt: { lt: c } } })).count,
+      },
+    ];
+
+    const policies = await prisma.auditRetentionPolicy.findMany({
+      where: { isActive: true, category: { in: ["AI_TELEMETRY", "AUTOMATION_TELEMETRY", "OPERATIONAL_ACTIVITY"] } },
+    });
+    const byCategory = new Map(policies.map((p) => [p.category, p]));
+
+    const swept: Array<{ category: RetentionCategory; table: string; state: "NO_POLICY" | "PURGED"; recordsProcessed: number; retentionDays?: number }> = [];
+
+    for (const target of targets) {
+      const policy = byCategory.get(target.category);
+      if (!policy) {
+        // Reported, not silently skipped — an unretained class should be visible as unretained.
+        swept.push({ category: target.category, table: target.table, state: "NO_POLICY", recordsProcessed: 0 });
+        continue;
+      }
+      const cutoff = new Date(Date.now() - policy.retentionDays * 24 * 60 * 60 * 1000);
+      const recordsProcessed = await target.purge(cutoff);
+      swept.push({
+        category: target.category, table: target.table, state: "PURGED",
+        recordsProcessed, retentionDays: policy.retentionDays,
+      });
+
+      if (recordsProcessed > 0) {
+        void enterpriseAuditService.recordSystemEvent({
+          action: "RETENTION_ENFORCEMENT",
+          resource: target.table,
+          status: "SUCCESS",
+          changesSummary: `Purged ${recordsProcessed} rows older than ${policy.retentionDays} days`,
+          retentionCategory: "SECURITY_EVENTS",
+        });
+      }
+    }
+
+    return { swept };
   }
 
   async verifyArchiveIntegrity(archiveId: string): Promise<boolean> {

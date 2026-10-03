@@ -8,6 +8,7 @@ import { ReviewsSectionServer } from "@/components/home/ReviewsSectionServer";
 import { pageMainBottom } from "@/lib/page-layout";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { WeatherWarningBanner } from "@/components/weather/WeatherWarningBanner";
+import { BrandMesh } from "@/components/layout/BrandCanvas";
 import { cn } from "@/lib/utils";
 
 const HomeSearchBar = dynamic(
@@ -37,15 +38,7 @@ const ORGANIZATION_JSONLD = {
 export default function Home() {
   return (
     <main className={cn("bg-transparent", pageMainBottom)}>
-      {/* Whole-page canvas — EXACT Services-page hero background applied across
-          the full viewport: linear-gradient(135deg,#ffffff,#f0fdf4 35%,#ffffff)
-          + emerald/teal orbs. Fixed, ~zero GPU cost. Dark-safe. */}
-      <div aria-hidden className="mesh-bg">
-        <div className="absolute inset-0 bg-[linear-gradient(135deg,#ffffff_0%,#f0fdf4_35%,#ffffff_100%)] dark:hidden" />
-        <div className="absolute inset-0 hidden bg-canvas dark:block" />
-        <div className="absolute right-[-6%] top-[-6%] size-[42rem] rounded-full bg-emerald-100/40 blur-3xl dark:bg-emerald-500/10" />
-        <div className="absolute bottom-[-8%] left-[-8%] size-[38rem] rounded-full bg-teal-100/30 blur-3xl dark:bg-teal-500/10" />
-      </div>
+      <BrandMesh />
       <div className="px-4 pt-3">
         <WeatherWarningBanner />
       </div>

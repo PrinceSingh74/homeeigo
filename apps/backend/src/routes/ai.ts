@@ -21,6 +21,7 @@ import { contextPolicyFor } from "../ai/context/context-policy";
 import { buildServiceContext } from "../ai/context/service-context";
 import { learnPreferences } from "../ai-brain/memory/preference-memory";
 import prisma from "../lib/prisma";
+import { CUSTOMER_CATALOG_WHERE } from "../lib/service-domain";
 
 /** What the customer chat path resolved to. Surfaced to the client as `mode`. */
 type CustomerChatOutcome =
@@ -202,7 +203,8 @@ export const aiRoutes = new Elysia({ prefix: "/api/ai" })
         const slug = reply.suggestedServiceId;
         const svc = await prisma.service.findFirst({
           where: {
-            isActive: true,
+            // Customer-visible, commercial services only — never a fixture/test row as a deep link.
+            ...CUSTOMER_CATALOG_WHERE,
             OR: [
               { category: slug },
               { slug: { contains: slug } },

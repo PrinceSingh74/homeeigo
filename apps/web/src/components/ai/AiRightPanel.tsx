@@ -176,18 +176,8 @@ export function AiRightPanel() {
               </h4>
               <p className="flex items-center gap-1 text-[11px] text-slate">
                 <Zap size={12} className="text-amber-500" />
-                {AI_RECOMMENDED.rating} ({AI_RECOMMENDED.reviews}) · {AI_RECOMMENDED.provider}
+                {AI_RECOMMENDED.provider}
               </p>
-              <div className="flex items-end justify-between gap-2">
-                <div>
-                  <p className="font-display text-lg font-bold text-ink">
-                    ₹{AI_RECOMMENDED.price}
-                    <span className="ml-1.5 text-xs font-normal text-slate line-through">
-                      ₹{AI_RECOMMENDED.originalPrice}
-                    </span>
-                  </p>
-                </div>
-              </div>
               <Link
                 href={AI_RECOMMENDED.href}
                 className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-sm font-semibold text-white shadow-[0_4px_14px_rgb(16_185_129/0.4)] transition hover:opacity-95"

@@ -159,6 +159,38 @@ export function isWithinWorkingWindow(schedule: ScheduleInput, at: Date): boolea
   return clock.minutes >= start && clock.minutes <= end;
 }
 
+/**
+ * Does the WHOLE appointment fit inside the partner's working window, not just its first instant?
+ *
+ * Checking only the start accepted a 17:30 booking of a 3-hour service against a window that closes
+ * at 18:00 — the partner was committed to two and a half hours they never offered. `durationMinutes`
+ * is the reservation length (owner decision D1: 0 for FIXED-policy services, whose duration is a
+ * turnaround time rather than occupancy, so for those this is the start check unchanged).
+ *
+ * Both ENDPOINTS are judged, each against the window on its own day, rather than requiring the end
+ * minute to fall before the close of the start's day. That distinction matters: a partner who works
+ * `00:00–23:59` every day is available all day, so a job starting 23:00 and ending 03:00 is one they
+ * can genuinely do, and refusing it would be wrong. A partner who works `09:00–18:00` still cannot
+ * take a 3-hour job at 17:00, because 20:00 is outside their window on any day.
+ *
+ * Guard for the pathological case: an appointment longer than the window itself fits no single day,
+ * however its endpoints land, so it is refused outright.
+ */
+export function isAppointmentWithinWorkingWindow(
+  schedule: ScheduleInput,
+  start: Date,
+  durationMinutes = 0,
+): boolean {
+  if (!isWithinWorkingWindow(schedule, start)) return false;
+  const minutes = Math.max(0, Math.round(durationMinutes));
+  if (minutes === 0) return true;
+  const open = parseHmToMinutes(schedule.workingHoursStart);
+  const close = parseHmToMinutes(schedule.workingHoursEnd);
+  if (open === null || close === null) return true; // no window configured — the start check is all there is
+  if (minutes > close - open) return false;
+  return isWithinWorkingWindow(schedule, new Date(start.getTime() + minutes * 60_000));
+}
+
 export function isInBreakWindow(schedule: ScheduleInput, at: Date): boolean {
   const breaks = parseBreakWindows(schedule.breakWindows ?? []);
   if (breaks.length === 0) return false;

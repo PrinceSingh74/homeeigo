@@ -3,6 +3,10 @@ import { adminLogin } from "./enterprise/fixtures";
 import path from "path";
 
 test("capture HOMIGO-20260611-00003 vendor column", async ({ page }) => {
+  test.skip(
+    process.env.E2E_CAPTURE_BOOKING !== "1",
+    "Utility screenshot capture — set E2E_CAPTURE_BOOKING=1 when booking HOMIGO-20260611-00003 exists",
+  );
   await adminLogin(page);
   await page.goto("/bookings");
   await expect(page.getByRole("heading", { name: "Bookings" })).toBeVisible({ timeout: 30_000 });

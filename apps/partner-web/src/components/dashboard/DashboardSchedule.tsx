@@ -22,6 +22,8 @@ function statusLabel(b: PartnerBooking) {
   if (b.status === "completed") return { label: "Completed", className: "text-partner-success" };
   if (b.status === "in_progress")
     return { label: "In progress", className: "text-partner-primary" };
+  if (b.status === "en_route") return { label: "On the way", className: "text-partner-primary" };
+  if (b.status === "rejected") return { label: "Declined", className: "text-partner-danger" };
   if (b.status === "cancelled" || b.status === "cancelled_by_provider" || b.status === "cancelled_by_user")
     return { label: "Cancelled", className: "text-partner-danger" };
   return { label: "Upcoming", className: "text-partner-warning" };

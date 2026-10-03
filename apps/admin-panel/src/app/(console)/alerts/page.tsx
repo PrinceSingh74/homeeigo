@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -20,6 +20,7 @@ import {
 import { StatTile } from "@/components/hq/primitives";
 import { SectionHead } from "@/components/hq/SectionHead";
 import { Icon3D } from "@/components/hq/Icon3D";
+import { OperationsWorkspaceRail, OpsEyebrow } from "@/components/operations/OperationsWorkspaceRail";
 import { IsoBarChart } from "@/components/hq/IsoBarChart";
 import { adminApi, type OpsMapData, type ProviderDetail } from "@/services/admin-api";
 import { useAdminStore } from "@/stores/admin-store";
@@ -34,7 +35,6 @@ const SEVERITY = {
   info: { rank: 1, label: "Info", tone: "cyan" as const, pill: "is-good" },
 } as const;
 type Severity = keyof typeof SEVERITY;
-const ACK_KEY = "homigo_acked_alerts";
 type AlertLike = { type: string; bookingId?: string; providerId?: string };
 type Alert = {
   type: string;
@@ -76,18 +76,6 @@ function alertKey(a: AlertLike) {
   return `${a.type}:${a.bookingId ?? ""}:${a.providerId ?? ""}`;
 }
 
-function loadAcked(): Set<string> {
-  if (typeof window === "undefined") return new Set();
-  try {
-    return new Set(JSON.parse(localStorage.getItem(ACK_KEY) ?? "[]"));
-  } catch {
-    return new Set();
-  }
-}
-
-function saveAcked(s: Set<string>) {
-  if (typeof window !== "undefined") localStorage.setItem(ACK_KEY, JSON.stringify([...s]));
-}
 
 function playbook(type: string) {
   return (
@@ -139,7 +127,16 @@ export default function AlertsPage() {
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   });
-  const [acked, setAcked] = useState<Set<string>>(() => loadAcked());
+  // Acknowledgements are server-side and shared: every admin sees them, they survive a new browser,
+  // and who acknowledged what is recorded. (They were one browser's localStorage.)
+  const qc = useQueryClient();
+  const acksQ = useQuery({ queryKey: ["admin", "ops-alert-acks"], queryFn: () => adminApi.opsAlertAcks(), refetchInterval: 30_000 });
+  const acked = useMemo(() => new Set((acksQ.data ?? []).map((a) => a.alertKey)), [acksQ.data]);
+  const ackMut = useMutation({
+    mutationFn: (keys: string[]) => adminApi.acknowledgeOpsAlerts(keys),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "ops-alert-acks"] }),
+    onError: (err) => setToast(err instanceof Error && err.message ? err.message : "Could not acknowledge — check your permissions."),
+  });
   const [sev, setSev] = useState<"all" | "critical" | "warning">("all");
   const [type, setType] = useState("all");
   const [toast, setToast] = useState<string | null>(null);
@@ -255,17 +252,10 @@ export default function AlertsPage() {
   const liveProvider = ops?.providers.find((p) => p.providerId === selected?.providerId);
   const book = playbook(selected?.type ?? "");
 
-  const ack = (a: AlertLike) => {
-    const n = new Set(acked);
-    n.add(alertKey(a));
-    setAcked(n);
-    saveAcked(n);
-  };
+  const ack = (a: AlertLike) => ackMut.mutate([alertKey(a)]);
   const ackAll = () => {
-    const n = new Set(acked);
-    filtered.forEach((a) => n.add(alertKey(a)));
-    setAcked(n);
-    saveAcked(n);
+    const keys = filtered.map((a) => alertKey(a)).filter((k) => !acked.has(k));
+    if (keys.length > 0) ackMut.mutate(keys.slice(0, 200));
   };
 
   const feedState = channel.connected ? "Live push" : channel.reconnecting ? "Reconnecting" : "Polling";
@@ -282,6 +272,7 @@ export default function AlertsPage() {
         <div className="flex items-center gap-4">
           <Icon3D icon={Bell} tone={criticalCount ? "danger" : "warning"} size="lg" />
           <div>
+            <OpsEyebrow />
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <h1 className="biz-display text-[1.75rem] font-bold leading-none tracking-tight">Alert Center</h1>
               <span className="cmd-live-pill">
@@ -297,6 +288,7 @@ export default function AlertsPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <select
+            aria-label="Filter by severity"
             value={sev}
             onChange={(e) => setSev(e.target.value as typeof sev)}
             className="rounded-xl border border-[var(--color-biz-line)] bg-[var(--color-biz-surface)] px-3 py-2 text-sm"
@@ -306,6 +298,7 @@ export default function AlertsPage() {
             <option value="warning">Warning</option>
           </select>
           <select
+            aria-label="Filter by type"
             value={type}
             onChange={(e) => setType(e.target.value)}
             className="rounded-xl border border-[var(--color-biz-line)] bg-[var(--color-biz-surface)] px-3 py-2 text-sm"
@@ -327,6 +320,8 @@ export default function AlertsPage() {
           </button>
         </div>
       </header>
+
+      <OperationsWorkspaceRail />
 
       {q.isLoading ? (
         <div className="flex items-center justify-center py-20 text-[var(--color-biz-muted)]">

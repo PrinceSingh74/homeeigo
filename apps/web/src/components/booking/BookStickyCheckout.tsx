@@ -9,10 +9,14 @@ export function BookStickyCheckout({
   total,
   confirming,
   onConfirm,
+  slotChosen = true,
 }: {
-  total: number;
+  /** Server-quoted total; null while calculating or when the quote failed. */
+  total: number | null;
   confirming: boolean;
   onConfirm: () => void;
+  /** False until the customer picks a time. Confirm must not open payment on the prefilled clock. */
+  slotChosen?: boolean;
 }) {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 lg:hidden">
@@ -26,7 +30,7 @@ export function BookStickyCheckout({
               Total payable
             </p>
             <p className="font-display text-xl font-bold bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent sm:text-2xl">
-              ₹{total}
+              {total != null ? `₹${total}` : "—"}
             </p>
           </div>
           <motion.button
@@ -38,7 +42,7 @@ export function BookStickyCheckout({
           >
             <Lock size={16} className="shrink-0" />
             <span className="truncate">
-              {confirming ? "Securing…" : "Confirm"}
+              {confirming ? "Securing…" : slotChosen ? "Confirm" : "Choose a time"}
             </span>
             {!confirming && <ArrowRight size={16} className="shrink-0" />}
           </motion.button>

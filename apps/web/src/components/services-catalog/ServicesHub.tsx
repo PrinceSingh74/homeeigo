@@ -15,6 +15,7 @@ import { ServiceCategoryNav } from "@/components/services-catalog/ServiceCategor
 import { ServiceRail } from "@/components/services-catalog/ServiceGrid";
 import { CatalogError, ServiceSkeleton } from "@/components/services-catalog/ServiceStates";
 import { IconTile, SectionHeading, cardHover, cardSurface, eyebrow, focusRing } from "@/components/services-catalog/primitives";
+import { BrandHeroWash, BrandMesh, brandGradientText } from "@/components/layout/BrandCanvas";
 import { cn } from "@/lib/utils";
 
 // Below-the-fold sections and the search view are code-split. SSR still renders
@@ -62,7 +63,8 @@ export function ServicesHub({ initialServices }: { initialServices: BackendServi
   };
 
   return (
-    <main className={cn("relative overflow-x-clip bg-canvas", pageMainBottom, "lg:pb-20")}>
+    <main className={cn("relative overflow-x-clip bg-transparent", pageMainBottom, "lg:pb-20")}>
+      <BrandMesh />
       <HubHero catalog={catalog} />
 
       <div className={cn(pageSection, "relative z-20 -mt-8 sm:-mt-10")}>
@@ -108,11 +110,8 @@ export function ServicesHub({ initialServices }: { initialServices: BackendServi
 function HubHero({ catalog }: { catalog: Catalog | null }) {
   const liveCategories = catalog?.categories.filter((c) => c.liveCount > 0).length ?? 0;
   return (
-    <section aria-labelledby="services-hero-title" className="relative overflow-hidden border-b border-line/60 bg-surface">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_80%_at_85%_0%,rgb(16_185_129/0.10),transparent_70%),radial-gradient(40%_60%_at_0%_100%,rgb(20_184_166/0.08),transparent_70%)]"
-      />
+    <section aria-labelledby="services-hero-title" className="relative overflow-hidden border-b border-line/60">
+      <BrandHeroWash />
       <div className={cn(pageSection, "relative pb-20 pt-6 sm:pb-24 sm:pt-8 lg:pb-28")}>
         <nav aria-label="Services page" className="-mx-4 overflow-x-auto px-4 scrollbar-none sm:mx-0 sm:px-0">
           <ul className="flex gap-1 text-sm">
@@ -139,7 +138,8 @@ function HubHero({ catalog }: { catalog: Catalog | null }) {
           <div className="motion-safe:animate-catalog-in">
             <p className={eyebrow}>HOMEEIGO — All Services</p>
             <h1 id="services-hero-title" className={cn(heroTitle, "mt-4 max-w-xl text-balance")}>
-              Everything Your Home Needs. One Trusted Place.
+              Everything Your Home Needs.{" "}
+              <span className={brandGradientText}>One Trusted Place.</span>
             </h1>
             <p className={cn(sectionSubtitle, "mt-5 max-w-lg")}>
               From everyday home help to cleaning, repairs, beauty, care and convenience — book trusted services at
@@ -211,7 +211,8 @@ function Editorial({ catalog }: { catalog: Catalog }) {
                 <IconTile icon={c.def.icon} tone={c.def.tone} className="size-11" />
                 <span className="mt-auto">
                   <span className="block font-semibold leading-snug text-content">{c.def.name}</span>
-                  <span className="mt-1 block text-xs text-muted">
+                  <span className="mt-1 block text-xs leading-relaxed text-muted">{c.def.tagline}</span>
+                  <span className="mt-2 block text-xs text-muted">
                     {c.liveCount > 0 ? `${c.liveCount} bookable · ${c.services.length} services` : "Coming soon"}
                   </span>
                 </span>

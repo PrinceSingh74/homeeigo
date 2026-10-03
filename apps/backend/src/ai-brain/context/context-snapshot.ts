@@ -2,6 +2,7 @@ import type { AiGatewayRole } from "@prisma/client";
 import prisma from "../../lib/prisma";
 import { aiBrainConfig } from "../config";
 import type { ContextSection } from "../types";
+import { toInputJsonArray } from "../../lib/json-input";
 
 export async function saveContextSnapshot(input: {
   requestId: string;
@@ -13,6 +14,9 @@ export async function saveContextSnapshot(input: {
 }): Promise<void> {
   const expiresAt = new Date(Date.now() + aiBrainConfig.contextSnapshotTtlHours * 3_600_000);
 
+  const storable = toInputJsonArray(input.sections);
+  if (!storable) return;
+
   await prisma.aiContextSnapshot.create({
     data: {
       requestId: input.requestId,
@@ -20,7 +24,10 @@ export async function saveContextSnapshot(input: {
       actorRole: input.actorRole,
       contextHash: input.contextHash,
       contextSize: input.contextSize,
-      sections: input.sections as unknown as Record<string, unknown>[],
+      // Validated rather than asserted — see lib/json-input. A snapshot is forensic and its
+      // write is already best-effort, so an unstorable section list skips the row instead of
+      // throwing inside a `.catch(() => undefined)` that would hide the reason entirely.
+      sections: storable,
       expiresAt,
     },
   }).catch(() => undefined);

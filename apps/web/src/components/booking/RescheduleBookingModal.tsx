@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRescheduleQuoteQuery } from "@/hooks/use-core-data";
 import { Calendar, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { BookingScheduleSection } from "@/components/booking/BookingScheduleSection";
@@ -28,6 +29,10 @@ export function RescheduleBookingModal({
   const updateBooking = useUpdateBookingMutation();
   const [scheduledAt, setScheduledAt] = useState(currentScheduledAt);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Asked only once the customer opens the confirm step — the fee depends on the booking, not
+  // on the slot being picked, so there is nothing to refetch while they browse times.
+  const feeQuote = useRescheduleQuoteQuery(bookingId, confirmOpen);
+  const fee = feeQuote.data?.quote;
 
   const minFuture = new Date(Date.now() + 60 * 60 * 1000);
   const isValid = scheduledAt.getTime() >= minFuture.getTime();
@@ -100,9 +105,26 @@ export function RescheduleBookingModal({
             {scheduledAt.toLocaleString("en-IN", { dateStyle: "full", timeStyle: "short" })}
           </span>
         </p>
-        <p className="mt-2 text-xs text-muted">
-          No extra charge unless your plan says otherwise. Partner receives an instant notification.
-        </p>
+        {/*
+          §45 / O6. This used to read "No extra charge unless your plan says otherwise", which
+          became untrue the day the late-reschedule fee was set: a move inside two hours costs 25%.
+          The number shown is the SERVER's, priced by the policy frozen on this booking — the client
+          never works the percentage out, or it would disagree the moment the policy changes.
+        */}
+        {feeQuote.isLoading ? (
+          <p className="mt-2 text-xs text-muted">Checking whether a fee applies…</p>
+        ) : fee?.disposition === "LATE_FEE" ? (
+          <p className="mt-2 text-xs font-semibold text-warning">
+            {fee.feeAmount > 0
+              ? `Moving this booking now carries a ₹${fee.feeAmount} late-reschedule fee (${fee.feeBps / 100}%).`
+              : fee.message}{" "}
+            Partner receives an instant notification.
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-muted">
+            No reschedule fee applies. Partner receives an instant notification.
+          </p>
+        )}
         <div className="mt-6 flex flex-col gap-2">
           <button
             type="button"

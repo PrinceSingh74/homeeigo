@@ -10,7 +10,7 @@ async function adminLogin(page: import("@playwright/test").Page) {
   await page.locator("#admin-email").fill(SEED_ADMIN.email);
   await page.locator("#admin-password").fill(SEED_ADMIN.password);
   await page.getByRole("button", { name: /enter business hq/i }).click();
-  await expect(page.getByRole("heading", { name: /business overview/i })).toBeVisible({
+  await expect(page.getByRole("heading", { name: /Executive HQ|business overview/i })).toBeVisible({
     timeout: 30_000,
   });
 }

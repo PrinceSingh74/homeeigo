@@ -1,0 +1,3 @@
+# Prisma hashes migration.sql BYTES into _prisma_migrations.checksum. core.autocrlf checkouts turned
+# 40 applied-as-LF files into CRLF and every checksum "drifted" (2026-09-22). Pin them to LF everywhere.
+prisma/migrations/**/*.sql text eol=lf

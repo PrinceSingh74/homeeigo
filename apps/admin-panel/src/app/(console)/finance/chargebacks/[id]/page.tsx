@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Download, FileBadge, Upload } from "lucide-react";
-import { DataTable, StatusBadge } from "@/components/ui/DataTable";
+import { DataTable } from "@/components/ui/DataTable";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { adminApi } from "@/services/admin-api";
@@ -96,7 +96,7 @@ export default function ChargebackDetailPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/finance/chargebacks" className="rounded-lg border p-2 hover:bg-[var(--color-biz-elevated)]">
+        <Link href="/finance/chargebacks" aria-label="Back to chargebacks" className="rounded-lg border p-2 hover:bg-[var(--color-biz-elevated)]">
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div>
@@ -119,6 +119,7 @@ export default function ChargebackDetailPage() {
             <input
               ref={fileRef}
               type="file"
+              aria-label="Evidence file"
               accept=".pdf,.png,.jpg,.jpeg,.zip"
               className="hidden"
               onChange={(e) => {

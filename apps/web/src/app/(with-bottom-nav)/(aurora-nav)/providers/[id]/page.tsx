@@ -135,7 +135,7 @@ export default function ProviderDetailPage() {
               className="object-cover"
               sizes="96px"
             />
-            {provider.isOnline ? (
+            {provider.availableNow ? (
               <span className="absolute bottom-1 right-1 size-3 rounded-full border-2 border-white bg-emerald-500" />
             ) : null}
           </div>

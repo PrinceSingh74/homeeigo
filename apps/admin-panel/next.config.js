@@ -4,6 +4,8 @@ const path = require("path");
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Lets a production build land beside a running `next dev` that holds `.next`.
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   // Allow dev assets when opening admin via LAN IP (e.g. http://10.71.97.32:3003).
   allowedDevOrigins: ["127.0.0.1", "localhost", "10.*.*.*", "172.*.*.*", "192.168.*.*"],
   experimental: {

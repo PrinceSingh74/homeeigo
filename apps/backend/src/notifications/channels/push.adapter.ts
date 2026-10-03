@@ -19,11 +19,21 @@ export const pushAdapter: NotificationChannelAdapter = {
 
   async send(recipient, message, ctx) {
     try {
-      const id = await notificationService.sendNotification(recipient.userId, ctx.notificationType, {
-        title: message.title ?? "HOMEEIGO",
-        body: message.body,
-        data: { notificationType: ctx.notificationType, traceId: ctx.traceId },
-      });
+      const id = await notificationService.sendNotification(
+        recipient.userId,
+        ctx.notificationType,
+        {
+          title: message.title ?? "HOMEEIGO",
+          body: message.body,
+          data: { notificationType: ctx.notificationType, traceId: ctx.traceId },
+        },
+        /**
+         * The router reached this adapter only after `evaluatePreference` allowed PUSH for this
+         * category. Letting the legacy `User.pushNotifications` boolean re-decide underneath would
+         * drop mandatory SECURITY and TRANSACTIONAL messages that no preference may refuse.
+         */
+        { preferenceAlreadyApplied: true },
+      );
       return { status: "QUEUED", providerRef: id };
     } catch (err) {
       return {

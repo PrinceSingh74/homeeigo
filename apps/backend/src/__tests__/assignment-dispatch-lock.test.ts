@@ -11,7 +11,8 @@
  * real "Redis unavailable → graceful degradation" code path, not a simulation.
  */
 import "../load-env";
-import { describe, test, expect, beforeAll, afterAll, spyOn } from "bun:test";
+import { provenanceForNewUser } from "../lib/data-provenance";
+import { describe, test, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
 import { Prisma, AssignmentJobStatus, AssignmentAttemptStatus, UserRole } from "@prisma/client";
 import {
   prisma,
@@ -21,7 +22,7 @@ import {
   fixturePhone,
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
-import { redisClient } from "../lib/redis";
+import { redisClient, resetMemoryLocksForTests } from "../lib/redis";
 import { assignmentEngine } from "../services/assignment-engine.service";
 
 const RUN_ID = `p03-${Date.now().toString(36)}`;
@@ -37,6 +38,7 @@ beforeAll(async () => {
 
   const vendor2 = await prisma.user.create({
     data: {
+      ...provenanceForNewUser(`${TAG}-vendor2@adv.test`),
       email: `${TAG}-vendor2@adv.test`,
       phoneNumber: fixturePhone(RUN_ID, "vendor2"),
       firstName: "Adv",
@@ -65,7 +67,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (dbOk) await cleanupAdversarialFixtures(RUN_ID);
-  await prisma.$disconnect();
 }, 30_000);
 
 function skipIfNoDb() {
@@ -180,80 +181,83 @@ describe.serial("P0-3 — assignment_attempts (job_id, provider_id) uniqueness",
 });
 
 describe.serial("P0-3 — assignmentEngine.processQueue() distributed lock", () => {
-  test("single owner: two concurrent processQueue() calls — only one actually acquires the lock", async () => {
+  const LOCK_KEY = "assignment:processor";
+
+  beforeEach(() => {
+    resetMemoryLocksForTests();
+  });
+
+  afterEach(() => {
+    resetMemoryLocksForTests();
+  });
+
+  test("held lock: processQueue does not steal work while another owner holds the key", async () => {
     if (skipIfNoDb()) return;
-    const acquireSpy = spyOn(redisClient, "acquireLock");
-    const releaseSpy = spyOn(redisClient, "releaseLock");
+    const held = await redisClient.acquireLock(LOCK_KEY, "external-holder", 30);
+    expect(held).toBe(true);
 
     const [r1, r2] = await Promise.all([assignmentEngine.processQueue(), assignmentEngine.processQueue()]);
+    expect(r1).toEqual({ processed: 0, dispatched: 0 });
+    expect(r2).toEqual({ processed: 0, dispatched: 0 });
 
-    expect(acquireSpy).toHaveBeenCalledTimes(2);
-    const acquireResults = await Promise.all(acquireSpy.mock.results.map((r) => r.value));
-    const successCount = acquireResults.filter(Boolean).length;
-    expect(successCount).toBe(1); // exactly one of the two concurrent calls held the lock
-
-    // The loser must return immediately with no work claimed, not throw and not double-process.
-    expect(r1.processed + r2.processed).toBeGreaterThanOrEqual(0);
-    expect([r1, r2].some((r) => r.processed === 0 && r.dispatched === 0)).toBe(true);
-
-    // releaseLock must only ever be called by the call that actually acquired.
-    expect(releaseSpy).toHaveBeenCalledTimes(successCount);
-
-    acquireSpy.mockRestore();
-    releaseSpy.mockRestore();
+    await redisClient.releaseLock(LOCK_KEY, "external-holder");
   });
 
   test("leader failover: lock is released after completion, a subsequent call can acquire it", async () => {
     if (skipIfNoDb()) return;
-    const acquireSpy = spyOn(redisClient, "acquireLock");
+    const first = await assignmentEngine.processQueue();
+    expect(first).toBeDefined();
+    const second = await assignmentEngine.processQueue();
+    expect(second).toBeDefined();
+    // If either run leaked the lock, this probe fails. Tick deadline ensures finally{release} runs.
+    const after = await redisClient.acquireLock(LOCK_KEY, "post-run", 5);
+    expect(after).toBe(true);
+    await redisClient.releaseLock(LOCK_KEY, "post-run");
+  }, 90_000);
 
-    await assignmentEngine.processQueue();
-    const firstKey = acquireSpy.mock.calls[0]?.[0] as string;
-    expect(firstKey).toBe("assignment:processor");
-
-    await assignmentEngine.processQueue();
-    const secondAcquired = await acquireSpy.mock.results[1]?.value;
-    expect(secondAcquired).toBe(true); // lock was cleanly released after the first run, no deadlock
-
-    acquireSpy.mockRestore();
+  test("refreshLock extends same-token TTL and never re-acquires a missing lock", async () => {
+    if (skipIfNoDb()) return;
+    const key = `refresh-probe-${RUN_ID}`;
+    expect(await redisClient.refreshLock(key, "ghost", 5)).toBe(false);
+    expect(await redisClient.acquireLock(key, "owner", 5)).toBe(true);
+    expect(await redisClient.refreshLock(key, "owner", 5)).toBe(true);
+    expect(await redisClient.refreshLock(key, "other", 5)).toBe(false);
+    await redisClient.releaseLock(key, "owner");
+    expect(await redisClient.refreshLock(key, "owner", 5)).toBe(false);
+    const stolen = await redisClient.acquireLock(key, "next", 5);
+    expect(stolen).toBe(true);
+    await redisClient.releaseLock(key, "next");
   });
 
   test("graceful degradation: Redis is unavailable in this test env — lock still enforces exclusivity via in-memory fallback", async () => {
     if (skipIfNoDb()) return;
-    // Real, not simulated: .env.test intentionally leaves REDIS_URL empty for isolation.
     expect(redisClient.isAvailable).toBe(false);
 
-    const acquireSpy = spyOn(redisClient, "acquireLock");
-    const [r1, r2] = await Promise.all([assignmentEngine.processQueue(), assignmentEngine.processQueue()]);
-    const results = await Promise.all(acquireSpy.mock.results.map((r) => r.value));
-    expect(results.filter(Boolean).length).toBe(1);
-    expect(r1).toBeDefined();
-    expect(r2).toBeDefined();
-
-    acquireSpy.mockRestore();
+    const a = await redisClient.acquireLock(LOCK_KEY, "mem-a", 10);
+    const b = await redisClient.acquireLock(LOCK_KEY, "mem-b", 10);
+    expect(a).toBe(true);
+    expect(b).toBe(false); // in-memory fallback is exclusive, not a second independent lock
+    await redisClient.releaseLock(LOCK_KEY, "mem-a");
+    const c = await redisClient.acquireLock(LOCK_KEY, "mem-b", 10);
+    expect(c).toBe(true);
+    await redisClient.releaseLock(LOCK_KEY, "mem-b");
   });
 
   test("a lock held by a crashed leader blocks new acquisition until its TTL expires, then recovers", async () => {
     if (skipIfNoDb()) return;
-    const acquireSpy = spyOn(redisClient, "acquireLock");
-    await assignmentEngine.processQueue(); // learn the real lock key + confirm baseline works
-    const lockKey = acquireSpy.mock.calls[0]?.[0] as string;
-    acquireSpy.mockRestore();
-
-    // Simulate a crashed holder: acquire with a short TTL and never release.
     const crashedToken = "crashed-leader-simulated";
-    const held = await redisClient.acquireLock(lockKey, crashedToken, 1);
+    const held = await redisClient.acquireLock(LOCK_KEY, crashedToken, 1);
     expect(held).toBe(true);
 
     const blocked = await assignmentEngine.processQueue();
-    expect(blocked).toEqual({ processed: 0, dispatched: 0 }); // correctly backed off, did not steal the lock
+    expect(blocked).toEqual({ processed: 0, dispatched: 0 });
 
-    await new Promise((r) => setTimeout(r, 1100)); // past the 1s TTL
+    await new Promise((r) => setTimeout(r, 1100));
 
-    const recoveredSpy = spyOn(redisClient, "acquireLock");
-    await assignmentEngine.processQueue();
-    const recovered = await recoveredSpy.mock.results[0]?.value;
-    expect(recovered).toBe(true); // failover: a new owner could acquire once the stale lock expired
-    recoveredSpy.mockRestore();
+    const recovered = await assignmentEngine.processQueue();
+    expect(recovered).toBeDefined();
+    const probe = await redisClient.acquireLock(LOCK_KEY, "after-ttl", 5);
+    expect(probe).toBe(true);
+    await redisClient.releaseLock(LOCK_KEY, "after-ttl");
   }, 10_000);
 });

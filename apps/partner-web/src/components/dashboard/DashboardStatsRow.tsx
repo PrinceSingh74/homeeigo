@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { TrendingUp, Briefcase, Bell, Star } from "lucide-react";
 import { CircularProgress } from "@/components/ui/CircularProgress";
 import { Sparkline } from "@/components/dashboard/Sparkline";

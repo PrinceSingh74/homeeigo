@@ -17,10 +17,17 @@ export const geoIntelligenceRoutes = new Elysia({ prefix: "/api/geo-intel" })
   .use(authPlugin)
 
   // Partner + Admin --------------------------------------------------------
-  .get("/demand-forecast", async ({ requireRole, query }) => {
+  .get("/demand-forecast", async ({ requireRole, query, set }) => {
     requireRole("ADMIN", "VENDOR");
     const horizon = Number(query.horizon ?? 24);
-    return { success: true, ...(await svc.demandForecast(horizon)) };
+    // A caller error must not be reported as the warehouse being down.
+    if (!Number.isFinite(horizon)) {
+      set.status = 400;
+      return { success: false, error: "horizon must be a number of hours" };
+    }
+    // A warehouse outage is a stated `available: false` (reasonCode FORECAST_SOURCE_UNAVAILABLE,
+    // no forecast numbers), not a 500 — X-84.
+    return { success: true, ...(await svc.demandForecastSafe(horizon)) };
   }, { query: t.Object({ horizon: t.Optional(t.String()) }) })
 
   .get("/surge", async ({ requireRole }) => {
@@ -56,9 +63,16 @@ export const geoIntelligenceRoutes = new Elysia({ prefix: "/api/geo-intel" })
     return { success: true, ...(await svc.revenueForecast()) };
   })
 
-  .get("/fraud", async ({ requireRole, query }) => {
+  .get("/fraud", async ({ requireRole, query, set }) => {
     requireRole("ADMIN");
-    return { success: true, ...(await svc.fraudDetection(Number(query.limit ?? 50))) };
+    const limit = Number(query.limit ?? 50);
+    if (!Number.isFinite(limit)) {
+      set.status = 400;
+      return { success: false, error: "limit must be a number" };
+    }
+    // A warehouse outage is a stated `available: false` (FRAUD_SIGNALS_SOURCE_UNAVAILABLE, no count,
+    // no score), not a 500 — X-86.
+    return { success: true, ...(await svc.fraudDetectionSafe(limit)) };
   }, { query: t.Object({ limit: t.Optional(t.String()) }) })
 
   .get("/exec-kpis", async ({ requireRole }) => {

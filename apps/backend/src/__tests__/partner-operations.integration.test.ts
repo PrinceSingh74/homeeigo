@@ -54,7 +54,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (dbOk) await cleanupAdversarialFixtures(RUN_ID);
-  await prisma.$disconnect();
 }, 60_000);
 
 function skipIfNoDb() {
@@ -144,22 +143,50 @@ describe.serial("Section 02 partner operations", () => {
 
   test("matching excludes offline, paused, and capacity-full partners", async () => {
     if (skipIfNoDb()) return;
+    // Isolate eligibility from leftover capacity / geofence zone mismatches accumulated in shared DB.
+    await prisma.booking.updateMany({
+      where: {
+        providerId: ctx.providerId,
+        status: {
+          in: [
+            BookingStatus.PENDING,
+            BookingStatus.ACCEPTED,
+            BookingStatus.ASSIGNED,
+            BookingStatus.EN_ROUTE,
+            BookingStatus.IN_PROGRESS,
+          ],
+        },
+      },
+      // This schema has no single CANCELLED status; cancellation is attributed to whoever did it.
+      // Cleanup attributes it to the user, which is the state a test fixture's abandonment produces.
+      data: { status: BookingStatus.CANCELLED_BY_USER },
+    });
+    await prisma.location.deleteMany({ where: { providerId: ctx.providerId } });
     await prisma.provider.update({
       where: { id: ctx.providerId },
       data: {
         isOnline: false,
         pausedAt: null,
+        pauseReason: null,
+        currentStatus: "offline",
         workingDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
         workingHoursStart: "00:00",
         workingHoursEnd: "23:59",
-        maxConcurrentJobs: 1,
+        breakWindows: [],
+        maxConcurrentJobs: 2,
         serviceRadiusKm: 8,
         baseLatitude: 28.62,
         baseLongitude: 77.37,
-        serviceRegions: ["Noida"],
+        // Empty regions: avoid false negatives when unrelated SERVICE_ZONE rows exist around the pin.
+        serviceRegions: [],
       },
     });
     const offline = await matchingService.findBestProviders({
+      // W2-D4: matching is scoped to the customer's population. With no customer it defaults to
+      // the business population, and the fixture partner — classified at creation now — is
+      // correctly absent from that. This test is about offline/paused/capacity, so it names its
+      // own (fixture) customer and asks within the fixture world.
+      customerId: ctx.customerA.id,
       serviceId: ctx.serviceId,
       latitude: 28.62,
       longitude: 77.37,
@@ -169,6 +196,11 @@ describe.serial("Section 02 partner operations", () => {
 
     await partnerOperationsService.setOnline(ctx.providerId, true);
     const online = await matchingService.findBestProviders({
+      // W2-D4: matching is scoped to the customer's population. With no customer it defaults to
+      // the business population, and the fixture partner — classified at creation now — is
+      // correctly absent from that. This test is about offline/paused/capacity, so it names its
+      // own (fixture) customer and asks within the fixture world.
+      customerId: ctx.customerA.id,
       serviceId: ctx.serviceId,
       latitude: 28.62,
       longitude: 77.37,
@@ -178,6 +210,11 @@ describe.serial("Section 02 partner operations", () => {
 
     await partnerOperationsService.pause(ctx.providerId, "personal");
     const paused = await matchingService.findBestProviders({
+      // W2-D4: matching is scoped to the customer's population. With no customer it defaults to
+      // the business population, and the fixture partner — classified at creation now — is
+      // correctly absent from that. This test is about offline/paused/capacity, so it names its
+      // own (fixture) customer and asks within the fixture world.
+      customerId: ctx.customerA.id,
       serviceId: ctx.serviceId,
       latitude: 28.62,
       longitude: 77.37,

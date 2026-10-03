@@ -183,7 +183,22 @@ export default function FinanceReconciliationPage() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <KpiCard label="Total revenue" value={inr(metrics.totalRevenue ?? 0)} icon={TrendingUp} accent="green" loading={isLoading} />
         <KpiCard label="Matched payments" value={`${metrics.matchedPayments ?? 0}/${metrics.successPayments ?? 0}`} icon={CheckCircle2} accent="green" loading={isLoading} />
-        <KpiCard label="Match rate" value={`${Number(metrics.matchPct ?? metrics.avgMatchPct ?? 0).toFixed(1)}%`} icon={BarChart3} accent="amber" loading={isLoading} />
+        {/*
+          An em dash when reconciliation has never run.
+          The backend used to send 100 in that case and this coerced a null to 0 — so the card read
+          either "perfectly reconciled" or "totally broken", when the truth was "not yet measured".
+        */}
+        <KpiCard
+          label="Match rate"
+          value={
+            (metrics.matchPct ?? metrics.avgMatchPct) != null
+              ? `${Number(metrics.matchPct ?? metrics.avgMatchPct).toFixed(1)}%`
+              : "—"
+          }
+          icon={BarChart3}
+          accent="amber"
+          loading={isLoading}
+        />
         <KpiCard label="Settlement pending" value={String(metrics.settlementPending ?? 0)} icon={Wallet} loading={isLoading} />
         <KpiCard label="Local issues" value={String(metrics.localIssues ?? issues.length)} icon={AlertTriangle} accent="red" loading={issuesLoading} />
         <KpiCard label="Integrity score" value={isError ? "—" : `${Number(metrics.integrityScore ?? 0).toFixed(0)}/100`} icon={Shield} loading={isLoading} />
@@ -214,6 +229,7 @@ export default function FinanceReconciliationPage() {
               className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-500"
             />
             <select
+              aria-label="Filter issues by type"
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value); setIssuePage(1); }}
               className="rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100"

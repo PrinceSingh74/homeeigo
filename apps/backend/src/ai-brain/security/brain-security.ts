@@ -37,7 +37,7 @@ export function validateBrainInput(message: string, role: string): {
   reason?: string;
   promptHash: string;
 } {
-  const security = validatePromptSecurity(message, role as never);
+  const security = validatePromptSecurity(message, role);
   if (!security.safe) {
     recordPromptBlocked(security.reason ?? "injection", role);
     return { safe: false, sanitized: "", reason: security.reason, promptHash: hashContent(message) };
@@ -72,11 +72,21 @@ export async function validateBrainOutput(
     validateIds: true,
   });
 
-  return {
-    valid: output.valid,
-    content: output.content,
-    reason: output.reason,
-  };
+  /**
+   * `OutputValidationResult` is a discriminated union — `{ valid: true, content }` XOR
+   * `{ valid: false, reason }` — so neither field can be read without narrowing on `valid`.
+   * Reading both produced a declared `content: string` that was actually `undefined` on the
+   * invalid branch, i.e. the return type lied precisely when validation had FAILED.
+   *
+   * Narrowed here, and the invalid branch returns `cleaned` for `content` exactly as the
+   * secret-detection branch above already does, so the contract holds in both cases. The
+   * security decision itself (`valid`) is unchanged — no validation is weakened, and the
+   * gateway still short-circuits on `!output.valid` before touching `content`.
+   */
+  if (!output.valid) {
+    return { valid: false, content: cleaned, reason: output.reason };
+  }
+  return { valid: true, content: output.content };
 }
 
 export function enforceTenantIsolation(

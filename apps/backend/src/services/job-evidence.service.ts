@@ -28,6 +28,13 @@ export type RecordStageInput = {
  * confirmation artifact at completion; customers rate post-job via Rating.
  * Do not fake confirmation evidence.
  */
+/** Evidence metadata for a non-admin reader: without the raw upload URLs (`mediaUrls`). */
+function withoutRawMedia(metadata: Prisma.JsonValue | null): Prisma.JsonValue | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return metadata;
+  const { mediaUrls: _raw, ...rest } = metadata as Record<string, Prisma.JsonValue>;
+  return rest;
+}
+
 class JobEvidenceService {
   async recordStage(input: RecordStageInput) {
     const booking = await prisma.booking.findUnique({
@@ -146,7 +153,8 @@ class JobEvidenceService {
     const isCustomer = booking.userId === actor.userId;
     let isAssignedProvider =
       Boolean(actor.providerId) && booking.providerId === actor.providerId;
-    if (!isAssignedProvider && actor.providerId) {
+    // An offer opens the evidence only while nobody owns the booking (see partnerBookingAccessWhere).
+    if (!isAssignedProvider && actor.providerId && booking.providerId === null) {
       const offered = await prisma.assignmentAttempt.findFirst({
         where: {
           providerId: actor.providerId,
@@ -201,7 +209,8 @@ class JobEvidenceService {
           // Never leak raw legacy URLs or storage keys to non-admins.
           mediaUrl: actor.isAdmin ? row.mediaUrl : undefined,
           mediaStorageKey: actor.isAdmin ? row.mediaStorageKey : undefined,
-          metadata: row.metadata,
+          // X-29: legacy rows keep the raw upload URLs in metadata.mediaUrls — admin only, like mediaUrl.
+          metadata: actor.isAdmin ? row.metadata : withoutRawMedia(row.metadata),
           createdAt: row.createdAt,
         };
       }),

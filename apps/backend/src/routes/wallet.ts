@@ -43,7 +43,14 @@ export const walletRoutes = new Elysia({ prefix: "/api/wallet" })
       const { userId } = requireVerifiedEmail();
       const result = await walletCheckoutService.payBookingFromWallet(userId, (body as { bookingId: string }).bookingId);
       if ("error" in result) {
-        set.status = result.error === "BOOKING_NOT_FOUND" ? 404 : result.error === "INSUFFICIENT_WALLET_BALANCE" ? 402 : 409;
+        set.status =
+          result.error === "BOOKING_NOT_FOUND"
+            ? 404
+            : result.error === "INSUFFICIENT_WALLET_BALANCE"
+              ? 402
+              : result.error === "WALLET_NOT_ALLOWED"
+                ? 403
+                : 409;
         return { success: false, error: result.error.replace(/_/g, " ").toLowerCase(), code: result.error };
       }
       return { success: true, data: result };
@@ -57,7 +64,7 @@ export const walletRoutes = new Elysia({ prefix: "/api/wallet" })
       const b = body as { bookingId: string; walletAmount: number };
       const result = await walletCheckoutService.initiateSplit(userId, b.bookingId, b.walletAmount);
       if ("error" in result) {
-        set.status = result.error === "BOOKING_NOT_FOUND" ? 404 : result.error === "INSUFFICIENT_WALLET_BALANCE" ? 402 : result.error === "ALREADY_PAID" ? 409 : 400;
+        set.status = result.error === "BOOKING_NOT_FOUND" ? 404 : result.error === "INSUFFICIENT_WALLET_BALANCE" ? 402 : result.error === "ALREADY_PAID" || result.error === "BOOKING_NOT_PAYABLE" || result.error === "RETRY_CONFLICT" ? 409 : result.error === "WALLET_NOT_ALLOWED" || result.error === "SPLIT_NOT_ALLOWED" ? 403 : 400;
         return { success: false, error: result.error.replace(/_/g, " ").toLowerCase(), code: result.error };
       }
       return { success: true, data: result };
@@ -105,7 +112,7 @@ export const walletRoutes = new Elysia({ prefix: "/api/wallet" })
       const b = body as { bookingId: string; giftCardCode?: string; hCoinCoins?: number; useWallet?: boolean };
       const result = await walletCheckoutService.payMultiSource(userId, b.bookingId, { giftCardCode: b.giftCardCode, hCoinCoins: b.hCoinCoins, useWallet: b.useWallet });
       if ("error" in result) {
-        set.status = result.error === "BOOKING_NOT_FOUND" ? 404 : result.error === "ALREADY_PAID" ? 409 : result.error.startsWith("GIFT_CARD_") || result.error.startsWith("HCOIN_") || result.error === "INSUFFICIENT_WALLET_BALANCE" ? 402 : 400;
+        set.status = result.error === "BOOKING_NOT_FOUND" ? 404 : result.error === "ALREADY_PAID" || result.error === "BOOKING_NOT_PAYABLE" ? 409 : result.error.startsWith("GIFT_CARD_") || result.error.startsWith("HCOIN_") || result.error === "INSUFFICIENT_WALLET_BALANCE" ? 402 : 400;
         return { success: false, error: result.error.replace(/_/g, " ").toLowerCase(), code: result.error };
       }
       return { success: true, data: result };
@@ -164,6 +171,7 @@ export const walletRoutes = new Elysia({ prefix: "/api/wallet" })
         bankAccountNumber: body.bankAccountNumber,
         ifscCode: body.ifscCode,
         accountHolder: body.accountHolder,
+        idempotencyKey: body.idempotencyKey,
       });
       if ("error" in result) {
         set.status = 400;
@@ -195,6 +203,7 @@ export const walletRoutes = new Elysia({ prefix: "/api/wallet" })
         bankAccountNumber: t.String(),
         ifscCode: t.String(),
         accountHolder: t.String(),
+        idempotencyKey: t.Optional(t.String()),
       }),
     },
   )

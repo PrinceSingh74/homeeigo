@@ -90,16 +90,46 @@ async function processConsumer(consumer: ReturnType<typeof matchConsumers>[numbe
   }
 
   const message = lastError instanceof Error ? lastError.message : String(lastError);
-  await recordDeadLetter({
-    eventId: event.id,
-    eventType: event.type,
-    consumerName: consumer.name,
-    payload: event,
-    error: message,
-    attempts: maxAttempts,
+
+  try {
+    await recordDeadLetter({
+      eventId: event.id,
+      eventType: event.type,
+      consumerName: consumer.name,
+      payload: event,
+      error: message,
+      attempts: maxAttempts,
+    });
+    incCounter("homigo_dlq_total", { consumer: consumer.name, event_type: normalizeEventType(event.type) });
+  } catch (dlqErr) {
+    // DB unavailable at the exact dead-lettering moment: the DLQ write itself failed.
+    // Do NOT count this as homigo_dlq_total (it was never persisted) and do NOT write
+    // a consumer receipt below — leaving no receipt means a future replay of this
+    // event (operators can call replayOutboxEvent({ eventId, consumerName }) once the
+    // DB recovers) will retry this consumer instead of being silently skipped forever.
+    incCounter("homigo_dlq_persist_failed_total", { consumer: consumer.name, event_type: normalizeEventType(event.type) });
+    logger.error("event_dead_letter_persist_failed", {
+      eventId: event.id,
+      eventType: event.type,
+      consumer: consumer.name,
+      consumerError: message,
+      dlqPersistError: dlqErr instanceof Error ? dlqErr.message : String(dlqErr),
+      correlationId: event.homigo.correlationId,
+      traceId: event.homigo.traceId,
+    });
+    return;
+  }
+
+  await recordConsumerSkipped(consumer.name, event.id, `dlq:${message.slice(0, 200)}`).catch((receiptErr) => {
+    // DLQ row is safely persisted above; only the idempotency receipt failed to write.
+    // Not data loss (the DLQ row is the source of truth for replay), just a residual
+    // gap where a future redelivery could redundantly retry an already-dead-lettered event.
+    logger.error("event_consumer_receipt_persist_failed", {
+      eventId: event.id,
+      consumer: consumer.name,
+      error: receiptErr instanceof Error ? receiptErr.message : String(receiptErr),
+    });
   });
-  incCounter("homigo_dlq_total", { consumer: consumer.name, event_type: normalizeEventType(event.type) });
-  await recordConsumerSkipped(consumer.name, event.id, `dlq:${message.slice(0, 200)}`);
 }
 
 /** Dispatch event to all matching consumers with idempotency and bounded inline retry. */

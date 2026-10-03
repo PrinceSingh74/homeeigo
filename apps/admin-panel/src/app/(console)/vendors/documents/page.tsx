@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpRight,
@@ -215,7 +216,7 @@ function InspectIdle({ matching }: { matching: number }) {
           </div>
         </div>
       </div>
-      <div className="cu-dock__body">
+      <div className="cu-dock__body" tabIndex={0} role="region" aria-label="KYC file overview">
         <div className="cu-inspect__identity">
           <span className="cu-avatar cu-avatar--lg cu-avatar--ghost" aria-hidden>
             ?
@@ -284,7 +285,7 @@ export default function VendorDocumentsPage() {
   });
   const applicationsQ = useAdminProvidersQuery({ page: 1, limit: 1, status: "applications", badge: true });
 
-  const documents = queue.data?.documents ?? [];
+  const documents = useMemo(() => queue.data?.documents ?? [], [queue.data?.documents]);
   const types = useMemo(() => [...new Set(documents.map((d) => d.documentType))], [documents]);
 
   const filtered = useMemo(() => {
@@ -694,8 +695,8 @@ export default function VendorDocumentsPage() {
                 </button>
               </div>
 
-              <div className="cu-dock__body">
-                <div className="cu-dock__stats">
+              <div className="cu-dock__body" tabIndex={0} role="region" aria-label="KYC document details">
+                <dl className="cu-dock__stats">
                   <div className="cu-stat">
                     <dt>In queue</dt>
                     <dd data-stat-value>{queueAge(selected.uploadedAt)}</dd>
@@ -712,11 +713,20 @@ export default function VendorDocumentsPage() {
                     <dt>File</dt>
                     <dd>{fileMeta(selected)}</dd>
                   </div>
-                </div>
+                </dl>
 
                 <div className="dr-preview">
                   {isImageDoc(selected) ? (
-                    <img src={preview} alt={selected.documentName || docTypeLabel(selected.documentType)} />
+                    <Image
+                      src={preview}
+                      alt={selected.documentName || docTypeLabel(selected.documentType)}
+                      width={1200}
+                      height={800}
+                      // Signed/blob preview URLs from the upload store are not optimisable by
+                      // the Next image loader; the CSS in .dr-preview img still sizes it.
+                      unoptimized
+                      style={{ width: "100%", height: "auto" }}
+                    />
                   ) : (
                     <div className="grid place-items-center gap-2 p-6 text-center">
                       <Icon3D icon={FileText} tone="warning" size="md" />

@@ -9,6 +9,8 @@ export type ServicePackage = {
   price: number;
   popular?: boolean;
   items: string[];
+  /** Server tier this package prices (0 Basic / 1 Standard / 2 Premium) — what `?package=` means. */
+  tierIndex?: number;
 };
 
 export type Service = {
@@ -227,6 +229,20 @@ export function getServiceById(id: string): Service | undefined {
 export function getServiceIndex(id: string): number {
   const i = SERVICES.findIndex((s) => s.id === id);
   return i === -1 ? 0 : i;
+}
+
+/**
+ * Array position of a URL tier index (0 Basic / 1 Standard / 2 Premium — what catalogue links send).
+ * Packages may be de-duplicated (a min == base service has no separate Basic), so position and tier
+ * differ; falls back to the popular package.
+ */
+export function packagePositionForTier(service: Service, tierIndex: number | null | undefined): number {
+  if (tierIndex == null) return popularPackageIndex(service);
+  const byTier = service.packages.findIndex((p) => p.tierIndex === tierIndex);
+  if (byTier !== -1) return byTier;
+  // Legacy packages without tier metadata keep positional meaning.
+  if (!service.packages.some((p) => p.tierIndex != null) && service.packages[tierIndex]) return tierIndex;
+  return popularPackageIndex(service);
 }
 
 export function popularPackageIndex(service: Service): number {

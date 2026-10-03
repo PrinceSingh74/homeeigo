@@ -18,7 +18,6 @@ export type MapBounds = {
 const pct = (v: number, min: number, max: number) => (max === min ? 50 : ((v - min) / (max - min)) * 100);
 
 export const GeofenceMarker = memo(function GeofenceMarker({
-  id,
   name,
   centerLat,
   centerLng,
@@ -46,7 +45,6 @@ export const GeofenceMarker = memo(function GeofenceMarker({
 });
 
 export const BookingMarker = memo(function BookingMarker({
-  bookingId,
   status,
   lat,
   lng,
@@ -72,7 +70,6 @@ export const BookingMarker = memo(function BookingMarker({
 });
 
 export const ProviderMarker = memo(function ProviderMarker({
-  providerId,
   name,
   status,
   lat,

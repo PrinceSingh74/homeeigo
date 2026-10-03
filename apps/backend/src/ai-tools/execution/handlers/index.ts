@@ -1,4 +1,5 @@
 import { bookingService } from "../../../services/booking.service";
+import { ToolDomainRejection } from "../errors";
 import { walletService } from "../../../services/wallet.service";
 import { subscriptionService } from "../../../services/subscription.service";
 import { catalogService } from "../../../services/catalog.service";
@@ -18,11 +19,17 @@ import { refundOrchestratorService } from "../../../services/refund-orchestrator
 import type { ToolHandler, ToolRegistryEntry } from "../../types";
 import { resolveProviderId, verifyBookingAccess, verifyBookingOwnership } from "../actor-resolver";
 import { financialSandboxVerdict, isSandboxExecutableHighRiskTool } from "../financial-sandbox";
+import { PHASE16_AGENT_HANDLERS } from "./phase16-agent-handlers";
 
 type CatalogEntry = Omit<ToolRegistryEntry, "handler">;
 
 function handlerMap(): Record<string, ToolHandler> {
   return {
+    // Phase 16 agent read surface. Spread FIRST so an accidental id collision with an existing
+    // handler below is resolved in favour of the older, already-certified one rather than
+    // silently rebinding it.
+    ...PHASE16_AGENT_HANDLERS,
+
     // Customer reads
     "read.customer.getBooking": async ({ actor, arguments: args }) => {
       const bookingId = String(args.bookingId);
@@ -73,22 +80,86 @@ function handlerMap(): Record<string, ToolHandler> {
     "read.partner.getPartnerPerformance": async ({ actor, arguments: args }) => {
       const providerId = await resolveProviderId(actor.actorId);
       if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
-      return partnerOsService.getProviderIntelligence(providerId, Number(args.days ?? 90));
+      // Bound to the method that actually reports performance. This previously returned
+      // `getProviderIntelligence`, i.e. repeat-customer stats — so the copilot would have answered
+      // "how is my performance?" with retention numbers. Retention is still included, under its
+      // own key, where it cannot be mistaken for a performance metric.
+      return partnerOsService.getPerformanceSummary(providerId, Number(args.days ?? 90));
     },
     "read.partner.getPartnerEarnings": async ({ actor, arguments: args }) => {
       const providerId = await resolveProviderId(actor.actorId);
       if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
       return providerService.myEarningsSummary(providerId, Number(args.days ?? 30));
     },
+    "read.partner.getEarningsOpportunity": async ({ actor, arguments: args }) => {
+      const providerId = await resolveProviderId(actor.actorId);
+      if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
+      // Identity is resolved from the AUTHENTICATED actor. `targetAmount` is the only caller-
+      // supplied value, and it cannot widen scope — it only sets the goal being measured against.
+      const { earningsCoachService } = await import("../../../services/earnings-coach.service");
+      return earningsCoachService.plan(providerId, Number(args.targetAmount ?? 0));
+    },
+    "read.partner.getPerformanceNudges": async ({ actor }) => {
+      const providerId = await resolveProviderId(actor.actorId);
+      if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
+      // No caller-supplied arguments at all — there is nothing to spoof.
+      const { performanceNudgesService } = await import("../../../services/performance-nudges.service");
+      return performanceNudgesService.compute(providerId);
+    },
     "read.partner.getPartnerDemand": async ({ actor }) => {
       const providerId = await resolveProviderId(actor.actorId);
       if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
-      return partnerOsService.getForecast(providerId);
+      const [forecast, scoring] = await Promise.all([
+        partnerOsService.getForecast(providerId),
+        geoIntelligenceService.zoneScoring(),
+      ]);
+      const ranked = ((scoring.data as { ranked?: Array<Record<string, unknown>> } | null)?.ranked) ?? [];
+      return {
+        forecast,
+        method: "HEURISTIC_PLUS_WAREHOUSE_ARIMA",
+        zones: ranked.slice(0, 8).map((z) => ({
+          zoneId: z.zoneId,
+          name: z.name,
+          city: z.city,
+          demand24h: z.demand24h,
+          supply: z.supply,
+          gap: z.gap,
+          opportunityScore: z.opportunityScore,
+          interpretation: z.interpretation,
+          recommendation: z.recommendation ?? null,
+        })),
+      };
     },
     "read.partner.getPartnerSchedule": async ({ actor }) => {
       const providerId = await resolveProviderId(actor.actorId);
       if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
       return partnerOsService.getAttendance(providerId);
+    },
+    "read.partner.getPartnerPayout": async ({ actor }) => {
+      const providerId = await resolveProviderId(actor.actorId);
+      if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
+      const { earningsService } = await import("../../../services/earnings.service");
+      const finance = await earningsService.getPartnerFinanceCenter(providerId);
+      return {
+        currentBalance: finance.currentBalance,
+        availableBalance: finance.availableBalance,
+        pendingBalance: finance.pendingBalance,
+        lifetimeEarnings: finance.lifetimeEarnings,
+        nextPayoutDate: finance.nextPayoutDate,
+        withdrawals: finance.withdrawals.map((w) => ({
+          id: w.id,
+          amount: w.amount,
+          netAmount: w.netAmount,
+          status: w.status,
+          settlementDate: w.settlementDate,
+        })),
+      };
+    },
+    "read.partner.getPartnerTraining": async ({ actor }) => {
+      const providerId = await resolveProviderId(actor.actorId);
+      if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
+      const { partnerOnboardingService } = await import("../../../services/partner-onboarding.service");
+      return partnerOnboardingService.getTraining(providerId);
     },
 
     // Admin reads
@@ -114,6 +185,7 @@ function handlerMap(): Record<string, ToolHandler> {
       geoIntelligenceService.demandForecast(Number(args.horizonHours ?? 24)),
     "read.admin.getDemand": async () => geoIntelligenceService.executiveKpis(),
     "read.admin.getSupply": async () => geoIntelligenceService.providerDensity(),
+    "read.admin.getSupplyDemand": async () => geoIntelligenceService.zoneScoring(),
     "read.admin.getOperations": async () => adminService.dashboard(),
 
     // Common reads
@@ -186,7 +258,19 @@ function handlerMap(): Record<string, ToolHandler> {
     "write.booking.cancelBooking": async ({ actor, arguments: args }) => {
       const bookingId = String(args.bookingId);
       if (!(await verifyBookingOwnership(actor.actorId, bookingId))) throw new Error("BOOKING_ACCESS_DENIED");
-      return bookingService.cancel(actor.actorId, bookingId, args.reason ? String(args.reason) : "Cancelled via AI tool", "CUSTOMER");
+      /**
+       * `cancel` takes an ACTOR OBJECT, not a user id: `(actor: { userId, providerId? }, id, reason)`.
+       * This previously passed `actor.actorId` (a bare string) as that first parameter, so
+       * `actor.userId` was `undefined` inside the service, plus a fourth `"CUSTOMER"` argument the
+       * signature does not declare. Matches the HTTP route's call shape (routes/bookings.ts:821).
+       * The customer role is already enforced by the tool's `requiredRole`/`customer.ownership`
+       * policy, so it does not need to be re-passed here.
+       */
+      return bookingService.cancel(
+        { userId: actor.actorId },
+        bookingId,
+        args.reason ? String(args.reason) : "Cancelled via AI tool",
+      );
     },
     "write.support.createSupportTicket": async ({ actor, arguments: args }) => {
       const providerId = actor.actorRole === "PARTNER" ? await resolveProviderId(actor.actorId) : undefined;
@@ -229,17 +313,50 @@ function handlerMap(): Record<string, ToolHandler> {
     "write.partner.acceptJob": async ({ actor, arguments: args }) => {
       const providerId = await resolveProviderId(actor.actorId);
       if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
-      return bookingService.accept(
-        providerId,
-        String(args.bookingId),
-        args.lat != null ? Number(args.lat) : 0,
-        args.lng != null ? Number(args.lng) : 0,
-      );
+      /**
+       * `accept` is `(providerId, id, eta?: number)` — it has NO latitude/longitude parameters.
+       * This previously passed `lat` as the third argument, i.e. it recorded the partner's
+       * LATITUDE as the job ETA in minutes (e.g. eta = 28.6), and added a fourth argument the
+       * signature does not accept. The tool catalog still advertises optional `lat`/`lng` inputs
+       * that the service cannot consume — see the NOTE in PHASE_8_STATE.md (P3-8); they are
+       * deliberately not forwarded rather than corrupting `eta`.
+       */
+      /**
+       * `accept` REPORTS failure, it does not throw it: on a business refusal it resolves with
+       * `{ ok: false, error: "PAYMENT_NOT_SETTLED" | "ALREADY_CLAIMED" | ... }`. Returning that
+       * object unchecked meant the engine saw a resolved promise and recorded SUCCESS — so a job
+       * that was never accepted was reported to the partner as accepted, counted as a successful
+       * execution in the metrics, and written to the tool audit as SUCCESS. Verified against a
+       * real booking: status stayed PENDING, `acceptedAt` stayed null, engine said SUCCESS.
+       */
+      const accepted = await bookingService.accept(providerId, String(args.bookingId));
+      if (!accepted.ok) {
+        throw new ToolDomainRejection(`Job could not be accepted: ${accepted.error}`, accepted.error);
+      }
+      return accepted;
     },
     "write.partner.rejectJob": async ({ actor, arguments: args }) => {
       const providerId = await resolveProviderId(actor.actorId);
       if (!providerId) throw new Error("PROVIDER_NOT_FOUND");
-      return bookingService.reject(providerId, String(args.bookingId), args.reason ? String(args.reason) : undefined);
+      /**
+       * `reject`'s `reason` is REQUIRED and is forwarded to
+       * `assignmentEngine.onProviderRejected(...)`, so passing `undefined` propagated straight into
+       * the dispatch/reassignment path. The tool schema makes `reason` optional, so supply the same
+       * kind of explicit default the cancel handler uses rather than an absent value.
+       */
+      // `reject` reports failure the same way `accept` does — with a value, not a throw.
+      const rejected = await bookingService.reject(
+        providerId,
+        String(args.bookingId),
+        args.reason ? String(args.reason) : "Rejected via AI tool",
+      );
+      if (rejected && typeof rejected === "object" && "error" in rejected && rejected.error) {
+        throw new ToolDomainRejection(
+          `Job could not be rejected: ${String(rejected.error)}`,
+          String(rejected.error),
+        );
+      }
+      return rejected;
     },
     "write.partner.updateAvailability": async ({ actor, arguments: args }) => {
       const providerId = await resolveProviderId(actor.actorId);

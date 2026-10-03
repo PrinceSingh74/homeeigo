@@ -121,11 +121,10 @@ function statusOf(surge: number): { label: string; tone: "hot" | "warm" | "good"
   return { label: "Stable", tone: "good" };
 }
 
+// `demand` / `fraud` / `revenue` stay on the prop contract (callers pass them) but this panel
+// renders only surge + zones today; destructuring them read as used data that never rendered.
 function AiIntelligencePanelInner({
   surge,
-  demand,
-  fraud,
-  revenue,
   zones,
 }: {
   surge?: SurgeZone[];

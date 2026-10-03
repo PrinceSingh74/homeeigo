@@ -2,10 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { PaymentStatus } from "@prisma/client";
 import { resolveAdminRoutePermission } from "../lib/admin-route-permissions";
 import { PaymentService } from "../services/payment.service";
-import { ProviderWalletReservationService } from "../services/provider-wallet-reservation.service";
 
 const paymentService = new PaymentService();
-const walletReservation = new ProviderWalletReservationService();
 
 describe("P0-1 Wallet settlement idempotency (logic)", () => {
   test("settleTopUp marks alreadySettled when status is COMPLETED", () => {
@@ -136,18 +134,7 @@ describe("P1-1 Admin RBAC route mapping", () => {
   });
 });
 
-describe("P1-2 Wallet reservation regression", () => {
-  test("concurrent withdrawal reservation still serializes", () => {
-    let wallet = 1000;
-    let reserved = 0;
-    let ok = 0;
-    for (const amount of [800, 800]) {
-      if (walletReservation.availableBalance(wallet, reserved) >= amount) {
-        reserved += amount;
-        ok += 1;
-      }
-    }
-    expect(ok).toBe(1);
-    expect(wallet - reserved).toBe(200);
-  });
-});
+// "P1-2 Wallet reservation regression" used to live here as a sequential loop over a local
+// accumulator — it exercised no lock and no database and could not fail on a real double-spend.
+// The real concurrent reservation race is asserted in p0-financial-races.test.ts
+// ("P0-5 Withdrawal reservation race") and money-matrix-certification.test.ts CASE 8.

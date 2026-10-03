@@ -34,8 +34,11 @@ import {
   REGISTRY_CATEGORIES,
 } from "../ai-brain";
 import prisma from "../lib/prisma";
+import type { AiGatewayRole, AiMemoryType, AiPromptApprovalStatus } from "@prisma/client";
+import { mapUserRoleToAiRole } from "../ai/security/authorization";
+import { toInputJsonObject } from "../lib/json-input";
 
-function requireAdmin(role: string, set: { status: number }) {
+function requireAdmin(role: string, set: { status?: number | string }) {
   if (role !== "ADMIN") {
     set.status = 403;
     return { success: false, error: "Admin only", code: "FORBIDDEN" };
@@ -43,7 +46,63 @@ function requireAdmin(role: string, set: { status: number }) {
   return null;
 }
 
+/**
+ * Resolves the acting user's `AiGatewayRole`.
+ *
+ * `role as never` was hiding a genuine enum gap: `UserRole` has VENDOR where `AiGatewayRole` has
+ * PARTNER, so the cast could force a value that is not a member of the target enum at all. It is
+ * latent today only because every route here is behind `requireAdmin`, and ADMIN happens to exist
+ * in both enums — the moment that gate changed, an invalid role would flow into the AI context
+ * builder. `mapUserRoleToAiRole` is the security module's own mapping and returns null rather than
+ * guessing, so an unmappable role becomes a 403 instead of an invalid enum value.
+ */
+function adminAiRole(role: string, set: { status?: number | string }): AiGatewayRole {
+  const mapped = mapUserRoleToAiRole(role, "admin");
+  if (!mapped) {
+    // Unreachable while requireAdmin precedes every call, and deliberately not defaulted.
+    set.status = 403;
+    throw new Error("FORBIDDEN_ROLE");
+  }
+  return mapped;
+}
+
 /** Phase 4 Enterprise AI Brain routes — context, memory, prompts, timeline. */
+/**
+ * The real `AiMemoryType` enum members.
+ *
+ * The route previously accepted any `t.String()` and forced it through with `as never`. That value
+ * is not inert: it selects the retention TTL (`resolveTtl`) and is fed to the content-safety
+ * screen, and stored memory is replayed into later requests. An unknown type silently fell back to
+ * the SESSION TTL and only failed once Prisma rejected the enum at write time.
+ *
+ * `as const satisfies` ties this list to the generated enum, so adding a member without updating
+ * the route is a compile error rather than a request that 400s in production.
+ */
+const MEMORY_TYPES = [
+  "SESSION",
+  "CONVERSATION",
+  "BUSINESS",
+  "USER",
+  "PARTNER",
+  "ADMIN",
+  "OPERATIONAL",
+  "SEMANTIC",
+  "WORKING",
+  "HISTORICAL",
+] as const satisfies readonly AiMemoryType[];
+
+const MEMORY_TYPE_SCHEMA = t.Union(MEMORY_TYPES.map((m) => t.Literal(m)));
+
+const APPROVAL_STATUSES = [
+  "DRAFT",
+  "PENDING",
+  "APPROVED",
+  "REJECTED",
+  "DEPRECATED",
+] as const satisfies readonly AiPromptApprovalStatus[];
+
+const APPROVAL_STATUS_SCHEMA = t.Union(APPROVAL_STATUSES.map((a) => t.Literal(a)));
+
 export const aiBrainRoutes = new Elysia({ prefix: "/api/ai" })
   .use(authPlugin)
 
@@ -55,7 +114,7 @@ export const aiBrainRoutes = new Elysia({ prefix: "/api/ai" })
 
     const built = await buildEnterpriseContext({
       actorId: userId,
-      actorRole: role as never,
+      actorRole: adminAiRole(role, set),
       message: body.message,
       intent: body.intent,
       context: body.context,
@@ -83,7 +142,7 @@ export const aiBrainRoutes = new Elysia({ prefix: "/api/ai" })
 
     const built = await rebuildContext({
       actorId: userId,
-      actorRole: role as never,
+      actorRole: adminAiRole(role, set),
       message: body.message,
       context: body.context,
       conversationId: body.conversationId,
@@ -150,11 +209,18 @@ export const aiBrainRoutes = new Elysia({ prefix: "/api/ai" })
 
     const memories = await retrieveMemories({
       ownerId: query.ownerId ?? userId,
-      memoryType: query.type as never,
+      memoryType: query.type,
       query: query.q,
       limit: Number(query.limit ?? 20),
     });
     return { success: true, data: memories };
+  }, {
+    query: t.Object({
+      ownerId: t.Optional(t.String()),
+      type: t.Optional(MEMORY_TYPE_SCHEMA),
+      q: t.Optional(t.String()),
+      limit: t.Optional(t.String()),
+    }),
   })
 
   .get("/memory/:key", async ({ requireAuth, params, query, set }) => {
@@ -162,12 +228,17 @@ export const aiBrainRoutes = new Elysia({ prefix: "/api/ai" })
     const denied = requireAdmin(role, set);
     if (denied) return denied;
 
-    const memory = await retrieveMemory(params.key, query.ownerId ?? userId, (query.type ?? "SEMANTIC") as never);
+    const memory = await retrieveMemory(params.key, query.ownerId ?? userId, query.type ?? "SEMANTIC");
     if (!memory) {
       set.status = 404;
       return { success: false, error: "Memory not found" };
     }
     return { success: true, data: memory };
+  }, {
+    query: t.Object({
+      ownerId: t.Optional(t.String()),
+      type: t.Optional(MEMORY_TYPE_SCHEMA),
+    }),
   })
 
   .post("/memory", async ({ requireAuth, body, set }) => {
@@ -175,11 +246,20 @@ export const aiBrainRoutes = new Elysia({ prefix: "/api/ai" })
     const denied = requireAdmin(role, set);
     if (denied) return denied;
 
+    // Validated, not asserted: the previous `as Record<string, unknown>` did not match
+    // `MemoryStoreInput.content` (`Prisma.InputJsonObject`), and a value the database cannot
+    // store would have failed at the write as a 500 instead of here as a 400.
+    const content = toInputJsonObject(body.content);
+    if (!content) {
+      set.status = 400;
+      return { success: false, error: "content must be a JSON object the database can store" };
+    }
+
     const memory = await storeMemory({
       memoryKey: body.memoryKey,
-      memoryType: body.memoryType as never,
+      memoryType: body.memoryType,
       ownerId: body.ownerId ?? userId,
-      content: body.content as Record<string, unknown>,
+      content,
       summary: body.summary,
       importance: body.importance,
       ttlSeconds: body.ttlSeconds,
@@ -188,7 +268,7 @@ export const aiBrainRoutes = new Elysia({ prefix: "/api/ai" })
   }, {
     body: t.Object({
       memoryKey: t.String(),
-      memoryType: t.String(),
+      memoryType: MEMORY_TYPE_SCHEMA,
       ownerId: t.Optional(t.String()),
       content: t.Record(t.String(), t.Unknown()),
       summary: t.Optional(t.String()),
@@ -257,9 +337,14 @@ export const aiBrainRoutes = new Elysia({ prefix: "/api/ai" })
 
     const prompts = await listPromptRegistry({
       category: query.category,
-      approvalStatus: query.status as never,
+      approvalStatus: query.status,
     });
     return { success: true, data: { prompts, categories: REGISTRY_CATEGORIES } };
+  }, {
+    query: t.Object({
+      category: t.Optional(t.String()),
+      status: t.Optional(APPROVAL_STATUS_SCHEMA),
+    }),
   })
 
   .get("/prompts/:promptId", async ({ requireAuth, params, set }) => {

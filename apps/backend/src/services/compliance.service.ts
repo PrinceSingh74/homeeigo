@@ -339,10 +339,17 @@ export class ComplianceService {
     return this.listForAdmin({ status: "PENDING", limit });
   }
 
-  async listForAdmin(opts: { status?: string; limit?: number } = {}) {
+  /**
+   * `status` is the real column enum (plus the "ALL" sentinel) rather than `string`.
+   *
+   * It was `string` forced into the Prisma filter with `as never`, and the admin route validated it
+   * as a bare `t.String()` — so any value at all reached the query and failed there as a 500
+   * instead of being rejected at the edge as a 400.
+   */
+  async listForAdmin(opts: { status?: ComplianceRequestStatus | "ALL"; limit?: number } = {}) {
     const limit = Math.min(opts.limit ?? 50, 200);
     return prisma.complianceRequest.findMany({
-      where: opts.status && opts.status !== "ALL" ? { status: opts.status as never } : undefined,
+      where: opts.status && opts.status !== "ALL" ? { status: opts.status } : undefined,
       orderBy: { submittedAt: "desc" },
       take: limit,
       include: {

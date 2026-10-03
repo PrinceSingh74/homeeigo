@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { dbReachable } from "./helpers/adversarial-fixtures";
 import { FinancialTransactionManager } from "../services/financial-transaction-manager.service";
 import { financialLedgerService } from "../services/financial-ledger.service";
 import { RefundLedgerSyncService } from "../services/refund-ledger-sync.service";
@@ -103,17 +104,16 @@ describe("Finance 10/10 Finalization — Phase 6 Refund Workflow", () => {
 
 describe("Finance 10/10 Finalization — Phase 10 Validation", () => {
   test("FinanceValidationService returns score structure", async () => {
+    // A catch-all here used to downgrade ANY failure — DB error, schema drift, or a failing
+    // assertion inside the try — to "the method exists". Now the DB guard is explicit and the
+    // assertions are load-bearing.
+    if (!(await dbReachable())) return;
     const svc = new FinanceValidationService();
-    try {
-      const result = await svc.runFullValidation();
-      expect(result.checks.length).toBeGreaterThan(5);
-      expect(result.beforeScore.payments).toBe(7.5);
-      expect(result.afterScore.payments).toBeGreaterThanOrEqual(7.5);
-      expect(["PASS", "FAIL"]).toContain(result.status);
-    } catch {
-      // DB migration pending — contract still valid offline
-      expect(svc.runFullValidation).toBeDefined();
-    }
+    const result = await svc.runFullValidation();
+    expect(result.checks.length).toBeGreaterThan(5);
+    expect(result.beforeScore.payments).toBe(7.5);
+    expect(result.afterScore.payments).toBeGreaterThanOrEqual(7.5);
+    expect(["PASS", "FAIL"]).toContain(result.status);
   });
 });
 

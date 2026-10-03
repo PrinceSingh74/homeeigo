@@ -33,6 +33,7 @@ export const walletWithdrawSchema = z.object({
   bankAccountNumber: z.string().trim().regex(/^\d{9,18}$/, "Invalid bank account number"),
   ifscCode: ifscSchema,
   accountHolder: z.string().trim().min(2).max(100),
+  idempotencyKey: z.string().trim().min(8).max(128).optional(),
 });
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;

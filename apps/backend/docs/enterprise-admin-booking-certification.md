@@ -1,7 +1,7 @@
 # Enterprise Admin Booking Certification
 
-**Executed:** 2026-06-12T17:02:18.536Z
-**Run ID:** `ent-ops-mqb6c1kp`
+**Executed:** 2026-10-03T09:30:37.425Z
+**Run ID:** `ent-ops-mus6y9mc`
 
 ## Module Status
 
@@ -12,4 +12,4 @@
 | Reschedule | **CONNECTED** | Reschedule + audit log recorded |
 | Dispatch repair | **CONNECTED** | repaired=false |
 | Audit trail | **CONNECTED** | admin actions logged=1 |
-| 100 booking simulation | **CONNECTED** | 100 bookings created=98, corruption=0 |
+| 100 booking simulation | **CONNECTED** | 100 bookings created=48, corruption=0, poolBusyRetries=0 |

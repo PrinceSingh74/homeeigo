@@ -11,16 +11,16 @@ export const adminAuthApi = {
         password,
         deviceId: getDeviceId(),
         deviceName: getDeviceName(),
-        setAuthCookies: false,
       },
     }).then((res) => res.data!);
   },
 
-  logout(refreshToken: string) {
+  logout() {
     return apiRequest<ApiResponse<unknown>>("/api/auth/logout", {
       method: "POST",
       auth: true,
-      body: { refreshToken, clearAuthCookies: true },
+      // The API reads the refresh cookie, revokes that session and clears the cookie.
+      body: {},
     });
   },
 

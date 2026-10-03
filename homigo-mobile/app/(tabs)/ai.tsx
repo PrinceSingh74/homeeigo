@@ -17,6 +17,8 @@ import { AiChatBlock } from "@/components/ai/AiChatBlock";
 import { AiBookingBlock } from "@/components/ai/AiBookingBlock";
 import { AiRecommendationsRow } from "@/components/ai/AiRecommendationsRow";
 import { AiComposerBar, type AiComposerHandle } from "@/components/ai/AiComposerBar";
+import { AiWalletCard } from "@/components/ai/AiWalletCard";
+import { AiOfflineIndicator } from "@/components/ai/AiOfflineIndicator";
 import { useAiTheme } from "@/lib/ai-mobile-theme";
 import { useAiChat } from "@/lib/use-ai-chat";
 import { useAppNavigation } from "@/hooks/useAppNavigation";
@@ -35,7 +37,7 @@ export default function AIScreen() {
   const keyboardInset = useKeyboardInset();
   const keyboardPad = composerKeyboardPadding(keyboardInset);
   const { messages, isThinking, sendText, resetChat } = useAiChat();
-  const { goServices } = useAppNavigation();
+  const { goServices, goWallet } = useAppNavigation();
 
   const focusComposer = useCallback(() => {
     composerRef.current?.focusInput();
@@ -75,6 +77,7 @@ export default function AIScreen() {
 
         <View style={styles.root}>
           <AiScreenHeader />
+          <AiOfflineIndicator />
 
           <ScrollView
             ref={scrollRef}
@@ -99,6 +102,7 @@ export default function AIScreen() {
               onReset={resetChat}
             />
             <AiBookingBlock />
+            <AiWalletCard onViewBalance={() => { goWallet?.(); }} onAddMoney={() => { goWallet?.(); }} />
             <AiRecommendationsRow />
             <View style={{ height: SCROLL_END_GAP }} />
           </ScrollView>

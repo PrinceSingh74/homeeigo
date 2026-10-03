@@ -1,3 +1,4 @@
+import { liveProviderAllowed } from "../../lib/test-egress";
 import twilio from "twilio";
 import { logger } from "../../lib/logger";
 import type { NotificationChannelAdapter } from "../types";
@@ -24,7 +25,7 @@ let client: twilio.Twilio | null | undefined;
 
 function getClient(): twilio.Twilio | null {
   if (client !== undefined) return client;
-  client = ACCOUNT_SID && AUTH_TOKEN ? twilio(ACCOUNT_SID, AUTH_TOKEN) : null;
+  client = ACCOUNT_SID && AUTH_TOKEN && liveProviderAllowed("HOMIGO_REQUIRE_SMS") ? twilio(ACCOUNT_SID, AUTH_TOKEN) : null; // lib/test-egress.ts
   return client;
 }
 

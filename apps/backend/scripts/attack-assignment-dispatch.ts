@@ -6,52 +6,53 @@
  *   C) Concurrent accept by the dispatched provider → exactly one ACCEPTED.
  *
  *   NODE_ENV=test bun run scripts/attack-assignment-dispatch.ts
+ *
+ * Each round seeds the shared adversarial fixture (its own service, and a partner that is ACTIVE,
+ * inside its service radius, within working hours and holding a fresh presence heartbeat) and pays
+ * the booking before the job is dispatched. The earlier hand-made partners failed the eligibility
+ * gates added after this script was written, and dispatch is withheld for unpaid bookings (owner
+ * decision #1, assignment-engine `isSettled`), so every round dispatched to nobody — SENT=0 — which
+ * the old verdict mislabelled "DUPLICATE DISPATCH". A round with no dispatch is now reported as a
+ * harness failure, never as a race result.
  */
 import "../src/load-env";
 import prisma from "../src/lib/prisma";
 import { bookingService } from "../src/services/booking.service";
 import { assignmentEngine } from "../src/services/assignment-engine.service";
+import {
+  seedAdversarialFixtures,
+  cleanupAdversarialFixtures,
+  futureSlot,
+} from "../src/__tests__/helpers/adversarial-fixtures";
 
-const LAT = 19.076;
-const LNG = 72.8777;
+type Outcome = "pass" | "fail" | "setup";
+const FANOUT = Number(process.env.ASSIGNMENT_BROADCAST_FANOUT || 25);
+const runIds: string[] = [];
+let round = 0;
 
-async function makeService() {
-  const s = await prisma.service.create({
-    data: { name: `as-svc-${Date.now()}`, slug: `as-svc-${Date.now()}`, description: "x", category: "cleaning", basePrice: 500, estimatedDuration: 60 },
+/** A paid, provider-less booking for a freshly seeded fixture, and its assignment job. */
+async function makeBookingJob(): Promise<{ bookingId: string; jobId: string } | null> {
+  const runId = `add${Date.now().toString(36)}${round}`;
+  runIds.push(runId);
+  const ctx = await seedAdversarialFixtures(runId);
+  const created = await bookingService.create(ctx.customerA.id, {
+    serviceId: ctx.serviceId,
+    addressId: ctx.addressAId,
+    scheduledDate: futureSlot(72 + (round++ % 20) * 3).toISOString(),
   });
-  return s;
-}
-
-async function makeProvider(serviceId: string, category: string) {
-  const u = await prisma.user.create({
-    data: { email: `pv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@homigo.test`, phoneNumber: `+9192${Math.floor(1000000 + Math.random() * 8999999)}`, firstName: "Pv", lastName: "Z", password: "x".repeat(20), role: "VENDOR" },
-  });
-  const p = await prisma.provider.create({
-    data: { userId: u.id, serviceCategories: [serviceId, category], serviceRegions: ["Mumbai"], isActive: true, isVerified: true, isApproved: true, isOnline: true, rating: 4.5 },
-  });
-  await prisma.location.create({ data: { providerId: p.id, latitude: LAT + Math.random() * 0.01, longitude: LNG + Math.random() * 0.01 } });
-  return p.id;
-}
-
-let slotCounter = 0;
-async function makeBookingJob(serviceId: string): Promise<{ bookingId: string; jobId: string }> {
-  const u = await prisma.user.create({
-    data: { email: `cu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@homigo.test`, phoneNumber: `+9191${Math.floor(1000000 + Math.random() * 8999999)}`, firstName: "Cu", lastName: "B", password: "x".repeat(20) },
-  });
-  const a = await prisma.address.create({ data: { userId: u.id, label: "Home", addressLine1: "1 St", city: "Mumbai", state: "MH", zipCode: "400001", latitude: LAT, longitude: LNG } });
-  // Unique slot per round so fresh providers are never blocked by a prior round's
-  // tentative assignment (provider_slot exclusion). Keeps the harness deterministic.
-  const dayOffset = 3 + (slotCounter++ % 20);
-  const created = await bookingService.create(u.id, { serviceId, addressId: a.id, scheduledDate: new Date(Date.now() + dayOffset * 86400_000).toISOString() });
-  if (!("booking" in created)) throw new Error("booking setup failed: " + JSON.stringify(created));
+  if (!("booking" in created)) {
+    console.log(`  SETUP FAILED (harness): ${JSON.stringify(created)}`);
+    return null;
+  }
+  await prisma.booking.update({ where: { id: created.booking.id }, data: { paymentStatus: "SUCCESS" } });
   const job = await assignmentEngine.createJob(created.booking.id);
   return { bookingId: created.booking.id, jobId: job.id };
 }
 
-async function dispatchAttack(N: number, serviceId: string, category: string, direct: boolean): Promise<boolean> {
-  // fresh providers each round so matching always has candidates
-  await Promise.all([makeProvider(serviceId, category), makeProvider(serviceId, category), makeProvider(serviceId, category)]);
-  const { bookingId, jobId } = await makeBookingJob(serviceId);
+async function dispatchAttack(N: number, direct: boolean): Promise<Outcome> {
+  const made = await makeBookingJob();
+  if (!made) return "setup";
+  const { bookingId, jobId } = made;
 
   const ops: Promise<unknown>[] = [];
   for (let i = 0; i < N; i++) {
@@ -65,54 +66,69 @@ async function dispatchAttack(N: number, serviceId: string, category: string, di
   const booking = await prisma.booking.findUniqueOrThrow({ where: { id: bookingId }, select: { providerId: true, status: true } });
   const distinctProviders = await prisma.assignmentAttempt.findMany({ where: { jobId, status: "SENT" }, select: { providerId: true }, distinct: ["providerId"] });
 
-  const pass = sentAttempts === 1 && distinctProviders.length === 1 && crashed === 0 && booking.providerId !== null;
-  console.log(
-    `  [${direct ? "DIRECT (no lock)" : "processQueue (lock)"}] N=${String(N).padStart(3)}  SENT=${sentAttempts} (want 1)  totalAttempts=${allAttempts}  distinctProviders=${distinctProviders.length} (want 1)  booking.provider=${booking.providerId ? "1" : "0"}  crashed=${crashed}  → ${pass ? "✅ single dispatch" : "❌ DUPLICATE DISPATCH"}`,
-  );
-  return pass;
+  const label = `  [${direct ? "DIRECT (no lock)" : "processQueue (lock)"}] N=${String(N).padStart(3)}  SENT=${sentAttempts} (want 1)  totalAttempts=${allAttempts}  distinctProviders=${distinctProviders.length} (want 1)  booking.provider=${booking.providerId ? "1" : "0"}  crashed=${crashed}`;
+  if (sentAttempts === 0 && crashed === 0) {
+    console.log(`${label}  → ⚠ NO DISPATCH (harness: nobody was matched — no verdict on duplication)`);
+    return "setup";
+  }
+  // Broadcast dispatch (the default, ASSIGNMENT_BROADCAST) offers one job to up to BROADCAST_FANOUT
+  // partners at once — `assignment-dispatch-lock.test.ts` "broadcast compatibility" asserts that, and
+  // the job_id-only SENT index was dropped for it. So the race invariant is NOT "one SENT": it is
+  // "no partner offered the same job twice" (SENT == distinct partners) within the fan-out, and the
+  // booking stays unassigned until a partner accepts (phase C).
+  const pass = sentAttempts >= 1 && sentAttempts <= FANOUT && sentAttempts === distinctProviders.length && crashed === 0 && booking.providerId === null;
+  console.log(`${label}  → ${pass ? "✅ no partner offered twice" : "❌ DUPLICATE DISPATCH"}`);
+  return pass ? "pass" : "fail";
 }
 
-async function acceptAttack(N: number, serviceId: string, category: string): Promise<boolean> {
-  await Promise.all([makeProvider(serviceId, category), makeProvider(serviceId, category)]);
-  const { bookingId, jobId } = await makeBookingJob(serviceId);
-  await assignmentEngine.processQueue(); // dispatch to one provider
-  const booking = await prisma.booking.findUniqueOrThrow({ where: { id: bookingId }, select: { providerId: true } });
-  if (!booking.providerId) { console.log(`  [accept] N=${N} no dispatch — skip`); return false; }
+async function acceptAttack(N: number): Promise<Outcome> {
+  const made = await makeBookingJob();
+  if (!made) return "setup";
+  const { bookingId, jobId } = made;
+  await assignmentEngine.processQueue(); // broadcast the offer
+  const offered = (await prisma.assignmentAttempt.findMany({ where: { jobId, status: "SENT" }, select: { providerId: true } })).map((a) => a.providerId);
+  if (offered.length === 0) { console.log(`  [accept] N=${N} ⚠ NO DISPATCH (harness) — no verdict`); return "setup"; }
 
+  // Every offered partner accepts at once, round-robin — the broadcast race: exactly one may win.
   const ops: Promise<unknown>[] = [];
-  for (let i = 0; i < N; i++) ops.push(bookingService.accept(booking.providerId, bookingId));
+  for (let i = 0; i < N; i++) ops.push(bookingService.accept(offered[i % offered.length], bookingId));
   const results = await Promise.allSettled(ops);
   const crashed = results.filter((r) => r.status === "rejected").length;
   const okCount = results.filter((r) => r.status === "fulfilled" && (r.value as { ok?: boolean })?.ok === true).length;
 
   const acceptedAttempts = await prisma.assignmentAttempt.count({ where: { jobId, status: "ACCEPTED" } });
   const b = await prisma.booking.findUniqueOrThrow({ where: { id: bookingId } });
+  const winnerWasOffered = b.providerId !== null && offered.includes(b.providerId);
 
-  const pass = b.status === "ACCEPTED" && b.providerId === booking.providerId && acceptedAttempts <= 1 && crashed === 0;
+  const pass = b.status === "ACCEPTED" && winnerWasOffered && okCount === 1 && acceptedAttempts <= 1 && crashed === 0;
   console.log(
-    `  [accept] N=${String(N).padStart(3)}  accept.ok=${okCount}  acceptedAttempts=${acceptedAttempts} (want ≤1)  bookingStatus=${b.status}  singleProvider=${b.providerId === booking.providerId}  crashed=${crashed}  → ${pass ? "✅ one provider wins" : "❌ FAIL"}`,
+    `  [accept] N=${String(N).padStart(3)}  offered=${offered.length}  accept.ok=${okCount} (want 1)  acceptedAttempts=${acceptedAttempts} (want ≤1)  bookingStatus=${b.status}  winnerWasOffered=${winnerWasOffered}  crashed=${crashed}  → ${pass ? "✅ one provider wins" : "❌ FAIL"}`,
   );
-  return pass;
+  return pass ? "pass" : "fail";
 }
 
 async function main() {
   console.log("🔨 Assignment dispatch race attack (isolated homigo_test):");
-  const svc = await makeService();
-  let all = true;
+  const guarded: Outcome[] = [];
+  const direct: Outcome[] = [];
+  try {
+    console.log("\nA) Double dispatch via concurrent processQueue (lock-protected):");
+    for (const N of [50, 100, 250, 500]) guarded.push(await dispatchAttack(N, false));
 
-  console.log("\nA) Double dispatch via concurrent processQueue (lock-protected):");
-  for (const N of [50, 100, 250, 500]) all = (await dispatchAttack(N, svc.id, svc.category, false)) && all;
+    console.log("\nB) Worst-case: direct dispatchToNextProvider (NO queue lock):");
+    for (const N of [50, 250]) direct.push(await dispatchAttack(N, true));
 
-  console.log("\nB) Worst-case: direct dispatchToNextProvider (NO queue lock):");
-  const directResults: boolean[] = [];
-  for (const N of [50, 250]) directResults.push(await dispatchAttack(N, svc.id, svc.category, true));
+    console.log("\nC) Concurrent accept (multiple attempts, one provider):");
+    for (const N of [50, 100, 250, 500]) guarded.push(await acceptAttack(N));
+  } finally {
+    for (const id of runIds) await cleanupAdversarialFixtures(id);
+  }
 
-  console.log("\nC) Concurrent accept (multiple attempts, one provider):");
-  for (const N of [50, 100, 250, 500]) all = (await acceptAttack(N, svc.id, svc.category)) && all;
-
-  console.log(`\nProcessQueue dispatch + accept: ${all ? "✅ SAFE" : "❌ DEFECT"}`);
-  console.log(`Direct (unlocked) dispatch duplicated: ${directResults.includes(false) ? "YES — lock is the sole guard (see report)" : "no"}`);
+  const harness = [...guarded, ...direct].includes("setup");
+  const defect = guarded.includes("fail");
+  console.log(`\nProcessQueue dispatch + accept: ${defect ? "❌ DEFECT" : harness ? "⚠ INCOMPLETE (harness rounds without a verdict)" : "✅ SAFE"}`);
+  console.log(`Direct (unlocked) dispatch duplicated: ${direct.includes("fail") ? "YES — lock is the sole guard (see report)" : direct.includes("setup") ? "no verdict (harness)" : "no"}`);
   await prisma.$disconnect();
-  process.exit(all ? 0 : 1);
+  process.exit(defect ? 1 : harness ? 2 : 0);
 }
 main().catch((e) => { console.error("fatal:", e); process.exit(1); });

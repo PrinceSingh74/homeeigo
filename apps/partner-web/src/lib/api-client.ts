@@ -8,10 +8,22 @@ function resolveBase(): string {
   return resolveApiBase();
 }
 
+/**
+ * This app's auth audience. The API host is shared by customer, partner and admin, so the HttpOnly
+ * refresh cookie is keyed per audience (hg_rt_partner here) and one app's login cannot overwrite
+ * another's session in the same browser. The header is also a CSRF control on /api/auth/refresh.
+ */
+const AUTH_AUDIENCE = "partner";
+const authHeaders = (h: Record<string, string> = {}): Record<string, string> => ({
+  ...h,
+  "X-Homigo-Audience": AUTH_AUDIENCE,
+});
+
 export type ApiClientConfig = {
   getAccessToken: () => string | null;
-  getRefreshToken: () => string | null;
-  setTokens: (accessToken: string, refreshToken: string) => void;
+  /** A session may exist (the refresh token itself is an HttpOnly cookie, not visible to JS). */
+  hasSession: () => boolean;
+  setAccessToken: (accessToken: string) => void;
   clearSession: () => void;
 };
 
@@ -38,34 +50,35 @@ async function parseJson<T>(res: Response): Promise<ApiResponse<T>> {
   }
 }
 
+/** Refresh the access token once (coordinated across concurrent callers). Used when a socket is closed with 4401. */
+export async function ensureAccessToken(): Promise<boolean> {
+  return coordinatedRefresh(refreshAccessToken);
+}
+
 async function refreshAccessToken(): Promise<boolean> {
   if (!clientConfig) return false;
-  const refreshToken = clientConfig.getRefreshToken();
-  if (!refreshToken) return false;
+  if (!clientConfig.hasSession()) return false;
 
   const { getDeviceId, getDeviceName } = await import("@/lib/device");
   let res: Response;
   try {
     res = await fetch(`${resolveBase()}/api/auth/refresh`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        refreshToken,
-        deviceId: getDeviceId(),
-        deviceName: getDeviceName(),
-        setAuthCookies: false,
-      }),
+      credentials: "include", // the HttpOnly refresh cookie IS the credential
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      // No token in the body: the API reads the cookie and rotates it in place.
+      body: JSON.stringify({ deviceId: getDeviceId(), deviceName: getDeviceName() }),
     });
   } catch {
     return false;
   }
 
-  const body = await parseJson<{ accessToken?: string; refreshToken?: string }>(res);
-  if (!res.ok || !body.success || !body.data?.accessToken || !body.data?.refreshToken) {
+  const body = await parseJson<{ accessToken?: string }>(res);
+  if (!res.ok || !body.success || !body.data?.accessToken) {
     return false;
   }
 
-  clientConfig.setTokens(body.data.accessToken, body.data.refreshToken);
+  clientConfig.setAccessToken(body.data.accessToken);
   return true;
 }
 
@@ -78,6 +91,39 @@ function buildQuery(params?: RequestOptions["query"]): string {
   }
   const qs = sp.toString();
   return qs ? `?${qs}` : "";
+}
+
+/**
+ * Authenticated request whose body is not the JSON envelope (invoice HTML). Same bearer + single
+ * coordinated refresh-and-retry-once as apiRequest; a hand-rolled fetch never refreshed.
+ */
+export async function apiRequestRaw(path: string, retried = false): Promise<Response> {
+  const headers: Record<string, string> = {};
+  const token = clientConfig?.getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${resolveBase()}${path}`, { credentials: "include", headers: authHeaders(headers) });
+  if (res.status === 401 && !retried && clientConfig?.hasSession()) {
+    if (await coordinatedRefresh(refreshAccessToken)) return apiRequestRaw(path, true);
+    clientConfig.clearSession();
+  }
+  return res;
+}
+
+/**
+ * 401s that reject the PRESENCE session named in the request body, not the access token. Refreshing
+ * on them is wrong and self-sustaining: refresh rotates the session, revoking the id the heartbeat
+ * just sent, so the retry is rejected again and every beat mints and revokes another refresh token.
+ * The heartbeat hook owns their recovery (re-read the snapshot, beat again).
+ */
+const PRESENCE_SESSION_CODES = new Set(["INVALID_SESSION", "STALE_SESSION", "DEVICE_MISMATCH"]);
+
+async function isPresenceSessionReject(res: Response): Promise<boolean> {
+  try {
+    const body = (await res.clone().json()) as { code?: string } | null;
+    return PRESENCE_SESSION_CODES.has(body?.code ?? "");
+  } catch {
+    return false;
+  }
 }
 
 export async function apiRequest<T>(
@@ -103,7 +149,8 @@ export async function apiRequest<T>(
   try {
     res = await fetch(url, {
       method,
-      headers,
+      credentials: "include",
+      headers: authHeaders(headers),
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
@@ -114,7 +161,7 @@ export async function apiRequest<T>(
     );
   }
 
-  if (res.status === 401 && auth && !skipRefresh && clientConfig?.getRefreshToken()) {
+  if (res.status === 401 && auth && !skipRefresh && clientConfig?.hasSession() && !(await isPresenceSessionReject(res))) {
     const refreshed = await coordinatedRefresh(refreshAccessToken);
     if (refreshed) {
       return apiRequest<T>(path, { ...options, skipRefresh: true });

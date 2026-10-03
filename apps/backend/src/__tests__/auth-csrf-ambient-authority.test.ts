@@ -15,6 +15,7 @@
  * fix (independent review 2026-09-20) and the refresh-cookie / E2E suites.
  */
 import "../load-env";
+import { provenanceForNewUser } from "../lib/data-provenance";
 import { describe, it, expect, afterAll } from "bun:test";
 import app from "../index";
 import prisma from "../lib/prisma";
@@ -30,6 +31,7 @@ let seq = 0;
 async function seedUser() {
   const u = await prisma.user.create({
     data: {
+      ...provenanceForNewUser(`${RUN}-${++seq}@csrf.test`),
       email: `${RUN}-${++seq}@csrf.test`,
       phoneNumber: `+9172${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`,
       firstName: "Csrf",

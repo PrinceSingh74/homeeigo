@@ -7,14 +7,16 @@ test.describe.configure({ mode: "serial" });
 
 test.describe("Enterprise partner E2E", () => {
   test("login → dashboard", async ({ page, monitor }) => {
+    // Register before login. The dashboard request finishes while the heading is rendering,
+    // so a listener started afterwards waits for a response that already happened.
+    const dashRes = page.waitForResponse(
+      (r) => r.url().includes("/api/providers/me/dashboard") && r.ok(),
+      { timeout: 60_000 },
+    );
     await partnerLogin(page);
     await expect(page.getByRole("heading", { name: /new booking requests/i })).toBeVisible({
       timeout: 60_000,
     });
-    const dashRes = page.waitForResponse(
-      (r) => r.url().includes("/api/providers/me/dashboard") && r.ok(),
-      { timeout: 30_000 },
-    );
     await dashRes;
     monitor.assertClean();
   });

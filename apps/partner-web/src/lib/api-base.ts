@@ -14,9 +14,35 @@
  */
 const API_PORT = process.env.NEXT_PUBLIC_API_PORT ?? "3000";
 
+function isLocalhostHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
+/**
+ * localhost and 127.0.0.1 are different sites. The refresh cookie is SameSite=Strict
+ * and host-scoped, so a page on one host drops Set-Cookie from the other.
+ * Only the loopback hostname is rewritten. Production origins are unchanged.
+ */
+export function alignLoopbackApiOrigin(env: string, pageHostname: string): string {
+  const trimmed = env.replace(/\/+$/, "");
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return trimmed;
+  }
+  if (!isLocalhostHost(url.hostname) || !isLocalhostHost(pageHostname)) return trimmed;
+  if (url.hostname === pageHostname) return trimmed;
+  url.hostname = pageHostname;
+  return url.toString().replace(/\/$/, "");
+}
+
 export function resolveApiBase(): string {
   const env = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
-  if (env) return env;
+  if (env) {
+    if (typeof window !== "undefined") return alignLoopbackApiOrigin(env, window.location.hostname);
+    return env;
+  }
   // Browser: same-origin relative — the dev server proxies /api/* to the backend.
   if (typeof window !== "undefined") return "";
   // SSR (on the dev machine): backend is local.
@@ -27,6 +53,13 @@ export function resolveApiBase(): string {
 export function resolveWsBase(): string {
   const env = process.env.NEXT_PUBLIC_WS_URL?.replace(/\/+$/, "");
   if (env) return env;
+  // An explicit API origin is the backend: sockets must reach the SAME server. Deriving from the page
+  // host instead sent HTTP to one backend and WebSockets to another (tokens refused → 4401 storm).
+  const api = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
+  if (api && /^https?:\/\//.test(api)) {
+    const aligned = typeof window !== "undefined" ? alignLoopbackApiOrigin(api, window.location.hostname) : api;
+    return aligned.replace(/^http/, "ws");
+  }
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
     const wsProto = protocol === "https:" ? "wss" : "ws";

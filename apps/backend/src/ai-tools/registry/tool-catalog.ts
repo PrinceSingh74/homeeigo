@@ -1,5 +1,6 @@
 import type { AiToolStatus } from "@prisma/client";
 import type { ToolRegistryEntry } from "../types";
+import { PHASE16_AGENT_TOOLS } from "./phase16-agent-tools";
 
 /** Built-in enterprise tool catalog — synced to ai_tool_registry on seed. */
 export const TOOL_CATALOG: Omit<ToolRegistryEntry, "handler">[] = [
@@ -287,6 +288,72 @@ export const TOOL_CATALOG: Omit<ToolRegistryEntry, "handler">[] = [
     status: "ACTIVE",
   },
   {
+    /**
+     * Structured earnings-opportunity facts for a target amount.
+     *
+     * Distinct from `getPartnerEarnings`, which reports what has already been earned. This returns
+     * the deterministic PLAN — realised vs target vs gap, jobs needed with a stated error, a
+     * feasibility band against the partner's own record, ranked zones and evidenced time windows.
+     *
+     * Deliberately READ-only and LOW risk: the coach opens no transaction and moves no money. The
+     * model consuming this may explain these facts; it must never compute them, which is why the
+     * numbers arrive pre-computed with their sources attached.
+     */
+    toolId: "read.partner.getEarningsOpportunity",
+    name: "getEarningsOpportunity",
+    description: "Get a grounded earnings-opportunity plan for a target amount",
+    category: "READ",
+    version: "1.0.0",
+    requiredPermission: "tools.read.partner.earnings",
+    requiredRole: "PARTNER",
+    requiredPolicy: "partner.self",
+    riskLevel: "LOW",
+    parameters: [
+      { name: "targetAmount", type: "number", required: true, description: "Target earnings in INR" },
+    ],
+    validationSchema: { type: "object" },
+    timeoutMs: 15_000,
+    maxRetries: 1,
+    auditRequired: true,
+    approvalRequired: false,
+    serviceMapping: "earnings-coach.service.plan",
+    metricsKey: "get_earnings_opportunity",
+    costEstimateUsd: 0.0002,
+    owner: "platform-partner",
+    status: "ACTIVE",
+  },
+  {
+    /**
+     * Structured performance evidence for the authenticated partner.
+     *
+     * Returns every metric considered — including the ones that produced no nudge and why — so the
+     * model can explain a result without re-deriving it. Each metric carries its definition,
+     * sample sizes, both periods, the significance threshold it had to clear, and a confidence.
+     *
+     * READ-only and LOW risk: computation touches nothing and sends nothing.
+     */
+    toolId: "read.partner.getPerformanceNudges",
+    name: "getPerformanceNudges",
+    description: "Get evidence-backed performance nudges for the partner",
+    category: "READ",
+    version: "1.0.0",
+    requiredPermission: "tools.read.partner.performance",
+    requiredRole: "PARTNER",
+    requiredPolicy: "partner.self",
+    riskLevel: "LOW",
+    parameters: [],
+    validationSchema: { type: "object" },
+    timeoutMs: 15_000,
+    maxRetries: 1,
+    auditRequired: true,
+    approvalRequired: false,
+    serviceMapping: "performance-nudges.service.compute",
+    metricsKey: "get_performance_nudges",
+    costEstimateUsd: 0.0002,
+    owner: "platform-partner",
+    status: "ACTIVE",
+  },
+  {
     toolId: "read.partner.getPartnerDemand",
     name: "getPartnerDemand",
     description: "Get demand forecast for partner zone",
@@ -328,6 +395,78 @@ export const TOOL_CATALOG: Omit<ToolRegistryEntry, "handler">[] = [
     metricsKey: "get_partner_schedule",
     costEstimateUsd: 0.0001,
     owner: "platform-partner",
+    status: "ACTIVE",
+  },
+  {
+    /**
+     * Read-only payout *status* for the authenticated partner.
+     *
+     * Distinct from `high_risk.finance.payout`, which processes money and stays unbound.
+     * Bank account numbers and gateway payout IDs are stripped in the handler.
+     */
+    toolId: "read.partner.getPartnerPayout",
+    name: "getPartnerPayout",
+    description: "Get payout and withdrawal status for the authenticated partner (no bank details)",
+    category: "READ",
+    version: "1.0.0",
+    requiredPermission: "tools.read.partner.earnings",
+    requiredRole: "PARTNER",
+    requiredPolicy: "partner.self",
+    riskLevel: "LOW",
+    parameters: [],
+    validationSchema: { type: "object" },
+    timeoutMs: 12_000,
+    maxRetries: 1,
+    auditRequired: true,
+    approvalRequired: false,
+    serviceMapping: "earnings.service.getPartnerFinanceCenter",
+    metricsKey: "get_partner_payout",
+    costEstimateUsd: 0.0002,
+    owner: "platform-finance",
+    status: "ACTIVE",
+  },
+  {
+    toolId: "read.partner.getPartnerTraining",
+    name: "getPartnerTraining",
+    description: "Get Academy training progress for the authenticated partner",
+    category: "READ",
+    version: "1.0.0",
+    requiredPermission: "tools.read.partner.profile",
+    requiredRole: "PARTNER",
+    requiredPolicy: "partner.self",
+    riskLevel: "LOW",
+    parameters: [],
+    validationSchema: { type: "object" },
+    timeoutMs: 12_000,
+    maxRetries: 1,
+    auditRequired: true,
+    approvalRequired: false,
+    serviceMapping: "partnerOnboarding.service.getTraining",
+    metricsKey: "get_partner_training",
+    costEstimateUsd: 0.0001,
+    owner: "platform-partner",
+    status: "ACTIVE",
+  },
+  {
+    toolId: "read.admin.getSupplyDemand",
+    name: "getSupplyDemand",
+    description: "Get zone demand, eligible supply, gap and skill-gap recommendations",
+    category: "READ",
+    version: "1.0.0",
+    requiredPermission: "tools.read.admin.operations",
+    requiredRole: "ADMIN",
+    requiredPolicy: "admin.rbac",
+    riskLevel: "LOW",
+    parameters: [],
+    validationSchema: { type: "object" },
+    timeoutMs: 15_000,
+    maxRetries: 1,
+    auditRequired: true,
+    approvalRequired: false,
+    serviceMapping: "geoIntelligence.service.zoneScoring",
+    metricsKey: "get_supply_demand",
+    costEstimateUsd: 0.0003,
+    owner: "platform-geo",
     status: "ACTIVE",
   },
 
@@ -945,10 +1084,17 @@ export const TOOL_CATALOG: Omit<ToolRegistryEntry, "handler">[] = [
     requiredRole: "PARTNER",
     requiredPolicy: "partner.job.action",
     riskLevel: "MEDIUM",
+    /**
+     * `lat`/`lng` were removed here (P3-8): they had no consumer anywhere in the accept domain.
+     * `bookingService.accept(providerId, id, eta?)` has no GPS parameters and never reads location;
+     * `bookingAcceptSchema` accepts only `eta`; and the real partner app posts only `{ eta }`.
+     * Partner GPS has its own established contract — `trackingLocationSchema` over
+     * `/ws/tracking/:bookingId` — which is where the partner app genuinely publishes position.
+     * Advertising them here let the model supply coordinates that were silently discarded (and,
+     * before the handler fix, were being written into `eta` as a latitude).
+     */
     parameters: [
       { name: "bookingId", type: "string", required: true, description: "Booking ID" },
-      { name: "lat", type: "number", required: false, description: "Latitude" },
-      { name: "lng", type: "number", required: false, description: "Longitude" },
     ],
     validationSchema: { type: "object", required: ["bookingId"] },
     timeoutMs: 20_000,
@@ -1026,10 +1172,16 @@ export const TOOL_CATALOG: Omit<ToolRegistryEntry, "handler">[] = [
     ["high_risk.finance.financeApproval", "Finance Approval", "Approve financial adjustment", "finance.service.approve"],
     ["high_risk.compliance.accountFreeze", "Account Freeze", "Freeze user account", "financialRisk.service.applyHold"],
     // No such service exists. `admin.service` offers banUser and verifyProvider, but nothing
-    // that suspends a provider. Registered but INACTIVE so the capability stays visible and
+    // that suspends a provider. Registered but DISABLED so the capability stays visible and
     // governed while being honest that it cannot run — rather than advertising a mapping a
     // handler author would follow into a dead end.
-    ["high_risk.compliance.partnerSuspend", "Partner Suspend", "Suspend partner account", "admin.service.suspendProvider", "INACTIVE"],
+    //
+    // DISABLED, not "INACTIVE": `AiToolStatus` is ACTIVE | DEPRECATED | DISABLED, and "INACTIVE"
+    // was never one of them. Prisma rejected it at boot with `Invalid value for argument
+    // 'status'`, which killed the whole backend before it could listen — this is the only entry in
+    // the catalog that sets a status, so nothing else masked it. DEPRECATED would have been the
+    // wrong word anyway: this tool was never available to phase out.
+    ["high_risk.compliance.partnerSuspend", "Partner Suspend", "Suspend partner account", "admin.service.suspendProvider", "DISABLED"],
     ["high_risk.compliance.customerBan", "Customer Ban", "Ban customer account", "admin.service.banUser"],
     ["high_risk.security.roleEscalation", "Role Escalation", "Escalate user role privileges", "rbac.service.escalate"],
     ["high_risk.platform.featureFlagChange", "Feature Flag Change", "Modify feature flag", "featureFlag.service.update"],
@@ -1059,6 +1211,13 @@ export const TOOL_CATALOG: Omit<ToolRegistryEntry, "handler">[] = [
     owner: "platform-security",
     status: (status ?? "ACTIVE") as AiToolStatus,
   })),
+
+  // ── Phase 16: governed agent read surface ──
+  //
+  // Kept in their own module because they belong to the agent layer, and spread in here so
+  // there is exactly ONE catalog. A separate registry would mean a separate set of policy,
+  // audit and discovery guarantees to keep in step.
+  ...PHASE16_AGENT_TOOLS,
 ];
 
 export const TOOL_CATEGORIES = ["READ", "WRITE", "HIGH_RISK"] as const;

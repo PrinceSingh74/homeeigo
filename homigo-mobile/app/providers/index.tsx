@@ -9,6 +9,7 @@ import {
   TextInput,
   ActivityIndicator,
   Image,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -32,6 +33,7 @@ type ProviderRow = {
   distanceKm?: number;
   etaMin?: number;
   isOnline: boolean;
+  availableNow?: boolean;
   available?: boolean;
 };
 
@@ -45,6 +47,7 @@ function fromMatched(p: BackendMatchedProvider): ProviderRow {
     distanceKm: p.distance,
     etaMin: p.eta,
     isOnline: p.isOnline,
+    availableNow: p.availableNow ?? p.availability,
     available: p.availability,
   };
 }
@@ -59,6 +62,7 @@ function fromSearch(p: BackendProvider): ProviderRow {
     distanceKm: p.distance,
     etaMin: p.eta,
     isOnline: p.isOnline ?? false,
+    availableNow: p.availableNow ?? false,
   };
 }
 
@@ -88,7 +92,7 @@ const ProviderCard = React.memo(function ProviderCard({
             <Text style={styles.avatarInitial}>{p.name.charAt(0).toUpperCase()}</Text>
           </LinearGradient>
         )}
-        {p.isOnline ? <View style={[styles.online, { borderColor: c.cardBg }]} /> : null}
+        {p.availableNow ? <View style={[styles.online, { borderColor: c.cardBg }]} /> : null}
       </View>
 
       <View style={{ flex: 1 }}>
@@ -127,7 +131,7 @@ export default function ProviderSearchScreen() {
   const { colors: c } = useTheme();
   const params = useLocalSearchParams<{ serviceId?: string }>();
   const isAuthenticated = useAuthStore((s) => s.status === "authenticated");
-  const { coords } = useDeviceCoordinates();
+  const { coords, status: locationStatus } = useDeviceCoordinates();
 
   const servicesQuery = useServicesQuery();
   const services = servicesQuery.data?.services ?? [];
@@ -140,8 +144,8 @@ export default function ProviderSearchScreen() {
 
   // Authenticated users get the richer "match" ranking (distance/eta/score);
   // unauthenticated users fall back to the public provider search.
-  const matched = useMatchedProvidersQuery(effectiveServiceId, isAuthenticated, coords);
-  const searched = useProvidersQuery(isAuthenticated ? "" : effectiveServiceId, coords);
+  const matched = useMatchedProvidersQuery(effectiveServiceId, isAuthenticated, coords ?? undefined);
+  const searched = useProvidersQuery(isAuthenticated ? "" : effectiveServiceId, coords ?? undefined);
 
   const activeQuery = isAuthenticated ? matched : searched;
 
@@ -206,7 +210,7 @@ export default function ProviderSearchScreen() {
 
       {/* Service filter chips */}
       {services.length > 0 ? (
-        <ScrollView
+        <ScrollView keyboardShouldPersistTaps="handled"
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={[styles.chips, { paddingHorizontal: screenPadding }]}
@@ -231,7 +235,19 @@ export default function ProviderSearchScreen() {
         </ScrollView>
       ) : null}
 
-      {activeQuery.isLoading ? (
+      {locationStatus === "denied" || locationStatus === "unavailable" ? (
+        <StateBlock
+          c={c}
+          title="Location needed"
+          body={
+            locationStatus === "denied"
+              ? "Allow location access to see professionals near you. Distances and arrival times are measured from where you are."
+              : "We could not get your location. Turn on GPS and try again."
+          }
+          cta="Open settings"
+          onCta={() => void Linking.openSettings()}
+        />
+      ) : activeQuery.isLoading || locationStatus === "pending" ? (
         <View style={styles.center}>
           <ActivityIndicator color={c.primary} />
           <Text style={[styles.muted, { color: c.textSecondary }]}>Finding providers near you…</Text>
@@ -245,7 +261,7 @@ export default function ProviderSearchScreen() {
           onCta={() => void activeQuery.refetch()}
         />
       ) : (
-        <FlatList
+        <FlatList keyboardShouldPersistTaps="handled"
           data={rows}
           keyExtractor={keyExtractor}
           renderItem={renderItem}

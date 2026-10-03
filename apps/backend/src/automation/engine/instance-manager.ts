@@ -3,6 +3,7 @@ import prisma from "../../lib/prisma";
 import { logger } from "../../lib/logger";
 import { recordWorkflowStarted } from "../../lib/automation-metrics";
 import { getWorkflow, resolveActiveVersion } from "../registry/workflow-registry";
+import { assertLiveAllowed } from "../registry/certification";
 import type { StartInstanceInput } from "../types";
 import { scheduleWorkflowStep } from "./step-scheduler";
 
@@ -37,7 +38,7 @@ export function buildIdempotencyKey(input: {
 
 export type StartResult =
   | { started: true; instanceId: string; version: number }
-  | { started: false; reason: "NO_ACTIVE_VERSION" | "NOT_REGISTERED" | "DUPLICATE"; instanceId?: string };
+  | { started: false; reason: "NO_ACTIVE_VERSION" | "NOT_REGISTERED" | "DUPLICATE" | "NOT_CERTIFIED_FOR_LIVE"; instanceId?: string };
 
 export async function startWorkflowInstance(input: StartInstanceInput): Promise<StartResult> {
   const version = await resolveActiveVersion(input.workflowId);
@@ -48,6 +49,29 @@ export async function startWorkflowInstance(input: StartInstanceInput): Promise<
     // Activated in the database but absent from code — refuse rather than guess at behaviour.
     logger.error("workflow_active_version_missing_in_code", { workflowId: input.workflowId, version });
     return { started: false, reason: "NOT_REGISTERED" };
+  }
+
+  /**
+   * The gate again, at the last possible moment.
+   *
+   * Registration and sync both check it, but a process can be running code that registered before a
+   * certification was revoked, and this is the point where an instance would actually come into
+   * being. Refusing here costs one lookup and closes the window.
+   */
+  try {
+    await assertLiveAllowed({
+      automationId: definition.workflowId,
+      workflowVersion: version,
+      riskClass: definition.riskClass,
+      certificationStatus: definition.certificationStatus,
+      executionMode: definition.executionMode ?? "LIVE",
+    });
+  } catch (err) {
+    logger.error("workflow_live_gate_refused", {
+      workflowId: input.workflowId, version,
+      error: err instanceof Error ? err.message.slice(0, 200) : "unknown",
+    });
+    return { started: false, reason: "NOT_CERTIFIED_FOR_LIVE" };
   }
 
   const idempotencyKey = buildIdempotencyKey({
@@ -71,6 +95,13 @@ export async function startWorkflowInstance(input: StartInstanceInput): Promise<
       data: {
         workflowId: input.workflowId,
         workflowVersion: version,
+        /**
+         * Pinned now, and never read from the definition again.
+         *
+         * A definition re-published as LIVE while this instance is mid-flight must not turn a
+         * rehearsal into a real send — the same reason the version is pinned rather than looked up.
+         */
+        executionMode: definition.executionMode ?? "LIVE",
         subjectType: input.subjectType,
         subjectId: input.subjectId,
         status: "PENDING",

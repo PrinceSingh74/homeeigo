@@ -5,6 +5,8 @@ import { redisClient } from "../lib/redis";
 import { renderMetrics } from "../lib/metrics";
 import { renderFinancialMetrics } from "../lib/financial-metrics";
 import { renderOpsMetrics } from "../lib/ops-metrics";
+import { getBootDegradations } from "../lib/boot-health";
+import { eventPlatformConfig } from "../events/core/config";
 
 /**
  * Operational endpoints for Kubernetes / load balancers / Prometheus.
@@ -87,16 +89,32 @@ export const observabilityRoutes = new Elysia({ name: "observability-routes" })
     const [database, redis] = await Promise.all([checkDatabase(), checkRedis()]);
     const memory = checkMemory();
     const integrations = checkIntegrations();
+    const bootDegradations = getBootDegradations();
+    const boot = {
+      status: bootDegradations.length === 0 ? ("healthy" as const) : ("degraded" as const),
+      degradations: bootDegradations,
+    };
+    // Outbox-on / consumers-off publishes everything and delivers nothing while looking healthy.
+    // Surface both flags so that state is at least visible where operators look.
+    const events = {
+      outboxEnabled: eventPlatformConfig.outboxEnabled,
+      consumersEnabled: eventPlatformConfig.consumersEnabled,
+      status:
+        eventPlatformConfig.outboxEnabled && !eventPlatformConfig.consumersEnabled
+          ? ("publish_without_delivery" as const)
+          : ("consistent" as const),
+    };
 
-    // Only hard dependencies gate readiness.
-    const ready = database.status === "healthy" && memory.status === "healthy";
+    // Hard dependencies gate readiness, and so does a boot-time subsystem failure: a process whose
+    // outbox/job processors never started is serving traffic it cannot fully honour.
+    const ready = database.status === "healthy" && memory.status === "healthy" && boot.status === "healthy";
     if (!ready) set.status = 503;
 
     return {
       status: ready ? "ready" : "not_ready",
       timestamp: new Date().toISOString(),
       environment: process.env.APP_ENV || process.env.NODE_ENV || "development",
-      checks: { database, redis, memory, integrations },
+      checks: { database, redis, memory, integrations, boot, events },
     };
   })
   .get("/metrics", async ({ request, set }) => {

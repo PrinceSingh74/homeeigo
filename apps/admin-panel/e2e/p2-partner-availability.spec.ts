@@ -45,9 +45,11 @@ test.describe("Section 02 admin live availability", () => {
     await expect(page.getByRole("heading", { name: /live partner availability/i })).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByText(/^Partner$/)).toBeVisible();
-    await expect(page.getByText(/^Status$/)).toBeVisible();
-    await expect(page.getByText(/^Next$/)).toBeVisible();
+    // Roster columns after the Operations redesign: Status → Availability, Next → Presence. Matched as
+    // column headers — the Operations rail on this page also has a nav link named "Availability".
+    await expect(page.getByRole("columnheader", { name: /^Partner$/ })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: /^Availability$/ })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: /^Presence$/ })).toBeVisible();
     await page.getByLabel("Filter status").selectOption("online");
     await page.getByLabel("Search partners").fill("partner");
     await expect(page.getByLabel("Search partners")).toHaveValue("partner");

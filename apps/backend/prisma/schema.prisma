@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -8,6 +9,9 @@ datasource db {
 }
 
 model User {
+  /// Provenance. NULL = UNKNOWN. Nullable with no default on purpose: defaulting to REAL would
+  /// silently relabel every historical row as genuine business data.
+  dataOrigin                  DataOrigin?                  @map("data_origin")
   id                          String                       @id @default(cuid())
   email                       String?
   phoneNumber                 String?                      @map("phone_number")
@@ -79,6 +83,7 @@ model User {
   adminProfile                AdminUser?
   aiConversations             AiConversation[]
   bookings                    Booking[]
+  bookingIdempotencyKeys      BookingIdempotencyKey[]
   consentRecords              ConsentRecord[]
   couponUsages                CouponUsage[]
   fraudAlerts                 FraudAlert[]
@@ -86,6 +91,7 @@ model User {
   fraudSignals                FraudSignal[]
   giftCardTransactions        GiftCardTransaction[]
   giftCardsPurchased          GiftCard[]                   @relation("GiftPurchaser")
+  visionImages                VisionImage[]
   giftCardsReceived           GiftCard[]                   @relation("GiftRecipient")
   hcoinTransactions           HCoinTransaction[]
   hcoinWallet                 HCoinWallet?
@@ -95,6 +101,7 @@ model User {
   notifications               Notification[]
   otps                        OTP[]
   partnerRegistrationSession  PartnerRegistrationSession?
+  partnerLead                 PartnerLead?
   passwordHistories           PasswordHistory[]
   payments                    Payment[]
   providerMatchScores         ProviderMatchScore[]
@@ -118,15 +125,13 @@ model User {
   dataExportRequests          DataExportRequest[]
   deletionRequests            DeletionRequest[]
   savedPaymentMethods         SavedPaymentMethod[]
+  bookingMessages             BookingMessage[]
 
-  @@index([emailHash])
-  @@index([phoneHash])
   @@index([kycStatus])
   @@index([isActive])
   @@index([isBanned])
   @@index([role])
   @@index([createdAt])
-  @@index([referralCode])
   @@index([deletedAt])
   @@map("users")
 }
@@ -185,114 +190,147 @@ model PasswordHistory {
 }
 
 model Provider {
-  id                      String                      @id @default(cuid())
-  userId                  String                      @unique @map("user_id")
-  businessName            String?                     @map("business_name")
-  businessLicense         String?                     @unique @map("business_license")
-  taxId                   String?                     @map("tax_id")
-  serviceCategories       String[]                    @map("service_categories")
-  serviceRegions          String[]                    @map("service_regions")
-  bio                     String?
-  isVerified              Boolean                     @default(false) @map("is_verified")
-  verificationDate        DateTime?                   @map("verification_date")
-  verificationNotes       String?                     @map("verification_notes")
-  certifications          String[]
-  backgroundCheckStatus   BackgroundCheckStatus       @default(NOT_DONE) @map("background_check_status")
-  backgroundCheckDate     DateTime?                   @map("background_check_date")
-  profileImage            String?                     @map("profile_image")
-  rating                  Float                       @default(0)
-  totalReviews            Int                         @default(0) @map("total_reviews")
-  ratingBreakdown         String?                     @map("rating_breakdown")
-  totalBookings           Int                         @default(0) @map("total_bookings")
-  completedBookings       Int                         @default(0) @map("completed_bookings")
-  cancelledBookings       Int                         @default(0) @map("cancelled_bookings")
-  rejectedBookings        Int                         @default(0) @map("rejected_bookings")
-  completionRate          Float                       @default(0) @map("completion_rate")
-  responseRate            Float                       @default(0) @map("response_rate")
-  cancellationRate        Float                       @default(0) @map("cancellation_rate")
-  onTimeRate              Float                       @default(0) @map("on_time_rate")
-  acceptanceRate          Float                       @default(0) @map("acceptance_rate")
-  avgResponseTime         Float                       @default(0) @map("avg_response_time")
-  avgCompletionTime       Float                       @default(0) @map("avg_completion_time")
-  isOnline                Boolean                     @default(false) @map("is_online")
-  onlineSince             DateTime?                   @map("online_since")
-  lastSeenAt              DateTime?                   @map("last_seen_at")
-  currentStatus           String                      @default("offline") @map("current_status")
-  workingHoursStart       String?                     @map("working_hours_start")
-  workingHoursEnd         String?                     @map("working_hours_end")
-  workingDays             String[]                    @map("working_days")
-  maxJobsPerDay           Int?                        @map("max_jobs_per_day")
-  maxConcurrentJobs       Int                         @default(4) @map("max_concurrent_jobs")
-  breakWindows            Json?                       @map("break_windows")
-  pausedAt                DateTime?                   @map("paused_at")
-  pauseReason             String?                     @map("pause_reason")
-  timezone                String                      @default("Asia/Kolkata")
-  walletBalance           Float                       @default(0) @map("wallet_balance")
-  walletBalancePaise      BigInt                      @default(0) @map("wallet_balance_paise")
-  totalEarnings           Float                       @default(0) @map("total_earnings")
-  totalEarningsPaise      BigInt                      @default(0) @map("total_earnings_paise")
-  thisMonthEarnings       Float                       @default(0) @map("this_month_earnings")
-  thisWeekEarnings        Float                       @default(0) @map("this_week_earnings")
-  commissionRate          Float                       @default(20) @map("commission_rate")
-  bankAccountHolder       String?                     @map("bank_account_holder")
-  bankAccountNumber       String?                     @map("bank_account_number")
-  bankIfscCode            String?                     @map("bank_ifsc_code")
-  bankName                String?                     @map("bank_name")
-  paymentMethodPreference String                      @default("bank_transfer") @map("payment_method_preference")
-  upiId                   String?                     @map("upi_id")
-  isActive                Boolean                     @default(true) @map("is_active")
-  isBanned                Boolean                     @default(false) @map("is_banned")
-  bannedReason            String?                     @map("banned_reason")
-  bannedAt                DateTime?                   @map("banned_at")
-  isApproved              Boolean                     @default(false) @map("is_approved")
-  approvalNotes           String?                     @map("approval_notes")
-  pushTokens              String[]                    @map("push_tokens")
-  createdAt               DateTime                    @default(now()) @map("created_at")
-  updatedAt               DateTime                    @updatedAt @map("updated_at")
-  badges                  String[]                    @default([])
-  registrationStatus      PartnerRegistrationStatus   @default(PENDING) @map("registration_status")
-  registeredAt            DateTime                    @default(now()) @map("registered_at")
-  partnerApprovedAt       DateTime?                   @map("partner_approved_at")
-  rejectedAt              DateTime?                   @map("rejected_at")
-  rejectionReason         String?                     @map("rejection_reason")
-  city                    String?
-  experienceYears         Int                         @default(0) @map("experience_years")
-  primarySkill            String?                     @map("primary_skill")
-  secondarySkills         String[]                    @default([]) @map("secondary_skills")
-  emergencyContactName    String?                     @map("emergency_contact_name")
-  emergencyContactPhone   String?                     @map("emergency_contact_phone")
-  serviceRadiusKm         Float?                      @map("service_radius_km")
-  baseLatitude            Float?                      @map("base_latitude")
-  baseLongitude           Float?                      @map("base_longitude")
-  panNumber               String?                     @map("pan_number")
-  aadharNumber            String?                     @map("aadhar_number")
-  adminApprovedBy         String?                     @map("admin_approved_by")
-  taxIdHash               String?                     @unique @map("tax_id_hash")
-  bankAccountNumberHash   String?                     @unique @map("bank_account_number_hash")
-  upiIdHash               String?                     @unique @map("upi_id_hash")
-  panNumberHash           String?                     @unique @map("pan_number_hash")
-  aadharNumberHash        String?                     @unique @map("aadhar_number_hash")
-  reservedBalance         Float                       @default(0) @map("reserved_balance")
-  reservedBalancePaise    BigInt                      @default(0) @map("reserved_balance_paise")
-  activityLogs            ActivityLog[]
-  assignmentAttempts      AssignmentAttempt[]
-  bookings                Booking[]
-  earnings                Earning[]
-  locationHistory         LocationHistory[]
-  currentLocation         Location?
-  notifications           Notification[]
-  partnerBackgroundCheck  PartnerBackgroundCheck?
-  documents               ProviderDocument[]
-  providerMatchScores     ProviderMatchScore[]
-  walletReservations      ProviderWalletReservation[]
-  attendanceSessions      PartnerAttendanceSession[]
-  incentivePayouts        PartnerIncentivePayout[]
-  academyProgress         PartnerAcademyProgress[]
-  user                    User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  reviews                 Rating[]                    @relation("ProviderReviews")
-  supportTickets          SupportTicket[]
-  walletTransactions      WalletTransaction[]
-  withdrawals             Withdrawal[]
+  id                          String                         @id @default(cuid())
+  userId                      String                         @unique @map("user_id")
+  businessName                String?                        @map("business_name")
+  businessLicense             String?                        @unique @map("business_license")
+  taxId                       String?                        @map("tax_id")
+  serviceCategories           String[]                       @default([]) @map("service_categories")
+  serviceRegions              String[]                       @default([]) @map("service_regions")
+  bio                         String?
+  isVerified                  Boolean                        @default(false) @map("is_verified")
+  verificationDate            DateTime?                      @map("verification_date")
+  verificationNotes           String?                        @map("verification_notes")
+  certifications              String[]                       @default([])
+  backgroundCheckStatus       BackgroundCheckStatus          @default(NOT_DONE) @map("background_check_status")
+  backgroundCheckDate         DateTime?                      @map("background_check_date")
+  profileImage                String?                        @map("profile_image")
+  rating                      Float                          @default(0)
+  totalReviews                Int                            @default(0) @map("total_reviews")
+  ratingBreakdown             String?                        @map("rating_breakdown")
+  totalBookings               Int                            @default(0) @map("total_bookings")
+  completedBookings           Int                            @default(0) @map("completed_bookings")
+  cancelledBookings           Int                            @default(0) @map("cancelled_bookings")
+  rejectedBookings            Int                            @default(0) @map("rejected_bookings")
+  completionRate              Float                          @default(0) @map("completion_rate")
+  responseRate                Float                          @default(0) @map("response_rate")
+  cancellationRate            Float                          @default(0) @map("cancellation_rate")
+  onTimeRate                  Float                          @default(0) @map("on_time_rate")
+  acceptanceRate              Float                          @default(0) @map("acceptance_rate")
+  avgResponseTime             Float                          @default(0) @map("avg_response_time")
+  avgCompletionTime           Float                          @default(0) @map("avg_completion_time")
+  isOnline                    Boolean                        @default(false) @map("is_online")
+  onlineSince                 DateTime?                      @map("online_since")
+  lastSeenAt                  DateTime?                      @map("last_seen_at")
+  currentStatus               String                         @default("offline") @map("current_status")
+  workingHoursStart           String?                        @map("working_hours_start")
+  workingHoursEnd             String?                        @map("working_hours_end")
+  workingDays                 String[]                       @default([]) @map("working_days")
+  maxJobsPerDay               Int?                           @map("max_jobs_per_day")
+  maxConcurrentJobs           Int                            @default(4) @map("max_concurrent_jobs")
+  breakWindows                Json?                          @map("break_windows")
+  pausedAt                    DateTime?                      @map("paused_at")
+  pauseReason                 String?                        @map("pause_reason")
+  timezone                    String                         @default("Asia/Kolkata")
+  walletBalance               Float                          @default(0) @map("wallet_balance")
+  walletBalancePaise          BigInt                         @default(0) @map("wallet_balance_paise")
+  totalEarnings               Float                          @default(0) @map("total_earnings")
+  totalEarningsPaise          BigInt                         @default(0) @map("total_earnings_paise")
+  thisMonthEarnings           Float                          @default(0) @map("this_month_earnings")
+  thisWeekEarnings            Float                          @default(0) @map("this_week_earnings")
+  commissionRate              Float                          @default(20) @map("commission_rate")
+  bankAccountHolder           String?                        @map("bank_account_holder")
+  bankAccountNumber           String?                        @map("bank_account_number")
+  bankIfscCode                String?                        @map("bank_ifsc_code")
+  bankName                    String?                        @map("bank_name")
+  paymentMethodPreference     String                         @default("bank_transfer") @map("payment_method_preference")
+  upiId                       String?                        @map("upi_id")
+  isActive                    Boolean                        @default(true) @map("is_active")
+  isBanned                    Boolean                        @default(false) @map("is_banned")
+  bannedReason                String?                        @map("banned_reason")
+  bannedAt                    DateTime?                      @map("banned_at")
+  isApproved                  Boolean                        @default(false) @map("is_approved")
+  approvalNotes               String?                        @map("approval_notes")
+  pushTokens                  String[]                       @map("push_tokens")
+  createdAt                   DateTime                       @default(now()) @map("created_at")
+  updatedAt                   DateTime                       @updatedAt @map("updated_at")
+  badges                      String[]                       @default([])
+  registrationStatus          PartnerRegistrationStatus      @default(PENDING) @map("registration_status")
+  registeredAt                DateTime?                      @map("registered_at")
+  partnerApprovedAt           DateTime?                      @map("partner_approved_at")
+  rejectedAt                  DateTime?                      @map("rejected_at")
+  rejectionReason             String?                        @map("rejection_reason")
+  changesRequestedAt          DateTime?                      @map("changes_requested_at")
+  changesRequestedStep        String?                        @map("changes_requested_step")
+  changesRequestedNotes       String?                        @map("changes_requested_notes")
+  city                        String?
+  experienceYears             Int                            @default(0) @map("experience_years")
+  primarySkill                String?                        @map("primary_skill")
+  secondarySkills             String[]                       @default([]) @map("secondary_skills")
+  emergencyContactName        String?                        @map("emergency_contact_name")
+  emergencyContactPhone       String?                        @map("emergency_contact_phone")
+  complianceRestricted        Boolean                        @default(false) @map("compliance_restricted")
+  complianceRestrictedAt      DateTime?                      @map("compliance_restricted_at")
+  complianceRestrictionReason String?                        @map("compliance_restriction_reason")
+  /// Section 06 partner program lifecycle — distinct from availability FSM (`currentStatus` / `pausedAt`).
+  lifecycleState              PartnerLifecycleState          @default(APPLIED) @map("lifecycle_state")
+  /// Section 06 career ladder — distinct from customer membership tiers and commission volume bands.
+  careerLevel                 PartnerCareerLevel             @default(STARTER) @map("career_level")
+  serviceRadiusKm             Float?                         @map("service_radius_km")
+  baseLatitude                Float?                         @map("base_latitude")
+  baseLongitude               Float?                         @map("base_longitude")
+  panNumber                   String?                        @map("pan_number")
+  aadharNumber                String?                        @map("aadhar_number")
+  adminApprovedBy             String?                        @map("admin_approved_by")
+  /// Lookup hashes for encrypted KYC / payout identity. Each is unique on purpose:
+  /// one PAN, Aadhaar, bank account, UPI id or tax id may belong to only one partner.
+  /// Duplicate payout-account prevention is a persistence rule, not a post-hoc risk signal.
+  /// Section 07 `BANK_REUSE` inspects hashes that survived this constraint (races, imports);
+  /// a canonical KYC write is refused by `assertProviderKycUnique` before it can land.
+  taxIdHash                   String?                        @unique @map("tax_id_hash")
+  bankAccountNumberHash       String?                        @unique @map("bank_account_number_hash")
+  upiIdHash                   String?                        @unique @map("upi_id_hash")
+  panNumberHash               String?                        @unique @map("pan_number_hash")
+  aadharNumberHash            String?                        @unique @map("aadhar_number_hash")
+  reservedBalance             Float                          @default(0) @map("reserved_balance")
+  reservedBalancePaise        BigInt                         @default(0) @map("reserved_balance_paise")
+  activityLogs                ActivityLog[]
+  assignmentAttempts          AssignmentAttempt[]
+  bookings                    Booking[]
+  jobEvidence                 JobEvidence[]
+  earnings                    Earning[]
+  locationHistory             LocationHistory[]
+  currentLocation             Location?
+  notifications               Notification[]
+  partnerBackgroundCheck      PartnerBackgroundCheck?
+  partnerLead                 PartnerLead?
+  partnerAssessments          PartnerAssessment[]
+  documents                   ProviderDocument[]
+  complianceReminders         PartnerComplianceReminder[]
+  complianceRestrictions      PartnerComplianceRestriction[]
+  riskProfile                 PartnerRiskProfile?
+  riskSignals                 PartnerRiskSignal[]
+  safetyIncidents             PartnerSafetyIncident[]
+  providerMatchScores         ProviderMatchScore[]
+  walletReservations          ProviderWalletReservation[]
+  attendanceSessions          PartnerAttendanceSession[]
+  presence                    PartnerPresence?
+  incentivePayouts            PartnerIncentivePayout[]
+  academyProgress             PartnerAcademyProgress[]
+  unifiedScore                PartnerScore?
+  scoreHistory                PartnerScoreHistory[]
+  careerHistory               PartnerCareerHistory[]
+  lifecycleHistory            PartnerStatusHistory[]
+  badgeAwards                 PartnerBadgeAward[]
+  referralsMade               PartnerReferral[]              @relation("PartnerReferralsMade")
+  referralReceived            PartnerReferral?               @relation("PartnerReferralReceived")
+  partnerReferralCode         PartnerReferralCode?
+  referralRewardsEarned       PartnerReferralReward[]
+  user                        User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviews                     Rating[]                       @relation("ProviderReviews")
+  supportTickets              SupportTicket[]
+  walletTransactions          WalletTransaction[]
+  withdrawals                 Withdrawal[]
 
   @@index([isOnline])
   @@index([pausedAt])
@@ -302,55 +340,295 @@ model Provider {
   @@index([isApproved])
   @@index([registrationStatus])
   @@index([isActive])
+  @@index([complianceRestricted])
   @@index([completionRate])
   @@index([createdAt])
+  @@index([lifecycleState])
+  @@index([careerLevel])
   @@map("providers")
 }
 
 model Service {
-  id                  String    @id @default(cuid())
-  name                String    @unique
-  slug                String    @unique
+  id                  String                   @id @default(cuid())
+  name                String                   @unique
+  slug                String                   @unique
   description         String
-  detailedDescription String?   @map("detailed_description")
+  detailedDescription String?                  @map("detailed_description")
   category            String
   subcategory         String?
-  basePrice           Float     @map("base_price")
-  minPrice            Float?    @map("min_price")
-  maxPrice            Float?    @map("max_price")
-  currency            String    @default("INR")
-  estimatedDuration   Int       @map("estimated_duration")
-  durationRange       String?   @map("duration_range")
-  isActive            Boolean   @default(true) @map("is_active")
-  isFeatured          Boolean   @default(false) @map("is_featured")
-  isPopular           Boolean   @default(false) @map("is_popular")
-  isPromoted          Boolean   @default(false) @map("is_promoted")
-  popularity          Int       @default(0)
-  bookingCount        Int       @default(0) @map("booking_count")
+  basePrice           Float                    @map("base_price")
+  minPrice            Float?                   @map("min_price")
+  maxPrice            Float?                   @map("max_price")
+  currency            String                   @default("INR")
+  estimatedDuration   Int                      @map("estimated_duration")
+  durationRange       String?                  @map("duration_range")
+  isActive            Boolean                  @default(true) @map("is_active")
+  isFeatured          Boolean                  @default(false) @map("is_featured")
+  isPopular           Boolean                  @default(false) @map("is_popular")
+  isPromoted          Boolean                  @default(false) @map("is_promoted")
+  popularity          Int                      @default(0)
+  bookingCount        Int                      @default(0) @map("booking_count")
   icon                String?
   images              String[]
   thumbnail           String?
-  includedServices    String[]  @map("included_services")
-  excludedServices    String[]  @map("excluded_services")
+  includedServices    String[]                 @map("included_services")
+  excludedServices    String[]                 @map("excluded_services")
   requirements        String[]
-  availableCities     String[]  @map("available_cities")
-  unavailableCities   String[]  @map("unavailable_cities")
+  availableCities     String[]                 @map("available_cities")
+  unavailableCities   String[]                 @map("unavailable_cities")
   tags                String[]
-  seoTitle            String?   @map("seo_title")
-  seoDescription      String?   @map("seo_description")
-  seoKeywords         String?   @map("seo_keywords")
-  pricingModel        String    @default("fixed") @map("pricing_model")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
-  premiumOnly         Boolean   @default(false) @map("premium_only")
+  seoTitle            String?                  @map("seo_title")
+  seoDescription      String?                  @map("seo_description")
+  seoKeywords         String?                  @map("seo_keywords")
+  pricingModel        String                   @default("fixed") @map("pricing_model")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  premiumOnly         Boolean                  @default(false) @map("premium_only")
+  /// Admin-managed booking/content configuration (quantity rules, variants, audiences,
+  /// policies, content, add-ons). Validated by src/lib/service-catalog-config.ts.
+  catalogConfig       Json?                    @map("catalog_config")
+  /// Stable business code (defaults to slug on create; never rewritten by a rename). Distinct from
+  /// `slug` (public URL) and `internalServiceCode` (operational). Never sent to customers.
+  serviceCode         String                   @unique @default(dbgenerated()) @map("service_code")
+  /// Optional operational identifier (ops / ERP / ledger). Unique when set. Admin-only.
+  internalServiceCode String?                  @unique @map("internal_service_code")
+  /// Provenance (same model as bookings/users). NULL = unknown = treated as real. Non-real origins never reach
+  /// the customer catalogue, customer quotes or partner onboarding.
+  dataOrigin          DataOrigin?              @map("data_origin")
+  /// Partner calendar policy (owner decision D1): DURATION reserves [start−30, start+duration+30);
+  /// FIXED keeps the 60-minute block (services whose duration is a turnaround time, e.g. laundry).
+  partnerSlotPolicy   String                   @default("DURATION") @map("partner_slot_policy")
+  displayName         String?                  @map("display_name")
+  shortName           String?                  @map("short_name")
+  /// Customer taxonomy (service_categories tree). `category` stays the operational string used by
+  /// dispatch; the DB trigger services_resolve_taxonomy derives `categoryId` from it when unset.
+  categoryId          String?                  @map("category_id")
+  subcategoryId       String?                  @map("subcategory_id")
+  parentServiceId     String?                  @map("parent_service_id")
+  taxonomyCategory    ServiceCategory?         @relation("ServiceTaxonomyCategory", fields: [categoryId], references: [id], onDelete: Restrict)
+  taxonomySubcategory ServiceCategory?         @relation("ServiceTaxonomySubcategory", fields: [subcategoryId], references: [id], onDelete: Restrict)
+  parentService       Service?                 @relation("ServiceFamily", fields: [parentServiceId], references: [id], onDelete: SetNull)
+  childServices       Service[]                @relation("ServiceFamily")
+  capabilityProfile   ServiceCapabilityProfile @default(GENERAL) @map("capability_profile")
+  lifecycleStatus     ServiceLifecycleStatus   @default(ACTIVE) @map("lifecycle_status")
+  configStatus        ServiceConfigStatus      @default(READY) @map("config_status")
+  isCustomerVisible   Boolean                  @default(true) @map("is_customer_visible")
+  isBookable          Boolean                  @default(true) @map("is_bookable")
+  version             Int                      @default(1)
+  ownerTeam           String?                  @map("owner_team")
+  operationsNotes     String?                  @map("operations_notes")
+  lastReviewedAt      DateTime?                @map("last_reviewed_at") @db.Timestamptz(6)
+  publishedAt         DateTime?                @map("published_at") @db.Timestamptz(6)
+  publishedBy         String?                  @map("published_by")
+  createdBy           String?                  @map("created_by")
+  updatedBy           String?                  @map("updated_by")
   bookings            Booking[]
+  intervalPolicies    ServiceIntervalPolicy[]
+  configVersions      ServiceConfigVersion[]
+  variants            ServiceVariant[]
+  addons              ServiceAddon[]
+  requirementAssignments ServiceRequirement[]
 
   @@index([category])
   @@index([isActive])
   @@index([isFeatured])
   @@index([popularity])
-  @@index([slug])
+  @@index([lifecycleStatus])
+  @@index([isBookable])
+  @@index([isCustomerVisible])
+  @@index([capabilityProfile])
+  @@index([categoryId])
+  @@index([subcategoryId])
+  @@index([parentServiceId])
+  @@index([dataOrigin])
   @@map("services")
+}
+
+/// Immutable published catalogue snapshot. Historical bookings point at a version number,
+/// not at the live `catalog_config`, so later admin edits cannot rewrite what was sold.
+model ServiceConfigVersion {
+  id            String    @id @default(cuid())
+  serviceId     String    @map("service_id")
+  version       Int
+  status        String    @default("PUBLISHED")
+  catalogConfig Json      @map("catalog_config")
+  snapshot      Json
+  createdBy     String?   @map("created_by")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz(6)
+  service       Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, version])
+  @@index([serviceId, status])
+  @@map("service_config_versions")
+}
+
+/// Queryable catalogue options. `code` is the id customers send (`variantId`).
+/// Prices here feed `resolveSelection` after hydrate — not a second pricing engine.
+model ServiceVariant {
+  id               String   @id @default(cuid())
+  serviceId        String   @map("service_id")
+  code             String
+  name             String
+  description      String?
+  price            Float
+  durationMin      Int?     @map("duration_min")
+  audiences        String[]
+  inclusions       String[]
+  exclusions       String[]
+  requirements     String[]
+  quantityOverride Json?    @map("quantity_override")
+  sortOrder        Int      @default(0) @map("sort_order")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  service          Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, code])
+  @@index([serviceId, isActive])
+  @@map("service_variants")
+}
+
+model ServiceAddon {
+  id                      String   @id @default(cuid())
+  serviceId               String   @map("service_id")
+  code                    String
+  name                    String
+  description             String?
+  price                   Float
+  durationMin             Int?     @map("duration_min")
+  quantityAllowed         Boolean  @default(true) @map("quantity_allowed")
+  /// Most units of this add-on one booking may take. NULL = exactly one.
+  maxQuantity             Int?     @map("max_quantity")
+  compatibleVariantCodes  String[] @map("compatible_variant_codes")
+  requiresAddonCodes      String[] @default([]) @map("requires_addon_codes")
+  conflictsWithAddonCodes String[] @default([]) @map("conflicts_with_addon_codes")
+  sortOrder               Int      @default(0) @map("sort_order")
+  isActive                Boolean  @default(true) @map("is_active")
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  service                 Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, code])
+  @@index([serviceId, isActive])
+  @@map("service_addons")
+}
+
+/// Phase 06 reusable catalogue: a material, a piece of equipment, or a customer precondition.
+/// Business data — nothing is seeded. Referenced by service_requirements (ON DELETE RESTRICT).
+model ServiceRequirementItem {
+  id            String               @id
+  code          String               @unique(map: "service_requirement_items_code_key")
+  kind          String
+  name          String
+  customerLabel String?              @map("customer_label")
+  description   String?
+  isActive      Boolean              @default(true) @map("is_active")
+  version       Int                  @default(1)
+  createdBy     String?              @map("created_by")
+  updatedBy     String?              @map("updated_by")
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime             @default(now()) @map("updated_at") @db.Timestamptz(6)
+  assignments   ServiceRequirement[]
+
+  @@index([kind, isActive], map: "service_requirement_items_kind_active_idx")
+  @@map("service_requirement_items")
+}
+
+/// Phase 06 per-service assignment, synced from catalog_config.requirements in the service write
+/// transaction (same contract as service_variants / service_addons). responsibility / procurement /
+/// charge are three separate facts; CHECK constraints in the migration enforce their consistency.
+model ServiceRequirement {
+  id                  String                 @id
+  serviceId           String                 @map("service_id")
+  code                String
+  itemId              String                 @map("item_id")
+  responsibility      String
+  procurement         String?
+  charge              String                 @default("NOT_APPLICABLE")
+  isOptional          Boolean                @default(false) @map("is_optional")
+  enforcement         String                 @default("INFORMATIONAL")
+  verification        String                 @default("NONE")
+  quantity            Decimal?               @db.Decimal(12, 3)
+  unit                String?
+  quantityBasis       String?                @map("quantity_basis")
+  whenVariantCodes    String[]               @default([]) @map("when_variant_codes")
+  whenAddonCodes      String[]               @default([]) @map("when_addon_codes")
+  whenMinQuantity     Int?                   @map("when_min_quantity")
+  customerNote        String?                @map("customer_note")
+  customerWarning     String?                @map("customer_warning")
+  partnerInstructions String?                @map("partner_instructions")
+  handlingNote        String?                @map("handling_note")
+  internalNote        String?                @map("internal_note")
+  sortOrder           Int                    @default(0) @map("sort_order")
+  isActive            Boolean                @default(true) @map("is_active")
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime               @default(now()) @map("updated_at") @db.Timestamptz(6)
+  service             Service                @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  item                ServiceRequirementItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([serviceId, code], map: "service_requirements_service_code_key")
+  @@index([serviceId, isActive], map: "service_requirements_service_active_idx")
+  @@index([itemId], map: "service_requirements_item_idx")
+  @@map("service_requirements")
+}
+
+/// Customer taxonomy tree: top-level rows are categories, rows with `parentId` are subcategories
+/// (exactly two levels — enforced by trigger service_categories_depth_guard). Public URLs use `slug`.
+/// `operationalCategories` lists the `services.category` dispatch strings that fall into a category.
+model ServiceCategory {
+  id                    String            @id @default(cuid())
+  slug                  String            @unique
+  name                  String
+  shortName             String?           @map("short_name")
+  description           String?
+  sortOrder             Int               @default(0) @map("sort_order")
+  isActive              Boolean           @default(true) @map("is_active")
+  operationalCategories String[]          @default([]) @map("operational_categories")
+  parentId              String?           @map("parent_id")
+  parent                ServiceCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children              ServiceCategory[] @relation("CategoryTree")
+  services              Service[]         @relation("ServiceTaxonomyCategory")
+  subcategoryServices   Service[]         @relation("ServiceTaxonomySubcategory")
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([parentId])
+  @@index([parentId, sortOrder])
+  @@map("service_categories")
+}
+
+enum ServiceLifecycleStatus {
+  DRAFT
+  CONFIGURATION_REQUIRED
+  READY_FOR_REVIEW
+  PUBLISHED
+  ACTIVE
+  PAUSED
+  DEPRECATED
+  ARCHIVED
+}
+
+enum ServiceConfigStatus {
+  READY
+  CONFIGURATION_REQUIRED
+  COMING_SOON
+  PAUSED
+  ARCHIVED
+  INTERNAL
+}
+
+enum ServiceCapabilityProfile {
+  GENERAL
+  HOME_HELP
+  CLEANING
+  REPAIR
+  APPLIANCE
+  BEAUTY
+  SENIOR_CARE
+  PET_CARE
+  CONCIERGE
+  VEHICLE
 }
 
 model Address {
@@ -397,6 +675,9 @@ model Address {
 }
 
 model Booking {
+  /// Provenance. NULL = UNKNOWN. Nullable with no default on purpose: defaulting to REAL would
+  /// silently relabel every historical row as genuine business data.
+  dataOrigin                  DataOrigin?                  @map("data_origin")
   id                          String                       @id @default(cuid())
   bookingNumber               String                       @unique @map("booking_number")
   userId                      String                       @map("user_id")
@@ -411,6 +692,9 @@ model Booking {
   completedAt                 DateTime?                    @map("completed_at")
   cancelledAt                 DateTime?                    @map("cancelled_at")
   estimatedDuration           Int?                         @map("estimated_duration")
+  /// Minutes the partner/customer slot reserves beyond the ±30-min buffer, frozen at creation (D1).
+  /// NULL on bookings made before 2026-09-21 = the legacy fixed 60-minute block (never re-slotted).
+  slotDurationMinutes         Int?                         @map("slot_duration_minutes")
   actualDuration              Int?                         @map("actual_duration")
   eta                         Int?
   description                 String?
@@ -423,6 +707,12 @@ model Booking {
   couponCode                  String?                      @map("coupon_code")
   /// Catalog snapshot of chosen add-ons at booking time: [{id,name,price}]
   addons                      Json?
+  /// Server-priced selection snapshot: variant, quantity, unit price, audience.
+  serviceSelection            Json?                        @map("service_selection")
+  /// Catalogue version at book time. Live service edits must not rewrite this row.
+  serviceConfigVersion        Int?                         @map("service_config_version")
+  /// Immutable policy/content slice (inclusions, duration, material responsibility).
+  serviceConfigSnapshot       Json?                        @map("service_config_snapshot")
   taxes                       Float                        @default(0)
   taxesPaise                  BigInt                       @default(0) @map("taxes_paise")
   finalAmount                 Float                        @map("final_amount")
@@ -472,6 +762,8 @@ model Booking {
   startOtps                   BookingStartOtp[]
   supportTickets              SupportTicket[]
   tracking                    Tracking?
+  jobEvidence                 JobEvidence[]
+  conversation                BookingConversation?
 
   @@index([userId])
   @@index([providerId])
@@ -479,7 +771,6 @@ model Booking {
   @@index([scheduledDate])
   @@index([paymentStatus])
   @@index([createdAt])
-  @@index([bookingNumber])
   @@index([userId, createdAt])
   @@index([providerId, status])
   @@index([queuePriority, status])
@@ -488,6 +779,65 @@ model Booking {
   @@index([addressId])
   @@index([serviceId])
   @@map("bookings")
+  idempotencyKeys             BookingIdempotencyKey[]
+}
+
+enum JobEvidenceStage {
+  ARRIVAL
+  START
+  COMPLETION
+}
+
+model JobEvidence {
+  id              String           @id @default(cuid())
+  bookingId       String           @map("booking_id")
+  providerId      String           @map("provider_id")
+  stage           JobEvidenceStage
+  latitude        Float?
+  longitude       Float?
+  capturedAt      DateTime         @default(now()) @map("captured_at")
+  mediaStorageKey String?          @map("media_storage_key")
+  mediaMimeType   String?          @map("media_mime_type")
+  mediaUrl        String?          @map("media_url") // temporary legacy URL refs only; prefer storage key
+  isCurrent       Boolean          @default(true) @map("is_current")
+  clientUploadId  String?          @map("client_upload_id")
+  metadata        Json?
+  createdAt       DateTime         @default(now()) @map("created_at")
+  booking         Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  provider        Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, stage, clientUploadId])
+  @@index([bookingId, stage, isCurrent])
+  @@index([providerId])
+  @@map("job_evidence")
+}
+
+model BookingConversation {
+  id        String           @id @default(cuid())
+  bookingId String           @unique @map("booking_id")
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+  booking   Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  messages  BookingMessage[]
+
+  @@map("booking_conversations")
+}
+
+model BookingMessage {
+  id              String              @id @default(cuid())
+  conversationId  String              @map("conversation_id")
+  senderUserId    String              @map("sender_user_id")
+  body            String
+  clientMessageId String?             @map("client_message_id")
+  deliveredAt     DateTime?           @map("delivered_at")
+  readAt          DateTime?           @map("read_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  conversation    BookingConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender          User                @relation(fields: [senderUserId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, clientMessageId])
+  @@index([conversationId, createdAt])
+  @@map("booking_messages")
 }
 
 /// Service-start verification PIN ("start OTP").
@@ -560,7 +910,6 @@ model Payment {
 
   @@index([userId])
   @@index([status])
-  @@index([razorpayOrderId])
   @@index([createdAt])
   @@map("payments")
 }
@@ -664,6 +1013,38 @@ model Location {
   @@map("locations")
 }
 
+/// Phase 1 — Partner presence evidence (liveness subsystem; NOT a fifth FSM).
+/// One durable snapshot per partner; heartbeats upsert this row (no per-ping history table).
+model PartnerPresence {
+  id                     String    @id @default(cuid())
+  providerId             String    @unique @map("provider_id")
+  activeSessionId        String?   @map("active_session_id")
+  activeDeviceId         String?   @map("active_device_id")
+  lastHeartbeatAt        DateTime? @map("last_heartbeat_at")
+  lastSeenAt             DateTime? @map("last_seen_at")
+  /// Device capture time of the last accepted fix. Freshness is measured against THIS.
+  lastLocationAt         DateTime? @map("last_location_at")
+  /// Server receive time of that same fix. `receivedAt - capturedAt` is the transport lag.
+  lastLocationReceivedAt DateTime? @map("last_location_received_at")
+  lastLocationLat        Float?    @map("last_location_lat")
+  lastLocationLng        Float?    @map("last_location_lng")
+  lastLocationAccuracy   Float?    @map("last_location_accuracy")
+  lastLocationSource     String?   @map("last_location_source")
+  lastLocationSeq        Int?      @map("last_location_seq")
+  appState               String?   @map("app_state")
+  platform               String?   @map("platform")
+  appVersion             String?   @map("app_version")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+  provider               Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([lastHeartbeatAt])
+  @@index([activeSessionId])
+  @@index([lastLocationAt])
+  @@index([providerId, updatedAt])
+  @@map("partner_presence")
+}
+
 model WalletTransaction {
   id                       String          @id @default(cuid())
   transactionNumber        String          @unique @map("transaction_number")
@@ -701,22 +1082,22 @@ model WalletTransaction {
 }
 
 model Earning {
-  id               String   @id @default(cuid())
-  providerId       String   @map("provider_id")
-  bookingId        String?  @unique @map("booking_id")
-  grossAmount      Float    @map("gross_amount")
-  grossAmountPaise BigInt   @default(0) @map("gross_amount_paise")
+  id               String                  @id @default(cuid())
+  providerId       String                  @map("provider_id")
+  bookingId        String?                 @unique @map("booking_id")
+  grossAmount      Float                   @map("gross_amount")
+  grossAmountPaise BigInt                  @default(0) @map("gross_amount_paise")
   commission       Float
-  commissionPaise  BigInt   @default(0) @map("commission_paise")
-  netEarning       Float    @map("net_earning")
-  netEarningPaise  BigInt   @default(0) @map("net_earning_paise")
-  tax              Float    @default(0)
-  taxPaise         BigInt   @default(0) @map("tax_paise")
-  paymentStatus    String   @default("credited") @map("payment_status")
-  earningDate      DateTime @default(now()) @map("earning_date")
+  commissionPaise  BigInt                  @default(0) @map("commission_paise")
+  netEarning       Float                   @map("net_earning")
+  netEarningPaise  BigInt                  @default(0) @map("net_earning_paise")
+  tax              Float                   @default(0)
+  taxPaise         BigInt                  @default(0) @map("tax_paise")
+  paymentStatus    EarningSettlementStatus @default(CREDITED) @map("payment_status")
+  earningDate      DateTime                @default(now()) @map("earning_date")
   notes            String?
-  createdAt        DateTime @default(now()) @map("created_at")
-  provider         Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  createdAt        DateTime                @default(now()) @map("created_at")
+  provider         Provider                @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
   @@index([providerId])
   @@index([earningDate])
@@ -751,6 +1132,7 @@ model Withdrawal {
   completedAt        DateTime?        @map("completed_at")
   createdAt          DateTime         @default(now()) @map("created_at")
   updatedAt          DateTime         @updatedAt @map("updated_at")
+  idempotencyKey     String?          @unique @map("idempotency_key")
   payoutAttempts     PayoutAttempt[]
   provider           Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
@@ -831,26 +1213,31 @@ model RefreshToken {
 }
 
 model ProviderDocument {
-  id                String    @id @default(cuid())
-  providerId        String    @map("provider_id")
-  documentType      String    @map("document_type")
-  documentNumber    String    @default("") @map("document_number")
-  documentUrl       String    @map("document_url")
-  isVerified        Boolean   @default(false) @map("is_verified")
-  verifiedAt        DateTime? @map("verified_at")
-  verificationNotes String?   @map("verification_notes")
-  expiryDate        DateTime? @map("expiry_date")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  documentName      String?   @map("document_name")
-  fileSize          Int?      @map("file_size")
-  fileFormat        String?   @map("file_format")
-  uploadStatus      String    @default("uploaded") @map("upload_status")
-  uploadedAt        DateTime  @default(now()) @map("uploaded_at")
-  provider          Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  id                     String                         @id @default(cuid())
+  providerId             String                         @map("provider_id")
+  documentType           String                         @map("document_type")
+  documentNumber         String                         @default("") @map("document_number")
+  documentUrl            String                         @map("document_url")
+  isVerified             Boolean                        @default(false) @map("is_verified")
+  verifiedAt             DateTime?                      @map("verified_at")
+  verificationNotes      String?                        @map("verification_notes")
+  expiryDate             DateTime?                      @map("expiry_date")
+  issueDate              DateTime?                      @map("issue_date")
+  issuer                 String?
+  createdAt              DateTime                       @default(now()) @map("created_at")
+  updatedAt              DateTime                       @updatedAt @map("updated_at")
+  documentName           String?                        @map("document_name")
+  fileSize               Int?                           @map("file_size")
+  fileFormat             String?                        @map("file_format")
+  uploadStatus           String                         @default("uploaded") @map("upload_status")
+  uploadedAt             DateTime                       @default(now()) @map("uploaded_at")
+  provider               Provider                       @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  complianceReminders    PartnerComplianceReminder[]
+  complianceRestrictions PartnerComplianceRestriction[]
 
   @@index([providerId])
   @@index([documentType])
+  @@index([expiryDate])
   @@map("provider_documents")
 }
 
@@ -861,13 +1248,177 @@ model PartnerBackgroundCheck {
   approvedBy    String?   @map("approved_by")
   approvalNotes String?   @map("approval_notes")
   approvedAt    DateTime? @map("approved_at")
+  expiresAt     DateTime? @map("expires_at")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   provider      Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
-  @@index([providerId])
   @@index([status])
   @@map("partner_background_checks")
+}
+
+enum ComplianceReminderWindow {
+  D30
+  D7
+  EXPIRED
+}
+
+enum PartnerRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum PartnerRiskReviewStatus {
+  MONITOR
+  REVIEW
+  RESTRICT
+  SUSPEND
+  CLEARED
+}
+
+enum PartnerRiskSignalType {
+  GPS_SPOOF
+  IMPOSSIBLE_TRAVEL
+  FAKE_ARRIVAL
+  FAKE_COMPLETION
+  MULTIPLE_ACCOUNTS
+  DEVICE_ANOMALY
+  CANCELLATION_ABUSE
+  EARNINGS_ABUSE
+  REFERRAL_ABUSE
+}
+
+enum PartnerSafetyIncidentType {
+  SOS
+  ACCIDENT
+  THREAT
+  MEDICAL
+  CUSTOMER_SAFETY
+  PARTNER_SAFETY
+  LOCATION_DANGER
+  OTHER
+}
+
+enum PartnerSafetyIncidentStatus {
+  OPEN
+  ACKNOWLEDGED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+/// Idempotent expiry reminder: one row per document per policy window.
+model PartnerComplianceReminder {
+  id             String                   @id @default(cuid())
+  providerId     String                   @map("provider_id")
+  documentId     String                   @map("document_id")
+  window         ComplianceReminderWindow
+  expiryDate     DateTime                 @map("expiry_date")
+  sentAt         DateTime                 @default(now()) @map("sent_at")
+  notificationId String?                  @map("notification_id")
+  correlationId  String?                  @map("correlation_id")
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  provider       Provider                 @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  document       ProviderDocument         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, window])
+  @@index([providerId, sentAt])
+  @@map("partner_compliance_reminders")
+}
+
+/// Canonical compliance restriction. Partner status stays on Provider; this is the audit record.
+model PartnerComplianceRestriction {
+  id             String            @id @default(cuid())
+  providerId     String            @map("provider_id")
+  documentId     String?           @map("document_id")
+  reason         String
+  source         String
+  active         Boolean           @default(true)
+  restrictedAt   DateTime          @default(now()) @map("restricted_at")
+  unrestrictedAt DateTime?         @map("unrestricted_at")
+  unrestrictedBy String?           @map("unrestricted_by")
+  actorId        String?           @map("actor_id")
+  correlationId  String?           @map("correlation_id")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  provider       Provider          @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  document       ProviderDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([providerId, active])
+  @@index([active, restrictedAt])
+  @@map("partner_compliance_restrictions")
+}
+
+/// Partner operational risk intelligence. Does not replace Provider status.
+model PartnerRiskProfile {
+  id              String                  @id @default(cuid())
+  providerId      String                  @unique @map("provider_id")
+  riskScore       Int                     @default(0) @map("risk_score")
+  riskLevel       PartnerRiskLevel        @default(LOW) @map("risk_level")
+  reviewStatus    PartnerRiskReviewStatus @default(MONITOR) @map("review_status")
+  explanation     Json?
+  lastEvaluatedAt DateTime                @default(now()) @map("last_evaluated_at")
+  reviewedBy      String?                 @map("reviewed_by")
+  reviewedAt      DateTime?               @map("reviewed_at")
+  reviewNotes     String?                 @map("review_notes")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+  provider        Provider                @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([riskLevel, reviewStatus])
+  @@index([reviewStatus, lastEvaluatedAt])
+  @@map("partner_risk_profiles")
+}
+
+model PartnerRiskSignal {
+  id          String                @id @default(cuid())
+  providerId  String                @map("provider_id")
+  type        PartnerRiskSignalType
+  source      String
+  severity    Int
+  confidence  Float?
+  evidence    Json
+  bookingId   String?               @map("booking_id")
+  fingerprint String?               @unique
+  createdAt   DateTime              @default(now()) @map("created_at")
+  provider    Provider              @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, createdAt])
+  @@index([type, createdAt])
+  @@index([bookingId])
+  @@map("partner_risk_signals")
+}
+
+model PartnerSafetyIncident {
+  id                         String                      @id @default(cuid())
+  providerId                 String                      @map("provider_id")
+  bookingId                  String?                     @map("booking_id")
+  type                       PartnerSafetyIncidentType
+  severity                   String
+  status                     PartnerSafetyIncidentStatus @default(OPEN)
+  latitude                   Float?
+  longitude                  Float?
+  accuracy                   Float?
+  evidence                   Json?
+  assignedTo                 String?                     @map("assigned_to")
+  assignedBy                 String?                     @map("assigned_by")
+  assignedAt                 DateTime?                   @map("assigned_at")
+  resolvedAt                 DateTime?                   @map("resolved_at")
+  resolvedBy                 String?                     @map("resolved_by")
+  resolutionNotes            String?                     @map("resolution_notes")
+  openIdempotencyKey         String?                     @unique @map("open_idempotency_key")
+  emergencyContactNotifiedAt DateTime?                   @map("emergency_contact_notified_at")
+  createdAt                  DateTime                    @default(now()) @map("created_at")
+  updatedAt                  DateTime                    @updatedAt @map("updated_at")
+  provider                   Provider                    @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, status])
+  @@index([status, createdAt])
+  @@index([type, status])
+  @@index([bookingId])
+  @@map("partner_safety_incidents")
 }
 
 model EmailLog {
@@ -885,32 +1436,32 @@ model EmailLog {
 }
 
 model SupportTicket {
-  id              String                 @id @default(cuid())
-  ticketNumber    String                 @unique @map("ticket_number")
-  userId          String?                @map("user_id")
-  providerId      String?                @map("provider_id")
-  bookingId       String?                @map("booking_id")
-  subject         String
-  description     String
-  category        String
-  priority        String                 @default("medium")
-  status          SupportTicketStatus    @default(OPEN)
-  resolution      String?
-  resolvedBy      String?                @map("resolved_by")
-  resolvedAt      DateTime?              @map("resolved_at")
-  attachments     String[]
-  createdAt       DateTime               @default(now()) @map("created_at")
-  updatedAt       DateTime               @updatedAt @map("updated_at")
-  firstResponseAt DateTime?              @map("first_response_at")
-  priorityLevel   SupportPriorityLevel   @default(NORMAL) @map("priority_level")
-  responseTimeMs  Int?                   @map("response_time_ms")
-  slaDueAt        DateTime?              @map("sla_due_at")
-  booking         Booking?               @relation(fields: [bookingId], references: [id])
-  provider        Provider?              @relation(fields: [providerId], references: [id])
-  user            User?                  @relation(fields: [userId], references: [id])
-  messages        SupportTicketMessage[]
+  id                String                    @id @default(cuid())
+  ticketNumber      String                    @unique @map("ticket_number")
+  userId            String?                   @map("user_id")
+  providerId        String?                   @map("provider_id")
+  bookingId         String?                   @map("booking_id")
+  subject           String
+  description       String
+  category          String
+  priority          String                    @default("medium")
+  status            SupportTicketStatus       @default(OPEN)
+  resolution        String?
+  resolvedBy        String?                   @map("resolved_by")
+  resolvedAt        DateTime?                 @map("resolved_at")
+  attachments       String[]
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  updatedAt         DateTime                  @updatedAt @map("updated_at")
+  firstResponseAt   DateTime?                 @map("first_response_at")
+  priorityLevel     SupportPriorityLevel      @default(NORMAL) @map("priority_level")
+  responseTimeMs    Int?                      @map("response_time_ms")
+  slaDueAt          DateTime?                 @map("sla_due_at")
+  booking           Booking?                  @relation(fields: [bookingId], references: [id])
+  provider          Provider?                 @relation(fields: [providerId], references: [id])
+  user              User?                     @relation(fields: [userId], references: [id])
+  messages          SupportTicketMessage[]
+  aiRecommendations SupportAiRecommendation[]
 
-  @@index([ticketNumber])
   @@index([status])
   @@index([userId])
   @@index([providerId])
@@ -931,6 +1482,231 @@ model SupportTicketMessage {
 
   @@index([ticketId, createdAt])
   @@map("support_ticket_messages")
+}
+
+/// Phase 10 — one AI recommendation about one support ticket, recorded so a human decision can be
+/// compared against it afterwards.
+///
+/// Deliberately NOT a second ticket table. It holds no subject, no body, no customer identity and
+/// no money: it references the ticket and records what the intelligence layer concluded, so that
+/// "AI suggested" stays distinguishable from "a human did". Without this row there is no way to
+/// measure recommendation acceptance or human override, and no audit trail linking an agent's
+/// action back to the advice that preceded it.
+model SupportAiRecommendation {
+  id                  String                     @id @default(cuid())
+  ticketId            String                     @map("ticket_id")
+  /// Rules version that produced this row, so two recommendations from different logic are distinct.
+  rulesVersion        String                     @map("rules_version")
+  /// Deterministic identity for one (ticket, rules version, context fingerprint). Enforces dedupe.
+  recommendationKey   String                     @unique @map("recommendation_key")
+  intent              String?
+  sentiment           String?
+  /// The model's self-reported number. Never a measured accuracy.
+  modelConfidence     Float?                     @map("model_confidence")
+  classificationState String                     @map("classification_state")
+  usedFallback        Boolean                    @default(false) @map("used_fallback")
+  provider            String?
+  model               String?
+  action              String
+  risk                String
+  requiresHumanReview Boolean                    @map("requires_human_review")
+  /// Lifecycle of this recommendation, not of the ticket.
+  lifecycle           SupportRecommendationState @default(RECOMMENDATION)
+  /// Set only when a human acted. `actedAction` records what they actually did.
+  actedBy             String?                    @map("acted_by")
+  actedAt             DateTime?                  @map("acted_at")
+  actedAction         String?                    @map("acted_action")
+  /// True when the human's action differs from what was recommended.
+  overridden          Boolean?
+  /// Approval row when the action required one. Never populated by the AI layer itself.
+  approvalId          String?                    @map("approval_id")
+  failureReason       String?                    @map("failure_reason")
+  evidence            Json
+  limitations         String[]
+  eligibilityChecks   Json                       @map("eligibility_checks")
+  automationEligible  Boolean                    @default(false) @map("automation_eligible")
+  latencyMs           Int?                       @map("latency_ms")
+  createdAt           DateTime                   @default(now()) @map("created_at")
+  updatedAt           DateTime                   @updatedAt @map("updated_at")
+  ticket              SupportTicket              @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@index([lifecycle])
+  @@index([intent])
+  @@index([action])
+  @@map("support_ai_recommendations")
+}
+
+/// Lifecycle of an AI recommendation. Named by the directive; each value means one thing only.
+enum SupportRecommendationState {
+  /// Produced by the intelligence layer. No human has seen it yet.
+  RECOMMENDATION
+  /// Carries risk that requires a person before anything happens.
+  REVIEW_REQUIRED
+  /// A human accepted it. Acceptance is not execution.
+  APPROVED
+  /// A human rejected it, or acted differently.
+  REJECTED
+  /// The corresponding action was carried out by an authoritative service.
+  EXECUTED
+  /// Execution was attempted and failed. `failureReason` says why.
+  FAILED
+  /// Superseded before anyone acted, because the ticket moved on.
+  EXPIRED
+}
+
+/// Phase 11 — one version of one piece of official HOMEEIGO knowledge.
+///
+/// Not a generic document store. A row here is a *governed* artifact: it has a type from a closed
+/// taxonomy, a version, an approval state, an owner and an audience. Storage and retrieval
+/// eligibility are deliberately separate — a document can exist here and never be retrievable.
+model KnowledgeDocument {
+  id             String              @id @default(cuid())
+  /// Stable identity across versions. Two versions of the Refund Policy share this.
+  documentKey    String              @map("document_key")
+  version        Int                 @default(1)
+  type           KnowledgeType
+  title          String
+  /// Normalised plain text. The chunker reads this, never the original formatting.
+  content        String
+  /// SHA-256 of the normalised content. Drives idempotent ingestion and index consistency.
+  contentHash    String              @map("content_hash")
+  status         KnowledgeStatus     @default(DRAFT)
+  /// Who may retrieve it. A partner SOP is not customer knowledge because retrieval found it.
+  audience       KnowledgeAudience   @default(INTERNAL)
+  /// Where the text came from, so a citation can be traced to a system of record.
+  sourceRef      String              @map("source_ref")
+  language       String              @default("en")
+  owner          String?
+  effectiveFrom  DateTime?           @map("effective_from")
+  effectiveTo    DateTime?           @map("effective_to")
+  approvedBy     String?             @map("approved_by")
+  approvedAt     DateTime?           @map("approved_at")
+  /// Set when a newer version replaces this one. Never deleted — audit needs the history.
+  supersededById String?             @map("superseded_by_id")
+  withdrawnAt    DateTime?           @map("withdrawn_at")
+  withdrawnBy    String?             @map("withdrawn_by")
+  indexState     KnowledgeIndexState @default(NOT_INDEXED) @map("index_state")
+  indexError     String?             @map("index_error")
+  indexedAt      DateTime?           @map("indexed_at")
+  chunkCount     Int                 @default(0) @map("chunk_count")
+  embeddingModel String?             @map("embedding_model")
+  embeddingDim   Int?                @map("embedding_dim")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  chunks         KnowledgeChunk[]
+
+  @@unique([documentKey, version])
+  @@index([type, status])
+  @@index([status, audience])
+  @@index([contentHash])
+  @@map("knowledge_documents")
+}
+
+/// One retrievable unit of a knowledge document, with the metadata a citation needs.
+model KnowledgeChunk {
+  id             String            @id @default(cuid())
+  documentId     String            @map("document_id")
+  chunkIndex     Int               @map("chunk_index")
+  /// The heading this chunk sits under, so a citation can name a section rather than an offset.
+  section        String?
+  content        String
+  /// Character offsets into the document's normalised content. Makes a citation checkable.
+  startOffset    Int               @map("start_offset")
+  endOffset      Int               @map("end_offset")
+  tokenEstimate  Int               @map("token_estimate")
+  /// Stored as a plain float array: pgvector is not installed and not available in the running
+  /// image. Exact cosine is computed in SQL, which is correct at development corpus size and
+  /// honestly does not scale to millions of chunks without an ANN index.
+  embedding      Float[]
+  embeddingModel String?           @map("embedding_model")
+  contentHash    String            @map("content_hash")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  document       KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, chunkIndex])
+  @@index([documentId])
+  @@map("knowledge_chunks")
+}
+
+/// The seven Phase-11 knowledge classes. One canonical value each; no near-duplicates.
+enum KnowledgeType {
+  FAQ
+  CANCELLATION_POLICY
+  REFUND_POLICY
+  TERMS
+  PARTNER_SOP
+  SERVICE_INFORMATION
+  TRAINING_DOCUMENT
+}
+
+/// Lifecycle. Only APPROVED is retrieval-eligible; every other state is explicitly not.
+enum KnowledgeStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  SUPERSEDED
+  WITHDRAWN
+}
+
+/// Who may retrieve. Enforced before retrieval, never by asking the model to ignore things.
+enum KnowledgeAudience {
+  PUBLIC
+  CUSTOMER
+  PARTNER
+  INTERNAL
+}
+
+/// Phase 11 — an administratively-declared precedence between knowledge types.
+///
+/// The platform ships with this table EMPTY, and that is a deliberate state rather than an
+/// oversight. Nothing in HOMEEIGO's legal text, contracts, product docs, config or code declares
+/// that (say) Terms outrank an FAQ. Precedence between official documents is a legal and business
+/// determination, so the engine models it instead of assuming it: with no row for a type, conflicts
+/// resolve to HUMAN_REVIEW_REQUIRED rather than to whichever document a ranking function preferred.
+///
+/// Rows are versioned and never edited in place — a precedence that governed an answer last month
+/// must still be reconstructable, which an UPDATE would destroy.
+model KnowledgeAuthorityRule {
+  id             String                   @id @default(cuid())
+  type           KnowledgeType
+  /// Higher wins. The scale is arbitrary and administrator-chosen; only the ordering is meaningful.
+  rank           Int
+  /// Why this rank. Required: an unexplained precedence is not an auditable governance decision.
+  rationale      String
+  version        Int                      @default(1)
+  status         KnowledgeAuthorityStatus @default(ACTIVE)
+  effectiveFrom  DateTime?                @map("effective_from")
+  effectiveTo    DateTime?                @map("effective_to")
+  createdBy      String                   @map("created_by")
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  supersededById String?                  @map("superseded_by_id")
+  revokedAt      DateTime?                @map("revoked_at")
+  revokedBy      String?                  @map("revoked_by")
+  revokedReason  String?                  @map("revoked_reason")
+
+  @@unique([type, version])
+  @@index([type, status])
+  /// Partial unique `knowledge_authority_rules_one_active_per_type` on (type) WHERE status = 'ACTIVE'
+  /// is created in 20260905090000_knowledge_authority. Prisma schema cannot express the WHERE clause;
+  /// `db push` omits it — migrate deploy is required for the invariant.
+  @@map("knowledge_authority_rules")
+}
+
+/// Lifecycle of a precedence declaration. Only ACTIVE participates in conflict resolution.
+enum KnowledgeAuthorityStatus {
+  ACTIVE
+  SUPERSEDED
+  REVOKED
+}
+
+enum KnowledgeIndexState {
+  NOT_INDEXED
+  CHUNKED
+  EMBEDDED
+  INDEXED
+  EMBEDDING_FAILED
+  INDEX_FAILED
 }
 
 model ActivityLog {
@@ -1307,10 +2083,10 @@ model ProviderMatchScore {
   priorityScore   Int      @default(10) @map("priority_score")
   totalScore      Float    @map("total_score")
   premiumBoost    Float    @default(0) @map("premium_boost")
-  ratingScore     Float    @map("rating_score")
-  distanceScore   Float    @map("distance_score")
-  responseScore   Float    @map("response_score")
-  completionScore Float    @map("completion_score")
+  ratingScore     Float?   @map("rating_score")
+  distanceScore   Float?   @map("distance_score")
+  responseScore   Float?   @map("response_score")
+  completionScore Float?   @map("completion_score")
   rank            Int
   createdAt       DateTime @default(now()) @map("created_at")
   provider        Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
@@ -1406,6 +2182,7 @@ model AssignmentAttempt {
   job          AssignmentJob           @relation(fields: [jobId], references: [id], onDelete: Cascade)
   provider     Provider                @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
+  @@unique([jobId, providerId])
   @@index([jobId])
   @@index([providerId])
   @@index([status])
@@ -2110,6 +2887,9 @@ model PayoutReconciliation {
 }
 
 model RefundRequest {
+  /// Provenance. NULL = UNKNOWN. Nullable with no default on purpose: defaulting to REAL would
+  /// silently relabel every historical row as genuine business data.
+  dataOrigin       DataOrigin?         @map("data_origin")
   id               String              @id @default(cuid())
   paymentId        String              @map("payment_id")
   userId           String              @map("user_id")
@@ -2127,11 +2907,17 @@ model RefundRequest {
   updatedAt        DateTime            @updatedAt @map("updated_at")
   idempotencyKey   String              @unique @map("idempotency_key")
   gatewayRefundId  String?             @unique @map("gateway_refund_id")
+  /// Attempts already spent. Persisted rather than counted from RETRY audits, so an exhausted
+  /// refund can be excluded by the scan's WHERE clause instead of occupying a slot in its window.
+  retryCount       Int                 @default(0) @map("retry_count")
+  /// Earliest instant this refund may be retried. NULL means "immediately eligible".
+  nextRetryAt      DateTime?           @map("next_retry_at")
   audits           RefundAudit[]
 
   @@index([paymentId])
   @@index([userId])
   @@index([status])
+  @@index([status, nextRetryAt])
   @@map("refund_requests")
 }
 
@@ -2160,8 +2946,6 @@ model FinancialHold {
   createdAt         DateTime  @default(now()) @map("created_at")
   liftedAt          DateTime? @map("lifted_at")
 
-  @@index([userId])
-  @@index([providerId])
   @@map("financial_holds")
 }
 
@@ -2192,7 +2976,6 @@ model AdminRole {
   permissions AdminPermission[]
   adminUsers  AdminUser[]
 
-  @@index([name])
   @@map("admin_roles")
 }
 
@@ -2439,20 +3222,348 @@ model OpsAlert {
 }
 
 model PartnerRegistrationSession {
-  id          String                           @id @default(cuid())
-  userId      String                           @unique @map("user_id")
-  providerId  String?                          @map("provider_id")
-  otpVerified Boolean                          @default(false) @map("otp_verified")
-  expiresAt   DateTime                         @map("expires_at")
-  status      PartnerRegistrationSessionStatus @default(ACTIVE)
-  createdAt   DateTime                         @default(now()) @map("created_at")
-  updatedAt   DateTime                         @updatedAt @map("updated_at")
-  user        User                             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String                           @id @default(cuid())
+  userId         String                           @unique @map("user_id")
+  providerId     String?                          @map("provider_id")
+  leadId         String?                          @map("lead_id")
+  otpVerified    Boolean                          @default(false) @map("otp_verified")
+  currentStep    String?                          @map("current_step")
+  completedSteps Json                             @default("[]") @map("completed_steps")
+  draftData      Json                             @default("{}") @map("draft_data")
+  lastSavedAt    DateTime?                        @map("last_saved_at")
+  expiresAt      DateTime                         @map("expires_at")
+  status         PartnerRegistrationSessionStatus @default(ACTIVE)
+  createdAt      DateTime                         @default(now()) @map("created_at")
+  updatedAt      DateTime                         @updatedAt @map("updated_at")
+  user           User                             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead           PartnerLead?                     @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
   @@index([expiresAt])
   @@index([providerId])
+  @@index([leadId])
   @@index([status])
   @@map("partner_registration_sessions")
+}
+
+model PartnerLead {
+  id                     String                       @id @default(cuid())
+  source                 PartnerLeadSource            @default(DIRECT)
+  sourceCampaign         String?                      @map("source_campaign")
+  channel                String?
+  name                   String
+  phone                  String
+  phoneHash              String                       @map("phone_hash")
+  email                  String?
+  emailHash              String?                      @map("email_hash")
+  skillInterest          String?                      @map("skill_interest")
+  city                   String?
+  zone                   String?
+  status                 PartnerLeadStatus            @default(NEW)
+  assignedToAdminId      String?                      @map("assigned_to_admin_id")
+  consentStatus          String?                      @map("consent_status")
+  preferredContactMethod String?                      @map("preferred_contact_method")
+  notes                  String?
+  nextFollowUpAt         DateTime?                    @map("next_follow_up_at")
+  followUpReason         String?                      @map("follow_up_reason")
+  leadScore              Int                          @default(0) @map("lead_score")
+  metadata               Json?
+  capturedAt             DateTime                     @default(now()) @map("captured_at")
+  firstContactAt         DateTime?                    @map("first_contact_at")
+  applicationAt          DateTime?                    @map("application_at")
+  activationAt           DateTime?                    @map("activation_at")
+  lastActivityAt         DateTime?                    @map("last_activity_at")
+  userId                 String?                      @unique @map("user_id")
+  providerId             String?                      @unique @map("provider_id")
+  mergedIntoLeadId       String?                      @map("merged_into_lead_id")
+  duplicateOfLeadId      String?                      @map("duplicate_of_lead_id")
+  createdAt              DateTime                     @default(now()) @map("created_at")
+  updatedAt              DateTime                     @updatedAt @map("updated_at")
+  user                   User?                        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  provider               Provider?                    @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  registrationSessions   PartnerRegistrationSession[]
+  activities             PartnerLeadActivity[]
+  statusHistory          PartnerLeadStatusHistory[]
+  referral               PartnerReferral?
+
+  @@index([status])
+  @@index([source])
+  @@index([mergedIntoLeadId])
+  @@index([duplicateOfLeadId])
+  @@index([phoneHash])
+  @@index([emailHash])
+  @@index([assignedToAdminId])
+  @@index([nextFollowUpAt])
+  @@index([lastActivityAt])
+  @@index([createdAt])
+  @@index([city])
+  @@index([zone])
+  @@map("partner_leads")
+}
+
+model PartnerLeadActivity {
+  id          String                  @id @default(cuid())
+  leadId      String                  @map("lead_id")
+  type        PartnerLeadActivityType
+  title       String
+  description String?
+  actorId     String?                 @map("actor_id")
+  actorType   String                  @default("admin") @map("actor_type")
+  metadata    Json?
+  createdAt   DateTime                @default(now()) @map("created_at")
+  lead        PartnerLead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+  @@map("partner_lead_activities")
+}
+
+model PartnerLeadStatusHistory {
+  id         String             @id @default(cuid())
+  leadId     String             @map("lead_id")
+  fromStatus PartnerLeadStatus? @map("from_status")
+  toStatus   PartnerLeadStatus  @map("to_status")
+  actorId    String?            @map("actor_id")
+  actorType  String             @default("admin") @map("actor_type")
+  reason     String?
+  metadata   Json?
+  createdAt  DateTime           @default(now()) @map("created_at")
+  lead       PartnerLead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+  @@map("partner_lead_status_history")
+}
+
+/// Section 07 partner-to-partner referral. Distinct from customer ReferralTransaction.
+/// References PartnerLead (Section 01) — does not duplicate acquisition state.
+model PartnerReferral {
+  id                  String                         @id @default(cuid())
+  referrerProviderId  String                         @map("referrer_provider_id")
+  referredLeadId      String?                        @unique @map("referred_lead_id")
+  referredProviderId  String?                        @unique @map("referred_provider_id")
+  referralCode        String                         @map("referral_code")
+  status              PartnerReferralStatus          @default(INVITED)
+  source              PartnerReferralSource          @default(PARTNER_REFERRAL)
+  campaign            String?
+  qualificationStatus PartnerReferralQualStatus      @default(PENDING) @map("qualification_status")
+  reviewStatus        PartnerReferralReviewStatus    @default(NONE) @map("review_status")
+  successfulJobs      Int                            @default(0) @map("successful_jobs")
+  invitedAt           DateTime                       @default(now()) @map("invited_at")
+  registeredAt        DateTime?                      @map("registered_at")
+  verifiedAt          DateTime?                      @map("verified_at")
+  trainingAt          DateTime?                      @map("training_at")
+  activatedAt         DateTime?                      @map("activated_at")
+  firstJobAt          DateTime?                      @map("first_job_at")
+  qualifiedAt         DateTime?                      @map("qualified_at")
+  rewardedAt          DateTime?                      @map("rewarded_at")
+  blockedReason       String?                        @map("blocked_reason")
+  expiresAt           DateTime?                      @map("expires_at")
+  createdAt           DateTime                       @default(now()) @map("created_at")
+  updatedAt           DateTime                       @updatedAt @map("updated_at")
+  referrer            Provider                       @relation("PartnerReferralsMade", fields: [referrerProviderId], references: [id], onDelete: Cascade)
+  referred            Provider?                      @relation("PartnerReferralReceived", fields: [referredProviderId], references: [id], onDelete: SetNull)
+  lead                PartnerLead?                   @relation(fields: [referredLeadId], references: [id], onDelete: SetNull)
+  reward              PartnerReferralReward?
+  history             PartnerReferralStatusHistory[]
+  signals             PartnerReferralAbuseSignal[]
+
+  @@index([referrerProviderId, status])
+  @@index([referralCode])
+  @@index([status])
+  @@index([qualificationStatus])
+  @@index([reviewStatus])
+  @@index([createdAt])
+  @@map("partner_referrals")
+}
+
+model PartnerReferralCode {
+  id         String    @id @default(cuid())
+  providerId String    @unique @map("provider_id")
+  code       String    @unique
+  isRevoked  Boolean   @default(false) @map("is_revoked")
+  expiresAt  DateTime? @map("expires_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  revokedAt  DateTime? @map("revoked_at")
+  provider   Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@map("partner_referral_codes")
+}
+
+model PartnerReferralReward {
+  id                 String                      @id @default(cuid())
+  referralId         String                      @unique @map("referral_id")
+  referrerProviderId String                      @map("referrer_provider_id")
+  amount             Float
+  status             PartnerReferralRewardStatus @default(PENDING)
+  walletTxnId        String?                     @unique @map("wallet_txn_id")
+  ledgerJournalId    String?                     @map("ledger_journal_id")
+  idempotencyKey     String                      @unique @map("idempotency_key")
+  releasedBy         String?                     @map("released_by")
+  releaseReason      String?                     @map("release_reason")
+  createdAt          DateTime                    @default(now()) @map("created_at")
+  creditedAt         DateTime?                   @map("credited_at")
+  referral           PartnerReferral             @relation(fields: [referralId], references: [id], onDelete: Cascade)
+  referrer           Provider                    @relation(fields: [referrerProviderId], references: [id], onDelete: Cascade)
+
+  @@index([referrerProviderId])
+  @@index([status])
+  @@map("partner_referral_rewards")
+}
+
+model PartnerReferralStatusHistory {
+  id         String                 @id @default(cuid())
+  referralId String                 @map("referral_id")
+  fromStatus PartnerReferralStatus? @map("from_status")
+  toStatus   PartnerReferralStatus  @map("to_status")
+  actorType  String                 @default("system") @map("actor_type")
+  actorId    String?                @map("actor_id")
+  reason     String?
+  createdAt  DateTime               @default(now()) @map("created_at")
+  referral   PartnerReferral        @relation(fields: [referralId], references: [id], onDelete: Cascade)
+
+  @@index([referralId, createdAt])
+  @@map("partner_referral_status_history")
+}
+
+/// Admin-only anti-abuse evidence. Never returned on partner APIs.
+model PartnerReferralAbuseSignal {
+  id          String                    @id @default(cuid())
+  referralId  String                    @map("referral_id")
+  kind        PartnerReferralSignalKind
+  severity    Int
+  evidenceKey String                    @map("evidence_key")
+  note        String
+  createdAt   DateTime                  @default(now()) @map("created_at")
+  referral    PartnerReferral           @relation(fields: [referralId], references: [id], onDelete: Cascade)
+
+  @@unique([referralId, kind, evidenceKey], map: "partner_referral_abuse_signals_referral_id_kind_evidence_key_ke")
+  @@index([referralId])
+  @@index([kind, createdAt])
+  @@map("partner_referral_abuse_signals")
+}
+
+/// Canonical derived partner score (1:1). Clients never submit this.
+model PartnerScore {
+  id                   String           @id @default(cuid())
+  providerId           String           @unique @map("provider_id")
+  policyVersion        String           @map("policy_version")
+  overallScore         Float?           @map("overall_score")
+  band                 PartnerScoreBand
+  quality              Float?
+  reliability          Float?
+  completion           Float?
+  onTime               Float?           @map("on_time")
+  customerSatisfaction Float?           @map("customer_satisfaction")
+  compliance           Float?
+  safety               Float?
+  qualityWeight        Float            @map("quality_weight")
+  reliabilityWeight    Float            @map("reliability_weight")
+  completionWeight     Float            @map("completion_weight")
+  onTimeWeight         Float            @map("on_time_weight")
+  csatWeight           Float            @map("csat_weight")
+  complianceWeight     Float            @map("compliance_weight")
+  safetyWeight         Float            @map("safety_weight")
+  sampleCompletedJobs  Int              @map("sample_completed_jobs")
+  sampleRatings        Int              @map("sample_ratings")
+  sampleArrivals       Int              @map("sample_arrivals")
+  sampleAssignments    Int              @map("sample_assignments")
+  calculatedAt         DateTime         @map("calculated_at")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+  provider             Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([band])
+  @@index([calculatedAt])
+  @@map("partner_scores")
+}
+
+model PartnerScoreHistory {
+  id            String            @id @default(cuid())
+  providerId    String            @map("provider_id")
+  policyVersion String            @map("policy_version")
+  snapshotKey   String            @map("snapshot_key")
+  previousScore Float?            @map("previous_score")
+  newScore      Float?            @map("new_score")
+  previousBand  PartnerScoreBand? @map("previous_band")
+  newBand       PartnerScoreBand  @map("new_band")
+  delta         Float?
+  reasons       Json
+  components    Json
+  evidence      Json
+  calculatedAt  DateTime          @map("calculated_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  provider      Provider          @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, snapshotKey])
+  @@index([providerId, createdAt])
+  @@map("partner_score_history")
+}
+
+model PartnerCareerHistory {
+  id                String              @id @default(cuid())
+  providerId        String              @map("provider_id")
+  previousLevel     PartnerCareerLevel? @map("previous_level")
+  newLevel          PartnerCareerLevel  @map("new_level")
+  reason            String
+  qualifyingMetrics Json                @map("qualifying_metrics")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  provider          Provider            @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, createdAt])
+  @@map("partner_career_history")
+}
+
+/// Post-activation provider lifecycle audit. Distinct from PartnerLeadStatusHistory.
+model PartnerStatusHistory {
+  id            String                 @id @default(cuid())
+  providerId    String                 @map("provider_id")
+  previousState PartnerLifecycleState? @map("previous_state")
+  newState      PartnerLifecycleState  @map("new_state")
+  actorType     PartnerLifecycleActor  @map("actor_type")
+  actorId       String?                @map("actor_id")
+  reasonCode    PartnerLifecycleReason @map("reason_code")
+  reasonText    String?                @map("reason_text")
+  metadata      Json?
+  createdAt     DateTime               @default(now()) @map("created_at")
+  provider      Provider               @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, createdAt])
+  @@index([newState])
+  @@map("partner_status_history")
+}
+
+/// Auditable badge awards. Provider.badges[] remains the current set (rating.service).
+model PartnerBadgeAward {
+  id                String    @id @default(cuid())
+  providerId        String    @map("provider_id")
+  badgeCode         String    @map("badge_code")
+  reason            String
+  qualifyingMetrics Json?     @map("qualifying_metrics")
+  awardedAt         DateTime  @default(now()) @map("awarded_at")
+  revokedAt         DateTime? @map("revoked_at")
+  provider          Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, badgeCode])
+  @@index([providerId, awardedAt])
+  @@map("partner_badge_awards")
+}
+
+model PartnerAssessment {
+  id          String                  @id @default(cuid())
+  providerId  String                  @map("provider_id")
+  skillSlug   String                  @map("skill_slug")
+  status      PartnerAssessmentStatus @default(NOT_STARTED)
+  score       Int?
+  maxScore    Int?                    @map("max_score")
+  attempts    Int                     @default(0)
+  completedAt DateTime?               @map("completed_at")
+  metadata    Json?
+  createdAt   DateTime                @default(now()) @map("created_at")
+  updatedAt   DateTime                @updatedAt @map("updated_at")
+  provider    Provider                @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, skillSlug])
+  @@index([providerId])
+  @@index([status])
+  @@map("partner_assessments")
 }
 
 model ProviderWalletReservation {
@@ -2487,6 +3598,14 @@ enum BookingStatus {
   COMPLETED
   CANCELLED_BY_USER
   CANCELLED_BY_PROVIDER
+  /// Payment was never completed within PAYMENT_PENDING_TTL. Not a cancellation by anyone: the
+  /// capacity is released and no party is scored for it.
+  EXPIRED
+  /// The partner arrived and waited the grace period; the customer did not appear. A capped fee may
+  /// be retained (see lib/no-show-policy).
+  CUSTOMER_NO_SHOW
+  /// The partner did not appear. The customer is made whole and is never charged for it.
+  PROVIDER_NO_SHOW
 }
 
 enum PaymentStatus {
@@ -2498,6 +3617,14 @@ enum PaymentStatus {
   REFUNDED
   PARTIALLY_REFUNDED
   REFUNDING
+  /// The payment window closed with no capture. Distinct from FAILED (the gateway declined).
+  EXPIRED
+}
+
+/// Provider earning settlement on the partner wallet (distinct from booking PaymentStatus).
+enum EarningSettlementStatus {
+  CREDITED
+  REVERSED
 }
 
 enum KycStatus {
@@ -2622,8 +3749,170 @@ enum CashbackStatus {
 
 enum PartnerRegistrationStatus {
   PENDING
+  CHANGES_REQUESTED
   APPROVED
   REJECTED
+}
+
+enum PartnerLeadSource {
+  APNA
+  JOBHAI
+  REFERRAL
+  RWA
+  CONTRACTOR
+  LOCAL_SHOP
+  DIRECT
+  SOCIAL
+  CAMPAIGN
+  PARTNER_REFERRAL
+}
+
+enum PartnerReferralStatus {
+  INVITED
+  REGISTERED
+  VERIFIED
+  TRAINING
+  ACTIVE
+  FIRST_JOB
+  QUALIFIED
+  REWARD_RELEASED
+}
+
+enum PartnerReferralSource {
+  PARTNER_REFERRAL
+  CUSTOMER_REFERRAL
+  CAMPAIGN
+  DIRECT
+}
+
+enum PartnerReferralQualStatus {
+  PENDING
+  ELIGIBLE
+  BLOCKED
+  QUALIFIED
+  REWARDED
+}
+
+enum PartnerReferralReviewStatus {
+  NONE
+  OPEN
+  APPROVED
+  BLOCKED
+  HELD
+}
+
+enum PartnerReferralSignalKind {
+  PHONE_REUSE
+  DEVICE_REUSE
+  BANK_REUSE
+  IDENTITY_REUSE
+  SUSPICIOUS_IP
+  PATTERN_ABUSE
+  SELF_REFERRAL
+  CYCLE_ABUSE
+}
+
+enum PartnerReferralRewardStatus {
+  PENDING
+  CREDITED
+  HELD
+  BLOCKED
+}
+
+enum PartnerLeadStatus {
+  NEW
+  CONTACTED
+  INTERESTED
+  APPLICATION_STARTED
+  APPLICATION_SUBMITTED
+  KYC_PENDING
+  VERIFICATION
+  TRAINING
+  APPROVED
+  ACTIVATED
+  DORMANT
+  REJECTED
+  DUPLICATE
+  INVALID
+  WITHDRAWN
+}
+
+enum PartnerLeadActivityType {
+  NOTE
+  CALL
+  MESSAGE
+  STATUS_CHANGE
+  ASSIGNMENT
+  FOLLOW_UP
+  DUPLICATE_CHECK
+  APPLICATION_LINKED
+  MERGE
+  SYSTEM
+}
+
+enum PartnerAssessmentStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  PASSED
+  FAILED
+  RETRY_AVAILABLE
+}
+
+/// Section 06 unified partner score band. INSUFFICIENT_DATA is a band, not a numeric zero.
+enum PartnerScoreBand {
+  EXCELLENT
+  GOOD
+  HEALTHY
+  NEEDS_ATTENTION
+  AT_RISK
+  INSUFFICIENT_DATA
+}
+
+/// Career ladder thresholds reuse existing badge gates in rating.service (trusted / expert / super_star).
+enum PartnerCareerLevel {
+  STARTER
+  PROFESSIONAL
+  EXPERT
+  ELITE
+}
+
+/// Partner program lifecycle. Not availability, job, compliance, or risk state.
+/// Canonical machine: APPLIED → VERIFIED → TRAINING → ACTIVE → PAUSED | UNDER_REVIEW → SUSPENDED → REACTIVATED.
+/// KYC_PENDING / VERIFICATION / APPROVED are persistence aliases mapped on read.
+enum PartnerLifecycleState {
+  APPLIED
+  KYC_PENDING
+  VERIFICATION
+  VERIFIED
+  TRAINING
+  APPROVED
+  ACTIVE
+  PAUSED
+  UNDER_REVIEW
+  SUSPENDED
+  REACTIVATED
+}
+
+enum PartnerLifecycleActor {
+  SYSTEM
+  PARTNER
+  ADMIN
+  COMPLIANCE
+  TRUST
+  OPERATIONS
+}
+
+enum PartnerLifecycleReason {
+  KYC_APPROVED
+  TRAINING_COMPLETED
+  MANUAL_APPROVAL
+  COMPLIANCE_EXPIRY
+  SAFETY_REVIEW
+  PARTNER_REQUEST
+  ADMIN_ACTION
+  POLICY_TRIGGER
+  RISK_POLICY
+  REACTIVATION
 }
 
 enum PushPlatform {
@@ -2754,6 +4043,8 @@ enum JournalEntryType {
   CASHBACK_REVERSAL
   HCOIN_EXPIRED
   REFERRAL_COMMISSION
+  PARTNER_INCENTIVE
+  PARTNER_REFERRAL_REWARD
 }
 
 enum ReconciliationStatus {
@@ -3006,6 +4297,19 @@ enum RetentionCategory {
   LOGIN_EVENTS
   SYSTEM_LOGS
 
+  /// Phase 14 §64 — classes that previously had no retention path at all.
+  ///
+  /// AI request/audit/policy telemetry, workflow step history, and the operational activity log.
+  /// None of these were reachable by any retention job: activity_logs alone held 113,704 rows
+  /// growing since June, while the same governance event written beside it into
+  /// enterprise_audit_logs was archived and purged under policy. One event, two lifetimes.
+  ///
+  /// A category is capability, not a decision. No default duration exists for any of these,
+  /// so the sweep no-ops until a person writes an `audit_retention_policies` row.
+  AI_TELEMETRY
+  AUTOMATION_TELEMETRY
+  OPERATIONAL_ACTIVITY
+
   @@map("retention_category")
 }
 
@@ -3047,7 +4351,16 @@ model EnterpriseAuditLog {
   ipAddress          String?               @map("ip_address")
   userAgent          String?               @map("user_agent")
   deviceId           String?               @map("device_id")
-  traceId            String                @unique @map("trace_id")
+  /// A correlation id, NOT an identity.
+  ///
+  /// This was `@unique`, which silently made the audit log hold at most ONE event per request.
+  /// A single admin action routinely produces several — an approval and the promotion it enables,
+  /// a denial and the access attempt behind it — and every event after the first failed its insert
+  /// and was swallowed by the audit service's catch. The trail was therefore thinnest on exactly
+  /// the complex requests an investigation cares about; a promotion audited under the same trace
+  /// as its approval simply did not exist. Indexed, because traces are filtered on; not unique,
+  /// because many events share one by design.
+  traceId            String                @map("trace_id")
   status             EnterpriseAuditStatus @default(SUCCESS)
   errorMessage       String?               @map("error_message")
   retentionCategory  RetentionCategory     @map("retention_category")
@@ -3058,10 +4371,16 @@ model EnterpriseAuditLog {
   createdAt          DateTime              @default(now()) @map("created_at") @db.Timestamp(6)
 
   @@index([actor])
-  @@index([action])
+  /// Serves getAuditLogs()'s `WHERE action = ? [AND created_at range] ORDER BY created_at DESC
+  /// LIMIT n`. Measured on 273k real rows: 4,279 -> 57 shared buffers, 5,047 -> 0 rows discarded
+  /// by filter, 1.36ms -> 0.24ms. Replaces the standalone @@index([action]) — a leading-column
+  /// prefix serves action-only lookups equally well (verified: Index Only Scan, 0.375ms), and
+  /// that index had recorded zero scans.
+  @@index([action, createdAt])
   @@index([resource])
   @@index([resourceId])
   @@index([createdAt])
+  @@index([traceId])
   @@index([retentionExpiresAt])
   @@index([isArchived])
   @@map("enterprise_audit_logs")
@@ -3077,7 +4396,6 @@ model EnterpriseAuditLogArchive {
   archiveHash       String    @map("archive_hash")
   deleteScheduledAt DateTime? @map("delete_scheduled_at")
 
-  @@index([originalLogId])
   @@index([archivedAt])
   @@map("enterprise_audit_log_archives")
 }
@@ -3498,6 +4816,146 @@ model PartnerAttendanceSession {
   @@map("partner_attendance_sessions")
 }
 
+/// How often a service is expected to recur, as declared by a named human.
+///
+/// This is the one input maintenance intelligence cannot derive. The platform holds 125 completed
+/// bookings across a 71-day window, where 61% of repeat gaps are under a day — nothing in that data
+/// says an AC service recurs every six months, and a quarterly or annual interval cannot even be
+/// observed in a window shorter than two cycles. So the interval is a business assertion, and this
+/// table exists to make it one somebody signed for rather than one the code assumed.
+///
+/// Rows are never created by seeds, migrations or inference. `createdBy` is a `users.id` with the
+/// ADMIN role, and a policy with no owner is a policy nobody can be asked about.
+/// An image a customer submitted for analysis, and what became of it.
+///
+/// The row is the record; the bytes live in object storage under `storage_key` and are deleted on
+/// their own schedule. Keeping them apart is what lets retention delete the picture while leaving a
+/// traceable account of the request behind — an analysis nobody can later explain is worse than one
+/// whose source image has expired.
+///
+/// `retention_until` is set at upload from configuration, never open-ended. `status` moves
+/// PENDING -> ANALYZED (or FAILED), then PURGED once the bytes are gone.
+model VisionImage {
+  id             String             @id @default(cuid())
+  ownerId        String             @map("owner_id")
+  /// Why this image was submitted. Scopes what the analysis is allowed to be used for.
+  purpose        VisionImagePurpose
+  storageKey     String             @map("storage_key")
+  mimeType       String             @map("mime_type")
+  byteSize       Int                @map("byte_size")
+  /// SHA-256 of the bytes, so a re-upload is recognisable without keeping a second copy.
+  contentHash    String             @map("content_hash")
+  status         VisionImageStatus  @default(PENDING)
+  retentionUntil DateTime           @map("retention_until")
+  purgedAt       DateTime?          @map("purged_at")
+  bookingId      String?            @map("booking_id")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+  owner          User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  analyses       VisionAnalysis[]
+
+  @@index([ownerId, createdAt])
+  @@index([status, retentionUntil])
+  @@map("vision_images")
+}
+
+/// What a vision provider said about one image, in a shape the product can act on.
+///
+/// `observation_mode` is the field that keeps this honest. No AI credentials are configured in this
+/// environment, so the provider layer answers from a deterministic mock; a result produced that way
+/// is recorded as FALLBACK and must never be presented, reported or certified as a real model
+/// observation. The distinction is stored rather than re-derived from config at read time, because
+/// config changes and a historical result must keep meaning what it meant when it was made.
+model VisionAnalysis {
+  id                   String                @id @default(cuid())
+  imageId              String                @map("image_id")
+  observationMode      VisionObservationMode @map("observation_mode")
+  provider             String
+  model                String
+  observedCategory     String?               @map("observed_category")
+  observations         String[]
+  /// 0..1. Never invented: a FALLBACK result carries the mock's own fixed confidence, not a guess.
+  confidence           Float
+  recommendedServiceId String?               @map("recommended_service_id")
+  safetyFlags          String[]              @map("safety_flags")
+  /// Advisory only. Nothing downstream may treat this as authorisation for money or state changes.
+  advisory             Boolean               @default(true)
+  latencyMs            Int                   @map("latency_ms")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  image                VisionImage           @relation(fields: [imageId], references: [id], onDelete: Cascade)
+
+  @@index([imageId, createdAt])
+  @@index([observationMode, createdAt])
+  @@map("vision_analyses")
+}
+
+enum VisionImagePurpose {
+  ISSUE_REPORT
+  SERVICE_CONTEXT
+  SUPPORT_ATTACHMENT
+}
+
+enum VisionImageStatus {
+  PENDING
+  ANALYZED
+  FAILED
+  PURGED
+}
+
+enum VisionObservationMode {
+  REAL_PROVIDER
+  FALLBACK
+}
+
+model ServiceIntervalPolicy {
+  id            String                @id @default(cuid())
+  serviceId     String                @map("service_id")
+  /// DAY | WEEK | MONTH — stored as a unit plus a count rather than raw days, so "every 6 months"
+  /// survives as the thing the operator actually said instead of being flattened to 180.
+  intervalUnit  ServiceIntervalUnit   @map("interval_unit")
+  intervalValue Int                   @map("interval_value")
+  effectiveFrom DateTime              @map("effective_from")
+  effectiveTo   DateTime?             @map("effective_to")
+  /// Where the number came from: MANUFACTURER, OPERATOR, REGULATORY, VENDOR_GUIDANCE.
+  source        ServiceIntervalSource
+  sourceNote    String?               @map("source_note")
+  status        ServiceIntervalStatus @default(DRAFT)
+  /// Bumped on every change; superseded rows are kept so a past due-date can still be explained.
+  version       Int                   @default(1)
+  createdBy     String                @map("created_by")
+  updatedBy     String?               @map("updated_by")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+  service       Service               @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  /// One ACTIVE version per service at a time is enforced in the service layer, not here: a partial
+  /// unique index cannot express "active and within its effective window".
+  @@unique([serviceId, version])
+  @@index([serviceId, status])
+  @@index([status, effectiveFrom])
+  @@map("service_interval_policies")
+}
+
+enum ServiceIntervalUnit {
+  DAY
+  WEEK
+  MONTH
+}
+
+enum ServiceIntervalSource {
+  MANUFACTURER
+  OPERATOR
+  REGULATORY
+  VENDOR_GUIDANCE
+}
+
+enum ServiceIntervalStatus {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+  RETIRED
+}
+
 model PartnerIncentiveRule {
   id          String                   @id @default(cuid())
   code        String                   @unique
@@ -3530,6 +4988,26 @@ model PartnerIncentivePayout {
   @@unique([providerId, ruleId, periodKey])
   @@index([providerId])
   @@map("partner_incentive_payouts")
+}
+
+model AcquisitionSpend {
+  id               String            @id @default(cuid())
+  source           PartnerLeadSource
+  campaign         String?
+  channel          String?
+  periodStart      DateTime          @map("period_start")
+  periodEnd        DateTime          @map("period_end")
+  amount           Float
+  currency         String            @default("INR")
+  notes            String?
+  createdByAdminId String?           @map("created_by_admin_id")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  @@index([source])
+  @@index([periodStart, periodEnd])
+  @@index([campaign])
+  @@map("acquisition_spend")
 }
 
 model PartnerAcademyModule {
@@ -3799,7 +5277,7 @@ model DataVersion {
 model MlFeatureStaging {
   id          String    @id @default(cuid())
   sinkType    String    @map("sink_type")
-  eventId     String    @map("event_id")
+  eventId     String    @unique(map: "ml_feature_staging_event_id_key") @map("event_id")
   bookingId   String?   @map("booking_id")
   payload     Json
   processed   Boolean   @default(false)
@@ -3807,7 +5285,6 @@ model MlFeatureStaging {
   createdAt   DateTime  @default(now()) @map("created_at")
 
   @@index([sinkType, processed, createdAt])
-  @@index([eventId])
   @@map("ml_feature_staging")
 }
 
@@ -4416,15 +5893,25 @@ model AiToolApproval {
 }
 
 model AiToolPolicyLog {
-  id          String               @id @default(cuid())
-  toolId      String               @map("tool_id")
-  actorId     String?              @map("actor_id")
-  actorRole   AiGatewayRole        @map("actor_role")
-  decision    AiToolPolicyDecision
-  reason      String?
-  ruleMatched String?              @map("rule_matched")
-  traceId     String?              @map("trace_id")
-  createdAt   DateTime             @default(now()) @map("created_at")
+  id            String               @id @default(cuid())
+  toolId        String               @map("tool_id")
+  actorId       String?              @map("actor_id")
+  actorRole     AiGatewayRole        @map("actor_role")
+  decision      AiToolPolicyDecision
+  reason        String?
+  ruleMatched   String?              @map("rule_matched")
+  /// Phase 14 — the ruleset this decision was made under.
+  ///
+  /// `ruleMatched` names a rule; it does not say what that rule DID at the time. The rules are
+  /// code, so editing one silently changes the meaning of every historical row that names it —
+  /// a decision logged as "rbac.role_check DENY" becomes unreadable once the roles inside that
+  /// check have moved on. The version pins the row to a ruleset whose content is reconstructable.
+  ///
+  /// Nullable because rows written before this existed genuinely have no version, and
+  /// backfilling them with the current one would assert something untrue about the past.
+  policyVersion String?              @map("policy_version")
+  traceId       String?              @map("trace_id")
+  createdAt     DateTime             @default(now()) @map("created_at")
 
   @@index([toolId, createdAt])
   @@index([decision, createdAt])
@@ -4471,23 +5958,29 @@ enum WorkflowStepType {
 
 /// One activated version of one workflow. Immutable once `status` leaves DRAFT.
 model WorkflowDefinition {
-  id          String         @id @default(cuid())
-  workflowId  String         @map("workflow_id")
-  version     Int
-  name        String
-  status      WorkflowStatus @default(DRAFT)
+  id                  String                      @id @default(cuid())
+  workflowId          String                      @map("workflow_id")
+  version             Int
+  name                String
+  status              WorkflowStatus              @default(DRAFT)
   /// Event type that starts this workflow, e.g. "homigo.payment.failed".
-  trigger     String
+  trigger             String
   /// Frozen copy of the code-defined steps, for audit and for pinning running instances.
-  steps       Json
+  steps               Json
   /// Guards against immortal instances. Both are enforced by the step executor.
-  maxAgeMs    Int            @map("max_age_ms")
-  maxSteps    Int            @map("max_steps")
+  maxAgeMs            Int                         @map("max_age_ms")
+  maxSteps            Int                         @map("max_steps")
+  /// Snapshot of the code-defined mode. Selects an approved behaviour; never introduces one.
+  executionMode       WorkflowExecutionMode       @default(LIVE) @map("execution_mode")
+  /// Phase 6G lifecycle. Legacy definitions stay DRAFT and are unaffected by the certification gate.
+  certificationStatus WorkflowCertificationStatus @default(DRAFT) @map("certification_status")
+  /// Present only on Phase-6G business automations. Its absence is what marks a definition legacy.
+  riskClass           WorkflowRiskClass?          @map("risk_class")
   /// Set when the version is activated; its presence is what makes the row immutable.
-  activatedAt DateTime?      @map("activated_at")
-  metadata    Json?
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
+  activatedAt         DateTime?                   @map("activated_at")
+  metadata            Json?
+  createdAt           DateTime                    @default(now()) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @map("updated_at")
 
   @@unique([workflowId, version])
   @@index([workflowId, status])
@@ -4501,6 +5994,9 @@ model WorkflowInstance {
   workflowId      String                 @map("workflow_id")
   /// Pinned at creation. A version activated later never moves a running instance.
   workflowVersion Int                    @map("workflow_version")
+  /// Pinned at creation, exactly like the version. Re-publishing a definition as LIVE must not
+  /// quietly turn a rehearsal that is already running into a real one.
+  executionMode   WorkflowExecutionMode  @default(LIVE) @map("execution_mode")
   /// Polymorphic reference rather than copied data — PII is read at action time, never stored here.
   subjectType     String                 @map("subject_type")
   subjectId       String                 @map("subject_id")
@@ -4563,6 +6059,9 @@ model WorkflowStepRun {
 // email-specific.
 
 enum NotificationChannel {
+  /// The in-app inbox: a persistent Notification row plus the live WebSocket envelope.
+  /// Needs no device and no address — only a valid recipient — which is why it is listed first.
+  IN_APP
   PUSH
   EMAIL
   SMS
@@ -4678,6 +6177,142 @@ model NotificationDelivery {
   @@map("notification_deliveries")
 }
 
+/// Phase 6G — how far a business automation has travelled from idea to permission.
+///
+/// Deliberately separate from `WorkflowStatus`, which answers "is this version published". This
+/// answers "has anyone reviewed what it would do". A version can be published and uncertified, and
+/// that combination must stay expressible — it is the normal state of a rehearsal.
+enum WorkflowCertificationStatus {
+  DRAFT
+  SHADOW
+  CERTIFIED
+  DISABLED
+  DEPRECATED
+}
+
+/// Phase 6G — how much damage a business automation could do if it were wrong.
+enum WorkflowRiskClass {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// Phase 6G — a standing statement that one workflow version was reviewed and may act for real.
+///
+/// Not `AiToolApproval`. That binds a tool, a requester and an arguments hash, and is consumed once
+/// for a single execution; this is a durable fact about a version. Sharing the model would let a
+/// business certification be spent like a financial approval, which is the confusion Phase 5 was
+/// built to prevent.
+model AutomationCertification {
+  id                      String                @id @default(cuid())
+  automationId            String                @map("automation_id")
+  workflowVersion         Int                   @map("workflow_version")
+  certifiedAt             DateTime              @default(now()) @map("certified_at")
+  /// The human who took responsibility. Never a service account.
+  certifiedBy             String                @map("certified_by")
+  approvalReference       String?               @map("approval_reference")
+  /// Where the rehearsal evidence lives — a query, a document, a run id.
+  shadowEvidenceReference String?               @map("shadow_evidence_reference")
+  testEvidenceReference   String?               @map("test_evidence_reference")
+  riskClass               WorkflowRiskClass     @map("risk_class")
+  /// What this certification does NOT cover. Empty is a claim in itself.
+  knownLimitations        String?               @map("known_limitations")
+  approvedExecutionMode   WorkflowExecutionMode @default(SHADOW) @map("approved_execution_mode")
+  /// The admin whose authorization created this row, resolved against users at write time.
+  /// Null on rows written before authorization was enforced — those are the incident's evidence.
+  approvedByAdminId       String?               @map("approved_by_admin_id")
+  /// What the engine could actually execute when this was signed. A certification approves a
+  /// workflow running on a particular engine, not the workflow alone: if ESCALATION becomes
+  /// implemented later, the same version acquires powers nobody signed for. A mismatch fails closed.
+  capabilityFingerprint   String?               @map("capability_fingerprint")
+  /// Set when a certification is withdrawn. The row is never deleted — a voided certification is
+  /// the record that someone once claimed this was approved, which is exactly what an audit needs.
+  voidedAt                DateTime?             @map("voided_at")
+  voidedBy                String?               @map("voided_by")
+  voidReason              String?               @map("void_reason")
+  createdAt               DateTime              @default(now()) @map("created_at")
+
+  @@unique([automationId, workflowVersion], map: "automation_certifications_automation_version_key")
+  @@index([automationId, certifiedAt])
+  @@map("automation_certifications")
+}
+
+/// Phase 6D — whether a workflow really acts, or only works out what it would have done.
+///
+/// Two values and no more. A stored mode selects between behaviours that already exist in code; it
+/// can never introduce one, which is the same rule Phase 6A applies to step definitions.
+enum WorkflowExecutionMode {
+  LIVE
+  SHADOW
+}
+
+/// Phase 6G-C — whether a rehearsal came from a test run or from real traffic.
+///
+/// Nothing in production has ever deleted a shadow row; the table only ever emptied because every
+/// row in it was written by a test that tidied up after itself. This marker is what stops that
+/// happening once real observations exist — cleanup scopes to TEST, and anything unmarked is kept.
+///
+/// It is set from the execution context, never from a request, and it must not influence a single
+/// decision. A caller able to declare its own run a test could arrange for its evidence to vanish.
+enum ShadowEvidenceSource {
+  TEST
+  OBSERVATION
+}
+
+/// Phase 6D — what a shadow workflow would have done, and proof that it did not do it.
+///
+/// Deliberately its own table rather than rows inside `NotificationDecisionAudit`. Every existing
+/// reader of that table — the decision/created_at index, any suppression-rate report built on it —
+/// would otherwise start counting rehearsals as real decisions, and nothing in the row would say
+/// otherwise. Live decision history stays live truth; comparison is a join, not a shared table.
+model AutomationShadowExecution {
+  id                  String                @id @default(cuid())
+  shadowExecutionId   String                @unique(map: "automation_shadow_executions_execution_id_key") @map("shadow_execution_id")
+  /// `shadow:{instanceId}:{stepId}:{notificationType}`. Live notification code never reads it.
+  shadowIdentity      String                @map("shadow_identity")
+  workflowId          String                @map("workflow_id")
+  workflowVersion     Int                   @map("workflow_version")
+  workflowInstanceId  String?               @map("workflow_instance_id")
+  executionMode       WorkflowExecutionMode @default(SHADOW) @map("execution_mode")
+  /// Defaults to OBSERVATION on purpose: a row whose origin was never stated is kept, not swept.
+  source              ShadowEvidenceSource  @default(OBSERVATION)
+  triggerEventId      String?               @map("trigger_event_id")
+  subjectType         String                @map("subject_type")
+  subjectId           String                @map("subject_id")
+  recipientType       String?               @map("recipient_type")
+  recipientId         String?               @map("recipient_id")
+  notificationType    String?               @map("notification_type")
+  category            NotificationCategory?
+  /// The channel it would have used, once eligibility and preference had been applied.
+  intendedChannel     NotificationChannel?  @map("intended_channel")
+  /// The declared fallback order it would have walked, as channel names.
+  intendedFallback    String[]              @map("intended_fallback")
+  /// PASSED / FAILED / the 6B reason. Null when the step had no condition to re-check.
+  conditionResult     String?               @map("condition_result")
+  /// The 6C reason code, unchanged from what live governance would have produced.
+  governanceResult    String?               @map("governance_result")
+  outcome             String
+  reasonCode          String                @map("reason_code")
+  reasonText          String?               @map("reason_text")
+  wouldHaveSent       Boolean               @default(false) @map("would_have_sent")
+  wouldHaveDeferred   Boolean               @default(false) @map("would_have_deferred")
+  wouldHaveSuppressed Boolean               @default(false) @map("would_have_suppressed")
+  wouldHaveBlocked    Boolean               @default(false) @map("would_have_blocked")
+  deferredUntil       DateTime?             @map("deferred_until")
+  traceId             String?               @map("trace_id")
+  correlationId       String?               @map("correlation_id")
+  createdAt           DateTime              @default(now()) @map("created_at")
+
+  @@index([workflowId, createdAt])
+  @@index([workflowInstanceId])
+  @@index([outcome, createdAt])
+  // Evidence is read by source before anything else: a certification may only cite OBSERVATION rows,
+  // and TEST rows are swept separately. Without this, that split scans the whole workflow partition.
+  @@index([source, workflowId, createdAt])
+  @@index([subjectType, subjectId, createdAt])
+  @@map("automation_shadow_executions")
+}
+
 /// Phase 6C-E — why a notification was allowed, held or refused.
 ///
 /// Deliberately separate from `NotificationDelivery`, which answers what became of a delivery. The
@@ -4749,7 +6384,7 @@ model NotificationCadenceWindow {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  @@unique([recipientType, recipientId, windowDate])
+  @@unique([recipientType, recipientId, windowDate], map: "notification_cadence_windows_recipient_day_key")
   @@index([windowDate])
   @@map("notification_cadence_windows")
 }
@@ -4781,4 +6416,592 @@ model NotificationCadenceReservation {
   @@index([recipientType, recipientId, windowDate])
   @@index([workflowId, recipientType, recipientId, createdAt])
   @@map("notification_cadence_reservations")
+}
+
+// ═══════════════════════════ Phase 12 — ML model governance ═══════════════════════════
+
+/// Phase 12 — the lifecycle stage of one model version.
+///
+/// Ordering is a governance statement, not a convenience: a version reaches PRODUCTION only by
+/// passing through CANDIDATE, SHADOW and APPROVED. Nothing in this platform may write PRODUCTION
+/// directly, and `promote()` refuses a version that was not APPROVED by a person first.
+enum MlModelStage {
+  TRAINING
+  TRAINED
+  EVALUATED
+  CANDIDATE
+  SHADOW
+  APPROVED
+  PRODUCTION
+  ROLLED_BACK
+  REJECTED
+  RETIRED
+}
+
+/// Phase 12 — one governed version of one model.
+///
+/// ── Why this lives in Postgres and not in the warehouse ──────────────────────────
+///
+/// A BigQuery `model_registry` table already exists and is the record of what the warehouse
+/// trained. It cannot be the governance record, for three measured reasons: the project's billing
+/// is disabled so the table is physically unwritable; BigQuery has no unique constraints, so
+/// "exactly one PRODUCTION version per model" cannot be enforced there; and approval has to be
+/// attributable and auditable through the same `AuditLogService` and RBAC every other governance
+/// act on this platform uses. So the warehouse keeps the training record and this table keeps the
+/// lifecycle. They are reconciled, never duplicated — `mlRegistryService.reconcile()` reports any
+/// model the warehouse knows about that has no governed version here.
+///
+/// ── Reproducibility is a column, not a convention ────────────────────────────────
+///
+/// `datasetVersion`, `featureVersion`, `codeVersion`, `hyperparameters` and `seed` exist so a
+/// version can be rebuilt. A registry row that says only "trained on the database" describes
+/// nothing: the database has changed since.
+model MlModelVersion {
+  id        String       @id @default(cuid())
+  /// Canonical model name, matching the warehouse registry where one exists.
+  modelName String       @map("model_name")
+  /// Monotonic per model. Assigned by the service, never by the caller.
+  version   Int
+  stage     MlModelStage @default(CANDIDATE)
+
+  /// Content hash of the exact training data. Two versions with the same hash saw the same rows.
+  datasetVersion String  @map("dataset_version")
+  /// Which feature definition produced the inputs. A feature change invalidates comparability.
+  featureVersion String  @map("feature_version")
+  /// Git-describable identifier of the training code.
+  codeVersion    String  @map("code_version")
+  /// Where the artifact lives (a BigQuery model reference, or a deterministic rule identifier).
+  artifactRef    String  @map("artifact_ref")
+  /// Hash of the artifact where one can be computed. Null for warehouse-hosted models whose bytes
+  /// this platform never sees — recorded as null rather than as a fabricated digest.
+  artifactHash   String? @map("artifact_hash")
+
+  /// Measured out-of-sample metrics. Never in-sample fit statistics presented as accuracy.
+  metrics         Json?
+  hyperparameters Json?
+  /// Present only where the training procedure is actually seeded; null is honest for the rest.
+  seed            Int?
+
+  /// What this version was measured against, and whether it won. Null before evaluation.
+  baselineName  String?  @map("baseline_name")
+  beatsBaseline Boolean? @map("beats_baseline")
+
+  trainedAt   DateTime? @map("trained_at")
+  evaluatedAt DateTime? @map("evaluated_at")
+
+  /// Approval is a person. Never a test result, and never a metric threshold.
+  approvedBy   String?   @map("approved_by")
+  approvedAt   DateTime? @map("approved_at")
+  approvalNote String?   @map("approval_note")
+
+  promotedAt          DateTime? @map("promoted_at")
+  /// The version this one replaced in production — the rollback target, recorded at promotion time
+  /// rather than inferred later from timestamps.
+  supersededVersionId String?   @map("superseded_version_id")
+
+  rolledBackAt     DateTime? @map("rolled_back_at")
+  rolledBackBy     String?   @map("rolled_back_by")
+  rolledBackReason String?   @map("rolled_back_reason")
+
+  rejectedReason String?   @map("rejected_reason")
+  retiredAt      DateTime? @map("retired_at")
+
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  shadowPredictions MlShadowPrediction[]
+
+  @@unique([modelName, version])
+  @@index([modelName, stage])
+  @@index([stage, createdAt])
+  @@map("ml_model_versions")
+}
+
+/// Phase 12 — one shadow observation: what the candidate said, what production said, what happened.
+///
+/// Shadow mode exists to answer a question no offline metric can: does the candidate behave better
+/// on data nobody has seen, while controlling nothing. So a row is written at prediction time with
+/// both predictions and no outcome, and the outcome is filled in later when it becomes knowable.
+///
+/// A shadow prediction never mutates business state. That is enforced by construction — this table
+/// is the only thing the shadow path writes.
+model MlShadowPrediction {
+  id                 String         @id @default(cuid())
+  modelName          String         @map("model_name")
+  candidateVersionId String         @map("candidate_version_id")
+  candidateVersion   MlModelVersion @relation(fields: [candidateVersionId], references: [id], onDelete: Cascade)
+  /// The production version in force when this was recorded, or null when nothing was in production.
+  productionVersion  Int?           @map("production_version")
+
+  /// What is being predicted about — for demand, the forecast date. Unique per candidate version so
+  /// a replayed shadow run updates rather than duplicating.
+  entityKey    String   @map("entity_key")
+  predictedFor DateTime @map("predicted_for")
+  predictedAt  DateTime @default(now()) @map("predicted_at")
+
+  candidateValue  Float  @map("candidate_value")
+  /// Null when production produced nothing — an outage is recorded, never filled with a guess.
+  productionValue Float? @map("production_value")
+
+  /// The authoritative outcome, written only once it is genuinely observable.
+  actualValue Float?    @map("actual_value")
+  actualAt    DateTime? @map("actual_at")
+
+  @@unique([candidateVersionId, entityKey])
+  @@index([modelName, predictedFor])
+  @@map("ml_shadow_predictions")
+}
+
+// ═══════════════════════ Phase 14 — AI spend governance ═══════════════════════
+//
+// Before this, nothing in the platform could stop AI spend. Cost was measured accurately
+// (Phase 13) and displayed on a dashboard, but a dashboard is not a control: a runaway loop
+// would have been observed, in detail, all the way to the bill.
+//
+// Two tables rather than one, for the same reason cadence windows are split from reservations:
+// the POLICY is the human decision about what the cap is, and the WINDOW is the accumulator the
+// enforcement path mutates under concurrency. Mixing them would put a hot per-request UPDATE on
+// the row a person edits.
+
+/// What a cap applies to. GLOBAL is the whole platform; the rest narrow by one dimension that
+/// already exists on every gateway request, so no new dimension had to be invented to cap on.
+enum AiBudgetScope {
+  GLOBAL
+  PROVIDER
+  ROLE
+  ENDPOINT
+
+  @@map("ai_budget_scope")
+}
+
+enum AiBudgetPeriod {
+  DAY
+  MONTH
+
+  @@map("ai_budget_period")
+}
+
+/// What to do when the cap cannot be evaluated — NOT what to do when it is exceeded.
+///
+/// These are genuinely different questions and conflating them is how budget controls end up
+/// either useless or catastrophic. A cap that is *exceeded* always blocks; that is the point.
+/// A cap that cannot be *read* (the database is unreachable mid-incident) is a judgement call:
+/// failing closed on a blip takes every AI surface down, failing open during a runaway loop is
+/// exactly when the cap was needed. So it is recorded per policy and never assumed.
+enum AiBudgetFailMode {
+  FAIL_OPEN
+  FAIL_CLOSED
+
+  @@map("ai_budget_fail_mode")
+}
+
+/// A spend ceiling. Rows are created by a person; this table ships EMPTY on purpose.
+///
+/// No default cap is seeded because there is no cap this project has agreed to. Inventing one
+/// would either be so high it controls nothing or so low it silently breaks AI in production —
+/// both are worse than the honest state, which is that the mechanism exists and the number is a
+/// human decision.
+model AiBudgetPolicy {
+  id        String           @id @default(cuid())
+  scope     AiBudgetScope
+  /// "*" for GLOBAL; otherwise the provider, role or endpoint this cap applies to.
+  scopeKey  String           @map("scope_key")
+  period    AiBudgetPeriod
+  /// The ceiling in USD. Compared against reserved + settled spend, never against settled alone.
+  limitUsd  Float            @map("limit_usd")
+  failMode  AiBudgetFailMode @default(FAIL_CLOSED) @map("fail_mode")
+  isActive  Boolean          @default(true) @map("is_active")
+  /// Why this number. Free text, because the justification is the part an auditor needs.
+  note      String?
+  createdBy String           @map("created_by")
+  updatedBy String?          @map("updated_by")
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  windows AiBudgetWindow[]
+
+  @@unique([scope, scopeKey, period])
+  @@index([isActive])
+  @@map("ai_budget_policies")
+}
+
+/// One policy's accumulator for one period. The row the enforcement path actually contends on.
+///
+/// `reservedUsd` exists because AI cost is only knowable AFTER the provider answers. Checking
+/// settled spend alone means N concurrent requests all read the same under-limit total and all
+/// proceed — the cap is then a suggestion. So the pre-flight step reserves an upper bound and the
+/// post-flight step settles it to the real figure, which bounds the overshoot to one in-flight
+/// batch instead of leaving it unbounded.
+model AiBudgetWindow {
+  id        String         @id @default(cuid())
+  policyId  String         @map("policy_id")
+  policy    AiBudgetPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  /// "YYYY-MM-DD" for DAY, "YYYY-MM" for MONTH. Plain text for the same reason cadence windows
+  /// are: the boundary has already been decided and no session timezone may shift it afterwards.
+  windowKey String         @map("window_key")
+
+  /// Upper-bound spend of requests currently in flight. Released on settle.
+  reservedUsd         Float @default(0) @map("reserved_usd")
+  /// Actual measured spend of completed requests.
+  settledUsd          Float @default(0) @map("settled_usd")
+  requestCount        Int   @default(0) @map("request_count")
+  /// Requests whose provider has no pricing entry. Their real cost is UNKNOWN, so it is counted
+  /// here and NOT folded into settledUsd — a request of unknown cost must never read as free.
+  /// A non-zero value here means the settled figure understates true spend by this many requests.
+  unknownCostRequests Int   @default(0) @map("unknown_cost_requests")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([policyId, windowKey])
+  @@index([windowKey])
+  @@map("ai_budget_windows")
+}
+
+// ═══════════════════════ Phase 15 — AI-assisted workflow drafting ═══════════════════════
+//
+// ── Why drafts live in their own table ───────────────────────────────────────────
+//
+// Workflows in this platform are DEFINED IN CODE. `workflow_definitions` holds a frozen snapshot
+// of an activated code definition, and the boot-time fingerprint check treats any divergence as
+// someone having edited an activated version — it refuses to boot. Writing an AI-generated row
+// into that table would therefore either be ignored by the engine or break startup, and would in
+// both cases blur the one line that matters: a definition the platform executes exists because a
+// person committed it.
+//
+// So a draft is a proposal, not a workflow. It carries the generated definition, the prompt that
+// produced it, the validation verdict and the approval decision — and it never becomes executable
+// on its own. Turning an approved draft into a running workflow still requires a developer to
+// commit the code definition and a deployment to activate it. That is not a limitation to work
+// around; it is the property that stops a language model from authoring production automation.
+
+enum AiWorkflowDraftStatus {
+  /// Generated and validated. Nothing has approved it.
+  DRAFT
+  /// A person reviewed it and said no. Retained — a rejected proposal is evidence.
+  REJECTED
+  /// A person approved the proposal. Still not executable; it needs a code definition.
+  APPROVED
+  /// A developer committed the corresponding code definition and it activated.
+  IMPLEMENTED
+
+  @@map("ai_workflow_draft_status")
+}
+
+/// How much damage the proposal could do if it were ever activated as written.
+enum AiWorkflowRiskClass {
+  /// Reads and waits only. No message leaves the platform.
+  INERT
+  /// Sends notifications to real people.
+  NOTIFYING
+  /// Contains a step type the engine cannot execute, or an escalation to a human queue.
+  ESCALATING
+  /// Refused by validation — never approvable in this form.
+  REJECTED_UNSAFE
+
+  @@map("ai_workflow_risk_class")
+}
+
+model AiWorkflowDraft {
+  id         String                @id @default(cuid())
+  /// Proposed workflow identity. Deliberately NOT unique against `workflow_definitions` — a draft
+  /// naming an existing workflow is a proposed change, and refusing to record it would hide that
+  /// somebody asked for one.
+  proposedId String                @map("proposed_id")
+  name       String
+  /// The natural-language request. Retained so a reviewer can see what was actually asked for,
+  /// and so a suspicious draft can be traced back to the prompt that produced it.
+  intent     String
+  /// Validated step array. Stored as given, so approval applies to exact bytes.
+  steps      Json
+  trigger    String
+  status     AiWorkflowDraftStatus @default(DRAFT)
+  riskClass  AiWorkflowRiskClass   @map("risk_class")
+
+  /// Every validation finding, including the ones that passed. A draft that was approved needs to
+  /// show what was checked, not merely that nothing failed.
+  validation    Json
+  /// Which model and prompt version produced it, so a bad pattern can be traced to its source.
+  modelProvider String? @map("model_provider")
+  modelName     String? @map("model_name")
+  promptVersion Int?    @map("prompt_version")
+  /// Hash of the generating prompt. The prompt text itself is in `intent`; this ties the draft to
+  /// the exact request without depending on that field staying unedited.
+  promptHash    String  @map("prompt_hash")
+
+  createdBy  String    @map("created_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  reviewedBy String?   @map("reviewed_by")
+  reviewedAt DateTime? @map("reviewed_at")
+  /// Why it was approved or rejected. Required by the service — an unexplained approval of
+  /// machine-generated automation is not a review.
+  reviewNote String?   @map("review_note")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@index([proposedId])
+  @@map("ai_workflow_drafts")
+}
+
+// ── Phase 16: Governed Agentic Automation ───────────────────────────────────
+//
+// An agent run is a bounded, persisted, auditable unit of work. Nothing here is executable:
+// a row records what an agent proposed, what the policy layer decided, which allowlisted tool
+// executed, and whether the expected effect was afterwards observed. Execution itself remains
+// in the Phase-5 tool layer (`ai_tool_executions`) and the Phase-6 workflow engine — this
+// layer adds identity, planning, bounds and verification on top of them, and never around them.
+//
+// The join to execution is `AgentRunStep.executionId` → `ai_tool_executions.execution_id`, so
+// "which agent caused this side effect" and "what did this agent actually do" are both
+// answerable from either end. Not a declared relation, because a step can legitimately have no
+// execution (denied, shadowed, awaiting approval) and a foreign key would force one.
+
+enum AgentRunMode {
+  /// The agent plans and classifies but performs no side effect. Every step is recorded as it
+  /// WOULD have run. Used for evaluation before an agent is trusted with execution.
+  SHADOW
+  LIVE
+}
+
+enum AgentRunStatus {
+  CREATED
+  PLANNING
+  WAITING_POLICY
+  WAITING_APPROVAL
+  EXECUTING
+  VERIFYING
+  COMPLETED
+  FAILED
+  /// Handed to a human. Not a failure — the designed outcome for high-risk work.
+  ESCALATED
+  CANCELLED
+  TIMED_OUT
+  ROLLED_BACK
+}
+
+enum AgentRiskTier {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum AgentStepStatus {
+  PLANNED
+  POLICY_DENIED
+  AWAITING_APPROVAL
+  EXECUTED
+  VERIFIED
+  /// The tool reported success but the expected state change was not observed afterwards.
+  /// Never silently retried — this is a stop.
+  VERIFICATION_FAILED
+  FAILED
+  SKIPPED
+  /// Recorded in shadow mode: fully planned and authorised, deliberately not executed.
+  SHADOWED
+  /// The side effect may or may not have landed. Inherited from the tool layer; reconcile
+  /// downstream rather than retrying.
+  INDETERMINATE
+}
+
+model AgentRun {
+  id             String  @id @default(cuid())
+  runId          String  @unique @map("run_id")
+  agentId        String  @map("agent_id")
+  /// Frozen at run creation. A live definition change must never reinterpret a running agent.
+  agentVersion   String  @map("agent_version")
+  promptVersion  String? @map("prompt_version")
+  policyVersion  String? @map("policy_version")
+  toolsetVersion String? @map("toolset_version")
+  modelProvider  String? @map("model_provider")
+  modelName      String? @map("model_name")
+
+  mode     AgentRunMode
+  status   AgentRunStatus @default(CREATED)
+  riskTier AgentRiskTier? @map("risk_tier")
+
+  actorId   String?       @map("actor_id")
+  actorRole AiGatewayRole @map("actor_role")
+
+  /// MANUAL | EVENT | SCHEDULE. How this run came to exist.
+  triggerType String  @map("trigger_type")
+  /// The event id, job id or request id behind the trigger.
+  triggerRef  String? @map("trigger_ref")
+  subjectType String? @map("subject_type")
+  subjectId   String? @map("subject_id")
+
+  traceId     String  @map("trace_id")
+  /// The event or run that caused this one. With `parentRunId` and `depth`, this is what makes
+  /// an agent → workflow → event → same agent cycle detectable rather than merely unlikely.
+  causationId String? @map("causation_id")
+  parentRunId String? @map("parent_run_id")
+  depth       Int     @default(0)
+
+  goal     String
+  /// Hash of the validated plan. Binds the executed steps to the plan that was authorised.
+  planHash String? @map("plan_hash")
+  /// Redacted structured plan. Human-readable rationale and evidence only — never raw model
+  /// reasoning, and never used for authorisation.
+  plan     Json?
+
+  stepCount        Int   @default(0) @map("step_count")
+  toolCallCount    Int   @default(0) @map("tool_call_count")
+  promptTokens     Int   @default(0) @map("prompt_tokens")
+  completionTokens Int   @default(0) @map("completion_tokens")
+  costUsd          Float @default(0) @map("cost_usd")
+  latencyMs        Int?  @map("latency_ms")
+
+  /// Why the run ended where it did: BUDGET_EXHAUSTED, MAX_STEPS, RECURSION_BLOCKED, …
+  stopReason       String? @map("stop_reason")
+  escalationReason String? @map("escalation_reason")
+  errorCode        String? @map("error_code")
+  errorMessage     String? @map("error_message")
+
+  /// One run per (agent, trigger, subject). What makes a replayed or duplicated event
+  /// produce one run rather than several.
+  idempotencyKey String? @unique @map("idempotency_key")
+
+  metadata    Json?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  /// Lease held by the process advancing this run. Lets a run orphaned by a crash be
+  /// recovered from its persisted state instead of restarted from step zero.
+  heartbeatAt DateTime? @map("heartbeat_at")
+  completedAt DateTime? @map("completed_at")
+
+  steps AgentRunStep[]
+
+  @@index([agentId, createdAt])
+  @@index([status, createdAt])
+  @@index([traceId])
+  @@index([causationId])
+  @@index([subjectType, subjectId])
+  @@map("agent_runs")
+}
+
+model AgentRunStep {
+  id               String                @id @default(cuid())
+  runId            String                @map("run_id")
+  stepIndex        Int                   @map("step_index")
+  /// The lifecycle phase this row records: PLAN, POLICY, EXECUTE, VERIFY, ESCALATE.
+  phase            String
+  /// Agent-facing capability name. Resolves to `toolId` through the agent's capability map;
+  /// a model never names a tool directly.
+  capability       String?
+  toolId           String?               @map("tool_id")
+  argumentsHash    String?               @map("arguments_hash")
+  /// Redacted arguments, for the operator timeline. Never consulted for authorisation.
+  argumentsPreview Json?                 @map("arguments_preview")
+  riskTier         AgentRiskTier?        @map("risk_tier")
+  policyDecision   AiToolPolicyDecision? @map("policy_decision")
+  status           AgentStepStatus
+  /// Joins to `ai_tool_executions.execution_id`. Absent when nothing executed.
+  executionId      String?               @map("execution_id")
+  approvalId       String?               @map("approval_id")
+  /// What was checked after execution and what was found. Absent means no post-condition was
+  /// declared — which the runtime refuses for write steps.
+  verification     Json?
+  errorCode        String?               @map("error_code")
+  errorMessage     String?               @map("error_message")
+  durationMs       Int?                  @map("duration_ms")
+  createdAt        DateTime              @default(now()) @map("created_at")
+
+  run AgentRun @relation(fields: [runId], references: [runId], onDelete: Cascade)
+
+  @@unique([runId, stepIndex])
+  @@index([toolId, createdAt])
+  @@index([executionId])
+  @@map("agent_run_steps")
+}
+
+/// Atomic daily counters behind human-readable document numbers (src/lib/booking-number.ts).
+/// Written with raw SQL only; CHECK (value > 0) lives in migration 20260919100000_document_sequences.
+model DocumentSequence {
+  scope     String
+  day       DateTime @db.Date
+  value     Int
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@id([scope, day])
+  @@map("document_sequences")
+}
+
+/// Shared acknowledgement of live ops alerts (admin /alerts). Raw SQL only (services/ops-alert-ack.service.ts);
+/// CHECKs live in migration 20260919110000_ops_alert_acknowledgements.
+model OpsAlertAcknowledgement {
+  alertKey       String   @id @map("alert_key")
+  acknowledgedBy String   @map("acknowledged_by")
+  acknowledgedAt DateTime @default(now()) @map("acknowledged_at") @db.Timestamptz(6)
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@index([expiresAt])
+  @@map("ops_alert_acknowledgements")
+}
+
+/// Append-only booking history, written ONLY by trigger bookings_status_history_trg
+/// (migration 20260919120000_booking_status_history). Actor/reason/request id: src/lib/booking-audit-context.ts.
+model BookingStatusHistory {
+  id               BigInt    @id @default(autoincrement())
+  bookingId        String    @map("booking_id")
+  oldStatus        String?   @map("old_status")
+  newStatus        String    @map("new_status")
+  oldProviderId    String?   @map("old_provider_id")
+  newProviderId    String?   @map("new_provider_id")
+  oldPaymentStatus String?   @map("old_payment_status")
+  newPaymentStatus String?   @map("new_payment_status")
+  oldScheduledDate DateTime? @map("old_scheduled_date")
+  newScheduledDate DateTime? @map("new_scheduled_date")
+  actorType        String?   @map("actor_type")
+  actorId          String?   @map("actor_id")
+  reason           String?
+  requestId        String?   @map("request_id")
+  changedAt        DateTime  @default(now()) @map("changed_at") @db.Timestamptz(6)
+
+  @@index([bookingId, changedAt], map: "booking_status_history_booking_idx")
+  @@index([changedAt], map: "booking_status_history_changed_at_idx")
+  @@map("booking_status_history")
+}
+
+/// Provenance of a business-shaped row.
+///
+/// NULL means UNKNOWN. `INFERRED_*` is derived after the fact from historical markers by an
+/// explicit, reproducible rule — it is deliberately NOT the same value as a label a script declared
+/// about a row it was creating, so guesswork cannot harden into fact.
+///
+/// Business analytics default to `data_origin IS NULL OR data_origin = 'REAL'`; see
+/// `src/lib/analytics-scope.ts`, which is the single place that policy is expressed.
+enum DataOrigin {
+  REAL
+  FIXTURE
+  TEST
+  CERTIFICATION
+  SYNTHETIC
+  INFERRED_FIXTURE
+  INFERRED_TEST
+  INFERRED_CERTIFICATION
+  INFERRED_SYNTHETIC
+}
+
+/// Phase 09 — one booking per (user, Idempotency-Key). A retry of the SAME request replays the same
+/// booking; the same key with a different request is refused rather than quietly creating a second
+/// one. Rows expire, so the table stays bounded. Requests that send no key are unaffected.
+model BookingIdempotencyKey {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  key         String
+  /// Fingerprint of the request this key was first used for.
+  requestHash String    @map("request_hash")
+  bookingId   String?   @map("booking_id")
+  /// IN_PROGRESS | COMPLETED
+  status      String    @default("IN_PROGRESS")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+  expiresAt   DateTime  @map("expires_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, key])
+  @@index([expiresAt])
+  @@map("booking_idempotency_keys")
 }

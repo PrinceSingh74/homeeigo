@@ -1,4 +1,6 @@
+import { analyticsWhere, analyticsWhereVia } from "../lib/analytics-scope";
 import prisma from "../lib/prisma";
+import { logger } from "../lib/logger";
 import { maskProviderSensitive } from "./sensitive-data.service";
 import { sanitizeUserInput } from "../utils/sanitizer";
 import { formatKycStatus } from "../lib/format";
@@ -35,22 +37,29 @@ export class AdminService {
       onlineProviders,
       recentBookings,
     ] = await Promise.all([
-      prisma.user.count({ where: { role: "CUSTOMER" } }),
-      prisma.provider.count(),
-      prisma.booking.count(),
-      prisma.booking.count({ where: { status: "COMPLETED" } }),
-      prisma.booking.aggregate({ where: { paymentStatus: "SUCCESS" }, _sum: { finalAmount: true } }),
+      prisma.user.count({ where: { role: "CUSTOMER", ...analyticsWhere() } }),
+      // `providers` carries no provenance column of its own; it inherits from the user behind it.
+      prisma.provider.count({ where: analyticsWhereVia("provider") }),
+      prisma.booking.count({ where: analyticsWhere() }),
+      prisma.booking.count({ where: { status: "COMPLETED", ...analyticsWhere() } }),
+      prisma.booking.aggregate({
+        where: { paymentStatus: "SUCCESS", ...analyticsWhere() },
+        _sum: { finalAmount: true },
+      }),
       prisma.booking.aggregate({
         where: {
           paymentStatus: "SUCCESS",
           createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) },
+          ...analyticsWhere(),
         },
         _sum: { finalAmount: true },
       }),
-      prisma.provider.aggregate({ _avg: { rating: true } }),
-      prisma.provider.count({ where: { isOnline: true } }),
+      // Phase A: the rating average, online count and daily charts use the same business population
+      // as every tile above; unscoped, fixture partners and script bookings moved the executive figures.
+      prisma.provider.aggregate({ where: analyticsWhereVia("provider"), _avg: { rating: true } }),
+      prisma.provider.count({ where: { isOnline: true, ...analyticsWhereVia("provider") } }),
       prisma.booking.findMany({
-        where: { createdAt: { gte: rangeStart, lte: rangeEnd } },
+        where: { createdAt: { gte: rangeStart, lte: rangeEnd }, ...analyticsWhere() },
         select: { createdAt: true, paymentStatus: true, finalAmount: true },
       }),
     ]);
@@ -685,7 +694,7 @@ export class AdminService {
     };
   }
 
-  async banUser(id: string, action: "ban" | "unban", reason?: string) {
+  async banUser(id: string, action: "ban" | "unban", reason?: string, adminId?: string) {
     const user = await prisma.user.update({
       where: { id },
       data:
@@ -695,13 +704,23 @@ export class AdminService {
     });
     if (action === "ban") {
       await refreshTokenService.revokeAllUserTokens(id, "SUSPICIOUS_ACTIVITY", "SYSTEM");
-      await prisma.booking.updateMany({
-        where: {
-          userId: id,
-          status: { in: ["PENDING", "ACCEPTED", "ASSIGNED", "EN_ROUTE"] },
-        },
-        data: { status: "CANCELLED_BY_USER", cancelledAt: new Date() },
+      // Each open booking goes through the one cancellation path (refund per the published policy,
+      // open offers closed, event, partner notified). This was a bare status write: banned
+      // customers who had paid were never refunded and offered partners kept the job in their feed.
+      // Work already IN_PROGRESS is left to finish, as before.
+      const open = await prisma.booking.findMany({
+        where: { userId: id, status: { in: ["PENDING", "ACCEPTED", "ASSIGNED", "EN_ROUTE"] } },
+        select: { id: true },
       });
+      const { bookingService } = await import("./booking.service");
+      for (const b of open) {
+        const res = await bookingService.cancel(
+          { userId: adminId ?? "system", admin: { refundPolicy: "customer_policy" } },
+          b.id,
+          "[Admin] Account suspended" + (reason ? ": " + reason : ""),
+        );
+        if ("error" in res) logger.warn("ban_booking_cancel_refused", { userId: id, bookingId: b.id, error: res.error });
+      }
     }
     return user;
   }
@@ -709,7 +728,16 @@ export class AdminService {
   async analytics(query: { startDate?: string; endDate?: string }) {
     const start = query.startDate ? new Date(query.startDate) : new Date(Date.now() - 30 * 86400000);
     const end = query.endDate ? new Date(query.endDate) : new Date();
-    const where = { createdAt: { gte: start, lte: end } };
+    /**
+     * Scoped to the business population at the one place every figure below derives from.
+     *
+     * On the live database the measured difference is small (GMV 0.2%, completed bookings 1.6%,
+     * 2026-09-21). An earlier write-up claimed 22%; that rested on a provenance rule that inferred a
+     * booking's origin from a refund raised against it, and was withdrawn once that rule was shown to
+     * hold for 1 of the 100 bookings it relabelled — see `classifyBookingFromRefunds`. The scope is
+     * still right: it is what keeps declared fixture traffic out of these totals going forward.
+     */
+    const where = { createdAt: { gte: start, lte: end }, ...analyticsWhere() };
 
     const [totalBookings, completed, cancelled, revenue, earningsAgg] = await Promise.all([
       prisma.booking.count({ where }),
@@ -798,7 +826,7 @@ export class AdminService {
       topProviders: [],
       userMetrics: {
         newUsers,
-        activeUsers: await prisma.user.count({ where: { lastActivityAt: { gte: start } } }),
+        activeUsers: await prisma.user.count({ where: { lastActivityAt: { gte: start }, ...analyticsWhere() } }),
         repeatBookingRate: 0.65,
       },
     };

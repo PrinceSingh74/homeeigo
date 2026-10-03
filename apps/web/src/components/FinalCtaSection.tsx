@@ -1,9 +1,9 @@
 "use client";
 
 import { m as motion, useReducedMotion } from "framer-motion";
-import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { bookUrl } from "@/lib/booking-url";
+import { ButtonLink } from "@/components/buttons/ButtonLink";
 import { PageSection } from "@/components/layout/PageSection";
 import { MotionImage } from "@/components/ui/MotionImage";
 
@@ -17,7 +17,7 @@ export function FinalCtaSection() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.3 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="relative flex flex-col items-start gap-6 overflow-hidden rounded-[24px] card-sheen p-6 shadow-e4 ring-1 ring-white/60 sm:flex-row sm:items-center sm:justify-between sm:gap-8 sm:rounded-[32px] sm:p-10 lg:rounded-[40px] lg:p-16"
+        className="relative flex flex-col items-start gap-6 overflow-hidden rounded-3xl card-sheen p-6 shadow-e4 ring-1 ring-white/60 sm:flex-row sm:items-center sm:justify-between sm:gap-8 sm:p-10 lg:p-14"
         style={{
           background:
             "linear-gradient(135deg, #ECFDF5 0%, #F0FDFA 50%, #F0FDF4 100%)",
@@ -29,22 +29,22 @@ export function FinalCtaSection() {
           className="pointer-events-none absolute -left-16 -top-16 size-64 rounded-full bg-emerald-400/18 blur-3xl"
         />
         <div className="relative z-10 max-w-2xl">
-          <h2
-            className="font-display font-bold text-ink"
-            style={{ fontSize: "clamp(1.5rem, 5vw, 3.75rem)" }}
-          >
+          <h2 className="font-display type-title font-bold tracking-tight text-ink">
             Ready to experience the future?
           </h2>
-          <p className="mt-4 text-base text-slate sm:text-xl">
+          <p className="mt-4 text-base text-slate sm:text-lg">
             Book premium AI-powered home services instantly.
           </p>
-          <Link
-            href={bookUrl()}
-            className="mt-8 inline-flex h-14 items-center gap-2 rounded-2xl bg-[linear-gradient(120deg,#10b981_0%,#0d9488_100%)] px-9 text-base font-bold text-white shadow-[0_18px_44px_-14px_rgb(16_185_129/0.55)] outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-emerald-500/60 sm:text-lg"
-          >
-            Get Started
-            <ArrowRight size={18} />
-          </Link>
+          <div className="mt-8 w-fit">
+            <ButtonLink href={bookUrl()} variant="primary" size="xl" className="group">
+              Get Started
+              <ArrowRight
+                size={18}
+                aria-hidden
+                className="transition-transform group-hover:translate-x-0.5"
+              />
+            </ButtonLink>
+          </div>
         </div>
 
         {/* 3D robot mascot */}

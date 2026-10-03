@@ -23,7 +23,30 @@ export function recordAiProviderUsage(provider: string, status: string): void {
   incCounter("homigo_ai_provider_usage", { provider, status });
 }
 
-export function recordAiCost(costUsd: number, provider: string, role: string): void {
+/**
+ * Record the cost of one request, or record that it could not be priced.
+ *
+ * ── Why status is a parameter ────────────────────────────────────────────────
+ *
+ * `computeTokenCostDetailed` returns `costUsd: 0` with `costStatus: "UNKNOWN"` when a provider has
+ * no pricing entry, and its own comment says that must never be published as a cost: summed over a
+ * day, a stream of unknown-priced requests reads as a free provider. This used to take only the
+ * number, so the distinction died at the call site.
+ *
+ * An unpriced request is therefore counted, not observed. `homigo_ai_cost` stays a histogram of real
+ * money, and `homigo_ai_cost_unknown_total` says how much of the traffic that histogram cannot
+ * account for — so a dashboard can show spend beside its own completeness.
+ */
+export function recordAiCost(
+  costUsd: number,
+  provider: string,
+  role: string,
+  costStatus: "COMPUTED" | "UNKNOWN" = "COMPUTED",
+): void {
+  if (costStatus === "UNKNOWN") {
+    incCounter("homigo_ai_cost_unknown_total", { provider, role });
+    return;
+  }
   observeHist("homigo_ai_cost", costUsd, { provider, role });
 }
 
@@ -90,6 +113,15 @@ export function recordAiDegraded(endpoint: string, reason: string): void {
  */
 const AI_PROVIDERS = ["ANTHROPIC", "GEMINI", "GROQ", "OPENAI"] as const;
 
+  /**
+   * Histograms are deliberately NOT seeded.
+   *
+   * Seeding a counter at zero states a true fact. Observing a zero into a histogram fabricates a
+   * measurement: it increments `_count`, lands a sample in the lowest bucket, and drags
+   * percentiles toward zero for as long as the seed sits inside the rate window after a restart.
+   * A latency panel reading ~0ms before any request has been made is worse than one reading
+   * NO DATA, because only one of them is true.
+   */
 export function initAiMetricsAtZero(): void {
   for (const role of ["CUSTOMER", "PARTNER", "ADMIN", "SUPPORT", "SYSTEM", "AUTOMATION"]) {
     for (const endpoint of ["customer", "partner", "admin", "chat"]) {
@@ -105,8 +137,14 @@ export function initAiMetricsAtZero(): void {
     incCounter("homigo_ai_provider_usage", { provider, status: "failure" }, 0);
     incCounter("homigo_ai_timeout_total", { provider }, 0);
     incCounter("homigo_ai_retry_total", { provider }, 0);
-    observeHist("homigo_ai_latency", 0, { provider });
-    observeHist("homigo_ai_cost", 0, { provider: provider, role: "CUSTOMER" });
+    /**
+     * Seeded so "no request had unknown cost" is a measured zero rather than an absent series.
+     *
+     * Without this the panel had to declare `noValue: 0`, which quietly meant it would still read
+     * "0 requests missing from the cost figure" while the exporter was dead and nothing could be
+     * measured at all — the one panel in the centre that showed a number during an outage.
+     */
+    incCounter("homigo_ai_cost_unknown_total", { provider, role: "CUSTOMER" }, 0);
   }
   const FAILURE_REASONS = [
     "PROVIDER_TIMEOUT", "PROVIDER_RATE_LIMITED", "PROVIDER_QUOTA_EXCEEDED",
@@ -148,6 +186,33 @@ export function initAiMetricsAtZero(): void {
     incCounter("homigo_ai_prompt_blocked", { category, role: "CUSTOMER" }, 0);
   }
   setGauge("homigo_ai_daily_cost_usd", 0);
+  for (const provider of AI_PROVIDERS) {
+    incCounter("homigo_ai_mocked_responses_total", { provider, role: "CUSTOMER" }, 0);
+    incCounter("homigo_ai_mocked_estimated_cost_usd_total", { provider, role: "CUSTOMER" }, 0);
+  }
+}
+
+/**
+ * A dry-run response: no provider was contacted, so nothing was spent.
+ *
+ * Recorded on its own series rather than folded into cost. `homigo_ai_daily_cost_usd` is money that
+ * actually left the account; this is what the same traffic WOULD have cost once a provider key
+ * exists. Keeping them apart is the whole point — with no credential configured, every figure on
+ * the cost gauge was previously an estimate of imaginary spend, and nothing on the dashboard said so.
+ *
+ * `homigo_ai_mocked_responses_total` being non-zero is itself the signal an operator needs: the
+ * assistant is answering, and not with a model.
+ */
+export function recordMockedResponse(
+  provider: string,
+  role: string,
+  estimatedCostUsd: number,
+  costStatus: "COMPUTED" | "UNKNOWN" = "COMPUTED",
+): void {
+  incCounter("homigo_ai_mocked_responses_total", { provider, role });
+  if (costStatus === "COMPUTED" && estimatedCostUsd > 0) {
+    incCounter("homigo_ai_mocked_estimated_cost_usd_total", { provider, role }, estimatedCostUsd);
+  }
 }
 
 export function registerAiMetricSamplers(): void {
@@ -163,6 +228,37 @@ export function registerAiMetricSamplers(): void {
       setGauge("homigo_ai_daily_cost_usd", agg._sum.totalCostUsd ?? 0);
     } catch {
       /* tables may not exist yet */
+    }
+  });
+
+  /**
+   * Whether this process can actually spend money with a provider, and whether anything caps it.
+   *
+   * `ai-budget.service` emits `homigo_ai_budget_decision_total{decision="NO_POLICY_CONFIGURED"}`
+   * when no cap applies, and returns `allowed: true` — a deliberate choice, since refusing every AI
+   * request because nobody has written a budget yet would be worse. But no alert could be written
+   * against it, because "no cap and no API keys" (harmless: nothing can spend) and "no cap and live
+   * keys" (uncapped spend) produced exactly the same counter.
+   *
+   * These two gauges are what tells them apart. Neither reads a key, only whether one is present.
+   */
+  registerScrapeSampler(async () => {
+    try {
+      const { liveInferenceConfigured } = await import("../ai/config");
+      const providers = ["ANTHROPIC", "GEMINI", "GROQ", "OPENAI"] as const;
+      let anyLive = 0;
+      for (const p of providers) {
+        const live = liveInferenceConfigured(p) ? 1 : 0;
+        setGauge("homigo_ai_live_inference_configured", live, { provider: p });
+        anyLive = Math.max(anyLive, live);
+      }
+      setGauge("homigo_ai_live_inference_any", anyLive);
+
+      const { default: prisma } = await import("./prisma");
+      const policies = await prisma.aiBudgetPolicy.count({ where: { isActive: true } });
+      setGauge("homigo_ai_budget_policies_active", policies);
+    } catch {
+      /* config or tables unavailable — leave the previous values rather than reporting a false 0 */
     }
   });
 }

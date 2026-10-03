@@ -31,7 +31,7 @@ export const weatherRoutes = new Elysia({ prefix: "/api/weather" })
   .get("/config", () => ({ success: true, data: { configured: weatherService.isConfigured } }))
   .get(
     "/current",
-    async ({ requireAuth, query, set }) => {
+    async ({ requireAuth, query }) => {
       requireAuth();
       const { lat, lng, city, hasCoords } = parseLoc(query);
       const snap = city ? await weatherService.getByCity(city) : hasCoords ? await weatherService.getByCoords(lat, lng) : null;

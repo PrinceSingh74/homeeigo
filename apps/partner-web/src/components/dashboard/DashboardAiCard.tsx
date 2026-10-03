@@ -85,7 +85,7 @@ export function DashboardAiCard() {
             <Bot className="h-5 w-5 text-partner-purple" />
           </div>
           <h2 className={partnerLayout.sectionTitle}>AI Assistant</h2>
-          <span className="rounded-md bg-partner-purple/30 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-partner-purple">
+          <span className="rounded-md bg-partner-success px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
             Live
           </span>
         </div>

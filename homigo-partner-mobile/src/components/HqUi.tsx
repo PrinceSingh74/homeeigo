@@ -81,10 +81,10 @@ export function EmptyState({ message }: { message: string }) {
   );
 }
 
-export function LoadingBlock() {
+export function LoadingBlock({ label = "Loading…" }: { label?: string }) {
   return (
     <View style={styles.empty}>
-      <Text style={styles.muted}>Loading…</Text>
+      <Text style={styles.muted}>{label}</Text>
     </View>
   );
 }

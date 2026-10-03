@@ -1,3 +1,4 @@
+import { rupeesToPaise } from "../lib/money-paise";
 import { PaymentStatus, ReconciliationStatus, RefundRequestStatus } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { AuditLogService } from "./audit-log.service";
@@ -5,6 +6,7 @@ import { cashbackService } from "./cashback.service";
 import { financialLedgerService } from "./financial-ledger.service";
 import { financialTransactionManager } from "./financial-transaction-manager.service";
 import { razorpayService } from "./razorpay.service";
+import { releaseRefundingPayment } from "./refund-orchestrator.service";
 import { recordFinancialMetric } from "../lib/financial-metrics";
 
 /**
@@ -75,7 +77,7 @@ export class RefundLedgerSyncService {
    */
   async reconcileIndeterminateRefund(refundRequestId: string): Promise<{
     resolved: boolean;
-    outcome: "CONFIRMED" | "NOT_AT_GATEWAY" | "NOT_INDETERMINATE" | "PAYMENT_NOT_FOUND";
+    outcome: "CONFIRMED" | "NOT_AT_GATEWAY" | "NOT_INDETERMINATE" | "PAYMENT_NOT_FOUND" | "LOOKUP_FAILED";
   }> {
     const rr = await prisma.refundRequest.findUnique({ where: { id: refundRequestId } });
     if (!rr || rr.status !== RefundRequestStatus.INDETERMINATE) {
@@ -85,6 +87,9 @@ export class RefundLedgerSyncService {
     if (!payment?.razorpayPaymentId) return { resolved: false, outcome: "PAYMENT_NOT_FOUND" };
 
     const gatewayRefunds = await razorpayService.fetchRefundsForPayment(payment.razorpayPaymentId);
+    // The gateway could not be read. That settles nothing: the refund stays INDETERMINATE and the
+    // payment stays held, and the next sweep asks again.
+    if (gatewayRefunds === null) return { resolved: false, outcome: "LOOKUP_FAILED" };
     const match = gatewayRefunds.find((g) => g.notes?.homigo_operation === rr.idempotencyKey);
 
     if (match) {
@@ -114,13 +119,46 @@ export class RefundLedgerSyncService {
           },
         },
       }),
-      prisma.payment.updateMany({
-        where: { id: payment.id, status: PaymentStatus.REFUNDING },
-        data: { status: PaymentStatus.SUCCESS },
-      }),
+      releaseRefundingPayment(prisma, payment.id),
     ]);
     recordFinancialMetric("refund_indeterminate_resolved_total", 1);
     return { resolved: true, outcome: "NOT_AT_GATEWAY" };
+  }
+
+  /**
+   * The gateway has finished a refund: say so on the payment and, for a cancellation refund, on the
+   * booking the customer is looking at.
+   *
+   * A refund the gateway accepts as `pending` leaves `payments.refund_status = pending` and
+   * `bookings.refund_status = processing`. Nothing else moved them — the ledger is written once, when
+   * the refund is accepted, so this webhook normally lands on ALREADY_SYNCED — and a finished refund
+   * read "in progress" forever (found by the coding-phase certification, 2026-09-27). Status only: no
+   * amount, no journal. Every write is conditional, so a replayed webhook is a no-op. The booking rule
+   * is the recovery sweep's (`cancel-refund:<bookingId>` only): an admin partial refund on a live
+   * booking is not a cancellation refund and must not claim to be one.
+   */
+  private async markGatewayRefundProcessed(paymentId: string, refundId: string): Promise<void> {
+    await prisma.payment.updateMany({
+      where: {
+        id: paymentId,
+        razorpayRefundId: refundId,
+        OR: [{ refundStatus: null }, { refundStatus: { not: "processed" } }],
+      },
+      data: { refundStatus: "processed" },
+    });
+    const request = await prisma.refundRequest.findFirst({
+      where: {
+        paymentId,
+        OR: [{ gatewayRefundId: refundId }, { razorpayRefundId: refundId }],
+        idempotencyKey: { startsWith: "cancel-refund:" },
+      },
+      select: { idempotencyKey: true },
+    });
+    if (!request) return;
+    await prisma.booking.updateMany({
+      where: { id: request.idempotencyKey.slice("cancel-refund:".length), refundStatus: { in: ["pending", "processing"] } },
+      data: { refundStatus: "processed" },
+    });
   }
 
   async syncFromWebhook(opts: {
@@ -147,7 +185,11 @@ export class RefundLedgerSyncService {
 
     const idempotencyKey = `refund:${opts.refundId}`;
     const existingJournal = await prisma.journalEntry.findUnique({ where: { idempotencyKey } });
-    if (existingJournal && payment.razorpayRefundId === opts.refundId) {
+    // The journal keyed by THIS refund id is the idempotency authority: it is written in the same
+    // transaction as the refundedAmount change (here and in the refund orchestrator). The previous
+    // extra condition `payment.razorpayRefundId === refundId` only held for the LATEST refund, so a
+    // replayed or out-of-order webhook for an earlier partial refund added its amount a second time.
+    if (existingJournal) {
       /**
        * The financial effect is already recorded — but an operation may still be sitting in
        * INDETERMINATE waiting to learn exactly that.
@@ -163,25 +205,49 @@ export class RefundLedgerSyncService {
        * effect, and it matches on `status: INDETERMINATE`, so running it twice is a no-op.
        */
       await this.resolveIndeterminateRefund(payment.id, opts.refundId, amount, opts.operationKey);
+      if (opts.refundStatus === "processed") await this.markGatewayRefundProcessed(payment.id, opts.refundId);
       return { handled: true, reason: "ALREADY_SYNCED" };
     }
 
-    await financialTransactionManager.executeWithLedger({
+    const applied = await financialTransactionManager.executeWithLedger({
       journal: financialLedgerService.journalForRefund(payment.id, amount, opts.refundId),
       mutate: async (tx) => {
-        const newRefundedTotal = Math.max(payment.refundedAmount ?? 0, amount);
+        /**
+         * This branch only runs for a refund id that has no journal yet (see ALREADY_SYNCED
+         * above), so the gateway amount is a NEW refund and must ADD to what was already refunded.
+         * `max(prev, amount)` collapsed two partial refunds into one, and the unconditional
+         * REFUNDED mislabelled a half-refunded payment.
+         */
+        await tx.$executeRaw`SELECT id FROM payments WHERE id = ${payment.id} FOR UPDATE`;
+        // Re-checked under the payment lock: two concurrent deliveries of the same refund both
+        // passed the pre-check above, and executeWithLedger only dedupes the JOURNAL after mutate —
+        // so without this the second delivery added the amount again.
+        if (await tx.journalEntry.findUnique({ where: { idempotencyKey } })) return { paymentId: payment.id, duplicate: true };
+        const locked = await tx.payment.findUniqueOrThrow({
+          where: { id: payment.id },
+          select: { amount: true, amountPaid: true, refundedAmount: true },
+        });
+        const paid = locked.amountPaid || locked.amount;
+        const newRefundedTotal = Math.min(paid, Math.round(((locked.refundedAmount ?? 0) + amount) * 100) / 100);
+        const fullyRefunded = newRefundedTotal >= paid - 0.005;
         await tx.payment.update({
           where: { id: payment.id },
           data: {
-            status: PaymentStatus.REFUNDED,
+            status: fullyRefunded ? PaymentStatus.REFUNDED : PaymentStatus.PARTIALLY_REFUNDED,
             razorpayRefundId: opts.refundId,
             refundStatus: opts.refundStatus,
             refundedAmount: newRefundedTotal,
+            refundedAmountPaise: rupeesToPaise(newRefundedTotal),
           },
         });
-        return { paymentId: payment.id };
+        return { paymentId: payment.id, duplicate: false };
       },
     });
+    if (applied.duplicate) {
+      await this.resolveIndeterminateRefund(payment.id, opts.refundId, amount, opts.operationKey);
+      if (opts.refundStatus === "processed") await this.markGatewayRefundProcessed(payment.id, opts.refundId);
+      return { handled: true, reason: "ALREADY_SYNCED" };
+    }
 
     if (payment.bookingId) {
       await cashbackService.reverseOnRefund(payment.bookingId);
@@ -198,6 +264,7 @@ export class RefundLedgerSyncService {
     recordFinancialMetric("refund_amount_total", amount);
 
     await this.resolveIndeterminateRefund(payment.id, opts.refundId, amount, opts.operationKey);
+    if (opts.refundStatus === "processed") await this.markGatewayRefundProcessed(payment.id, opts.refundId);
     await this.markReconciliationMatched(payment.id);
 
     return { handled: true, reason: "REFUND_LEDGER_SYNCED" };

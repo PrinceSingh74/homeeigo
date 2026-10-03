@@ -1,3 +1,4 @@
+import { rupeesToPaise } from "../lib/money-paise";
 import {
   AdjustmentDirection,
   AdjustmentStatus,
@@ -190,9 +191,22 @@ export class FinancialAdjustmentService {
     const amount = adj.amount;
 
     const result = await prisma.$transaction(async (tx) => {
+      /**
+       * Re-check the status under a row lock. The pre-check above is unlocked, so two executors
+       * could both see APPROVED and both credit the wallet against one (deduped) journal.
+       */
+      await tx.$executeRaw`SELECT id FROM financial_adjustments WHERE id = ${id} FOR UPDATE`;
+      const lockedAdj = await tx.financialAdjustment.findUniqueOrThrow({ where: { id }, select: { status: true } });
+      if (lockedAdj.status === AdjustmentStatus.EXECUTED) {
+        // Lost the race to another executor: idempotent, return what they produced.
+        return tx.financialAdjustment.findUniqueOrThrow({ where: { id } });
+      }
+      if (lockedAdj.status !== AdjustmentStatus.APPROVED) throw new Error("INVALID_STATE");
+
       let walletTxnId: string | null = null;
 
       if (adj.targetUserId) {
+        await tx.$executeRaw`SELECT id FROM users WHERE id = ${adj.targetUserId} FOR UPDATE`;
         const user = await tx.user.findUnique({
           where: { id: adj.targetUserId },
           select: { walletBalance: true },
@@ -204,13 +218,15 @@ export class FinancialAdjustmentService {
 
         const updatedUser = await tx.user.update({
           where: { id: adj.targetUserId },
-          data: { walletBalance: { increment: delta } },
+          data: { walletBalance: { increment: delta }, walletBalancePaise: { increment: rupeesToPaise(delta) } },
         });
         const walletTxn = await tx.walletTransaction.create({
           data: {
-            transactionNumber: await nextWalletTxnNumber(),
+            transactionNumber: await nextWalletTxnNumber(tx),
             userId: adj.targetUserId,
-            amount: Math.round(amount),
+            // Must equal the amount actually moved (round2, not an integer round) or the
+            // wallet_balance_consistency CHECK rejects every fractional adjustment.
+            amount: round2(amount),
             walletBalanceBefore: user.walletBalance,
             walletBalanceAfter: updatedUser.walletBalance,
             type: adj.direction === AdjustmentDirection.CREDIT ? WalletTxnType.CREDIT : WalletTxnType.DEBIT,

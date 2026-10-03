@@ -7,6 +7,7 @@ import { collectSupportContext } from "./collectors/support-context";
 import { collectFinanceContext } from "./collectors/finance-context";
 import { collectOperationsContext } from "./collectors/operations-context";
 import type { ContextBuildRequest, ContextSection } from "../types";
+import { mayAttachPlatformFinance } from "./platform-scope";
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -28,7 +29,10 @@ export async function buildBusinessObjectSection(
       if (customerId) data = await collectCustomerContext(customerId);
       break;
     case "PARTNER":
-      if (req.context?.partnerId) data = await collectPartnerContext(req.context.partnerId);
+      if (req.context?.partnerId) {
+        const focus = String(req.context?.metadata?.intent ?? "GENERAL");
+        data = await collectPartnerContext(req.context.partnerId, focus);
+      }
       break;
     case "SUPPORT":
       data = await collectSupportContext(req.actorId);
@@ -54,11 +58,12 @@ export async function buildBusinessObjectSection(
       break;
   }
 
-  // Finance-scoped templates get finance collector even for non-admin roles when category hints finance
-  if (req.intent === "finance" || req.context?.metadata?.domain === "finance") {
+  // Platform finance/ops context is admin-only. A partner earnings question must never
+  // pull ledger, payout batches, or fraud narratives.
+  if (mayAttachPlatformFinance(role) && (req.intent === "finance" || req.context?.metadata?.domain === "finance")) {
     data.finance = await collectFinanceContext();
   }
-  if (req.intent === "operations" || req.context?.metadata?.domain === "operations") {
+  if (mayAttachPlatformFinance(role) && (req.intent === "operations" || req.context?.metadata?.domain === "operations")) {
     data.operations = await collectOperationsContext();
   }
 

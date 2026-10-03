@@ -209,7 +209,7 @@ export default function FinanceConfigPage() {
         ) : (history.data?.history.length ?? 0) === 0 ? (
           <p className="text-sm text-[var(--color-biz-muted)]">No config changes recorded yet.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Change history table">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-[var(--color-biz-line)] text-[var(--color-biz-muted)]">

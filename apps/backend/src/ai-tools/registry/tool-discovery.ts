@@ -1,5 +1,7 @@
 import type { AiGatewayRole } from "@prisma/client";
 import type { AiIntent } from "../../ai/intent/intent-classifier";
+import type { PartnerAiIntent } from "../../ai/intent/partner-intent";
+import type { AdminAiIntent } from "../../ai/intent/admin-intent";
 import type { ToolDefinition } from "../types";
 import { listTools } from "./tool-registry";
 import { getRoleToolPermissions } from "../policy/policy-rules";
@@ -25,7 +27,7 @@ import { recordToolDiscovery } from "../../lib/ai-tools-metrics";
  * tools, and a service search is not handed cancellation. `null` means "no tools" — the
  * right answer for a turn that has no business touching anything.
  */
-const INTENT_TOOL_PREFIXES: Record<AiIntent, string[] | null> = {
+const INTENT_TOOL_PREFIXES: Record<string, string[] | null> = {
   SERVICE_SEARCH: ["read.customer.getServices", "read.common", "read.customer.getOffers"],
   PRICING_INQUIRY: ["read.customer.getServices", "read.common", "read.customer.getOffers"],
   BOOKING_STATUS: ["read.customer.getBooking", "read.common.getLocation", "read.common.getETA"],
@@ -33,6 +35,19 @@ const INTENT_TOOL_PREFIXES: Record<AiIntent, string[] | null> = {
   COMPLAINT: ["read.customer.getBooking", "write.support.createSupportTicket"],
   ACCOUNT: ["read.customer.getWallet", "read.customer.getSubscription", "read.common.getNotifications"],
   GENERAL: ["read.customer.getServices"],
+  EARNINGS: ["read.partner.getPartnerEarnings"],
+  PAYOUT: ["read.partner.getPartnerPayout"],
+  JOBS: ["read.partner.getPartnerJobs"],
+  SCHEDULE: ["read.partner.getPartnerSchedule"],
+  DEMAND: ["read.partner.getPartnerDemand"],
+  PERFORMANCE: ["read.partner.getPartnerPerformance", "read.partner.getPerformanceNudges"],
+  TRAINING: ["read.partner.getPartnerTraining"],
+  ROUTE: ["read.partner.getPartnerJobs", "read.common.getETA"],
+  CAREER: ["read.partner.getPartnerPerformance", "read.partner.getPartnerTraining"],
+  MUTATION_REQUEST: null,
+  DEMAND_SUPPLY: ["read.admin.getSupplyDemand", "read.admin.getDemand", "read.admin.getSupply", "read.admin.getForecast"],
+  OPERATIONS: ["read.admin.getOperations", "read.admin.getSupplyDemand"],
+  FINANCE_READ: ["read.admin.getFinanceSummary", "read.admin.getRevenue"],
 };
 
 /** Namespaces that are never discoverable, whatever the role or intent. */
@@ -44,7 +59,7 @@ function matchesPermission(granted: string[], required: string): boolean {
 
 export type ToolDiscoveryInput = {
   actorRole: AiGatewayRole;
-  intent?: AiIntent;
+  intent?: AiIntent | PartnerAiIntent | AdminAiIntent | string;
   /** Set false to include write tools the caller has no confirmation flow for. */
   includeWrites?: boolean;
 };
@@ -73,12 +88,18 @@ export function getAvailableAiTools(input: ToolDiscoveryInput): DiscoveredTool[]
 
     if (tool.category === "WRITE" && input.includeWrites !== true) return false;
 
-    // An unrecognised intent gets read tools only, rather than everything the role could
-    // theoretically reach — unknown intent is the case most likely to be adversarial.
-    if (intentPrefixes === undefined) return tool.category === "READ";
-    if (intentPrefixes === null) return false;
+    // Partner GENERAL should see partner read tools, not the customer catalogue prefix.
+    const effectivePrefixes =
+      input.actorRole === "PARTNER" && (intentPrefixes === undefined || input.intent === "GENERAL")
+        ? ["read.partner"]
+        : input.actorRole === "ADMIN" && (intentPrefixes === undefined || input.intent === "GENERAL")
+          ? ["read.admin"]
+          : intentPrefixes;
 
-    return intentPrefixes.some((prefix) => tool.toolId.startsWith(prefix));
+    if (effectivePrefixes === undefined) return tool.category === "READ";
+    if (effectivePrefixes === null) return false;
+
+    return effectivePrefixes.some((prefix) => tool.toolId.startsWith(prefix));
   });
 
   recordToolDiscovery(input.actorRole, input.intent ?? "UNKNOWN", available.length);

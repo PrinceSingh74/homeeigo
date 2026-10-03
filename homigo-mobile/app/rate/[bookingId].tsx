@@ -104,7 +104,7 @@ export default function RateBookingScreen() {
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
+        <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
           {existingQuery.isLoading ? (
             <ActivityIndicator color={c.primary} style={{ marginTop: spacing["3xl"] }} />
           ) : (

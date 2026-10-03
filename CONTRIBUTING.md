@@ -19,7 +19,8 @@ Thanks for your interest in contributing to HOMIGO!
 
 - `apps/web` — Next.js frontend
 - `apps/backend` — Bun + Elysia.js backend
-- `apps/mobile` — React Native app
+- `homigo-mobile` — customer React Native app (Expo)
+- `homigo-partner-mobile` — partner React Native app (Expo)
 - `docs` — Documentation
 
 ## Questions?

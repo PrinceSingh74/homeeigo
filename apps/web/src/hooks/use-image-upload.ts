@@ -34,7 +34,8 @@ export type UseImageUploadOptions = {
 };
 
 const DEFAULTS = {
-  endpoint: "/api/uploads",
+  // The only upload route the backend exposes (routes/uploads.ts). A bare "/api/uploads" 404s.
+  endpoint: "/api/uploads/ratings",
   fieldName: "file",
   maxItems: 4,
   maxFileSize: 8 * 1024 * 1024,

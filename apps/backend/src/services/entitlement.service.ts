@@ -54,6 +54,17 @@ const EMPTY: Entitlements = {
 
 const clampPct = (n: number) => Math.max(0, Math.min(100, n));
 
+/**
+ * Tiers that are a paid HOMEEIGO membership. These plans were stored with display-only
+ * benefit labels (type null), so the PREMIUM_ONLY_ACCESS row was never present and an
+ * active member was refused at booking. The tier is the membership they bought.
+ */
+const MEMBERSHIP_TIERS_WITH_PREMIUM_ACCESS = new Set(["premium", "platinum"]);
+
+function tierUnlocksPremium(tier: string | null | undefined): boolean {
+  return MEMBERSHIP_TIERS_WITH_PREMIUM_ACCESS.has((tier ?? "").trim().toLowerCase());
+}
+
 export class EntitlementService {
   /**
    * Resolve a user's effective entitlements from their active subscription.
@@ -101,6 +112,7 @@ export class EntitlementService {
       }
       out.benefits.push({ type: b.type, value: b.value, label: b.label });
     }
+    if (tierUnlocksPremium(sub.plan.tier)) out.premiumAccess = true;
     return out;
   }
 

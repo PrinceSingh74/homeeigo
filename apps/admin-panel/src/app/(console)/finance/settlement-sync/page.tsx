@@ -8,6 +8,18 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { adminApi } from "@/services/admin-api";
 
+/**
+ * A missing rate is UNMEASURED, never 100. `?? 100` here painted "never reconciled" as a perfect
+ * score on the finance dashboard, independently of whatever the backend sent.
+ */
+function pct(value: number | null | undefined): string {
+  return value == null ? "Not measured" : `${value}%`;
+}
+
+function score(value: number | null | undefined): string {
+  return value == null ? "Not measured" : String(value);
+}
+
 export default function FinanceSettlementSyncPage() {
   const qc = useQueryClient();
   const [escalateId, setEscalateId] = useState<string | null>(null);
@@ -93,10 +105,10 @@ export default function FinanceSettlementSyncPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Settlement accuracy" value={`${metrics.settlementAccuracyPct ?? 100}%`} icon={Scale} loading={isLoading} />
+        <KpiCard label="Settlement accuracy" value={pct(metrics.settlementAccuracyPct)} icon={Scale} loading={isLoading} />
         <KpiCard label="Open discrepancies" value={String(metrics.outstandingVariance ?? 0)} icon={Scale} loading={isLoading} />
-        <KpiCard label="Health score" value={`${healthData.healthScore ?? 100}`} icon={Scale} loading={!health} />
-        <KpiCard label="Resolution rate" value={`${healthData.resolutionRate ?? 100}%`} icon={Scale} loading={!health} />
+        <KpiCard label="Health score" value={score(healthData.healthScore)} icon={Scale} loading={!health} />
+        <KpiCard label="Resolution rate" value={pct(healthData.resolutionRate)} icon={Scale} loading={!health} />
       </div>
 
       <DataTable title="Sync runs" headers={["Started", "Status", "Synced", "Discrepancies", "Accuracy"]} rows={runRows} loading={isLoading} emptyMessage="No sync runs" />

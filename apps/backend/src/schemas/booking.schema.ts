@@ -16,17 +16,39 @@ export const createBookingSchema = z.object({
   paymentMethod: z.string().trim().max(50).optional(),
   couponCode: z.string().trim().max(40).optional(),
   packagePrice: z.number().positive().optional(),
+  variantId: z.string().trim().min(1).max(40).optional(),
+  quantity: z.number().int().min(1).max(1000).optional(),
+  audience: z.string().trim().max(20).optional(),
+  professionalPreference: z.string().trim().max(20).optional(),
   addonIds: z.array(z.string().trim().max(40)).max(10).optional(),
+  addonQuantities: z.record(z.string().trim().max(40), z.number().int().min(1).max(100)).optional(),
+  serviceVersion: z.number().int().positive().optional(),
+  quoteToken: z.string().max(2048).optional(),
+  /** Phase 06: codes of the blocking requirements the customer confirmed (checked server-side). */
+  requirementAttestations: z.array(z.string().trim().min(1).max(60)).max(60).optional(),
+  /** Phase D: the customer attests a parent/guardian confirms the booking (an attestation, not proof). */
+  guardianAttested: z.boolean().optional(),
 });
 
 export const bookingPriceQuoteSchema = z.object({
   serviceId: idSchema,
   couponCode: z.string().trim().max(40).optional(),
   packagePrice: z.number().positive().optional(),
+  variantId: z.string().trim().min(1).max(40).optional(),
+  quantity: z.number().int().min(1).max(1000).optional(),
+  audience: z.string().trim().max(20).optional(),
+  professionalPreference: z.string().trim().max(20).optional(),
   addonIds: z.array(z.string().trim().max(40)).max(10).optional(),
+  addonQuantities: z.record(z.string().trim().max(40), z.number().int().min(1).max(100)).optional(),
+  serviceVersion: z.number().int().positive().optional(),
+  // The address the booking will use. Preferred over lat/lng: the server prices from the SAME
+  // coordinates booking creation will use, so the quote cannot differ from the charge.
+  addressId: idSchema.optional(),
   // Service location — enables weather-based dynamic surge in the quote.
   lat: z.number().min(-90).max(90).optional(),
   lng: z.number().min(-180).max(180).optional(),
+  /** Phase D: lets the quote explain the age policy outcome with the attestation the customer would give. */
+  guardianAttested: z.boolean().optional(),
 });
 
 export const updateBookingCustomerSchema = z.object({
@@ -73,6 +95,16 @@ export const geoPingSchema = z.object({
   longitude: z.number().min(-180).max(180),
   notes: z.string().trim().max(500).optional(),
   photos: z.array(z.string().url()).max(10).optional(),
+});
+
+/**
+ * For transitions that do not require a proof of presence (en-route, complete): a client without a
+ * GPS fix sends null/omits the coordinates instead of inventing 0,0. The server treats absent
+ * coordinates as UNKNOWN (see lib/geo-unknown.ts) — never as a location.
+ */
+export const optionalGeoPingSchema = geoPingSchema.extend({
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
 });
 
 export type CreateBookingInput = z.infer<typeof createBookingSchema>;

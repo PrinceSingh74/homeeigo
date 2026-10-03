@@ -9,6 +9,18 @@ import { recordFinancialMetric } from "../lib/financial-metrics";
 export const COIN_TO_RUPEE = 0.1;
 export const MIN_REDEEM_COINS = 100;
 
+/**
+ * Outstanding coins are issued minus redeemed minus expired.
+ * Expiry posts DR HCOIN_LIABILITY, so leaving EXPIRE out of this sum reports liability the ledger has already released.
+ */
+export function hcoinLiabilityFromCoins(issued: number, redeemed: number, expired: number) {
+  const outstanding = issued - redeemed - expired;
+  return {
+    outstanding,
+    liabilityRupees: Math.floor(outstanding * COIN_TO_RUPEE),
+  };
+}
+
 export type HCoinEvent = "BOOKING_COMPLETED" | "REVIEW_SUBMITTED" | "REFERRAL_QUALIFIED" | "PROMO";
 
 const EVENT_REASON: Record<HCoinEvent, string> = {
@@ -118,11 +130,18 @@ export class HCoinService {
     const { rupeesToPaise } = await import("../lib/money-paise");
     const creditPaise = rupeesToPaise(rupees);
 
-    const result = await prisma.$transaction(async (tx) => {
-      const hw = await tx.hCoinWallet.update({
-        where: { userId },
+    let result: { coinBalance: number; walletBalance: number; hcoinTxnId: string; walletTxnId: string };
+    try {
+    result = await prisma.$transaction(async (tx) => {
+      // The balance check above is advisory: serialise per user and make the decrement itself
+      // conditional so two concurrent redeems cannot both pass and drive the coin balance negative.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"wallet_pay:" + userId}))`;
+      const debited = await tx.hCoinWallet.updateMany({
+        where: { userId, balance: { gte: coins } },
         data: { balance: { decrement: coins }, lifetimeRedeemed: { increment: coins } },
       });
+      if (debited.count === 0) throw new Error("INSUFFICIENT_COINS");
+      const hw = await tx.hCoinWallet.findUniqueOrThrow({ where: { userId } });
       const hcoinTxn = await tx.hCoinTransaction.create({
         data: {
           userId,
@@ -143,7 +162,7 @@ export class HCoinService {
       });
       const walletTxn = await tx.walletTransaction.create({
         data: {
-          transactionNumber: await nextWalletTxnNumber(),
+          transactionNumber: await nextWalletTxnNumber(tx),
           userId,
           amount: rupees,
           walletBalanceBefore: user?.walletBalance ?? 0,
@@ -166,7 +185,20 @@ export class HCoinService {
           { accountCode: "CUSTOMER_WALLET", debit: 0, credit: rupees },
         ],
       });
-      await financialLedgerService.recordWalletTopUpInTransaction(tx, walletTxn.id, rupees);
+      /**
+       * The journal above is the complete entry for a redemption: the platform stops owing these coins
+       * and starts owing the same value as wallet balance.
+       *
+       * A `recordWalletTopUpInTransaction` call used to follow it, which booked a SECOND credit to
+       * CUSTOMER_WALLET and debited BANK_SETTLEMENT as though money had arrived from the bank. No money
+       * arrives when coins are redeemed — the value was already a liability — so one redemption left the
+       * books claiming twice the wallet liability it had actually created. Each journal balanced on its
+       * own, so a per-journal debit-equals-credit check could never see it; what saw it was comparing the
+       * CUSTOMER_WALLET account against the wallet it represents. `ledger-backfill.service` already models
+       * a redemption as this single `hcoin_redeemed:` journal and excludes redemptions from wallet top-ups
+       * (it only backfills `referenceType: "razorpay_order"`), so removing the extra call makes the runtime
+       * agree with the platform's own reconstruction of the ledger.
+       */
       return {
         coinBalance: hw.balance,
         walletBalance: updated.walletBalance,
@@ -174,6 +206,10 @@ export class HCoinService {
         walletTxnId: walletTxn.id,
       };
     });
+    } catch (err) {
+      if (err instanceof Error && err.message === "INSUFFICIENT_COINS") return { error: "INSUFFICIENT_COINS" };
+      throw err;
+    }
     void AuditLogService.success("HCOIN_REDEEMED", {
       userId,
       details: { hcoinTxnId: result.hcoinTxnId, coins, rupees },
@@ -231,19 +267,23 @@ export class HCoinService {
   }
 
   async adminAnalytics() {
-    const [issuedAgg, redeemedAgg, holders, rules] = await Promise.all([
+    const [issuedAgg, redeemedAgg, expiredAgg, holders, rules] = await Promise.all([
       prisma.hCoinTransaction.aggregate({ where: { type: HCoinTxnType.EARN }, _sum: { amount: true } }),
       prisma.hCoinTransaction.aggregate({ where: { type: HCoinTxnType.REDEEM }, _sum: { amount: true } }),
+      prisma.hCoinTransaction.aggregate({ where: { type: HCoinTxnType.EXPIRE }, _sum: { amount: true } }),
       prisma.hCoinWallet.count({ where: { balance: { gt: 0 } } }),
       this.adminRules(),
     ]);
     const issued = issuedAgg._sum.amount ?? 0;
     const redeemed = redeemedAgg._sum.amount ?? 0;
+    const expired = expiredAgg._sum.amount ?? 0;
+    const liability = hcoinLiabilityFromCoins(issued, redeemed, expired);
     return {
       totalIssued: issued,
       totalRedeemed: redeemed,
-      outstanding: issued - redeemed,
-      liabilityRupees: Math.floor((issued - redeemed) * COIN_TO_RUPEE),
+      totalExpired: expired,
+      outstanding: liability.outstanding,
+      liabilityRupees: liability.liabilityRupees,
       holders,
       rules,
     };

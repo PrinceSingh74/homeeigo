@@ -23,7 +23,7 @@ export function GlobalTrackingPublisher() {
     [data?.bookings],
   );
 
-  const coords = useGeolocationWatcher({ enabled: !!activeJob });
+  const coords = useGeolocationWatcher({ enabled: !!activeJob, enableHighAccuracy: false });
   usePartnerTrackingPublisher({
     bookingId: activeJob?.id ?? null,
     coords,

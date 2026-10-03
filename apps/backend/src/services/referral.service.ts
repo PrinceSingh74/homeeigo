@@ -1,3 +1,4 @@
+import { rupeesToPaise } from "../lib/money-paise";
 import { prisma } from "../lib/prisma";
 import {
   CommissionStatus,
@@ -267,17 +268,35 @@ export class ReferralService {
 
     const { balance } = await this.balanceParts(userId);
     if (amount > balance) return { error: "INSUFFICIENT_BALANCE" };
-    const result = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.findUnique({ where: { id: userId }, select: { walletBalance: true } });
-      if (!user) throw new Error("USER_NOT_FOUND");
-      await tx.referralWithdrawal.create({ data: { userId, amount, status: "completed" } });
+    let result: { walletBalance: number; walletTxnId: string };
+    try {
+      result = await prisma.$transaction(async (tx) => {
+        /**
+         * The pre-check above is advisory only. Two concurrent withdrawals of the full balance
+         * both passed it and both credited the wallet (money created from nothing). Serialise per
+         * user and recompute the withdrawable balance from the same transaction's view.
+         */
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"referral_withdraw:" + userId}))`;
+        const [earnedAgg, withdrawnAgg] = await Promise.all([
+          tx.referralCommission.aggregate({
+            where: { referrerId: userId, status: { in: WITHDRAWABLE_STATUSES } },
+            _sum: { amount: true },
+          }),
+          tx.referralWithdrawal.aggregate({ where: { userId }, _sum: { amount: true } }),
+        ]);
+        const lockedBalance = (earnedAgg._sum.amount ?? 0) - (withdrawnAgg._sum.amount ?? 0);
+        if (amount > lockedBalance) throw new Error("INSUFFICIENT_BALANCE");
+
+        const user = await tx.user.findUnique({ where: { id: userId }, select: { walletBalance: true } });
+        if (!user) throw new Error("USER_NOT_FOUND");
+        await tx.referralWithdrawal.create({ data: { userId, amount, status: "completed" } });
       const updated = await tx.user.update({
         where: { id: userId },
-        data: { walletBalance: { increment: amount } },
+        data: { walletBalance: { increment: amount }, walletBalancePaise: { increment: rupeesToPaise(amount) } },
       });
       const walletTxn = await tx.walletTransaction.create({
         data: {
-          transactionNumber: await nextWalletTxnNumber(),
+          transactionNumber: await nextWalletTxnNumber(tx),
           userId,
           amount,
           walletBalanceBefore: user.walletBalance,
@@ -297,7 +316,11 @@ export class ReferralService {
         }),
       );
       return { walletBalance: updated.walletBalance, walletTxnId: walletTxn.id };
-    });
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message === "INSUFFICIENT_BALANCE") return { error: "INSUFFICIENT_BALANCE" };
+      throw err;
+    }
 
     recordFinancialMetric("referral_commission_total", 1);
     recordFinancialMetric("referral_commission_amount", amount);

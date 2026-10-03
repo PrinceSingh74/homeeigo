@@ -15,7 +15,10 @@ export type RegistrationSessionContext = {
 export class PartnerRegistrationSessionService {
   private readonly secret = JWT_SECRETS.ACCESS;
 
-  async createOrRefreshAfterOtp(userId: string): Promise<{
+  async createOrRefreshAfterOtp(
+    userId: string,
+    leadId?: string | null,
+  ): Promise<{
     session: RegistrationSessionContext;
     registrationToken: string;
   }> {
@@ -28,11 +31,13 @@ export class PartnerRegistrationSessionService {
         otpVerified: true,
         expiresAt,
         status: PartnerRegistrationSessionStatus.ACTIVE,
+        leadId: leadId ?? undefined,
       },
       update: {
         otpVerified: true,
         expiresAt,
         status: PartnerRegistrationSessionStatus.ACTIVE,
+        ...(leadId ? { leadId } : {}),
       },
     });
 
@@ -87,7 +92,10 @@ export class PartnerRegistrationSessionService {
     }
   }
 
-  async resolveSession(token: string): Promise<RegistrationSessionContext> {
+  async resolveSession(
+    token: string,
+    opts?: { allowCompleted?: boolean },
+  ): Promise<RegistrationSessionContext> {
     const decoded = this.verifyToken(token);
     if (!decoded) throw new Error("FORBIDDEN:Invalid or expired registration token");
 
@@ -95,10 +103,13 @@ export class PartnerRegistrationSessionService {
       where: { id: decoded.sessionId },
     });
     if (!session) throw new Error("FORBIDDEN:Registration session not found");
-    if (session.status !== PartnerRegistrationSessionStatus.ACTIVE) {
+    if (session.status === PartnerRegistrationSessionStatus.COMPLETED) {
+      if (!opts?.allowCompleted) {
+        throw new Error("CONFLICT:Application already submitted — check your approval status");
+      }
+    } else if (session.status !== PartnerRegistrationSessionStatus.ACTIVE) {
       throw new Error("FORBIDDEN:Registration session is no longer active");
-    }
-    if (session.expiresAt < new Date()) {
+    } else if (session.expiresAt < new Date()) {
       await prisma.partnerRegistrationSession.update({
         where: { id: session.id },
         data: { status: PartnerRegistrationSessionStatus.EXPIRED },
@@ -114,6 +125,13 @@ export class PartnerRegistrationSessionService {
       providerId: session.providerId,
       otpVerified: session.otpVerified,
     };
+  }
+
+  async bindLead(sessionId: string, leadId: string): Promise<void> {
+    await prisma.partnerRegistrationSession.update({
+      where: { id: sessionId },
+      data: { leadId },
+    });
   }
 
   async bindProvider(sessionId: string, userId: string, providerId: string): Promise<RegistrationSessionContext> {
@@ -156,6 +174,23 @@ export class PartnerRegistrationSessionService {
     await prisma.partnerRegistrationSession.update({
       where: { id: sessionId },
       data: { status: PartnerRegistrationSessionStatus.COMPLETED },
+    });
+  }
+
+  async markStepComplete(userId: string, step: string): Promise<void> {
+    const session = await prisma.partnerRegistrationSession.findUnique({ where: { userId } });
+    if (!session) return;
+    const completed = Array.isArray(session.completedSteps)
+      ? new Set(session.completedSteps as string[])
+      : new Set<string>();
+    completed.add(step);
+    await prisma.partnerRegistrationSession.update({
+      where: { id: session.id },
+      data: {
+        currentStep: step,
+        completedSteps: [...completed],
+        lastSavedAt: new Date(),
+      },
     });
   }
 

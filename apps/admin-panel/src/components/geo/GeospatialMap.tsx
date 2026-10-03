@@ -345,6 +345,7 @@ function GeospatialMapInner({
       <div
         ref={divRef}
         className={`absolute inset-0 ${drawMode !== "none" ? "cursor-crosshair" : ""}`}
+        role="region"
         aria-label="Geospatial map"
       />
 

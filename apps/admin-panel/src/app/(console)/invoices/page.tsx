@@ -8,9 +8,8 @@ import { DataTable, StatusBadge } from "@/components/ui/DataTable";
 import { Pagination } from "@/components/ui/Pagination";
 import { useAdminInvoicesQuery, useAdminRevenueReportQuery } from "@/hooks/use-admin-data";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
-import { useAdminStore } from "@/stores/admin-store";
+import { apiRequestBlob } from "@/lib/api-client";
 import { inr } from "@/lib/format";
-import { resolveApiBase } from "@/lib/api-base";
 
 const PAGE_SIZE = 20;
 
@@ -44,11 +43,9 @@ export default function InvoicesPage() {
   const exportCsv = async () => {
     setExporting(true);
     try {
-      const base = resolveApiBase();
-      const token = useAdminStore.getState().accessToken;
-      const url = `${base.replace(/\/$/, "")}/api/admin/invoices/export.csv${debounced ? `?search=${encodeURIComponent(debounced)}` : ""}`;
-      const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
-      const blob = await res.blob();
+      // Shared client: bearer + coordinated refresh, and a non-2xx now throws instead of downloading
+      // the error body as "invoices.csv".
+      const blob = await apiRequestBlob("/api/admin/invoices/export.csv", { auth: true, query: debounced ? { search: debounced } : undefined });
       const href = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = href;
@@ -61,7 +58,12 @@ export default function InvoicesPage() {
   };
 
   return (
-    <PageShell title="Invoices & Revenue" subtitle="Unified billing across bookings, subscriptions & gift cards">
+    <PageShell
+      eyebrow="Finance HQ"
+      icon={FileText}
+      title="Invoices & Revenue"
+      subtitle="Unified billing across bookings, subscriptions, and gift cards. Net is gross minus refunds."
+    >
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard label="Gross revenue" value={inr(report?.grossRevenue ?? 0)} icon={IndianRupee} />
         <KpiCard label="Refunds" value={inr(report?.refunds ?? 0)} icon={TrendingDown} />
@@ -75,7 +77,7 @@ export default function InvoicesPage() {
       </div>
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="relative">
+        <div className="relative w-72">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-biz-muted)]" />
           <input
             value={search}
@@ -84,14 +86,14 @@ export default function InvoicesPage() {
               setPage(1);
             }}
             placeholder="Search invoice or customer…"
-            className="w-72 rounded-lg border border-[var(--color-biz-line)] bg-transparent py-2 pl-9 pr-3 text-sm"
+            className="biz-input pl-9"
           />
         </div>
         <button
           type="button"
           onClick={() => void exportCsv()}
           disabled={exporting}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-biz-primary)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          className="biz-btn biz-btn-primary"
         >
           <Download size={15} /> {exporting ? "Exporting…" : "Export CSV"}
         </button>

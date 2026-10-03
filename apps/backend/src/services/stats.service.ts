@@ -1,5 +1,7 @@
+import { analyticsWhere } from "../lib/analytics-scope";
 import { BookingStatus, UserRole } from "@prisma/client";
 import prisma from "../lib/prisma";
+import { CUSTOMER_CATALOG_WHERE } from "../lib/service-domain";
 import { cacheService } from "./cache.service";
 
 export type StatsOverview = {
@@ -21,10 +23,12 @@ export class StatsService {
     return cacheService.getOrFetch("stats:overview", 120, async () => {
       const [completedBookings, activeProviders, availableServices, customers, ratingAgg] =
         await Promise.all([
-          prisma.booking.count({ where: { status: BookingStatus.COMPLETED } }),
+          // Public-facing "bookings completed" counter — a business claim shown to customers.
+          prisma.booking.count({ where: { status: BookingStatus.COMPLETED, ...analyticsWhere() } }),
           prisma.provider.count({ where: { isActive: true } }),
-          prisma.service.count({ where: { isActive: true } }),
-          prisma.user.count({ where: { role: UserRole.CUSTOMER } }),
+          // Public counter: customer-visible commercial services only (never fixtures).
+          prisma.service.count({ where: CUSTOMER_CATALOG_WHERE }),
+          prisma.user.count({ where: { role: UserRole.CUSTOMER, ...analyticsWhere() } }),
           prisma.rating.aggregate({ _avg: { stars: true }, _count: true }),
         ]);
 

@@ -17,21 +17,21 @@ test.describe("Admin journey", () => {
     await page.locator("#admin-email").fill(SEED_ADMIN.email);
     await page.locator("#admin-password").fill(SEED_ADMIN.password);
     await page.getByRole("button", { name: /enter business hq/i }).click();
-    await expect(page.getByRole("heading", { name: /business overview/i })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: /Executive HQ|business overview/i })).toBeVisible({ timeout: 30_000 });
 
-    // 2) Ops Map (Live Ops)
-    await page.getByRole("link", { name: /Live Ops/i }).click();
+    // Canonical routes (collapsed HQ accordion must not intercept). Same surfaces as signoff-journey.
+    await page.goto("/operations", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/operations/, { timeout: 20_000 });
-    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: /operations/i }).first()).toBeVisible({ timeout: 20_000 });
 
-    // 3) Heatmap
-    await page.getByRole("link", { name: /Demand Heatmap/i }).click();
-    await expect(page.getByRole("heading", { name: /Demand Heatmap/i })).toBeVisible({ timeout: 20_000 });
+    await page.goto("/heatmap", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: /heatmap/i }).first()).toBeVisible({ timeout: 20_000 });
 
-    // 4) Geofence
-    await page.getByRole("link", { name: /Zone Control/i }).click();
+    await page.goto("/geofences", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/geofences/, { timeout: 20_000 });
-    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: /zone control|geofence/i }).first()).toBeVisible({
+      timeout: 20_000,
+    });
 
     await page.screenshot({ path: "e2e/__artifacts__/journey-admin.png", fullPage: true });
   });

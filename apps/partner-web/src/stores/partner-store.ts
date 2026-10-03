@@ -11,10 +11,9 @@ import type { AuthStatus, PartnerUser } from "@/types/partner";
 type PartnerAuthState = {
   user: PartnerUser | null;
   accessToken: string | null;
-  refreshToken: string | null;
   status: AuthStatus;
   error: string | null;
-  setSession: (user: PartnerUser, accessToken: string, refreshToken: string) => void;
+  setSession: (user: PartnerUser, accessToken: string) => void;
   setError: (msg: string | null) => void;
   clearSession: () => void;
   bootstrap: () => Promise<void>;
@@ -53,16 +52,14 @@ export const usePartnerStore = create<PartnerAuthState>()(
     (set, get) => ({
       user: null,
       accessToken: null,
-      refreshToken: null,
       status: "idle",
       error: null,
 
-      setSession: (user, accessToken, refreshToken) => {
+      setSession: (user, accessToken) => {
         setSentryUser({ id: (user as { id?: string })?.id, role: (user as { role?: string })?.role });
         set({
           user,
           accessToken,
-          refreshToken,
           status: "authenticated",
           error: null,
         });
@@ -75,29 +72,26 @@ export const usePartnerStore = create<PartnerAuthState>()(
         set({
           user: null,
           accessToken: null,
-          refreshToken: null,
           status: "unauthenticated",
           error: null,
         });
       },
 
       bootstrap: async () => {
-        const { refreshToken, status } = get();
+        const { user: persisted, status } = get();
         if (status === "initializing") return;
         set({ status: "initializing", error: null });
 
-        if (!refreshToken) {
+        // A persisted profile means a refresh cookie may exist; the refresh call proves it.
+        if (!persisted) {
           set({ status: "unauthenticated" });
           return;
         }
 
         try {
-          if (!get().accessToken && refreshToken) {
-            const tokens = await partnerAuthApi.refresh(refreshToken);
-            set({
-              accessToken: tokens.accessToken,
-              refreshToken: tokens.refreshToken,
-            });
+          if (!get().accessToken) {
+            const tokens = await partnerAuthApi.refresh();
+            set({ accessToken: tokens.accessToken });
           }
           const user = await partnerAuthApi.me();
           const guard = ensureProviderRole(user);
@@ -118,10 +112,7 @@ export const usePartnerStore = create<PartnerAuthState>()(
         try {
           const payload = await partnerAuthApi.login(email, password);
           // Login response doesn't always include role — confirm via /me.
-          set({
-            accessToken: payload.accessToken,
-            refreshToken: payload.refreshToken,
-          });
+          set({ accessToken: payload.accessToken });
           const user = await partnerAuthApi.me();
           const guard = ensureProviderRole(user);
           if (!guard.ok) {
@@ -129,7 +120,7 @@ export const usePartnerStore = create<PartnerAuthState>()(
             set({ error: guard.message });
             return { ok: false, message: guard.message };
           }
-          get().setSession(user, payload.accessToken, payload.refreshToken);
+          get().setSession(user, payload.accessToken);
           return { ok: true };
         } catch (error) {
           const message = getErrorMessage(error);
@@ -157,15 +148,12 @@ export const usePartnerStore = create<PartnerAuthState>()(
         set({ error: null });
         try {
           const payload = await partnerAuthApi.verifyOtp(phoneNumber, otp);
-          if (!payload?.accessToken || !payload?.refreshToken) {
+          if (!payload?.accessToken) {
             const message = "OTP verified but no session was issued. Please try again.";
             set({ error: message });
             return { ok: false, message };
           }
-          set({
-            accessToken: payload.accessToken,
-            refreshToken: payload.refreshToken,
-          });
+          set({ accessToken: payload.accessToken });
           const user = await partnerAuthApi.me();
           const guard = ensureProviderRole(user);
           if (!guard.ok) {
@@ -173,7 +161,7 @@ export const usePartnerStore = create<PartnerAuthState>()(
             set({ error: guard.message });
             return { ok: false, message: guard.message };
           }
-          get().setSession(user, payload.accessToken, payload.refreshToken);
+          get().setSession(user, payload.accessToken);
           return { ok: true };
         } catch (error) {
           const message = getErrorMessage(error);
@@ -183,32 +171,30 @@ export const usePartnerStore = create<PartnerAuthState>()(
       },
 
       logout: async () => {
-        const token = get().refreshToken;
-        get().clearSession();
-        if (token) {
-          try {
-            await partnerAuthApi.logout(token);
-          } catch {
-            /* already cleared locally */
-          }
+        // Call the API first: it revokes the cookie's session server-side and clears the cookie.
+        try {
+          await partnerAuthApi.logout();
+        } catch {
+          /* the local session is cleared regardless */
         }
+        get().clearSession();
       },
     }),
     {
       name: "homigo-partner-store",
+      /**
+       * NO TOKENS IN localStorage. The access token is memory-only; the refresh token is an
+       * HttpOnly, SameSite=Strict, audience-scoped cookie (hg_rt_partner) that JavaScript cannot
+       * read. Only the profile is persisted, so the shell can render before the first refresh.
+       */
       partialize: (state) => ({
         user: state.user,
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
         status: state.status === "authenticated" ? ("authenticated" as const) : undefined,
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;
-        if (state.status === "authenticated" && state.user && (state.accessToken || state.refreshToken)) {
-          return;
-        }
-        if (state.refreshToken) state.status = "idle";
-        else state.status = "unauthenticated";
+        if (state.status === "authenticated" && state.user && state.accessToken) return;
+        state.status = state.user ? "idle" : "unauthenticated";
       },
     },
   ),
@@ -216,9 +202,10 @@ export const usePartnerStore = create<PartnerAuthState>()(
 
 configureApiClient({
   getAccessToken: () => usePartnerStore.getState().accessToken,
-  getRefreshToken: () => usePartnerStore.getState().refreshToken,
-  setTokens: (accessToken, refreshToken) => {
-    usePartnerStore.setState({ accessToken, refreshToken });
+  // A persisted profile is the session marker; the credential is the HttpOnly cookie.
+  hasSession: () => Boolean(usePartnerStore.getState().user),
+  setAccessToken: (accessToken) => {
+    usePartnerStore.setState({ accessToken });
   },
   clearSession: () => usePartnerStore.getState().clearSession(),
 });

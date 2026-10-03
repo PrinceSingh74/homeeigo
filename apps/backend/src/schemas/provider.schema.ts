@@ -42,7 +42,10 @@ export const bookingRejectSchema = z.object({
 });
 
 export const bookingAcceptSchema = z.object({
-  eta: z.number().int().positive().max(480).optional(),
+  // Partner web posts `{ eta }` even when unset. JSON.stringify turns that into
+  // `{"eta":null}` (undefined is dropped; NaN becomes null). `optional()` rejects
+  // null with "Expected number, received null" — the toast partners see on Accept.
+  eta: z.number().int().positive().max(480).nullish(),
 });
 
 export const trackingLocationSchema = z.object({

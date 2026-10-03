@@ -1,12 +1,16 @@
 import { TrackingStatus } from "@prisma/client";
+import { PRESENCE_STALE_SEC } from "../lib/partner-presence.config";
 import prisma from "../lib/prisma";
 import { distanceKm, etaMinutes } from "../lib/geo";
 import { createWsEnvelope, pushToBookingTracking } from "./notification-hub";
-import { roomManager, MessageType, WSMessage } from "../lib/websocket";
+import { publishBookingStatusBackground } from "../lib/booking-realtime";
+import { setBookingAuditContext } from "../lib/booking-audit-context";
 import { redisClient } from "../lib/redis";
 import { mapsService } from "./maps.service";
 import { recordFeatureEvent, observeHist } from "../lib/metrics";
+import { gpsTravelWindowMinutes, gpsTravelWindowOpen } from "../lib/travel-window";
 import { geofenceService } from "./geofence.service";
+import { ACTIVE_FULFILMENT_STATUSES } from "../lib/privacy-policy.engine";
 import { eventPlatformConfig } from "../events/core/config";
 import { emitInTransaction } from "../events/core/event-publisher";
 import {
@@ -19,7 +23,15 @@ import {
 // Phase 17.1 — throttling + presence constants.
 const THROTTLE_DISTANCE_M = 10; // ignore moves smaller than this …
 const THROTTLE_WINDOW_MS = 5_000; // … within this window
-const PRESENCE_TTL_SEC = 60; // provider considered online for 60s after a ping
+/**
+ * Provider considered online for this long after a ping.
+ *
+ * Derived from the canonical presence window rather than restated. The literal 60 appeared in four
+ * places — here, demand-supply-warning, partner-intelligence's LOCATION_LIVE_S, and the env-tunable
+ * config — and only the config one responded to PRESENCE_STALE_SEC. Setting that variable used to
+ * move one of the four and silently leave the other three at 60.
+ */
+const PRESENCE_TTL_SEC = PRESENCE_STALE_SEC;
 const presenceKey = (providerId: string) => `provider:${providerId}:online`;
 const lastLocKey = (providerId: string, bookingId: string) => `track:lastloc:${providerId}:${bookingId}`;
 const ETA_REFRESH_SEC = Number(process.env.TRACKING_ETA_REFRESH_SEC ?? 30); // refresh traffic ETA at most every 30s
@@ -159,6 +171,15 @@ export class TrackingService {
     }
     await cacheSet(lastLocKey(providerId, body.bookingId), JSON.stringify({ lat: body.latitude, lng: body.longitude, t: nowMs }), PRESENCE_TTL_SEC);
 
+    // X-59 (owner decision 2026-09-29): before the travel window a ping on a job that is not travelling
+    // yet changes nothing a customer can see — no "on the way" tracking row, no location history, no
+    // broadcast, no EN_ROUTE, no GPS arrival. Presence (above) is still refreshed. An unset / invalid
+    // window fails closed. EN_ROUTE and IN_PROGRESS jobs are already travelling or working.
+    if ((booking.status === "ACCEPTED" || booking.status === "ASSIGNED") && !gpsTravelWindowOpen(booking.scheduledDate, new Date(nowMs), gpsTravelWindowMinutes())) {
+      recordFeatureEvent("tracking", "outside_travel_window");
+      return { outsideTravelWindow: true, bookingId: body.bookingId };
+    }
+
     const tracking = await prisma.tracking.upsert({
       where: { bookingId: body.bookingId },
       create: {
@@ -178,6 +199,21 @@ export class TrackingService {
         altitude: body.altitude,
       },
     });
+
+    if (prev) {
+      void import("./partner-risk.service")
+        .then(({ partnerRiskService }) =>
+          partnerRiskService.ingestLocationSample({
+            providerId,
+            bookingId: body.bookingId,
+            latitude: body.latitude,
+            longitude: body.longitude,
+            at: new Date(nowMs),
+            previous: { latitude: prev.lat, longitude: prev.lng, at: new Date(prev.t) },
+          }),
+        )
+        .catch(() => undefined);
+    }
 
     await prisma.location.upsert({
       where: { providerId },
@@ -315,6 +351,8 @@ export class TrackingService {
   }): Promise<boolean> {
     const enRouteAt = new Date();
     return prisma.$transaction(async (tx) => {
+      // §5: the status history names who moved the job, like every other transition.
+      await setBookingAuditContext(tx, { actorType: "partner", actorId: input.providerId, reason: `en route (${input.source})` });
       const updated = await tx.booking.updateMany({
         // `arrivedAt: null` is a correctness guard, not an optimisation. Arrival does not
         // change booking status, so a booking can sit at ACCEPTED with arrivedAt already
@@ -323,6 +361,9 @@ export class TrackingService {
         // i.e. AFTER arrival, producing a negative travel duration.
         where: {
           id: input.bookingId,
+          // §5: only the partner who holds the job — a ping from a partner it was taken away from
+          // must not move someone else's booking.
+          providerId: input.providerId,
           enRouteAt: null,
           arrivedAt: null,
           status: { in: ["ACCEPTED", "ASSIGNED"] },
@@ -345,6 +386,17 @@ export class TrackingService {
         );
       }
       return true;
+    }).then((applied) => {
+      // This is the single producer of EN_ROUTE (explicit action and GPS corroboration both land
+      // here), so it is also the single place the customer learns the partner has left.
+      if (applied) {
+        publishBookingStatusBackground({
+          bookingId: input.bookingId,
+          status: "EN_ROUTE",
+          extra: { enRouteAt, distanceKm: input.distanceKm, eta: input.googleEtaMin, enRouteSource: input.source },
+        });
+      }
+      return applied;
     });
   }
 
@@ -430,7 +482,15 @@ export class TrackingService {
 
     return prisma.$transaction(async (tx) => {
       const updated = await tx.booking.updateMany({
-        where: { id: input.bookingId, arrivedAt: null },
+        // §5: the status and partner are part of the write, not only of the caller's earlier read.
+        // A cancellation landing between that read and this write used to receive an arrival
+        // anyway — and arrival is the evidence a customer no-show is decided on.
+        where: {
+          id: input.bookingId,
+          providerId: input.providerId,
+          arrivedAt: null,
+          status: { in: ["ACCEPTED", "ASSIGNED", "EN_ROUTE", "IN_PROGRESS"] },
+        },
         data: { arrivedAt, travelDurationMin },
       });
       if (updated.count === 0) return false;
@@ -466,6 +526,21 @@ export class TrackingService {
         );
       }
       return true;
+    }).then(async (applied) => {
+      // Arrival does not change BookingStatus; the frame carries the current status plus
+      // `arrivedAt` so clients can advance the journey stage without inventing a status.
+      if (applied) {
+        const current = await prisma.booking.findUnique({
+          where: { id: input.bookingId },
+          select: { status: true },
+        });
+        publishBookingStatusBackground({
+          bookingId: input.bookingId,
+          status: current?.status ?? "EN_ROUTE",
+          extra: { arrivedAt, travelDurationMin, arrivalSource: input.source },
+        });
+      }
+      return applied;
     });
   }
 
@@ -533,6 +608,12 @@ export class TrackingService {
     if (!booking) return null;
 
     const loc = booking.provider?.currentLocation;
+    // A partner gets the customer's home coordinates only while fulfilling the job — the same rule
+    // the privacy engine applies to the address. Customers and admins keep them.
+    const destination =
+      providerId && !ACTIVE_FULFILMENT_STATUSES.has(String(booking.status))
+        ? { latitude: null, longitude: null }
+        : { latitude: booking.address?.latitude, longitude: booking.address?.longitude };
 
     // Fallback: no live per-booking GPS stream yet (partner hasn't gone en-route
     // for THIS booking), but the assigned partner has a last-known location.
@@ -550,8 +631,8 @@ export class TrackingService {
         status: (booking.status ?? "assigned").toString().toLowerCase(),
         providerLatitude: loc.latitude,
         providerLongitude: loc.longitude,
-        destinationLatitude: booking.address?.latitude,
-        destinationLongitude: booking.address?.longitude,
+        destinationLatitude: destination.latitude,
+        destinationLongitude: destination.longitude,
         distance: distFallback != null ? Math.round(distFallback * 10) / 10 : null,
         eta: booking.eta,
         estimatedArrivalTime: null,
@@ -573,8 +654,8 @@ export class TrackingService {
       providerLongitude: loc?.longitude,
       // Customer-home coordinates so map consumers (admin console, apps) can
       // draw the route without a second booking-detail round trip.
-      destinationLatitude: booking.address?.latitude,
-      destinationLongitude: booking.address?.longitude,
+      destinationLatitude: destination.latitude,
+      destinationLongitude: destination.longitude,
       distance: dist ? Math.round(dist * 10) / 10 : null,
       eta: booking.eta,
       estimatedArrivalTime: booking.tracking.estimatedArrivalTime,

@@ -4,7 +4,7 @@
  */
 export function RouteLoadingSkeleton({ label = "Loading…" }: { label?: string }) {
   return (
-    <div className="mx-auto max-w-7xl space-y-6" aria-busy="true" aria-label={label}>
+    <div className="mx-auto max-w-7xl space-y-6" role="status" aria-busy="true" aria-label={label}>
       {/* Page header ghost */}
       <div className="space-y-2 border-b border-[var(--color-biz-line)] pb-4">
         <div className="biz-skeleton h-7 w-56 rounded-lg" />

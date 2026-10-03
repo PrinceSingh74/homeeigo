@@ -8,6 +8,7 @@ import {
   type ContextSection,
 } from "./context-policy";
 import type { AiIntent } from "../intent/intent-classifier";
+import { CUSTOMER_CATALOG_WHERE } from "../../lib/service-domain";
 
 export type ServiceContextInput = {
   message: string;
@@ -72,7 +73,8 @@ async function activeCategories(city?: string): Promise<string[]> {
   const rows = await prisma.service.groupBy({
     by: ["category"],
     where: {
-      isActive: true,
+      // The model is told these are the ONLY categories offered — fixtures must never be among them.
+      ...CUSTOMER_CATALOG_WHERE,
       ...(city ? { OR: [{ availableCities: { isEmpty: true } }, { availableCities: { has: city } }] } : {}),
     },
   });
@@ -104,7 +106,7 @@ export async function buildServiceContext(input: ServiceContextInput): Promise<S
 
     const rows = targeted && categories.length === 0 ? [] : await prisma.service.findMany({
       where: {
-        isActive: true,
+        ...CUSTOMER_CATALOG_WHERE,
         ...(categories.length > 0 ? { category: { in: categories } } : {}),
         // Serviceability is modelled positively in this catalogue: `availableCities` lists
         // where a service runs, and an empty list means everywhere. A negated `has` filter
@@ -188,7 +190,7 @@ export async function buildServiceContext(input: ServiceContextInput): Promise<S
   if (scope.serviceability && city) {
     const serviceable = await prisma.service.count({
       where: {
-        isActive: true,
+        ...CUSTOMER_CATALOG_WHERE,
         OR: [{ availableCities: { isEmpty: true } }, { availableCities: { has: city } }],
       },
     });

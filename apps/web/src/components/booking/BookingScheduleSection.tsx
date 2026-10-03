@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Calendar, Clock, Check, Flame } from "lucide-react";
+import { Calendar, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/Input";
 import { BOOKING_TIMES } from "@/lib/services";
@@ -27,6 +27,36 @@ export type BookingScheduleSectionProps = {
   /** Matches mobile step badge (e.g. 3 on schedule). */
   step?: number;
   className?: string;
+  /**
+   * The slots the SERVER says are bookable for the chosen day. When present these replace the static
+   * chips entirely: the list, the times and the verdicts are the backend's, not this component's.
+   * Absent (still loading, or unauthenticated) the static chips remain, so the step never goes blank.
+   */
+  slots?: { start: string; available: boolean; reason?: string }[];
+  slotsLoading?: boolean;
+  /**
+   * False until the customer taps a time. A prefilled clock must not look chosen and must not be
+   * payable. Omit it (reschedule) and the current time stays selected.
+   */
+  timeSelected?: boolean;
+  /** Time chip, manual time, or the clock picker. Date changes stay on `onScheduledAtChange`. */
+  onPickTime?: (date: Date) => void;
+};
+
+/** Customer-safe wording for a slot the server refused. Never invents a reason it was not given. */
+const SLOT_REASON_COPY: Record<string, string> = {
+  SLOT_IN_PAST: "This time has passed",
+  LEAD_TIME_NOT_MET: "Too soon — needs more notice",
+  BEYOND_ADVANCE_WINDOW: "Too far ahead",
+  SAME_DAY_UNAVAILABLE: "Not available same day",
+  BLACKOUT_DATE: "Not available on this date",
+  OUTSIDE_WORKING_HOURS: "No professional works at this time",
+  PROVIDER_BUSY: "Fully booked",
+  NO_QUALIFIED_PROVIDER: "No professional available",
+  OUTSIDE_OPERATING_WINDOW: "Outside booking hours",
+  CUSTOMER_HAS_BOOKING: "You already have a booking at this time",
+  PARTNER_OFFLINE: "Your chosen professional isn't online for this time — pick a later date",
+  INVALID_DATE: "Unavailable",
 };
 
 export function BookingScheduleSection({
@@ -35,6 +65,10 @@ export function BookingScheduleSection({
   onInvalid,
   step = 3,
   className,
+  slots,
+  slotsLoading,
+  timeSelected = true,
+  onPickTime,
 }: BookingScheduleSectionProps) {
   const dateInputRef = useRef<HTMLInputElement>(null);
   const timeInputRef = useRef<HTMLInputElement>(null);
@@ -80,7 +114,7 @@ export function BookingScheduleSection({
       setManualTimeStr(toHm24Local(scheduledAt));
       return;
     }
-    onScheduledAtChange(t);
+    (onPickTime ?? onScheduledAtChange)(t);
   };
 
   const onNativeDateChange = (value: string) => {
@@ -90,7 +124,7 @@ export function BookingScheduleSection({
 
   const onNativeTimeChange = (value: string) => {
     const t = parseHm24OnDate(value, scheduledAt);
-    if (t) onScheduledAtChange(t);
+    if (t) (onPickTime ?? onScheduledAtChange)(t);
   };
 
   return (
@@ -208,40 +242,85 @@ export function BookingScheduleSection({
         })}
       </div>
 
+      {/*
+        The times come from the server (Wave 4): a 30-minute grid for the chosen day, each slot
+        already judged against the service's rules, the partner's hours and real occupancy. The six
+        hardcoded chips this replaces were a client guess the backend had never agreed to, so a
+        customer could pick a time the platform would refuse. They remain only as the fallback while
+        the server list is loading.
+      */}
       <div className="-mx-1 mt-4 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none snap-x sm:mx-0 sm:grid sm:grid-cols-3 sm:gap-3 sm:overflow-visible sm:pb-0 md:grid-cols-6">
-        {BOOKING_TIMES.map((t) => {
-          const picked = apply12hTimeOnDate(scheduledAt, t);
-          const active =
-            !!picked &&
-            picked.getHours() === scheduledAt.getHours() &&
-            picked.getMinutes() === scheduledAt.getMinutes();
-          return (
-            <button
-              key={t}
-              type="button"
-              onClick={() => {
-                const next = apply12hTimeOnDate(scheduledAt, t);
-                if (next) onScheduledAtChange(next);
-              }}
-              className={cn(
-                "min-w-[4.25rem] shrink-0 snap-start rounded-xl px-2 py-3 text-xs font-semibold transition sm:min-w-0 sm:rounded-2xl sm:py-4 sm:text-sm",
-                active
-                  ? "bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-white shadow-[0_10px_26px_-8px_rgb(16_185_129/0.55)]"
-                  : "glass-card text-content hover:-translate-y-0.5",
-              )}
-            >
-              {t}
-            </button>
-          );
-        })}
+        {(slots ?? []).length > 0
+          ? slots!.map((slot) => {
+              const at = new Date(slot.start);
+              const active = timeSelected && at.getTime() === scheduledAt.getTime();
+              const label = formatTimeLabel(at);
+              return (
+                <button
+                  key={slot.start}
+                  type="button"
+                  disabled={!slot.available}
+                  title={slot.available ? undefined : (SLOT_REASON_COPY[slot.reason ?? ""] ?? "Unavailable")}
+                  aria-label={slot.available ? label : `${label} — ${SLOT_REASON_COPY[slot.reason ?? ""] ?? "unavailable"}`}
+                  onClick={() => (onPickTime ?? onScheduledAtChange)(at)}
+                  className={cn(
+                    "min-w-[4.25rem] shrink-0 snap-start rounded-xl px-2 py-3 text-xs font-semibold transition sm:min-w-0 sm:rounded-2xl sm:py-4 sm:text-sm",
+                    !slot.available
+                      ? "cursor-not-allowed border border-line bg-surface text-muted line-through opacity-60"
+                      : active
+                        ? "bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-white shadow-[0_10px_26px_-8px_rgb(16_185_129/0.55)]"
+                        : "glass-card text-content hover:-translate-y-0.5",
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })
+          : BOOKING_TIMES.map((t) => {
+              const picked = apply12hTimeOnDate(scheduledAt, t);
+              const active =
+                timeSelected &&
+                !!picked &&
+                picked.getHours() === scheduledAt.getHours() &&
+                picked.getMinutes() === scheduledAt.getMinutes();
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => {
+                    const next = apply12hTimeOnDate(scheduledAt, t);
+                    if (next) (onPickTime ?? onScheduledAtChange)(next);
+                  }}
+                  className={cn(
+                    "min-w-[4.25rem] shrink-0 snap-start rounded-xl px-2 py-3 text-xs font-semibold transition sm:min-w-0 sm:rounded-2xl sm:py-4 sm:text-sm",
+                    active
+                      ? "bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-white shadow-[0_10px_26px_-8px_rgb(16_185_129/0.55)]"
+                      : "glass-card text-content hover:-translate-y-0.5",
+                  )}
+                >
+                  {t}
+                </button>
+              );
+            })}
       </div>
 
-      <div className="mt-5 flex items-center gap-2 rounded-2xl bg-success/10 px-4 py-3 ring-1 ring-success/20">
-        <Check size={16} className="shrink-0 text-success" strokeWidth={3} />
-        <span className="flex-1 text-sm font-semibold text-success">
-          Great! Fastest available slot secured.
+      {slots && slots.length > 0 && slots.every((s) => !s.available) && (
+        <p className="mt-3 text-sm font-medium text-muted">
+          No times are available on this day. Please try another date.
+        </p>
+      )}
+      {slotsLoading && !slots?.length && (
+        <p className="mt-3 text-sm text-muted">Checking which times are free…</p>
+      )}
+
+      {/* Nothing is reserved until the booking is created: the backend checks the service's lead
+          time, blackout dates and the partner's hours at that point and can still refuse this slot.
+          The banner used to claim "Fastest available slot secured", which was true of no slot. */}
+      <div className="mt-5 flex items-center gap-2 rounded-2xl border border-line bg-surface px-4 py-3">
+        <Clock size={16} className="shrink-0 text-muted" strokeWidth={2.5} />
+        <span className="flex-1 text-sm font-medium text-muted">
+          We&apos;ll confirm this slot when you place the booking.
         </span>
-        <Flame size={14} className="shrink-0 text-warning" />
       </div>
     </div>
   );

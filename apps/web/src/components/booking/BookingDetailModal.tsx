@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Star,
   ReceiptText,
+  UserRoundX,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { ServiceImage } from "@/components/ui/ServiceImage";
@@ -24,12 +25,14 @@ import { useAppStore } from "@/stores/app-store";
 import {
   useBookingDetailQuery,
   useCancelBookingMutation,
+  useReportProviderNoShowMutation,
   useCancellationQuoteQuery,
   useRatingByBookingQuery,
   useRefreshBookingFromServerMutation,
 } from "@/hooks/use-core-data";
 import { RatingModal } from "@/components/ratings/RatingModal";
 import { STATUS_CONFIG } from "@/lib/booking-status";
+import { canCancelBooking, cancelBlockedReason, canReportProviderNoShow } from "@/lib/booking-cancel-rules";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 import { BookingTimeline } from "./BookingTimeline";
 import { bookUrl } from "@/lib/booking-url";
@@ -37,6 +40,12 @@ import { useBookingPayment } from "@/hooks/use-booking-payment";
 import { RescheduleBookingModal } from "@/components/booking/RescheduleBookingModal";
 import { CustomerTrackingMap } from "@/components/tracking/CustomerTrackingMap";
 import { ServiceStartPin } from "@/components/tracking/ServiceStartPin";
+import { BookingRequirements } from "@/components/booking/BookingRequirements";
+import { BookingExecution } from "@/components/booking/BookingExecution";
+import { BookingSafety } from "@/components/booking/BookingSafety";
+import { BookingCompletion } from "@/components/booking/BookingCompletion";
+import { BookingCases } from "@/components/booking/BookingCases";
+import { BookingChatPanel } from "@/components/booking/BookingChatPanel";
 import { WalletCheckoutSummary } from "@/components/checkout/WalletCheckoutSummary";
 
 export function BookingDetailModal({
@@ -52,6 +61,7 @@ export function BookingDetailModal({
   const updateBookingStatus = useAppStore((s) => s.updateBookingStatus);
   const showToast = useAppStore((s) => s.showToast);
   const cancelBooking = useCancelBookingMutation();
+  const reportNoShow = useReportProviderNoShowMutation();
   const refreshBooking = useRefreshBookingFromServerMutation();
   const { clearPendingPaymentBookingId } = useBookingPayment();
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -62,23 +72,37 @@ export function BookingDetailModal({
   const detailQuery = useBookingDetailQuery(open ? bookingId : undefined);
   const cancelQuoteQuery = useCancellationQuoteQuery(bookingId, cancelOpen);
   const ratingQuery = useRatingByBookingQuery(open ? bookingId : undefined);
-  const liveStatus = detailQuery.data?.status;
+  const liveStatus = detailQuery.data?.status?.toLowerCase();
   const resolvedStatus =
-    liveStatus === "in_progress"
+    liveStatus === "in_progress" || liveStatus === "en_route"
       ? "in_progress"
       : liveStatus === "completed"
         ? "completed"
-        : liveStatus === "cancelled" || liveStatus === "cancelled_by_provider" || liveStatus === "cancelled_by_user"
+        : liveStatus === "expired"
+          ? "expired"
+        : liveStatus === "customer_no_show"
+          ? "customer_no_show"
+        : liveStatus === "provider_no_show"
+          ? "provider_no_show"
+        : liveStatus === "cancelled" ||
+            liveStatus === "cancelled_by_provider" ||
+            liveStatus === "cancelled_by_user" ||
+            liveStatus === "rejected"
           ? "cancelled"
           : (booking?.status ?? "confirmed");
   const cfg = STATUS_CONFIG[resolvedStatus];
   const img = booking?.imagePath;
-  const canTrack = resolvedStatus === "confirmed";
+  const canTrack = resolvedStatus === "confirmed" || resolvedStatus === "in_progress";
   const canComplete =
     resolvedStatus === "confirmed" || resolvedStatus === "in_progress";
-  const canCancel =
-    resolvedStatus === "confirmed" || resolvedStatus === "in_progress";
+  // O3b: decided on the BACKEND status, not the collapsed one — the `in_progress`
+  // presentation state also covers EN_ROUTE, where cancelling is still allowed.
+  const canCancel = canCancelBooking(liveStatus);
+  const cancelBlocked = cancelBlockedReason(liveStatus);
+  // §53: only while the booking is still waiting on the professional.
+  const canReportNoShow = canReportProviderNoShow(liveStatus);
   const canReschedule = resolvedStatus === "confirmed";
+  const canChat = resolvedStatus === "confirmed" || resolvedStatus === "in_progress";
   const scheduledAt = detailQuery.data?.scheduledDate
     ? new Date(detailQuery.data.scheduledDate)
     : new Date();
@@ -93,6 +117,11 @@ export function BookingDetailModal({
   const refundStatus = (detailQuery.data as { refundStatus?: string } | undefined)?.refundStatus;
   const isRefundProcessed = refundStatus === "processed";
   const isRefundPending = refundStatus === "pending" || refundStatus === "processing";
+  // The backend also writes "failed" (and raw gateway states). Anything that is not processed or
+  // pending must be shown as needing attention, never silently omitted.
+  const isRefundFailed = Boolean(refundStatus) && refundStatus !== "none" && !isRefundProcessed && !isRefundPending;
+  // Never substitute the booking total for an unknown refund amount — a partial refund would be overstated.
+  const refundAmountLabel = refundAmount != null ? `₹${refundAmount}` : "Refund";
   useEffect(() => {
     if (!bookingId) return;
     if (paymentStatus === "success") clearPendingPaymentBookingId(bookingId);
@@ -179,6 +208,21 @@ export function BookingDetailModal({
                 partner can begin. Shown while the job hasn't started yet. */}
             {canTrack && <ServiceStartPin bookingId={bookingId} proName={booking.proName} />}
 
+            {/* §6: what must be in place, whether it is, and what to do — server truth, never decided here. */}
+            {/* §9: safety information and any safety hold — server truth. */}
+            <BookingSafety bookingId={bookingId} />
+
+            <BookingRequirements bookingId={bookingId} active={canTrack} />
+
+            {/* §8: what was done — step titles and states from the server; never the partner's notes. */}
+            <BookingExecution bookingId={bookingId} />
+
+            {/* §10: quality verdict in plain words + the confirmation window; §11: report an issue. */}
+            <BookingCompletion bookingId={bookingId} />
+
+            {/* §11: the customer's reported issues and their progress — server truth. */}
+            <BookingCases bookingId={bookingId} />
+
             {/* Live provider tracking (real backend WS — graceful when no provider/offline). */}
             {canTrack && (
               <div>
@@ -198,6 +242,13 @@ export function BookingDetailModal({
                 />
               </div>
             )}
+
+            {canChat ? (
+              <div>
+                <h3 className="mb-3 font-display text-lg font-bold text-content">Messages</h3>
+                <BookingChatPanel bookingId={bookingId} partnerName={booking.proName} />
+              </div>
+            ) : null}
 
             {/* Wallet + Razorpay checkout for an unpaid booking (real wallet/split engine). */}
             {paymentNeedsRecovery && (
@@ -241,6 +292,26 @@ export function BookingDetailModal({
                   onClick={() => setRescheduleOpen(true)}
                 />
               )}
+              {/* O3b: say why the button is gone. A customer who opened this modal to cancel a
+                  started job needs the route that works, not an absent control. */}
+              {cancelBlocked && (
+                <p className="rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-muted">
+                  {cancelBlocked}
+                </p>
+              )}
+              {/* §53: a distinct action, never a flavour of cancelling — the money and the
+                  consequences differ, and the customer is not the one at fault here. */}
+              {canReportNoShow && (
+                <button
+                  type="button"
+                  disabled={reportNoShow.isPending}
+                  onClick={() => void reportNoShow.mutateAsync(booking.id).then(() => onClose())}
+                  className="flex h-12 items-center justify-center gap-2 rounded-2xl text-sm font-bold text-warning transition hover:bg-warning/10 disabled:opacity-50"
+                >
+                  <UserRoundX size={18} />
+                  Professional didn&apos;t arrive
+                </button>
+              )}
               {canCancel && (
                 <button
                   type="button"
@@ -270,12 +341,19 @@ export function BookingDetailModal({
                   onClick={() => setRatingOpen(true)}
                 />
               )}
-              {resolvedStatus === "cancelled" && (isRefundProcessed || isRefundPending) && (
-                <div className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-line bg-surface/60 px-3 text-sm font-semibold text-muted">
+              {resolvedStatus === "cancelled" && (isRefundProcessed || isRefundPending || isRefundFailed) && (
+                <div
+                  className={`flex h-12 items-center justify-center gap-2 rounded-2xl border px-3 text-sm font-semibold ${
+                    isRefundFailed ? "border-red-200 bg-red-50 text-red-700" : "border-line bg-surface/60 text-muted"
+                  }`}
+                  role={isRefundFailed ? "alert" : undefined}
+                >
                   <ReceiptText size={18} className="shrink-0" />
                   {isRefundProcessed
-                    ? `Refund of ₹${refundAmount ?? booking.total} processed`
-                    : `Refund of ₹${refundAmount ?? booking.total} in progress (5–7 days for card/UPI)`}
+                    ? `${refundAmountLabel} refund processed`
+                    : isRefundPending
+                      ? `${refundAmountLabel} refund in progress (5–7 days for card/UPI)`
+                      : `${refundAmountLabel} refund needs attention — contact support`}
                 </div>
               )}
             </div>

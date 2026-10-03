@@ -71,6 +71,25 @@ const LIVE: BackendService[] = [
     },
   }),
   svc({ slug: "salon-at-home", name: "Salon at Home", category: "beauty", basePrice: 699, minPrice: 699, maxPrice: 1048, rating: 4.6, reviewCount: 12 }),
+  svc({
+    slug: "personal-hygiene-bathing-care",
+    name: "Personal Hygiene & Bathing Care",
+    category: "senior-care",
+    basePrice: 1999,
+    minPrice: 1999,
+    maxPrice: 1999,
+    pricingModel: "hourly",
+    thumbnail: "/media/services/personal-hygiene-bathing-care.png",
+    catalogConfig: {
+      bookingMode: "HOURLY",
+      video: "/media/services/personal-hygiene-bathing-care.mp4",
+      quantity: { type: "HOUR", unitLabel: "hour", unitLabelPlural: "hours", min: 1, max: 8, step: 1, unitPrice: 1999 },
+      media: {
+        heroImage: "/media/services/personal-hygiene-bathing-care.png",
+        heroVideo: "/media/services/personal-hygiene-bathing-care.mp4",
+      },
+    },
+  }),
   // Test fixtures that exist in the dev database — must never surface.
   svc({ slug: "adv-service-adv-chaos-mtonowzh", name: "Adv Service adv-chaos-mtonowzh" }),
   svc({ slug: "rc1781462361600", name: "rc1781462361600" }),
@@ -149,6 +168,27 @@ describe("data quality", () => {
     expect(home?.services.some((s) => s.slug === "spa" && s.status === "live")).toBe(true);
   });
 
+  test("the offer image URL and video URL reach the customer card", () => {
+    const next = buildCatalog([
+      svc({
+        slug: "spa",
+        name: "spa",
+        description: "body massage",
+        basePrice: 499,
+        icon: "https://cdn.example/spa.jpg",
+        catalogConfig: { video: "https://cdn.example/spa.mp4" },
+      }),
+    ]);
+    const spa = next.bySlug.get("spa");
+    expect(spa?.image).toBe("https://cdn.example/spa.jpg");
+    expect(spa?.video).toBe("https://cdn.example/spa.mp4");
+    const branded = buildCatalog([
+      svc({ slug: "bathroom-cleaning", name: "Bathroom Cleaning", icon: "https://cdn.example/other.jpg" }),
+    ]).bySlug.get("bathroom-cleaning");
+    expect(branded?.image).toBe("/services/bathroom-cleaning.png");
+    expect(buildCatalog([svc({ slug: "spa", name: "spa", icon: "sparkles" })]).bySlug.get("spa")?.image).toBeUndefined();
+  });
+
   test("internal / test records never become customer services", () => {
     const names = catalog.services.map((s) => s.name).join("|");
     expect(names).not.toMatch(/Adv Service|rc\d{6,}|Phase2|Cert Cleaning|fasade/i);
@@ -165,6 +205,12 @@ describe("data quality", () => {
 
   test("status: live only with an active, priced backend record; admin comingSoon wins", () => {
     expect(catalog.bySlug.get("bathroom-cleaning")!.status).toBe("live");
+    const bathing = catalog.bySlug.get("personal-hygiene-bathing-care")!;
+    expect(bathing.status).toBe("live");
+    expect(bathing.category).toBe("senior-care");
+    expect(bathing.image).toBe("/media/services/personal-hygiene-bathing-care.png");
+    expect(bathing.video).toBe("/media/services/personal-hygiene-bathing-care.mp4");
+    expect(bathing.href).toBe("/services/senior-care/personal-hygiene-bathing-care");
     expect(catalog.bySlug.get("pet-walking")!.status).toBe("coming-soon");
     const held = buildCatalog([svc({ slug: "bathroom-cleaning", name: "Bathroom Cleaning", catalogConfig: { comingSoon: true } })]);
     expect(held.bySlug.get("bathroom-cleaning")!.status).toBe("coming-soon");
@@ -245,9 +291,11 @@ describe("pricing honesty", () => {
 });
 
 describe("content rules", () => {
-  test("no approved fallback + no backend content → confirmed during booking", () => {
+  test("catalogue fallback fills scope when the business has approved it and backend has none", () => {
     const c = detailContent(catalog.bySlug.get("bathroom-cleaning")!, null);
-    expect(c.scope).toBeNull();
+    expect(c.scope?.includes.length).toBeGreaterThan(0);
+    expect(c.scope?.excludes.length).toBeGreaterThan(0);
+    expect(c.faqs.length).toBeGreaterThan(0);
     expect(c.policies).toEqual([]);
     expect(DETAILS_CONFIRMED_AT_BOOKING).toBe("Details will be confirmed during booking.");
   });

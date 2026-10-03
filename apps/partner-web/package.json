@@ -6,9 +6,11 @@
     "dev": "next dev -p 3002 --turbopack",
     "dev:webpack": "next dev -p 3002",
     "build": "next build",
+    "build:release": "node scripts/release-env.cjs && npm run build",
     "postbuild": "node ../../scripts/check-instrumentation-edge.mjs && node ../../scripts/check-frontend-perf-guards.mjs --app . && node ../../scripts/check-bundle-budget.mjs --app .",
     "start": "next start -p 3002",
     "lint": "next lint",
+    "test": "bun test tests",
     "type-check": "tsc --noEmit",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
@@ -28,6 +30,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.6",

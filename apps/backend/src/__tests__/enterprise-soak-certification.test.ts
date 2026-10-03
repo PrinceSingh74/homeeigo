@@ -4,6 +4,7 @@
  */
 import "../load-env";
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { AssignmentAttemptStatus } from "@prisma/client";
 import { BookingStatus, MembershipCouponStatus } from "@prisma/client";
 import fs from "fs";
 import path from "path";
@@ -11,6 +12,7 @@ import {
   prisma,
   dbReachable,
   seedAdversarialFixtures,
+  heartbeatFresh,
   cleanupAdversarialFixtures,
   deleteBookingsForUsers,
   bearer,
@@ -47,7 +49,6 @@ let soakCouponId: string | null = null;
 let soakCouponCode: string | null = null;
 
 beforeAll(async () => {
-  process.env.NODE_ENV = "development";
   dbOk = await dbReachable();
   if (!dbOk) return;
   ctx = await seedAdversarialFixtures(RUN_ID);
@@ -59,6 +60,16 @@ beforeAll(async () => {
       workingHoursEnd: "23:59",
       workingDays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
       isOnline: true,
+      /**
+       * The platform's maximum concurrent-job capacity, stated rather than inherited.
+       *
+       * `assertOfferEligible` counts every booking in a concurrent status toward
+       * `maxConcurrentJobs`, which the fixture sets to 4. Scenarios here seed batches of accepted
+       * bookings on one partner, so the fifth was refused with PROVIDER_UNAVAILABLE and the
+       * scenario failed before exercising anything it was written to test. 20 is the ceiling
+       * `providers_max_concurrent_jobs_range` enforces in the database.
+       */
+      maxConcurrentJobs: 20,
     },
   });
   await deleteBookingsForUsers([ctx.customerA.id, ctx.customerB.id]);
@@ -124,7 +135,6 @@ afterAll(async () => {
     "",
   ];
   fs.writeFileSync(DOCS, lines.join("\n"));
-  await prisma.$disconnect();
 }, 300_000);
 
 /** Booking window is max 30 days ahead — keep soak slots inside validation limit. */
@@ -141,6 +151,52 @@ function skipIfNoDb() {
     return true;
   }
   return false;
+}
+
+/**
+ * Free the partner's concurrent-job capacity before a scenario that needs to create bookings.
+ *
+ * `assertOfferEligible` counts every booking in a concurrent status toward `maxConcurrentJobs`, with
+ * NO time bound — so accepted bookings accumulate across the scenarios in this serial file and the
+ * partner reaches capacity partway through, after which every later `bookingService.create` returns
+ * PROVIDER_UNAVAILABLE. Scenario 6 then measured zero coupon-discounted bookings and read as a
+ * coupon defect; scenario 9 never got its booking at all.
+ *
+ * Completing them is the lifecycle transition that frees capacity in production too, so the state
+ * this produces is one the platform actually reaches.
+ */
+/**
+ * Make the partner dispatchable again: fresh presence AND free capacity.
+ *
+ * Direct booking fails closed without a recent heartbeat — `PRESENCE_FRESH_SEC` is 30 seconds, and
+ * this file runs a dozen scenarios over several minutes, so the heartbeat `seedAdversarialFixtures`
+ * leaves behind has long expired by the later ones. Measured at the failure point: currentJobs 0,
+ * sentOffers 0, no nearby booking, partner online — capacity and slots were both fine and the
+ * refusal was DIRECT_ASSIGN_BLOCKED on stale presence.
+ */
+async function readyProvider() {
+  await heartbeatFresh(ctx);
+  await releaseProviderCapacity();
+}
+
+async function releaseProviderCapacity() {
+  await prisma.booking.updateMany({
+    where: {
+      providerId: ctx.providerId,
+      status: { in: [BookingStatus.ACCEPTED, BookingStatus.ASSIGNED] },
+    },
+    data: { status: BookingStatus.COMPLETED, completedAt: new Date() },
+  });
+  /**
+   * Unanswered offers hold capacity too — `computeCapacity` adds `reservedOffers` to `currentJobs`,
+   * and earlier scenarios dispatch far more offers than anyone answers. Timing them out is what
+   * happens to an ignored offer in production; leaving them SENT would keep the partner at capacity
+   * forever on a purely synthetic backlog.
+   */
+  await prisma.assignmentAttempt.updateMany({
+    where: { providerId: ctx.providerId, status: AssignmentAttemptStatus.SENT },
+    data: { status: AssignmentAttemptStatus.TIMEOUT, respondedAt: new Date() },
+  });
 }
 
 async function seedAcceptedBooking(hoursFromNow: number) {
@@ -250,7 +306,7 @@ describe.serial("Enterprise soak — adversarial certification", () => {
       { created: ids.length, visible: found },
     );
     expect(found).toBe(50);
-  }, 120_000);
+  }, 240_000);
 
   test("4 — 50 admin replies + customer/partner visibility", async () => {
     if (skipIfNoDb()) return;
@@ -318,7 +374,7 @@ describe.serial("Enterprise soak — adversarial certification", () => {
     expect(replies).toBe(50);
     expect(custAdminMsg).toBe(true);
     expect(partnerAdminMsg).toBe(true);
-  }, 180_000);
+  }, 360_000);
 
   test("5 — 50 ticket escalations", async () => {
     if (skipIfNoDb()) return;
@@ -359,11 +415,38 @@ describe.serial("Enterprise soak — adversarial certification", () => {
       );
     }
     expect(pass).toBe(true);
-  }, 120_000);
+  }, 240_000);
+
+  test("5b — concurrent ticket create: one number per ticket, no P2002 leak", async () => {
+    if (skipIfNoDb()) return;
+    const settled = await Promise.allSettled(
+      Array.from({ length: 20 }, (_, i) =>
+        supportTicketService.create(ctx.customerA.id, {
+          subject: `Concurrent soak ${i} ${RUN_ID}`,
+          description: "Concurrent ticket_number certification",
+          category: "Urgent",
+        }),
+      ),
+    );
+    const ok = settled.filter((r) => r.status === "fulfilled").map((r) => (r as PromiseFulfilledResult<{ id: string; ticketNumber: string }>).value);
+    const failed = settled.filter((r) => r.status === "rejected");
+    const numbers = ok.map((t) => t.ticketNumber);
+    const unique = new Set(numbers);
+    record(
+      "Concurrent ticket create",
+      ok.length === 20 && unique.size === 20 && failed.length === 0 ? "PASS" : "FAIL",
+      `created=${ok.length}/20 uniqueNumbers=${unique.size} rejected=${failed.length}`,
+      { created: ok.length, unique: unique.size, rejected: failed.length },
+    );
+    expect(failed.length).toBe(0);
+    expect(ok.length).toBe(20);
+    expect(unique.size).toBe(20);
+  }, 60_000);
 
   test("6 — 50 membership coupon applications (quote + booking discount)", async () => {
     if (skipIfNoDb()) return;
     if (!soakCouponCode) throw new Error("coupon missing");
+    await readyProvider();
 
     let quotesOk = 0;
     for (let i = 0; i < 50; i++) {
@@ -377,7 +460,7 @@ describe.serial("Enterprise soak — adversarial certification", () => {
 
     let bookingsOk = 0;
     for (let i = 0; i < 10; i++) {
-      const slot = soakSlot(200 + i * 3);
+      const slot = soakSlot(520 + i * 12);
       const created = await bookingService.create(ctx.customerA.id, {
         serviceId: ctx.serviceId,
         providerId: ctx.providerId,
@@ -429,7 +512,7 @@ describe.serial("Enterprise soak — adversarial certification", () => {
         paymentMethodPreference: i % 2 === 0 ? "upi" : "bank_transfer",
         upiId: `soak-${RUN_ID}-${i}@upi`,
       });
-      if (r.workingHoursStart === start) ok++;
+      if (r && r.workingHoursStart === start) ok++;
     }
     const me = await providerService.me(ctx.providerId);
     const pass = ok === 50;
@@ -440,6 +523,19 @@ describe.serial("Enterprise soak — adversarial certification", () => {
       { ok },
     );
     expect(ok).toBe(50);
+    // Restore a full working window so later soak cases are not blocked by the last
+    // of the 50 settings writes (narrow days/hours are leftover test state, not product).
+    // Restore the exact beforeAll window (00:00-23:59). A narrower restore made later
+    // soak cases wall-clock dependent: soakSlot(320) lands at a different hour-of-day on
+    // every run, so a 06:00-23:00 window intermittently rejected the seed booking with
+    // BOOKING_DETAILS_INVALID -> VALIDATION_ERROR.
+    await providerService.updateSettings(ctx.providerId, {
+      workingHoursStart: "00:00",
+      workingHoursEnd: "23:59",
+      workingDays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+      paymentMethodPreference: "upi",
+      upiId: `soak-${RUN_ID}-restore@upi`,
+    });
   }, 120_000);
 
   test("8 — WebSocket delivery to connected partner", async () => {
@@ -482,6 +578,7 @@ describe.serial("Enterprise soak — adversarial certification", () => {
 
   test("9 — HTTP chain: reschedule → partner notification → admin booking list", async () => {
     if (skipIfNoDb()) return;
+    await readyProvider();
     const { id } = await seedAcceptedBooking(320);
     const newSlot = soakSlot(322);
 

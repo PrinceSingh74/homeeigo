@@ -52,10 +52,10 @@ export function beginGoogleOAuth(returnUrl?: string | null): string {
 type ConsumeResult =
   | { valid: true; returnUrl: string }
   /**
-   * `localMismatch` distinguishes a genuine CSRF failure (the URL state does not
-   * match the token we issued) from a merely-missing local token. The latter is
-   * recoverable: the backend independently validates the state via oauthStateService,
-   * so the caller can proceed and defer to it rather than hard-blocking a legit login.
+   * `localMismatch` says WHY the check failed (the URL state differs from the one this tab
+   * issued, versus this tab holding no pending state at all). Both are refusals: the backend's
+   * state store is not bound to a browser, so a tab that did not start the sign-in must never
+   * forward a code — that was a login-CSRF hole (see GoogleOAuthCallback).
    */
   | { valid: false; returnUrl: string; error: string; localMismatch: boolean };
 

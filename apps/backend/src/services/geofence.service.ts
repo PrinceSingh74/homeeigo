@@ -1,4 +1,6 @@
 import prisma from "../lib/prisma";
+import type { Prisma } from "@prisma/client";
+import { toInputJsonArray } from "../lib/json-input";
 import { distanceKm } from "../lib/geo";
 import { roomManager } from "../lib/websocket";
 import { logger } from "../lib/logger";
@@ -10,6 +12,15 @@ import { recordFeatureEvent, incCounter } from "../lib/metrics";
  * transitions are detected per subject and serialised with an advisory lock so concurrent
  * location pings never produce duplicate ENTER events.
  */
+/** The polygon ring, reduced to something the Json column accepts. Throws rather than dropping it. */
+function requireStorablePolygon(polygon: unknown): Prisma.InputJsonArray {
+  const stored = toInputJsonArray(polygon);
+  if (!stored) {
+    throw new Error("VALIDATION:polygon ring is not storable as JSON");
+  }
+  return stored;
+}
+
 export type GeoSubject = { userId?: string; providerId?: string };
 
 type GeofenceLite = {
@@ -63,11 +74,23 @@ export const geofenceService = {
     return distanceMeters(g, lat, lng) <= g.radiusMeters;
   },
 
-  /** All active geofences whose circle contains the point (optionally category-filtered). */
-  async findContaining(lat: number, lng: number, opts?: { serviceCategory?: string; zoneType?: string }): Promise<Array<GeofenceLite & { distanceMeters: number }>> {
+  /**
+   * All active geofences whose circle contains the point (optionally category-filtered).
+   *
+   * `client`: a caller inside an interactive transaction MUST pass its `tx`. On the base client the
+   * lookup needs a second pooled connection while the transaction (and its row locks) holds the first;
+   * when the pool is busy the whole transaction stalls for pool_timeout — the dispatch-offer path did
+   * exactly that while holding the booking FOR SHARE, which starved concurrent accepts (2026-10-01).
+   */
+  async findContaining(
+    lat: number,
+    lng: number,
+    opts?: { serviceCategory?: string; zoneType?: string },
+    client: Pick<Prisma.TransactionClient, "geofence"> = prisma,
+  ): Promise<Array<GeofenceLite & { distanceMeters: number }>> {
     const where: { isActive: boolean; zoneType?: string } = { isActive: true };
     if (opts?.zoneType) where.zoneType = opts.zoneType;
-    const active = (await prisma.geofence.findMany({ where })) as unknown as GeofenceLite[];
+    const active = await client.geofence.findMany({ where });
     return active
       .filter((g) => this.containsPoint(g, lat, lng) && categoryMatches(g, opts?.serviceCategory))
       .map((g) => ({ ...g, distanceMeters: Math.round(distanceMeters(g, lat, lng)) }))
@@ -80,7 +103,7 @@ export const geofenceService = {
    * serviceable so geofencing is opt-in and never silently blocks bookings.
    */
   async isServiceable(lat: number, lng: number, serviceCategory?: string): Promise<{ serviceable: boolean; configured: boolean; surgeMultiplier: number; zones: Array<{ id: string; name: string }> }> {
-    const zones = (await prisma.geofence.findMany({ where: { isActive: true, zoneType: "SERVICE_ZONE" } })) as unknown as GeofenceLite[];
+    const zones = await prisma.geofence.findMany({ where: { isActive: true, zoneType: "SERVICE_ZONE" } });
     const configured = zones.length > 0;
     const inside = zones.filter((g) => this.containsPoint(g, lat, lng) && categoryMatches(g, serviceCategory));
     const surgeMultiplier = inside.reduce((m, g) => Math.max(m, g.surgeMultiplier), 1);
@@ -103,7 +126,7 @@ export const geofenceService = {
       async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"geofence:" + subjKey}))`;
 
-        const active = (await tx.geofence.findMany({ where: { isActive: true } })) as unknown as GeofenceLite[];
+        const active = await tx.geofence.findMany({ where: { isActive: true } });
         const insideNow = active.filter((g) => this.containsPoint(g, lat, lng));
         const insideIds = new Set(insideNow.map((g) => g.id));
 
@@ -189,7 +212,11 @@ export const geofenceService = {
         name: input.name,
         zoneType: input.zoneType ?? "SERVICE_ZONE",
         shape: isPolygon ? "POLYGON" : "CIRCLE",
-        polygon: isPolygon ? (input.polygon as unknown as object) : undefined,
+        // Validated rather than asserted: the polygon lands in a Json column, and a ring carrying
+        // a non-finite coordinate cannot be stored. `isPolygon` has already established there are
+        // at least three points, so a null here means the ring itself is unstorable and the zone
+        // must not be created with a silently missing boundary.
+        polygon: isPolygon ? requireStorablePolygon(input.polygon) : undefined,
         city: input.city,
         state: input.state,
         centerLat,
@@ -255,7 +282,7 @@ export const geofenceService = {
   }>> {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const [zones, providerLocs, bookings] = await Promise.all([
-      prisma.geofence.findMany({ where: { isActive: true } }) as unknown as Promise<GeofenceLite[]>,
+      prisma.geofence.findMany({ where: { isActive: true } }),
       prisma.location.findMany({ where: { provider: { isOnline: true } }, select: { latitude: true, longitude: true } }),
       prisma.booking.findMany({
         where: { createdAt: { gte: since } },

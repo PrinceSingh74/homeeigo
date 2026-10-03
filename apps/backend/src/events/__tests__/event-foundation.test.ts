@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { buildBookingCreatedEvent, buildBookingCompletedEvent } from "../catalog/booking.events";
 import { buildPaymentSuccessEvent } from "../catalog/payment.events";
-import { buildPartnerArrivedEvent } from "../catalog/partner.events";
+import { buildPartnerArrivedEvent, buildPartnerScoreUpdatedEvent } from "../catalog/partner.events";
 import {
   buildEtaFeatureUpdatedEvent,
   buildEtaLabelCreatedEvent,
@@ -116,6 +116,21 @@ describe("event type namespace contract", () => {
       .filter(([, type]) => !type.startsWith("homigo."))
       .map(([name, type]) => `${name}="${type}"`);
     expect(offenders).toEqual([]);
+    expect(EVENT_TYPES.PARTNER_SCORE_UPDATED).toBe("homigo.partner.score.updated");
+    expect(EVENT_TYPES.PARTNER_LEVEL_CHANGED).toBe("homigo.partner.level.changed");
+    expect(EVENT_TYPES.PARTNER_LIFECYCLE_CHANGED).toBe("homigo.partner.lifecycle.changed");
+  });
+
+  test("partner.score.updated envelope validates without PII", () => {
+    const event = buildPartnerScoreUpdatedEvent({
+      providerId: "pro_1",
+      previousScore: 92,
+      newScore: 87,
+      band: "GOOD",
+      policyVersion: "partner.score.v1",
+    });
+    expect(validateEventEnvelope(event).id).toBe(event.id);
+    expect(event.data.newScore).toBe(87);
   });
 
   test("ETA events are registered and pass envelope validation", () => {

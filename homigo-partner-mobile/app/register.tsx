@@ -33,8 +33,10 @@ import { mapCityChoice, mapSkillToServiceId, MOBILE_STEPPER, stepperIdForStep } 
 import {
   clearApplicationInvite,
   getApplicationInvite,
+  getPendingReferralCode,
   getRegistrationToken,
   setApplicationInvite,
+  setPendingReferralCode,
 } from "@/lib/registration-session";
 import { partnerRegistrationApi } from "@/services/partner-registration-api";
 import { partnerColors } from "@/theme/colors";
@@ -75,7 +77,7 @@ export default function RegisterScreen() {
     city?: string | null;
     phoneLast4?: string;
   } | null>(null);
-  const params = useLocalSearchParams<{ invite?: string | string[] }>();
+  const params = useLocalSearchParams<{ invite?: string | string[]; ref?: string | string[] }>();
 
   const [userId, setUserId] = useState("");
   const [email, setEmail] = useState("");
@@ -192,6 +194,18 @@ export default function RegisterScreen() {
     canResume?: boolean;
   }) {
     const isChangesRequested = Boolean(progress.changesRequested);
+    if (progress.submitted && !isChangesRequested) {
+      setStep("done");
+      setPercentComplete(100);
+      setResumeLabel("Submitted");
+      setLastSavedAt(progress.lastSavedAt ?? null);
+      setChangesNotes(null);
+      if (progress.userId) setUserId(progress.userId);
+      if (progress.email) setEmail(progress.email);
+      setRestored(true);
+      setBootPhase("ready");
+      return;
+    }
     if (progress.canResume === false && !isChangesRequested) {
       setBootPhase("resume-sign-in");
       return;
@@ -217,6 +231,8 @@ export default function RegisterScreen() {
     let cancelled = false;
     (async () => {
       const rawInvite = Array.isArray(params.invite) ? params.invite[0] : params.invite;
+      const rawRef = Array.isArray(params.ref) ? params.ref[0] : params.ref;
+      if (rawRef) await setPendingReferralCode(rawRef);
       if (rawInvite) await setApplicationInvite(rawInvite);
       const inviteToken = rawInvite || (await getApplicationInvite());
       let invalidInvite = false;
@@ -270,7 +286,7 @@ export default function RegisterScreen() {
     return () => {
       cancelled = true;
     };
-  }, [params.invite]);
+  }, [params.invite, params.ref]);
 
   async function run(fn: () => Promise<void>) {
     setLoading(true);
@@ -309,8 +325,15 @@ export default function RegisterScreen() {
       <PartnerScreen
         title="Become a HOMEEIGO Partner"
         subtitle="Complete your application — progress is saved automatically."
-        showBack={Boolean(backStep) && bootPhase === "ready"}
-        onBack={() => backStep && goTo(backStep)}
+        showBack={(Boolean(backStep) || returnToReview) && bootPhase === "ready"}
+        onBack={() => {
+          if (returnToReview) {
+            setReturnToReview(false);
+            goTo("review");
+            return;
+          }
+          if (backStep) goTo(backStep);
+        }}
       >
         <View style={styles.body}>
           {showStepper ? <OnboardingStepper currentStep={step} /> : null}
@@ -451,6 +474,7 @@ export default function RegisterScreen() {
                       otp,
                       userId,
                       inviteToken: (await getApplicationInvite()) ?? undefined,
+                      referralCode: (await getPendingReferralCode()) ?? undefined,
                     });
                     goTo("services");
                   })
@@ -651,7 +675,9 @@ export default function RegisterScreen() {
           {step === "assessment" ? (
             <AssessmentStep
               loading={loading}
-              onPassed={() => afterSave("training")}
+              onPassed={() => {
+                afterSave("training");
+              }}
             />
           ) : null}
 
@@ -689,7 +715,7 @@ export default function RegisterScreen() {
           {step === "done" ? (
             <>
               <View style={styles.doneCard}>
-                <Text style={styles.doneTitle}>Application submitted</Text>
+                <Text testID="onboarding-submitted" style={styles.doneTitle}>Application submitted</Text>
                 <Text style={styles.copy}>
                   HQ will review your documents, KYC, and assessment. Typical turnaround is 1–2 business days.
                 </Text>

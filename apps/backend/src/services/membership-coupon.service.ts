@@ -104,6 +104,26 @@ export class MembershipCouponService {
     });
     if (existing) return existing;
 
+    /**
+     * Lock the coupon row before reading its counters.
+     *
+     * Everything below is read-check-then-write: redemptionCount against maxRedemptions, and the
+     * caller's redemption count against perUserLimit. That pattern is only safe if no other
+     * transaction can interleave between the read and the write. It used to be safe by accident —
+     * booking creation ran at SERIALIZABLE, so SSI aborted the loser. Booking creation now runs at
+     * READ COMMITTED (see booking.service.ts create(); SSI was costing 48% of first attempts on
+     * page-granular predicate locks), and at READ COMMITTED two concurrent redemptions of the same
+     * coupon would both read `redemptionCount = max - 1` and both increment past the cap.
+     *
+     * One row lock, taken first, restores the guarantee exactly: redemptions of the SAME coupon
+     * queue behind each other, redemptions of different coupons never meet. It is taken after the
+     * booking's advisory/slot locks in every caller, so the ordering is consistent and no cycle can
+     * form. `FOR NO KEY UPDATE` rather than `FOR UPDATE`: this transaction does not change the
+     * coupon's key, and the weaker mode does not block the foreign-key checks that
+     * `membership_coupon_redemptions` takes against this same row.
+     */
+    await tx.$executeRaw`SELECT id FROM membership_coupons WHERE id = ${couponId} FOR NO KEY UPDATE`;
+
     const coupon = await tx.membershipCoupon.findUnique({
       where: { id: couponId },
       include: { rule: true },
@@ -208,7 +228,17 @@ export class MembershipCouponService {
   async adminList(query: Record<string, string | undefined> = {}) {
     const { page, limit, skip } = parsePagination(query);
     const status = query.status?.toUpperCase() as MembershipCouponStatus | undefined;
-    const where = status ? { status } : {};
+    const search = query.search?.trim();
+    const where: Prisma.MembershipCouponWhereInput = {};
+    if (status && Object.values(MembershipCouponStatus).includes(status)) {
+      where.status = status;
+    }
+    if (search) {
+      where.OR = [
+        { code: { contains: search, mode: "insensitive" } },
+        { name: { contains: search, mode: "insensitive" } },
+      ];
+    }
     const [coupons, total] = await Promise.all([
       prisma.membershipCoupon.findMany({
         where,
@@ -291,23 +321,55 @@ export class MembershipCouponService {
 
   async analytics() {
     return cacheService.getOrFetch("membership:coupon:analytics", 120, async () => {
-      const [issued, redeemed, revenue] = await Promise.all([
+      const now = new Date();
+      const [issued, redeemed, revenue, grouped, expiredLive, activeRows] = await Promise.all([
         prisma.membershipCoupon.count(),
         prisma.membershipCouponRedemption.count(),
         prisma.membershipCouponRedemption.aggregate({
           _sum: { discountApplied: true, revenueBefore: true, revenueAfter: true },
         }),
+        prisma.membershipCoupon.groupBy({
+          by: ["status"],
+          _count: true,
+        }),
+        prisma.membershipCoupon.count({
+          where: { status: MembershipCouponStatus.ACTIVE, expiresAt: { lt: now } },
+        }),
+        prisma.membershipCoupon.findMany({
+          where: { status: MembershipCouponStatus.ACTIVE },
+          select: { planRestricted: true, discountPct: true },
+        }),
       ]);
-      const active = await prisma.membershipCoupon.count({
-        where: { status: MembershipCouponStatus.ACTIVE },
-      });
-      const conversionPct =
-        issued > 0 ? Math.round((redeemed / issued) * 1000) / 10 : 0;
+      const byStatus = Object.fromEntries(grouped.map((g) => [g.status, g._count])) as Record<string, number>;
+      const byPlan: Record<string, number> = {};
+      let discountSum = 0;
+      let discountN = 0;
+      for (const row of activeRows) {
+        if (!row.planRestricted.length) {
+          byPlan.all = (byPlan.all ?? 0) + 1;
+        } else {
+          for (const plan of row.planRestricted) {
+            const key = plan.toLowerCase();
+            byPlan[key] = (byPlan[key] ?? 0) + 1;
+          }
+        }
+        if (row.discountPct != null) {
+          discountSum += row.discountPct;
+          discountN += 1;
+        }
+      }
+      const conversionPct = issued > 0 ? Math.round((redeemed / issued) * 1000) / 10 : 0;
       return {
         issued,
-        active,
+        active: byStatus.ACTIVE ?? 0,
+        paused: byStatus.PAUSED ?? 0,
+        draft: byStatus.DRAFT ?? 0,
+        archived: byStatus.ARCHIVED ?? 0,
+        expiredLive,
         redeemed,
         conversionPct,
+        avgDiscountPct: discountN ? Math.round((discountSum / discountN) * 10) / 10 : 0,
+        byPlan,
         revenueImpact: {
           discountGiven: revenue._sum.discountApplied ?? 0,
           revenueBefore: revenue._sum.revenueBefore ?? 0,

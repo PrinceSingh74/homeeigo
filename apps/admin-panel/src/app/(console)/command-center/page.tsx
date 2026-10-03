@@ -18,6 +18,7 @@ import { ExecutiveKpiRibbon } from "@/components/command/ExecutiveKpiRibbon";
 import { AiIntelligencePanel } from "@/components/command/AiIntelligencePanel";
 import { OperationalTimeline } from "@/components/command/OperationalTimeline";
 import { CommandCenterRail } from "@/components/command/CommandCenterRail";
+import { OperationsWorkspaceRail, OpsEyebrow } from "@/components/operations/OperationsWorkspaceRail";
 import { PartnerCommandOverview } from "@/components/command/PartnerCommandOverview";
 import { MapPerformanceBoundary } from "@/components/perf/MapPerformanceBoundary";
 import { MapDOMIsolationBoundary } from "@/components/perf/MapDOMIsolationBoundary";
@@ -43,7 +44,13 @@ export default function CommandCenterPage() {
   useRenderProbe("CommandCenterPage");
   useMountProbe("CommandCenterPage");
   const [layers, setLayers] = useState<Set<LayerKey>>(new Set<LayerKey>(["density", "surge", "geofence"]));
-  const toggle = (k: LayerKey) => setLayers((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const toggle = (k: LayerKey) =>
+    setLayers((prev) => {
+      const n = new Set(prev);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
 
   // Live data — WS invalidates on ops events; polls are slow safety nets.
   const poll = { staleTime: 60_000, refetchIntervalInBackground: false } as const;
@@ -75,15 +82,17 @@ export default function CommandCenterPage() {
   }, [densityQ.data, zonesQ.data, surgeQ.data]);
 
   const fraudPins: FraudPin[] = useMemo(
-    () => (fraudQ.data?.data.events ?? []).filter((e) => Number.isFinite(e.lat) && Number.isFinite(e.lng)).map((e) => ({ lat: e.lat, lng: e.lng, implied_kmh: e.implied_kmh })),
+    // `data` is null when the fraud-signal source is unavailable (X-86) — no pins, not a crash.
+    () => (fraudQ.data?.data?.events ?? []).filter((e) => Number.isFinite(e.lat) && Number.isFinite(e.lng)).map((e) => ({ lat: e.lat, lng: e.lng, implied_kmh: e.implied_kmh })),
     [fraudQ.data],
   );
 
   return (
-    <div className="cmd-center flex h-[calc(100dvh-2.5rem)] flex-col gap-4 biz-page-enter">
+    <div className="cmd-center flex h-[calc(100dvh-2.5rem)] flex-col gap-5 biz-page-enter">
       <header className="cmd-page-head">
         <Icon3D icon={Gauge} tone="success" size="lg" />
         <div className="min-w-0">
+          <OpsEyebrow />
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <h1 className="biz-display text-[1.45rem] font-bold leading-none tracking-tight">Command Center</h1>
             <span className="cmd-live-pill">
@@ -92,11 +101,12 @@ export default function CommandCenterPage() {
             </span>
           </div>
           <p className="mt-1.5 text-sm" style={{ color: "var(--cmd-muted)" }}>
-            Live operations — density, surge, geofence, and fraud on one map
+            Live density, surge, geofence, and fraud on one map — partners here are availability, not lifecycle
           </p>
         </div>
       </header>
 
+      <OperationsWorkspaceRail />
       <CommandCenterRail />
       <DeferAfterPaint label="PartnerCommandOverview" fallback={<div className="h-28 rounded-2xl" aria-hidden />}>
         <PartnerCommandOverview />
@@ -143,8 +153,8 @@ export default function CommandCenterPage() {
         >
           <AiIntelligencePanel
             surge={surgeQ.data?.data}
-            demand={demandQ.data?.data}
-            fraud={fraudQ.data?.data}
+            demand={demandQ.data?.data ?? undefined}
+            fraud={fraudQ.data?.data ?? undefined}
             revenue={revQ.data?.data}
             zones={zonesQ.data?.data}
           />
@@ -152,7 +162,11 @@ export default function CommandCenterPage() {
       </div>
 
       <DeferAfterPaint label="OperationalTimeline" fallback={<div className="cmd-card cmd-timeline shrink-0" aria-hidden />}>
-        <OperationalTimeline fraud={fraudQ.data?.data} surge={surgeQ.data?.data} />
+        <OperationalTimeline
+          fraud={fraudQ.data?.data ?? undefined}
+          fraudUnavailable={fraudQ.isError || fraudQ.data?.available === false}
+          surge={surgeQ.data?.data}
+        />
       </DeferAfterPaint>
     </div>
   );

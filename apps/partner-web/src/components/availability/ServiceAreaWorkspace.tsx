@@ -69,6 +69,15 @@ export function ServiceAreaWorkspace() {
     }
   }, []);
 
+  const latRef = useRef(lat);
+  const lngRef = useRef(lng);
+  const radiusRef = useRef(radius);
+  const applyPointRef = useRef(applyPoint);
+  latRef.current = lat;
+  lngRef.current = lng;
+  radiusRef.current = radius;
+  applyPointRef.current = applyPoint;
+
   useEffect(() => {
     const g = window.google?.maps as {
       Map: new (el: HTMLElement, opts: Record<string, unknown>) => { panTo: (p: { lat: number; lng: number }) => void; addListener: (e: string, fn: (ev: { latLng?: { lat: () => number; lng: () => number } }) => void) => void };
@@ -76,8 +85,8 @@ export function ServiceAreaWorkspace() {
       Circle: new (opts: Record<string, unknown>) => NonNullable<typeof circle.current>;
     } | undefined;
     const host = mapHost ?? mapRef.current;
-    if (!maps.loaded || !host || !g) return;
-    const start = { lat: lat ?? 28.57, lng: lng ?? 77.32 };
+    if (!maps.loaded || !host || !g || mapObj.current) return;
+    const start = { lat: latRef.current ?? 28.57, lng: lngRef.current ?? 77.32 };
     const map = new g.Map(host, {
       center: start,
       zoom: 12,
@@ -90,7 +99,7 @@ export function ServiceAreaWorkspace() {
     circle.current = new g.Circle({
       map,
       center: start,
-      radius: radius * 1000,
+      radius: radiusRef.current * 1000,
       fillColor: "#2563eb",
       fillOpacity: 0.12,
       strokeColor: "#2563eb",
@@ -98,13 +107,13 @@ export function ServiceAreaWorkspace() {
     });
     map.addListener("click", (e) => {
       if (!e.latLng) return;
-      void applyPoint(e.latLng.lat(), e.latLng.lng());
+      void applyPointRef.current(e.latLng.lat(), e.latLng.lng());
     });
     marker.current.addListener("dragend", () => {
       const pos = marker.current?.getPosition();
-      if (pos) void applyPoint(pos.lat(), pos.lng());
+      if (pos) void applyPointRef.current(pos.lat(), pos.lng());
     });
-  }, [maps.loaded, applyPoint, mapHost]);
+  }, [maps.loaded, mapHost]);
 
   useEffect(() => {
     if (lat == null || lng == null) return;
@@ -204,7 +213,7 @@ export function ServiceAreaWorkspace() {
             setMapHost(el);
           }}
           className="h-[360px] w-full bg-partner-bg-secondary sm:h-[420px]"
-          role="img"
+          role="region"
           aria-label="Service area map"
         />
         {!maps.loaded ? (

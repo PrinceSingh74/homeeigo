@@ -2,17 +2,25 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getErrorMessage } from "@/lib/auth/errors";
+import { coordinatedRefresh } from "@/lib/auth/refresh-coordinator";
 import { authApi } from "@/services/auth/auth-api";
 import { configureApiClient } from "@/services/auth/api-client";
 import { secureTokens } from "@/lib/auth/secure-tokens";
 import { withStartupTimeout } from "@/lib/startup-guards";
 import { finishAsyncStep, startAsyncStep, startupMark } from "@/lib/startup-trace";
+import { pushRegistrar } from "@/lib/push/push-registration";
 import { setSentryUser } from "@/lib/observability/sentry";
 import { reportError } from "@/lib/observability/telemetry";
 import type { AuthStatus, AuthUser, PendingRegistration } from "@/types/auth";
 
 /** Prevents parallel bootstrap() calls and survives persisted "initializing" deadlocks. */
 let bootstrapInFlight: Promise<void> | null = null;
+/**
+ * Bumped by every sign-in and sign-out. A refresh that started in an earlier session must not write
+ * its rotated token into the current one — otherwise a logout during an in-flight refresh would be
+ * undone a moment later, and a new sign-in could be overwritten by the old account's tokens.
+ */
+let sessionEpoch = 0;
 const SECURE_STORE_TIMEOUT_MS = 5000;
 /** Hard cap — auth must never block the app past this (splash is already UI-decoupled). */
 const BOOTSTRAP_DEADLINE_MS = 25000;
@@ -25,7 +33,7 @@ type AuthState = {
   error: string | null;
   /** Dev-only OTP surfaced by the backend when no SMS provider is configured. */
   devOtp: string | null;
-  setSession: (user: AuthUser, accessToken: string, refreshToken: string) => void;
+  setSession: (user: AuthUser, accessToken: string, refreshToken: string) => Promise<void>;
   clearSession: () => void;
   setError: (message: string | null) => void;
   bootstrap: () => Promise<void>;
@@ -56,7 +64,10 @@ export const useAuthStore = create<AuthState>()(
       error: null,
       devOtp: null,
 
-      setSession: (user, accessToken, refreshToken) => {
+      setSession: async (user, accessToken, refreshToken) => {
+        const epoch = ++sessionEpoch;
+        await secureTokens.set(refreshToken); // hardware-backed Keychain/Keystore, not AsyncStorage
+        if (epoch !== sessionEpoch) return; // signed out (or in again) while the write was running
         set({
           user,
           accessToken,
@@ -65,10 +76,10 @@ export const useAuthStore = create<AuthState>()(
           error: null,
         });
         setSentryUser(user);
-        void secureTokens.set(refreshToken); // hardware-backed Keychain/Keystore, not AsyncStorage
       },
 
       clearSession: () => {
+        sessionEpoch += 1;
         set({
           user: null,
           accessToken: null,
@@ -174,33 +185,44 @@ export const useAuthStore = create<AuthState>()(
       login: async (email, password) => {
         set({ error: null });
         const session = await authApi.login(email, password);
-        get().setSession(session.user, session.accessToken, session.refreshToken);
+        await get().setSession(session.user, session.accessToken, session.refreshToken);
       },
 
       signInWithGoogle: async (code, state) => {
         set({ error: null });
         const session = await authApi.googleCallback(code, state);
-        get().setSession(session.user, session.accessToken, session.refreshToken);
+        await get().setSession(session.user, session.accessToken, session.refreshToken);
       },
 
       signInWithApple: async (code, state, user) => {
         set({ error: null });
         const session = await authApi.appleCallback(code, state, user);
-        get().setSession(session.user, session.accessToken, session.refreshToken);
+        await get().setSession(session.user, session.accessToken, session.refreshToken);
       },
 
       register: async (payload) => {
         set({ error: null });
         const session = await authApi.register(payload);
-        get().setSession(session.user, session.accessToken, session.refreshToken);
+        await get().setSession(session.user, session.accessToken, session.refreshToken);
       },
 
       logout: async () => {
         const token = get().refreshToken;
+        // Push: start unlinking this device with the access token clearSession() is about to drop
+        // (the server's logout keeps the device active). Bounded, never throws, never refreshes.
+        const accessToken = get().accessToken;
+        const pushUnlink = accessToken
+          ? pushRegistrar.signOut(() => authApi.unregisterPushDevice(accessToken))
+          : Promise.resolve(pushRegistrar.forget());
         get().clearSession();
+        await pushUnlink;
         if (token) {
           try {
-            await authApi.logout(token);
+            // The captured access token, not the store's (cleared above): a native client has no
+            // refresh cookie, so the server revokes the refresh token only for a caller that proves
+            // the session with a valid access token — without it the logout 401s and the session
+            // stays alive server-side (seen on device: "Sign out" → POST /api/auth/logout 401).
+            await authApi.logout(token, accessToken);
           } catch {
             /* client session already cleared */
           }
@@ -231,22 +253,24 @@ export const useAuthStore = create<AuthState>()(
         await authApi.resetPassword(token, newPassword);
       },
 
-      refreshSession: async () => {
-        const currentRefresh = get().refreshToken;
-        if (!currentRefresh) return false;
-        try {
-          const data = await authApi.refresh(currentRefresh);
-          set({
-            accessToken: data.accessToken,
-            refreshToken: data.refreshToken,
-          });
-          void secureTokens.set(data.refreshToken); // persist rotated token securely
-          return true;
-        } catch {
-          get().clearSession();
-          return false;
-        }
-      },
+      // Shares the api-client's single in-flight refresh: at cold start an auth'd request that 401s
+      // while bootstrap is refreshing used to rotate the SAME refresh token a second time; once that
+      // second call landed outside the server's rotation grace window it was treated as token reuse,
+      // the whole token family was revoked and the user was signed out everywhere.
+      refreshSession: () =>
+        coordinatedRefresh(async () => {
+          const currentRefresh = get().refreshToken;
+          if (!currentRefresh) return false;
+          const epoch = sessionEpoch;
+          let data: { accessToken: string; refreshToken: string };
+          try {
+            data = await authApi.refresh(currentRefresh);
+          } catch {
+            if (epoch === sessionEpoch) get().clearSession();
+            return false;
+          }
+          return applyRotation(data.accessToken, data.refreshToken, epoch);
+        }),
 
       fetchCurrentUser: async () => {
         const user = await authApi.fetchCurrentUser();
@@ -276,13 +300,27 @@ export const useAuthStore = create<AuthState>()(
   ),
 );
 
+/**
+ * A rotated token pair becomes the session in this order: SecureStore write finishes → memory is
+ * updated → the caller retries. The server has already invalidated the old refresh token, so the
+ * new one must be durable before anything relies on it (a kill right after a retry would otherwise
+ * restart the app with a dead token). Returns false when the session this rotation belongs to has
+ * ended meanwhile; nothing is written then.
+ */
+async function applyRotation(accessToken: string, refreshToken: string, epoch: number): Promise<boolean> {
+  if (epoch !== sessionEpoch) return false;
+  await secureTokens.set(refreshToken);
+  // Ended while writing: the sign-out's clear is queued after this write, so SecureStore ends empty.
+  if (epoch !== sessionEpoch) return false;
+  useAuthStore.setState({ accessToken, refreshToken });
+  return true;
+}
+
 configureApiClient({
   getAccessToken: () => useAuthStore.getState().accessToken,
   getRefreshToken: () => useAuthStore.getState().refreshToken,
-  setTokens: (accessToken, refreshToken) => {
-    useAuthStore.setState({ accessToken, refreshToken });
-    void secureTokens.set(refreshToken); // keep SecureStore in sync on silent rotation
-  },
+  getSessionEpoch: () => sessionEpoch,
+  setTokens: (accessToken, refreshToken, epoch) => applyRotation(accessToken, refreshToken, epoch ?? sessionEpoch),
   clearSession: () => useAuthStore.getState().clearSession(),
 });
 

@@ -17,16 +17,23 @@ export class WebhookDedupService {
   ): Promise<WebhookBeginResult> {
     const existing = await prisma.webhookEventDedup.findUnique({ where: { eventId } });
     if (!existing) {
-      await prisma.webhookEventDedup.create({
-        data: {
-          eventId,
-          eventType,
-          gatewayEventId,
-          status: WebhookEventStatus.PROCESSING,
-          attempts: 1,
-        },
-      });
-      return "PROCESS";
+      // The unique eventId is the arbiter: of two concurrent first deliveries exactly one insert
+      // wins. The loser used to throw P2002 outside the route's try block (a 500); it now skips.
+      try {
+        await prisma.webhookEventDedup.create({
+          data: {
+            eventId,
+            eventType,
+            gatewayEventId,
+            status: WebhookEventStatus.PROCESSING,
+            attempts: 1,
+          },
+        });
+        return "PROCESS";
+      } catch (e) {
+        if ((e as { code?: string }).code === "P2002") return "SKIP";
+        throw e;
+      }
     }
 
     if (existing.status === WebhookEventStatus.PROCESSED) return "SKIP";
@@ -40,8 +47,16 @@ export class WebhookDedupService {
     }
 
     if (existing.status === WebhookEventStatus.FAILED || staleProcessing) {
-      await prisma.webhookEventDedup.update({
-        where: { eventId },
+      // Compare-and-set takeover: only the caller whose update still sees the FAILED / stale row
+      // wins. An unconditional update let two concurrent retries BOTH process the same money event.
+      const taken = await prisma.webhookEventDedup.updateMany({
+        where: {
+          eventId,
+          OR: [
+            { status: WebhookEventStatus.FAILED },
+            { status: WebhookEventStatus.PROCESSING, updatedAt: { lt: new Date(Date.now() - STALE_PROCESSING_MS) } },
+          ],
+        },
         data: {
           status: WebhookEventStatus.PROCESSING,
           attempts: { increment: 1 },
@@ -49,7 +64,7 @@ export class WebhookDedupService {
           lastError: null,
         },
       });
-      return "RETRY";
+      return taken.count === 1 ? "RETRY" : "SKIP";
     }
 
     await prisma.webhookEventDedup.update({

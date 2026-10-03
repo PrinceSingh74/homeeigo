@@ -1,4 +1,12 @@
 import { getApiBaseUrl } from "@/lib/api-config";
+import type { BookingRequirementsView, RequirementGateResult } from "@/types/partner";
+import {
+  classifyRefreshResponse,
+  createRefreshCoordinator,
+  sendWithAuthRetry,
+  type RefreshOutcome,
+} from "@/lib/auth-refresh";
+import { recordServerDate } from "@/lib/server-clock";
 import type {
   DemandForecast,
   DensityZone,
@@ -41,12 +49,115 @@ import type {
   ZoneScoring,
 } from "@/types/partner";
 
-type ApiResponse<T> = { success: boolean; data?: T; error?: string };
+type ApiResponse<T> = {
+  success: boolean;
+  data?: T;
+  error?: string;
+  code?: string;
+  retryAfter?: unknown;
+};
 
 let accessToken: string | null = null;
 
 export function setApiAccessToken(token: string | null) {
   accessToken = token;
+}
+
+export function getApiAccessToken(): string | null {
+  return accessToken;
+}
+
+/**
+ * Session hooks wired by the auth store (kept as callbacks so this module does not import the
+ * store — the store already imports this module).
+ */
+export type AuthSessionBridge = {
+  getRefreshToken: () => string | null;
+  /** Persist the rotated pair (SecureStore via the auth store's persist storage). */
+  onTokensRefreshed: (tokens: { accessToken: string; refreshToken: string; sessionId: string | null }) => void;
+  /** The server refused the refresh token: clear credentials, close sockets, go to login. */
+  onSessionRejected: () => void | Promise<void>;
+};
+
+let sessionBridge: AuthSessionBridge | null = null;
+
+export function configureAuthSession(bridge: AuthSessionBridge | null) {
+  sessionBridge = bridge;
+}
+
+async function performTokenRefresh(): Promise<RefreshOutcome> {
+  const refreshToken = sessionBridge?.getRefreshToken() ?? null;
+  if (!refreshToken) return { kind: "rejected" };
+  const { getDeviceId, getDeviceName } = await import("@/lib/device");
+  // Same deviceId as login: the backend revokes the session on a device mismatch.
+  const deviceId = await getDeviceId();
+  let res: Response;
+  try {
+    res = await fetch(`${getApiBaseUrl()}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken, deviceId, deviceName: getDeviceName(), setAuthCookies: false }),
+    });
+  } catch {
+    return { kind: "unavailable" };
+  }
+  let body: unknown = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+  const verdict = classifyRefreshResponse(res.status, body);
+  if (verdict.kind !== "ok") return verdict;
+  accessToken = verdict.accessToken;
+  sessionBridge?.onTokensRefreshed({
+    accessToken: verdict.accessToken,
+    refreshToken: verdict.refreshToken,
+    sessionId: verdict.sessionId,
+  });
+  return { kind: "refreshed", accessToken: verdict.accessToken };
+}
+
+/** ONE refresh at a time for the whole app (HTTP 401s and WebSocket 4401 closes share it). */
+const refreshCoordinator = createRefreshCoordinator(performTokenRefresh);
+
+/**
+ * Refresh the access token (joining any refresh already in flight). Used by the WebSocket clients
+ * on close code 4401 and by bootstrap. On `rejected` the session is torn down here, once.
+ */
+export async function refreshAccessTokenOnce(): Promise<RefreshOutcome> {
+  const outcome = await refreshCoordinator.refresh();
+  if (outcome.kind === "rejected") await sessionBridge?.onSessionRejected();
+  return outcome;
+}
+
+/** Paths that must never trigger a refresh (they ARE the auth flow). */
+const NO_REFRESH_PATHS = ["/api/auth/login", "/api/auth/refresh", "/api/auth/logout"];
+
+/**
+ * 401s that reject the PRESENCE session named in the heartbeat body, not the access token. Refreshing
+ * on them is self-sustaining: refresh rotates the session, revoking the id the heartbeat just sent,
+ * so the retry is rejected again and every beat mints and revokes a refresh token. The heartbeat hook
+ * owns their recovery (re-read the snapshot, beat again).
+ */
+const PRESENCE_SESSION_CODES = new Set(["INVALID_SESSION", "STALE_SESSION", "DEVICE_MISMATCH"]);
+const presenceSessionRejects = new WeakSet<Response>();
+
+export class PartnerApiError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  readonly retryAfter: number | null;
+
+  constructor(
+    message: string,
+    opts: { status: number; code?: string | null; retryAfter?: number | null },
+  ) {
+    super(message);
+    this.name = "PartnerApiError";
+    this.status = opts.status;
+    this.code = opts.code ?? null;
+    this.retryAfter = opts.retryAfter ?? null;
+  }
 }
 
 type RequestOpts = {
@@ -55,6 +166,18 @@ type RequestOpts = {
   query?: Record<string, string | number | boolean | undefined>;
 };
 
+function parseRetryAfter(res: Response, json: { retryAfter?: unknown }): number | null {
+  if (typeof json.retryAfter === "number" && Number.isFinite(json.retryAfter) && json.retryAfter > 0) {
+    return json.retryAfter;
+  }
+  const header = res.headers.get("Retry-After");
+  if (header && /^\d+$/.test(header)) {
+    const n = Number(header);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  return null;
+}
+
 async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
   const url = new URL(`${getApiBaseUrl()}${path}`);
   if (opts.query) {
@@ -62,20 +185,135 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
       if (v !== undefined) url.searchParams.set(k, String(v));
     }
   }
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const target = url.toString();
+  const send = async (token: string | null): Promise<Response> => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const startedAt = Date.now();
+    const response = await fetch(target, {
+      method: opts.method ?? "GET",
+      headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    recordServerDate(response.headers.get("Date"), startedAt, Date.now());
+    if (response.status === 401) {
+      const code = await response
+        .clone()
+        .json()
+        .then((j: { code?: string } | null) => j?.code ?? "")
+        .catch(() => "");
+      if (PRESENCE_SESSION_CODES.has(code)) presenceSessionRejects.add(response);
+    }
+    return response;
+  };
 
-  const res = await fetch(url.toString(), {
-    method: opts.method ?? "GET",
-    headers,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  const res = await sendWithAuthRetry<Response>({
+    send,
+    isUnauthorized: (r) => r.status === 401 && !presenceSessionRejects.has(r),
+    getAccessToken: () => accessToken,
+    refresh: () => refreshCoordinator.refresh(),
+    onSessionRejected: async () => {
+      await sessionBridge?.onSessionRejected();
+    },
+    allowRefresh: !NO_REFRESH_PATHS.includes(path),
   });
-  const json = (await res.json()) as ApiResponse<T>;
+  let json: ApiResponse<T> = { success: false };
+  try {
+    json = (await res.json()) as ApiResponse<T>;
+  } catch {
+    throw new PartnerApiError(res.statusText || "Request failed", {
+      status: res.status,
+      retryAfter: parseRetryAfter(res, {}),
+    });
+  }
   if (!res.ok || !json.success) {
-    throw new Error(json.error ?? res.statusText ?? "Request failed");
+    throw new PartnerApiError(json.error ?? res.statusText ?? "Request failed", {
+      status: res.status,
+      code: typeof json.code === "string" ? json.code : null,
+      retryAfter: parseRetryAfter(res, json),
+    });
   }
   return json.data as T;
 }
+
+export type PresenceFreshness = "FRESH" | "STALE" | "EXPIRED";
+
+export type PresenceLocation = {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  capturedAt: string | null;
+  receivedAt: string | null;
+  transportLagSeconds: number | null;
+  source: string | null;
+  sequence: number | null;
+};
+
+export type PresenceSnapshot = {
+  providerId: string;
+  sessionId: string | null;
+  deviceId: string | null;
+  lastHeartbeatAt: string | null;
+  lastSeenAt?: string | null;
+  presenceFreshness: PresenceFreshness;
+  locationFreshness: PresenceFreshness;
+  presenceAgeSeconds: number | null;
+  locationAgeSeconds: number | null;
+  operationallyLive: boolean;
+  location: PresenceLocation | null;
+  appState?: string | null;
+  platform?: string | null;
+  appVersion?: string | null;
+  heartbeatIntervalSeconds: number;
+};
+
+export type PresenceHeartbeatResult = {
+  accepted: boolean;
+  duplicate?: boolean;
+  snapshot: PresenceSnapshot;
+};
+
+export type PresenceLocationFix = {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  capturedAt: string;
+  sequence?: number;
+};
+
+export type PresenceHeartbeatBody = {
+  sessionId: string;
+  deviceId: string;
+  timestamp: string;
+  appState?: "foreground" | "background" | "inactive";
+  platform?: "ios" | "android" | "web";
+  appVersion?: string;
+  availabilityTelemetry?: string;
+  location?: PresenceLocationFix;
+};
+
+export type DispatchEligibilityChecks = {
+  lifecycle: boolean;
+  availability: boolean;
+  presence: boolean;
+  location: boolean;
+  capacity: boolean;
+  schedule: boolean;
+  geo: boolean;
+  skill: boolean;
+  risk: boolean;
+  payment: boolean;
+  conflict: boolean;
+};
+
+export type DispatchEligibility = {
+  providerId: string;
+  eligible: boolean;
+  blockedBy: string | null;
+  reasons: string[];
+  checks: DispatchEligibilityChecks;
+  evaluatedAt: string;
+};
 
 export type LoginPayload = {
   accessToken: string;
@@ -113,6 +351,38 @@ export const partnerApi = {
 
   resume: () => request<PartnerOperations>("/api/providers/me/resume", { method: "POST" }),
 
+  /** Phase 1 presence — liveness evidence (server derives partner id from JWT). */
+  presenceSnapshot: () => request<PresenceSnapshot>("/api/providers/me/presence"),
+
+  presenceHeartbeat: (body: PresenceHeartbeatBody) =>
+    request<PresenceHeartbeatResult>("/api/providers/me/presence/heartbeat", {
+      method: "POST",
+      body,
+    }),
+
+  locationPing: (body: { sessionId: string; deviceId: string; location: PresenceLocationFix }) =>
+    request<PresenceHeartbeatResult>("/api/providers/me/location/ping", {
+      method: "POST",
+      body,
+    }),
+
+  /**
+   * Live job tracking over HTTP (routes/tracking.ts). Used by the background location task, where
+   * the `/ws/tracking` socket is not kept open. The server accepts it only for ACCEPTED / ASSIGNED /
+   * EN_ROUTE / IN_PROGRESS bookings of this partner (400 INVALID_STATUS otherwise). There is no
+   * timestamp field, so only a FRESH fix may be sent — never replay queued fixes through this.
+   */
+  trackingLocation: (body: {
+    bookingId: string;
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+    altitude?: number;
+    speed?: number;
+  }) => request<unknown>("/api/tracking/location", { method: "POST", body }),
+
+  dispatchEligibility: () => request<DispatchEligibility>("/api/providers/me/dispatch-eligibility"),
+
   updateServiceArea: (body: {
     city?: string;
     serviceRegions?: string[];
@@ -143,7 +413,7 @@ export const partnerApi = {
         id: b.service?.id ?? "",
         name: b.service?.name ?? "Service",
         icon: b.service?.icon ?? null,
-        basePrice: b.service?.basePrice ?? b.finalAmount,
+        basePrice: b.service?.basePrice ?? null,
       },
       address: {
         fullAddress: addr?.fullAddress ?? "",
@@ -156,7 +426,13 @@ export const partnerApi = {
   acceptBooking: (bookingId: string, eta?: number) =>
     request<{ newlyAccepted?: boolean; booking: { id: string; status: string } }>(
       `/api/bookings/${bookingId}/accept`,
-      { method: "POST", body: { eta } },
+      {
+        method: "POST",
+        body:
+          typeof eta === "number" && Number.isFinite(eta) && eta >= 1
+            ? { eta: Math.round(eta) }
+            : {},
+      },
     ),
 
   rejectBooking: (bookingId: string, reason: string) =>
@@ -189,10 +465,16 @@ export const partnerApi = {
    * training label's duration is measured from. Idempotent: a repeat call returns
    * `newlyTransitioned: false` and leaves the timestamp untouched.
    */
-  markEnRoute: (bookingId: string, latitude: number, longitude: number) =>
+  markEnRoute: (bookingId: string, latitude: number | null, longitude: number | null) =>
     request<{ newlyTransitioned: boolean; booking: { status: string; enRouteAt: string | null } }>(
       `/api/bookings/${bookingId}/en-route`,
-      { method: "POST", body: { latitude, longitude } },
+      {
+        method: "POST",
+        body: {
+          ...(typeof latitude === "number" && Number.isFinite(latitude) ? { latitude } : {}),
+          ...(typeof longitude === "number" && Number.isFinite(longitude) ? { longitude } : {}),
+        },
+      },
     ),
 
   /** Declares arrival. Races safely with the GPS geofence and the job-start fallback. */
@@ -217,22 +499,89 @@ export const partnerApi = {
       body: { latitude, longitude, ...(otp ? { otp } : {}) },
     }),
 
+  /**
+   * W2-D1: `completedChecklist` is the partner's actual submission — only the items they ticked, as
+   * the exact frozen strings — matched item by item server-side. Pass `undefined` (key omitted) when
+   * the service has no checklist. The server answers `QUALITY_CHECKLIST_REQUIRED` (409) while any
+   * frozen item is missing; the missing items are then readable from `getQuality(...).history`.
+   */
   completeBooking: (
     bookingId: string,
-    latitude: number,
-    longitude: number,
+    latitude: number | null,
+    longitude: number | null,
     notes?: string,
     photos?: string[],
+    completedChecklist?: string[],
   ) =>
     request<{ booking: { status: string } }>(`/api/bookings/${bookingId}/complete`, {
       method: "POST",
       body: {
-        latitude,
-        longitude,
-        notes,
+        ...(typeof latitude === "number" && Number.isFinite(latitude) ? { latitude } : {}),
+        ...(typeof longitude === "number" && Number.isFinite(longitude) ? { longitude } : {}),
+        ...(notes ? { notes } : {}),
         ...(photos?.length ? { photos } : {}),
+        ...(completedChecklist ? { completedChecklist } : {}),
       },
     }),
+
+  /* ---- Phase 10 §6 — requirement state ---- */
+  getRequirements: (bookingId: string) => request<BookingRequirementsView>(`/api/bookings/${bookingId}/requirements`),
+  /** What the partner FOUND on site; the server decides the gate. Proximity enforced like arrival. */
+  checkRequirement: (bookingId: string, code: string, outcome: "SATISFIED" | "FAILED", latitude: number, longitude: number, note?: string) =>
+    request<{ code: string; state: string; changed: boolean; gate: RequirementGateResult }>(
+      `/api/bookings/${bookingId}/requirements/${encodeURIComponent(code)}/check`,
+      { method: "POST", body: { outcome, latitude, longitude, ...(note ? { note } : {}) } },
+    ),
+
+  /* ---- Phase 10 §9 — safety ---- */
+  getSafety: (bookingId: string) =>
+    request<{
+      gate: { ok: boolean; message: string };
+      safety: { prohibitedConditions: string[]; warnings: string[]; providerRequirements: string[]; emergencyProtocol: string | null } | null;
+      canReport: string[];
+    }>(`/api/bookings/${bookingId}/safety`),
+  reportProhibitedCondition: (bookingId: string, condition: string, note?: string) =>
+    request<{ holdId: number | null; changed: boolean }>(`/api/bookings/${bookingId}/safety/prohibited-condition`, { method: "POST", body: { condition, ...(note ? { note } : {}) } }),
+
+  /* ---- Phase 10 §10/§11 — quality verdict, completion axis, cases ---- */
+  /** The latest recorded quality verdict for this job (partner view: verdict + reason codes). */
+  getQuality: (bookingId: string) =>
+    request<{
+      enforced: boolean;
+      latest: { verdict: string; reasonCodes: string[]; at: string } | null;
+      history: Array<{ sequence: number; verdict: string; reasonCodes: string[]; byAdmin: boolean; at: string; missingChecklistItems: string[] }>;
+    }>(`/api/bookings/${bookingId}/quality`),
+  /** The customer-confirmation axis: state, confirm-by, verdict summary and warranty window. */
+  getCompletion: (bookingId: string) =>
+    request<{
+      enforced: boolean;
+      bookingStatus: string;
+      completedAt: string | null;
+      completion: { state: string; confirmBy: string; resolvedAt: string | null; resolvedByType: string | null; caseId: string | null } | null;
+      verdict: { verdict: string; reasonCodes: string[]; at: string } | null;
+      warranty: { state: string; startsAt: string; expiresAt: string } | null;
+    }>(`/api/bookings/${bookingId}/completion`),
+  /** The customer's reported issues on this job (partnerView: description + outcome, read-only). */
+  getCases: (bookingId: string) =>
+    request<{
+      available: boolean;
+      cases: Array<{
+        id: string; caseNumber: string; bookingId: string; type: string; category: string; state: string;
+        description: string | null; createdAt: string; closedAt: string | null;
+        resolution: { action: string | null; followUpBookingId: string | null } | null;
+      }>;
+      categories: string[];
+    }>(`/api/bookings/${bookingId}/cases`),
+
+  /* ---- Phase 10 §8 — execution steps ---- */
+  getExecution: (bookingId: string) =>
+    request<{
+      enforced: boolean;
+      steps: Array<{ code: string; stepNumber: number; title: string; mandatory: boolean; evidence: string; ppe: string[]; warnings: string[]; state: string; actions: string[] }>;
+      gate: { ok: boolean; blocking: Array<{ code: string; reason: string }> };
+    }>(`/api/bookings/${bookingId}/execution`),
+  executionAction: (bookingId: string, code: string, action: string, body?: Record<string, string>) =>
+    request<{ state: string; changed: boolean }>(`/api/bookings/${bookingId}/execution/${encodeURIComponent(code)}/${action}`, { method: "POST", body: body ?? {} }),
 
   getJobActions: (bookingId: string) =>
     request<{
@@ -241,6 +590,9 @@ export const partnerApi = {
       primaryAction: string | null;
       requiredGates: string[];
       disabledReasons: Record<string, string>;
+      requirementGate?: { ok: boolean; blocking: number; message: string } | null;
+      safetyGate?: { ok: boolean; blocking: number; message: string } | null;
+      paymentExempt?: boolean;
     }>(`/api/bookings/${bookingId}/actions`),
 
   listEvidence: (bookingId: string) =>
@@ -371,6 +723,28 @@ export const partnerApi = {
       }),
     markRead: (id: string) => request<unknown>(`/api/notifications/${id}/read`, { method: "PUT" }),
     remove: (id: string) => request<unknown>(`/api/notifications/${id}`, { method: "DELETE" }),
+    preferences: () =>
+      request<{
+        channels: Array<{
+          channel: "IN_APP" | "PUSH" | "EMAIL" | "SMS";
+          available: boolean;
+          reason?: string;
+        }>;
+        matrix: Array<{
+          category: "TRANSACTIONAL" | "SECURITY" | "OPTIONAL";
+          channel: "IN_APP" | "PUSH" | "EMAIL" | "SMS";
+          enabled: boolean;
+          editable: boolean;
+          mandatory: boolean;
+          available: boolean;
+          unavailableReason?: string;
+        }>;
+      }>("/api/notifications/preferences"),
+    setPreference: (body: {
+      channel: "IN_APP" | "PUSH" | "EMAIL" | "SMS";
+      category: "TRANSACTIONAL" | "SECURITY" | "OPTIONAL";
+      enabled: boolean;
+    }) => request<unknown>("/api/notifications/preferences", { method: "PUT", body }),
   },
 
   /**

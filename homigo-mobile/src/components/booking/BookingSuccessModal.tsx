@@ -18,6 +18,12 @@ type Props = {
   /** `paid` only after Razorpay succeeded AND the backend verified the signature. */
   paymentState: "paid" | "pending";
   paying?: boolean;
+  /** Why the last payment attempt did not complete (server / gateway message), if it didn't. */
+  paymentNote?: string | null;
+  /** false when the server said this booking can no longer be paid (e.g. BOOKING_NOT_PAYABLE). */
+  canPay?: boolean;
+  /** How it was paid, shown on the receipt line. */
+  paidVia?: string;
   onPayNow?: () => void;
   onClose: () => void;
   onViewBookings: () => void;
@@ -28,6 +34,9 @@ export function BookingSuccessModal({
   booking,
   paymentState,
   paying = false,
+  paymentNote = null,
+  canPay = true,
+  paidVia = "Razorpay",
   onPayNow,
   onClose,
   onViewBookings,
@@ -60,14 +69,21 @@ export function BookingSuccessModal({
 
           <BookingStatusBadge status={booking.status} />
           <Text style={[styles.heading, { color: c.text }]}>
-            {paid ? "You're all set!" : "Booking confirmed"}
+            {paid ? "You're all set!" : canPay ? "Booking placed — payment pending" : "Booking can't be paid"}
           </Text>
           <Text style={[styles.id, { color: c.primary }]}>{booking.id}</Text>
           <Text style={[styles.hint, { color: c.textSecondary }]}>
             {paid
               ? `${cfg.description} · Pro ${booking.proName}`
-              : "Your slot is held. Pay now to lock it in — or pay anytime from My Bookings."}
+              : canPay
+                ? "Your booking is saved but not paid yet. Pay now — or anytime from My Bookings."
+                : "This booking is no longer payable. Check its status in My Bookings."}
           </Text>
+          {paymentNote ? (
+            <Text style={[styles.hint, { color: paid ? c.textSecondary : c.warning }]} accessibilityLiveRegion="polite">
+              {paymentNote}
+            </Text>
+          ) : null}
           <Text style={[styles.service, { color: c.text }]}>{booking.serviceTitle}</Text>
           <Text style={[styles.pkg, { color: c.textSecondary }]}>
             {booking.packageName} Package
@@ -88,7 +104,7 @@ export function BookingSuccessModal({
               <View style={styles.paidRow}>
                 <ShieldCheck size={16} color={c.success} />
                 <Text style={[styles.total, { color: c.success }]}>
-                  ₹{booking.total} paid · Razorpay
+                  ₹{booking.total} paid · {paidVia}
                 </Text>
               </View>
             ) : (
@@ -105,6 +121,8 @@ export function BookingSuccessModal({
                 <Text style={[styles.secondaryText, { color: c.primary }]}>Book another</Text>
               </Pressable>
             </>
+          ) : !canPay ? (
+            <Button title="View my bookings" onPress={onViewBookings} size="md" />
           ) : (
             <>
               <Button

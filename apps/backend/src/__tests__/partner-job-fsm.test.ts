@@ -27,13 +27,15 @@ describe("partner job FSM", () => {
     expect(deriveJobState({ status: "PENDING" })).toBe("OFFERED");
     expect(deriveJobState({ status: "ASSIGNED" })).toBe("ACCEPTED");
     expect(deriveJobState({ status: "EN_ROUTE", arrivedAt: new Date() })).toBe("ARRIVED");
+    // §6: a verified PIN is not a started job — the requirement gate may still refuse START.
     expect(
       deriveJobState({
         status: "EN_ROUTE",
         arrivedAt: new Date(),
         startOtpVerifiedAt: new Date(),
       }),
-    ).toBe("STARTED");
+    ).toBe("ARRIVED");
+    expect(deriveJobState({ status: "EN_ROUTE", arrivedAt: new Date(), startOtpVerifiedAt: new Date(), startedAt: new Date() })).toBe("STARTED");
     expect(deriveJobState({ status: "IN_PROGRESS", startedAt: new Date() })).toBe("IN_PROGRESS");
     expect(deriveJobState({ status: "COMPLETED" })).toBe("COMPLETED");
     expect(deriveJobState({ status: "CANCELLED_BY_USER" })).toBe("CANCELLED");

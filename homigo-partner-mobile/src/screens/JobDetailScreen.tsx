@@ -5,12 +5,29 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { JobChatModal } from "@/components/JobChatModal";
 import { JobLifecycleActions } from "@/components/JobLifecycleActions";
+import { RequirementChecklist } from "@/components/RequirementChecklist";
+import { ExecutionSteps } from "@/components/ExecutionSteps";
+import { SafetyPanel } from "@/components/SafetyPanel";
+import { QualityPanel } from "@/components/QualityPanel";
 import { EmptyState, ErrorBlock, HqCard, LoadingBlock, StatRow } from "@/components/HqUi";
 import { PartnerScreen } from "@/components/PartnerScreen";
+import { useRealtimeFallbackInterval } from "@/hooks/use-partner-realtime";
 import { usePartnerTrackingPublisher } from "@/hooks/use-partner-tracking-publisher";
 import { setE2eGeoOverride } from "@/lib/e2e-geo";
+import {
+  BOOKING_LIST_FILTER,
+  BOOKING_STATUS,
+  bookingStatusLabel,
+  bookingStatusRank,
+  isActiveWorkStatus,
+  isPendingStatus,
+  normalizeBookingStatus,
+} from "@/lib/booking-status";
 import { customerName, formatCurrency, formatDateTime } from "@/lib/format";
 import { getAvailableJobActions, primaryActionLabel } from "@/lib/job-action-policy";
+import { toggleChecklistItem } from "@/lib/quality-checklist";
+import { followUpLine } from "@/lib/follow-up";
+import { CUSTOMER_CALL_AVAILABLE, CUSTOMER_CALL_UNAVAILABLE_NOTE, customerCallLabel } from "@/lib/customer-call";
 import { partnerApi } from "@/services/partner-api";
 import type { PartnerBooking } from "@/types/partner";
 import { partnerColors } from "@/theme/colors";
@@ -25,23 +42,15 @@ const TIMELINE: Array<{
   { key: "completedAt", label: "Completed" },
 ];
 
-function StatusChip({ status }: { status: string }) {
+function StatusChip({ status, arrivedAt }: { status: string; arrivedAt?: string | null }) {
   return (
     <View style={styles.chip}>
-      <Text style={styles.chipText}>{status.replace(/_/g, " ")}</Text>
+      <Text style={styles.chipText}>{bookingStatusLabel(status, arrivedAt)}</Text>
     </View>
   );
 }
 
-function statusRank(status: string): number {
-  const u = String(status).toUpperCase().replace(/-/g, "_");
-  if (u === "COMPLETED") return 60;
-  if (u === "IN_PROGRESS") return 50;
-  if (u === "EN_ROUTE") return 40;
-  if (u === "ACCEPTED" || u === "ASSIGNED") return 30;
-  if (u === "PENDING") return 10;
-  return 0;
-}
+const statusRank = bookingStatusRank;
 
 /** Prefer the most advanced lifecycle copy when the same id appears in multiple list caches. */
 function findBooking(
@@ -94,7 +103,18 @@ export function JobDetailScreen() {
   }>();
   const bookingId = Array.isArray(id) ? id[0] : id ?? "";
   const [chatOpen, setChatOpen] = useState(false);
-  const [callError, setCallError] = useState<string | null>(null);
+  /**
+   * W2-D1: the partner's ticks on the FROZEN service checklist, lifted here so the Complete CTA in
+   * the footer (JobLifecycleActions) sends exactly what was ticked. `stillNeeded` is what the server
+   * named after a `QUALITY_CHECKLIST_REQUIRED` refusal — those rows are unticked and flagged.
+   */
+  const [ticked, setTicked] = useState<string[]>([]);
+  const [stillNeeded, setStillNeeded] = useState<string[]>([]);
+
+  useEffect(() => {
+    setTicked([]);
+    setStillNeeded([]);
+  }, [bookingId]);
 
   useEffect(() => {
     const latRaw = Array.isArray(e2eLat) ? e2eLat[0] : e2eLat;
@@ -106,39 +126,46 @@ export function JobDetailScreen() {
     }
   }, [e2eLat, e2eLng]);
 
-  const pending = useQuery({
-    queryKey: ["partner", "bookings", "pending"],
-    queryFn: () => partnerApi.listBookings({ status: "pending", limit: 20, sortBy: "recent" }),
-  });
-  const active = useQuery({
-    queryKey: ["partner", "bookings", "active"],
-    queryFn: () => partnerApi.listBookings({ status: "accepted", limit: 20, sortBy: "upcoming" }),
-  });
-  const completed = useQuery({
-    queryKey: ["partner", "bookings", "completed"],
-    queryFn: () => partnerApi.listBookings({ status: "completed", limit: 20, sortBy: "recent" }),
-  });
-
-  const fromList = findBooking([pending.data, active.data, completed.data], bookingId);
-
+  // X-56: GET /api/bookings/:id is the source of truth for every stage this screen shows (the
+  // partner's access rule includes a SENT offer), and the only booking request it makes. The list
+  // queries below READ the caches the Requests tab keeps (first paint, most-advanced merge) and never
+  // fetch from here — they used to fetch four lists per open and refetch all of them on every
+  // booking invalidation (~13 list requests in one second).
   const detail = useQuery({
     queryKey: ["partner", "bookings", "by-id", bookingId],
     queryFn: () => partnerApi.getBooking(bookingId),
     enabled: !!bookingId,
   });
 
-  // List caches can lag behind accept; GET /bookings/:id is the source of truth.
-  const lookup = useQuery({
-    queryKey: ["partner", "bookings", "detail", bookingId],
-    queryFn: () => partnerApi.listBookings({ limit: 50, sortBy: "recent" }),
-    enabled: !!bookingId,
+  const pendingPollMs = useRealtimeFallbackInterval(10_000, 60_000);
+  // The offer feed is the only source of the live offer window: fetched (and polled) only while this
+  // job is an offer, or when the booking row cannot be read (an offer that just lapsed).
+  const offerFeedNeeded = detail.isError || (detail.isSuccess && isPendingStatus(detail.data?.status));
+  const pending = useQuery({
+    queryKey: ["partner", "bookings", "pending"],
+    queryFn: () => partnerApi.listBookings({ status: BOOKING_LIST_FILTER.OFFERS, limit: 20, sortBy: "recent" }),
+    enabled: offerFeedNeeded,
+    // Safety net for the offer window; realtime events invalidate it immediately when connected.
+    refetchInterval: offerFeedNeeded ? pendingPollMs : false,
+    refetchIntervalInBackground: false,
   });
+  const active = useQuery({
+    queryKey: ["partner", "bookings", "active"],
+    queryFn: () => partnerApi.listBookings({ status: BOOKING_LIST_FILTER.ACTIVE_WORK, limit: 20, sortBy: "upcoming" }),
+    enabled: false,
+  });
+  const completed = useQuery({
+    queryKey: ["partner", "bookings", "completed"],
+    queryFn: () => partnerApi.listBookings({ status: BOOKING_LIST_FILTER.COMPLETED, limit: 20, sortBy: "recent" }),
+    enabled: false,
+  });
+
+  const fromList = findBooking([pending.data, active.data, completed.data], bookingId);
 
   const candidate =
     findBooking(
       [
         detail.data ? { bookings: [detail.data] } : undefined,
-        lookup.data,
         active.data,
         completed.data,
         pending.data,
@@ -151,20 +178,30 @@ export function JobDetailScreen() {
 
   const booking = holdAdvance(bookingId, candidate);
 
+  // Same query and cache as JobLifecycleActions: the server's safety / requirement gates and payment
+  // exemption, so the hint in the body agrees with the footer button.
+  const serverActions = useQuery({
+    queryKey: ["partner", "job-actions", bookingId],
+    queryFn: () => partnerApi.getJobActions(bookingId),
+    enabled: !!bookingId && booking != null && isActiveWorkStatus(booking.status),
+    staleTime: 15_000,
+  });
+
   const evidence = useQuery({
     queryKey: ["partner", "job-evidence", bookingId],
     queryFn: () => partnerApi.listEvidence(bookingId),
     enabled: !!bookingId && !!booking,
   });
 
-  const isLive = booking != null && statusRank(booking.status) >= 30;
+  // GPS publishing: committed, unfinished work only (IN_PROGRESS included, COMPLETED excluded).
+  const isLive = booking != null && isActiveWorkStatus(booking.status);
+  // Call/chat keep their previous visibility (accepted onward, including completed).
+  const showComms = booking != null && statusRank(booking.status) >= 30;
   usePartnerTrackingPublisher({ bookingId: isLive ? bookingId : null, enabled: isLive });
 
   const loading =
     (detail.isLoading && !booking) ||
-    pending.isLoading ||
-    active.isLoading ||
-    (lookup.isFetching && !booking) ||
+    (pending.isLoading && !booking) ||
     (detail.isFetching && booking != null && statusRank(booking.status) < 30 && !detail.data);
 
   if (loading) {
@@ -184,10 +221,36 @@ export function JobDetailScreen() {
   }
 
   const name = customerName(booking.customer);
-  const policy = getAvailableJobActions(booking);
+  // The pending feed is the only source of the live offer window; it lists ONLY open offers.
+  const pendingRow = pending.data?.bookings.find((b) => b.id === bookingId);
+  // "Not in the feed" means "not an open offer" only if the feed was complete (not paginated away).
+  const offerKnown =
+    pending.isSuccess && (pending.data?.total ?? 0) <= (pending.data?.bookings.length ?? 0);
+  const policy = getAvailableJobActions({
+    ...booking,
+    requirementGate: serverActions.data?.requirementGate ?? null,
+    safetyGate: serverActions.data?.safetyGate ?? null,
+    paymentExempt: serverActions.data?.paymentExempt ?? booking.paymentExempt === true,
+  });
   const nextLabel = primaryActionLabel(policy.primaryAction);
   const disabledHint =
     (policy.primaryAction && policy.disabledReasons[policy.primaryAction]) || null;
+  // The frozen checklist from GET /api/bookings/:id → execution.quality.checklist. Tickable only
+  // while the work is in progress; read-only before and after.
+  const checklist: readonly string[] = booking.execution?.quality?.checklist ?? [];
+  const checklistTickable =
+    checklist.length > 0 && normalizeBookingStatus(booking.status) === BOOKING_STATUS.IN_PROGRESS;
+
+  function tickItem(item: string) {
+    setTicked((prev) => toggleChecklistItem(checklist, prev, item));
+    setStillNeeded((prev) => prev.filter((i) => i !== item));
+  }
+
+  function onChecklistRefused(needed: string[]) {
+    // Server truth wins: the items it says are missing go back to unticked, and are flagged.
+    setTicked((prev) => prev.filter((i) => !needed.includes(i)));
+    setStillNeeded(needed);
+  }
 
   async function openMaps() {
     const lat = booking!.address.latitude;
@@ -200,16 +263,6 @@ export function JobDetailScreen() {
     await Linking.openURL(url);
   }
 
-  async function callCustomer() {
-    setCallError(null);
-    try {
-      const data = await partnerApi.initiateCall(bookingId);
-      await Linking.openURL(data.dialUri);
-    } catch (err) {
-      setCallError(err instanceof Error ? err.message : "Could not start call");
-    }
-  }
-
   const footer = (
     <JobLifecycleActions
       bookingId={booking.id}
@@ -219,12 +272,19 @@ export function JobDetailScreen() {
       startedAt={booking.startedAt}
       completedAt={booking.completedAt}
       paymentStatus={booking.paymentStatus}
+      paymentExempt={booking.paymentExempt === true}
       customerLabel={name}
       phoneMasked={booking.customer.phoneMasked}
       bookingNumber={booking.bookingNumber}
       sticky
       hideComms
       showReject
+      offer={pendingRow?.offer ?? null}
+      offerKnown={offerKnown}
+      eta={booking.eta}
+      checklist={checklist}
+      completedChecklist={ticked}
+      onChecklistRefused={onChecklistRefused}
     />
   );
 
@@ -237,11 +297,22 @@ export function JobDetailScreen() {
     >
       <View testID="job-detail-screen" style={styles.root}>
         <View style={styles.headerRow}>
-          <StatusChip status={booking.status} />
+          <StatusChip status={booking.status} arrivedAt={booking.arrivedAt} />
           <Text style={styles.amount}>
             {formatCurrency(booking.finalAmount || booking.amount)}
           </Text>
         </View>
+
+        {followUpLine(booking.followUp) ? (
+          <View testID="job-follow-up">
+            <HqCard>
+              <Text style={styles.sectionTitle}>{followUpLine(booking.followUp)}</Text>
+              <Text style={styles.address}>
+                The customer reported an issue with the earlier visit; this visit follows up on it.
+              </Text>
+            </HqCard>
+          </View>
+        ) : null}
 
         <HqCard>
           <Text style={styles.sectionTitle}>Customer</Text>
@@ -252,6 +323,119 @@ export function JobDetailScreen() {
           <StatRow label="When" value={formatDateTime(booking.scheduledDate)} />
         </HqCard>
 
+        {booking.job && (booking.job.variant || booking.job.unit || booking.job.addons.length || booking.job.durationMinutes) ? (
+          <View testID="job-brief">
+          <HqCard>
+            <Text style={styles.sectionTitle}>What was booked</Text>
+            {booking.job.variant ? <StatRow label="Option" value={booking.job.variant} /> : null}
+            {booking.job.unit ? <StatRow label="Quantity" value={`${booking.job.quantity} ${booking.job.unit}`} /> : null}
+            {booking.job.audience ? <StatRow label="For" value={booking.job.audience} /> : null}
+            {booking.job.addons.length ? (
+              <StatRow
+                label="Add-ons"
+                value={booking.job.addons.map((a) => (a.quantity > 1 ? `${a.name} × ${a.quantity}` : a.name)).join(", ")}
+              />
+            ) : null}
+            {booking.job.durationMinutes ? <StatRow label="Expected time" value={formatMinutes(booking.job.durationMinutes)} /> : null}
+            {booking.job.duration && (booking.job.duration.preparationMinutes || booking.job.duration.cleanupMinutes) ? (
+              <Text style={styles.address}>
+                Prep {formatMinutes(booking.job.duration.preparationMinutes)} · service {formatMinutes(booking.job.duration.serviceMinutes)} ·
+                clean-up {formatMinutes(booking.job.duration.cleanupMinutes)}
+              </Text>
+            ) : null}
+          </HqCard>
+          </View>
+        ) : null}
+
+        {booking.requirements && !booking.requirements.empty ? (
+          <View testID="job-preparation">
+          <HqCard>
+            <Text style={styles.sectionTitle}>Job preparation</Text>
+            {([
+              ["Materials to bring", booking.requirements.bringMaterials],
+              ["Equipment to bring", booking.requirements.bringEquipment],
+              ["Customer provides", booking.requirements.customerProvides],
+              ["Customer preconditions", booking.requirements.preconditions],
+            ] as const).map(([title, items]) =>
+              items.length ? (
+                <View key={title}>
+                  <Text style={styles.address}>{title}</Text>
+                  {items.map((r) => (
+                    <Text key={r.label} style={styles.address}>
+                      • {r.label}
+                      {r.quantity ? ` · ${r.quantity}` : ""}
+                      {r.optional ? " (optional)" : ""}
+                      {r.chargeable ? " (chargeable add-on)" : ""}
+                      {"check" in r ? ` — ${r.check === "CONFIRMED_BY_CUSTOMER" ? "confirmed by the customer" : r.check === "VERIFY_ON_ARRIVAL" ? "verify on arrival" : r.check === "VERIFY_AT_START" ? "verify before you start" : "for your information"}` : ""}
+                      {r.instructions ? `
+  ${r.instructions}` : ""}
+                    </Text>
+                  ))}
+                </View>
+              ) : null,
+            )}
+          </HqCard>
+          </View>
+        ) : null}
+
+        {/* §6: the booking's own requirement state and the START gate — server truth. */}
+        {/* §9 precedence: safety first. */}
+        <SafetyPanel bookingId={booking.id} />
+        <RequirementChecklist bookingId={booking.id} active={isActiveWorkStatus(booking.status)} />
+        {/* §8: the booking's work plan — server truth. */}
+        <ExecutionSteps bookingId={booking.id} />
+        {/* §10: the recorded quality verdict (and why a complete was refused); §11: reported issues. */}
+        <QualityPanel bookingId={booking.id} />
+
+        {booking.execution && (booking.execution.materials || booking.execution.equipment || booking.execution.quality?.checklist.length) ? (
+          <View testID="job-execution">
+          <HqCard>
+            <Text style={styles.sectionTitle}>Job requirements</Text>
+            {booking.execution.materials ? <Text style={styles.address}>{booking.execution.materials}</Text> : null}
+            {booking.execution.equipment ? <Text style={styles.address}>{booking.execution.equipment}</Text> : null}
+            {checklistTickable ? (
+              <View testID="job-quality-checklist">
+                <Text style={styles.muted}>Tick each item as you finish it — all are needed to complete the job.</Text>
+                {checklist.map((item) => {
+                  const checked = ticked.includes(item);
+                  const flagged = stillNeeded.includes(item);
+                  return (
+                    <Pressable
+                      key={item}
+                      testID="job-checklist-item"
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked }}
+                      accessibilityLabel={item}
+                      onPress={() => tickItem(item)}
+                      style={styles.checkRow}
+                    >
+                      <View style={[styles.checkBox, checked ? styles.checkBoxOn : null]}>
+                        {checked ? <Text style={styles.checkMark}>✓</Text> : null}
+                      </View>
+                      <View style={styles.checkBody}>
+                        <Text style={[styles.checkLabel, checked ? styles.checkLabelDone : null]}>{item}</Text>
+                        {flagged && !checked ? (
+                          <Text style={styles.warn} accessibilityRole="alert">
+                            Still needed — the server did not receive this item
+                          </Text>
+                        ) : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : (
+              checklist.map((item) => (
+                <Text key={item} style={styles.address}>
+                  • {item}
+                </Text>
+              ))
+            )}
+            {booking.execution.quality?.proofRequired ? <Text style={styles.address}>Photo proof required at completion.</Text> : null}
+          </HqCard>
+          </View>
+        ) : null}
+
         <HqCard>
           <Text style={styles.sectionTitle}>Location</Text>
           <Text style={styles.address}>{booking.address.fullAddress}</Text>
@@ -260,14 +444,11 @@ export function JobDetailScreen() {
           </Pressable>
         </HqCard>
 
-        {isLive ? (
+        {showComms ? (
           <View style={styles.comms}>
-            <Pressable testID="job-call-btn" onPress={() => void callCustomer()} style={styles.commBtn}>
-              <Text style={styles.commText}>
-                {booking.customer.phoneMasked
-                  ? `Call ${booking.customer.phoneMasked}`
-                  : "Call"}
-              </Text>
+            {/* X-28: no masked-call relay — the customer's number is never given to a partner; use Chat. */}
+            <Pressable testID="job-call-btn" disabled accessibilityState={{ disabled: true }} accessibilityHint={CUSTOMER_CALL_UNAVAILABLE_NOTE} style={[styles.commBtn, { opacity: 0.5 }]}>
+              <Text style={styles.commText}>{customerCallLabel(booking.customer.phoneMasked)}</Text>
             </Pressable>
             <Pressable
               testID="job-chat-btn"
@@ -278,7 +459,7 @@ export function JobDetailScreen() {
             </Pressable>
           </View>
         ) : null}
-        {callError ? <Text style={styles.warn}>{callError}</Text> : null}
+        {showComms && !CUSTOMER_CALL_AVAILABLE ? <Text style={styles.warn}>{CUSTOMER_CALL_UNAVAILABLE_NOTE}</Text> : null}
 
         <HqCard>
           <Text style={styles.sectionTitle}>Lifecycle</Text>
@@ -333,6 +514,13 @@ export function JobDetailScreen() {
       </View>
     </PartnerScreen>
   );
+}
+
+function formatMinutes(n: number): string {
+  if (n < 60) return `${n} min`;
+  const h = Math.floor(n / 60);
+  const m = n % 60;
+  return m ? `${h} hr ${m} min` : `${h} hr`;
 }
 
 const styles = StyleSheet.create({
@@ -401,4 +589,21 @@ const styles = StyleSheet.create({
   next: { fontSize: 12, fontWeight: "600", color: partnerColors.primary, marginBottom: 8 },
   muted: { fontSize: 12, color: partnerColors.textMuted },
   warn: { fontSize: 11, color: partnerColors.warning, marginBottom: 6 },
+  // W2-D1 tickable checklist: 44pt rows, existing tokens only.
+  checkRow: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44, paddingVertical: 4 },
+  checkBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: partnerColors.line,
+    backgroundColor: partnerColors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkBoxOn: { backgroundColor: partnerColors.success, borderColor: partnerColors.success },
+  checkMark: { color: partnerColors.surface, fontSize: 14, fontWeight: "800", lineHeight: 18 },
+  checkBody: { flex: 1 },
+  checkLabel: { fontSize: 13, lineHeight: 18, color: partnerColors.text },
+  checkLabelDone: { color: partnerColors.textSecondary },
 });

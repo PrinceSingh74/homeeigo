@@ -1,4 +1,5 @@
 import prisma from "../../lib/prisma";
+import type { AiRequestStatus } from "@prisma/client";
 import type { TimelineEntry } from "../types";
 
 export async function recordTimelineEntry(entry: TimelineEntry): Promise<void> {
@@ -32,14 +33,21 @@ export async function getActivityTimeline(filters: {
   requestId?: string;
   since?: Date;
   limit?: number;
-  status?: string;
+  /**
+   * Typed as the real column enum rather than `string`.
+   *
+   * It was `string` forced into the Prisma filter with `as never`, so an unrecognised value would
+   * have reached the query and failed there instead of being rejected by the compiler. No caller
+   * passes it today, so narrowing costs nothing and makes a future caller declare a real status.
+   */
+  status?: AiRequestStatus;
 }) {
   return prisma.aiActivityTimeline.findMany({
     where: {
       ...(filters.actorId ? { actorId: filters.actorId } : {}),
       ...(filters.requestId ? { requestId: filters.requestId } : {}),
       ...(filters.since ? { createdAt: { gte: filters.since } } : {}),
-      ...(filters.status ? { status: filters.status as never } : {}),
+      ...(filters.status ? { status: filters.status } : {}),
     },
     orderBy: { createdAt: "desc" },
     take: filters.limit ?? 50,

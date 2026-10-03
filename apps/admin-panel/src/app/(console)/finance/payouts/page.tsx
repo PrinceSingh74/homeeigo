@@ -58,6 +58,7 @@ export default function FinancePayoutsPage() {
       <input
         key={`c-${id}`}
         type="checkbox"
+        aria-label={`Select withdrawal ${String(row.withdrawalNumber ?? id).slice(0, 12)}`}
         checked={selected.has(id)}
         onChange={() => toggleSelect(id)}
         disabled={!["REQUESTED", "APPROVED"].includes(status)}

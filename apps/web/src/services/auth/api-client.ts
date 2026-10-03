@@ -2,57 +2,107 @@ import { parseApiError } from "@/lib/auth/errors";
 import { AuthApiError } from "@/lib/auth/errors";
 import { coordinatedRefresh } from "@/lib/auth/refresh-coordinator";
 import { emitRecoverySignal } from "@/lib/telemetry/recovery";
+import { isPageLeaving } from "@/lib/page-lifecycle";
 import type { ApiResponse } from "@/types/auth";
 
 import { API_PORT, resolveApiBase } from "@/lib/api-base";
 
-function getApiBaseCandidates(): string[] {
+function getApiBaseCandidates(path: string): string[] {
   const primary = resolveApiBase();
-  const candidates = [primary];
-
-  // Same-machine only: if the Next proxy ("") fails, try direct backend port.
-  // Never add localhost fallback on LAN — phones cannot reach the dev machine's localhost.
-  if (
+  const onLoopback =
     typeof window !== "undefined" &&
-    primary === "" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
-  ) {
-    candidates.push(`http://localhost:${API_PORT}`);
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+  // Same-machine only: if the Next rewrite wedges (ECONNRESET / 175s hangs), hit the
+  // API port next. Never add localhost fallback on LAN — phones cannot reach it.
+  if (onLoopback && primary === "") {
+    const direct = `http://${window.location.hostname}:${API_PORT}`;
+    // Auth must not wait behind a stuck proxy — OTP verify was dying there.
+    if (path.startsWith("/api/auth/")) return [direct, ""];
+    return ["", direct];
   }
 
-  return candidates;
+  return [primary];
+}
+
+/**
+ * This app's auth audience. The API host is shared by customer, partner and admin, so the backend
+ * keys the HttpOnly refresh cookie by audience (hg_rt_customer / _partner / _admin) — otherwise
+ * signing into one app would overwrite another's session in the same browser. The header is also a
+ * CSRF control: a cross-site page cannot set it without a preflight the API refuses.
+ */
+const AUTH_AUDIENCE = "customer";
+/** Same-origin Next rewrite hangs for minutes when the API is restarting. Fail over fast. */
+const API_FETCH_MS = 12_000;
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError"))
+  );
+}
+
+/** Next's rewrite returns 500/HTML on ECONNRESET — that is not our JSON envelope. */
+function proxyLooksDead(status: number, contentType: string | null): boolean {
+  if (status === 502 || status === 503 || status === 504) return true;
+  if (status !== 500) return false;
+  return !contentType?.includes("application/json");
 }
 
 async function fetchWithApiFallback(
   path: string,
   init: RequestInit,
 ): Promise<{ response: Response; usedBase: string }> {
-  const candidates = getApiBaseCandidates();
+  const candidates = getApiBaseCandidates(path);
   let lastError: unknown;
+  let lastDead: { response: Response; usedBase: string } | undefined;
 
-  for (const base of candidates) {
+  for (let i = 0; i < candidates.length; i++) {
+    const base = candidates[i]!;
     try {
       const url = `${base}${path}`;
-      const response = await fetch(url, init);
-      return { response, usedBase: base || `(proxy ${window.location?.origin ?? "ssr"})` };
+      const response = await fetch(url, {
+        credentials: "include", // the refresh cookie must travel on auth calls
+        ...init,
+        headers: { ...((init.headers as Record<string, string>) ?? {}), "X-Homigo-Audience": AUTH_AUDIENCE },
+        signal: AbortSignal.timeout(API_FETCH_MS),
+      });
+      const usedBase = base || `(proxy ${typeof window !== "undefined" ? window.location.origin : "ssr"})`;
+      const canFailover =
+        i < candidates.length - 1 && base === "" && proxyLooksDead(response.status, response.headers.get("content-type"));
+      if (canFailover) {
+        lastDead = { response, usedBase };
+        continue;
+      }
+      return { response, usedBase };
     } catch (error) {
       lastError = error;
     }
   }
 
+  if (lastDead) return lastDead;
+
   const label = candidates.map((b) => b || "(same-origin proxy)").join(" or ");
+  const timedOut = isAbortError(lastError);
   throw new AuthApiError(
-    `Could not reach backend API (${label}). Check backend is running and API URL is correct.`,
+    timedOut
+      ? "The server took too long to respond. Please try again."
+      : `Could not reach backend API (${label}). Check backend is running and API URL is correct.`,
     0,
-    "INTERNAL_ERROR",
+    timedOut ? "REQUEST_TIMEOUT" : "INTERNAL_ERROR",
     lastError instanceof Error ? [lastError.message] : undefined,
   );
 }
 
 export type ApiClientConfig = {
   getAccessToken: () => string | null;
-  getRefreshToken: () => string | null;
-  setTokens: (accessToken: string, refreshToken: string) => void;
+  /**
+   * Whether a session exists at all. There is no refresh token in JavaScript any more (it lives in
+   * an HttpOnly cookie), so "can we try a refresh?" is answered by the presence of a session, not by
+   * holding a token.
+   */
+  hasSession: () => boolean;
+  setAccessToken: (accessToken: string) => void;
   clearSession: () => void;
 };
 
@@ -85,8 +135,7 @@ async function parseJson<T>(res: Response): Promise<ApiResponse<T>> {
 
 async function refreshAccessToken(): Promise<boolean> {
   if (!clientConfig) return false;
-  const refreshToken = clientConfig.getRefreshToken();
-  if (!refreshToken) return false;
+  if (!clientConfig.hasSession()) return false;
 
   const { markRefreshCall } = await import("@/lib/auth/bootstrap-gate");
   markRefreshCall();
@@ -98,11 +147,10 @@ async function refreshAccessToken(): Promise<boolean> {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
+      // No token in the body: the browser sends the HttpOnly cookie and the API rotates it in place.
       body: JSON.stringify({
-        refreshToken,
         deviceId: getDeviceId(),
         deviceName: getDeviceName(),
-        setAuthCookies: false,
       }),
     });
     res = result.response;
@@ -115,12 +163,31 @@ async function refreshAccessToken(): Promise<boolean> {
     refreshToken?: string;
   }>(res);
 
-  const ok = res.ok && body.success && Boolean(body.data?.accessToken) && Boolean(body.data?.refreshToken);
+  // Cookie mode returns only an access token — the rotated refresh token stays in the cookie.
+  const ok = res.ok && body.success && Boolean(body.data?.accessToken);
   emitRecoverySignal("jwt_refresh", ok ? 1 : 0);
   if (!ok) return false;
 
-  clientConfig.setTokens(body.data!.accessToken!, body.data!.refreshToken!);
+  clientConfig.setAccessToken(body.data!.accessToken!);
   return true;
+}
+
+/**
+ * Authenticated request whose body is NOT the JSON envelope (an invoice's HTML, an export's zip).
+ * Same bearer + single coordinated refresh-and-retry-once as `apiRequest`, so no caller hand-rolls
+ * auth: a raw `fetch` either forgot the header (the Vision page always got 401) or never refreshed
+ * an expired token (invoice / export failed after an hour).
+ */
+export async function apiRequestRaw(path: string, init: { method?: string } = {}, retried = false): Promise<Response> {
+  const headers: Record<string, string> = {};
+  const token = clientConfig?.getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const { response } = await fetchWithApiFallback(path, { method: init.method ?? "GET", credentials: "include", headers });
+  if (response.status === 401 && !retried && clientConfig?.hasSession()) {
+    if (await coordinatedRefresh(refreshAccessToken)) return apiRequestRaw(path, init, true);
+    clientConfig.clearSession();
+  }
+  return response;
 }
 
 export async function apiRequest<T>(
@@ -156,7 +223,9 @@ export async function apiRequest<T>(
     });
     res = result.response;
   } catch (err) {
-    if (typeof console !== "undefined") {
+    // A request the browser aborted because this page is navigating away is not an outage — the
+    // backend usually answered it (seen: every /api/legal/consent/cookies 200 while this logged).
+    if (typeof console !== "undefined" && !isPageLeaving()) {
       console.error("[auth] backend unreachable for", path, "→", err instanceof Error ? err.message : err);
     }
     if (err instanceof AuthApiError) throw err;
@@ -168,7 +237,7 @@ export async function apiRequest<T>(
     );
   }
 
-  if (res.status === 401 && auth && !skipRefresh && clientConfig?.getRefreshToken()) {
+  if (res.status === 401 && auth && !skipRefresh && clientConfig?.hasSession()) {
     const { useAuthStore } = await import("@/stores/auth-store");
     const { recordStartup401 } = await import("@/lib/auth/bootstrap-gate");
     if (useAuthStore.getState().status === "initializing") {

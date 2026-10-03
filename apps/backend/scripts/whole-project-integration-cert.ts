@@ -13,6 +13,16 @@ import { BookingStatus, PaymentStatus, PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 const RUN = `wpic-${Date.now().toString(36)}`;
+
+/**
+ * Partners this run creates, taken offline in `finally` whether the run passes or fails.
+ *
+ * This script used to leave its partner ONLINE and approved. On 2026-09-21 one of them (created
+ * 2026-08-26) was the only partner `/api/providers/nearby` returned for central Bangalore, and it was
+ * in the live dispatch pool. Its accounts are phone-only, so no e-mail provenance rule could ever
+ * classify them either — hence `dataOrigin: "CERTIFICATION"` on every create below as well.
+ */
+const createdProviderIds: string[] = [];
 let failed = 0;
 const warnings: string[] = [];
 
@@ -65,6 +75,7 @@ async function main() {
       phoneNumber: `+9199${String(Date.now()).slice(-8)}`,
       password: "test-hash",
       role: "CUSTOMER",
+      dataOrigin: "CERTIFICATION",
     },
   });
   const stranger = await prisma.user.create({
@@ -74,6 +85,7 @@ async function main() {
       phoneNumber: `+9197${String(Date.now()).slice(-8)}`,
       password: "test-hash",
       role: "CUSTOMER",
+      dataOrigin: "CERTIFICATION",
     },
   });
   const providerUser = await prisma.user.create({
@@ -83,6 +95,7 @@ async function main() {
       phoneNumber: `+9198${String(Date.now()).slice(-8)}`,
       password: "test-hash",
       role: "VENDOR",
+      dataOrigin: "CERTIFICATION",
     },
   });
   const otherProviderUser = await prisma.user.create({
@@ -92,6 +105,7 @@ async function main() {
       phoneNumber: `+9196${String(Date.now()).slice(-8)}`,
       password: "test-hash",
       role: "VENDOR",
+      dataOrigin: "CERTIFICATION",
     },
   });
 
@@ -144,6 +158,7 @@ async function main() {
       isOnline: true,
     },
   });
+  createdProviderIds.push(provider.id, otherProvider.id);
 
   try {
     await partnerOperationsService.setOnline(provider.id, true);
@@ -450,6 +465,7 @@ async function main() {
   const unmatched = await prisma.booking.create({
     data: {
       bookingNumber: `WPIC-U-${RUN}`,
+      dataOrigin: "CERTIFICATION",
       userId: customer.id,
       serviceId: service.id,
       addressId: address.id,
@@ -493,5 +509,10 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
+    if (createdProviderIds.length) {
+      await prisma.provider
+        .updateMany({ where: { id: { in: createdProviderIds } }, data: { isOnline: false } })
+        .catch((e) => console.error("teardown: could not take fixture partners offline", e));
+    }
     await prisma.$disconnect().catch(() => undefined);
   });

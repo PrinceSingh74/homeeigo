@@ -1,3 +1,5 @@
+import { quantityPriceTable, parseCatalogConfig, publicCatalogConfig } from "./service-catalog-config";
+import { pricingReadiness } from "./service-domain";
 import type { KycStatus, User } from "@prisma/client";
 
 const KYC_MAP: Record<KycStatus, string> = {
@@ -122,10 +124,17 @@ export function formatServiceList(s: {
   isPromoted: boolean;
   premiumOnly: boolean;
   bookingCount: number;
-}) {
+  pricingModel?: string;
+  tags?: string[];
+  catalogConfig?: unknown;
+  displayName?: string | null;
+  isActive?: boolean;
+  isBookable?: boolean;
+}, rating?: { rating: number | null; reviewCount: number }) {
+  const cfg = parseCatalogConfig(s.catalogConfig);
   return {
     id: s.id,
-    name: s.name,
+    name: s.displayName || s.name,
     slug: s.slug,
     description: s.description,
     category: s.category,
@@ -137,12 +146,21 @@ export function formatServiceList(s: {
     durationRange: s.durationRange,
     icon: s.icon,
     thumbnail: s.thumbnail,
-    rating: 4.8,
-    reviewCount: 0,
+    // Real aggregate from the ratings table, or null — never a placeholder.
+    rating: rating?.rating ?? null,
+    reviewCount: rating?.reviewCount ?? 0,
     bookingCount: s.bookingCount,
     isFeatured: s.isFeatured,
     isPopular: s.isPopular,
     isPromoted: s.isPromoted,
     premiumOnly: s.premiumOnly,
+    pricingModel: s.pricingModel,
+    tags: s.tags,
+    catalogConfig: publicCatalogConfig(cfg),
+    /** Server-resolved service-line price per selectable quantity (null when not quantity-priced). */
+    quantityPrices: quantityPriceTable({ ...s, pricingModel: s.pricingModel ?? "fixed" }, cfg),
+    // Same fail-closed rule as quote/booking: an unpriced service is never advertised as bookable.
+    bookable: s.isBookable !== false && cfg?.comingSoon !== true && pricingReadiness({ ...s, pricingModel: s.pricingModel ?? "fixed" }, cfg).ok,
+    comingSoon: cfg?.comingSoon === true,
   };
 }

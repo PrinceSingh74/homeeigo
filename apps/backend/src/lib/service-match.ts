@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "./prisma";
+import { PARTNER_OPERATIONAL_WHERE } from "./service-domain";
 
 export type ServiceMatchTokens = {
   serviceId: string;
@@ -13,8 +14,9 @@ export type ServiceMatchTokens = {
 /**
  * Partner registration UI slugs (partner-web Step2Services) → catalog categories.
  * Partners pick "plumbing" but the service catalog uses category "repair".
+ * Onboarding options are this map, not a second catalogue.
  */
-const PARTNER_SLUG_TO_CATEGORIES: Record<string, string[]> = {
+export const PARTNER_SLUG_TO_CATEGORIES: Record<string, string[]> = {
   cleaning: ["cleaning"],
   plumbing: ["repair"],
   "ac-repair": ["repair"],
@@ -78,7 +80,7 @@ export async function resolveServiceMatchTokens(
   if (!service) return null;
 
   const categoryServices = await prisma.service.findMany({
-    where: { category: service.category, isActive: true },
+    where: { category: service.category, ...PARTNER_OPERATIONAL_WHERE },
     select: { id: true },
   });
 
@@ -115,4 +117,27 @@ export function providerOffersService(
   if (serviceCategories.includes(tokens.serviceSlug)) return true;
   if (serviceCategories.some((entry) => tokens.categoryServiceIds.includes(entry))) return true;
   return serviceCategories.some((entry) => tokens.partnerRegistrationSlugs.includes(entry));
+}
+
+const PARTNER_OPTION_LABELS: Record<string, string> = {
+  cleaning: "Cleaning",
+  plumbing: "Plumbing",
+  "ac-repair": "AC Repair",
+  electrician: "Electrician",
+  "pest-control": "Pest Control",
+  salon: "Salon",
+  "appliance-repair": "Appliance Repair",
+};
+
+/** Live-safe onboarding list: existing partner slugs plus any requiredSkills from active SKUs. */
+export function partnerOnboardingOptionDefs(): Array<{
+  id: string;
+  label: string;
+  catalogCategories: string[];
+}> {
+  return Object.entries(PARTNER_SLUG_TO_CATEGORIES).map(([id, catalogCategories]) => ({
+    id,
+    label: PARTNER_OPTION_LABELS[id] ?? id,
+    catalogCategories,
+  }));
 }

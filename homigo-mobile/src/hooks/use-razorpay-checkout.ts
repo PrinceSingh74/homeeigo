@@ -6,6 +6,7 @@ import {
   shouldUseDevMockCheckout,
   type RazorpaySuccessPayload,
 } from "@/lib/razorpay-checkout-shared";
+import { describeCheckoutError } from "@/lib/razorpay-checkout-error";
 
 function getRazorpayKey(fallback?: string): string {
   return fallback ?? process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID ?? "";
@@ -88,12 +89,10 @@ export function useRazorpayCheckout() {
           razorpay_signature: data.razorpay_signature,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const code =
-          error && typeof error === "object" && "code" in error
-            ? String((error as { code?: unknown }).code ?? "")
-            : "";
-        if (message.toLowerCase().includes("cancel") || code === "2") {
+        // react-native-razorpay rejects with a PLAIN OBJECT { code, description } (String() of it is
+        // "[object Object]"), and the cancel code is 0 on Android (2 = network error) but 2 on iOS.
+        const { message, cancelled } = describeCheckoutError(error, Platform.OS);
+        if (cancelled) {
           options.onDismiss?.();
           return;
         }

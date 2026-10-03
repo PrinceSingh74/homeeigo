@@ -23,6 +23,7 @@ import {
 import { StatTile } from "@/components/hq/primitives";
 import { SectionHead } from "@/components/hq/SectionHead";
 import { Icon3D, type Icon3DTone } from "@/components/hq/Icon3D";
+import { OperationsWorkspaceRail, OpsEyebrow } from "@/components/operations/OperationsWorkspaceRail";
 import { IsoBarChart } from "@/components/hq/IsoBarChart";
 import { GlassRing3D } from "@/components/hq/GlassRing3D";
 import { adminApi, type TwinLayers, type TwinScenario, type TwinSimulation } from "@/services/admin-api";
@@ -154,6 +155,16 @@ function Mini({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * A withheld forecast reads as an em dash, not as zero.
+ *
+ * `formatNumber` coerces null to 0, so passing a withheld figure through it would print "0" and be
+ * indistinguishable from a real forecast of no demand.
+ */
+function forecastLabel(value: number | null): string {
+  return value === null ? "—" : formatNumber(value);
+}
+
 export default function DigitalTwinPage() {
   useRenderProbe("DigitalTwinPage");
   useMountProbe("DigitalTwinPage");
@@ -181,7 +192,7 @@ export default function DigitalTwinPage() {
 
   const L = bundleQ.data?.twin.data.layers;
   const twinMeta = bundleQ.data?.twin;
-  const cities = citiesQ.data?.data.cities ?? [];
+  const cities = useMemo(() => citiesQ.data?.data.cities ?? [], [citiesQ.data?.data.cities]);
   const insights = bundleQ.data?.insights.data.insights ?? [];
   const simulation = sim.data?.data?.city === city ? sim.data.data : null;
   const brief = L ? cityBrief(city, L) : null;
@@ -190,6 +201,13 @@ export default function DigitalTwinPage() {
     ? new Date(twinMeta.freshness).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
     : null;
 
+  /**
+   * A withheld forecast is omitted from the series, never plotted as zero.
+   *
+   * The backend returns null for these when the warehouse forecast window has already closed. Charting
+   * null as 0 would draw a confident line to the floor and read as "demand collapses to nothing",
+   * which is the opposite of "we do not know".
+   */
   const demandSeries = useMemo(() => {
     if (!L) return [];
     return [
@@ -197,7 +215,7 @@ export default function DigitalTwinPage() {
       { label: "1h", value: L.demand.forecast1h },
       { label: "6h", value: L.demand.forecast6h },
       { label: "24h", value: L.demand.forecast24h },
-    ];
+    ].filter((p): p is { label: string; value: number } => typeof p.value === "number");
   }, [L]);
 
   const citySurgeSeries = useMemo(
@@ -239,6 +257,7 @@ export default function DigitalTwinPage() {
         <div className="flex min-w-0 items-start gap-4">
           <Icon3D icon={Globe2} tone={headerTone} size="lg" />
           <div className="min-w-0">
+            <OpsEyebrow />
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <h1 className="biz-display text-[1.75rem] font-bold leading-none tracking-tight">City Twin</h1>
               <span className="cmd-live-pill">
@@ -258,6 +277,8 @@ export default function DigitalTwinPage() {
           Refresh
         </button>
       </header>
+
+      <OperationsWorkspaceRail />
 
       <section className="flex flex-wrap gap-2">
         {cities.map((c) => (
@@ -343,7 +364,7 @@ export default function DigitalTwinPage() {
                   </div>
                   <div className="wx-stat">
                     <dt>Forecast 1h</dt>
-                    <dd>{formatNumber(L.demand.forecast1h)}</dd>
+                    <dd>{forecastLabel(L.demand.forecast1h)}</dd>
                   </div>
                   <div className="wx-stat">
                     <dt>Congestion</dt>
@@ -428,12 +449,12 @@ export default function DigitalTwinPage() {
               title="Demand"
               value={formatNumber(L.demand.current)}
               sub="Now in this city"
-              meter={Math.min(100, L.demand.forecast24h)}
+              meter={L.demand.forecast24h === null ? undefined : Math.min(100, L.demand.forecast24h)}
               meterTone="warning"
             >
-              <Mini label="1h" value={formatNumber(L.demand.forecast1h)} />
-              <Mini label="6h" value={formatNumber(L.demand.forecast6h)} />
-              <Mini label="24h" value={formatNumber(L.demand.forecast24h)} />
+              <Mini label="1h" value={forecastLabel(L.demand.forecast1h)} />
+              <Mini label="6h" value={forecastLabel(L.demand.forecast6h)} />
+              <Mini label="24h" value={forecastLabel(L.demand.forecast24h)} />
             </LayerCard>
             <LayerCard
               icon={Users}
@@ -585,7 +606,7 @@ export default function DigitalTwinPage() {
                   </button>
                 ))}
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <Slider
                   label="Demand"
                   value={scenario.demandDeltaPct ?? 0}
@@ -676,7 +697,7 @@ function Slider({ label, value, onChange }: { label: string; value: number; onCh
         <span className="font-bold uppercase tracking-[0.12em] text-[var(--color-biz-muted)]">{label}</span>
         <span className="font-bold tabular-nums">{signed(value)}</span>
       </div>
-      <input type="range" min={-50} max={100} step={5} value={value} onChange={(e) => onChange(Number(e.target.value))} className="dt-range" />
+      <input type="range" aria-label={label} min={-50} max={100} step={5} value={value} onChange={(e) => onChange(Number(e.target.value))} className="dt-range" />
     </div>
   );
 }

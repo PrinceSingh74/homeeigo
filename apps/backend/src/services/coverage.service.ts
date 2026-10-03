@@ -1,6 +1,25 @@
 import { BookingStatus, Prisma, type CoverageRequestStatus } from "@prisma/client";
 import prisma from "../lib/prisma";
+import { CUSTOMER_CATALOG_WHERE } from "../lib/service-domain";
 import { cacheService } from "./cache.service";
+import {
+  ACCEPTANCE_TERMINAL_STATUSES,
+  acceptanceRatePct,
+  acceptanceWindowStart,
+} from "../lib/acceptance-rate";
+import {
+  CANCELLED_BOOKING_STATUSES,
+  cancellationRatePct,
+  completionRatePct,
+} from "../lib/fulfillment-rates";
+
+/**
+ * Journeys required before an average arrival time is published for a city.
+ *
+ * A credibility floor, not a statistical claim: one or two timed journeys describe those journeys,
+ * not the city. Tunable — raising it makes the page quieter and never less true.
+ */
+const MIN_ARRIVAL_SAMPLES = 5;
 import {
   CITY_SEEDS,
   deriveCityDetail,
@@ -78,7 +97,7 @@ class CoverageService {
       300,
       async () => {
         const cityNames = CITY_SEEDS.map((c) => c.name);
-        const [providerGroups, customerGroups, bookingCounts] = await Promise.all([
+        const [providerGroups, customerGroups, bookingCounts, acceptanceRows, outcomeRows] = await Promise.all([
           prisma.provider.groupBy({
             by: ["city"],
             where: { isActive: true, city: { in: cityNames, mode: "insensitive" } },
@@ -100,14 +119,115 @@ class CoverageService {
               }),
             })),
           ),
+          /**
+           * Terminal dispatch outcomes per city, on the SAME definition the provider column uses —
+           * ACCEPTED over ACCEPTED+REJECTED+TIMEOUT within the shared window. Raw SQL because Prisma
+           * cannot group by a field on a relation, and grouping is the whole point: one pass for
+           * every city rather than a query each.
+           */
+          prisma.$queryRaw<Array<{ city: string | null; accepted: bigint; terminal: bigint }>>`
+            SELECT p.city AS city,
+                   COUNT(*) FILTER (WHERE a.status = 'ACCEPTED') AS accepted,
+                   COUNT(*) AS terminal
+            FROM assignment_attempts a
+            JOIN providers p ON p.id = a.provider_id
+            WHERE a.status = ANY(${ACCEPTANCE_TERMINAL_STATUSES}::"AssignmentAttemptStatus"[])
+              AND a.dispatched_at >= ${acceptanceWindowStart()}
+              AND p.city IS NOT NULL
+            GROUP BY p.city
+          `,
+          /**
+           * Terminal booking outcomes and mean travel time per city, in one pass.
+           *
+           * Travel time comes from the en_route -> arrived lifecycle pair (ADR-018), NOT from
+           * `bookings.eta`. `eta` looked like the obvious source and is not one: 33 of 2,879 rows
+           * carry a value and every one of them is exactly 1, so it is a sentinel rather than a
+           * measurement. Averaging it would have published "Avg Arrival Time: 1 min" — swapping a
+           * seeded fabrication for a misattributed one.
+           *
+           * These replace `seeded()` figures that were published to customers as
+           * "Completion Rate", "Cancellation Rate" and "Avg Arrival Time". Grouped on the booking's
+           * ADDRESS city, which is the city the work happened in — the same attribution
+           * `servicesCompleted` already uses, so the numbers on one card cannot disagree.
+           */
+          prisma.$queryRaw<Array<{
+            city: string | null;
+            completed: bigint;
+            cancelled: bigint;
+            avg_eta: number | null;
+            arrival_samples: bigint;
+          }>>`
+            SELECT a.city AS city,
+                   COUNT(*) FILTER (WHERE b.status = 'COMPLETED') AS completed,
+                   COUNT(*) FILTER (WHERE b.status = ANY(${CANCELLED_BOOKING_STATUSES}::"BookingStatus"[])) AS cancelled,
+                   AVG(EXTRACT(EPOCH FROM (b.arrived_at - b.en_route_at)) / 60)
+                     FILTER (WHERE b.arrived_at IS NOT NULL AND b.en_route_at IS NOT NULL
+                             AND b.arrived_at > b.en_route_at) AS avg_eta,
+                   COUNT(*) FILTER (WHERE b.arrived_at IS NOT NULL AND b.en_route_at IS NOT NULL
+                                    AND b.arrived_at > b.en_route_at) AS arrival_samples
+            FROM bookings b
+            JOIN addresses a ON a.id = b.address_id
+            WHERE a.city IS NOT NULL
+            GROUP BY a.city
+          `,
         ]);
+
+        const acceptanceByCity = new Map(
+          acceptanceRows.map((r) => [String(r.city ?? "").toLowerCase(), r]),
+        );
+        const outcomeByCity = new Map(outcomeRows.map((r) => [String(r.city ?? "").toLowerCase(), r]));
 
         const map: Array<[string, CityLiveOverrides]> = CITY_SEEDS.map((seed) => {
           const key = seed.name.toLowerCase();
           const providers = providerGroups.find((g) => g.city?.toLowerCase() === key)?._count._all ?? 0;
           const customers = customerGroups.find((g) => g.preferredCity?.toLowerCase() === key)?._count._all ?? 0;
           const completed = bookingCounts.find((b) => b.name.toLowerCase() === key)?.count ?? 0;
-          return [seed.slug, { activePartners: providers, customers, servicesCompleted: completed }];
+          /**
+           * Measured, or absent. `acceptanceRatePct` returns null when the city has no terminal
+           * dispatch outcome in the window, and that null is carried all the way to the customer
+           * page — which previously showed a seeded 91-98% for every city, forever.
+           */
+          const acc = acceptanceByCity.get(key);
+          const acceptanceRate = acceptanceRatePct(Number(acc?.accepted ?? 0), Number(acc?.terminal ?? 0));
+
+          /**
+           * Completion, cancellation and arrival time — measured, or absent.
+           *
+           * A city with no finished bookings has no completion rate. Reporting 0% would say nothing
+           * ever finished; the seeded 96.5-99.4% it used to report said the opposite. Both are
+           * claims the data cannot support.
+           */
+          const outcome = outcomeByCity.get(key);
+          const outcomeCompleted = Number(outcome?.completed ?? 0);
+          const outcomeCancelled = Number(outcome?.cancelled ?? 0);
+          /**
+           * Published only when there is something credible to publish.
+           *
+           * Two floors, both stated rather than implied: at least MIN_ARRIVAL_SAMPLES journeys, and
+           * an average of at least one minute. The current dataset has 13 arrival pairs averaging
+           * 0.01 minutes — instrumentation noise from fixtures — and rounding that to "0 mins" would
+           * be a claim, not a measurement. Every city therefore reports null today, which is correct.
+           */
+          const arrivalSamples = Number(outcome?.arrival_samples ?? 0);
+          const avgEtaRaw = outcome?.avg_eta;
+          const avgEtaRounded =
+            avgEtaRaw != null && Number.isFinite(Number(avgEtaRaw)) ? Math.round(Number(avgEtaRaw)) : null;
+          const avgEta =
+            arrivalSamples >= MIN_ARRIVAL_SAMPLES && avgEtaRounded != null && avgEtaRounded >= 1
+              ? avgEtaRounded
+              : null;
+          return [
+            seed.slug,
+            {
+              activePartners: providers,
+              customers,
+              servicesCompleted: completed,
+              acceptanceRate,
+              completionRate: completionRatePct(outcomeCompleted, outcomeCancelled),
+              cancellationRate: cancellationRatePct(outcomeCompleted, outcomeCancelled),
+              avgArrivalMins: avgEta,
+            },
+          ];
         });
         return map;
       },
@@ -118,11 +238,12 @@ class CoverageService {
   /** Active catalog services for a city (falls back to core list inside the engine). */
   private async cityServices(cityName: string): Promise<Array<{ name: string; slug: string }>> {
     const services = await cacheService.getOrFetch(
-      "coverage:catalog-services",
+      // v2: the key changed with the filter so a cached pre-filter list (fixtures included) is never served.
+      "coverage:catalog-services:v2",
       300,
       () =>
         prisma.service.findMany({
-          where: { isActive: true },
+          where: CUSTOMER_CATALOG_WHERE,
           select: { name: true, slug: true, availableCities: true, unavailableCities: true },
           orderBy: { name: "asc" },
         }),
@@ -373,7 +494,8 @@ class CoverageService {
         pincodes: cities.reduce((s, c) => s + c.pincodeCount, 0),
         societies: cities.reduce((s, c) => s + c.societyCount, 0),
         coveragePct: Math.round(((liveAreas + limitedAreas * 0.5) / Math.max(1, totalAreas)) * 1000) / 10,
-        activePartners: cities.reduce((s, c) => s + c.activePartners, 0),
+        // Sums only cities whose partner count was actually measured.
+        activePartners: cities.reduce((s, c) => s + (c.activePartners ?? 0), 0),
         avgCoverageScore: Math.round(cities.reduce((s, c) => s + c.coverageScore, 0) / Math.max(1, cities.length)),
       },
       cities,

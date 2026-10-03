@@ -14,6 +14,24 @@ export type PaymentSuccessPayload = {
   completedAt: string;
 };
 
+/**
+ * A checkout the customer started and has not finished.
+ *
+ * Carries identity and nothing else. The amount is present because recovery needs to know what was
+ * at stake, but no card detail, no gateway credential, no contact detail and no address appears
+ * here — the workflow re-reads whatever it needs from authoritative state when it wakes, so a
+ * fuller payload would only be a copy of customer data waiting to go stale.
+ */
+export type CheckoutStartedPayload = {
+  bookingId: string;
+  userId: string;
+  paymentId: string;
+  amountPaise: number;
+  /** The gateway order, when one exists. Absent while the reservation is still a placeholder. */
+  razorpayOrderId?: string;
+  startedAt: string;
+};
+
 export type PaymentFailedPayload = {
   paymentId: string;
   bookingId: string;
@@ -100,6 +118,34 @@ export function buildPaymentFailedEvent(input: {
       amountPaise,
       reason: input.reason,
       failedAt: input.failedAt.toISOString(),
+    },
+    input.bookingId,
+  );
+}
+
+/**
+ * Built at the one point where a customer has demonstrably begun paying: a gateway order created
+ * for their own booking. Correlated on `bookingId`, matching how payment recovery already works —
+ * the customer's experience is booking-shaped, not payment-shaped.
+ */
+export function buildCheckoutStartedEvent(input: {
+  bookingId: string;
+  userId: string;
+  paymentId: string;
+  amountPaise: number;
+  razorpayOrderId?: string;
+  startedAt: Date;
+}): HomigoEvent<CheckoutStartedPayload> {
+  return envelope(
+    EVENT_TYPES.CHECKOUT_STARTED,
+    input.bookingId,
+    {
+      bookingId: input.bookingId,
+      userId: input.userId,
+      paymentId: input.paymentId,
+      amountPaise: input.amountPaise,
+      ...(input.razorpayOrderId ? { razorpayOrderId: input.razorpayOrderId } : {}),
+      startedAt: input.startedAt.toISOString(),
     },
     input.bookingId,
   );

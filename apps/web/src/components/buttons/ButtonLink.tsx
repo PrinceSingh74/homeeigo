@@ -1,7 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { m as motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import {
   buttonBase,
@@ -16,7 +16,7 @@ type ButtonLinkProps = {
   size?: ButtonProps["size"];
   fullWidth?: boolean;
   className?: string;
-  children: React.ReactNode;
+  children: ReactNode;
   onClick?: () => void;
 };
 
@@ -30,22 +30,19 @@ export function ButtonLink({
   onClick,
 }: ButtonLinkProps) {
   return (
-    <motion.div whileHover={{ y: -4 }} whileTap={{ scale: 0.98 }}>
-      <Link
-        href={href}
-        onClick={onClick}
-        className={cn(
-          buttonBase,
-          "disabled:pointer-events-none disabled:opacity-50",
-          "transition-shadow",
-          buttonVariants[variant],
-          buttonSizes[size],
-          fullWidth && "w-full",
-          className,
-        )}
-      >
-        {children}
-      </Link>
-    </motion.div>
+    <Link
+      href={href}
+      onClick={onClick}
+      className={cn(
+        buttonBase,
+        "hover:-translate-y-1 active:scale-[0.98] motion-reduce:transform-none",
+        buttonVariants[variant],
+        buttonSizes[size],
+        fullWidth && "w-full",
+        className,
+      )}
+    >
+      {children}
+    </Link>
   );
 }

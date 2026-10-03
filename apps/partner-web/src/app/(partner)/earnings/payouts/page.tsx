@@ -40,9 +40,14 @@ export default function PartnerPayoutsPage() {
             <span className="text-xs font-medium">Available balance</span>
           </div>
           <p className="font-display mt-2 text-2xl font-bold">
-            {isLoading ? "…" : inr(available)}
+            {isLoading ? "Loading wallet…" : inr(available)}
           </p>
-          <PartnerButton className="mt-4 w-full" disabled={available <= 0} onClick={() => setWithdrawOpen(true)}>
+          <PartnerButton
+            className="mt-4 w-full"
+            disabled={isLoading || available <= 0}
+            onClick={() => setWithdrawOpen(true)}
+            data-testid="payouts-withdraw-cta"
+          >
             Request withdrawal
           </PartnerButton>
         </PartnerCard>
@@ -52,7 +57,7 @@ export default function PartnerPayoutsPage() {
             <span className="text-xs font-medium">Pending</span>
           </div>
           <p className="font-display mt-2 text-2xl font-bold">
-            {isLoading ? "…" : inr(data?.pendingBalance ?? 0)}
+            {isLoading ? "Loading…" : inr(data?.pendingBalance ?? 0)}
           </p>
         </PartnerCard>
         <PartnerCard className="!p-4">
@@ -61,7 +66,7 @@ export default function PartnerPayoutsPage() {
             <span className="text-xs font-medium">Lifetime earnings</span>
           </div>
           <p className="font-display mt-2 text-2xl font-bold">
-            {isLoading ? "…" : inr(data?.lifetimeEarnings ?? 0)}
+            {isLoading ? "Loading…" : inr(data?.lifetimeEarnings ?? 0)}
           </p>
         </PartnerCard>
         <PartnerCard className="!p-4">

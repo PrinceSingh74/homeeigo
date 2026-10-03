@@ -48,7 +48,10 @@ async function fetchWithApiFallback(
 export type ApiClientConfig = {
   getAccessToken: () => string | null;
   getRefreshToken: () => string | null;
-  setTokens: (accessToken: string, refreshToken: string) => void;
+  /** Changes on every sign-in / sign-out; a refresh from an earlier session must not be applied. */
+  getSessionEpoch?: () => number;
+  /** Persists then applies a rotated pair; resolves false when the session has ended meanwhile. */
+  setTokens: (accessToken: string, refreshToken: string, epoch?: number) => Promise<boolean> | boolean | void;
   clearSession: () => void;
 };
 
@@ -65,6 +68,12 @@ type RequestOptions = {
   skipRefresh?: boolean;
   /** Idempotency key — set on replayed offline mutations so the backend can dedupe side effects. */
   idempotencyKey?: string;
+  /**
+   * Authenticate with THIS access token instead of the session's current one. For a request that
+   * must outlive the session it belongs to: sign-out's push unlink is started just before
+   * `clearSession()` and is sent after it. Pair it with `skipRefresh`.
+   */
+  accessToken?: string;
 };
 
 async function parseJson<T>(res: Response): Promise<ApiResponse<T>> {
@@ -77,11 +86,16 @@ async function parseJson<T>(res: Response): Promise<ApiResponse<T>> {
 
 async function refreshAccessToken(): Promise<boolean> {
   if (!clientConfig) return false;
-  const refreshToken = clientConfig.getRefreshToken();
-  if (!refreshToken) return false;
+  if (!clientConfig.getRefreshToken()) return false;
 
   const { ensureDeviceId, getDeviceName } = await import("@/lib/auth/device");
   const deviceId = await ensureDeviceId();
+  // Read the token only after the awaits above. They can take seconds (a lazily loaded module,
+  // SecureStore), and a token captured before them may already have been rotated by another
+  // refresh — sending it then is token reuse to the server, which revokes the whole family.
+  const refreshToken = clientConfig.getRefreshToken();
+  if (!refreshToken) return false;
+  const epoch = clientConfig.getSessionEpoch?.();
   let res: Response;
   try {
     res = await fetchWithApiFallback("/api/auth/refresh", {
@@ -107,15 +121,16 @@ async function refreshAccessToken(): Promise<boolean> {
   reportRecoverySignal("jwt_refresh", ok ? 1 : 0);
   if (!ok) return false;
 
-  clientConfig.setTokens(body.data!.accessToken!, body.data!.refreshToken!);
-  return true;
+  // Awaited: the retry must not run before the rotated token is durable (see the store's applyRotation).
+  const applied = await clientConfig.setTokens(body.data!.accessToken!, body.data!.refreshToken!, epoch);
+  return applied !== false;
 }
 
 export async function apiRequest<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { method = "GET", body, auth = false, skipRefresh = false, idempotencyKey } = options;
+  const { method = "GET", body, auth = false, skipRefresh = false, idempotencyKey, accessToken } = options;
 
   const { getFraudHeaders } = await import("@/lib/fraud/signals");
   const headers: Record<string, string> = {
@@ -125,7 +140,7 @@ export async function apiRequest<T>(
   if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
 
   if (auth && clientConfig) {
-    const token = clientConfig.getAccessToken();
+    const token = accessToken ?? clientConfig.getAccessToken();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
@@ -146,11 +161,13 @@ export async function apiRequest<T>(
   }
 
   if (res.status === 401 && auth && !skipRefresh && clientConfig?.getRefreshToken()) {
+    const epochAtRefresh = clientConfig.getSessionEpoch?.();
     const refreshed = await coordinatedRefresh(refreshAccessToken);
     if (refreshed) {
       return apiRequest<T>(path, { ...options, skipRefresh: true });
     }
-    clientConfig.clearSession();
+    // Only end the session this request belonged to — never one that was started meanwhile.
+    if (clientConfig.getSessionEpoch?.() === epochAtRefresh) clientConfig.clearSession();
   }
 
   const json = await parseJson<T>(res);

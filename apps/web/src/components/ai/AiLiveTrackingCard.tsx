@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Bike, Home, MapPin, Navigation, Star } from "lucide-react";
+import { Bike, Home, MapPin, Navigation } from "lucide-react";
 import { m as motion, useReducedMotion } from "framer-motion";
 import { HOMIGO_RIDER_IMAGE } from "@/lib/demo-tracking-booking";
 import { useActiveTracking } from "@/hooks/use-active-tracking";
@@ -20,7 +20,6 @@ export function AiLiveTrackingCard({ embedded, className }: AiLiveTrackingCardPr
   const eta = tracking?.eta ?? 0;
   const proName = activeBooking?.proName ?? "Assigned Pro";
   const serviceTitle = activeBooking?.serviceTitle ?? "Service";
-  const rating = "4.8";
 
   return (
     <div
@@ -106,13 +105,9 @@ export function AiLiveTrackingCard({ embedded, className }: AiLiveTrackingCardPr
             {proName}
           </p>
           <p className="truncate text-[11px] text-slate">
-            AC Technician · {serviceTitle}
+            {serviceTitle}
           </p>
-          <p className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
-            <Star size={11} className="fill-amber-400 text-amber-400" />
-            {rating}
-            <span className="text-slate">· Assigned expert</span>
-          </p>
+          <p className="mt-0.5 text-[11px] font-medium text-slate">Assigned expert</p>
         </div>
       </div>
 

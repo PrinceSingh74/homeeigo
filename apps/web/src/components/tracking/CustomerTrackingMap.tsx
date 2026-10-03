@@ -11,17 +11,19 @@ import {
   Navigation,
   Gauge,
   MessageSquare,
-  Phone,
   Route as RouteIcon,
   Star,
 } from "lucide-react";
 import { useBookingTracking } from "@/hooks/use-booking-tracking";
 import type { RouteInfo } from "./LiveTrackingMap";
 import { BookingJourney, toJourneyStage } from "./BookingJourney";
+import { PartnerControlledCallButton } from "@/components/booking/PartnerControlledCallButton";
 
 export type TrackedPartner = {
   name: string;
   rating?: number | null;
+  phoneMasked?: string | null;
+  /** @deprecated Prefer phoneMasked + controlled dial. */
   phoneNumber?: string | null;
   profileImage?: string | null;
 };
@@ -124,30 +126,22 @@ export function CustomerTrackingMap({
               <span>Your HOMEEIGO professional</span>
             </p>
           </div>
-          {partner.phoneNumber ? (
-            <div className="flex shrink-0 items-center gap-2">
-              <a
-                href={`sms:${partner.phoneNumber}`}
-                aria-label={`Message ${partner.name}`}
-                title={`Message ${partner.name}`}
-                className="grid size-11 place-items-center rounded-full border border-white/15 bg-white/10 text-white transition hover:bg-white/20 active:scale-95"
-              >
-                <MessageSquare size={18} />
-              </a>
-              <a
-                href={`tel:${partner.phoneNumber}`}
-                aria-label={`Call ${partner.name}`}
-                title={`Call ${partner.name}`}
-                className="grid size-11 place-items-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/30 transition hover:brightness-110 active:scale-95"
-              >
-                <Phone size={18} />
-              </a>
-            </div>
-          ) : (
-            <span className="shrink-0 rounded-full bg-slate-800 px-2.5 py-1 text-[10px] font-medium text-slate-400">
-              Contact via support
-            </span>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                document
+                  .querySelector('[data-testid="customer-booking-chat"]')
+                  ?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
+              aria-label={`Message ${partner.name}`}
+              title="Open booking chat"
+              className="grid size-11 place-items-center rounded-full border border-white/15 bg-white/10 text-white transition hover:bg-white/20 active:scale-95"
+            >
+              <MessageSquare size={18} />
+            </button>
+            <PartnerControlledCallButton bookingId={bookingId} partnerName={partner.name} />
+          </div>
         </div>
       ) : null}
 

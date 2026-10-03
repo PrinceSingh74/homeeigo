@@ -27,6 +27,47 @@ export async function verifyPartnerBookingAccess(providerId: string, bookingId: 
   return Boolean(booking);
 }
 
+/**
+ * Bind client-supplied AI context IDs to the authenticated actor.
+ * PARTNER/CUSTOMER cannot attach another party's partnerId, customerId, or bookingId.
+ * ADMIN/SUPPORT keep the requested IDs (console investigation).
+ */
+export async function bindAiContextToActor<
+  T extends {
+    partnerId?: string;
+    customerId?: string;
+    userId?: string;
+    bookingId?: string;
+  },
+>(actor: { actorId: string; actorRole: string }, context?: T): Promise<T | undefined> {
+  if (!context) return context;
+  const next = { ...context };
+  if (actor.actorRole === "PARTNER") {
+    const providerId = await resolveProviderId(actor.actorId);
+    next.partnerId = providerId ?? undefined;
+    next.userId = actor.actorId;
+    next.customerId = undefined;
+    if (next.bookingId && providerId) {
+      const ok = await verifyPartnerBookingAccess(providerId, next.bookingId);
+      if (!ok) next.bookingId = undefined;
+    } else if (next.bookingId && !providerId) {
+      next.bookingId = undefined;
+    }
+    return next;
+  }
+  if (actor.actorRole === "CUSTOMER") {
+    next.customerId = actor.actorId;
+    next.userId = actor.actorId;
+    next.partnerId = undefined;
+    if (next.bookingId) {
+      const ok = await verifyBookingOwnership(actor.actorId, next.bookingId);
+      if (!ok) next.bookingId = undefined;
+    }
+    return next;
+  }
+  return next;
+}
+
 /** Verify booking access for tracking (customer, partner, or admin). */
 export async function verifyBookingAccess(
   bookingId: string,

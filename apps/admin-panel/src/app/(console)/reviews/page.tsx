@@ -155,6 +155,7 @@ export default function ReviewsPage() {
           />
         </div>
         <select
+          aria-label="Filter by rating"
           value={rating}
           onChange={(e) => {
             setRating(e.target.value);

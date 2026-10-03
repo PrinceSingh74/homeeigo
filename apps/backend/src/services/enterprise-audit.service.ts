@@ -5,7 +5,7 @@ import type {
   Prisma,
   RetentionCategory,
 } from "@prisma/client";
-import { logger } from "../lib/logger";
+import { logger, scrubTextForTelemetry } from "../lib/logger";
 
 async function getPrisma() {
   const { default: prisma } = await import("../lib/prisma-base");
@@ -13,7 +13,17 @@ async function getPrisma() {
 }
 import { integrityHash } from "../lib/pii-crypto";
 
-const RETENTION_DAYS: Record<RetentionCategory, number> = {
+/**
+ * Retention in days, per category.
+ *
+ * `Partial` rather than a total Record, deliberately. The Phase-14 categories — AI_TELEMETRY,
+ * AUTOMATION_TELEMETRY, OPERATIONAL_ACTIVITY — have no agreed duration in this project, and a
+ * total map would force one to be typed in here to satisfy the compiler. That is exactly how an
+ * invented number becomes policy: not by a decision, but by an entry someone added to silence an
+ * error. An absent key means "no duration has been agreed", which is a real state and now an
+ * expressible one; `retentionExpiresAt` is left null for those, so nothing expires by accident.
+ */
+const RETENTION_DAYS: Partial<Record<RetentionCategory, number>> = {
   SECURITY_EVENTS: 7 * 365,
   PAYMENT_EVENTS: 8 * 365,
   FINANCIAL_LEDGER: 10 * 365,
@@ -39,12 +49,15 @@ export type EnterpriseAuditInput = {
   retentionCategory: RetentionCategory;
 };
 
-function sanitizeAuditValue(value: unknown): unknown {
+/**
+ * Emails and phone numbers are masked IN PLACE with the log pipeline's policy (identifier shapes —
+ * cuids, UUIDs, booking numbers, timestamps, hashes — are shielded first). This used to replace the
+ * WHOLE string with a REDACTED_PHONE marker whenever it held 10+ digits in total, which erased actor ids,
+ * booking ids, timestamps and approval reasons from 28,003 live audit rows (2026-09-29).
+ */
+export function sanitizeAuditValue(value: unknown): unknown {
   if (value === null || value === undefined) return value;
-  if (typeof value === "string") {
-    if (value.includes("@")) return "[REDACTED_EMAIL]";
-    if (/^\+?\d{10,}$/.test(value.replace(/\D/g, ""))) return "[REDACTED_PHONE]";
-  }
+  if (typeof value === "string") return scrubTextForTelemetry(value);
   if (Array.isArray(value)) return value.map(sanitizeAuditValue);
   if (typeof value === "object") {
     const out: Record<string, unknown> = {};
@@ -76,8 +89,18 @@ function buildSummary(before: unknown, after: unknown): string {
   return "";
 }
 
-function retentionExpiry(category: RetentionCategory): Date {
-  const days = RETENTION_DAYS[category] ?? RETENTION_DAYS.SYSTEM_LOGS;
+/**
+ * Null when the category has no agreed retention period.
+ *
+ * This used to fall back to SYSTEM_LOGS — one year — for any category it did not recognise. That
+ * fallback is how an unagreed category silently acquires a deletion date: adding AI_TELEMETRY
+ * would have stamped every AI telemetry record with a one-year expiry that nobody chose. A null
+ * expiry means the purge job never selects the row, so an undecided policy keeps data rather than
+ * quietly destroying it.
+ */
+function retentionExpiry(category: RetentionCategory): Date | null {
+  const days = RETENTION_DAYS[category];
+  if (days === undefined) return null;
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }
 
@@ -282,6 +305,28 @@ export function securityEventRetention(action: string): RetentionCategory {
     )
   ) {
     return "FINANCIAL_LEDGER";
+  }
+  /**
+   * Phase 14 — governance acts are security events, not system logs.
+   *
+   * Everything below used to fall through to SYSTEM_LOGS, the shortest bucket at one year: model
+   * approvals and promotions, rollbacks, budget refusals, operator event replays, workflow
+   * recoveries and experiment activations. Those are privileged administrative decisions with a
+   * named actor, and they are exactly the records an audit needs years later — "who approved the
+   * model that was serving in March" is not a question that becomes uninteresting after twelve
+   * months. Meanwhile `WORKFLOW_INSTANCE_RECOVERED` was retained for one year while the ledger
+   * entry it may have produced was retained for ten.
+   *
+   * This adds no new retention duration and invents no policy. It routes these events into
+   * SECURITY_EVENTS, the category this project already applies to privileged administrative
+   * action, alongside the ADMIN_* events they sit beside operationally.
+   */
+  if (
+    ["ML_MODEL", "AI_BUDGET", "EVENT_REPLAY", "WORKFLOW_INSTANCE", "EXPERIMENT", "APPROVAL", "POLICY"].some(
+      (term) => upper.includes(term),
+    )
+  ) {
+    return "SECURITY_EVENTS";
   }
   if (action.includes("ENCRYPT") || action.includes("DECRYPT") || action.includes("ADMIN")) {
     return "SECURITY_EVENTS";

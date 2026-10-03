@@ -25,6 +25,11 @@ export class AuthApiError extends Error {
 const AUTH_ERROR_COPY: Record<string, string> = {
   ONLY_ADDRESS: "Add another address before removing this one.",
   ADDRESS_IN_USE: "This address is linked to a booking, so it can't be removed.",
+  USER_NOT_FOUND: "No Homeeigo account for this mobile number. Create an account, or sign in with email, Google, or Apple.",
+  INVALID_OTP: "That code is incorrect or has expired. Request a new one.",
+  OTP_IDENTITY_MISMATCH: "This code does not match the account for this number.",
+  ACCOUNT_SUSPENDED: "This account is suspended. Contact support.",
+  REQUEST_TIMEOUT: "The server took too long to respond. Please try again.",
 };
 
 export function getErrorMessage(error: unknown, fallback = "Something went wrong. Please try again."): string {
@@ -63,9 +68,11 @@ export function parseApiError<T>(body: ApiResponse<T>, status: number): AuthApiE
   const validationMsg = validationMessageFromBody(raw);
 
   const generic500 =
-    status >= 500 && (!body.error || body.error === "Internal Server Error")
-      ? "Server error. Make sure the API and database are running, then try again."
-      : null;
+    (status === 502 || status === 503 || status === 504) && (!body.error || body.error === "Internal Server Error")
+      ? "Sign-in service is restarting. Wait a moment and tap Verify again."
+      : status >= 500 && (!body.error || body.error === "Internal Server Error")
+        ? "Could not finish sign-in. Wait a moment and try again — if this keeps happening, request a new code."
+        : null;
 
   const fromCode = body.code ? AUTH_ERROR_COPY[body.code] : undefined;
 

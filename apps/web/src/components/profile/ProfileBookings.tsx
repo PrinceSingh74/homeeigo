@@ -17,11 +17,6 @@ import { useUserRatingsQuery } from "@/hooks/use-core-data";
 import { ServiceImage } from "@/components/ui/ServiceImage";
 import { cn } from "@/lib/utils";
 
-const EXTRA: Record<string, { rating: number; eta?: string }> = {
-  "prof-ac-1": { rating: 4.9, eta: "Arriving in 12 mins" },
-  "prof-sofa-1": { rating: 4.8 },
-};
-
 export function ProfileBookings() {
   const reduce = useReducedMotion();
   const storeBookings = useAppStore((s) => s.bookings);
@@ -67,8 +62,8 @@ export function ProfileBookings() {
           {bookings.map((booking, i) => {
             const cfg = STATUS_CONFIG[booking.status];
             const extra = {
-              ...EXTRA[booking.id],
-              rating: ratingsByBookingId.get(booking.id) ?? EXTRA[booking.id]?.rating,
+              eta: undefined as string | undefined,
+              rating: ratingsByBookingId.get(booking.id),
             };
             const live = booking.status === "in_progress";
 

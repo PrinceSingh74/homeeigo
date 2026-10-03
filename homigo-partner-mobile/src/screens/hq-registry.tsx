@@ -2,11 +2,11 @@ import type { ComponentType } from "react";
 import { Text, View } from "react-native";
 import { PartnerScreen } from "@/components/PartnerScreen";
 import { findNavItem } from "@/lib/partner-navigation";
+import { PartnerLiveMapScreen } from "@/screens/partner-live-map";
 import {
   AcademyCertificationsScreen,
   AcademyTrainingScreen,
   AccountInvoicesScreen,
-  AccountMapScreen,
   AccountMembershipScreen,
   AccountNotificationsScreen,
   AccountProfileScreen,
@@ -28,6 +28,7 @@ import {
   AiIntelligenceScreen,
   AiRouteScreen,
   PerformanceAnalyticsScreen,
+  PerformanceCareerScreen,
   PerformanceQualityScreen,
   PerformanceRankingsScreen,
   PerformanceReviewsScreen,
@@ -76,6 +77,7 @@ export const HQ_SCREEN_REGISTRY: Record<string, ScreenComponent> = {
   "earnings-forecast": EarningsForecastScreen,
   "performance-reviews": PerformanceReviewsScreen,
   "performance-scorecard": PerformanceScorecardScreen,
+  "performance-career": PerformanceCareerScreen,
   "performance-rankings": PerformanceRankingsScreen,
   "performance-quality": PerformanceQualityScreen,
   "performance-analytics": PerformanceAnalyticsScreen,
@@ -104,7 +106,9 @@ export const HQ_SCREEN_REGISTRY: Record<string, ScreenComponent> = {
   "account-support": AccountSupportScreen,
   "account-membership": AccountMembershipScreen,
   "account-invoices": AccountInvoicesScreen,
-  "account-map": AccountMapScreen,
+  // Replaces the previous link-out list (which only deep-linked to Google Maps in a browser)
+  // with a real in-app map. See src/screens/partner-live-map.tsx.
+  "account-map": PartnerLiveMapScreen,
 };
 
 function DashboardRedirectScreen() {

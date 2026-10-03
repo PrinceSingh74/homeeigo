@@ -22,7 +22,16 @@ const EMPTY = {
 const field =
   "w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-content outline-none focus:border-emerald-500";
 
-export function AddAddressModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AddAddressModal({
+  open,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** Receives the new address id (e.g. the booking page selects it). */
+  onSaved?: (addressId: string) => void;
+}) {
   const create = useCreateAddressMutation();
   const [form, setForm] = useState(EMPTY);
   const [search, setSearch] = useState("");
@@ -47,22 +56,27 @@ export function AddAddressModal({ open, onClose }: { open: boolean; onClose: () 
     form.addressLine1.trim().length >= 3 &&
     form.city.trim().length >= 2 &&
     form.state.trim().length >= 2 &&
-    /^\d{6}$/.test(form.zipCode.trim());
+    /^\d{6}$/.test(form.zipCode.trim()) &&
+    // A real pin (search result or GPS) is required: partners navigate to these coordinates and
+    // dispatch measures distance from them. The old fallback saved every manual address at the
+    // Mumbai centroid.
+    form.latitude != null &&
+    form.longitude != null;
 
   const submit = async () => {
     try {
-      await create.mutateAsync({
+      const created = await create.mutateAsync({
         label: form.label.trim(),
         addressLine1: form.addressLine1.trim(),
         addressLine2: form.addressLine2.trim() || undefined,
         city: form.city.trim(),
         state: form.state.trim(),
         zipCode: form.zipCode.trim(),
-        // Real pin from autocomplete/GPS when available; Mumbai centroid only as a last
-        // resort for fully-manual entry (kept valid so the address still persists).
-        latitude: form.latitude ?? 19.076,
-        longitude: form.longitude ?? 72.8777,
+        latitude: form.latitude,
+        longitude: form.longitude,
       });
+      const newId = (created as { address?: { id?: string } } | undefined)?.address?.id;
+      if (newId) onSaved?.(newId);
       setForm(EMPTY);
       setSearch("");
       onClose();

@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowRight, Zap, Star, ShieldCheck, Clock, BadgeCheck, Lock } from "lucide-react-native";
 import { PressableScale } from "@/components/ai/PressableScale";
 import { useServicesActions } from "@/hooks/useServicesActions";
+import { useStatsOverview } from "@/hooks/use-core-data";
 
 const { width, height } = Dimensions.get("window");
 const HERO_H = Math.min(Math.round(height * 0.86), 780);
@@ -31,6 +32,9 @@ type Props = { scrollY?: SharedValue<number> };
 export function ServicesHeroSection(_props: Props) {
   const { book } = useServicesActions();
   const insets = useSafeAreaInsets();
+  // Real platform rating only (GET /api/stats/overview); no pill until reviews exist.
+  const { data: stats } = useStatsOverview();
+  const rating = stats?.averageRating != null && stats.reviewCount > 0 ? stats.averageRating.toFixed(1) : null;
 
   return (
     <View style={styles.hero}>
@@ -63,10 +67,12 @@ export function ServicesHeroSection(_props: Props) {
               <Text style={styles.instantSub}>Hassle-free in 60 secs</Text>
             </View>
           </Animated.View>
-          <Animated.View entering={FadeInDown.delay(160).duration(460)} style={styles.ratingPill}>
-            <Star size={11} color="#fbbf24" fill="#fbbf24" />
-            <Text style={styles.ratingText}>4.9</Text>
-          </Animated.View>
+          {rating ? (
+            <Animated.View entering={FadeInDown.delay(160).duration(460)} style={styles.ratingPill}>
+              <Star size={11} color="#fbbf24" fill="#fbbf24" />
+              <Text style={styles.ratingText}>{rating}</Text>
+            </Animated.View>
+          ) : null}
         </View>
       </View>
 

@@ -457,6 +457,7 @@ function GeofenceOpsMapInner({
       <div
         ref={divRef}
         className={`absolute inset-0 ${drawMode !== "none" ? "cursor-crosshair" : ""}`}
+        role="region"
         aria-label="Geofence operations map"
       />
 

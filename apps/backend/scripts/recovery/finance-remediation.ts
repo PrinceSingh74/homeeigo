@@ -218,7 +218,7 @@ async function applyRemediation() {
 
   // 4. Settlement sync
   const sync = await settlementSyncService.runSync();
-  audit.push(`SETTLEMENT_SYNC: synced=${sync.synced} discrepancies=${sync.discrepancies} accuracy=${sync.accuracyPct}%`);
+  audit.push(`SETTLEMENT_SYNC: synced=${sync.synced} discrepancies=${sync.discrepancies} accuracy=${sync.accuracyPct == null ? "UNMEASURED" : `${sync.accuracyPct}%`}`);
 
   // 5. Resolve pre-existing UNKNOWN_SETTLEMENT discrepancies
   const resolvedUnknown = await resolveUnknownSettlements();

@@ -5,12 +5,15 @@
  * the backend's lib/observability.ts pattern.
  */
 import * as Sentry from "@sentry/nextjs";
+import { sentryReportingAllowed } from "./src/lib/sentry-gate";
 
 const DSN = process.env.NEXT_PUBLIC_SENTRY_DSN;
 
 Sentry.init({
   dsn: DSN,
-  enabled: Boolean(DSN),
+  // Production builds only, never under automation (navigator.webdriver) — dev/test sessions and
+  // browser verification runs were reporting deliberate test errors to the production project.
+  enabled: sentryReportingAllowed(DSN),
   environment: process.env.NEXT_PUBLIC_ENV ?? process.env.NODE_ENV,
   release: process.env.NEXT_PUBLIC_SENTRY_RELEASE, // set in CI to the build SHA
   // Distributed tracing (links frontend → backend spans via the trace header).

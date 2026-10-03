@@ -84,9 +84,9 @@ export default function SettingsPage() {
           </div>
           <p className="text-xs leading-relaxed text-[var(--color-biz-muted)]">
             All actions you take here — approving vendors, banning users, processing
-            payouts — are audited and tied to your admin account. Commission rates,
-            cities, AI thresholds and team access are configured via the platform
-            engineering console (separate from this app).
+            payouts — are audited and tied to your admin account. Admin roles are
+            managed under Platform HQ → Team &amp; roles. Commission rates, cities and AI
+            thresholds are configured via the platform engineering console (separate from this app).
           </p>
         </div>
       </div>

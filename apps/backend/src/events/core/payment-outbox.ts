@@ -1,7 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import { eventPlatformConfig } from "./config";
 import { emitInTransaction } from "./event-publisher";
-import { buildPaymentFailedEvent, buildPaymentSuccessEvent } from "../catalog/payment.events";
+import {
+  buildCheckoutStartedEvent,
+  buildPaymentFailedEvent,
+  buildPaymentSuccessEvent,
+} from "../catalog/payment.events";
 
 type PaymentEmitInput = {
   id: string;
@@ -53,6 +57,42 @@ export async function emitPaymentFailedInTransaction(
       amountPaise: payment.amountPaise,
       reason,
       failedAt,
+    }),
+  );
+}
+
+/**
+ * Emit that a checkout began, inside the caller's transaction.
+ *
+ * Same guards as the payment emitters: no outbox, no payment events, or no user means no event.
+ * The flags are checked here rather than at the call site so a future caller cannot forget them.
+ *
+ * This is observational. It changes no price, no payment status, no booking status and no ledger
+ * row — it records that a checkout started so something downstream can notice if it never finished.
+ */
+export async function emitCheckoutStartedInTransaction(
+  tx: Prisma.TransactionClient,
+  input: {
+    bookingId: string;
+    userId: string | null;
+    paymentId: string;
+    amountPaise: bigint | number;
+    razorpayOrderId?: string;
+  },
+  startedAt: Date,
+): Promise<void> {
+  if (!eventPlatformConfig.outboxEnabled || !eventPlatformConfig.paymentEventsEnabled || !input.userId) {
+    return;
+  }
+  await emitInTransaction(
+    tx,
+    buildCheckoutStartedEvent({
+      bookingId: input.bookingId,
+      userId: input.userId,
+      paymentId: input.paymentId,
+      amountPaise: Number(input.amountPaise),
+      razorpayOrderId: input.razorpayOrderId,
+      startedAt,
     }),
   );
 }

@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Clock } from "lucide-react";
+import { Clock } from "lucide-react";
 import { PageSection } from "@/components/layout/PageSection";
 import { SectionHeader } from "@/components/layout/SectionHeader";
-import { sectionAction } from "@/lib/page-layout";
+import { SectionActionLink } from "@/components/layout/SectionActionLink";
+import { TileCaption } from "@/components/cards/TileCaption";
 import { useMarketplaceSections } from "@/hooks/use-marketplace-sections";
 
 type CategoryCard = {
@@ -52,12 +53,7 @@ export function CategoryShowcase() {
     <PageSection>
       <SectionHeader
         title="Explore by Category"
-        action={
-          <Link href="/services" className={`${sectionAction} inline-flex items-center gap-1`}>
-            View all
-            <ArrowRight size={16} aria-hidden />
-          </Link>
-        }
+        action={<SectionActionLink href="/services">View all</SectionActionLink>}
       />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4 lg:gap-6">
         {CATEGORIES.map((c) => {
@@ -66,7 +62,7 @@ export function CategoryShowcase() {
             <Link
               key={c.key}
               href={c.href}
-              className="group relative block aspect-[4/3] w-full min-w-0 overflow-hidden rounded-3xl text-left outline-none shadow-[0_16px_40px_-18px_rgb(15_23_42/0.5)] focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-2"
+              className="group relative block aspect-[4/3] w-full min-w-0 overflow-hidden rounded-2xl text-left outline-none shadow-[0_16px_40px_-18px_rgb(15_23_42/0.5)] focus-visible:ring-2 focus-visible:ring-brand/70 focus-visible:ring-offset-2"
             >
               {/* Artwork or accent-gradient canvas (Coming Soon) */}
               <span
@@ -77,21 +73,21 @@ export function CategoryShowcase() {
               {c.image ? (
                 <Image
                   src={c.image}
-                  alt={c.title}
+                  alt=""
                   fill
                   quality={90}
                   sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 22vw"
                   className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05]"
                 />
               ) : (
-                <span aria-hidden className="absolute inset-0 grid place-items-center text-6xl opacity-25">
+                <span aria-hidden className="absolute inset-0 grid place-items-center type-display opacity-25">
                   {c.emoji}
                 </span>
               )}
 
               {/* Readability gradient */}
-              <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/15 to-slate-950/10" />
-              <span aria-hidden className="absolute inset-0 rounded-3xl ring-1 ring-inset ring-white/15" />
+              <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-slate-950/10" />
+              <span aria-hidden className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/15" />
 
               {/* Emoji chip — glass */}
               <span className="absolute left-3 top-3 z-10 grid size-9 place-items-center rounded-xl bg-white/15 text-lg ring-1 ring-white/25 backdrop-blur-md">
@@ -99,7 +95,7 @@ export function CategoryShowcase() {
               </span>
 
               {/* Count / Soon badge — glass */}
-              <span className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-slate-950/45 px-2.5 py-1 text-[11px] font-semibold text-white ring-1 ring-white/20 backdrop-blur-md">
+              <span className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-slate-950/45 px-2.5 py-1 text-xs font-semibold text-white ring-1 ring-white/20 backdrop-blur-md">
                 {c.soon ? (
                   <>
                     <Clock size={11} /> Soon
@@ -111,23 +107,7 @@ export function CategoryShowcase() {
                 )}
               </span>
 
-              {/* Label + arrow */}
-              <span className="absolute inset-x-3.5 bottom-3 z-10 flex items-end justify-between gap-2">
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[15px] font-bold leading-tight text-white drop-shadow-[0_1px_3px_rgb(0_0_0/0.7)]">
-                    {c.title}
-                  </span>
-                  <span className="mt-0.5 block truncate text-[11px] font-medium text-white/80 drop-shadow-[0_1px_2px_rgb(0_0_0/0.7)]">
-                    {c.subtitle}
-                  </span>
-                </span>
-                <span
-                  className="grid size-8 shrink-0 place-items-center rounded-full text-white shadow-md ring-1 ring-white/30 transition-transform duration-300 group-hover:translate-x-0.5"
-                  style={{ background: c.accent }}
-                >
-                  <ArrowRight size={15} strokeWidth={2.5} aria-hidden />
-                </span>
-              </span>
+              <TileCaption title={c.title} subtitle={c.subtitle} accent={c.accent} className="z-10" />
             </Link>
           );
         })}

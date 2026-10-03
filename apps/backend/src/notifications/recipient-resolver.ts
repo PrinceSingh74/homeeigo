@@ -61,9 +61,27 @@ export async function resolveRecipient(
 
   const targets: ChannelTarget[] = [];
 
-  // Push is available only if the person actually has a live device registered. Claiming the
-  // channel without a token would turn every send into a silent failure.
-  const tokens = await devicePushService.getActiveTokens(userId).catch(() => [] as string[]);
+  /**
+   * The inbox exists because the account does.
+   *
+   * Listed unconditionally and first: unlike push it has no token to expire, and unlike email no
+   * address to be missing. Every other target below is conditional on something the person might
+   * not have.
+   */
+  targets.push({ channel: "IN_APP", userId });
+
+  /**
+   * Push is available only if the person actually has a live device registered. Claiming the
+   * channel without a token would turn every send into a silent failure.
+   *
+   * `includeOptedOut` because this is a capability question and the router asks the policy one
+   * separately. Without it, someone who had turned push off lost the channel before
+   * `evaluatePreference` ran — so a SECURITY notification, which no preference may refuse, was
+   * silently downgraded to whatever channel came next.
+   */
+  const tokens = await devicePushService
+    .getActiveTokens(userId, { includeOptedOut: true })
+    .catch(() => [] as string[]);
   if (tokens.length > 0) targets.push({ channel: "PUSH", userId });
 
   if (email && email.includes("@")) targets.push({ channel: "EMAIL", email });

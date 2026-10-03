@@ -19,6 +19,17 @@ export default tseslint.config(
     },
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
+      // Bindings named `_…` are the existing "intentionally unused" mark (callback slots and
+      // rest-omit destructures). This does not ignore an unused name that lacks that mark.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
     },
   }
 );

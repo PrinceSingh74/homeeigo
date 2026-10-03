@@ -8,7 +8,7 @@ test.describe.configure({ mode: "serial" });
 test.describe("Enterprise admin E2E", () => {
   test("login → dashboard analytics", async ({ page, monitor }) => {
     await adminLogin(page);
-    await expect(page.getByRole("heading", { name: /business overview/i })).toBeVisible({
+    await expect(page.getByRole("heading", { name: /Executive HQ|business overview/i })).toBeVisible({
       timeout: 30_000,
     });
     const dashRes = page.waitForResponse(

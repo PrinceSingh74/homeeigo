@@ -13,6 +13,8 @@
 
   /* ---- Brand colors ---- */
   --color-primary: #2563eb;
+  /* AA text shade for primary-tinted surfaces: primary on bg-primary/10 is 4.43:1, this is 5.9:1 */
+  --color-primary-strong: #1d4ed8;
   --color-violet: #7c3aed;
   --color-cyan: #06b6d4;
   --color-pink: #ec4899;
@@ -27,9 +29,24 @@
 
   /* ---- Status ---- */
   --color-success: #10b981;
+  /* white text on --color-success is 2.5:1; use this behind white body text (5.0:1) */
+  --color-success-strong: #047857;
   --color-warning: #f59e0b;
   --color-error: #ef4444;
   --color-info: #3b82f6;
+
+  /* ---- Status colours AS TEXT (WCAG AA) ----
+     The status colours above are fills. As small text on light surfaces they fail AA
+     (#10b981 2.4:1, emerald-600 3.6:1, #ef4444 3.6:1, #f59e0b 2.1:1), so the text utilities
+     resolve to these shades instead. Fills (bg-*, border-*) are unchanged; .dark restores the
+     bright shades, which pass on dark surfaces. */
+  --text-color-success: #047857;
+  --text-color-emerald-500: #047857;
+  --text-color-emerald-600: #047857;
+  --text-color-error: #b91c1c;
+  --text-color-warning: #b45309;
+  --text-color-amber-500: #b45309;
+  --text-color-amber-600: #b45309;
 
   /* ---- Typography ---- */
   --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
@@ -130,8 +147,13 @@
     --bg: #f8fafc;
     --surface: #ffffff;
     --content: #0f172a;
-    --muted: #64748b;
+    /* Slate, one step darker than slate-500: #64748b was 4.55:1 on --bg and 4.43:1 on the
+       aurora tint behind the service pages (axe color-contrast on "Estimated service time"). */
+    --muted: #5c6b82;
     --line: #e5e7eb;
+    /* Brand accent text (emerald-700) — the ONE accent text colour on
+       marketing surfaces; dark mode lifts it to emerald-300. */
+    --brand: #047857;
 
     /* HOMIGO spacing scale (CSS vars only — do NOT use --spacing-* in @theme;
        that overrides Tailwind max-w-xl, max-w-md, lg:, etc.) */
@@ -149,11 +171,21 @@
     --homigo-hero-h-xl: 36rem;
   }
   .dark {
+    /* on dark surfaces the strong shades invert: light text on a dark tint */
+    --color-primary-strong: #93c5fd;
+    --text-color-success: #34d399;
+    --text-color-emerald-500: #34d399;
+    --text-color-emerald-600: #34d399;
+    --text-color-error: #f87171;
+    --text-color-warning: #fbbf24;
+    --text-color-amber-500: #fbbf24;
+    --text-color-amber-600: #fbbf24;
     --bg: #0f172a;
     --surface: #111827;
     --content: #f8fafc;
     --muted: #d1d5db;
     --line: #374151;
+    --brand: #6ee7b7;
   }
 }
 
@@ -164,6 +196,7 @@
   --color-content: var(--content);
   --color-muted: var(--muted);
   --color-line: var(--line);
+  --color-brand: var(--brand);
 }
 
 @layer base {
@@ -235,6 +268,24 @@
 }
 @utility bg-aurora {
   background: linear-gradient(135deg, #2563eb 0%, #7c3aed 50%, #06b6d4 100%);
+}
+/* ---- Fluid type scale (marketing surfaces) ----
+   Two fluid steps on top of Tailwind's xs/sm/base/lg/xl/2xl/4xl so every hero
+   and section heading shares ONE display and ONE title size. Deliberately NOT
+   in the `text-*` namespace: tailwind-merge would treat `text-title` as a text
+   colour and drop it whenever a `text-<colour>` follows in cn(). */
+@utility type-display {
+  font-size: clamp(2.25rem, 6vw, 4rem);
+  line-height: 1.08;
+}
+@utility type-title {
+  font-size: clamp(1.625rem, 3.5vw, 2.75rem);
+  line-height: 1.12;
+}
+
+/* Brand gradient — the single filled-button / accent surface on marketing pages */
+@utility bg-brand-gradient {
+  background: linear-gradient(120deg, #10b981 0%, #0d9488 55%, #14b8a6 100%);
 }
 @utility bg-premium {
   background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%);
@@ -2019,4 +2070,44 @@
   .legal-page .legal-section + .legal-section {
     border-top: 1px solid #ccc;
   }
+}
+
+/* ---- Services catalogue motion — always used behind `motion-safe:` ---- */
+@theme {
+  --animate-catalog-in: catalog-in 0.45s var(--ease-out-soft) both;
+  --animate-price-tick: price-tick 0.3s var(--ease-out-soft);
+
+  @keyframes catalog-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes price-tick {
+    from {
+      opacity: 0.35;
+      transform: translateY(3px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+/* White text on a status fill: #10b981 gives 2.5:1 and emerald-600 3.7:1. The fill darkens only
+   where it carries white text; tints, dots and borders keep the brand shade. */
+.bg-success.text-white,
+.bg-emerald-500.text-white,
+.bg-emerald-600.text-white {
+  background-color: var(--color-success-strong);
+}
+
+/* Dark theme: --brand is a light mint, so text on a brand fill is dark, not white (1.5:1). */
+.dark .bg-brand.text-white {
+  color: #0f172a;
 }

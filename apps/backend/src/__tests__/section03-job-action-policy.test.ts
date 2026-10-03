@@ -4,6 +4,8 @@
 import { describe, expect, test } from "bun:test";
 import { getAvailableJobActions } from "../lib/job-action-policy";
 import { maskPhoneForPartner } from "../lib/pii-normalize";
+import { deriveJobState, isJobTerminalOutcome } from "../lib/partner-job-fsm";
+import { NO_SHOW_POLICY } from "../lib/no-show-policy";
 
 describe("Section 03 job-action-policy (pure)", () => {
   test("maps timestamps to conceptual ARRIVED without new BookingStatus", () => {
@@ -56,5 +58,85 @@ describe("Section 03 privacy helpers", () => {
     expect(masked).not.toContain("9876543210");
     expect(masked).toContain("3210");
     expect(masked).toMatch(/••••/);
+  });
+});
+
+/**
+ * The statuses that close a booking outside the happy path.
+ *
+ * These exist because `deriveJobState` reads timestamps: a CUSTOMER_NO_SHOW row still carries the
+ * `arrivedAt` that produced it, and before this was fixed it derived as ARRIVED — so the partner
+ * app offered "Start service" on a booking that was already closed and refunded. EXPIRED fell all
+ * the way through to OFFERED and offered Accept on a released slot.
+ */
+describe("a closed booking offers the partner nothing", () => {
+  const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000);
+
+  for (const status of ["EXPIRED", "CUSTOMER_NO_SHOW", "PROVIDER_NO_SHOW"]) {
+    test(`${status} is terminal on the job axis even with every timestamp set`, () => {
+      const r = getAvailableJobActions({
+        status,
+        enRouteAt: minutesAgo(90),
+        arrivedAt: minutesAgo(60),
+        paymentStatus: "SUCCESS",
+      });
+      expect(r.stage).toBe(status as never);
+      expect(isJobTerminalOutcome(r.stage)).toBe(true);
+      expect(r.availableActions).toEqual([]);
+      expect(r.primaryAction).toBeNull();
+    });
+  }
+
+  test("the same row without the status is still a live job — the guard is the status, not the shape", () => {
+    const live = getAvailableJobActions({
+      status: "EN_ROUTE",
+      enRouteAt: minutesAgo(90),
+      arrivedAt: minutesAgo(60),
+      paymentStatus: "SUCCESS",
+    });
+    expect(live.stage).toBe("ARRIVED");
+    expect(live.primaryAction).toBe("START_SERVICE");
+  });
+
+  test("deriveJobState reads the status before any timestamp", () => {
+    expect(deriveJobState({ status: "CUSTOMER_NO_SHOW", arrivedAt: minutesAgo(30), startedAt: minutesAgo(10) })).toBe("CUSTOMER_NO_SHOW");
+    expect(deriveJobState({ status: "EXPIRED" })).toBe("EXPIRED");
+  });
+});
+
+describe("§52 — the partner is offered the no-show only where the evidence can exist", () => {
+  const NOW = new Date("2026-12-24T10:00:00.000Z");
+  const arrivedMinutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000);
+
+  test("not offered before arrival — there is nothing to report from", () => {
+    const r = getAvailableJobActions({ status: "EN_ROUTE", enRouteAt: arrivedMinutesAgo(30), paymentStatus: "SUCCESS", now: NOW });
+    expect(r.stage).toBe("EN_ROUTE");
+    expect(r.availableActions).not.toContain("REPORT_NO_SHOW");
+  });
+
+  test("offered at the door, but disabled while the wait is still running", () => {
+    const waited = NO_SHOW_POLICY.graceMinutes - 6;
+    const r = getAvailableJobActions({ status: "EN_ROUTE", arrivedAt: arrivedMinutesAgo(waited), paymentStatus: "SUCCESS", now: NOW });
+    expect(r.stage).toBe("ARRIVED");
+    expect(r.availableActions).toContain("REPORT_NO_SHOW");
+    expect(r.disabledReasons.REPORT_NO_SHOW).toBe("Available in 6 min");
+    // and it never becomes the thing the partner is pushed towards
+    expect(r.primaryAction).toBe("START_SERVICE");
+  });
+
+  test("enabled once the grace period has actually been served", () => {
+    const r = getAvailableJobActions({ status: "EN_ROUTE", arrivedAt: arrivedMinutesAgo(NO_SHOW_POLICY.graceMinutes), paymentStatus: "SUCCESS", now: NOW });
+    expect(r.availableActions).toContain("REPORT_NO_SHOW");
+    expect(r.disabledReasons.REPORT_NO_SHOW).toBeUndefined();
+  });
+
+  test("an arrival in the future disables it rather than enabling it", () => {
+    const r = getAvailableJobActions({ status: "EN_ROUTE", arrivedAt: new Date(NOW.getTime() + 60_000), paymentStatus: "SUCCESS", now: NOW });
+    expect(r.disabledReasons.REPORT_NO_SHOW).toBe(`Available in ${NO_SHOW_POLICY.graceMinutes} min`);
+  });
+
+  test("once the job has started it is no longer on offer", () => {
+    const r = getAvailableJobActions({ status: "IN_PROGRESS", arrivedAt: arrivedMinutesAgo(60), startedAt: arrivedMinutesAgo(40), paymentStatus: "SUCCESS", now: NOW });
+    expect(r.availableActions).not.toContain("REPORT_NO_SHOW");
   });
 });

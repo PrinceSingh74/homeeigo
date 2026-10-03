@@ -27,6 +27,10 @@ spec:
           image: ghcr.io/homigo/backend:latest
           ports: [{ containerPort: 3000 }]
           env:
+            # The image defaults to PORT=8080 (Dockerfile, for Cloud Run); this manifest, its Service,
+            # the probes and the Prometheus annotation all use 3000 — pin it so they agree.
+            - name: PORT
+              value: "3000"
             # Point Prisma at PgBouncer (transaction pooling), not Postgres directly.
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: homigo-secrets, key: database-url-pgbouncer } }
@@ -37,12 +41,15 @@ spec:
           resources:
             requests: { cpu: "500m", memory: "512Mi" }
             limits:   { cpu: "1",    memory: "1Gi" }
+          # /readyz: public, status-only, 503 while the DB is down or the pod is draining on SIGTERM.
+          # (/ready needs the ops token on a deployed host, so a probe without it never passed.)
           readinessProbe:
-            httpGet: { path: /ready, port: 3000 }
+            httpGet: { path: /readyz, port: 3000 }
             initialDelaySeconds: 5
             periodSeconds: 10
+          # /livez: process only — a database outage must not restart every healthy pod.
           livenessProbe:
-            httpGet: { path: /health, port: 3000 }
+            httpGet: { path: /livez, port: 3000 }
             initialDelaySeconds: 10
             periodSeconds: 15
           # Graceful shutdown so in-flight requests drain before the pod dies.

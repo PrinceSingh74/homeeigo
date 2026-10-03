@@ -7,9 +7,13 @@
     "start": "expo start",
     "dev": "expo start -c",
     "android": "expo run:android",
+    "android:release": "node scripts/android-release.cjs",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "test:ci": "jest --ci --runInBand",
+    "test:logic": "bun test src/lib/auth/refresh-coordinator.test.ts src/lib/auth/refresh-single-flight.test.ts src/lib/offline/blocked-paths.test.ts src/lib/offline/queue-core.test.ts src/lib/booking-quote.test.ts src/lib/tracking-frames.test.ts src/lib/requested-service.test.ts src/lib/auth/guard-decision.test.ts src/lib/booking-expired-status.test.ts src/lib/push/push-registration.test.ts src/lib/push/push-sign-out.test.ts src/lib/razorpay-checkout-error.test.ts src/lib/realtime/ws-auth-refresh.test.ts src/lib/keyboard-taps-sweep.test.ts",
     "design:lint": "node scripts/design-lint.mjs",
     "design:lint:strict": "node scripts/design-lint.mjs --strict",
     "startup:lint": "node scripts/startup-lint-guards.mjs",
@@ -97,7 +101,11 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@testing-library/react-native": "^14.0.1",
+    "@types/jest": "29.5.14",
     "@types/react": "~19.1.0",
+    "jest": "~29.7.0",
+    "jest-expo": "~54.0.18",
     "prettier": "^3.4.0",
     "typescript": "~5.9.2"
   },
@@ -111,5 +119,40 @@
       }
     }
   },
-  "private": true
+  "private": true,
+  "jest": {
+    "preset": "jest-expo",
+    "setupFilesAfterEnv": [
+      "<rootDir>/jest.setup.js"
+    ],
+    "transformIgnorePatterns": [
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg))"
+    ],
+    "moduleNameMapper": {
+      "^react$": "<rootDir>/../node_modules/react",
+      "^react/(.*)$": "<rootDir>/../node_modules/react/$1",
+      "^react-test-renderer$": "<rootDir>/../node_modules/react-test-renderer",
+      "^@/(.*)$": "<rootDir>/src/$1"
+    },
+    "testMatch": [
+      "<rootDir>/src/**/*.test.ts",
+      "<rootDir>/src/**/*.test.tsx"
+    ],
+    "testPathIgnorePatterns": [
+      "<rootDir>/src/lib/auth/refresh-coordinator.test.ts",
+      "<rootDir>/src/lib/auth/refresh-single-flight.test.ts",
+      "<rootDir>/src/lib/offline/blocked-paths.test.ts",
+      "<rootDir>/src/lib/offline/queue-core.test.ts",
+      "<rootDir>/src/lib/booking-quote.test.ts",
+      "<rootDir>/src/lib/tracking-frames.test.ts",
+      "<rootDir>/src/lib/requested-service.test.ts",
+      "<rootDir>/src/lib/auth/guard-decision.test.ts",
+      "<rootDir>/src/lib/booking-expired-status.test.ts",
+      "<rootDir>/src/lib/push/push-registration.test.ts",
+      "<rootDir>/src/lib/push/push-sign-out.test.ts",
+      "<rootDir>/src/lib/razorpay-checkout-error.test.ts",
+      "<rootDir>/src/lib/realtime/ws-auth-refresh.test.ts",
+      "<rootDir>/src/lib/keyboard-taps-sweep.test.ts"
+    ]
+  }
 }

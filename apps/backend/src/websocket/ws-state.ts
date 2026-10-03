@@ -34,3 +34,28 @@ export function setWsState(ws: object, state: WsState) {
 export function getWsState(ws: object): WsState | undefined {
   return wsState.get(stateKey(ws));
 }
+
+/**
+ * Sockets whose `close` has already run.
+ *
+ * Elysia completes the upgrade and only then invokes the async `open` handler, which awaits
+ * authentication and channel authorisation before it registers anything. A client that disconnects
+ * inside that window has its `close` run FIRST — finding no state, so cleaning nothing — after which
+ * `open` resumes and registers a socket that is already gone: a room membership, a connectionMap
+ * entry and a heartbeat interval that never stops, because Bun's `send` on a closed socket does not
+ * throw. Measured in Section 7K: 60 of 60 connections closed on arrival left 60 zombies on each of
+ * two routes, unchanged past a full heartbeat period.
+ *
+ * `close` records the socket here, and every `open` checks it after its last await and before it
+ * registers, which JavaScript makes atomic because nothing between the check and the registration
+ * yields.
+ */
+const closedSockets = new WeakSet<object>();
+
+export function markWsClosed(ws: object): void {
+  closedSockets.add(stateKey(ws));
+}
+
+export function closedDuringOpen(ws: object): boolean {
+  return closedSockets.has(stateKey(ws));
+}

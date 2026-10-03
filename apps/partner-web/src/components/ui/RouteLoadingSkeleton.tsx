@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
  */
 export function RouteLoadingSkeleton({ label = "Loading…" }: { label?: string }) {
   return (
-    <div className={cn(partnerLayout.page, "flex flex-col gap-8 py-2")} aria-busy="true" aria-label={label}>
+    <div className={cn(partnerLayout.page, "flex flex-col gap-8 py-2")} role="status" aria-busy="true" aria-label={label}>
       {/* Page header */}
       <div className="space-y-3">
         <StaticSkeleton shimmer className="h-8 w-56 rounded-xl" />

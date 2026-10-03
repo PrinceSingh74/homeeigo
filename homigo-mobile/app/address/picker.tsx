@@ -20,6 +20,7 @@ export default function AddressPickerScreen() {
   const [debounced, setDebounced] = useState("");
   const [near, setNear] = useState<{ lat: number; lng: number } | undefined>(undefined);
   const [resolving, setResolving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(input.trim()), 350);
@@ -31,7 +32,7 @@ export default function AddressPickerScreen() {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         setNear({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       }
     })().catch(() => undefined);
@@ -45,24 +46,32 @@ export default function AddressPickerScreen() {
 
   async function choose(p: Prediction) {
     setResolving(true);
+    setError(null);
     try {
       const address = await parityApi.geo.place(p.placeId);
+      if (!Number.isFinite(address?.latitude) || !Number.isFinite(address?.longitude)) {
+        throw new Error("no-coordinates");
+      }
       setPicked(address);
       router.back();
     } catch {
       setResolving(false);
+      setError("Couldn't find that place on the map. Try another result or a more specific search.");
     }
   }
 
   async function useCurrentLocation() {
     if (!near) return;
     setResolving(true);
+    setError(null);
     try {
       const address = await parityApi.geo.reverse(near.lat, near.lng);
-      setPicked(address);
+      // No street found → still the customer's REAL point; they type the address text next.
+      setPicked(address ?? { formattedAddress: "", latitude: near.lat, longitude: near.lng });
       router.back();
     } catch {
       setResolving(false);
+      setError("Your current location is outside the area we serve, or couldn't be looked up.");
     }
   }
 
@@ -83,11 +92,12 @@ export default function AddressPickerScreen() {
             <Text style={{ color: c.primary, fontWeight: "600" }}>◎ Use my current location</Text>
           </Pressable>
         )}
+        {error ? <Text style={{ marginTop: 12, color: c.error }}>{error}</Text> : null}
       </View>
       {resolving ? (
         <ActivityIndicator color={c.primary} style={{ marginTop: 16 }} />
       ) : (
-        <FlatList
+        <FlatList keyboardShouldPersistTaps="handled"
           data={predictionsQ.data ?? []}
           keyExtractor={(p) => p.placeId}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}

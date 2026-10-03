@@ -29,8 +29,8 @@ declare global {
 /** Core libraries only. `routes` is a separate billed API and is unused — DirectionsService lives in `maps`. */
 const REQUIRED_LIBRARIES = ["maps", "marker", "geometry"] as const;
 const SCRIPT_ID = "gmaps-js";
-const SCRIPT_TIMEOUT_MS = 20_000;
-const LIBRARY_TIMEOUT_MS = 20_000;
+/** An object rather than constants only so the unit tests can shrink the waits. Nothing in the app writes to it. */
+const TIMING = { scriptMs: 20_000, libraryMs: 20_000, retryDelayMs: 400 };
 
 let loaderPromise: Promise<void> | null = null;
 
@@ -48,6 +48,24 @@ function scriptEl(): HTMLScriptElement | null {
 
 function scriptFailed(): boolean {
   return scriptEl()?.getAttribute("data-homigo-error") === "1";
+}
+
+/**
+ * How long after the bootstrap has run we still believe the API may arrive.
+ *
+ * The bootstrap is only a stub that fetches `main.js`; `importLibrary` appears when THAT has run.
+ * Measured in Chromium against the real API: `onload` at 3127 ms with `importLibrary` still
+ * undefined, the callback 200 ms later. So "the script has loaded" is never, on its own, evidence
+ * of failure — only "it loaded this long ago and there is still no API" is.
+ */
+const STALE_TAG_MS = 10_000;
+
+/** When the bootstrap finished running (epoch ms), or null while it is still in flight. */
+function scriptSettledAt(): number | null {
+  const raw = scriptEl()?.getAttribute("data-homigo-settled-at");
+  if (!raw) return null;
+  const at = Number(raw);
+  return Number.isFinite(at) ? at : null;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, code: string): Promise<T> {
@@ -93,21 +111,40 @@ async function importRequiredLibraries(): Promise<void> {
     throw new Error("maps_import_unavailable");
   }
   const results = await Promise.allSettled(
-    REQUIRED_LIBRARIES.map((lib) => withTimeout(importLibrary(lib), LIBRARY_TIMEOUT_MS, `maps_lib_${lib}`)),
+    REQUIRED_LIBRARIES.map((lib) => withTimeout(importLibrary(lib), TIMING.libraryMs, `maps_lib_${lib}`)),
   );
   if (results[0]?.status === "rejected" || !mapsReady()) {
     throw new Error("maps_not_ready");
   }
 }
 
-function ensureScript(key: string): void {
+function ensureScript(key: string, forceFresh: boolean): void {
   if (hasImportLibrary()) return;
   const existing = scriptEl();
   if (existing) {
-    if (existing.src.includes("callback=") || existing.getAttribute("data-homigo-loaded") === "true") {
-      return;
-    }
+    /**
+     * Keep a tag that is still working; replace one that cannot succeed.
+     *
+     * The old condition kept ANY tag whose src contained `callback=` — which is every tag this
+     * loader creates — so a dead script could never be replaced and the retry below waited a
+     * second full timeout on the same tag.
+     */
+    const settledAt = scriptSettledAt();
+    const dead =
+      scriptFailed() ||
+      // Its callback already fired, yet there is no API on the page.
+      existing.getAttribute("data-homigo-loaded") === "true" ||
+      (settledAt !== null && Date.now() - settledAt > STALE_TAG_MS);
+    // A tag from the old load-event loader never installed a callback and cannot report readiness.
+    const foreign = !existing.src.includes("callback=");
+    if (!forceFresh && !dead && !foreign) return;
     existing.remove();
+    // A bootstrap that ran without the API leaves a partial `google.maps` behind. Clearing it lets
+    // the fresh bootstrap start clean instead of reporting the API as included twice.
+    // Typed loosely on purpose: where `@types/google.maps` is installed, `maps` is a required
+    // namespace and `delete` on it does not compile.
+    const g = window.google as { maps?: unknown } | undefined;
+    if (g?.maps && !hasImportLibrary()) delete g.maps;
   }
 
   window.__homigoMapsReady = () => {
@@ -126,11 +163,17 @@ function ensureScript(key: string): void {
   script.src = `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
   script.async = true;
   script.defer = true;
-  script.onerror = () => script.setAttribute("data-homigo-error", "1");
+  script.onerror = () => {
+    script.setAttribute("data-homigo-error", "1");
+    script.setAttribute("data-homigo-settled-at", String(Date.now()));
+  };
+  // Bookkeeping only. `onload` means the bootstrap RAN, not that the API is usable, so it never
+  // ends the wait — it is what lets a later timeout be named correctly.
+  script.onload = () => script.setAttribute("data-homigo-settled-at", String(Date.now()));
   document.head.appendChild(script);
 }
 
-async function injectScript(key: string): Promise<void> {
+async function injectScript(key: string, forceFresh: boolean): Promise<void> {
   let authFailed = false;
   const previousAuth = window.gm_authFailure;
   window.gm_authFailure = () => {
@@ -139,12 +182,22 @@ async function injectScript(key: string): Promise<void> {
 
   try {
     if (mapsReady()) return;
-    ensureScript(key);
-    await waitUntil(
-      () => hasImportLibrary() || authFailed || scriptFailed(),
-      SCRIPT_TIMEOUT_MS,
-      "maps_timeout",
-    );
+    ensureScript(key, forceFresh);
+    try {
+      await waitUntil(
+        () => hasImportLibrary() || authFailed || scriptFailed(),
+        TIMING.scriptMs,
+        "maps_timeout",
+      );
+    } catch (err) {
+      // The script arrived and ran; what never arrived is the API. That is not a network timeout,
+      // and calling it one sends whoever reads the console to check an ad blocker when the cause
+      // is the key: quota, rate limiting (HTTP 429) or billing.
+      if (scriptSettledAt() !== null && !scriptFailed() && !authFailed) {
+        throw new Error("maps_init_failed");
+      }
+      throw err;
+    }
     if (authFailed) throw new Error("maps_auth_failed");
     if (scriptFailed()) throw new Error("maps_load_failed");
     await importRequiredLibraries();
@@ -154,11 +207,11 @@ async function injectScript(key: string): Promise<void> {
   }
 }
 
-function loadMaps(key: string): Promise<void> {
+function loadMaps(key: string, forceFresh = false): Promise<void> {
   if (typeof window === "undefined") return Promise.reject(new Error("ssr"));
   if (mapsReady()) return Promise.resolve();
   if (!loaderPromise) {
-    loaderPromise = injectScript(key).catch((err) => {
+    loaderPromise = injectScript(key, forceFresh).catch((err) => {
       loaderPromise = null;
       throw err;
     });
@@ -171,12 +224,13 @@ async function loadMapsResilient(key: string): Promise<void> {
     await loadMaps(key);
   } catch (err) {
     const code = err instanceof Error ? err.message : "";
-    if (code !== "maps_timeout" && code !== "maps_import_unavailable") {
+    if (code !== "maps_timeout" && code !== "maps_import_unavailable" && code !== "maps_init_failed") {
       throw err;
     }
-    await new Promise((r) => window.setTimeout(r, 400));
+    await new Promise((r) => window.setTimeout(r, TIMING.retryDelayMs));
     if (mapsReady()) return;
-    await loadMaps(key);
+    // A fresh tag is what makes this a second attempt rather than a second wait.
+    await loadMaps(key, true);
   }
 }
 
@@ -216,3 +270,12 @@ export function useGoogleMapsLoader(enabled = true): { loaded: boolean; error: b
 
   return { loaded, error, configured: Boolean(key) };
 }
+
+/** Test seam — `tests/google-maps-loader.test.ts`. Application code never imports this. */
+export const __mapsLoaderTestHooks = {
+  load: loadMapsResilient,
+  timing: TIMING,
+  reset(): void {
+    loaderPromise = null;
+  },
+};

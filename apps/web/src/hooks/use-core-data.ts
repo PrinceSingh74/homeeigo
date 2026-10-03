@@ -6,7 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { coreApi } from "@/services/core/api";
+import { coreApi, type BookingSelectionPayload } from "@/services/core/api";
 import { AuthApiError, getErrorMessage } from "@/lib/auth/errors";
 import { useAppStore } from "@/stores/app-store";
 import { useAuthStore } from "@/stores/auth-store";
@@ -28,6 +28,7 @@ export const qk = {
   statsOverview: ["stats", "overview"] as const,
   bookings: ["bookings"] as const,
   bookingDetail: (id: string) => ["bookings", "detail", id] as const,
+  bookingRequirements: (id: string) => ["bookings", "requirements", id] as const,
   tracking: (bookingId: string) => ["tracking", bookingId] as const,
   walletBalance: ["wallet", "balance"] as const,
   walletTx: ["wallet", "transactions"] as const,
@@ -79,29 +80,40 @@ export function useStatsOverview() {
   });
 }
 
+/**
+ * THE catalog query. One key, one fetch, every surface selects from it.
+ *
+ * 2026-09-27: the home page fetched the same 100-service catalog THREE times under three different
+ * query keys (`home-popular-services`, `["services","marketplace-catalog"]` and this one) — three
+ * network round-trips, three JSON parses, three cache entries re-rendering their subscribers on
+ * every navigation. Every surface now shares these options; one that needs different refetch
+ * behaviour overrides ONLY the behaviour, never the key or the fetch.
+ */
+export const catalogQueryOptions = {
+  queryKey: qk.services,
+  // The API caps a page at 100 and sorts by popularity, so a newly published
+  // SKU sits past page 1. Walk every page or the book picker never lists it.
+  queryFn: async () => {
+    const first = await coreApi.services.list("?limit=100&page=1");
+    const limit = first.limit > 0 ? first.limit : 100;
+    const pages = Math.min(20, Math.max(1, Math.ceil((first.total || first.services.length) / limit)));
+    if (pages === 1) return first;
+    const rest = await Promise.all(
+      Array.from({ length: pages - 1 }, (_, i) => coreApi.services.list(`?limit=100&page=${i + 2}`)),
+    );
+    const seen = new Set<string>();
+    const services = [first, ...rest].flatMap((p) => p.services).filter((s) => {
+      if (seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    });
+    return { ...first, services, page: 1, limit: services.length };
+  },
+  staleTime: 10 * 60_000, // catalog changes rarely; was refetching every nav
+} as const;
+
 export function useServicesQuery() {
-  return useQuery({
-    queryKey: qk.services,
-    // The API caps a page at 100 and sorts by popularity, so a newly published
-    // SKU sits past page 1. Walk every page or the book picker never lists it.
-    queryFn: async () => {
-      const first = await coreApi.services.list("?limit=100&page=1");
-      const limit = first.limit > 0 ? first.limit : 100;
-      const pages = Math.min(20, Math.max(1, Math.ceil((first.total || first.services.length) / limit)));
-      if (pages === 1) return first;
-      const rest = await Promise.all(
-        Array.from({ length: pages - 1 }, (_, i) => coreApi.services.list(`?limit=100&page=${i + 2}`)),
-      );
-      const seen = new Set<string>();
-      const services = [first, ...rest].flatMap((p) => p.services).filter((s) => {
-        if (seen.has(s.id)) return false;
-        seen.add(s.id);
-        return true;
-      });
-      return { ...first, services, page: 1, limit: services.length };
-    },
-    staleTime: 10 * 60_000, // catalog changes rarely; was refetching every nav
-  });
+  return useQuery(catalogQueryOptions);
 }
 
 export function useFeaturedServicesQuery() {
@@ -165,8 +177,10 @@ export function useBookingsQuery(options?: { enabled?: boolean }) {
     retry: 2,
     refetchInterval: (queryRef) => {
       const data = queryRef.state.data as { bookings?: BackendBooking[] } | undefined;
-      const hasActive = (data?.bookings ?? []).some(
-        (b) => b.status === "pending" || b.status === "accepted" || b.status === "in_progress",
+      // Every non-terminal backend status keeps the safety-net poll alive. `assigned` and
+      // `en_route` were missing, so the poll stopped exactly when the partner was on the way.
+      const hasActive = (data?.bookings ?? []).some((b) =>
+        ["pending", "accepted", "assigned", "en_route", "in_progress"].includes(b.status),
       );
       return hasActive ? 30_000 : false;
     },
@@ -236,13 +250,36 @@ export function useRefreshBookingFromServerMutation() {
   });
 }
 
+/**
+ * The bookable slots for one service and one day, as decided by the server.
+ *
+ * Keyed on the civil date so switching days refetches; kept briefly fresh because capacity is shared
+ * and a slot someone else takes should stop being offered quickly.
+ */
+export function useAvailabilityQuery(params: {
+  serviceId: string | null | undefined;
+  date: string | null | undefined;
+  addressId?: string | null;
+  providerId?: string | null;
+}) {
+  const isAuthenticated = useAuthStore((s) => s.status === "authenticated");
+  const isAuthReady = useAuthStore((s) => s.status !== "idle" && s.status !== "initializing");
+  return useQuery({
+    queryKey: ["bookings", "availability", params.serviceId, params.date, params.addressId ?? null, params.providerId ?? null],
+    queryFn: () =>
+      coreApi.bookings.availability({
+        serviceId: params.serviceId!,
+        date: params.date!,
+        addressId: params.addressId ?? undefined,
+        providerId: params.providerId ?? undefined,
+      }),
+    enabled: isAuthReady && isAuthenticated && !!params.serviceId && !!params.date,
+    staleTime: 30_000,
+  });
+}
+
 export function useBookingPriceQuoteQuery(
-  payload: {
-    serviceId: string;
-    couponCode?: string;
-    packagePrice?: number;
-    addonIds?: string[];
-  } | null,
+  payload: BookingSelectionPayload | null,
 ) {
   const isAuthenticated = useAuthStore((s) => s.status === "authenticated");
   const isAuthReady = useAuthStore((s) => s.status !== "idle" && s.status !== "initializing");
@@ -264,7 +301,8 @@ export function useCreateBookingMutation() {
     onSuccess: (data) => {
       if (data.booking) addBooking(mapBackendBookingToSaved(data.booking));
       qc.invalidateQueries({ queryKey: qk.bookings });
-      showToast("Booking confirmed successfully", "success");
+      // PENDING = created, no partner has accepted yet. "Confirmed" is a promise the server has not made.
+      showToast("Booking placed — finding your pro", "success");
     },
     onError: (error) => showToast(getErrorMessage(error), "error"),
   });
@@ -461,12 +499,54 @@ export function useAddMoneyMutation() {
   });
 }
 
+/**
+ * §45 / O6 — what moving this booking costs, before the customer commits.
+ *
+ * The number is the SERVER's. The client renders it and never derives the percentage itself; a
+ * client that did would disagree with the server the moment the policy version changes.
+ */
+export function useRescheduleQuoteQuery(bookingId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ["bookings", "reschedule-quote", bookingId ?? ""] as const,
+    queryFn: () => coreApi.bookings.rescheduleQuote(bookingId!),
+    enabled: Boolean(bookingId) && enabled,
+    // Short: the fee flips from FREE to LATE_FEE as the two-hour boundary passes.
+    staleTime: 30_000,
+  });
+}
+
 export function useCancellationQuoteQuery(bookingId?: string, enabled = false) {
   return useQuery({
     queryKey: ["bookings", "cancel-quote", bookingId],
     queryFn: () => coreApi.bookings.cancellationQuote(bookingId!),
     enabled: !!bookingId && enabled,
     staleTime: 30_000,
+  });
+}
+
+/**
+ * §53 — the customer reporting that the professional never arrived.
+ *
+ * Deliberately NOT folded into the cancel mutation: the two produce different statuses, different
+ * money and different partner consequences, and collapsing them would put the customer's name on
+ * an outcome that was not their doing.
+ */
+export function useReportProviderNoShowMutation() {
+  const qc = useQueryClient();
+  const showToast = useAppStore((s) => s.showToast);
+  return useMutation({
+    mutationFn: (bookingId: string) => coreApi.bookings.reportProviderNoShow(bookingId),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: qk.bookings });
+      const refund = data?.refundAmount ?? 0;
+      showToast(
+        refund > 0
+          ? `Reported. ₹${refund} is being returned in full — you have not been charged.`
+          : "Reported. You have not been charged.",
+        "success",
+      );
+    },
+    onError: () => showToast("Could not report this. Please try again.", "error"),
   });
 }
 

@@ -46,6 +46,36 @@ export type NotificationRequest = {
   workflowVersion?: number;
   /** The workflow run behind this notification, so a decision can be traced back to its instance. */
   workflowInstanceId?: string;
+  /**
+   * Whether this request may change the world.
+   *
+   * Absent means LIVE. Under SHADOW the router runs the identical decision path — same template,
+   * same recipient, same quiet hours, same cooldown, same cap, same channel selection — and
+   * replaces only the three places where something durable happens: the delivery claim, the cadence
+   * reservation, and the provider call.
+   */
+  executionMode?: "LIVE" | "SHADOW";
+  /** Set for shadow requests so the evidence row can name the step it rehearsed. */
+  shadowStepId?: string;
+  /**
+   * The event that started the workflow behind this notification.
+   *
+   * Carried purely so shadow evidence can be traced back to its origin. The first real observation
+   * produced a row with a blank `triggerEventId`, which meant the only way to link the rehearsal to
+   * the `payment.failed` that caused it was to join through the instance and hope both still
+   * existed — evidence that needs a second query to mean anything is evidence that will be read
+   * wrongly. It decides nothing.
+   */
+  triggerEventId?: string;
+  /**
+   * The verdict of the step's re-check, when the step declared one.
+   *
+   * Recorded, never consulted. A blank field cannot distinguish "the condition passed" from "no
+   * condition was configured", and those are different claims about why a message was sent.
+   */
+  conditionResult?: string;
+  subjectType?: string;
+  subjectId?: string;
   /** Overrides preference-based selection. Used when a caller genuinely requires one channel. */
   channelOverride?: NotificationChannel;
   language?: string;
@@ -54,6 +84,8 @@ export type NotificationRequest = {
 };
 
 export type ChannelTarget =
+  /** The account's own inbox. No token, no address — only a resolved recipient. */
+  | { channel: "IN_APP"; userId: string }
   | { channel: "PUSH"; userId: string }
   | { channel: "EMAIL"; email: string }
   | { channel: "SMS"; phone: string };

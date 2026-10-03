@@ -109,7 +109,7 @@ export default function LoyaltyPage() {
         <KpiCard
           label="Outstanding"
           value={formatNumber(data?.outstanding ?? 0)}
-          sub={`${formatNumber(data?.holders ?? 0)} holders`}
+          sub={`${formatNumber(data?.holders ?? 0)} holders, ${formatNumber(data?.totalExpired ?? 0)} expired`}
           icon={Users}
           loading={isLoading}
           accent="amber"

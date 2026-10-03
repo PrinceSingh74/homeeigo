@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAppStore } from "@/stores/app-store";
+import { Button } from "@/components/buttons/Button";
 import { PageSection } from "@/components/layout/PageSection";
 
 type Benefit = { icon: LucideIcon; l1: string; l2: string };
@@ -35,7 +36,7 @@ export function PremiumSection() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.3 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="relative overflow-hidden rounded-[24px] bg-[linear-gradient(135deg,#064e3b_0%,#0f766e_55%,#115e59_100%)] p-6 shadow-[0_24px_60px_-18px_rgb(6_78_59/0.55)] sm:rounded-[32px] sm:p-10 lg:rounded-[40px] lg:p-16"
+        className="relative overflow-hidden rounded-3xl bg-[linear-gradient(135deg,#064e3b_0%,#0f766e_55%,#115e59_100%)] p-6 shadow-[0_24px_60px_-18px_rgb(6_78_59/0.55)] sm:p-10 lg:p-14"
       >
         {/* sheen */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent" />
@@ -70,10 +71,7 @@ export function PremiumSection() {
         </div>
 
         <div className="relative lg:max-w-3xl">
-          <h2
-            className="font-display font-bold tracking-wide text-white"
-            style={{ fontSize: "clamp(1.75rem, 5vw, 3rem)" }}
-          >
+          <h2 className="font-display type-title font-bold tracking-tight text-white">
             HOMEEIGO PREMIUM 👑
           </h2>
           <p className="mt-3 text-lg text-white/80">
@@ -92,29 +90,30 @@ export function PremiumSection() {
                   transition={{ duration: 0.35, delay: i * 0.07 }}
                   className="group flex flex-col items-center text-center"
                 >
-                  <span className="grid size-14 place-items-center rounded-2xl bg-white/15 text-white ring-1 ring-white/25 shadow-[inset_0_1px_0_rgb(255_255_255/0.3)] backdrop-blur-sm transition-transform duration-300 group-hover:scale-110 sm:size-16">
+                  <span className="grid size-14 place-items-center rounded-xl bg-white/15 text-white ring-1 ring-white/25 shadow-[inset_0_1px_0_rgb(255_255_255/0.3)] backdrop-blur-sm transition-transform duration-300 group-hover:scale-110 sm:size-16">
                     <Icon size={24} strokeWidth={2.2} />
                   </span>
                   <p className="mt-3 text-sm font-bold leading-tight text-white">
                     {b.l1}
                     <br />
-                    <span className="font-medium text-white/85">{b.l2}</span>
+                    <span className="font-medium text-white/80">{b.l2}</span>
                   </p>
                 </motion.div>
               );
             })}
           </div>
 
-          <motion.button
+          <Button
             type="button"
+            variant="inverse"
+            size="xl"
             onClick={() => openOverlay("premium")}
-            whileHover={{ y: -3 }}
-            whileTap={{ scale: 0.98 }}
-            className="mt-10 inline-flex h-14 items-center gap-2 rounded-2xl bg-white px-9 text-base font-bold text-emerald-800 shadow-e3 outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            icon={<ArrowRight size={18} aria-hidden />}
+            iconPosition="right"
+            className="mt-10"
           >
             Upgrade Now
-            <ArrowRight size={18} />
-          </motion.button>
+          </Button>
         </div>
       </motion.div>
     </PageSection>

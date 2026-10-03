@@ -1,7 +1,10 @@
 import { BookingStatus } from "@prisma/client";
 import prisma from "../lib/prisma";
+import { partnerAcquisitionEvents } from "./partner-acquisition-events.service";
 import { geoIntelligenceService } from "./geo-intelligence.service";
 import { providerService } from "./provider.service";
+import { filterAcademyModulesForCategories } from "./partner-academy-requirements";
+import { partnerIncentivePayoutService } from "./partner-incentive-payout.service";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -13,17 +16,6 @@ function startOfDay(d = new Date()) {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
   return x;
-}
-
-function periodKey(period: string, d = new Date()) {
-  if (period === "DAILY") return d.toISOString().slice(0, 10);
-  if (period === "WEEKLY") {
-    const w = startOfDay(d);
-    w.setDate(w.getDate() - w.getDay());
-    return w.toISOString().slice(0, 10);
-  }
-  if (period === "MONTHLY") return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  return d.toISOString().slice(0, 10);
 }
 
 function compositeScore(p: {
@@ -65,6 +57,7 @@ export class PartnerOsService {
       data: { providerId, checkInAt: new Date(), source },
     });
     await providerService.setOnline(providerId, true);
+    void partnerIncentivePayoutService.evaluateAndCreditIncentives(providerId).catch(() => undefined);
     return { session, alreadyCheckedIn: false };
   }
 
@@ -136,32 +129,14 @@ export class PartnerOsService {
 
   async getIncentives(providerId: string) {
     await this.ensureDefaultIncentiveRules();
-    const rules = await prisma.partnerIncentiveRule.findMany({
-      where: { isActive: true },
-      orderBy: { bonusAmount: "asc" },
-    });
-
-    const now = new Date();
-    const todayStart = startOfDay(now);
-    const weekStart = startOfDay(now);
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const streakStart = new Date(now.getTime() - 7 * DAY_MS);
-
-    const [completedToday, completedWeek, completedMonth, activeDays, payouts] = await Promise.all([
-      prisma.booking.count({
-        where: { providerId, status: BookingStatus.COMPLETED, completedAt: { gte: todayStart } },
-      }),
-      prisma.booking.count({
-        where: { providerId, status: BookingStatus.COMPLETED, completedAt: { gte: weekStart } },
-      }),
-      prisma.booking.count({
-        where: { providerId, status: BookingStatus.COMPLETED, completedAt: { gte: monthStart } },
-      }),
-      prisma.partnerAttendanceSession.findMany({
-        where: { providerId, checkInAt: { gte: streakStart } },
-        select: { checkInAt: true },
-      }),
+    /**
+     * One incentive read, not two. This called `computeRuleProgress` and `loadProgressSnapshot`
+     * separately, so every partner request built the progress snapshot twice — and from two
+     * independent `new Date()` values, meaning the streak shown beside the rules was not guaranteed
+     * to be the streak those rules were judged against.
+     */
+    const [view, payouts] = await Promise.all([
+      partnerIncentivePayoutService.computeIncentiveView(providerId),
       prisma.partnerIncentivePayout.findMany({
         where: { providerId },
         orderBy: { createdAt: "desc" },
@@ -170,62 +145,105 @@ export class PartnerOsService {
       }),
     ]);
 
-    const uniqueActiveDays = new Set(activeDays.map((s) => s.checkInAt.toISOString().slice(0, 10))).size;
-
-    const progressFor = (metric: string) => {
-      if (metric === "completed_jobs") {
-        return { daily: completedToday, weekly: completedWeek, monthly: completedMonth };
-      }
-      if (metric === "active_days") return { streak: uniqueActiveDays };
-      return {};
-    };
-
-    const enriched = rules.map((rule) => {
-      const prog = progressFor(rule.metric);
-      let current = 0;
-      if (rule.period === "DAILY") current = prog.daily ?? 0;
-      else if (rule.period === "WEEKLY") current = prog.weekly ?? 0;
-      else if (rule.period === "MONTHLY") current = prog.monthly ?? 0;
-      else if (rule.period === "STREAK") current = prog.streak ?? 0;
-
-      return {
-        id: rule.id,
-        code: rule.code,
-        name: rule.name,
-        period: rule.period,
-        metric: rule.metric,
-        threshold: rule.threshold,
-        bonusAmount: rule.bonusAmount,
-        current,
-        eligible: current >= rule.threshold,
-        progressPct: Math.min(100, Math.round((current / rule.threshold) * 100)),
-      };
-    });
-
-    return { rules: enriched, payouts, streakDays: uniqueActiveDays };
+    return { rules: view.rules, payouts, streakDays: view.progress.streak };
   }
 
   async getForecast(providerId: string) {
+    /**
+     * Demand forecast is BigQuery ARIMA. When GCP/BQ is down, `intel()` rethrows.
+     * Trailing actuals must still load — a warehouse outage must not erase realised
+     * earnings or report INSUFFICIENT_HISTORY for a partner who has jobs on file.
+     */
     const [dashboard, earnings, demand] = await Promise.all([
       providerService.myDashboard(providerId),
       providerService.myEarningsSummary(providerId, 30),
-      geoIntelligenceService.demandForecast(24),
+      geoIntelligenceService.demandForecast(24).catch(() => ({
+        data: null,
+        confidence: null as number | null,
+        freshness: new Date().toISOString(),
+        source: null as string | null,
+        cached: false,
+        generatedAt: new Date().toISOString(),
+      })),
     ]);
 
-    const avgPerJob = earnings.averagePerJob || 0;
+    /**
+     * NET per job, deliberately.
+     *
+     * `todayEarnings` below is `_sum.netEarning` — what the partner actually received — while
+     * `earnings.averagePerJob` is GROSS. Blending them made `todayProjection` compare a net figure
+     * against a gross one (~19% apart on live data), overstating the opportunity. Both sides of the
+     * comparison are now net.
+     */
+    const avgPerJob = earnings.averageNetPerJob || 0;
     const todayEarnings = dashboard?.earnings.today ?? 0;
     const weekEarnings = dashboard?.earnings.thisWeek ?? 0;
     const monthEarnings = dashboard?.earnings.thisMonth ?? 0;
 
     const demandJobs = Math.max(0, Math.round(((demand.data as { totalPredicted?: number })?.totalPredicted ?? 0) / 10));
     const todayProjection = Math.round(Math.max(todayEarnings, demandJobs * avgPerJob));
-    const weeklyProjection = Math.round(weekEarnings > 0 ? weekEarnings * 1.05 : todayProjection * 7);
-    const monthlyProjection = Math.round(monthEarnings > 0 ? monthEarnings * 1.08 : todayProjection * 30);
+    /**
+     * Weekly and monthly are TRAILING ACTUALS — deliberately not forecasts.
+     *
+     * They previously read `weekEarnings * 1.05` and `monthEarnings * 1.08`. Those growth factors
+     * had no basis anywhere: no comment, no document, no model, and no separate reasoning commit —
+     * they arrived inside one bulk staging-RC commit. They were also applied to the wrong kind of
+     * number: `myDashboard` computes `thisWeek` from `daysAgo(6)` and `thisMonth` from
+     * `daysAgo(29)`, so both are COMPLETE trailing windows, not week-to-date. Multiplying a
+     * finished trailing total by 1.05 asserts 5% growth from nothing — and both figures are shown
+     * to partners as "Weekly/Monthly Projection" on mobile and web.
+     *
+     * Absent any model of partner-level earnings growth, the honest estimate of the next 7 or 30
+     * days is what the partner actually earned in the last 7 or 30. That is what is returned, with
+     * no growth applied and a `basis` block stating exactly what the number is.
+     *
+     * The old fallbacks (`todayProjection * 7`, `* 30`) are gone as well: extrapolating a single
+     * day across a month is the same fabrication in another form. With no trailing history the
+     * answer is INSUFFICIENT_HISTORY, not a number.
+     */
+    const hasWeekHistory = weekEarnings > 0;
+    const hasMonthHistory = monthEarnings > 0;
+    const weeklyProjection = Math.round(weekEarnings);
+    const monthlyProjection = Math.round(monthEarnings);
+
+    const nowIso = new Date().toISOString();
 
     return {
       todayProjection,
       weeklyProjection,
       monthlyProjection,
+      /**
+       * What each figure actually IS. Nothing is presented as a model output unless a model
+       * produced it, and no figure carries a growth assumption.
+       */
+      basis: {
+        todayProjection: {
+          method: "REALISED_TODAY_OR_DEMAND_PRICED_AT_AVG_PER_JOB",
+          predictive: true,
+          source: demand.source ?? "bigquery:arima_plus",
+          freshness: "FORECAST" as const,
+          confidence: demand.confidence ?? null,
+          asOf: nowIso,
+        },
+        weeklyProjection: {
+          method: "TRAILING_7D_ACTUALS",
+          predictive: false,
+          growthAssumptionApplied: false,
+          source: "db:earnings",
+          freshness: "HISTORICAL" as const,
+          state: hasWeekHistory ? ("OK" as const) : ("INSUFFICIENT_HISTORY" as const),
+          asOf: nowIso,
+        },
+        monthlyProjection: {
+          method: "TRAILING_30D_ACTUALS",
+          predictive: false,
+          growthAssumptionApplied: false,
+          source: "db:earnings",
+          freshness: "HISTORICAL" as const,
+          state: hasMonthHistory ? ("OK" as const) : ("INSUFFICIENT_HISTORY" as const),
+          asOf: nowIso,
+        },
+      },
       inputs: {
         todayEarnings,
         weekEarnings,
@@ -233,6 +251,73 @@ export class PartnerOsService {
         avgPerJob,
         demandPredicted: (demand.data as { totalPredicted?: number })?.totalPredicted ?? 0,
         confidence: demand.confidence,
+      },
+    };
+  }
+
+  /**
+   * The partner's actual performance — ratings, acceptance, completion, cancellation, response.
+   *
+   * Added because `read.partner.getPartnerPerformance` was bound to `getProviderIntelligence`,
+   * which returns REPEAT-CUSTOMER stats. A partner asking the copilot "how is my performance?"
+   * would have been answered with retention numbers stated as performance. The tool now has a
+   * method that matches its name, and retention is returned alongside under its own key rather
+   * than impersonating performance.
+   *
+   * Every rate here is a stored counter on the provider row, so it is realised history, not a
+   * model output. `sampleSize` is returned with it: a completion rate computed over three jobs is
+   * not comparable to one over three hundred, and any caller presenting a trend must be able to
+   * see that for itself rather than inferring it.
+   */
+  async getPerformanceSummary(providerId: string, days = 90) {
+    const [provider, retention, completedInWindow] = await Promise.all([
+      prisma.provider.findUnique({
+        where: { id: providerId },
+        select: {
+          rating: true, completionRate: true, acceptanceRate: true,
+          cancellationRate: true, responseRate: true, avgResponseTime: true,
+          avgCompletionTime: true, cancelledBookings: true,
+          // Rating count comes from the relation — there is no denormalised counter to trust.
+          _count: { select: { reviews: true } },
+        },
+      }),
+      this.getProviderIntelligence(providerId, days),
+      prisma.booking.count({
+        where: {
+          providerId,
+          status: "COMPLETED",
+          createdAt: { gte: new Date(Date.now() - days * DAY_MS) },
+        },
+      }),
+    ]);
+    if (!provider) return null;
+
+    const asOf = new Date().toISOString();
+    return {
+      periodDays: days,
+      performance: {
+        rating: provider.rating,
+        totalRatings: provider._count.reviews,
+        completionRate: provider.completionRate,
+        acceptanceRate: provider.acceptanceRate,
+        cancellationRate: provider.cancellationRate,
+        responseRate: provider.responseRate,
+        avgResponseTimeMinutes: provider.avgResponseTime,
+        avgCompletionTimeMinutes: provider.avgCompletionTime,
+      },
+      volume: {
+        completedInWindow,
+        cancelledLifetime: provider.cancelledBookings,
+      },
+      /** Retention, clearly separated — this is what the tool used to return on its own. */
+      retention,
+      basis: {
+        source: "db:provider_counters",
+        freshness: "HISTORICAL" as const,
+        predictive: false,
+        /** Jobs completed in the window. Callers must gate trend language on this. */
+        sampleSize: completedInWindow,
+        asOf,
       },
     };
   }
@@ -347,11 +432,7 @@ export class PartnerOsService {
     const progress = await prisma.partnerAcademyProgress.findMany({ where: { providerId } });
     const progressByModule = new Map(progress.map((p) => [p.moduleId, p]));
 
-    const filtered = modules.filter(
-      (m) =>
-        m.categoryIds.length === 0 ||
-        m.categoryIds.some((c) => provider?.serviceCategories.includes(c)),
-    );
+    const filtered = filterAcademyModulesForCategories(modules, provider?.serviceCategories);
 
     return {
       modules: filtered.map((m) => ({
@@ -365,7 +446,7 @@ export class PartnerOsService {
         score: progressByModule.get(m.id)?.score ?? null,
       })),
       certifications: provider?.certifications ?? [],
-      completedCount: progress.filter((p) => p.completedAt).length,
+      completedCount: filtered.filter((m) => progressByModule.get(m.id)?.completedAt).length,
     };
   }
 
@@ -380,69 +461,96 @@ export class PartnerOsService {
       create: { providerId, moduleId, completedAt: new Date(), score: score ?? null },
       update: { completedAt: new Date(), score: score ?? undefined },
     });
+
+    const academy = await this.getAcademy(providerId);
+    const requiredModules = academy.modules.length;
+    const completedModules = academy.modules.filter((m) => m.completedAt).length;
+    if (requiredModules > 0 && completedModules >= requiredModules) {
+      await partnerAcquisitionEvents.emitTrainingCompleted(providerId).catch(() => undefined);
+      const { partnerReferralService } = await import("./partner-referral.service");
+      void partnerReferralService.onTraining(providerId).catch(() => undefined);
+    }
+
     return { progress: row };
   }
 
   async getCompliance(providerId: string) {
-    const [provider, documents, bgCheck] = await Promise.all([
-      prisma.provider.findUnique({
-        where: { id: providerId },
-        select: {
-          isVerified: true,
-          backgroundCheckStatus: true,
-          certifications: true,
-          user: { select: { kycStatus: true } },
-        },
-      }),
-      prisma.providerDocument.findMany({
-        where: { providerId },
-        orderBy: { uploadedAt: "desc" },
-      }),
-      prisma.partnerBackgroundCheck.findUnique({ where: { providerId } }),
-    ]);
-
-    const expiringSoon = documents.filter(
-      (d) => d.expiryDate && d.expiryDate.getTime() - Date.now() < 30 * DAY_MS,
-    );
-
-    const verifiedDocs = documents.filter((d) => d.isVerified).length;
+    const { complianceExpiryService } = await import("./compliance-expiry.service");
+    const summary = await complianceExpiryService.partnerSummary(providerId);
+    const verifiedDocs = summary.documents.filter((d) => d.isVerified).length;
     const complianceScore =
-      documents.length === 0
-        ? provider?.isVerified
+      summary.documents.length === 0
+        ? summary.kyc.isVerified
           ? 50
           : 0
-        : Math.round((verifiedDocs / documents.length) * 100);
+        : Math.round((verifiedDocs / summary.documents.length) * 100);
 
     return {
-      documents: documents.map((d) => ({
+      status: summary.status,
+      explanation: summary.explanation,
+      restricted: summary.restricted,
+      restrictionReason: summary.restrictionReason,
+      documents: summary.documents.map((d) => ({
         id: d.id,
         documentType: d.documentType,
         documentName: d.documentName,
+        issuer: d.issuer,
+        issueDate: d.issueDate,
         isVerified: d.isVerified,
         expiryDate: d.expiryDate,
-        uploadedAt: d.uploadedAt,
-        expiringSoon: Boolean(d.expiryDate && d.expiryDate.getTime() - Date.now() < 30 * DAY_MS),
+        expiryState: d.expiryState,
+        daysToExpiry: d.daysToExpiry,
+        cta: d.cta,
+        category: d.category,
+        expiringSoon: d.expiryState === "EXPIRING_SOON" || d.expiryState === "EXPIRING_URGENT",
       })),
       verification: {
-        isVerified: provider?.isVerified ?? false,
-        kycStatus: provider?.user.kycStatus ?? "NOT_STARTED",
-        backgroundCheckStatus: provider?.backgroundCheckStatus ?? "NOT_DONE",
-        backgroundCheck: bgCheck?.status ?? null,
+        isVerified: summary.kyc.isVerified,
+        kycStatus: summary.kyc.status,
+        backgroundCheckStatus: summary.backgroundCheck.status,
+        backgroundCheck: summary.backgroundCheck.status,
       },
       complianceScore,
-      expiringSoon: expiringSoon.length,
-      certifications: provider?.certifications ?? [],
+      expiringSoon: summary.documents.filter((d) => d.expiryState === "EXPIRING_SOON" || d.expiryState === "EXPIRING_URGENT").length,
+      certifications: summary.certifications,
+      insurance: summary.insurance,
     };
   }
 
-  async getWellbeing() {
+  async getWellbeing(providerId?: string) {
     let config = await prisma.platformWellbeingConfig.findUnique({ where: { id: "default" } });
     if (!config) {
       config = await prisma.platformWellbeingConfig.create({
         data: { id: "default", sosPhone: "112" },
       });
     }
-    return config;
+    if (!providerId) return config;
+    const provider = await prisma.provider.findUnique({
+      where: { id: providerId },
+      select: { emergencyContactName: true, emergencyContactPhone: true },
+    });
+    return {
+      ...config,
+      emergencyContactName: provider?.emergencyContactName ?? null,
+      emergencyContactPhone: provider?.emergencyContactPhone ?? null,
+    };
+  }
+
+  async updateEmergencyContact(
+    providerId: string,
+    input: { emergencyContactName?: string; emergencyContactPhone?: string },
+  ) {
+    const { sanitizeUserInput } = await import("../utils/sanitizer");
+    return prisma.provider.update({
+      where: { id: providerId },
+      data: {
+        emergencyContactName:
+          input.emergencyContactName != null ? sanitizeUserInput(input.emergencyContactName, 100) : undefined,
+        emergencyContactPhone:
+          input.emergencyContactPhone != null ? sanitizeUserInput(input.emergencyContactPhone, 20) : undefined,
+      },
+      select: { emergencyContactName: true, emergencyContactPhone: true },
+    });
   }
 
   async getRewards(providerId: string) {

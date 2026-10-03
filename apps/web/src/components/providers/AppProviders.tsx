@@ -161,7 +161,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
               key={t.id}
               className={cn(
                 "pointer-events-auto animate-[fadeInUp_0.25s_ease-out] rounded-2xl px-5 py-3 text-sm font-semibold shadow-e5",
-                t.type === "success" && "bg-success text-white",
+                t.type === "success" && "bg-success-strong text-white",
                 t.type === "error" && "bg-error text-white",
                 (!t.type || t.type === "info") && "bg-ink text-white",
               )}

@@ -140,6 +140,11 @@ export class LedgerBackfillService {
       if (!row.bookingId) continue;
       c.scanned++;
       const key = `provider_earning:${row.bookingId}`;
+      // §11: an all-zero earning (waived-fee rework / revisit) moved no money and has no journal by design.
+      if (row.grossAmount === 0 && row.commission === 0 && row.netEarning === 0) {
+        c.skipped++;
+        continue;
+      }
       try {
         if (await this.hasJournal(key)) {
           c.skipped++;
@@ -195,6 +200,26 @@ export class LedgerBackfillService {
       where: {
         type: { in: [WalletTxnType.DEBIT, WalletTxnType.REVERSAL] },
         status: WalletTxnStatus.COMPLETED,
+        /**
+         * A peer-to-peer transfer is journalled at the moment it happens, as a matched pair:
+         * `wallet_transfer_out:<transferId>` debits CUSTOMER_WALLET and `wallet_transfer_in:<transferId>`
+         * credits it straight back, because money moving between two customers leaves the platform owing
+         * exactly the same total.
+         *
+         * This scan looked only for `wallet_debit:<walletTxnId>`, never found it for a transfer, and
+         * "backfilled" a second journal booking the movement as DR CUSTOMER_WALLET / CR BANK_SETTLEMENT —
+         * as though the customer had withdrawn to a bank. Every transfer the scan reached therefore
+         * debited customer-wallet liability twice and invented a bank settlement, while each journal
+         * balanced perfectly on its own so no per-journal check could see it. `backfillWalletTopups`
+         * already scopes itself by reference type for the same reason; this scan now does too.
+         *
+         * A tip is the same case. `rating.service` debits the wallet and books `booking_tip:<bookingId>`
+         * (DR CUSTOMER_WALLET / CR PROVIDER_PAYABLE) in one transaction, so the tip is already on the
+         * ledger. Found in homigo_test: 31 of 33 tips carried a second WALLET_DEBIT journal written by
+         * this scan minutes to hours later — customer-wallet liability debited twice per tip, plus an
+         * invented bank settlement.
+         */
+        NOT: { referenceType: { in: ["p2p_transfer", "booking_tip"] } },
       },
       select: { id: true, amount: true },
       take: limit,

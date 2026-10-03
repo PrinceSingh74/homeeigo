@@ -1,8 +1,10 @@
+import { liveProviderAllowed } from "../lib/test-egress";
 import { distanceKm, etaMinutes } from "../lib/geo";
 import { redisClient } from "../lib/redis";
 import { logger } from "../lib/logger";
 import { observeFeatureLatency, recordFeatureEvent, incCounter, observeHist } from "../lib/metrics";
 import { mapsBreaker, CircuitOpenError } from "../lib/circuit-breaker";
+import { getEventContext } from "../events/core/event-context";
 import { weatherService } from "./weather.service";
 
 /**
@@ -11,7 +13,12 @@ import { weatherService } from "./weather.service";
  * unconfigured (the UI shows manual entry, never fake data), while ETA falls back to a
  * legitimate haversine estimate. Results are cached in Redis to cap Google API cost.
  */
-const KEY = (process.env.GOOGLE_MAPS_API_KEY ?? "").trim();
+// Test runtimes never spend Google Maps quota (lib/test-egress.ts); callers degrade to haversine/null.
+// Read per call, not once at import: a deployed process's env never changes, and a test can then
+// exercise the configured path against a provider double.
+function mapsKey(): string {
+  return liveProviderAllowed("HOMIGO_REQUIRE_MAPS") ? (process.env.GOOGLE_MAPS_API_KEY ?? "").trim() : "";
+}
 const BASE = "https://maps.googleapis.com/maps/api";
 const TIMEOUT_MS = 6000;
 const CACHE_TTL = { geo: 86_400, place: 604_800, eta: 120 } as const;
@@ -43,12 +50,45 @@ export type GeoAddress = {
   longitude: number;
 };
 
-async function gfetch(path: string, params: Record<string, string>): Promise<Record<string, unknown> | null> {
-  if (!KEY) return null;
+/** What the caller serves instead when Google gives no usable answer. */
+type MapsFallback = "manual_entry" | "haversine" | "osrm" | "straight_line" | "nearest_neighbour";
+
+/**
+ * Google answers a denied, over-quota or malformed request with HTTP 200 and the verdict in the
+ * body's `status`. The HTTP-level failure counter therefore never saw a project whose billing was
+ * switched off: every call was denied, every caller fell back, and nothing said so (coding-phase
+ * certification 2026-09-28). Each failure class is now logged with the endpoint, the caller's
+ * correlation id and the fallback served, and counted.
+ */
+type MapsFailureClass = "REQUEST_DENIED" | "OVER_QUERY_LIMIT" | "PROVIDER_ERROR" | "TIMEOUT" | "HTTP_ERROR" | "NETWORK_ERROR" | "CIRCUIT_OPEN";
+
+const FAILURE_COUNTER: Partial<Record<MapsFailureClass, string>> = {
+  REQUEST_DENIED: "maps_provider_denied_total",
+  OVER_QUERY_LIMIT: "maps_over_query_limit_total",
+  TIMEOUT: "maps_timeout_total",
+};
+
+/** Statuses that are an answer, not a failure: the place or route simply does not exist. */
+const ANSWER_STATUSES = new Set(["OK", "ZERO_RESULTS", "NOT_FOUND"]);
+
+function failureContext(endpoint: string, errorClass: MapsFailureClass, fallback: MapsFallback) {
+  const ctx = getEventContext();
+  return { endpoint, errorClass, fallback, correlationId: ctx.correlationId ?? ctx.requestId ?? null };
+}
+
+function countFailure(endpoint: string, errorClass: MapsFailureClass, fallback: MapsFallback): void {
+  const counter = FAILURE_COUNTER[errorClass];
+  if (counter) incCounter(counter, { endpoint });
+  incCounter("maps_fallback_used_total", { endpoint, fallback });
+}
+
+async function gfetch(path: string, params: Record<string, string>, fallback: MapsFallback): Promise<Record<string, unknown> | null> {
+  const key = mapsKey();
+  if (!key) return null;
   const endpoint = path.replace(/^\//, "").split("/")[0]; // geocode|place|distancematrix|directions
   const url = new URL(BASE + path);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  url.searchParams.set("key", KEY);
+  url.searchParams.set("key", key);
   incCounter("google_api_calls_total", { endpoint });
   // Spec-named per-endpoint request counters (P6 FinOps): geocode_requests_total,
   // places_requests_total, directions_requests_total, distance_matrix_requests_total.
@@ -62,22 +102,41 @@ async function gfetch(path: string, params: Record<string, string>): Promise<Rec
   try {
     // Circuit breaker: after repeated upstream failures, OPEN → fast-fail without
     // even attempting the fetch (isolates a flaky/down Google Maps from the event loop).
-    return await mapsBreaker.execute(async () => {
+    const data = await mapsBreaker.execute(async () => {
       const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
       if (!res.ok) {
-        logger.warn("maps.http_error", { path, status: res.status });
+        logger.warn("maps.http_error", { path, status: res.status, ...failureContext(endpoint, "HTTP_ERROR", fallback) });
         incCounter("google_api_failures_total", { endpoint, reason: "http_error" });
         throw new Error(`maps_http_${res.status}`);
       }
       return (await res.json()) as Record<string, unknown>;
     });
+    const status = typeof data?.status === "string" ? data.status : "";
+    if (!ANSWER_STATUSES.has(status)) {
+      const errorClass: MapsFailureClass = status === "REQUEST_DENIED" || status === "OVER_QUERY_LIMIT" ? status : "PROVIDER_ERROR";
+      logger.warn(errorClass === "PROVIDER_ERROR" ? "maps.provider_error" : "maps.provider_denied", {
+        path,
+        providerStatus: status || null,
+        providerMessage: typeof data?.error_message === "string" ? data.error_message.slice(0, 300) : null,
+        ...failureContext(endpoint, errorClass, fallback),
+      });
+      incCounter("google_api_failures_total", { endpoint, reason: errorClass.toLowerCase() });
+      countFailure(endpoint, errorClass, fallback);
+    }
+    return data;
   } catch (e) {
     if (e instanceof CircuitOpenError) {
       incCounter("google_api_failures_total", { endpoint, reason: "circuit_open" });
+      countFailure(endpoint, "CIRCUIT_OPEN", fallback); // counted, not logged: one outage, not one line per call
       return null; // fast-fail, isolated
     }
-    logger.warn("maps.fetch_failed", { path, error: e instanceof Error ? e.message : String(e) });
+    const message = e instanceof Error ? e.message : String(e);
+    // AbortSignal.timeout rejects fetch with a DOMException named "TimeoutError".
+    const errorClass: MapsFailureClass =
+      (e as { name?: unknown } | null)?.name === "TimeoutError" ? "TIMEOUT" : message.startsWith("maps_http_") ? "HTTP_ERROR" : "NETWORK_ERROR";
+    logger.warn("maps.fetch_failed", { path, error: message, ...failureContext(endpoint, errorClass, fallback) });
     incCounter("google_api_failures_total", { endpoint, reason: "fetch_failed" });
+    countFailure(endpoint, errorClass, fallback);
     return null;
   }
 }
@@ -105,7 +164,7 @@ function parseResult(r: {
 
 export const mapsService = {
   get isConfigured(): boolean {
-    return Boolean(KEY);
+    return Boolean(mapsKey());
   },
 
   isWithinIndia(lat: number, lng: number): boolean {
@@ -124,7 +183,7 @@ export const mapsService = {
     const cached = await redisClient.get(cacheKey).catch(() => null);
     if (cached) return JSON.parse(cached) as GeoAddress;
 
-    const data = await gfetch("/geocode/json", { latlng: `${lat},${lng}` });
+    const data = await gfetch("/geocode/json", { latlng: `${lat},${lng}` }, "manual_entry");
     const results = (data?.results ?? []) as Parameters<typeof parseResult>[0][];
     if (data?.status !== "OK" || results.length === 0) return null;
     const out = parseResult(results[0]!);
@@ -137,7 +196,7 @@ export const mapsService = {
     const cached = await redisClient.get(cacheKey).catch(() => null);
     if (cached) return JSON.parse(cached) as GeoAddress;
 
-    const data = await gfetch("/geocode/json", { address, region: "in" });
+    const data = await gfetch("/geocode/json", { address, region: "in" }, "manual_entry");
     const results = (data?.results ?? []) as Parameters<typeof parseResult>[0][];
     if (data?.status !== "OK" || results.length === 0) return null;
     const out = parseResult(results[0]!);
@@ -149,14 +208,14 @@ export const mapsService = {
     input: string,
     opts?: { sessionToken?: string; lat?: number; lng?: number },
   ): Promise<Array<{ placeId: string; description: string; mainText: string; secondaryText: string }>> {
-    if (!KEY || input.trim().length < 3) return [];
+    if (!mapsKey() || input.trim().length < 3) return [];
     const params: Record<string, string> = { input: input.trim(), components: "country:in" };
     if (opts?.sessionToken) params.sessiontoken = opts.sessionToken;
     if (Number.isFinite(opts?.lat) && Number.isFinite(opts?.lng)) {
       params.location = `${opts!.lat},${opts!.lng}`;
       params.radius = "50000";
     }
-    const data = await gfetch("/place/autocomplete/json", params);
+    const data = await gfetch("/place/autocomplete/json", params, "manual_entry");
     const preds = (data?.predictions ?? []) as Array<{
       place_id: string;
       description: string;
@@ -175,10 +234,11 @@ export const mapsService = {
     const cached = await redisClient.get(cacheKey).catch(() => null);
     if (cached) return JSON.parse(cached) as GeoAddress;
 
-    const data = await gfetch("/place/details/json", {
-      place_id: placeId,
-      fields: "formatted_address,geometry,address_component",
-    });
+    const data = await gfetch(
+      "/place/details/json",
+      { place_id: placeId, fields: "formatted_address,geometry,address_component" },
+      "manual_entry",
+    );
     const result = data?.result as Parameters<typeof parseResult>[0] | undefined;
     if (data?.status !== "OK" || !result) return null;
     const out = parseResult(result);
@@ -190,7 +250,7 @@ export const mapsService = {
   async eta(from: LatLng, to: LatLng): Promise<{ etaMinutes: number; distanceKm: number; source: "google" | "haversine"; withTraffic: boolean }> {
     const __t0 = Date.now();
     const dKm = distanceKm(from.lat, from.lng, to.lat, to.lng);
-    if (KEY) {
+    if (mapsKey()) {
       const cacheKey = `geo:eta:${from.lat.toFixed(3)},${from.lng.toFixed(3)}:${to.lat.toFixed(3)},${to.lng.toFixed(3)}`;
       const cached = await redisClient.get(cacheKey).catch(() => null);
       if (cached) {
@@ -198,12 +258,11 @@ export const mapsService = {
         observeHist("geo_eta_seconds", out.etaMinutes * 60, { source: out.source });
         return out;
       }
-      const data = await gfetch("/distancematrix/json", {
-        origins: `${from.lat},${from.lng}`,
-        destinations: `${to.lat},${to.lng}`,
-        mode: "driving",
-        departure_time: "now",
-      });
+      const data = await gfetch(
+        "/distancematrix/json",
+        { origins: `${from.lat},${from.lng}`, destinations: `${to.lat},${to.lng}`, mode: "driving", departure_time: "now" },
+        "haversine",
+      );
       const el = (data?.rows as Array<{ elements: Array<{ status: string; duration: { value: number }; duration_in_traffic?: { value: number }; distance: { value: number } }> }> | undefined)?.[0]?.elements?.[0];
       if (el?.status === "OK") {
         const secs = el.duration_in_traffic?.value ?? el.duration.value;
@@ -251,15 +310,19 @@ export const mapsService = {
     waypoints: LatLng[],
     destination?: LatLng,
   ): Promise<{ order: number[]; distanceKm: number; durationMin: number; polyline: string | null } | null> {
-    if (!KEY || waypoints.length === 0) return null;
+    if (!mapsKey() || waypoints.length === 0) return null;
     const dest = destination ?? waypoints[waypoints.length - 1]!;
-    const data = await gfetch("/directions/json", {
-      origin: `${origin.lat},${origin.lng}`,
-      destination: `${dest.lat},${dest.lng}`,
-      waypoints: `optimize:true|${waypoints.map((w) => `${w.lat},${w.lng}`).join("|")}`,
-      mode: "driving",
-      departure_time: "now",
-    });
+    const data = await gfetch(
+      "/directions/json",
+      {
+        origin: `${origin.lat},${origin.lng}`,
+        destination: `${dest.lat},${dest.lng}`,
+        waypoints: `optimize:true|${waypoints.map((w) => `${w.lat},${w.lng}`).join("|")}`,
+        mode: "driving",
+        departure_time: "now",
+      },
+      "nearest_neighbour",
+    );
     const route = (data?.routes as Array<{ waypoint_order: number[]; overview_polyline?: { points: string }; legs: Array<{ distance: { value: number }; duration: { value: number }; duration_in_traffic?: { value: number } }> }> | undefined)?.[0];
     if (data?.status !== "OK" || !route) return null;
     const distanceKm = Math.round((route.legs.reduce((s, l) => s + l.distance.value, 0) / 1000) * 10) / 10;
@@ -277,13 +340,12 @@ export const mapsService = {
     from: LatLng,
     to: LatLng,
   ): Promise<{ polyline: string; distanceKm: number; durationMin: number; source: "google" | "osrm" } | null> {
-    if (KEY) {
-      const data = await gfetch("/directions/json", {
-        origin: `${from.lat},${from.lng}`,
-        destination: `${to.lat},${to.lng}`,
-        mode: "driving",
-        departure_time: "now",
-      });
+    if (mapsKey()) {
+      const data = await gfetch(
+        "/directions/json",
+        { origin: `${from.lat},${from.lng}`, destination: `${to.lat},${to.lng}`, mode: "driving", departure_time: "now" },
+        OSRM_FALLBACK ? "osrm" : "straight_line",
+      );
       const route = (
         data?.routes as
           | Array<{

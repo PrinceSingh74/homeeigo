@@ -83,7 +83,7 @@ export default function ProviderDetailScreen() {
                   <Text style={styles.avatarInitial}>{provider.name.charAt(0).toUpperCase()}</Text>
                 </LinearGradient>
               )}
-              {provider.isOnline ? <View style={[styles.online, { borderColor: c.bg }]} /> : null}
+              {provider.availableNow ? <View style={[styles.online, { borderColor: c.bg }]} /> : null}
             </View>
             <View style={styles.nameRow}>
               <Text style={[styles.name, { color: c.text }]}>{provider.name}</Text>

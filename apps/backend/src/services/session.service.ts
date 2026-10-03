@@ -17,7 +17,8 @@ export class SessionService {
     userAgent?: string;
     ipAddress?: string;
   }): Promise<string> {
-    const token = await this.refreshTokens.createRefreshToken(payload);
+    const { token, sessionId } = await this.refreshTokens.createRefreshToken(payload);
+    if (sessionId) return sessionId;
     const row = await this.prisma.refreshToken.findUnique({
       where: { token },
       select: { id: true },

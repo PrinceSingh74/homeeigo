@@ -3,6 +3,15 @@ import { AppState, type AppStateStatus } from "react-native";
 import { reportRecoverySignal } from "@/lib/observability/telemetry";
 import { onConnectivityReconnect } from "@/lib/connectivity/connectivity-service";
 import { registerWsChannel, unregisterWsChannel } from "@/lib/realtime/ws-registry";
+import { shouldRefreshAfterWsUnauthorized } from "@/lib/realtime/ws-auth-refresh";
+import { useAuthStore } from "@/stores/auth-store";
+
+/** Close codes the backend uses for revocation (lib/websocket.ts). */
+const WS_CLOSE_UNAUTHORIZED = 4401;
+const WS_CLOSE_FORBIDDEN = 4403;
+/** Shared across every socket: one 4401-driven refresh per window, however many channels are refused. */
+const WS_AUTH_REFRESH_WINDOW_MS = 30_000;
+let lastWsAuthRefreshAt = 0;
 
 type RealtimeOptions = {
   url: string | null;
@@ -132,12 +141,37 @@ export function useRealtimeChannel({ url, enabled = true, onMessage, label }: Re
         onMessageRef.current?.(raw);
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event: { code?: number }) => {
         if (generation !== generationRef.current) return;
         clearLiveTimers();
         setConnected(false);
         connectingRef.current = false;
         if (cancelled) return;
+        // Server-side revocation: 4403 never reconnects with this URL; 4401 refreshes the token and
+        // waits for the caller to rebuild the URL (the effect re-runs on the new token).
+        if (event.code === WS_CLOSE_FORBIDDEN) {
+          setReconnecting(false);
+          return;
+        }
+        if (event.code === WS_CLOSE_UNAUTHORIZED) {
+          setReconnecting(false);
+          // Once per window, and never for a socket still on a token the session has already replaced
+          // (see shouldRefreshAfterWsUnauthorized).
+          const now = Date.now();
+          if (
+            shouldRefreshAfterWsUnauthorized({
+              socketUrl: url,
+              currentAccessToken: useAuthStore.getState().accessToken,
+              now,
+              lastWsAuthRefreshAt,
+              windowMs: WS_AUTH_REFRESH_WINDOW_MS,
+            })
+          ) {
+            lastWsAuthRefreshAt = now;
+            void useAuthStore.getState().refreshSession();
+          }
+          return;
+        }
         const retry = Math.min(30_000, 1_000 * 2 ** retryRef.current);
         retryRef.current += 1;
         setReconnecting(true);

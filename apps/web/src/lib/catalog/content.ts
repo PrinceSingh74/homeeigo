@@ -1,4 +1,6 @@
 import { CATEGORY_BY_ID, KIDS_GUIDANCE } from "@/lib/catalog/taxonomy";
+// Detail-only copy, loaded with this builder rather than with the catalog (keeps it off the hub).
+import { CATEGORY_FAQS, scopeCopyFor } from "@/lib/catalog/service-detail-copy";
 import { RESPONSIBILITY_LABELS, SPARE_PARTS_LABELS } from "@/lib/catalog/pricing";
 import type { Faq, ServiceView } from "@/lib/catalog/types";
 import type { BackendServiceDetail } from "@/types/backend";
@@ -59,8 +61,13 @@ export function detailContent(svc: ServiceView, detail?: BackendServiceDetail | 
   const excludes = nonEmpty(detail?.excludedServices);
   let scope: ServiceDetailContent["scope"] = null;
   if (includes.length || excludes.length) scope = { includes, excludes };
-  else if (def.fallbackApproved && (def.includes?.length || def.excludes?.length)) {
-    scope = { includes: def.includes ?? [], excludes: def.excludes ?? [] };
+  else {
+    const copy = scopeCopyFor(def.slug);
+    const fbIncludes = def.includes ?? copy?.includes;
+    const fbExcludes = def.excludes ?? copy?.excludes;
+    if (def.fallbackApproved && (fbIncludes?.length || fbExcludes?.length)) {
+      scope = { includes: fbIncludes ?? [], excludes: fbExcludes ?? [] };
+    }
   }
 
   const policies: PolicyRow[] = [];
@@ -86,9 +93,13 @@ export function detailContent(svc: ServiceView, detail?: BackendServiceDetail | 
     scope,
     prepare,
     safety: nonEmpty(cfg?.safetyNotes),
-    faqs: [...(cfg?.faqs ?? []), ...(def.faqs ?? []), ...(cat.faqs ?? []), ...BOOKING_FAQS],
+    faqs: [...(cfg?.faqs ?? []), ...(def.faqs ?? []), ...(cat.faqs ?? CATEGORY_FAQS[cat.id] ?? []), ...BOOKING_FAQS],
     policies,
-    images: nonEmpty(detail?.images),
+    images: (() => {
+      const fromAdmin = nonEmpty(detail?.images);
+      if (fromAdmin.length) return fromAdmin;
+      return svc.image ? [svc.image] : [];
+    })(),
     cities: nonEmpty(detail?.availableCities),
     // Only a real aggregate from the ratings table — never a placeholder.
     rating: rating != null && rating > 0 && reviews > 0 ? { value: rating, count: reviews } : svc.rating,

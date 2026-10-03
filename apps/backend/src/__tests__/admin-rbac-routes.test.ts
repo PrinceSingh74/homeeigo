@@ -30,6 +30,16 @@ describe("resolveAdminRoutePermission", () => {
     });
   });
 
+  it("Phase 06: the requirement catalogue needs SETTINGS READ to list, CREATE to add, UPDATE to change", () => {
+    // Pinned here because no seeded non-super role holds any SETTINGS permission, so an HTTP test
+    // cannot tell READ from CREATE — a create rule downgraded to READ passed every integration test.
+    expect(resolveAdminRoutePermission("GET", "/api/admin/requirement-items")).toEqual({ resource: "SETTINGS", action: "READ" });
+    expect(resolveAdminRoutePermission("GET", "/api/admin/requirement-items?kind=EQUIPMENT")).toEqual({ resource: "SETTINGS", action: "READ" });
+    expect(resolveAdminRoutePermission("POST", "/api/admin/requirement-items")).toEqual({ resource: "SETTINGS", action: "CREATE" });
+    expect(resolveAdminRoutePermission("PUT", "/api/admin/requirement-items/sri_abc")).toEqual({ resource: "SETTINGS", action: "UPDATE" });
+    expect(resolveAdminRoutePermission("DELETE", "/api/admin/requirement-items/sri_abc")).toBeNull();
+  });
+
   it("returns null for unknown routes", () => {
     expect(resolveAdminRoutePermission("GET", "/api/admin/unknown-route")).toBeNull();
   });

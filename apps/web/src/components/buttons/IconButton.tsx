@@ -22,8 +22,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
       style={{ width: size, height: size, ...style }}
       className={cn(
         "relative inline-flex items-center justify-center rounded-full",
-        "text-content/70 hover:text-primary",
-        "outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+        "text-muted hover:text-brand",
+        "outline-none focus-visible:ring-2 focus-visible:ring-brand/60",
         "transition-colors",
         className,
       )}

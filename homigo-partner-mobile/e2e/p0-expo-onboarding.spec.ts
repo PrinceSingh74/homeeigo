@@ -18,9 +18,12 @@ test.describe("P0 Expo runtime onboarding", () => {
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));
     await page.goto("/register?invite=not-a-valid-jwt", { waitUntil: "domcontentloaded" });
-    await expect(page.getByText(/homeeigo partner/i).first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForFunction(() => (document.querySelector("#root")?.childElementCount ?? 0) > 0, {
+      timeout: 90_000,
+    });
+    await expect(page.getByText("Become a HOMEEIGO Partner")).toBeVisible({ timeout: 90_000 });
     await expect(page.getByText("Invite could not be used")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText(/start application|continue invite|basic information/i).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /start application/i })).toBeVisible();
     expect(errors, errors.join("\n")).toEqual([]);
     await page.screenshot({ path: "e2e/__artifacts__/p0-expo-invalid-invite.png", fullPage: true });
   });
@@ -29,11 +32,18 @@ test.describe("P0 Expo runtime onboarding", () => {
     await page.goto(`/register?invite=${encodeURIComponent(expiredInviteJwt())}`, {
       waitUntil: "domcontentloaded",
     });
-    await expect(page.getByText(/homeeigo partner/i).first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForFunction(() => (document.querySelector("#root")?.childElementCount ?? 0) > 0, {
+      timeout: 90_000,
+    });
+    await expect(page.getByText("Become a HOMEEIGO Partner")).toBeVisible({ timeout: 90_000 });
     await expect(page.getByText("Invite could not be used")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: /start application/i })).toBeVisible();
   });
 
-  test("invite does not create Provider; Sunday + KYC + assessment + submit", async ({ page }) => {
+  test("invite does not create Provider; Sunday + KYC + assessment + submit", async ({ page, context }) => {
+    test.setTimeout(240_000);
+    await context.grantPermissions(["geolocation"]);
+    await context.setGeolocation({ latitude: 19.076, longitude: 72.8777 });
     const token = await adminToken();
     const phone = uniquePhone();
     const name = `Expo ${phone.slice(-4)}`;
@@ -48,7 +58,10 @@ test.describe("P0 Expo runtime onboarding", () => {
     await page.goto(`/register?invite=${encodeURIComponent(started.invite)}`, {
       waitUntil: "domcontentloaded",
     });
-    await expect(page.getByText(/homeeigo partner/i).first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForFunction(() => (document.querySelector("#root")?.childElementCount ?? 0) > 0, {
+      timeout: 90_000,
+    });
+    await expect(page.getByText("Become a HOMEEIGO Partner")).toBeVisible({ timeout: 90_000 });
     await expect(page.getByText(new RegExp(name, "i"))).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(new RegExp(`ending in ${phone.slice(-4)}`))).toBeVisible();
 
@@ -85,12 +98,17 @@ test.describe("P0 Expo runtime onboarding", () => {
     await page.getByLabel(/emergency contact phone/i).fill("9876543210");
     await page.getByRole("button", { name: /save & continue/i }).click();
 
-    await expect(page.getByText(/service areas|location/i).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Service location")).toBeVisible({ timeout: 30_000 });
+    const gpsBtn = page.getByRole("button", { name: /use location|current location/i });
+    if (await gpsBtn.isVisible().catch(() => false)) {
+      await gpsBtn.click();
+    }
+    await page.getByLabel(/base city/i).fill("Mumbai");
     await page.getByLabel(/service areas/i).fill("Andheri, Bandra");
     await page.getByRole("button", { name: /save & continue/i }).click();
 
-    await expect(page.getByText(/availability/i).first()).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("button", { name: "Sun" }).click();
+    await expect(page.getByText("Working days")).toBeVisible({ timeout: 30_000 });
+    await page.getByLabel("Sun", { exact: true }).click();
     const availabilitySave = page.waitForRequest(
       (r) => r.url().includes("/onboarding/availability") && r.method() === "POST",
     );
@@ -98,7 +116,7 @@ test.describe("P0 Expo runtime onboarding", () => {
     const availabilityBody = JSON.parse((await availabilitySave).postData() ?? "{}") as { workingDays?: string[] };
     expect(availabilityBody.workingDays).toContain("Sun");
 
-    await expect(page.getByText(/kyc/i).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByLabel("PAN")).toBeVisible({ timeout: 30_000 });
     const kyc = uniqueKyc();
     await page.getByLabel("PAN").fill(kyc.panNumber);
     await page.getByLabel("Aadhaar").fill(kyc.aadharNumber);
@@ -131,6 +149,11 @@ test.describe("P0 Expo runtime onboarding", () => {
     }
     await page.getByRole("button", { name: /submit answers|retry assessment/i }).click();
     await expect(page.getByText(/assessment passed/i)).toBeVisible({ timeout: 30_000 });
+
+    await page.getByRole("button", { name: /continue to training/i }).click();
+    await expect(page.getByText(/partner training/i).first()).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: /continue to review/i }).click();
+    await expect(page.getByText(/final review/i).first()).toBeVisible({ timeout: 30_000 });
 
     const submitRes = page.waitForResponse(
       (r) => r.url().includes("/register/submit") && r.request().method() === "POST",

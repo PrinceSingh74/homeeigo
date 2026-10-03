@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { razorpayService } from "./razorpay.service";
-import { SubscriptionStatus, type SubscriptionInterval } from "@prisma/client";
+import { Prisma, SubscriptionStatus, type SubscriptionInterval } from "@prisma/client";
 import { financialLedgerService } from "./financial-ledger.service";
 import { emailDeliveryService } from "./email-delivery.service";
 import { userPiiService } from "./user-pii.service";
@@ -282,11 +282,92 @@ export class SubscriptionService {
   }
 
   // ===== Admin =====
-  async adminListPlans() {
-    return prisma.membershipPlan.findMany({
-      include: { benefits: { orderBy: { sortOrder: "asc" } }, _count: { select: { subscriptions: true } } },
-      orderBy: { sortOrder: "asc" },
-    });
+  async adminListPlans(query: Record<string, string | undefined> = {}) {
+    const now = new Date();
+    const where: Prisma.MembershipPlanWhereInput = {};
+    const term = query.search?.trim();
+    if (term) {
+      where.OR = [
+        { name: { contains: term, mode: "insensitive" } },
+        { description: { contains: term, mode: "insensitive" } },
+        { tier: { contains: term, mode: "insensitive" } },
+      ];
+    }
+    const lane = (query.status ?? "all").toLowerCase();
+    if (lane === "active") where.isActive = true;
+    else if (lane === "inactive") where.isActive = false;
+    const interval = (query.interval ?? "").toUpperCase();
+    if (interval === "MONTHLY" || interval === "QUARTERLY" || interval === "YEARLY") {
+      where.interval = interval;
+    }
+
+    const sort = (query.sort ?? "order").toLowerCase();
+    const orderBy: Prisma.MembershipPlanOrderByWithRelationInput =
+      sort === "price" ? { price: "desc" } : sort === "name" ? { name: "asc" } : { sortOrder: "asc" };
+
+    const week = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [rows, liveByPlan, catalogTotal, catalogActive, liveMembers, expiringSoon, churnedThisMonth, liveSubs] =
+      await Promise.all([
+        prisma.membershipPlan.findMany({
+          where,
+          include: { benefits: { orderBy: { sortOrder: "asc" } }, _count: { select: { subscriptions: true } } },
+          orderBy,
+        }),
+        prisma.userSubscription.groupBy({
+          by: ["planId"],
+          where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now } },
+          _count: true,
+        }),
+        prisma.membershipPlan.count(),
+        prisma.membershipPlan.count({ where: { isActive: true } }),
+        prisma.userSubscription.count({
+          where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now } },
+        }),
+        prisma.userSubscription.count({
+          where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now, lte: week } },
+        }),
+        prisma.userSubscription.count({
+          where: {
+            status: { in: [SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED] },
+            cancelledAt: { gte: monthStart },
+          },
+        }),
+        prisma.userSubscription.findMany({
+          where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now } },
+          select: { plan: { select: { price: true, interval: true } } },
+        }),
+      ]);
+
+    const liveMap = new Map(liveByPlan.map((p) => [p.planId, p._count]));
+    const liveMrr = liveSubs.reduce((sum, s) => {
+      const months = MONTHS[s.plan.interval] ?? 1;
+      return sum + s.plan.price / months;
+    }, 0);
+
+    const plans = rows.map((p) => ({
+      ...p,
+      activeSubscribers: liveMap.get(p.id) ?? 0,
+      totalSubscribers: p._count.subscriptions,
+    }));
+
+    if (sort === "subscribers") {
+      plans.sort((a, b) => b.activeSubscribers - a.activeSubscribers || a.sortOrder - b.sortOrder);
+    }
+
+    return {
+      plans,
+      summary: {
+        total: catalogTotal,
+        active: catalogActive,
+        inactive: Math.max(0, catalogTotal - catalogActive),
+        liveMembers,
+        expiringSoon,
+        churnedThisMonth,
+        liveMrr: Math.round(liveMrr),
+      },
+    };
   }
 
   async adminCreatePlan(data: {
@@ -339,23 +420,50 @@ export class SubscriptionService {
     });
   }
 
-  async adminSubscribers(query: { page?: string; limit?: string }) {
+  async adminSubscribers(query: { page?: string; limit?: string; search?: string; status?: string; planId?: string }) {
     const page = Math.max(1, Number(query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+    const now = new Date();
+    const week = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const where: Prisma.UserSubscriptionWhereInput = {};
+    const lane = (query.status ?? "all").toLowerCase();
+    if (lane === "active") {
+      where.status = SubscriptionStatus.ACTIVE;
+      where.expiresAt = { gt: now };
+    } else if (lane === "cancelled") {
+      where.status = SubscriptionStatus.CANCELLED;
+    } else if (lane === "expiring") {
+      where.status = SubscriptionStatus.ACTIVE;
+      where.expiresAt = { gt: now, lte: week };
+    } else if (lane === "expired") {
+      where.status = SubscriptionStatus.EXPIRED;
+    } else {
+      where.status = {
+        in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED],
+      };
+    }
+    if (query.planId) where.planId = query.planId;
+    const term = query.search?.trim();
+    if (term) {
+      where.OR = [
+        { user: { email: { contains: term, mode: "insensitive" } } },
+        { user: { firstName: { contains: term, mode: "insensitive" } } },
+        { user: { lastName: { contains: term, mode: "insensitive" } } },
+        { plan: { name: { contains: term, mode: "insensitive" } } },
+      ];
+    }
     const [rows, total] = await Promise.all([
       prisma.userSubscription.findMany({
-        where: { status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELLED] } },
+        where,
         include: {
           plan: { select: { name: true, interval: true, price: true } },
-          user: { select: { firstName: true, lastName: true, email: true } },
+          user: { select: { id: true, firstName: true, lastName: true, email: true } },
         },
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: limit,
       }),
-      prisma.userSubscription.count({
-        where: { status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELLED] } },
-      }),
+      prisma.userSubscription.count({ where }),
     ]);
     return { subscribers: rows, pagination: { page, limit, total, hasMore: page * limit < total } };
   }

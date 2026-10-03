@@ -11,7 +11,7 @@ export function PartnerShell({ children }: { children: React.ReactNode }) {
   const [mobileNav, setMobileNav] = useState(false);
 
   return (
-    <div className="partner-mesh min-h-dvh">
+    <div className="partner-mesh min-h-dvh overflow-x-hidden">
       <GlobalTrackingPublisher />
       <PartnerSidebar
         mobileOpen={mobileNav}

@@ -5,7 +5,6 @@ import { partnerApi } from "@/services/partner-api";
 import { getErrorMessage, PartnerApiError } from "@/lib/api-error";
 import { usePartnerStore } from "@/stores/partner-store";
 import { useToastStore } from "@/stores/toast-store";
-import { publishBookingLifecycle } from "@/lib/ws-publish";
 import type {
   PartnerBooking,
   PartnerBookingsResponse,
@@ -21,6 +20,8 @@ export const partnerKeys = {
   reviewsAll: ["partner", "reviews"] as const,
   bookings: (params: BookingListParams) => ["partner", "bookings", params] as const,
   bookingsAll: ["partner", "bookings"] as const,
+  /** The server's per-job actions answer (GET /api/bookings/:id/actions) — refreshed with every booking change (X-82). */
+  jobActionsAll: ["partner", "job-actions"] as const,
   walletBalance: ["partner", "wallet", "balance"] as const,
   walletTx: (params: WalletTxParams) => ["partner", "wallet", "tx", params] as const,
   walletTxAll: ["partner", "wallet", "tx"] as const,
@@ -152,16 +153,6 @@ export function usePartnerReviewsQuery(params: ReviewListParams) {
     staleTime: 60_000,
     enabled,
     placeholderData: (prev) => prev,
-  });
-}
-
-export function useWalletBalanceQuery() {
-  const enabled = usePartnerQueriesEnabled();
-  return useQuery({
-    queryKey: partnerKeys.walletBalance,
-    queryFn: () => partnerApi.walletBalance(),
-    staleTime: 20_000,
-    enabled,
   });
 }
 
@@ -386,16 +377,16 @@ export function useAcceptBookingMutation(opts?: { onAccepted?: () => void }) {
       }
       showToast(getErrorMessage(error), "error");
     },
-    onSuccess: (data, { bookingId }) => {
+    onSuccess: (data) => {
       showToast(
         data?.newlyAccepted === false ? "Job already in Active" : "Job accepted — moved to Active",
         "success",
       );
       opts?.onAccepted?.();
-      void publishBookingLifecycle(bookingId, { type: "accept_booking" });
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
+      void qc.invalidateQueries({ queryKey: partnerKeys.jobActionsAll });
       void qc.invalidateQueries({ queryKey: partnerKeys.dashboard });
     },
   });
@@ -422,15 +413,12 @@ export function useRejectBookingMutation() {
       }
       showToast(getErrorMessage(error), "error");
     },
-    onSuccess: (_data, { bookingId, reason }) => {
+    onSuccess: () => {
       showToast("Job declined", "info");
-      void publishBookingLifecycle(bookingId, {
-        type: "reject_booking",
-        data: { reason },
-      });
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
+      void qc.invalidateQueries({ queryKey: partnerKeys.jobActionsAll });
       void qc.invalidateQueries({ queryKey: partnerKeys.dashboard });
     },
   });
@@ -462,6 +450,7 @@ export function useCancelBookingMutation() {
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
+      void qc.invalidateQueries({ queryKey: partnerKeys.jobActionsAll });
       void qc.invalidateQueries({ queryKey: partnerKeys.dashboard });
     },
   });
@@ -484,8 +473,8 @@ export function useMarkEnRouteMutation() {
       longitude,
     }: {
       bookingId: string;
-      latitude: number;
-      longitude: number;
+      latitude: number | null;
+      longitude: number | null;
     }) => partnerApi.markEnRoute(bookingId, latitude, longitude),
     onMutate: async ({ bookingId }) => {
       await qc.cancelQueries({ queryKey: partnerKeys.bookingsAll });
@@ -501,6 +490,7 @@ export function useMarkEnRouteMutation() {
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
+      void qc.invalidateQueries({ queryKey: partnerKeys.jobActionsAll });
       void qc.invalidateQueries({ queryKey: partnerKeys.dashboard });
     },
   });
@@ -532,6 +522,7 @@ export function useMarkArrivedMutation() {
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
+      void qc.invalidateQueries({ queryKey: partnerKeys.jobActionsAll });
       void qc.invalidateQueries({ queryKey: partnerKeys.dashboard });
     },
   });
@@ -573,17 +564,21 @@ export function useStartBookingMutation() {
       const msg =
         error instanceof PartnerApiError && error.code === "OUTSIDE_SERVICE_AREA"
           ? "You're outside the job area — move closer to the service location and try again."
-          : getErrorMessage(error);
+          : error instanceof PartnerApiError && error.code === "REQUIREMENT_GATE_BLOCKED"
+            ? error.message // §6: the server's sentence names what to resolve
+            : getErrorMessage(error);
       showToast(msg, "error");
+      if (error instanceof PartnerApiError && error.code === "REQUIREMENT_GATE_BLOCKED") {
+        void qc.invalidateQueries({ queryKey: ["partner", "requirements"] });
+        void qc.invalidateQueries({ queryKey: ["partner", "job-actions"] });
+      }
     },
-    onSuccess: (_data, { bookingId }) => {
+    onSuccess: () => {
       showToast("Job started", "success");
-      // Backend message-type contract is "start_service" — mapped from the
-      // user-facing "start booking" action. See apps/backend/src/websocket/booking.ws.ts.
-      void publishBookingLifecycle(bookingId, { type: "start_service" });
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
+      void qc.invalidateQueries({ queryKey: partnerKeys.jobActionsAll });
       void qc.invalidateQueries({ queryKey: partnerKeys.dashboard });
     },
   });
@@ -599,13 +594,20 @@ export function useCompleteBookingMutation() {
       longitude,
       notes,
       photos,
+      completedChecklist,
     }: {
       bookingId: string;
-      latitude: number;
-      longitude: number;
+      latitude: number | null;
+      longitude: number | null;
       notes?: string;
       photos?: string[];
-    }) => partnerApi.completeBooking(bookingId, latitude, longitude, notes, photos),
+      /**
+       * The ticked items of the booking's frozen quality checklist, exact strings, checklist order
+       * (`checklistCompletionFields`). Omit when the booking has no checklist. Never fabricate an
+       * all-ticked list from a surface that did not show the checklist to the partner.
+       */
+      completedChecklist?: string[];
+    }) => partnerApi.completeBooking(bookingId, latitude, longitude, notes, photos, completedChecklist),
     onMutate: async ({ bookingId }) => {
       await qc.cancelQueries({ queryKey: partnerKeys.bookingsAll });
       const snapshots = patchBookingsCache(qc, bookingId, {
@@ -615,18 +617,25 @@ export function useCompleteBookingMutation() {
       return { snapshots };
     },
     onError: (error, _vars, ctx) => {
+      // Every refusal — including QUALITY_CHECKLIST_REQUIRED — rolls the optimistic "completed"
+      // row back; the server did not complete anything. Callers add their own next step (a link
+      // to the job page) on top of this toast.
       if (ctx?.snapshots) restoreSnapshots(qc, ctx.snapshots);
       showToast(getErrorMessage(error), "error");
     },
-    onSuccess: (_data, { bookingId }) => {
+    onSuccess: () => {
       showToast("Job completed", "success");
-      void publishBookingLifecycle(bookingId, { type: "complete_booking" });
     },
-    onSettled: () => {
+    onSettled: (_data, _error, vars) => {
       void qc.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
+      void qc.invalidateQueries({ queryKey: partnerKeys.jobActionsAll });
       void qc.invalidateQueries({ queryKey: partnerKeys.dashboard });
       void qc.invalidateQueries({ queryKey: partnerKeys.walletBalance });
       void qc.invalidateQueries({ queryKey: partnerKeys.walletTxAll });
+      // §10: a refused complete records a verdict; a successful one opens the confirmation window.
+      void qc.invalidateQueries({ queryKey: ["partner", "quality", vars.bookingId] });
+      void qc.invalidateQueries({ queryKey: ["partner", "completion", vars.bookingId] });
+      void qc.invalidateQueries({ queryKey: ["partner", "cases", vars.bookingId] });
     },
   });
 }
@@ -761,5 +770,50 @@ export function useCancelMembershipMutation() {
       void qc.invalidateQueries({ queryKey: partnerKeys.entitlements });
     },
     onError: (error) => showToast(getErrorMessage(error), "error"),
+  });
+}
+
+/* ---------------------------------------------------------------- */
+/* Phase 10 §6 — booking requirement state                           */
+/* ---------------------------------------------------------------- */
+
+export const requirementKeys = {
+  all: ["partner", "requirements"] as const,
+  booking: (bookingId: string) => ["partner", "requirements", bookingId] as const,
+};
+
+/** The booking's gated requirements, their state and the START gate — server truth, refetched on realtime frames. */
+export function useBookingRequirementsQuery(bookingId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: requirementKeys.booking(bookingId ?? "none"),
+    queryFn: () => partnerApi.getRequirements(bookingId!),
+    enabled: !!bookingId && enabled,
+    staleTime: 10_000,
+  });
+}
+
+/** Records what the partner found on site. The server answers with the state and the START gate. */
+export function useRequirementCheckMutation(bookingId: string) {
+  const qc = useQueryClient();
+  const showToast = useToastStore((s) => s.showToast);
+  return useMutation({
+    mutationFn: (vars: { code: string; outcome: "SATISFIED" | "FAILED"; latitude: number; longitude: number; note?: string }) =>
+      partnerApi.checkRequirement(bookingId, vars.code, vars.outcome, vars.latitude, vars.longitude, vars.note),
+    onError: (error) => {
+      const msg =
+        error instanceof PartnerApiError && error.code === "OUTSIDE_SERVICE_AREA"
+          ? "You're outside the job area — move closer to the service location to record this check."
+          : getErrorMessage(error);
+      showToast(msg, "error");
+    },
+    onSuccess: (data) => {
+      showToast(data.state === "SATISFIED" ? "Check recorded" : "Recorded as missing — the customer has been told", data.state === "SATISFIED" ? "success" : "info");
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: requirementKeys.booking(bookingId) });
+      void qc.invalidateQueries({ queryKey: ["partner", "job-actions", bookingId] });
+      void qc.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
+      void qc.invalidateQueries({ queryKey: partnerKeys.jobActionsAll });
+    },
   });
 }

@@ -1,7 +1,9 @@
+import { devAffordancesAllowed } from "../lib/deployed-environment";
+import { provenanceForNewUser } from "../lib/data-provenance";
 import "../load-env";
 import { Elysia, t } from "elysia";
 import crypto from "crypto";
-import { appendAuthCookies, clearAuthCookies } from "../lib/auth-cookies";
+import { appendAuthCookies, audienceFromRequest, clearAuthCookies, readRefreshCookie } from "../lib/auth-cookies";
 import { incCounter } from "../lib/metrics";
 import prisma from "../lib/prisma";
 import {
@@ -20,15 +22,15 @@ import {
 } from "../lib/oauth-signup-fraud";
 import { fraudSignalService } from "../services/fraud-signal.service";
 import { consentService } from "../services/consent.service";
-import { assertUserMayAuthenticate, assertUserMayAuthenticateByEmail } from "../lib/user-auth-guard";
-import { FraudEventType } from "@prisma/client";
+import { assertUserMayAuthenticate } from "../lib/user-auth-guard";
+import { FraudEventType, Prisma } from "@prisma/client";
 import {
   GoogleOAuthService,
   getGoogleAppDeepLink,
   googleRedirectUriFor,
 } from "../services/google-oauth.service";
 import { JWT_CONFIG, JWTService } from "../services/jwt.service";
-import { oauthStateService } from "../services/oauth-state.service";
+import { OAUTH_STATE_PATTERN, oauthStateService } from "../services/oauth-state.service";
 import { OTPService } from "../services/otp.service";
 import { PasswordService } from "../services/password.service";
 import { RefreshTokenService } from "../services/refresh-token.service";
@@ -51,6 +53,33 @@ import {
   resetPasswordSchema,
 } from "../schemas/auth.schema";
 
+function isUniqueConflict(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+/** Phone OTP login for a first-time customer — same as Google/Apple first sign-in. */
+async function createCustomerFromVerifiedPhone(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  const placeholderEmail = `p${userPiiService.hashPhone(phone).slice(0, 20)}@phone.homeeigo.invalid`;
+  const pii = await userPiiService.buildEncryptedCreateFields({
+    email: placeholderEmail,
+    phoneNumber: phone,
+  });
+  return prisma.user.create({
+    data: {
+      // W2-D4: the app-generated phone placeholder is excluded by the classifier itself.
+      ...provenanceForNewUser(placeholderEmail),
+      ...pii,
+      firstName: "Member",
+      lastName: digits.slice(-4) || "User",
+      password: "",
+      isPhoneVerified: true,
+      phoneVerifiedAt: new Date(),
+      referralCode: generateReferralCode("Member"),
+    },
+  });
+}
+
 const jwtService = new JWTService();
 const refreshTokenService = new RefreshTokenService(prisma, jwtService);
 const otpService = new OTPService(prisma);
@@ -64,8 +93,9 @@ const registerOtpRequired =
   (process.env.REGISTER_REQUIRE_OTP !== "false" &&
     Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN));
 
-const isProd = process.env.NODE_ENV === "production";
-/** In dev, skip IP bucket — all local panels share one IP and false attempts pile up fast. */
+// Deployed hosts — staging included, which runs NODE_ENV=development — keep the strict limits.
+const isProd = !devAffordancesAllowed();
+/** On a developer machine, skip the IP bucket — all local panels share one IP and false attempts pile up fast. */
 const LOGIN_FAIL_IP_LIMIT = isProd ? Number(process.env.LOGIN_FAIL_IP_LIMIT || 5) : 0;
 const LOGIN_FAIL_IP_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_FAIL_EMAIL_LIMIT = Number(process.env.LOGIN_FAIL_EMAIL_LIMIT || (isProd ? 10 : 100));
@@ -86,9 +116,16 @@ const loginRateLimitResponse = (set: { status?: number | string }, resetAt: numb
 const AUTH_BURST_LIMIT = Number(process.env.AUTH_BURST_LIMIT || 15);
 const AUTH_BURST_WINDOW_MS = 60_000;
 
-/** Demo / E2E accounts bypass auth burst in non-production so Playwright + smoke:stack stay reliable. */
+/**
+ * Demo / E2E accounts bypass the auth burst limit so Playwright + smoke:stack stay reliable.
+ *
+ * `devAffordancesAllowed()`, not `NODE_ENV !== "production"`. `.env.staging` ships
+ * NODE_ENV=development, so the old test was true on staging — and the bypass is claimed by the
+ * *caller*, who simply chooses an `@homigo.test` e-mail. That handed anyone who could reach a
+ * staging host an unlimited credential-stuffing channel against the auth endpoints.
+ */
 const isE2eAuthBypass = (credentialKey?: string) =>
-  process.env.NODE_ENV !== "production" &&
+  devAffordancesAllowed() &&
   typeof credentialKey === "string" &&
   (credentialKey.endsWith("@homigo.demo") || credentialKey.endsWith("@homigo.test"));
 
@@ -209,8 +246,10 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         firstName: { maxLen: 50 },
         lastName: { maxLen: 50 },
       });
+      // Same reasoning as isE2eAuthBypass: the caller picks the e-mail domain, so this must not be
+      // reachable on a deployed host.
       const e2eRegister =
-        process.env.NODE_ENV !== "production" &&
+        devAffordancesAllowed() &&
         typeof body.email === "string" &&
         (body.email.toLowerCase().endsWith("@homigo.test") ||
           body.email.toLowerCase().endsWith("@homigo.demo"));
@@ -265,6 +304,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       const ownReferralCode = generateReferralCode(body.firstName);
       const user = await prisma.user.create({
         data: {
+          ...provenanceForNewUser(body.email),
           email: body.email,
           phoneNumber: body.phoneNumber,
           firstName: body.firstName,
@@ -272,6 +312,11 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
           password: hashedPassword,
           isPhoneVerified: !specFlow && registerOtpRequired,
           phoneVerifiedAt: !specFlow && registerOtpRequired ? new Date() : undefined,
+          // OTP-verified registration collected email + phone together; the user proved
+          // ownership via phone OTP, so booking/payment gates may proceed without a
+          // separate email-link click (link verification remains for email changes).
+          isEmailVerified: !specFlow && registerOtpRequired,
+          emailVerifiedAt: !specFlow && registerOtpRequired ? new Date() : undefined,
           referralCode: ownReferralCode,
         },
       });
@@ -359,7 +404,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         };
       }
 
-      const { accessToken, refreshToken } = await refreshTokenService.createSessionTokens({
+      const { accessToken, refreshToken, sessionId } = await refreshTokenService.createSessionTokens({
         userId: user.id,
         email: contact.email ?? body.email,
         deviceId: body.deviceId,
@@ -368,7 +413,10 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         ipAddress: ip,
       });
 
-      if (body.setAuthCookies !== false) appendAuthCookies(set, accessToken, refreshToken);
+      // Web only: a client that declares its audience gets the HttpOnly refresh cookie. Mobile sends
+      // no audience header and keeps using the body token + platform keystore.
+      const webAudience = audienceFromRequest(request);
+      if (webAudience && body.setAuthCookies !== false) appendAuthCookies(set, webAudience, refreshToken);
 
       return {
         success: true,
@@ -376,7 +424,9 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         data: {
           user: { ...user, email: contact.email, phoneNumber: contact.phoneNumber },
           accessToken,
-          refreshToken,
+          // Web (declared audience): the refresh token is in the HttpOnly cookie only.
+          ...(webAudience ? {} : { refreshToken }),
+          sessionId,
           expiresIn: JWT_CONFIG.ACCESS_TOKEN_SECONDS,
         },
       };
@@ -459,7 +509,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       }
 
       const loginContact = await userPiiService.resolveEmailAndPhone(user, { actorId: user.id });
-      const { accessToken, refreshToken } = await refreshTokenService.createSessionTokens({
+      const { accessToken, refreshToken, sessionId } = await refreshTokenService.createSessionTokens({
         userId: user.id,
         email: loginContact.email ?? emailNorm,
         deviceId: body.deviceId,
@@ -481,7 +531,10 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         userAgent: request.headers.get("user-agent"),
       });
 
-      if (body.setAuthCookies !== false) appendAuthCookies(set, accessToken, refreshToken);
+      // Web only: a client that declares its audience gets the HttpOnly refresh cookie. Mobile sends
+      // no audience header and keeps using the body token + platform keystore.
+      const webAudience = audienceFromRequest(request);
+      if (webAudience && body.setAuthCookies !== false) appendAuthCookies(set, webAudience, refreshToken);
 
       return {
         success: true,
@@ -489,7 +542,9 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         data: {
           userId: user.id,
           accessToken,
-          refreshToken,
+          // Web (declared audience): the refresh token is in the HttpOnly cookie only.
+          ...(webAudience ? {} : { refreshToken }),
+          sessionId,
           expiresIn: JWT_CONFIG.ACCESS_TOKEN_SECONDS,
           user: {
             id: user.id,
@@ -520,6 +575,20 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       const payload = authHeader ? jwtService.verifyAccessToken(authHeader) : null;
 
       if (!payload?.userId) {
+        /**
+         * The access token is expired or invalid, but the browser may still hold a valid refresh
+         * cookie — and the user asked to log out. Returning 401 here left that cookie in the browser
+         * AND the refresh session alive server-side, so the next person on a shared machine could
+         * mint a session (independent review, 2026-09-20). Revoke what the cookie proves we were
+         * given, clear it, and report success: logging out must not depend on a live access token.
+         */
+        const staleAudience = audienceFromRequest(request);
+        const staleCookie = readRefreshCookie(request, staleAudience);
+        if (staleCookie) {
+          await refreshTokenService.revokeRefreshToken(staleCookie.token, "LOGOUT").catch(() => undefined);
+          clearAuthCookies(set, staleCookie.audience);
+          return { success: true, message: "Logged out successfully" };
+        }
         set.status = 401;
         return { success: false, error: "Invalid or expired token", code: "UNAUTHORIZED" };
       }
@@ -550,8 +619,18 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
           },
         );
         await devicePushService.revokeAll(payload.userId);
-      } else if (body.refreshToken) {
-        await refreshTokenService.revokeRefreshToken(body.refreshToken, "LOGOUT");
+      } else if (body.refreshToken ?? readRefreshCookie(request, audienceFromRequest(request))?.token) {
+        /**
+         * A web client sends no body token any more — its session lives in the HttpOnly cookie, and
+         * logging out must still revoke it server-side, not merely delete the cookie.
+         *
+         * Scoped to THIS user: without a declared audience the cookie jar is scanned in a fixed
+         * order, so an admin logout could otherwise revoke the customer session sharing the browser.
+         */
+        const token = body.refreshToken ?? readRefreshCookie(request, audienceFromRequest(request))!.token;
+        await refreshTokenService.revokeRefreshTokenForUser(token, payload.userId, "LOGOUT");
+        // The signed-out user must stop receiving pushes on this phone.
+        if (body.deviceId) await devicePushService.revokeDevice(payload.userId, body.deviceId);
       } else if (body.deviceId) {
         await refreshTokenService.revokeDeviceToken(payload.userId, body.deviceId);
         await devicePushService.revokeDevice(payload.userId, body.deviceId);
@@ -564,7 +643,9 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         details: { allDevices: Boolean(body.allDevices) },
       });
 
-      if (body.clearAuthCookies !== false) clearAuthCookies(set);
+      const logoutAudience = audienceFromRequest(request);
+      // Only this app's cookie — a partner logging out must not sign the customer out of the same browser.
+      if (logoutAudience && body.clearAuthCookies !== false) clearAuthCookies(set, logoutAudience);
       return { success: true, message: "Logged out successfully" };
     },
     {
@@ -578,8 +659,26 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
   )
   .post("/refresh", async ({ body: raw, request, set }) => {
     const body = parseBody(refreshTokenSchema, raw);
+    /**
+     * Cookie mode (web) or body mode (mobile / older web builds).
+     *
+     * A cookie-authenticated refresh is only honoured for a client that declared its audience with
+     * the `X-Homigo-Audience` header. A cross-site page cannot set that header without a CORS
+     * preflight the allowlist refuses, and the cookie itself is SameSite=Strict — so this endpoint
+     * cannot be driven from another origin. The rotated token goes straight back into the cookie and
+     * is NOT echoed in the response body, so JavaScript never sees it.
+     */
+    const audience = audienceFromRequest(request);
+    const cookie = audience ? readRefreshCookie(request, audience) : null;
+    const cookieMode = Boolean(cookie);
+    const refreshToken = body.refreshToken ?? cookie?.token;
+    if (!refreshToken) {
+      incCounter("auth_refresh_total", { outcome: "failure" });
+      set.status = 401;
+      return { success: false, error: "Invalid or expired refresh token", code: "INVALID_TOKEN" };
+    }
     const result = await refreshTokenService.refreshAccessToken({
-      refreshToken: body.refreshToken,
+      refreshToken,
       deviceId: body.deviceId,
       deviceName: body.deviceName,
       userAgent: request.headers.get("user-agent") || undefined,
@@ -589,25 +688,33 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       incCounter("jwt_refresh_total", { outcome: "failure" });
       incCounter("auth_refresh_total", { outcome: "failure" });
       incCounter("auth_refresh_failures");
+      // A refused cookie is a dead session: clear it so the browser stops replaying it.
+      if (cookieMode && audience) clearAuthCookies(set, audience);
       set.status = 401;
       return { success: false, error: "Invalid or expired refresh token", code: "INVALID_TOKEN" };
     }
     incCounter("jwt_refresh_total", { outcome: "success" });
     incCounter("auth_refresh_total", { outcome: "success" });
-    if (body.setAuthCookies !== false && result.accessToken && result.refreshToken) {
-      appendAuthCookies(set, result.accessToken, result.refreshToken);
+    if (audience && body.setAuthCookies !== false && result.refreshToken) {
+      appendAuthCookies(set, audience, result.refreshToken);
     }
     return {
       success: true,
       data: {
         accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        /**
+         * Keyed on the declared audience, not on where the token arrived from: a web client that
+         * still sends a body token during the migration would otherwise get the rotated token in
+         * JSON *and* in the cookie (independent review, 2026-09-20).
+         */
+        ...(audience ? {} : { refreshToken: result.refreshToken }),
+        sessionId: result.sessionId,
         expiresIn: JWT_CONFIG.ACCESS_TOKEN_SECONDS,
       },
     };
   }, {
     body: t.Object({
-      refreshToken: t.String(),
+      refreshToken: t.Optional(t.String()),
       deviceId: t.Optional(t.String()),
       deviceName: t.Optional(t.String()),
       setAuthCookies: t.Optional(t.Boolean()),
@@ -621,7 +728,10 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       credentialKey: body.phoneNumber,
     });
     if (burstBlock) return burstBlock;
-    const result = await otpService.sendOTP(body.phoneNumber, body.userId);
+    // Do not look up the account here — send-otp used to await findByPhone before Twilio,
+    // which added a PII/DB hop to every SMS. The OTP row is bound to the phone hash only;
+    // verify-otp resolves the user from the proven number (never from a client userId).
+    const result = await otpService.sendOTP(body.phoneNumber);
     if (!result.success) {
       set.status =
         result.error === "TWILIO_NOT_CONFIGURED"
@@ -650,6 +760,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       data: {
         expiresIn: 300,
         attemptsRemaining: 3,
+        smsSent: "smsSent" in result ? Boolean(result.smsSent) : false,
         ...("devOtp" in result && result.devOtp ? { devOtp: result.devOtp } : {}),
       },
     };
@@ -679,29 +790,75 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       };
     }
 
-    const user = body.email
+    const audience = audienceFromRequest(request);
+    let user = body.email
       ? await userPiiService.findByEmail(body.email)
       : body.userId
         ? await prisma.user.findUnique({ where: { id: body.userId } })
-        : phone
-          ? await userPiiService.findByPhone(phone)
-          : null;
+        : await userPiiService.findByPhone(phone);
+    // First-time customer phone login: a valid OTP proves the number. Partner/admin
+    // consoles must not auto-provision. Missing audience still means customer (the
+    // Next proxy has dropped the header before).
+    let createdNow = false;
+    const mayAutoCreate = Boolean(body.login) && audience !== "partner" && audience !== "admin";
+    if (!user && mayAutoCreate) {
+      try {
+        user = await createCustomerFromVerifiedPhone(phone);
+        createdNow = true;
+      } catch (error) {
+        if (isUniqueConflict(error)) {
+          user = await userPiiService.findByPhone(phone);
+        } else {
+          throw error;
+        }
+      }
+    }
     if (!user) {
       set.status = 404;
       return { success: false, error: "User not found", code: "USER_NOT_FOUND" };
     }
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { isPhoneVerified: true, phoneVerifiedAt: new Date() },
-    });
+    /**
+     * The OTP above proved possession of `phone`. The session user was resolved from
+     * `body.email` / `body.userId`, which the caller chose freely — so before this check an
+     * attacker could verify a code sent to THEIR phone and receive tokens for ANY account by
+     * naming its email. The proven phone must be the resolved user's phone; the OTP row's own
+     * `userId` is not trusted because /send-otp used to accept it from the client.
+     * Skip when we just created the row from this proven phone — resolvePhone after PII
+     * encrypt can 500 if the in-memory row is mid-encrypt, and there is no identity swap.
+     */
+    if (!createdNow) {
+      const userPhone = await userPiiService.resolvePhone(user, { actorId: user.id, authorized: true });
+      const provenHash = userPiiService.hashPhone(phone);
+      if (!userPhone || userPiiService.hashPhone(userPhone) !== provenHash) {
+        void AuditLogService.failure("OTP_VERIFIED", {
+          userId: user.id,
+          ipAddress:
+            request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+            request.headers.get("x-real-ip") ||
+            "unknown",
+          reason: "otp_phone_does_not_belong_to_target_user",
+        });
+        set.status = 403;
+        return { success: false, error: "OTP does not match this account", code: "OTP_IDENTITY_MISMATCH" };
+      }
+    }
+
+    if (!createdNow && !user.isPhoneVerified) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { isPhoneVerified: true, phoneVerifiedAt: new Date() },
+      });
+    }
 
     if (body.email || body.completeRegistration || body.login) {
-      try {
-        await assertUserMayAuthenticate(user.id);
-      } catch {
-        set.status = 403;
-        return { success: false, error: "Account suspended", code: "ACCOUNT_SUSPENDED" };
+      if (!createdNow) {
+        try {
+          await assertUserMayAuthenticate(user.id);
+        } catch {
+          set.status = 403;
+          return { success: false, error: "Account suspended", code: "ACCOUNT_SUSPENDED" };
+        }
       }
       if (user.role === "VENDOR") {
         const approvalBlock = await partnerRegistrationService.assertPartnerCanLogin(user.id);
@@ -714,16 +871,27 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
         request.headers.get("x-real-ip") ||
         "unknown";
-      const otpContact = await userPiiService.resolveEmailAndPhone(user, { actorId: user.id });
-      const { accessToken, refreshToken } = await refreshTokenService.createSessionTokens({
+      const sessionEmail = createdNow
+        ? `p${userPiiService.hashPhone(phone).slice(0, 20)}@phone.homeeigo.invalid`
+        : ((await userPiiService.resolveEmailAndPhone(user, { actorId: user.id })).email ?? body.email ?? "");
+      const { accessToken, refreshToken, sessionId } = await refreshTokenService.createSessionTokens({
         userId: user.id,
-        email: otpContact.email ?? body.email ?? "",
+        email: sessionEmail,
         deviceId: body.deviceId,
         deviceName: body.deviceName,
         userAgent: request.headers.get("user-agent") || undefined,
         ipAddress: ip,
       });
-      if (body.setAuthCookies !== false) appendAuthCookies(set, accessToken, refreshToken);
+      void prisma.user
+        .update({
+          where: { id: user.id },
+          data: { lastLoginAt: new Date(), lastActivityAt: new Date(), loginCount: { increment: 1 } },
+        })
+        .catch(() => undefined);
+      // Web only: a client that declares its audience gets the HttpOnly refresh cookie. Mobile sends
+      // no audience header and keeps using the body token + platform keystore.
+      const webAudience = audience ?? (user.role === "VENDOR" ? null : "customer");
+      if (webAudience && body.setAuthCookies !== false) appendAuthCookies(set, webAudience, refreshToken);
       return {
         success: true,
         message: "OTP verified successfully",
@@ -731,15 +899,18 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
           userId: user.id,
           isPhoneVerified: true,
           accessToken,
-          refreshToken,
+          // Web (declared audience): the refresh token is in the HttpOnly cookie only.
+          ...(webAudience ? {} : { refreshToken }),
+          sessionId,
           expiresIn: JWT_CONFIG.ACCESS_TOKEN_SECONDS,
           user: {
             id: user.id,
-            email: otpContact.email,
+            email: sessionEmail,
             firstName: user.firstName,
             lastName: user.lastName,
             role: user.role,
-            walletBalance: user.walletBalance,
+            walletBalance: Number(user.walletBalance ?? 0),
+            isPhoneVerified: true,
           },
         },
       };
@@ -759,9 +930,9 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       setAuthCookies: t.Optional(t.Boolean()),
     }),
   })
-  .post("/google/authorize", ({ body, set }) => {
+  .post("/google/authorize", async ({ body, set }) => {
     try {
-      const state = oauthStateService.issue("google", body.state);
+      const state = await oauthStateService.issue("google", body.state);
       // The mobile app needs Google to come back to THIS API (which then deep-links
       // into the app); the web app keeps its own callback page.
       const redirectUri = googleRedirectUriFor(body.platform);
@@ -779,7 +950,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     }
   }, {
     body: t.Object({
-      state: t.Optional(t.String()),
+      state: t.Optional(t.String({ pattern: OAUTH_STATE_PATTERN })),
       platform: t.Optional(t.Union([t.Literal("web"), t.Literal("mobile")])),
     }),
   })
@@ -813,7 +984,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     const ip = getClientIp(request);
     const pre = await oauthPreCheck(ip, set);
     if (pre) return pre;
-    const stateOk = oauthStateService.consume("google", body.state);
+    const stateOk = await oauthStateService.consume("google", body.state);
     if (!stateOk) {
       set.status = 400;
       return { success: false, error: "Invalid authorization code", code: "INVALID_CODE" };
@@ -833,9 +1004,11 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         const fraudCtx = fraudContextForOAuth(request, result.user.id, body);
         await handleNewOAuthUser(result.user.id, fraudCtx, body.referralCode);
       }
-      if (body.setAuthCookies !== false) appendAuthCookies(set, result.accessToken, result.refreshToken);
-      const { isNewUser: _n, ...session } = result;
-      return { success: true, data: session };
+      const webAudience = audienceFromRequest(request);
+      if (webAudience && body.setAuthCookies !== false) appendAuthCookies(set, webAudience, result.refreshToken);
+      const { isNewUser: _n, refreshToken: _rt, ...session } = result;
+      // Web keeps the refresh token in the HttpOnly cookie only; mobile still receives it.
+      return { success: true, data: webAudience ? session : { ...session, refreshToken: _rt } };
     } catch (err) {
       await recordOAuthFailure(ip);
       if (err instanceof Error && err.message === "PARTNER_NOT_APPROVED") {
@@ -858,18 +1031,15 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       platform: t.Optional(t.Union([t.Literal("web"), t.Literal("mobile")])),
     }),
   })
-  .post("/apple/authorize", ({ body }) => ({
-    success: true,
-    data: (() => {
-      const state = oauthStateService.issue("apple", body.state);
-      return { url: appleOAuthService.getAuthorizationUrl(state), state };
-    })(),
-  }), { body: t.Object({ state: t.Optional(t.String()) }) })
+  .post("/apple/authorize", async ({ body }) => {
+    const state = await oauthStateService.issue("apple", body.state);
+    return { success: true, data: { url: appleOAuthService.getAuthorizationUrl(state), state } };
+  }, { body: t.Object({ state: t.Optional(t.String({ pattern: OAUTH_STATE_PATTERN })) }) })
   .post("/apple/callback", async ({ body, request, set }) => {
     const ip = getClientIp(request);
     const pre = await oauthPreCheck(ip, set);
     if (pre) return pre;
-    const stateOk = oauthStateService.consume("apple", body.state);
+    const stateOk = await oauthStateService.consume("apple", body.state);
     if (!stateOk) {
       set.status = 400;
       return { success: false, error: "Invalid authorization code", code: "INVALID_CODE" };
@@ -884,9 +1054,11 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         const fraudCtx = fraudContextForOAuth(request, result.user.id, body);
         await handleNewOAuthUser(result.user.id, fraudCtx, body.referralCode);
       }
-      if (body.setAuthCookies !== false) appendAuthCookies(set, result.accessToken, result.refreshToken);
-      const { isNewUser: _n, ...session } = result;
-      return { success: true, data: session };
+      const webAudience = audienceFromRequest(request);
+      if (webAudience && body.setAuthCookies !== false) appendAuthCookies(set, webAudience, result.refreshToken);
+      const { isNewUser: _n, refreshToken: _rt, ...session } = result;
+      // Web keeps the refresh token in the HttpOnly cookie only; mobile still receives it.
+      return { success: true, data: webAudience ? session : { ...session, refreshToken: _rt } };
     } catch (err) {
       await recordOAuthFailure(ip);
       if (err instanceof Error && err.message === "PARTNER_NOT_APPROVED") {
@@ -955,7 +1127,13 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     });
 
     emailDeliveryService.sendPasswordReset(userEmail, rawToken, user.firstName);
-    if (process.env.NODE_ENV !== "production") {
+    /**
+     * A password-reset token is a bearer credential for the account. Printing one to stdout was
+     * gated on `NODE_ENV !== "production"`, which is TRUE on staging — so every reset request on a
+     * staging host wrote a working account-takeover token into the container logs, where anyone
+     * with log access could use it before it expired.
+     */
+    if (devAffordancesAllowed()) {
       console.log(`[RESET TOKEN] user=${user.id}: ${rawToken}`);
     }
     return genericResponse;

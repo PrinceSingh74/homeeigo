@@ -20,6 +20,9 @@ import { accountLifecycleService } from "../services/account-lifecycle.service";
 import { dataExportService } from "../services/data-export.service";
 import { ACCOUNT_DELETION_RESTORE_DAYS } from "../lib/legal-policy";
 import { userPiiService } from "../services/user-pii.service";
+import { mirrorLegacyFlagsToPreferences } from "../notifications/legacy-preference-bridge";
+import { customerPolicyService } from "../services/customer-policy.service";
+import { requestMeta } from "../services/audit-log.service";
 
 const userProfileSelect = {
   id: true,
@@ -56,11 +59,39 @@ const usersApp = new Elysia({ prefix: "/api/users" })
   .use(authPlugin)
   .get("/me", async ({ requireAuth }) => {
     const { userId } = requireAuth();
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: userProfileSelect });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { ...userProfileSelect, dateOfBirth: true } });
     if (!user) return { success: false, error: "User not found", code: "NOT_FOUND" };
-    const withPii = await userPiiService.withDecryptedPii(user, { actorId: userId, authorized: true });
-    return { success: true, data: { user: publicUser(withPii) } };
+    const { dateOfBirth, ...profile } = user;
+    const withPii = await userPiiService.withDecryptedPii(profile, { actorId: userId, authorized: true });
+    // Phase D: whether a date of birth is on file — the value itself is never echoed.
+    return { success: true, data: { user: { ...publicUser(withPii), dateOfBirthSet: dateOfBirth != null } } };
   })
+  /**
+   * Phase D — the customer records their date of birth ONCE (used only for service age policies).
+   * A second, different value is 409 DOB_LOCKED: corrections go through support
+   * (PUT /api/admin/users/:id/date-of-birth, with a reason). The value is never logged or echoed.
+   */
+  .put(
+    "/me/date-of-birth",
+    async ({ requireRole, body, set, request }) => {
+      const { userId } = requireRole("CUSTOMER");
+      const r = await customerPolicyService.setOwnDateOfBirth(userId, body.dateOfBirth, requestMeta(request));
+      if (!r.ok) {
+        const table: Record<string, { status: number; message: string }> = {
+          DOB_INVALID: { status: 400, message: "Enter a valid date of birth (YYYY-MM-DD)" },
+          DOB_IN_FUTURE: { status: 400, message: "Date of birth cannot be in the future" },
+          DOB_IMPLAUSIBLE: { status: 400, message: "Enter a valid date of birth" },
+          DOB_LOCKED: { status: 409, message: "Your date of birth is already on file — contact support to correct it" },
+          NOT_FOUND: { status: 404, message: "User not found" },
+        };
+        const m = table[r.error] ?? { status: 400, message: "Unable to save your date of birth" };
+        set.status = m.status;
+        return { success: false, error: m.message, code: r.error };
+      }
+      return { success: true, data: { dateOfBirthSet: true, changed: r.changed } };
+    },
+    { body: t.Object({ dateOfBirth: t.String({ minLength: 10, maxLength: 10 }) }) },
+  )
   .get("/me/export", async ({ requireAuth, query, set }) => {
     const { userId } = requireAuth();
     const format = (query as { format?: string }).format ?? "json";
@@ -255,7 +286,25 @@ const usersApp = new Elysia({ prefix: "/api/users" })
           defaultLanguage: body.preferredLanguage,
         },
       });
-      return { success: true, message: "Preferences updated successfully" };
+      /**
+       * The same choice, written where the router will actually read it.
+       *
+       * The `User` columns above are kept because existing clients still read them back, but they
+       * are no longer the only record: until this mirror existed, turning off "Email alerts" or
+       * "SMS alerts" changed nothing at all, because channel eligibility is decided from
+       * `NotificationPreference` and no client had ever written a row.
+       */
+      const mirror = await mirrorLegacyFlagsToPreferences(userId, {
+        notificationsEnabled: body.notificationsEnabled,
+        emailNotifications: body.emailNotifications,
+        pushNotifications: body.pushNotifications,
+        smsNotifications: body.smsNotifications,
+      });
+      return {
+        success: true,
+        message: "Preferences updated successfully",
+        data: { optedOutChannels: mirror.optedOut, resetChannels: mirror.reset },
+      };
     },
     {
       body: t.Object({

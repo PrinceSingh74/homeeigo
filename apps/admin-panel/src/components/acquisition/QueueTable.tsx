@@ -46,7 +46,7 @@ export function QueueTable({
     return <p className="px-4 py-10 text-center text-sm text-[var(--color-biz-muted)]">{empty}</p>;
   }
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Queue table">
       <table className="w-full min-w-[720px] text-sm">
         <thead className="bg-[var(--color-biz-elevated)] text-left text-xs uppercase tracking-wide text-[var(--color-biz-muted)]">
           <tr>

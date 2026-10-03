@@ -1,4 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  cleanupAdversarialFixtures,
+  dbReachable,
+  prisma,
+  seedAdversarialFixtures,
+  type AdvCtx,
+} from "./helpers/adversarial-fixtures";
 import { PaymentStatus, WithdrawalStatus } from "@prisma/client";
 import { validateAdminRefundAmount } from "../lib/payment-refund-rules";
 import { RefundOrchestratorService } from "../services/refund-orchestrator.service";
@@ -83,8 +90,6 @@ function simulateRefundRace(row: RefundRow, attempts: number, refundAmount: numb
       blocked += 1;
       continue;
     }
-    inFlight = true;
-    status = PaymentStatus.REFUNDING;
     gatewayCalls += 1;
     idempotency.add(key);
     refundedAmount += refundAmount;
@@ -184,32 +189,74 @@ describe("P0-4 Payout race simulation", () => {
 });
 
 describe("P0-5 Withdrawal reservation race", () => {
-  test("wallet=1000 concurrent 800+800 => 1 success", () => {
-    let reserved = 0;
-    const wallet = 1000;
-    let ok = 0;
-    let fail = 0;
-    for (const amount of [800, 800]) {
-      if (walletReservation.availableBalance(wallet, reserved) >= amount) {
-        reserved += amount;
-        ok += 1;
-      } else {
-        fail += 1;
-      }
-    }
-    expect(ok).toBe(1);
-    expect(fail).toBe(1);
-    expect(wallet - reserved).toBe(200);
+  /**
+   * These used to be sequential `for` loops over a local accumulator — no database, no row lock, no
+   * concurrency — and could not detect the double-spend they were named for. The race below is
+   * real: two reservations fired together against the same provider row.
+   */
+  const RUN = `p05-${Date.now().toString(36)}`;
+  const BANK = { bankAccountNumber: "123456789012", ifscCode: "HDFC0001234", accountHolder: "P05 Race" };
+  let ctx: AdvCtx | null = null;
+
+  beforeAll(async () => {
+    if (!(await dbReachable())) return;
+    ctx = await seedAdversarialFixtures(RUN);
+  }, 60_000);
+  afterAll(async () => {
+    if (ctx) await cleanupAdversarialFixtures(RUN);
+  }, 60_000);
+
+  test("wallet=1000, concurrent 800+800 => exactly one reservation wins and 200 stays available", async () => {
+    if (!ctx) return;
+    await prisma.provider.update({
+      where: { id: ctx.providerId },
+      data: { walletBalance: 1000, walletBalancePaise: 100_000n, reservedBalance: 0 },
+    });
+    // A loser RETURNS { error: "INSUFFICIENT_BALANCE" }; only a granted reservation carries `withdrawal`.
+    const results = await Promise.all(
+      [`${RUN}-a`, `${RUN}-b`].map((key) =>
+        walletReservation.reserveAndCreateWithdrawal(ctx!.providerId, { amount: 800, ...BANK, idempotencyKey: key }),
+      ),
+    );
+    expect(results.filter((r) => "withdrawal" in r).length).toBe(1);
+    expect(results.filter((r) => "error" in r && r.error === "INSUFFICIENT_BALANCE").length).toBe(1);
+    const after = await prisma.provider.findUniqueOrThrow({
+      where: { id: ctx.providerId },
+      select: { walletBalance: true, reservedBalance: true },
+    });
+    expect(after.reservedBalance).toBe(800);
+    expect(walletReservation.availableBalance(after.walletBalance, after.reservedBalance)).toBe(200);
+    expect(await prisma.withdrawal.count({ where: { providerId: ctx.providerId } })).toBe(1);
   });
 
-  test("balance never negative", () => {
-    const wallet = 500;
-    let reserved = 0;
-    for (let i = 0; i < 100; i++) {
-      const amt = 50 + (i % 7) * 10;
-      if (walletReservation.availableBalance(wallet, reserved) >= amt) reserved += amt;
-    }
-    expect(wallet - reserved).toBeGreaterThanOrEqual(0);
+  test("four concurrent reservations never drive the available balance negative", async () => {
+    if (!ctx) return;
+    await prisma.provider.update({
+      where: { id: ctx.providerId },
+      data: { walletBalance: 500, walletBalancePaise: 50_000n, reservedBalance: 0 },
+    });
+    await prisma.withdrawal.deleteMany({ where: { providerId: ctx.providerId } });
+    // Realistic double/triple-tap on one wallet. Each contender serialises on the provider row lock
+    // inside a 5 s interactive transaction, so a much larger fan-in would fail on the tx timeout
+    // rather than on the balance check — a different (and acceptable) refusal.
+    const amounts = [200, 200, 200, 200];
+    const results = await Promise.all(
+      amounts.map((amount, i) =>
+        walletReservation
+          .reserveAndCreateWithdrawal(ctx!.providerId, { amount, ...BANK, idempotencyKey: `${RUN}-n${i}` })
+          .then((r) => ("withdrawal" in r ? amount : 0)),
+      ),
+    );
+    const reservedByWinners = results.reduce((s, a) => s + a, 0);
+    const after = await prisma.provider.findUniqueOrThrow({
+      where: { id: ctx.providerId },
+      select: { walletBalance: true, reservedBalance: true },
+    });
+    // Measured, not simulated: what the DB says is reserved equals what the winners were granted.
+    expect(after.reservedBalance).toBe(reservedByWinners);
+    expect(after.reservedBalance).toBeLessThanOrEqual(500);
+    expect(walletReservation.availableBalance(after.walletBalance, after.reservedBalance)).toBeGreaterThanOrEqual(0);
+    expect(results.filter((a) => a > 0).length).toBeGreaterThan(0);
   });
 
   test("reservation release restores availability", () => {

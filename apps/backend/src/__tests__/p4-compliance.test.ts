@@ -1,13 +1,23 @@
-import { describe, expect, it, beforeAll } from "bun:test";
+import { describe, expect, it, beforeAll, afterAll } from "bun:test";
 import { complianceService } from "../services/compliance.service";
 import { dataRetentionService } from "../services/data-retention.service";
 import { ACCOUNT_DELETION_RESTORE_DAYS } from "../lib/legal-policy";
 
 describe("P4 Part B+C — compliance & retention", () => {
+  const saved = {
+    ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+    HASH_HMAC_KEY: process.env.HASH_HMAC_KEY,
+    MASTER_ENCRYPTION_KEY: process.env.MASTER_ENCRYPTION_KEY,
+  };
   beforeAll(() => {
     process.env.ENCRYPTION_KEY = "a".repeat(64);
     process.env.HASH_HMAC_KEY = "test-hmac-pepper";
     process.env.MASTER_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+  });
+  afterAll(() => {
+    process.env.ENCRYPTION_KEY = saved.ENCRYPTION_KEY;
+    process.env.HASH_HMAC_KEY = saved.HASH_HMAC_KEY;
+    process.env.MASTER_ENCRYPTION_KEY = saved.MASTER_ENCRYPTION_KEY;
   });
 
   describe("Retention configuration", () => {

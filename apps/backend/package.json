@@ -7,7 +7,11 @@
   "scripts": {
     "dev": "bun --env-file=.env run --watch src/index.ts",
     "check:log-governance": "bun run scripts/check-log-governance.ts",
-    "prebuild": "bun run scripts/check-log-governance.ts",
+    "release:preflight": "bun run scripts/release/production-release.ts",
+    "check:migration-safety": "bun run scripts/check-migration-safety.ts",
+    "check:analytics-scope": "bun run scripts/classify-analytics-call-sites.ts",
+    "check:schema-contract": "bun run scripts/check-schema-client-contract.ts",
+    "prebuild": "bun run scripts/check-log-governance.ts && bun run scripts/check-migration-safety.ts && bun run scripts/check-ddl-guard-coverage.ts && bun run scripts/classify-analytics-call-sites.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "start": "bun run dist/index.js",
     "db:up": "docker compose up -d",
@@ -103,8 +107,10 @@
     "smoke:all": "bun run smoke:part3 && bun run smoke:partner && bun run smoke:provider && bun run smoke:admin && bun run scripts/phase2-lifecycle-checks.ts",
     "lint": "eslint src",
     "format": "prettier --write src",
-    "test": "bun test",
-    "type-check": "node ./node_modules/typescript/bin/tsc --noEmit"
+    "test": "bun test --timeout 45000 --max-concurrency 1 && bun test --timeout 45000 ./src/__tests__/data-archival-failure-injection.inject.ts && bun test --timeout 45000 ./src/events/__tests__/event-bus.inject.ts",
+    "type-check": "node ./node_modules/typescript/bin/tsc --noEmit",
+    "db:execute:test": "bun run scripts/db-execute-test.ts",
+    "check:ddl-guard": "bun run scripts/check-ddl-guard-coverage.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1063.0",

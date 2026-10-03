@@ -1,16 +1,35 @@
-import { BookingStatus } from "@prisma/client";
+import { evictProviderFromBooking } from "../lib/ws-eviction";
+import { PaymentStatus, BookingStatus } from "@prisma/client";
 import prisma from "../lib/prisma";
+import { isBusinessRow } from "../lib/analytics-scope";
+import { eventPlatformConfig } from "../events/core/config";
+import { emitInTransaction } from "../events/core/event-publisher";
+import { buildBookingAssignedEvent, buildBookingRescheduledEvent } from "../events/catalog/booking.events";
+import { setBookingAuditContext } from "../lib/booking-audit-context";
+import { bookingRequirementService } from "./booking-requirement.service";
+import {
+  isReassignableBookingStatus,
+  REASSIGNABLE_BOOKING_STATUSES,
+  RESCHEDULABLE_BOOKING_STATUSES,
+} from "../lib/booking-state-machine";
+import type { AdminRefundPolicy } from "./cancellation-policy.service";
 import { incCounter } from "../lib/metrics";
+import { publishBookingStatusBackground } from "../lib/booking-realtime";
 import { addressPiiService } from "./address-pii.service";
 import { bookingService } from "./booking.service";
 import { bookingRefundService } from "./booking-refund.service";
 import { assignmentEngine } from "./assignment-engine.service";
 import { AuditLogService } from "./audit-log.service";
 import { notificationService } from "./notification.service";
-import { sanitizeUserInput } from "../utils/sanitizer";
 import { bookingValidationService } from "./booking-validation.service";
 import { refundOrchestratorService } from "./refund-orchestrator.service";
-import { evaluatePaymentGate, PAYMENT_GATE_REASON } from "./booking-payment-gate";
+import { evaluatePaymentGate, isNoPaymentFollowUp, PAYMENT_GATE_REASON } from "./booking-payment-gate";
+import { partnerOperationsService } from "./partner-operations.service";
+import {
+  dispatchEligibilityService,
+  isPresenceLocationOnlyBlock,
+} from "./dispatch-eligibility.service";
+import type { AdminAssignmentOverride } from "../lib/dispatch-eligibility.types";
 
 export type AdminBookingAction =
   | "CANCEL"
@@ -22,7 +41,8 @@ export type AdminBookingAction =
   | "MARK_COMPLETE"
   | "REPAIR"
   | "REFUND"
-  | "RETRY_REFUND";
+  | "RETRY_REFUND"
+  | "DISPATCH_ELIGIBILITY_OVERRIDE";
 
 export class AdminBookingOperationsService {
   async getDetail(bookingId: string, viewer?: { adminId: string; ipAddress?: string }) {
@@ -41,7 +61,7 @@ export class AdminBookingOperationsService {
     });
     if (!booking) return null;
 
-    const [assignmentJob, assignmentAttempts, activityLogs, supportTickets, adminActions] =
+    const [assignmentJob, assignmentAttempts, activityLogs, supportTickets, adminActions, statusHistory] =
       await Promise.all([
         prisma.assignmentJob.findUnique({
           where: { bookingId },
@@ -69,6 +89,8 @@ export class AdminBookingOperationsService {
           orderBy: { createdAt: "desc" },
           take: 30,
         }),
+        // Authoritative, trigger-written history (status / partner / payment / schedule), oldest first.
+        prisma.bookingStatusHistory.findMany({ where: { bookingId }, orderBy: { id: "asc" }, take: 200 }),
       ]);
 
     const timeline = this.buildTimeline(booking, activityLogs, assignmentAttempts, adminActions);
@@ -122,6 +144,16 @@ export class AdminBookingOperationsService {
       dispatchAttempts: assignmentAttempts,
       supportTickets,
       timeline,
+      statusHistory: statusHistory.map((h) => ({
+        at: h.changedAt,
+        status: { from: h.oldStatus, to: h.newStatus },
+        provider: { from: h.oldProviderId, to: h.newProviderId },
+        payment: { from: h.oldPaymentStatus, to: h.newPaymentStatus },
+        schedule: h.oldScheduledDate ? { from: h.oldScheduledDate, to: h.newScheduledDate } : null,
+        actor: h.actorType ? { type: h.actorType, id: h.actorId } : null,
+        reason: h.reason,
+        requestId: h.requestId,
+      })),
     };
   }
 
@@ -230,31 +262,43 @@ export class AdminBookingOperationsService {
     });
   }
 
-  async cancelBooking(bookingId: string, adminId: string, reason: string, ipAddress?: string) {
-    const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+  /**
+   * Admin cancellation goes through the one cancellation path (bookingService.cancel) with an
+   * explicit admin actor — status guard, refund, offer cleanup, outbox event and notifications
+   * included. It used to call cancel() as if the admin were the customer, get NOT_FOUND back, and
+   * then write CANCELLED_BY_USER directly: no status guard (a COMPLETED booking could be
+   * "cancelled"), no refund, open offers left holding partner capacity, no event.
+   *
+   * A terminal booking is refused (INVALID_STATUS). There is no admin "reversal" of a completed job
+   * in this system; money for one moves through the refund tools, not through a status write.
+   */
+  async cancelBooking(
+    bookingId: string,
+    adminId: string,
+    reason: string,
+    ipAddress?: string,
+    refundPolicy: AdminRefundPolicy = "customer_policy",
+  ) {
+    const booking = await prisma.booking.findUnique({ where: { id: bookingId }, select: { status: true } });
     if (!booking) throw new Error("BOOKING_NOT_FOUND");
 
     const beforeStatus = booking.status;
-    const result = await bookingService.cancel({ userId: adminId }, bookingId, `[Admin] ${reason}`);
-
+    const result = await bookingService.cancel({ userId: adminId, admin: { refundPolicy } }, bookingId, `[Admin] ${reason}`);
     if ("error" in result) {
-      if (result.error === "NOT_FOUND") {
-        const updated = await prisma.booking.update({
-          where: { id: bookingId },
-          data: {
-            status: BookingStatus.CANCELLED_BY_USER,
-            cancelledAt: new Date(),
-            cancellationReason: sanitizeUserInput(reason, 500),
-          },
-        });
-        await this.recordAdminAction(bookingId, adminId, "CANCEL", reason, ipAddress, beforeStatus, updated.status);
-        return { booking: updated, adminOverride: true };
-      }
-      throw new Error(result.error);
+      incCounter("admin_booking_cancel_refused_total", { reason: result.error ?? "unknown" });
+      throw new Error(result.error === "INVALID_STATUS" ? "BOOKING_NOT_CANCELLABLE" : result.error ?? "CANCEL_FAILED");
     }
 
-    await this.recordAdminAction(bookingId, adminId, "CANCEL", reason, ipAddress, beforeStatus, "CANCELLED");
-    return result;
+    await this.recordAdminAction(
+      bookingId,
+      adminId,
+      "CANCEL",
+      `${reason} (refund policy: ${refundPolicy}, refund ₹${result.refundAmount})`,
+      ipAddress,
+      beforeStatus,
+      String(result.status),
+    );
+    return { ...result, refundPolicy };
   }
 
   async rescheduleBooking(
@@ -268,14 +312,22 @@ export class AdminBookingOperationsService {
     if (!booking) throw new Error("BOOKING_NOT_FOUND");
 
     const scheduled = new Date(scheduledDate);
+    if (Number.isNaN(scheduled.getTime())) throw new Error("INVALID_SCHEDULED_DATE");
+    // A finished or cancelled booking has no future to move. Without this, an admin could set a new
+    // scheduledDate on a COMPLETED job — rewriting history and re-reserving a slot for work already
+    // done. Admins may still move a live booking to any instant, including outside the service's
+    // published window; that is a deliberate override, and it is recorded by recordAdminAction.
+    if (!RESCHEDULABLE_BOOKING_STATUSES.includes(booking.status)) throw new Error("BOOKING_NOT_RESCHEDULABLE");
     const beforeDate = booking.scheduledDate.toISOString();
 
     await prisma.$transaction(async (tx) => {
+      await setBookingAuditContext(tx, { actorType: "admin", actorId: adminId, reason: `rescheduled by admin: ${reason}` });
       const conflict = await bookingValidationService.assertBookingConflictFree(tx, {
         userId: booking.userId,
         providerId: booking.providerId,
         scheduledDate: scheduled,
         excludeBookingId: bookingId,
+        slotDurationMinutes: booking.slotDurationMinutes,
       });
       if (conflict) throw new Error(conflict.code);
 
@@ -283,6 +335,23 @@ export class AdminBookingOperationsService {
         where: { id: bookingId },
         data: { scheduledDate: scheduled },
       });
+
+      // Same event as a customer reschedule, from the same kind of transaction — the actor differs,
+      // the fact does not.
+      if (eventPlatformConfig.outboxEnabled && eventPlatformConfig.bookingEventsEnabled) {
+        await emitInTransaction(
+          tx,
+          buildBookingRescheduledEvent({
+            bookingId,
+            userId: booking.userId,
+            providerId: booking.providerId,
+            previousScheduledAt: booking.scheduledDate,
+            scheduledAt: scheduled,
+            actorType: "admin",
+            actorId: adminId,
+          }),
+        );
+      }
     });
 
     if (booking.providerId) {
@@ -291,7 +360,7 @@ export class AdminBookingOperationsService {
         select: { userId: true },
       });
       if (provider?.userId) {
-        void notificationService.createForUser({
+        void notificationService.createForUserDetached({
           userId: provider.userId,
           type: "SYSTEM",
           title: "Booking rescheduled by admin",
@@ -328,9 +397,37 @@ export class AdminBookingOperationsService {
      * simply did not apply to admins.
      */
     overridePaymentGate = false,
+    emergencyOverride?: AdminAssignmentOverride,
   ) {
-    const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { address: { select: { latitude: true, longitude: true } } },
+    });
     if (!booking) throw new Error("BOOKING_NOT_FOUND");
+    // Fast refusal; re-checked under the row lock below.
+    if (!isReassignableBookingStatus(booking.status)) throw new Error("BOOKING_NOT_REASSIGNABLE");
+
+    /**
+     * W2-D4 — an admin cannot move a booking across populations.
+     *
+     * `assertOfferEligible` below checks ban, lifecycle, presence, capacity and geography, but not
+     * provenance, so support could hand a REAL customer's booking to a fixture partner — or put a
+     * certification booking on a real partner's calendar. Not overridable: the emergency override
+     * exists for stale presence and location, and population is neither. A booking whose partner
+     * does not exist is not an emergency fix, it is the defect.
+     */
+    const [customerOrigin, partnerOrigin] = await Promise.all([
+      prisma.user.findUnique({ where: { id: booking.userId }, select: { dataOrigin: true } }),
+      prisma.provider.findUnique({ where: { id: providerId }, select: { user: { select: { dataOrigin: true } } } }),
+    ]);
+    if (
+      customerOrigin &&
+      partnerOrigin &&
+      isBusinessRow(customerOrigin.dataOrigin) !== isBusinessRow(partnerOrigin.user.dataOrigin)
+    ) {
+      incCounter("admin_reassignment_rejections", { reason: "POPULATION_MISMATCH" });
+      throw new Error("REASSIGN_BLOCKED:POPULATION_MISMATCH");
+    }
 
     /**
      * Admin assignment is a separate write path to partner commitment.
@@ -343,7 +440,9 @@ export class AdminBookingOperationsService {
       booking.paymentStatus,
       overridePaymentGate ? { adminId, reason } : null,
     );
-    if (!gate.allowed) throw new Error(PAYMENT_GATE_REASON.NOT_SETTLED);
+    // §11: a case-created follow-up with its fee waived owes nothing (never marked paid).
+    const noPaymentFollowUp = !gate.allowed && (await isNoPaymentFollowUp(bookingId));
+    if (!gate.allowed && !noPaymentFollowUp) throw new Error(PAYMENT_GATE_REASON.NOT_SETTLED);
 
     if (gate.overridden) {
       /**
@@ -365,17 +464,130 @@ export class AdminBookingOperationsService {
     }
 
     const beforeProvider = booking.providerId;
-    await prisma.booking.update({
-      where: { id: bookingId },
-      data: { providerId, status: BookingStatus.ASSIGNED, assignedAt: new Date() },
-    });
+    const jobCtx = {
+      latitude: booking.address?.latitude ?? 0,
+      longitude: booking.address?.longitude ?? 0,
+      scheduledDate: booking.scheduledDate,
+      // Phase 11: an admin reassignment re-runs the provenance + typed capability gates for the
+      // booking's service (not overridable: the emergency override covers presence/location only).
+      capability: { serviceId: booking.serviceId, customerId: booking.userId },
+    };
+
+    let closedOfferProviderIds: string[] = [];
+    let lockedProviderId: string | null = null;
+    try {
+      await prisma.$transaction(async (tx) => {
+      /**
+       * The row lock serialises this with a partner's accept (which also locks the row). Whichever
+       * commits second sees the other's result: an accept after this sees ASSIGNED to someone else
+       * (ALREADY_CLAIMED); this after an accept sees ACCEPTED — still reassignable, by an explicit
+       * admin decision, and the displaced partner is evicted below. Status, payment gate and the
+       * current partner are all read under this lock, never from the earlier unlocked read.
+       *
+       * FOR NO KEY UPDATE, not FOR UPDATE: it still conflicts with accept's lock, but not with the
+       * KEY SHARE lock a foreign-key check takes — recordAdminAction below writes activity_logs
+       * (FK → bookings) on another connection, and under FOR UPDATE it waited on this very
+       * transaction until the timeout.
+       */
+      await setBookingAuditContext(tx, { actorType: "admin", actorId: adminId, reason: `reassigned: ${reason}` });
+      const rows = await tx.$queryRaw<Array<{ status: BookingStatus; payment_status: PaymentStatus; provider_id: string | null }>>`
+        SELECT status, payment_status, provider_id FROM bookings WHERE id = ${bookingId} FOR NO KEY UPDATE`;
+      const row = rows[0];
+      if (!row) throw new Error("BOOKING_NOT_FOUND");
+      if (!isReassignableBookingStatus(row.status)) throw new Error("BOOKING_NOT_REASSIGNABLE");
+      if (!evaluatePaymentGate(row.payment_status, overridePaymentGate ? { adminId, reason } : null).allowed && !(await isNoPaymentFollowUp(bookingId, tx))) {
+        throw new Error(PAYMENT_GATE_REASON.NOT_SETTLED);
+      }
+      lockedProviderId = row.provider_id;
+
+      const blocked = await partnerOperationsService.assertOfferEligible(tx, providerId, jobCtx);
+      if (blocked) {
+        const mayOverride =
+          emergencyOverride != null &&
+          isPresenceLocationOnlyBlock(blocked) &&
+          emergencyOverride.adminId === adminId;
+        if (!mayOverride) {
+          incCounter("admin_reassignment_rejections", { reason: blocked });
+          throw new Error(`REASSIGN_BLOCKED:${blocked}`);
+        }
+        await this.recordAdminAction(
+          bookingId,
+          adminId,
+          "DISPATCH_ELIGIBILITY_OVERRIDE",
+          emergencyOverride.reason,
+          ipAddress,
+          blocked,
+          JSON.stringify({
+            overrideType: emergencyOverride.overrideType,
+            overrideActor: emergencyOverride.adminId,
+            overrideTimestamp: new Date().toISOString(),
+            overrideAuditId: emergencyOverride.overrideAuditId ?? null,
+            targetProviderId: providerId,
+            bypassedGate: blocked,
+          }),
+        );
+      }
+
+      const moved = await tx.booking.updateMany({
+        where: { id: bookingId, status: { in: [...REASSIGNABLE_BOOKING_STATUSES] } },
+        data: { providerId, status: BookingStatus.ASSIGNED, assignedAt: new Date() },
+      });
+      if (moved.count === 0) throw new Error("BOOKING_NOT_REASSIGNABLE");
+
+      // Same event a partner accept emits, in the same transaction, so consumers (audit, dispatch-
+      // stall automation, notifications) see admin assignments too — they used to be invisible.
+      if (eventPlatformConfig.outboxEnabled && eventPlatformConfig.bookingEventsEnabled) {
+        await emitInTransaction(
+          tx,
+          buildBookingAssignedEvent({
+            bookingId,
+            userId: booking.userId,
+            providerId,
+            serviceId: booking.serviceId,
+            assignedAt: new Date(),
+            eta: null,
+            actorType: "admin",
+            actorId: adminId,
+          }),
+        );
+      }
+
+      // Every other partner's open offer is superseded in the same transaction: a stale offer can no
+      // longer be accepted (the booking is not PENDING) and no longer holds anyone's capacity.
+      closedOfferProviderIds = await assignmentEngine.closeOffersInTx(tx, bookingId, { kind: "reassigned", providerId, adminId });
+      });
+    } catch (err) {
+      // The DB slot exclusion refused the new partner: they already have a job at this time.
+      if (err instanceof Error && /bookings_provider_slot_excl|exclusion constraint/i.test(err.message)) {
+        incCounter("admin_reassignment_rejections", { reason: "PROVIDER_SLOT_CONFLICT" });
+        throw new Error("REASSIGN_BLOCKED:PROVIDER_SLOT_CONFLICT", { cause: err });
+      }
+      throw err;
+    }
 
     const provider = await prisma.provider.findUnique({
       where: { id: providerId },
       select: { userId: true },
     });
+    // The displaced partner's live sockets lose the booking rooms first, so the ASSIGNED frame that
+    // names their replacement (and every GPS frame after it) never reaches them.
+    const displaced = new Set<string>([...closedOfferProviderIds, ...(lockedProviderId ? [lockedProviderId] : []), ...(beforeProvider ? [beforeProvider] : [])]);
+    displaced.delete(providerId);
+    for (const pid of displaced) {
+      await evictProviderFromBooking(bookingId, pid, "reassigned");
+    }
+    // §6: the previous partner's on-site checks are not the new partner's evidence.
+    if (beforeProvider !== providerId) {
+      await bookingRequirementService.resetPartnerChecksAfterReassignment({ bookingId, adminId, reason });
+    }
+    publishBookingStatusBackground({
+      bookingId,
+      status: BookingStatus.ASSIGNED,
+      providerUserId: provider?.userId ?? null,
+      extra: { providerId, assignedBy: "admin" },
+    });
     if (provider?.userId) {
-      void notificationService.createForUser({
+      void notificationService.createForUserDetached({
         userId: provider.userId,
         type: "booking_reassigned",
         title: "Booking assigned",
@@ -394,6 +606,8 @@ export class AdminBookingOperationsService {
       beforeProvider ?? "none",
       providerId,
     );
+
+    void dispatchEligibilityService.trackProviderEligibilityTransition(providerId).catch(() => undefined);
 
     return { ok: true, providerId };
   }
@@ -423,6 +637,8 @@ export class AdminBookingOperationsService {
         0,
         0,
         `[Admin] ${reason}`,
+        // §5: the history records the admin who did this, not the partner it was done on behalf of.
+        { auditActor: { actorType: "admin", actorId: adminId, reason } },
       );
       await this.recordAdminAction(
         bookingId,
@@ -464,11 +680,20 @@ export class AdminBookingOperationsService {
         orderBy: { dispatchedAt: "desc" },
       });
       if (attempt) {
-        await prisma.booking.update({
-          where: { id: bookingId },
-          data: { providerId: attempt.providerId },
+        /**
+         * §5: conditional on the anomaly still being there, and attributed. This was
+         * `update where { id }` with no audit context — a partner accepting (or a cancellation)
+         * between the read above and this write was overwritten, and the history recorded a partner
+         * change made by nobody.
+         */
+        const res = await prisma.$transaction(async (tx) => {
+          await setBookingAuditContext(tx, { actorType: "admin", actorId: adminId, reason: `repair: ${reason}` });
+          return tx.booking.updateMany({
+            where: { id: bookingId, status: BookingStatus.ACCEPTED, providerId: null },
+            data: { providerId: attempt.providerId },
+          });
         });
-        repaired = true;
+        repaired = res.count === 1;
       }
     }
 
@@ -500,16 +725,22 @@ export class AdminBookingOperationsService {
     const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
     if (!booking) throw new Error("BOOKING_NOT_FOUND");
 
-    const result = await bookingRefundService.processCancellationRefund({
+    /**
+     * Previously routed through `processCancellationRefund`, which (a) never validated `amount`
+     * against what was paid — any number the admin typed was refunded — and (b) used the
+     * per-booking cancellation idempotency key, so a second partial refund silently returned the
+     * first one as "processed". Admin refunds now have their own validated, per-request path.
+     */
+    const result = await bookingRefundService.processAdminRefund({
       bookingId,
       userId: booking.userId,
-      actorUserId: adminId,
+      adminId,
+      amount,
       reason: `[Admin] ${reason}`,
-      cancelledBy: "user",
-      refundAmount: amount,
     });
+    if ("error" in result) throw new Error(result.error);
 
-    await this.recordAdminAction(bookingId, adminId, "REFUND", reason, ipAddress, undefined, String(amount));
+    await this.recordAdminAction(bookingId, adminId, "REFUND", reason, ipAddress, undefined, String(result.amount));
     return result;
   }
 

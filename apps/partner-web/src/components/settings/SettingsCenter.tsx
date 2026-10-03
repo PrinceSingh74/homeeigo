@@ -7,7 +7,6 @@ import {
   Clock,
   CreditCard,
   FileText,
-  Globe,
   Loader2,
   Lock,
   MapPin,
@@ -19,6 +18,7 @@ import {
 import { PartnerCard } from "@/components/ui/PartnerCard";
 import { PartnerButton } from "@/components/ui/PartnerButton";
 import { OnlineToggle } from "@/components/availability/OnlineToggle";
+import { NotificationPreferencePanel } from "@/components/settings/NotificationPreferencePanel";
 import { usePartnerMeQuery, useUpdateProfileMutation } from "@/hooks/use-partner-data";
 import { partnerApi } from "@/services/partner-api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -60,20 +60,9 @@ export function SettingsCenter() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [smsNotif, setSmsNotif] = useState(true);
-  const [emailNotif, setEmailNotif] = useState(true);
-  const [pushNotif, setPushNotif] = useState(true);
-  const [bookingNotif, setBookingNotif] = useState(true);
-  const [marketingNotif, setMarketingNotif] = useState(false);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
 
   const provider = me.data;
-
-  const userPrefs = useQuery({
-    queryKey: ["partner", "user", "prefs"],
-    queryFn: () => partnerApi.user.me(),
-    enabled: section === "notifications",
-  });
 
   const sessionsQuery = useQuery({
     queryKey: ["partner", "security", "sessions"],
@@ -92,16 +81,6 @@ export function SettingsCenter() {
     setPaymentPref(provider.paymentMethodPreference ?? "bank_transfer");
     setUpiId(provider.upiId ?? "");
   }, [provider]);
-
-  useEffect(() => {
-    const u = userPrefs.data;
-    if (!u) return;
-    setBookingNotif(u.notificationsEnabled ?? true);
-    setEmailNotif(u.emailNotifications ?? true);
-    setPushNotif(u.pushNotifications ?? true);
-    setSmsNotif(u.smsNotifications ?? true);
-    setMarketingNotif(u.emailNotifications ?? false);
-  }, [userPrefs.data]);
 
   const saveSettings = useMutation({
     mutationFn: () =>
@@ -131,21 +110,6 @@ export function SettingsCenter() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["partner", "me"] });
       showToast("Profile saved", "success");
-    },
-    onError: (e) => showToast(getErrorMessage(e), "error"),
-  });
-
-  const savePrefs = useMutation({
-    mutationFn: () =>
-      partnerApi.user.updatePreferences({
-        notificationsEnabled: bookingNotif,
-        emailNotifications: marketingNotif ? emailNotif : emailNotif,
-        pushNotifications: pushNotif,
-        smsNotifications: smsNotif,
-      }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["partner", "user", "prefs"] });
-      showToast("Notification preferences saved", "success");
     },
     onError: (e) => showToast(getErrorMessage(e), "error"),
   });
@@ -300,42 +264,7 @@ export function SettingsCenter() {
           </div>
         )}
 
-        {section === "notifications" && (
-          <div className="space-y-4">
-            <h2 className="font-display text-lg font-bold">Notifications</h2>
-            <p className="text-sm text-partner-muted">
-              Control how Homeeigo reaches you for bookings, payouts, and updates.
-            </p>
-            <div className="space-y-3">
-              {[
-                { label: "Booking & job updates", value: bookingNotif, set: setBookingNotif },
-                { label: "SMS alerts", value: smsNotif, set: setSmsNotif },
-                { label: "Email alerts", value: emailNotif, set: setEmailNotif },
-                { label: "Push notifications", value: pushNotif, set: setPushNotif },
-                { label: "Marketing & promotions", value: marketingNotif, set: setMarketingNotif },
-              ].map(({ label, value, set }) => (
-                <label
-                  key={label}
-                  className="flex items-center justify-between rounded-lg border border-partner-line px-4 py-3 text-sm"
-                >
-                  <span>{label}</span>
-                  <input
-                    type="checkbox"
-                    checked={value}
-                    onChange={(e) => set(e.target.checked)}
-                    className="h-4 w-4 accent-partner-primary"
-                  />
-                </label>
-              ))}
-            </div>
-            <PartnerButton onClick={() => void savePrefs.mutate()} disabled={savePrefs.isPending}>
-              Save preferences
-            </PartnerButton>
-            <Link href="/notifications" className="inline-block text-sm text-partner-primary underline">
-              Open notifications center
-            </Link>
-          </div>
-        )}
+        {section === "notifications" && <NotificationPreferencePanel />}
 
         {section === "security" && (
           <div className="space-y-6">
@@ -474,29 +403,14 @@ export function SettingsCenter() {
         )}
 
         {section === "service" && (
-          <div className="space-y-3">
-            <h2 className="font-display text-lg font-bold">Service radius & regions</h2>
+          <div className="space-y-4">
+            <h2 className="font-display text-lg font-bold">Service area</h2>
             <p className="text-sm text-partner-muted">
-              Your active service regions (managed by operations):
+              Manage coverage on the Availability workspace — map, radius, and preferred zones.
             </p>
-            <div className="flex flex-wrap gap-2">
-              {(provider?.serviceRegions ?? []).length ? (
-                provider!.serviceRegions!.map((r) => (
-                  <span
-                    key={r}
-                    className="rounded-md bg-partner-primary/15 px-2 py-1 text-xs font-semibold text-partner-primary"
-                  >
-                    {r}
-                  </span>
-                ))
-              ) : (
-                <span className="text-sm text-partner-muted">Default city coverage applies</span>
-              )}
-            </div>
-            <p className="flex items-center gap-1 text-xs text-partner-muted">
-              <Globe className="h-3 w-3" />
-              City: {provider?.city ?? "—"}
-            </p>
+            <Link href="/availability" className="inline-flex min-h-11 items-center text-sm font-semibold text-partner-primary">
+              Open service areas
+            </Link>
           </div>
         )}
 

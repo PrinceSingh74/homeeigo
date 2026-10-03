@@ -152,9 +152,12 @@ describe("Partner OS four-axis lock", () => {
     const jobOffered = { axis: PARTNER_AXIS.JOB, state: "OFFERED" as const };
     const availabilityAvailable = { axis: PARTNER_AXIS.AVAILABILITY, state: "AVAILABLE" as const };
     const moneyAvailable = { axis: PARTNER_AXIS.FINANCE, state: "AVAILABLE" as const };
-    expect(partnerPaused.axis === availabilityPaused.axis).toBe(false);
-    expect(availabilityOffered.axis === jobOffered.axis).toBe(false);
-    expect(availabilityAvailable.axis === moneyAvailable.axis).toBe(false);
+    // The literal types deliberately do not overlap (TS2367 if compared directly) — that is the
+    // property under test. Widen to string so the runtime assertion still executes.
+    const axisOf = (x: { axis: string }): string => x.axis;
+    expect(axisOf(partnerPaused) === axisOf(availabilityPaused)).toBe(false);
+    expect(axisOf(availabilityOffered) === axisOf(jobOffered)).toBe(false);
+    expect(axisOf(availabilityAvailable) === axisOf(moneyAvailable)).toBe(false);
     expect(partnerPaused.state === availabilityPaused.state).toBe(true);
   });
 });

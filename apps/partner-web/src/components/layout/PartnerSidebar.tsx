@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { m as motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Power, Trophy, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
@@ -74,8 +74,8 @@ export function PartnerSidebar({ mobileOpen, onMobileClose }: PartnerSidebarProp
       transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
         "partner-sidebar partner-scroll fixed inset-y-0 left-0 z-50 flex flex-col",
-        "lg:translate-x-0",
-        mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+        "lg:visible lg:translate-x-0",
+        mobileOpen ? "translate-x-0" : "-translate-x-full max-lg:invisible",
       )}
     >
       {onMobileClose && (
@@ -176,7 +176,7 @@ export function PartnerSidebar({ mobileOpen, onMobileClose }: PartnerSidebarProp
                             <Icon className={cn("h-4 w-4 shrink-0", active ? "text-partner-primary" : "text-partner-muted")} strokeWidth={2} />
                             <span className="truncate">{label}</span>
                             {badgeLabel ? (
-                              <span className="ml-auto shrink-0 rounded-md bg-partner-purple/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-partner-purple">
+                              <span className="ml-auto shrink-0 rounded-md bg-partner-success px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                                 {badgeLabel}
                               </span>
                             ) : badge > 0 ? (

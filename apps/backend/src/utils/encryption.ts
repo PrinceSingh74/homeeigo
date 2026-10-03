@@ -80,9 +80,33 @@ export class EncryptionService {
     return this.isEncrypted(value) ? value : this.encrypt(value);
   }
 
-  /** One-way deterministic hash (e.g. for blind-indexing / lookup of PII). */
+  /**
+   * One-way deterministic hash for blind-indexing PII (provider PAN, Aadhaar, bank account, tax id
+   * — see `sensitive-data.service.ts`).
+   *
+   * The pepper deliberately stays `ENCRYPTION_KEY`, NOT `HASH_HMAC_KEY`. Those two are different
+   * values in this deployment, and every provider hash already stored was produced with this one:
+   * switching the pepper here would not "unify" anything, it would silently invalidate
+   * `providers_pan_number_hash_key` and `providers_aadhar_number_hash_key` lookups and make
+   * duplicate-document detection fail open. Converging on a single pepper is a rehash migration,
+   * not an edit — see docs/enterprise-2035-security-assessment.md.
+   *
+   * What did change: the final `|| "homigo"` fallback is gone. A missing key now fails closed in
+   * production instead of peppering identity documents with a literal that is published in this
+   * repository. `production-config.ts` already refuses to boot without `ENCRYPTION_KEY`, so this is
+   * defence in depth rather than a behaviour change — but a lazily-evaluated silent fallback is
+   * exactly the kind of thing that outlives the guard that made it unreachable.
+   */
   static hashForLookup(value: string): string {
-    const pepper = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || "homigo";
+    const pepper = process.env.ENCRYPTION_KEY?.trim() || process.env.JWT_SECRET?.trim();
+    if (!pepper) {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("ENCRYPTION_KEY is required in production for PII lookup hashes");
+      }
+      throw new Error(
+        "ENCRYPTION_KEY (or JWT_SECRET) must be set to compute PII lookup hashes. Refusing to use a default pepper.",
+      );
+    }
     return crypto.createHmac("sha256", pepper).update(value.trim().toLowerCase()).digest("hex");
   }
 }

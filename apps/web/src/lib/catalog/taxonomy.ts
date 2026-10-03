@@ -13,6 +13,7 @@ import {
   Sparkles,
   Wrench,
 } from "lucide-react";
+import { applyServiceCopy, DEFAULT_PLANNED, SUBGROUP_COPY } from "@/lib/catalog/copy";
 import type {
   Audience,
   BeautyType,
@@ -50,12 +51,13 @@ export const CATEGORIES: CategoryDef[] = [
     tone: "#059669",
     treatment: "default",
     subgroups: [
-      { id: "hourly", name: "Hourly help" },
-      { id: "daily", name: "Daily chores" },
-      { id: "clothes", name: "Clothes care" },
-      { id: "organise", name: "Organise & move" },
+      { id: "hourly", name: "Hourly help", description: SUBGROUP_COPY["home-help"]!.hourly },
+      { id: "daily", name: "Daily chores", description: SUBGROUP_COPY["home-help"]!.daily },
+      { id: "clothes", name: "Clothes care", description: SUBGROUP_COPY["home-help"]!.clothes },
+      { id: "organise", name: "Organise & move", description: SUBGROUP_COPY["home-help"]!.organise },
     ],
     prepare: CLEANING_PREP,
+    planned: DEFAULT_PLANNED,
   },
   {
     id: "home-cleaning",
@@ -69,11 +71,12 @@ export const CATEGORIES: CategoryDef[] = [
     treatment: "default",
     backendCategories: ["cleaning"],
     subgroups: [
-      { id: "rooms", name: "Rooms & whole home" },
-      { id: "furnishings", name: "Furnishings" },
-      { id: "fixtures", name: "Fixtures & appliances" },
+      { id: "rooms", name: "Rooms & whole home", description: SUBGROUP_COPY["home-cleaning"]!.rooms },
+      { id: "furnishings", name: "Furnishings", description: SUBGROUP_COPY["home-cleaning"]!.furnishings },
+      { id: "fixtures", name: "Fixtures & appliances", description: SUBGROUP_COPY["home-cleaning"]!.fixtures },
     ],
     prepare: CLEANING_PREP,
+    planned: DEFAULT_PLANNED,
   },
   {
     id: "event-occasion",
@@ -81,11 +84,16 @@ export const CATEGORIES: CategoryDef[] = [
     shortName: "Events",
     tagline: "Ready before the guests. Reset after they leave.",
     description:
-      "Fast, focused cleaning and help around parties, festivals and big days at home.",
+      "Fast, focused cleaning and help around parties, festivals and big days at home — ready before guests, reset after they leave.",
     icon: PartyPopper,
     tone: "#db2777",
     treatment: "default",
+    subgroups: [
+      { id: "express", name: "Express cleans", description: SUBGROUP_COPY["event-occasion"]!.express },
+      { id: "occasions", name: "Festivals & functions", description: SUBGROUP_COPY["event-occasion"]!.occasions },
+    ],
     prepare: CLEANING_PREP,
+    planned: DEFAULT_PLANNED,
   },
   {
     id: "home-maintenance",
@@ -99,11 +107,12 @@ export const CATEGORIES: CategoryDef[] = [
     treatment: "default",
     backendCategories: ["repair", "home"],
     subgroups: [
-      { id: "repairs", name: "Repairs" },
-      { id: "installs", name: "Installation & assembly" },
-      { id: "painting", name: "Painting" },
+      { id: "repairs", name: "Repairs", description: SUBGROUP_COPY["home-maintenance"]!.repairs },
+      { id: "installs", name: "Installation & assembly", description: SUBGROUP_COPY["home-maintenance"]!.installs },
+      { id: "painting", name: "Painting", description: SUBGROUP_COPY["home-maintenance"]!.painting },
     ],
     prepare: REPAIR_PREP,
+    planned: DEFAULT_PLANNED,
   },
   {
     id: "appliance-care",
@@ -116,11 +125,12 @@ export const CATEGORIES: CategoryDef[] = [
     tone: "#0284c7",
     treatment: "default",
     subgroups: [
-      { id: "cooling", name: "Air conditioning" },
-      { id: "kitchen", name: "Kitchen appliances" },
-      { id: "utility", name: "Utility & install" },
+      { id: "cooling", name: "Air conditioning", description: SUBGROUP_COPY["appliance-care"]!.cooling },
+      { id: "kitchen", name: "Kitchen appliances", description: SUBGROUP_COPY["appliance-care"]!.kitchen },
+      { id: "utility", name: "Utility & install", description: SUBGROUP_COPY["appliance-care"]!.utility },
     ],
     prepare: REPAIR_PREP,
+    planned: DEFAULT_PLANNED,
   },
   {
     id: "specialized-care",
@@ -133,17 +143,29 @@ export const CATEGORIES: CategoryDef[] = [
     tone: "#4f46e5",
     treatment: "default",
     backendCategories: ["apartments"],
+    subgroups: [
+      { id: "pest", name: "Pest & hygiene", description: SUBGROUP_COPY["specialized-care"]!.pest },
+      { id: "living", name: "Plants & outdoor", description: SUBGROUP_COPY["specialized-care"]!.living },
+      { id: "specialist", name: "Specialist treatments", description: SUBGROUP_COPY["specialized-care"]!.specialist },
+    ],
     prepare: CLEANING_PREP,
+    planned: DEFAULT_PLANNED,
   },
   {
     id: "laundry-fabric",
     name: "Laundry & Fabric Care",
     shortName: "Laundry",
     tagline: "Fresh, pressed and neatly folded.",
-    description: "Washing, ironing, folding and care for curtains, fabrics and upholstery.",
+    description: "Washing, ironing, folding and care for curtains, fabrics and upholstery — returned fresh, or done on your machine at home.",
     icon: Shirt,
     tone: "#7c3aed",
     treatment: "default",
+    subgroups: [
+      { id: "wash", name: "Wash & fold", description: SUBGROUP_COPY["laundry-fabric"]!.wash },
+      { id: "press", name: "Pressing", description: SUBGROUP_COPY["laundry-fabric"]!.press },
+      { id: "textiles", name: "Home textiles", description: SUBGROUP_COPY["laundry-fabric"]!.textiles },
+    ],
+    planned: DEFAULT_PLANNED,
   },
   {
     id: "vehicle-care",
@@ -154,6 +176,12 @@ export const CATEGORIES: CategoryDef[] = [
     icon: Car,
     tone: "#475569",
     treatment: "default",
+    subgroups: [
+      { id: "car", name: "Car", description: SUBGROUP_COPY["vehicle-care"]!.car },
+      { id: "two-wheeler", name: "Two-wheelers", description: SUBGROUP_COPY["vehicle-care"]!["two-wheeler"] },
+      { id: "detail", name: "Detailing", description: SUBGROUP_COPY["vehicle-care"]!.detail },
+    ],
+    planned: DEFAULT_PLANNED,
     prepare: [
       "Park where there is room to work around the vehicle.",
       "Remove valuables from the vehicle before the visit.",
@@ -200,6 +228,11 @@ export const CATEGORIES: CategoryDef[] = [
       "Family contact for updates",
       "Recurring visits",
     ],
+    subgroups: [
+      { id: "daily", name: "Daily support", description: SUBGROUP_COPY["senior-care"]!.daily },
+      { id: "outings", name: "Outings & errands", description: SUBGROUP_COPY["senior-care"]!.outings },
+      { id: "wellness", name: "Companionship & wellness", description: SUBGROUP_COPY["senior-care"]!.wellness },
+    ],
   },
   {
     id: "pet-care",
@@ -217,6 +250,10 @@ export const CATEGORIES: CategoryDef[] = [
       "Feeding and care instructions",
       "Recurring visits",
     ],
+    subgroups: [
+      { id: "visits", name: "Visits & sitting", description: SUBGROUP_COPY["pet-care"]!.visits },
+      { id: "grooming", name: "Bath & grooming", description: SUBGROUP_COPY["pet-care"]!.grooming },
+    ],
   },
   {
     id: "executive-concierge",
@@ -233,6 +270,11 @@ export const CATEGORIES: CategoryDef[] = [
       "Task checklist for your assistant",
       "Recurring bookings",
     ],
+    subgroups: [
+      { id: "drivers", name: "Drivers", description: SUBGROUP_COPY["executive-concierge"]!.drivers },
+      { id: "errands", name: "Errands & pickup", description: SUBGROUP_COPY["executive-concierge"]!.errands },
+      { id: "assistance", name: "Assistance", description: SUBGROUP_COPY["executive-concierge"]!.assistance },
+    ],
   },
   {
     id: "special-services",
@@ -244,6 +286,11 @@ export const CATEGORIES: CategoryDef[] = [
     tone: "#0f766e",
     treatment: "future",
     planned: ["Scope agreed with you before the visit", "Custom quote", "Flexible scheduling"],
+    subgroups: [
+      { id: "moves", name: "Moves & setup", description: SUBGROUP_COPY["special-services"]!.moves },
+      { id: "property", name: "Property care", description: SUBGROUP_COPY["special-services"]!.property },
+      { id: "custom", name: "Custom", description: SUBGROUP_COPY["special-services"]!.custom },
+    ],
   },
 ];
 
@@ -253,7 +300,7 @@ export const CATEGORY_BY_ID = new Map(CATEGORIES.map((c) => [c.id, c]));
 /* Services                                                            */
 /* ------------------------------------------------------------------ */
 
-const S = (def: ServiceDef): ServiceDef => def;
+const S = (def: ServiceDef): ServiceDef => ({ ...def, ...applyServiceCopy(def) });
 
 const ALL_AUDIENCES: Audience[] = ["women", "men", "girls", "boys", "senior-women", "senior-men"];
 
@@ -347,6 +394,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "ironing-folding",
     name: "Ironing & Folding",
     category: "laundry-fabric",
+    subgroup: "press",
     bind: ["ironing-folding"],
     short: "Crisp ironing and neat folding for everyday clothes.",
     pricingModel: "fixed",
@@ -606,6 +654,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "pre-party-express-clean",
     name: "Pre-Party Express Clean",
     category: "event-occasion",
+    subgroup: "express",
     bind: ["pre-party-express-clean"],
     short: "A rapid whole-home refresh before your guests arrive.",
     pricingModel: "fixed",
@@ -618,6 +667,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "after-party-express-clean",
     name: "After-Party Express Clean",
     category: "event-occasion",
+    subgroup: "express",
     bind: ["after-party-express-clean"],
     short: "Fast post-event cleanup — trash, dishes, floors and more.",
     pricingModel: "fixed",
@@ -630,6 +680,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "festival-home-preparation",
     name: "Festival Home Preparation",
     category: "event-occasion",
+    subgroup: "occasions",
     short: "Get your home festival-ready — Diwali, Holi, Eid, Christmas and more.",
     pricingModel: "package",
     aliases: ["festival", "diwali", "holi", "eid", "christmas", "pooja", "puja"],
@@ -638,6 +689,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "post-event-cleanup",
     name: "Post-Event Cleanup",
     category: "event-occasion",
+    subgroup: "occasions",
     short: "Larger gatherings and functions, cleaned up after the last guest leaves.",
     pricingModel: "quote",
     aliases: ["event", "function", "gathering", "cleanup"],
@@ -819,6 +871,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "pest-control",
     name: "Pest Control",
     category: "specialized-care",
+    subgroup: "pest",
     bind: ["pest-control"],
     short: "Cockroach, termite and general pest treatment.",
     pricingModel: "fixed",
@@ -834,6 +887,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "plant-care",
     name: "Plant Care",
     category: "specialized-care",
+    subgroup: "living",
     bind: ["plant-care"],
     short: "Watering, pruning, repotting and a plant health check.",
     pricingModel: "fixed",
@@ -845,6 +899,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "facade-cleaning",
     name: "Facade Cleaning",
     category: "specialized-care",
+    subgroup: "living",
     bind: ["fasade-cleaning", "facade-cleaning"],
     short: "Exterior facade cleaning for buildings and apartments.",
     pricingModel: "fixed",
@@ -856,6 +911,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "sanitization",
     name: "Sanitization",
     category: "specialized-care",
+    subgroup: "pest",
     short: "Whole-home disinfection of high-touch surfaces and rooms.",
     pricingModel: "area",
     unit: "sq. ft.",
@@ -865,6 +921,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "water-tank-cleaning",
     name: "Water Tank Cleaning",
     category: "specialized-care",
+    subgroup: "specialist",
     short: "Draining, scrubbing and disinfection for overhead and underground tanks.",
     pricingModel: "per-unit",
     unit: "tank",
@@ -874,6 +931,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "specialized-surface-care",
     name: "Specialized Surface Care",
     category: "specialized-care",
+    subgroup: "specialist",
     short: "Care for marble, wood, stone and other delicate surfaces.",
     pricingModel: "inspection",
     aliases: ["marble polish", "wood polish", "stone", "granite"],
@@ -884,6 +942,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "laundry",
     name: "Laundry",
     category: "laundry-fabric",
+    subgroup: "wash",
     bind: ["laundry"],
     short: "Wash, dry and fold, returned fresh.",
     pricingModel: "fixed",
@@ -895,6 +954,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "washing-assistance",
     name: "Washing Assistance",
     category: "laundry-fabric",
+    subgroup: "wash",
     short: "Help running loads in your own machine — sorting, washing and drying.",
     pricingModel: "hourly",
     aliases: ["washing", "machine wash", "clothes washing"],
@@ -903,6 +963,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "steam-ironing",
     name: "Steam Ironing",
     category: "laundry-fabric",
+    subgroup: "press",
     short: "Steam pressing for shirts, sarees, suits and delicate fabrics.",
     pricingModel: "per-unit",
     unit: "garment",
@@ -912,6 +973,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "curtain-care",
     name: "Curtain Care",
     category: "laundry-fabric",
+    subgroup: "textiles",
     short: "Curtains taken down, cleaned and re-hung.",
     pricingModel: "per-unit",
     unit: "panel",
@@ -921,6 +983,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "fabric-upholstery-care",
     name: "Fabric / Upholstery Care",
     category: "laundry-fabric",
+    subgroup: "textiles",
     short: "Cleaning for cushions, covers, rugs and upholstered pieces.",
     pricingModel: "per-unit",
     unit: "item",
@@ -932,6 +995,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "car-surface-cleaning",
     name: "Car Surface Cleaning",
     category: "vehicle-care",
+    subgroup: "car",
     bind: ["car-surface-cleaning"],
     short: "Exterior wash and polish with an interior vacuum, at your doorstep.",
     pricingModel: "fixed",
@@ -943,6 +1007,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "car-interior-cleaning",
     name: "Car Interior Cleaning",
     category: "vehicle-care",
+    subgroup: "car",
     short: "Seats, mats, dashboard and cabin cleaned in detail.",
     pricingModel: "fixed",
     aliases: ["car interior", "seats", "dashboard", "cabin"],
@@ -951,6 +1016,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "car-deep-cleaning",
     name: "Car Deep Cleaning",
     category: "vehicle-care",
+    subgroup: "car",
     short: "Inside and out — a thorough reset for your car.",
     pricingModel: "package",
     aliases: ["car deep clean", "full car", "car spa"],
@@ -959,6 +1025,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "bike-cleaning",
     name: "Bike Cleaning",
     category: "vehicle-care",
+    subgroup: "two-wheeler",
     short: "Wash and wipe-down for scooters and motorcycles.",
     pricingModel: "fixed",
     aliases: ["bike", "scooter", "motorcycle", "two wheeler"],
@@ -967,6 +1034,7 @@ const SERVICES_CORE: ServiceDef[] = [
     slug: "vehicle-detailing",
     name: "Vehicle Detailing",
     category: "vehicle-care",
+    subgroup: "detail",
     short: "Detailing for paint, glass and interiors.",
     pricingModel: "package",
     aliases: ["detailing", "polish", "wax", "ceramic"],
@@ -987,22 +1055,68 @@ const SERVICES_CORE: ServiceDef[] = [
   }),
 
   /* ---------------- 10 Senior Care ---------------- */
+  S({
+    slug: "personal-hygiene-bathing-care",
+    name: "Personal Hygiene & Bathing Care",
+    category: "senior-care",
+    subgroup: "daily",
+    bind: ["personal-hygiene-bathing-care"],
+    short: "Personal hygiene support that protects privacy and dignity.",
+    pricingModel: "hourly",
+    hourly: true,
+    image: "/media/services/personal-hygiene-bathing-care.png",
+    aliases: [
+      "bathing",
+      "bathing care",
+      "personal hygiene",
+      "hygiene",
+      "elderda",
+      "byelderda",
+      "senior bath",
+      "elderly bath",
+      "sponge bath",
+      "assisted bath",
+    ],
+    fallbackApproved: true,
+    includes: [
+      "Assisted bathing or a sponge bath, as requested",
+      "Help with dressing, grooming and personal hygiene",
+      "A privacy-first visit, with a same-gender professional when requested",
+      "Clean-up of the bathing area after the visit",
+    ],
+    excludes: [
+      "Nursing, medical care or administering medication",
+      "Lifting or transferring that needs clinical equipment",
+      "Wound dressing or catheter care",
+    ],
+    faqs: [
+      {
+        q: "Is this medical or nursing care?",
+        a: "No. This is non-medical personal hygiene support. It does not include nursing, administering medication, or clinical procedures.",
+      },
+      {
+        q: "Can I request a same-gender professional?",
+        a: "Yes. Add that preference in booking instructions so dispatch can match the visit accordingly.",
+      },
+    ],
+  }),
   ...(
     [
-      ["home-visit-support", "Home Visit Support", "Scheduled visits to check in and help around the home."],
-      ["daily-assistance", "Daily Assistance", "Help with everyday routines, chores and errands."],
-      ["companion-support", "Companion Support", "Warm company for conversation, walks and hobbies."],
-      ["hospital-companion", "Hospital Companion", "Someone by their side for hospital visits and waiting time."],
-      ["medicine-pickup", "Medicine Pickup", "Prescriptions picked up from the pharmacy and delivered home."],
-      ["appointment-assistance", "Appointment Assistance", "Accompanied travel to and from appointments."],
-      ["grocery-assistance", "Grocery Assistance", "Grocery runs and help putting things away."],
-      ["senior-wellness-support", "Senior Wellness Support", "Gentle activity, routines and wellbeing support at home."],
+      ["home-visit-support", "Home Visit Support", "Scheduled visits to check in and help around the home.", "daily"],
+      ["daily-assistance", "Daily Assistance", "Help with everyday routines, chores and errands.", "daily"],
+      ["companion-support", "Companion Support", "Warm company for conversation, walks and hobbies.", "wellness"],
+      ["hospital-companion", "Hospital Companion", "Someone by their side for hospital visits and waiting time.", "outings"],
+      ["medicine-pickup", "Medicine Pickup", "Prescriptions picked up from the pharmacy and delivered home.", "outings"],
+      ["appointment-assistance", "Appointment Assistance", "Accompanied travel to and from appointments.", "outings"],
+      ["grocery-assistance", "Grocery Assistance", "Grocery runs and help putting things away.", "outings"],
+      ["senior-wellness-support", "Senior Wellness Support", "Gentle activity, routines and wellbeing support at home.", "wellness"],
     ] as const
-  ).map(([slug, name, short]) =>
+  ).map(([slug, name, short, subgroup]) =>
     S({
       slug,
       name,
       category: "senior-care",
+      subgroup,
       short,
       pricingModel: "hourly",
       aliases: ["senior", "elderly", "parents", "old age", "elder care"],
@@ -1010,31 +1124,31 @@ const SERVICES_CORE: ServiceDef[] = [
   ),
 
   /* ---------------- 11 Pet Care ---------------- */
-  S({ slug: "pet-walking", name: "Pet Walking", category: "pet-care", short: "Daily walks at your pet's pace.", pricingModel: "hourly", aliases: ["dog walking", "walk", "dog"] }),
-  S({ slug: "pet-feeding", name: "Pet Feeding", category: "pet-care", short: "Meals and fresh water on schedule while you are out.", pricingModel: "fixed", aliases: ["feeding", "cat", "dog"] }),
-  S({ slug: "pet-sitting", name: "Pet Sitting", category: "pet-care", short: "Company and care at home while you are away.", pricingModel: "hourly", aliases: ["sitter", "pet sitter", "boarding"] }),
-  S({ slug: "pet-cleaning", name: "Pet Cleaning", category: "pet-care", short: "Bath and clean-up for a fresh, happy pet.", pricingModel: "fixed", aliases: ["pet bath", "dog bath"] }),
-  S({ slug: "basic-pet-grooming", name: "Basic Pet Grooming", category: "pet-care", short: "Brushing, nail trimming and tidy-up grooming.", pricingModel: "fixed", aliases: ["grooming", "pet grooming", "nail trim"] }),
-  S({ slug: "vet-visit-assistance", name: "Vet Visit Assistance", category: "pet-care", short: "Accompanied trips to and from the vet.", pricingModel: "hourly", aliases: ["vet", "veterinary"] }),
-  S({ slug: "pet-care-visits", name: "Pet Care Visits", category: "pet-care", short: "Drop-in visits for feeding, play and a quick check.", pricingModel: "fixed", aliases: ["drop in", "pet visit"] }),
+  S({ slug: "pet-walking", name: "Pet Walking", category: "pet-care", subgroup: "visits", short: "Daily walks at your pet's pace.", pricingModel: "hourly", aliases: ["dog walking", "walk", "dog"] }),
+  S({ slug: "pet-feeding", name: "Pet Feeding", category: "pet-care", subgroup: "visits", short: "Meals and fresh water on schedule while you are out.", pricingModel: "fixed", aliases: ["feeding", "cat", "dog"] }),
+  S({ slug: "pet-sitting", name: "Pet Sitting", category: "pet-care", subgroup: "visits", short: "Company and care at home while you are away.", pricingModel: "hourly", aliases: ["sitter", "pet sitter", "boarding"] }),
+  S({ slug: "pet-cleaning", name: "Pet Cleaning", category: "pet-care", subgroup: "grooming", short: "Bath and clean-up for a fresh, happy pet.", pricingModel: "fixed", aliases: ["pet bath", "dog bath"] }),
+  S({ slug: "basic-pet-grooming", name: "Basic Pet Grooming", category: "pet-care", subgroup: "grooming", short: "Brushing, nail trimming and tidy-up grooming.", pricingModel: "fixed", aliases: ["grooming", "pet grooming", "nail trim"] }),
+  S({ slug: "vet-visit-assistance", name: "Vet Visit Assistance", category: "pet-care", subgroup: "visits", short: "Accompanied trips to and from the vet.", pricingModel: "hourly", aliases: ["vet", "veterinary"] }),
+  S({ slug: "pet-care-visits", name: "Pet Care Visits", category: "pet-care", subgroup: "visits", short: "Drop-in visits for feeding, play and a quick check.", pricingModel: "fixed", aliases: ["drop in", "pet visit"] }),
 
   /* ---------------- 12 Executive & Concierge ---------------- */
-  S({ slug: "driver-on-demand", name: "Driver On Demand", category: "executive-concierge", short: "A driver for your car, when you need one.", pricingModel: "hourly", aliases: ["driver", "chauffeur", "drive"] }),
-  S({ slug: "personal-driver", name: "Personal Driver", category: "executive-concierge", short: "A dedicated driver for the day or a regular schedule.", pricingModel: "package", aliases: ["driver", "chauffeur", "monthly driver"] }),
-  S({ slug: "office-assistant", name: "Office Assistant", category: "executive-concierge", short: "Help with admin, filing and small office tasks.", pricingModel: "hourly", aliases: ["assistant", "office", "admin"] }),
-  S({ slug: "errand-runner", name: "Errand Runner", category: "executive-concierge", short: "Queues, pickups and everyday errands handled for you.", pricingModel: "hourly", aliases: ["errand", "runner", "tasks"] }),
-  S({ slug: "document-pickup-drop", name: "Document Pickup & Drop", category: "executive-concierge", short: "Documents picked up and delivered across the city.", pricingModel: "fixed", aliases: ["document", "courier", "papers", "delivery"] }),
-  S({ slug: "grocery-essentials-pickup", name: "Grocery / Essentials Pickup", category: "executive-concierge", short: "Groceries and essentials picked up from your store.", pricingModel: "fixed", aliases: ["grocery", "essentials", "shopping", "pickup"] }),
-  S({ slug: "home-concierge", name: "Home Concierge", category: "executive-concierge", short: "One point of contact to coordinate help around your home.", pricingModel: "quote", aliases: ["concierge", "coordinator"] }),
-  S({ slug: "personal-assistance", name: "Personal Assistance", category: "executive-concierge", short: "Flexible personal help for your day.", pricingModel: "hourly", aliases: ["personal assistant", "pa", "assistance"] }),
+  S({ slug: "driver-on-demand", name: "Driver On Demand", category: "executive-concierge", subgroup: "drivers", short: "A driver for your car, when you need one.", pricingModel: "hourly", aliases: ["driver", "chauffeur", "drive"] }),
+  S({ slug: "personal-driver", name: "Personal Driver", category: "executive-concierge", subgroup: "drivers", short: "A dedicated driver for the day or a regular schedule.", pricingModel: "package", aliases: ["driver", "chauffeur", "monthly driver"] }),
+  S({ slug: "office-assistant", name: "Office Assistant", category: "executive-concierge", subgroup: "assistance", short: "Help with admin, filing and small office tasks.", pricingModel: "hourly", aliases: ["assistant", "office", "admin"] }),
+  S({ slug: "errand-runner", name: "Errand Runner", category: "executive-concierge", subgroup: "errands", short: "Queues, pickups and everyday errands handled for you.", pricingModel: "hourly", aliases: ["errand", "runner", "tasks"] }),
+  S({ slug: "document-pickup-drop", name: "Document Pickup & Drop", category: "executive-concierge", subgroup: "errands", short: "Documents picked up and delivered across the city.", pricingModel: "fixed", aliases: ["document", "courier", "papers", "delivery"] }),
+  S({ slug: "grocery-essentials-pickup", name: "Grocery / Essentials Pickup", category: "executive-concierge", subgroup: "errands", short: "Groceries and essentials picked up from your store.", pricingModel: "fixed", aliases: ["grocery", "essentials", "shopping", "pickup"] }),
+  S({ slug: "home-concierge", name: "Home Concierge", category: "executive-concierge", subgroup: "assistance", short: "One point of contact to coordinate help around your home.", pricingModel: "quote", aliases: ["concierge", "coordinator"] }),
+  S({ slug: "personal-assistance", name: "Personal Assistance", category: "executive-concierge", subgroup: "assistance", short: "Flexible personal help for your day.", pricingModel: "hourly", aliases: ["personal assistant", "pa", "assistance"] }),
 
   /* ---------------- 13 Special & Future ---------------- */
-  S({ slug: "home-move-assistance", name: "Home Move Assistance", category: "special-services", short: "Help coordinating and handling every step of a home move.", pricingModel: "quote", aliases: ["move", "relocation", "shifting"] }),
-  S({ slug: "home-setup-assistance", name: "Home Setup Assistance", category: "special-services", short: "Unpacking, arranging and setting up your new home.", pricingModel: "quote", aliases: ["setup", "unpacking", "new home"] }),
-  S({ slug: "rental-turnover-services", name: "Rental Turnover Services", category: "special-services", short: "Cleaning and resets between tenants or guests.", pricingModel: "package", aliases: ["rental", "airbnb", "tenant", "turnover"] }),
-  S({ slug: "property-care-visits", name: "Property Care Visits", category: "special-services", short: "Regular check-ins on a property you do not live in.", pricingModel: "package", aliases: ["property", "vacant", "nri"] }),
-  S({ slug: "vacation-home-check", name: "Vacation Home Check", category: "special-services", short: "Your home looked in on while you travel.", pricingModel: "fixed", aliases: ["vacation", "travel", "away"] }),
-  S({ slug: "custom-service-request", name: "Custom Service Request", category: "special-services", short: "Need something not listed? Tell us and we will scope it.", pricingModel: "quote", aliases: ["custom", "other", "request", "something else"] }),
+  S({ slug: "home-move-assistance", name: "Home Move Assistance", category: "special-services", subgroup: "moves", short: "Help coordinating and handling every step of a home move.", pricingModel: "quote", aliases: ["move", "relocation", "shifting"] }),
+  S({ slug: "home-setup-assistance", name: "Home Setup Assistance", category: "special-services", subgroup: "moves", short: "Unpacking, arranging and setting up your new home.", pricingModel: "quote", aliases: ["setup", "unpacking", "new home"] }),
+  S({ slug: "rental-turnover-services", name: "Rental Turnover Services", category: "special-services", subgroup: "property", short: "Cleaning and resets between tenants or guests.", pricingModel: "package", aliases: ["rental", "airbnb", "tenant", "turnover"] }),
+  S({ slug: "property-care-visits", name: "Property Care Visits", category: "special-services", subgroup: "property", short: "Regular check-ins on a property you do not live in.", pricingModel: "package", aliases: ["property", "vacant", "nri"] }),
+  S({ slug: "vacation-home-check", name: "Vacation Home Check", category: "special-services", subgroup: "property", short: "Your home looked in on while you travel.", pricingModel: "fixed", aliases: ["vacation", "travel", "away"] }),
+  S({ slug: "custom-service-request", name: "Custom Service Request", category: "special-services", subgroup: "custom", short: "Need something not listed? Tell us and we will scope it.", pricingModel: "quote", aliases: ["custom", "other", "request", "something else"] }),
 ];
 
 /* ------------------------------------------------------------------ */
@@ -1136,8 +1250,8 @@ export const SERVICE_DEFS: ServiceDef[] = [...SERVICES_CORE, ...BEAUTY_SERVICES]
 export const CROSS_LISTINGS: CrossListing[] = [
   { ref: "laundry", category: "home-help", subgroup: "clothes" },
   { ref: "ironing-folding", category: "home-help", subgroup: "clothes" },
-  { ref: "packing-unpacking", category: "event-occasion" },
-  { ref: "home-setup-assistance", category: "event-occasion" },
+  { ref: "packing-unpacking", category: "event-occasion", subgroup: "occasions" },
+  { ref: "home-setup-assistance", category: "event-occasion", subgroup: "occasions" },
   { ref: "fridge-cleaning", category: "appliance-care", subgroup: "kitchen" },
 ];
 

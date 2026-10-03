@@ -2,6 +2,7 @@ import prisma from "../lib/prisma";
 import type { AdminRbacContext } from "./rbac.service";
 import { rbacService } from "./rbac.service";
 import { listWorkflows } from "../automation/registry/workflow-registry";
+import { CREDITED_EARNING_WHERE } from "../lib/earning-settlement";
 
 export type CommandTile<T> =
   | { status: "ok"; data: T }
@@ -143,7 +144,7 @@ export class CommandCenterOverviewService {
             const start = new Date();
             start.setHours(0, 0, 0, 0);
             const agg = await prisma.earning.aggregate({
-              where: { createdAt: { gte: start } },
+              where: { createdAt: { gte: start }, ...CREDITED_EARNING_WHERE },
               _sum: { netEarning: true },
               _count: true,
             });

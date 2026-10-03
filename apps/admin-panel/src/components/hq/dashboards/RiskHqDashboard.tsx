@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ShieldAlert, UserX, Scale, MapPin, Gauge } from "lucide-react";
 import { adminApi } from "@/services/admin-api";
 import { formatNumber } from "@/lib/format";
+import { geoFraudView } from "@/lib/geo-fraud-view";
 import { GlassPanel } from "../GlassPanel";
 import { StatTile, DataUnavailable, SectionHeading, MeterBar } from "../primitives";
 
@@ -47,7 +48,8 @@ export function RiskHqDashboard() {
     : Array.isArray(hrObj.users)
       ? (hrObj.users as Array<Record<string, unknown>>)
       : [];
-  const geoEvents = geoFraud.data?.data;
+  // X-86: an unavailable fraud-signal source shows "—" and a neutral tile, never "0" and green.
+  const geo = geoFraudView(geoFraud.data, geoFraud.isError);
   const complianceReqs = compliance.data ?? [];
 
   const distribution = useMemo(() => {
@@ -79,14 +81,14 @@ export function RiskHqDashboard() {
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           label="Fraud Risk Score"
-          value={geoEvents ? `${num(geoEvents.riskScore).toFixed(0)}` : "—"}
-          sub="GPS anomaly index"
+          value={geo.riskScoreLabel}
+          sub={geo.sub}
           icon={Gauge}
           loading={geoFraud.isLoading}
-          tone={num(geoEvents?.riskScore) > 50 ? "danger" : "success"}
+          tone={geo.tone}
         />
         <StatTile label="High-Risk Users" value={formatNumber(highRiskUsers.length)} icon={UserX} loading={highRisk.isLoading} tone="danger" />
-        <StatTile label="GPS Anomalies" value={formatNumber(num(geoEvents?.suspiciousCount))} sub="speed/jump events" icon={MapPin} loading={geoFraud.isLoading} />
+        <StatTile label="GPS Anomalies" value={geo.anomaliesLabel} sub={geo.state === "unavailable" ? "GPS signals unavailable" : "speed/jump events"} icon={MapPin} loading={geoFraud.isLoading} />
         <StatTile label="Compliance Queue" value={formatNumber(complianceReqs.length)} sub="GDPR requests" icon={Scale} loading={compliance.isLoading} />
       </section>
 

@@ -2,6 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isSystemWsPayload } from "@/lib/ws-system-frames";
+import { ensureAccessToken } from "@/lib/api-client";
+
+/** Close codes the backend uses for revocation (lib/websocket.ts). */
+const WS_CLOSE_UNAUTHORIZED = 4401;
+const WS_CLOSE_FORBIDDEN = 4403;
+/** Shared across every socket: one 4401-driven refresh per window, however many channels are refused. */
+const WS_AUTH_REFRESH_WINDOW_MS = 30_000;
+let lastWsAuthRefreshAt = 0;
 
 type RealtimeOptions = {
   url: string | null;
@@ -82,9 +90,28 @@ function connectShared(entry: SharedSocket) {
     for (const fn of entry.listeners) fn(event as MessageEvent<string>);
   };
 
-  ws.onclose = () => {
+  ws.onclose = (event: CloseEvent) => {
     if (generation !== entry.generation) return;
     entry.ws = null;
+    // Server-side revocation. 4403: this credential may not hold this room again — reconnecting with
+    // the same URL would only be refused. 4401: the token behind the URL is no longer valid; refresh it
+    // and let the caller rebuild the URL with the new token (a new URL means a new shared entry).
+    if (event.code === WS_CLOSE_FORBIDDEN) {
+      emitState(entry, { connected: false, reconnecting: false });
+      return;
+    }
+    if (event.code === WS_CLOSE_UNAUTHORIZED) {
+      emitState(entry, { connected: false, reconnecting: false });
+      // Refresh once per window. If the socket built from a just-refreshed token is refused too, another
+      // refresh cannot help — and each one rotates the session (revoking the presence session id), so an
+      // unbounded retry became a ~10/s refresh storm. The next ordinary token change reconnects.
+      const now = Date.now();
+      if (now - lastWsAuthRefreshAt >= WS_AUTH_REFRESH_WINDOW_MS) {
+        lastWsAuthRefreshAt = now;
+        void ensureAccessToken();
+      }
+      return;
+    }
     emitState(entry, { connected: false, reconnecting: true });
     const retry = Math.min(30_000, 1_000 * 2 ** entry.retry);
     entry.retry += 1;

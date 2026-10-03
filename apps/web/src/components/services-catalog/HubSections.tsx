@@ -6,6 +6,7 @@ import { HUB_RAIL_ORDER, categoryHref, type Catalog, type CategoryId } from "@/l
 import { SectionActionLink } from "@/components/layout/SectionActionLink";
 import { ServiceRail } from "@/components/services-catalog/ServiceGrid";
 import { HourlyHelpModule } from "@/components/services-catalog/HourlyHelpModule";
+import { HomeHelpTaskList } from "@/components/services-catalog/home-help/HomeHelpTaskList";
 import { BeautyAudienceSelector } from "@/components/services-catalog/beauty/BeautySelectors";
 import { ServiceCard } from "@/components/services-catalog/ServiceCard";
 import { ComingSoonCard } from "@/components/services-catalog/ComingSoonCard";
@@ -33,14 +34,17 @@ export default function HubSections({ catalog }: { catalog: Catalog }) {
     <>
       {/* Hourly */}
       <section id="hourly" aria-label="Hourly home help" className="scroll-mt-32 space-y-8">
-        <HourlyHelpModule service={hourly} tone="dark" />
+        <HourlyHelpModule service={hourly} tone="light" />
         {homeHelp.length > 0 && (
           <div>
             <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-              <h3 className="font-display text-xl font-semibold text-content">Or book a single task</h3>
+              <div>
+                <h3 className="font-display text-2xl font-semibold tracking-tight text-content">Name the job</h3>
+                <p className="mt-1 text-sm text-muted">One visit. One task. Listed the way you would ask for it.</p>
+              </div>
               <SectionActionLink href={categoryHref("home-help")}>All home help</SectionActionLink>
             </div>
-            <ServiceRail services={homeHelp} label="Home help tasks" />
+            <HomeHelpTaskList services={homeHelp} label="Home help tasks" />
           </div>
         )}
       </section>

@@ -333,8 +333,9 @@ export function WellbeingSosScreen() {
   const [msg, setMsg] = useState<string | null>(null);
   const sos = useMutation({
     mutationFn: async () => {
+      // SOS must never block on GPS: the server records hasLocation=false and ops still get the alert.
       const coords = await getJobCoords("strict");
-      return partnerApi.partnerOs.triggerSos({ latitude: coords.latitude, longitude: coords.longitude });
+      return partnerApi.partnerOs.triggerSos(coords ? { latitude: coords.latitude, longitude: coords.longitude } : {});
     },
     onSuccess: (data) => {
       setMsg(data.created ? "SOS sent to operations." : "SOS already active.");

@@ -28,7 +28,19 @@ function buildEvents(fraud?: FraudData, surge?: SurgeZone[]): Event[] {
   return events;
 }
 
-function OperationalTimelineInner({ fraud, surge }: { fraud?: FraudData; surge?: SurgeZone[] }) {
+/**
+ * `fraudUnavailable`: the GPS fraud-signal source did not answer (X-86). The strip then says so rather
+ * than "No operational events", which would read as "no fraud seen" when nothing was measured.
+ */
+function OperationalTimelineInner({
+  fraud,
+  fraudUnavailable = false,
+  surge,
+}: {
+  fraud?: FraudData;
+  fraudUnavailable?: boolean;
+  surge?: SurgeZone[];
+}) {
   useRenderProbe("OperationalTimeline");
   useMountProbe("OperationalTimeline");
   const events = useMemo(() => buildEvents(fraud, surge), [fraud, surge]);
@@ -43,8 +55,13 @@ function OperationalTimelineInner({ fraud, surge }: { fraud?: FraudData; surge?:
       <span className="flex shrink-0 items-center gap-2 pr-1 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--cmd-muted)" }}>
         <Icon3D icon={Activity} tone="cyan" size="sm" /> Live Ops
       </span>
+      {fraudUnavailable ? (
+        <span className="text-xs" style={{ color: "var(--cmd-muted)" }}>GPS fraud signals unavailable.</span>
+      ) : null}
       {events.length === 0 ? (
-        <span className="text-xs" style={{ color: "var(--cmd-muted)" }}>No operational events in the current window.</span>
+        fraudUnavailable ? null : (
+          <span className="text-xs" style={{ color: "var(--cmd-muted)" }}>No operational events in the current window.</span>
+        )
       ) : (
         events.slice(0, 20).map((e, i) => (
           <div key={i} className={`cmd-event-chip cmd-event-chip--${e.kind}`}>

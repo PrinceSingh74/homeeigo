@@ -1,3 +1,4 @@
+import { analyticsWhere } from "../lib/analytics-scope";
 import prisma from "../lib/prisma";
 
 /** CFO dashboard aggregates — liabilities, GMV, revenue proxies. */
@@ -7,7 +8,8 @@ export class FinanceDashboardService {
 
     const [
       gmvAgg,
-      refundAgg,
+      refundsInPeriodAgg,
+      refundLiabilityAgg,
       walletAgg,
       giftCardAgg,
       cashbackAgg,
@@ -21,10 +23,20 @@ export class FinanceDashboardService {
         _sum: { amountPaid: true },
         _count: true,
       }),
+      // Scoped: 97.1% of refund_requests are certification artifacts, so the unscoped refund total
+      // on this dashboard was overwhelmingly a description of test runs.
+      prisma.refundRequest.aggregate({
+        where: { status: "COMPLETED", processedAt: { gte: since }, ...analyticsWhere() },
+        _sum: { amount: true },
+      }),
       prisma.payment.aggregate({
         where: { refundedAmount: { gt: 0 } },
         _sum: { refundedAmount: true },
       }),
+      // Deliberately NOT scoped. This is a LIABILITY: the platform owes this money to whoever holds
+      // the balance, and a fixture user's balance is still a row the ledger reconciliation must
+      // account for. Excluding it here would make this figure disagree with
+      // `ledger-reconciliation.service` and manufacture a drift that does not exist.
       prisma.user.aggregate({ _sum: { walletBalance: true } }),
       prisma.giftCard.aggregate({
         where: { status: "ACTIVE" },
@@ -52,8 +64,9 @@ export class FinanceDashboardService {
     ]);
 
     const gmv = gmvAgg._sum.amountPaid ?? 0;
-    const refunds = refundAgg._sum.refundedAmount ?? 0;
-    const netRevenue = round2(gmv - refunds);
+    const refundsInPeriod = refundsInPeriodAgg._sum.amount ?? 0;
+    const refundLiabilityAllTime = refundLiabilityAgg._sum.refundedAmount ?? 0;
+    const netRevenue = round2(gmv - refundsInPeriod);
     const walletLiability = walletAgg._sum.walletBalance ?? 0;
     const giftCardLiability = giftCardAgg._sum.balance ?? 0;
     const cashbackLiability = cashbackAgg._sum.amount ?? 0;
@@ -69,14 +82,17 @@ export class FinanceDashboardService {
       netRevenue,
       mrr,
       arr: round2(mrr * 12),
-      refundLiability: refunds,
+      refundsInPeriod,
+      refundLiability: refundLiabilityAllTime,
       walletLiability,
       giftCardLiability,
       cashbackLiability,
       providerPayable,
       settlementPending: { count: settlementPending._count, amount: settlementPendingAmount },
       chargebackExposure: { count: chargebackExposure._count, amount: chargebackOpen },
-      totalLiabilities: round2(walletLiability + giftCardLiability + cashbackLiability + providerPayable + refunds),
+      totalLiabilities: round2(
+        walletLiability + giftCardLiability + cashbackLiability + providerPayable + refundLiabilityAllTime,
+      ),
     };
   }
 

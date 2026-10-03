@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { coreApi } from "@/services/core/api";
+import { catalogQueryOptions } from "@/hooks/use-core-data";
 import {
   PopularServicesGrid,
   type PopularServiceItem,
@@ -31,9 +31,9 @@ function toPopularItems(services: BackendService[]): PopularServiceItem[] {
  */
 export function PopularServicesLive() {
   const query = useQuery({
-    queryKey: ["home-popular-services"],
-    queryFn: () => coreApi.services.list("?limit=100"),
-    staleTime: 60_000,
+    // The SHARED catalog query (one key, one fetch; see catalogQueryOptions). Only the
+    // poll-until-the-backend-answers behaviour below belongs to this recovery component.
+    ...catalogQueryOptions,
     retry: 2,
     // Poll until the backend comes back; stop once we have data. Keep polling
     // even when the tab is backgrounded so the section is healed by the time
@@ -59,7 +59,7 @@ export function PopularServicesLive() {
         <div
           key={i}
           role="listitem"
-          className="aspect-[4/3] w-full min-w-0 animate-pulse rounded-3xl bg-surface/60"
+          className="aspect-[4/3] w-full min-w-0 animate-pulse rounded-2xl bg-surface/60"
         />
       ))}
     </div>

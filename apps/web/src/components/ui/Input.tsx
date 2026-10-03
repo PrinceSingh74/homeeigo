@@ -41,7 +41,7 @@ export interface InputProps
 
 const sizeClasses: Record<InputSize, string> = {
   sm: "h-8 min-h-[44px] px-3 text-sm sm:min-h-8 sm:h-8",
-  md: "h-10 min-h-[44px] px-3.5 text-base sm:min-h-10 sm:h-10 sm:text-[15px]",
+  md: "h-10 min-h-[44px] px-3.5 text-base sm:min-h-10 sm:h-10",
   lg: "h-12 min-h-[44px] px-4 text-base",
   xl: "h-14 min-h-[44px] px-4 text-base",
 };

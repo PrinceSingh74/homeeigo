@@ -113,7 +113,7 @@ export function LeadCrmWorkspace() {
     ...toListQuery(advanced),
   });
 
-  const leads = listQuery.data?.leads ?? [];
+  const leads = useMemo(() => listQuery.data?.leads ?? [], [listQuery.data?.leads]);
   const detailQuery = usePartnerLeadDetail(selectedId);
   const admins = useAdminUsers();
   const mutations = usePartnerLeadMutations(selectedId);
@@ -156,9 +156,12 @@ export function LeadCrmWorkspace() {
     }
   }, [leads, selectedId]);
 
+  const detailLeadId = detailQuery.data?.id ?? null;
+  const detailNotes = detailQuery.data?.notes ?? "";
   useEffect(() => {
-    if (detailQuery.data) setNotesDraft(detailQuery.data.notes ?? "");
-  }, [detailQuery.data?.id, detailQuery.data?.notes]);
+    if (!detailLeadId) return;
+    setNotesDraft(detailNotes);
+  }, [detailLeadId, detailNotes]);
 
   const assigneeName = useMemo(() => {
     const id = detailQuery.data?.assignedToAdminId;

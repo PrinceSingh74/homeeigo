@@ -13,7 +13,9 @@ import { getWorkflow } from "../registry/workflow-registry";
 import { evaluateCondition } from "../conditions/evaluator";
 import { getCondition } from "../conditions/condition-registry";
 import { executeNotificationStep } from "./notification-step";
-import { STEP_OUTCOME, type StepOutcome, type WorkflowStep } from "../types";
+import { STEP_OUTCOME, HIGH_RISK_ACTIONS, type StepOutcome, type WorkflowStep } from "../types";
+import { recordShadowEvidence, shadowIdentity, SHADOW_OUTCOME } from "../../notifications/governance/shadow-evidence";
+
 import { scheduleWorkflowStep } from "./step-scheduler";
 import { eventPlatformConfig } from "../../events/core/config";
 
@@ -392,6 +394,8 @@ export async function executeWorkflowStep(instanceId: string, jobId?: string): P
             variables: step.variables,
             recheckConditionId: step.recheckConditionId,
           },
+          executionMode: instance.executionMode,
+          triggerEventId: instance.triggerEventId ?? undefined,
           traceId: instance.traceId ?? undefined,
           correlationId: instance.correlationId ?? undefined,
         });
@@ -406,6 +410,29 @@ export async function executeWorkflowStep(instanceId: string, jobId?: string): P
          * hour into a retry storm against a notification that is deliberately holding.
          */
         if (outcome.ok && outcome.result.deferredUntil) {
+          /**
+           * A rehearsal records when it would have gone; it does not park a wake-up to go then.
+           *
+           * Deferring for real schedules a job that fires in the morning and sends — which is the
+           * one external side effect shadow mode exists to prevent, arriving hours after anyone was
+           * watching. For a shadow instance the deferral is the answer, so the evidence is already
+           * written and the step simply advances.
+           */
+          if (instance.executionMode === "SHADOW") {
+            await recordStepRun({
+              instanceId, step, stepIndex: instance.stepIndex,
+              outcome: STEP_OUTCOME.ADVANCED,
+              reasonCode: outcome.result.reasonCode, jobId, durationMs: Date.now() - started,
+              metadata: {
+                shadow: true,
+                wouldHaveDeferredUntil: outcome.result.deferredUntil.toISOString(),
+              },
+            });
+            recordStepExecuted(instance.workflowId, step.type, STEP_OUTCOME.ADVANCED);
+            await advance(STEP_OUTCOME.ADVANCED, outcome.result.reasonCode);
+            return { executed: true, outcome: STEP_OUTCOME.ADVANCED };
+          }
+
           const deferOutcome = await deferStep(outcome.result.deferredUntil, outcome.result.reasonCode);
           return { executed: true, outcome: deferOutcome };
         }
@@ -423,6 +450,35 @@ export async function executeWorkflowStep(instanceId: string, jobId?: string): P
           throw new Error(
             `Notification ${outcome.result.notificationId} is claimed by another attempt — retrying`,
           );
+        }
+
+        /**
+         * Deciding not to send is still a decision, and a rehearsal has to record it.
+         *
+         * When the re-check fails — or the addressee cannot be resolved — the router is never
+         * reached, so nothing writes shadow evidence and the run leaves no trace in the one table
+         * someone reads to learn what the automation would have done. Live, this is precisely the
+         * branch that silently sends nothing, which makes it the branch most worth being able to see.
+         */
+        if (!outcome.ok && instance.executionMode === "SHADOW") {
+          const recheckFailed = outcome.reasonCode === "RECHECK_CONDITION_FAILED";
+          await recordShadowEvidence({
+            workflowId: instance.workflowId,
+            workflowVersion: instance.workflowVersion,
+            workflowInstanceId: instanceId,
+            shadowIdentity: shadowIdentity(instanceId, step.id, step.notificationType),
+            triggerEventId: instance.triggerEventId ?? undefined,
+            subjectType: instance.subjectType,
+            subjectId: instance.subjectId,
+            notificationType: step.notificationType,
+            conditionResult: recheckFailed ? "FAILED" : "NOT_EVALUATED",
+            outcome: SHADOW_OUTCOME.SKIPPED,
+            reasonCode: outcome.reasonCode,
+            // The condition's own reason, which names a fact about the booking — never a person.
+            reasonText: "conditionReason" in outcome ? outcome.conditionReason : undefined,
+            traceId: instance.traceId ?? undefined,
+            correlationId: instance.correlationId ?? undefined,
+          });
         }
 
         const reasonCode = outcome.ok ? outcome.result.reasonCode : outcome.reasonCode;
@@ -470,6 +526,49 @@ export async function executeWorkflowStep(instanceId: string, jobId?: string): P
        */
       case "ACTION":
       case "ESCALATION": {
+        /**
+         * A rehearsal must never be mistaken for permission.
+         *
+         * Actions are the side of automation that moves money and account state, and there is no
+         * safe way to simulate a refund or a payout: recording "this would have succeeded" invents
+         * a business outcome nobody checked. High-risk work is named and refused rather than
+         * imagined, and everything else is recorded as unsupported. Neither path executes anything.
+         *
+         * Today this is a guard rather than an interception — the engine has no route into the
+         * Phase-5 tools at all, and Phase-5 itself terminates every high-risk tool at NO_HANDLER.
+         * The guard exists so that route cannot be opened later without meeting it first.
+         */
+        if (instance.executionMode === "SHADOW") {
+          const target = step.type === "ACTION" ? step.actionId : step.target;
+          const highRisk = HIGH_RISK_ACTIONS.some((h) => target.toLowerCase().includes(h));
+          const reasonCode = highRisk ? "SHADOW_HIGH_RISK_BLOCKED" : "SHADOW_UNSUPPORTED_ACTION";
+
+          await recordShadowEvidence({
+            workflowId: instance.workflowId,
+            workflowVersion: instance.workflowVersion,
+            workflowInstanceId: instanceId,
+            shadowIdentity: shadowIdentity(instanceId, step.id, step.type),
+            triggerEventId: instance.triggerEventId ?? undefined,
+            subjectType: instance.subjectType,
+            subjectId: instance.subjectId,
+            outcome: SHADOW_OUTCOME.WOULD_BLOCK,
+            reasonCode,
+            reasonText: target.slice(0, 120),
+            traceId: instance.traceId ?? undefined,
+            correlationId: instance.correlationId ?? undefined,
+          });
+
+          await recordStepRun({
+            instanceId, step, stepIndex: instance.stepIndex,
+            outcome: STEP_OUTCOME.SKIPPED, reasonCode, reasonText: target,
+            jobId, durationMs: Date.now() - started,
+          });
+          await finish(instanceId, "SKIPPED", reasonCode, { countStep: true });
+          recordStepExecuted(instance.workflowId, step.type, STEP_OUTCOME.SKIPPED);
+          recordWorkflowSkipped(instance.workflowId, reasonCode);
+          return { executed: true, outcome: STEP_OUTCOME.SKIPPED };
+        }
+
         await recordStepRun({
           instanceId, step, stepIndex: instance.stepIndex,
           outcome: STEP_OUTCOME.NOT_IMPLEMENTED,

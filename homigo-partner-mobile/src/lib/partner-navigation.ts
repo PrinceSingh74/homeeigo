@@ -84,7 +84,8 @@ export const PARTNER_HQ_NAV: PartnerNavSection[] = [
     icon: BarChart3,
     items: [
       { id: "performance-reviews", label: "Reviews", subtitle: "Customer ratings and responses", icon: Star },
-      { id: "performance-scorecard", label: "Scorecard", subtitle: "Acceptance, completion, response metrics", icon: BarChart3 },
+      { id: "performance-scorecard", label: "Scorecard", subtitle: "Unified score, components, why it changed", icon: BarChart3 },
+      { id: "performance-career", label: "Career", subtitle: "Level, progress, badges", icon: Award },
       { id: "performance-rankings", label: "Rankings", subtitle: "City, area, and category ranks", icon: Trophy },
       { id: "performance-quality", label: "Quality Insights", subtitle: "Automated quality recommendations", icon: Star },
       { id: "performance-analytics", label: "Analytics", subtitle: "Earnings and bookings charts", icon: BarChart3 },
@@ -138,7 +139,7 @@ export const PARTNER_HQ_NAV: PartnerNavSection[] = [
     items: [
       { id: "rewards-hub", label: "Rewards", subtitle: "Badges, milestones, incentive earnings", icon: Crown },
       { id: "rewards-badges", label: "Badges", subtitle: "Achievement badges earned", icon: Award },
-      { id: "rewards-referrals", label: "Referrals", subtitle: "Referral code and earnings", icon: Trophy },
+      { id: "rewards-referrals", label: "Referrals", subtitle: "Partner network and qualification", icon: Trophy },
     ],
   },
   {

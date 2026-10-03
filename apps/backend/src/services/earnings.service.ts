@@ -18,6 +18,7 @@ import { deriveFinanceState } from "../lib/partner-finance-fsm";
 import { razorpayService } from "./razorpay.service";
 import { AuditLogService } from "./audit-log.service";
 import { financialLedgerService } from "./financial-ledger.service";
+import { isNoPaymentFollowUp } from "./booking-payment-gate";
 import { financialTransactionManager } from "./financial-transaction-manager.service";
 import { recordFinancialMetric } from "../lib/financial-metrics";
 import { CREDITED_EARNING_WHERE } from "../lib/earning-settlement";
@@ -64,6 +65,36 @@ export function commissionRateForVolume(monthlyCompleted: number): number {
   return 0.2;
 }
 
+/**
+ * What the commission percentage is applied to — an accounting decision, made explicit here and
+ * switchable with COMMISSION_BASE (read per call so a config change needs no redeploy of logic).
+ *
+ *   "final_amount" (default — the behaviour since launch): the amount the customer paid, which
+ *       includes the booking's `taxes` line (TAX_RATE 10%, booking-pricing.service). The tax is not
+ *       booked to a separate liability: escrow releases the whole gross to PROVIDER_PAYABLE (net) and
+ *       PLATFORM_REVENUE (commission).
+ *   "pre_tax": finalAmount − taxes. The partner still receives the tax inside their share (the
+ *       gross is unchanged, so the journal is unchanged); only the commission base excludes it.
+ *
+ * Not modelled: the platform itself remitting GST (a TAX_PAYABLE liability). That needs an
+ * accountant's decision on who the supplier of record is, and is reported as BLOCKED rather than
+ * guessed. Either basis keeps gross = net + commission (± bonus/deduction), so the earning journal
+ * always balances.
+ */
+export type CommissionBasis = "final_amount" | "pre_tax";
+
+export function resolveCommissionBasis(): CommissionBasis {
+  return process.env.COMMISSION_BASE === "pre_tax" ? "pre_tax" : "final_amount";
+}
+
+export function commissionBaseFor(
+  booking: { finalAmount: number; taxes: number | null },
+  basis: CommissionBasis = resolveCommissionBasis(),
+): number {
+  if (basis === "pre_tax") return roundCurrency(Math.max(0, booking.finalAmount - (booking.taxes ?? 0)));
+  return booking.finalAmount;
+}
+
 export class EarningsService {
   /**
    * Compute commission + bonuses + deductions for a single completed booking.
@@ -88,10 +119,19 @@ export class EarningsService {
     if (!booking.providerId || !booking.provider) {
       throw new Error("Booking has no provider assigned");
     }
+    /**
+     * §11: a rework / revisit whose fee the case waived is the provider putting right a job already
+     * paid for — it earns nothing, not even the per-job bonus (which would otherwise be a second
+     * credit for the same work).
+     */
+    if (booking.finalAmount === 0 && (await isNoPaymentFollowUp(bookingId, client))) {
+      return { bookingAmount: 0, commission: 0, commissionRate: 0, bonus: 0, deduction: 0, netEarning: 0 };
+    }
 
     const monthlyCompleted = await this.countMonthlyCompleted(booking.providerId, client);
     const commissionRate = commissionRateForVolume(monthlyCompleted);
-    const commission = roundCurrency(booking.finalAmount * commissionRate);
+    const commissionBasis = resolveCommissionBasis();
+    const commission = roundCurrency(commissionBaseFor(booking, commissionBasis) * commissionRate);
 
     const bonus = this.calculateBonuses(booking.provider);
     const deduction = await this.calculateDeductions(booking.providerId, booking.provider.rating, client);
@@ -339,78 +379,85 @@ export class EarningsService {
     if (!existing) throw new Error("Withdrawal not found");
     if (existing.status === WithdrawalStatus.COMPLETED) return existing;
 
-    const w = await financialTransactionManager.executeWithLedger({
-      journal: financialLedgerService.journalForProviderPayout(withdrawalId, existing.netAmount),
-      mutate: async (tx) =>
-        tx.withdrawal.update({
-          where: { id: withdrawalId },
-          data: { status: WithdrawalStatus.COMPLETED, completedAt: new Date(), razorpayStatus: "processed" },
-        }),
-    });
     /**
+     * ONE transaction: withdrawal → COMPLETED, PROVIDER_PAYOUT journal, reservation consumed
+     * (wallet deducted) and the wallet-transaction snapshot. These used to be three separate
+     * transactions; a crash after the first left the ledger saying "paid" while the provider still
+     * held the money, and the webhook replay short-circuited on `status === COMPLETED` so the
+     * deduction never happened.
+     *
      * The wallet transaction for a withdrawal is created at PROCESSING time with
-     * `walletBalanceAfter === walletBalanceBefore`, because at that point the amount is RESERVED,
-     * not deducted -- no movement has happened yet, and the row is PENDING so the
-     * `wallet_balance_consistency` check does not apply to it.
-     *
-     * Consuming the reservation is the moment the deduction becomes real. Flipping the row to
-     * COMPLETED without refreshing its closing balance left a row claiming a 150 withdrawal that
-     * moved the balance from 800 to 800, and the check constraint correctly rejected it -- which
-     * is why `completeProviderPayout` threw instead of completing the payout.
-     *
-     * The closing balance is READ BACK from the provider rather than computed as
-     * `before - amount`: a derived figure would satisfy the constraint by construction and so
-     * would defeat the only thing checking that the ledger matches the wallet.
+     * `walletBalanceAfter === walletBalanceBefore` (amount RESERVED, not deducted). Consuming the
+     * reservation is the moment the deduction becomes real, so the closing balance is READ BACK
+     * from the provider row under lock rather than computed as `before - amount`: a derived figure
+     * would satisfy the wallet_balance_consistency check by construction and defeat the only thing
+     * checking that the ledger matches the wallet.
      */
-    const balanceBeforeConsume = await prisma.provider.findUnique({
-      where: { id: existing.providerId },
-      select: { walletBalance: true, walletBalancePaise: true },
-    });
-    await providerWalletReservationService.consumeReservation(withdrawalId, undefined);
-    const balanceAfterConsume = await prisma.provider.findUnique({
-      where: { id: existing.providerId },
-      select: { walletBalance: true, walletBalancePaise: true },
-    });
+    const outcome = await financialTransactionManager.executeWithLedger({
+      journal: financialLedgerService.journalForProviderPayout(withdrawalId, existing.netAmount),
+      mutate: async (tx) => {
+        await tx.$executeRaw`SELECT id FROM withdrawals WHERE id = ${withdrawalId} FOR UPDATE`;
+        const locked = await tx.withdrawal.findUniqueOrThrow({ where: { id: withdrawalId } });
+        if (locked.status === WithdrawalStatus.COMPLETED) {
+          return { withdrawal: locked, alreadyCompleted: true as const };
+        }
+        await tx.$executeRaw`SELECT id FROM providers WHERE id = ${locked.providerId} FOR UPDATE`;
+        const before = await tx.provider.findUniqueOrThrow({
+          where: { id: locked.providerId },
+          select: { walletBalance: true, walletBalancePaise: true },
+        });
+        const consumed = await providerWalletReservationService.consumeReservationInTransaction(tx, withdrawalId);
+        const after = await tx.provider.findUniqueOrThrow({
+          where: { id: locked.providerId },
+          select: { walletBalance: true, walletBalancePaise: true },
+        });
+        const movementObserved =
+          consumed != null && Math.abs(before.walletBalance - after.walletBalance - locked.amount) < 0.005;
 
-    const movementObserved =
-      balanceBeforeConsume != null &&
-      balanceAfterConsume != null &&
-      Math.abs(
-        balanceBeforeConsume.walletBalance - balanceAfterConsume.walletBalance - existing.amount,
-      ) < 0.005;
-
-    if (!movementObserved) {
-      // No deduction was observed for this completion (an already-consumed reservation, or a
-      // balance that moved by something other than this amount). Recording a snapshot here would
-      // be inventing a movement that did not happen, so the balances are left as they are and the
-      // discrepancy is surfaced instead of buried.
-      logger.warn("withdrawal_completion_no_wallet_movement", {
-        category: "FINANCIAL",
-        withdrawalId,
-        providerId: existing.providerId,
-        expectedAmount: existing.amount,
-        balanceBefore: balanceBeforeConsume?.walletBalance ?? null,
-        balanceAfter: balanceAfterConsume?.walletBalance ?? null,
-      });
-    }
-
-    await prisma.walletTransaction.updateMany({
-      where: { referenceId: withdrawalId, referenceType: "withdrawal" },
-      data:
-        movementObserved && balanceBeforeConsume && balanceAfterConsume
-          ? {
+        if (movementObserved) {
+          await tx.walletTransaction.updateMany({
+            where: { referenceId: withdrawalId, referenceType: "withdrawal" },
+            data: {
               status: WalletTxnStatus.COMPLETED,
               completedAt: new Date(),
-              walletBalanceBefore: balanceBeforeConsume.walletBalance,
-              walletBalanceBeforePaise: balanceBeforeConsume.walletBalancePaise,
-              walletBalanceAfter: balanceAfterConsume.walletBalance,
-              walletBalanceAfterPaise: balanceAfterConsume.walletBalancePaise,
-            }
-          : { status: WalletTxnStatus.COMPLETED, completedAt: new Date() },
+              walletBalanceBefore: before.walletBalance,
+              walletBalanceBeforePaise: before.walletBalancePaise,
+              walletBalanceAfter: after.walletBalance,
+              walletBalanceAfterPaise: after.walletBalancePaise,
+            },
+          });
+        } else {
+          // No deduction observed in THIS transaction (reservation already consumed by an earlier,
+          // partially-applied completion, or a balance that moved by a different amount). The
+          // wallet row is deliberately left PENDING rather than stamped with an invented snapshot;
+          // the discrepancy is surfaced for operators instead of buried.
+          logger.warn("withdrawal_completion_no_wallet_movement", {
+            category: "FINANCIAL",
+            withdrawalId,
+            providerId: locked.providerId,
+            expectedAmount: locked.amount,
+            reservationConsumedNow: consumed != null,
+            balanceBefore: before.walletBalance,
+            balanceAfter: after.walletBalance,
+          });
+          recordFinancialMetric("payout_completion_no_wallet_movement_total", 1);
+        }
+
+        const withdrawal = await tx.withdrawal.update({
+          where: { id: withdrawalId },
+          data: { status: WithdrawalStatus.COMPLETED, completedAt: new Date(), razorpayStatus: "processed" },
+        });
+        return { withdrawal, alreadyCompleted: false as const };
+      },
     });
+    const w = outcome.withdrawal;
+    if (outcome.alreadyCompleted) return w;
+
     await prisma.payoutAttempt.create({
       data: { withdrawalId, attemptNo: 99, status: "SUCCESS", razorpayPayoutId: w.razorpayPayoutId },
-    }).catch(() => undefined);
+    }).catch((err: unknown) => {
+      logger.error("payout_attempt_record_failed", { withdrawalId, error: err instanceof Error ? err.message : String(err) });
+    });
     recordFinancialMetric("provider_payout_total", 1);
     recordFinancialMetric("payout_total", 1);
     void emitPartnerEvent(
@@ -421,7 +468,10 @@ export class EarningsService {
         amount: w.amount,
         netAmount: w.netAmount,
       }),
-    ).catch(() => undefined);
+    ).catch((err: unknown) => {
+      recordFinancialMetric("payout_event_emit_failed_total", 1);
+      logger.error("payout_paid_event_emit_failed", { withdrawalId, error: err instanceof Error ? err.message : String(err) });
+    });
     return w;
   }
 
@@ -455,8 +505,10 @@ export class EarningsService {
         withdrawalId,
         existing.netAmount,
       );
+      // Same transaction as the reversal journal + status flip: a crash between them used to leave
+      // the reservation RESERVED forever (money frozen) with the withdrawal already FAILED.
+      await providerWalletReservationService.releaseReservationInTransaction(tx, withdrawalId);
     });
-    await providerWalletReservationService.releaseReservation(withdrawalId, undefined, reason);
     void AuditLogService.success("PAYOUT_FAILURE", {
       details: { withdrawalId, amount: existing.netAmount, reason },
     });
@@ -473,7 +525,10 @@ export class EarningsService {
         netAmount: existing.netAmount,
         failureReason: reason,
       }),
-    ).catch(() => undefined);
+    ).catch((err: unknown) => {
+      recordFinancialMetric("payout_event_emit_failed_total", 1);
+      logger.error("payout_failed_event_emit_failed", { withdrawalId, error: err instanceof Error ? err.message : String(err) });
+    });
     return { handled: true, reason: "PAYOUT_FAILED" };
   }
 

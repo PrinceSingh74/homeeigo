@@ -1,3 +1,4 @@
+import { logger } from "../lib/logger";
 import { Elysia, t } from "elysia";
 import { roomManager, MessageType, WSConnection, generateConnectionId } from "@/lib/websocket";
 import { heartbeatManager } from "@/lib/heartbeat";
@@ -5,7 +6,7 @@ import { bookingLiveService } from "@/services/booking-live.service";
 import prisma from "@/lib/prisma";
 import { authenticateWsConnection } from "@/lib/ws-connection-auth";
 import { validateWsChannelAccess } from "@/lib/ws-channel-access";
-import { getWsState, setWsState } from "./ws-state";
+import { getWsState, setWsState, markWsClosed, closedDuringOpen } from "./ws-state";
 
 export const bookingWs = new Elysia({ prefix: "/ws" }).ws("/booking/:bookingId", {
   params: t.Object({ bookingId: t.String() }),
@@ -36,6 +37,15 @@ export const bookingWs = new Elysia({ prefix: "/ws" }).ws("/booking/:bookingId",
       userId: auth.userId,
       userType: auth.userType,
       connectionId,
+      jti: auth.jti,
+      tokenExp: auth.exp,
+      close: (code: number, reason: string) => {
+        try {
+          ws.close(code, reason);
+        } catch {
+          /* already closed */
+        }
+      },
       connectedAt: new Date(),
       lastPing: new Date(),
       rooms: new Set(),
@@ -47,6 +57,10 @@ export const bookingWs = new Elysia({ prefix: "/ws" }).ws("/booking/:bookingId",
         }
       },
     };
+
+    // The client may have left while the awaits above were pending; registering now would create a
+    // connection, room membership and heartbeat for a socket that is already closed. See ws-state.ts.
+    if (closedDuringOpen(ws)) return;
 
     roomManager.addToRoom(`booking:${bookingId}`, connection);
     heartbeatManager.startHeartbeat(connectionId, ws);
@@ -107,8 +121,36 @@ export const bookingWs = new Elysia({ prefix: "/ws" }).ws("/booking/:bookingId",
             ? JSON.parse(data.toString())
             : data;
       const bookingId = ws.data.params.bookingId;
-      const userId = (getWsState(ws) as any)?.userId;
-      const userType = (getWsState(ws) as any)?.userType;
+      // `getWsState` already returns a typed `WsState | undefined`; the previous `as any` erased
+      // that on the very values used to authorise the partner actions below — a mistyped field or
+      // a wrong `userType` literal would have compiled silently.
+      const state = getWsState(ws);
+      const userType = state?.userType;
+
+      /**
+       * Fail closed when the socket has no identity.
+       *
+       * Removing the `as any` above revealed that `userId` is `string | undefined` and was being
+       * passed straight into acceptBooking / rejectBooking / cancelBooking / startService /
+       * completeBooking, every one of which requires a real user id — the same shape of defect as
+       * the AI-tools cancel handler that passed an actor with an undefined user.
+       *
+       * This is not hypothetical here: the comment on `stateKey` in ws-state.ts records that
+       * `getWsState` HAS missed for a live socket before, when the key was unstable. Every action
+       * below mutates a booking on behalf of a specific person, so with no identity the only
+       * correct outcome is to refuse.
+       */
+      const userId = state?.userId;
+      if (!userId) {
+        ws.send(
+          JSON.stringify({
+            type: MessageType.ERROR,
+            data: { message: "Not authenticated for this connection" },
+            timestamp: new Date(),
+          })
+        );
+        return;
+      }
 
       if (message.type === "accept_booking" && userType === "vendor") {
         await bookingLiveService.acceptBooking(bookingId, userId);
@@ -131,11 +173,23 @@ export const bookingWs = new Elysia({ prefix: "/ws" }).ws("/booking/:bookingId",
       }
 
       if (message.type === "start_service" && userType === "vendor") {
-        await bookingLiveService.startService(bookingId, userId);
+        await bookingLiveService.startService(bookingId, userId, {
+          otp: typeof message.data?.otp === "string" ? message.data.otp : undefined,
+          latitude:
+            typeof message.data?.latitude === "number" ? message.data.latitude : undefined,
+          longitude:
+            typeof message.data?.longitude === "number" ? message.data.longitude : undefined,
+        });
       }
 
       if (message.type === "complete_booking" && userType === "vendor") {
-        await bookingLiveService.completeBooking(bookingId, userId);
+        await bookingLiveService.completeBooking(bookingId, userId, {
+          latitude:
+            typeof message.data?.latitude === "number" ? message.data.latitude : undefined,
+          longitude:
+            typeof message.data?.longitude === "number" ? message.data.longitude : undefined,
+          notes: typeof message.data?.notes === "string" ? message.data.notes : undefined,
+        });
       }
 
       if (message.type === MessageType.PING) {
@@ -145,7 +199,9 @@ export const bookingWs = new Elysia({ prefix: "/ws" }).ws("/booking/:bookingId",
             timestamp: new Date(),
           })
         );
-        heartbeatManager.handlePong((getWsState(ws) as any)?.connectionId);
+        // `connectionId` is optional on WsState; with no id there is no heartbeat to record.
+        const connectionId = getWsState(ws)?.connectionId;
+        if (connectionId) heartbeatManager.handlePong(connectionId);
       }
     } catch (error) {
       console.error("Booking message error:", error);
@@ -160,6 +216,7 @@ export const bookingWs = new Elysia({ prefix: "/ws" }).ws("/booking/:bookingId",
   },
 
   close: (ws) => {
+    markWsClosed(ws);
     const state = getWsState(ws);
     const bookingId = ws.data.params.bookingId;
 
@@ -173,6 +230,6 @@ export const bookingWs = new Elysia({ prefix: "/ws" }).ws("/booking/:bookingId",
       roomManager.removeAllRooms(state.connection);
     }
 
-    console.log(`[WS] Booking disconnected: ${bookingId} - ${state?.userId}`);
+    logger.debug("ws_booking_disconnected", { bookingId, userId: state?.userId ?? null });
   },
 });

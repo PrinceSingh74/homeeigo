@@ -7,12 +7,23 @@ export type BackendService = {
   basePrice?: number;
   minPrice?: number;
   maxPrice?: number;
-  rating?: number;
+  /** Real aggregate from reviews; null when a service has none (backend no longer sends 4.8). */
+  rating?: number | null;
   reviewCount?: number;
   bookingCount?: number;
   icon?: string | null;
   thumbnail?: string | null;
   isFeatured?: boolean;
+  /** Minutes, from the backend service record. */
+  estimatedDuration?: number;
+  /** Public admin configuration — only the parts the booking flow prices with are mirrored. */
+  catalogConfig?: {
+    comingSoon?: boolean;
+    audiences?: string[];
+    quantity?: { type?: string; unitLabel?: string; min: number; max?: number; step?: number; default?: number };
+    variants?: { id: string; name: string; price: number; active: boolean; audiences?: string[] }[];
+    addons?: { id: string; name: string; price: number; durationMin?: number; active: boolean }[];
+  } | null;
 };
 
 export type BackendProvider = {
@@ -22,6 +33,8 @@ export type BackendProvider = {
   rating?: number;
   reviewCount?: number;
   isOnline?: boolean;
+  availableNow?: boolean;
+  availabilityLabel?: "Available now" | "Limited availability" | "Confirming professional" | "Unavailable";
   distance?: number;
   eta?: number;
   basePrice?: number;
@@ -36,6 +49,8 @@ export type BackendMatchedProvider = {
   eta: number;
   totalScore: number;
   isOnline: boolean;
+  availableNow?: boolean;
+  availabilityLabel?: "Available now" | "Limited availability" | "Confirming professional" | "Unavailable";
   availability: boolean;
   profileImage?: string | null;
 };
@@ -60,7 +75,12 @@ export type BackendBooking = {
     | "rejected"
     | "cancelled"
     | "cancelled_by_user"
-    | "cancelled_by_provider";
+    | "cancelled_by_provider"
+    /** PAYMENT_PENDING_TTL closed the window before payment completed; the slot was released. */
+    | "expired"
+    /** Nobody was served; which one it is decides the money and the wording. */
+    | "customer_no_show"
+    | "provider_no_show";
   scheduledDate?: string;
   completedAt?: string | null;
   amount?: number;
@@ -166,6 +186,8 @@ export type BackendProviderDetail = {
   rating?: number;
   reviewCount?: number;
   isOnline?: boolean;
+  availableNow?: boolean;
+  availabilityLabel?: "Available now" | "Limited availability" | "Confirming professional" | "Unavailable";
   yearsOfExperience?: number;
   badges?: string[];
   services?: Array<{ id: string; name: string; basePrice?: number }>;
@@ -206,4 +228,41 @@ export type BackendWithdrawal = {
   amount: number;
   status: string;
   createdAt: string;
+};
+
+/* ---- Phase 10 §6 — booking requirement state (mirror of backend BookingRequirementsView) ---- */
+export type RequirementEnforcementPoint = "BEFORE_BOOKING" | "BEFORE_ARRIVAL" | "AT_START";
+export type RequirementEffectiveState = "UNRESOLVED" | "SATISFIED" | "FAILED" | "EXPIRED";
+export type BlockingRequirement = {
+  code: string;
+  label: string;
+  kind: string;
+  enforcementPoint: RequirementEnforcementPoint;
+  responsibility: string;
+  verification: string;
+  state: RequirementEffectiveState;
+  reason: string;
+  remediation: { role: "PARTNER" | "CUSTOMER"; text: string };
+};
+export type RequirementGateResult = { target: "ARRIVAL" | "START"; ok: boolean; evaluated: number; blocking: BlockingRequirement[] };
+export type RequirementItemView = {
+  code: string;
+  label: string;
+  kind: string;
+  enforcementPoint: RequirementEnforcementPoint;
+  responsibility: string;
+  verification: string;
+  optional: boolean;
+  state: RequirementEffectiveState;
+  resolvedAt: string | null;
+  resolvedByRole: string | null;
+  note: string | null;
+  actions: Array<"CHECK" | "READY" | "ATTEST" | "RECHECK">;
+  blocking: Pick<BlockingRequirement, "reason" | "remediation"> | null;
+};
+export type BookingRequirementsView = {
+  enforced: boolean;
+  serviceVersion: number | null;
+  items: RequirementItemView[];
+  gate: { arrival: RequirementGateResult; start: RequirementGateResult };
 };

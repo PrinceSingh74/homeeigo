@@ -8,6 +8,7 @@
  *   db_slow_queries_total                         ← pg_stat_statements if available (best-effort)
  */
 import prisma from "./prisma";
+import { ACCEPTANCE_TERMINAL_STATUSES, acceptanceRatePct } from "./acceptance-rate";
 import { setGauge, registerScrapeSampler } from "./metrics";
 import { financialIntegrityService } from "../services/financial-integrity.service";
 
@@ -38,13 +39,27 @@ export function registerMetricSamplers(): void {
     setGauge("financial_integrity_score", integrityCache.score);
   });
 
-  // Provider acceptance rate over last 24h (accepted / dispatched)
+  /**
+   * Provider acceptance over the last 24h — accepted over TERMINAL outcomes.
+   *
+   * The denominator was every attempt dispatched in the window, including those still SENT and
+   * awaiting an answer. Under broadcast dispatch a single job is offered to up to
+   * ASSIGNMENT_BROADCAST_FANOUT partners and at most one of them can accept, so this gauge was
+   * structurally incapable of exceeding roughly 1/fanout: it measured fan-out width, not whether
+   * partners take work. It now uses the same definition as the provider column and the coverage
+   * page — see lib/acceptance-rate.ts.
+   *
+   * NaN when nothing terminal happened in the window. A gauge cannot publish "unknown", and 0 is a
+   * claim that every offer was refused; NaN renders as a gap rather than as a false red.
+   */
   registerScrapeSampler(async () => {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const [accepted, total] = await Promise.all([
+    const [accepted, terminal] = await Promise.all([
       prisma.assignmentAttempt.count({ where: { status: "ACCEPTED", dispatchedAt: { gte: since } } }).catch(() => 0),
-      prisma.assignmentAttempt.count({ where: { dispatchedAt: { gte: since } } }).catch(() => 0),
+      prisma.assignmentAttempt
+        .count({ where: { status: { in: ACCEPTANCE_TERMINAL_STATUSES }, dispatchedAt: { gte: since } } })
+        .catch(() => 0),
     ]);
-    setGauge("provider_acceptance_rate", total > 0 ? Math.round((accepted / total) * 10000) / 100 : 0);
+    setGauge("provider_acceptance_rate", acceptanceRatePct(accepted, terminal) ?? Number.NaN);
   });
 }

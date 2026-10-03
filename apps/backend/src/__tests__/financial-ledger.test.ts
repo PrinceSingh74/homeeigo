@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import { cleanupAdversarialFixtures, dbReachable, seedAdversarialFixtures } from "./helpers/adversarial-fixtures";
+import { bookingService } from "../services/booking.service";
+import { bookingLiveService } from "../services/booking-live.service";
 
 describe("FinancialLedgerService — double-entry rules", () => {
   const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -63,8 +66,23 @@ describe("FinancialLedgerService — double-entry rules", () => {
 });
 
 describe("Booking lifecycle — single source of truth", () => {
-  test("WS complete must delegate to bookingService.complete (contract)", () => {
-    // Verified by refactor: booking-live.service.completeBooking calls bookingService.complete
-    expect(true).toBe(true);
-  });
+  test("WS complete delegates to bookingService.complete with UNKNOWN coordinates preserved as null", async () => {
+    // Used to be `expect(true).toBe(true)` with a comment saying the refactor was verified by hand.
+    // The vendor→provider resolution is a real DB read, so this needs the fixture partner.
+    if (!(await dbReachable())) return;
+    const RUN = `fl-${Date.now().toString(36)}`;
+    const ctx = await seedAdversarialFixtures(RUN);
+    const complete = spyOn(bookingService, "complete").mockResolvedValue({
+      booking: { id: "bk_ws" },
+      newlyCompleted: true,
+    } as never);
+    try {
+      await bookingLiveService.completeBooking("bk_ws", ctx.vendorUserId, { notes: "done" });
+      expect(complete).toHaveBeenCalledTimes(1);
+      expect(complete.mock.calls[0]?.slice(0, 5)).toEqual([ctx.providerId, "bk_ws", null, null, "done"]);
+    } finally {
+      complete.mockRestore();
+      await cleanupAdversarialFixtures(RUN);
+    }
+  }, 60_000);
 });

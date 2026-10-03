@@ -22,9 +22,9 @@ function SuccessContent() {
           1–2 business days.
         </p>
 
-        <div className="mt-6 rounded-lg border border-partner-primary/30 bg-partner-primary/10 px-4 py-3 text-left text-sm">
-          <p className="font-medium text-partner-primary">What happens next?</p>
-          <p className="mt-1 text-[var(--color-partner-muted)]">
+        <div className="mt-6 rounded-lg border border-partner-primary/30 bg-white px-4 py-3 text-left text-sm">
+          <p className="font-medium text-[#1e3a8a]">What happens next?</p>
+          <p className="mt-1 text-slate-700">
             You will receive an email when your application is approved. Until then, sign-in is
             disabled for new partner accounts.
           </p>

@@ -39,10 +39,12 @@ export type CityCoverageSummary = {
   areaCount: number;
   pincodeCount: number;
   societyCount: number;
-  activePartners: number;
-  customers: number;
-  servicesCompleted: number;
-  fulfillmentRate: number;
+  /** null = UNMEASURED. There is no seeded baseline behind these any more. */
+  activePartners: number | null;
+  customers: number | null;
+  servicesCompleted: number | null;
+  /** null = UNMEASURED. See deriveCitySummary — this metric has no agreed definition. */
+  fulfillmentRate: number | null;
   coverageScore: number;
 };
 
@@ -52,16 +54,25 @@ export type AreaCoverage = {
   status: CoverageStatus;
   pincodes: string[];
   societyCount: number;
-  activePartners: number;
-  density: DensityLevel;
-  avgArrivalMins: number;
+  /**
+   * All null = UNMEASURED.
+   *
+   * Providers carry a `city` and nothing finer, so there is no authoritative source for a partner
+   * count, an arrival time or a density band at AREA granularity. These were `seededInt()` — a hash
+   * of the area name — and rendered to customers as "18 partners", "~34 mins arrival" and
+   * "High density". Geography and availability status above are real editorial data; these were not.
+   */
+  activePartners: number | null;
+  density: DensityLevel | null;
+  avgArrivalMins: number | null;
 };
 
 export type PincodeCoverage = {
   pincode: string;
   areaName: string;
   status: CoverageStatus;
-  partnerCount: number;
+  /** null = UNMEASURED. No provider is attributed to a pincode. */
+  partnerCount: number | null;
 };
 
 export type SocietyCoverage = {
@@ -69,9 +80,13 @@ export type SocietyCoverage = {
   name: string;
   areaName: string;
   status: CoverageStatus;
-  partnerCount: number;
-  avgResponseMins: number;
-  rating: number;
+  /**
+   * All null = UNMEASURED. `rating` in particular was `seeded(4.3, 4.95)` — a fabricated star
+   * rating on a trust surface, while real ratings exist per PROVIDER with no society attribution.
+   */
+  partnerCount: number | null;
+  avgResponseMins: number | null;
+  rating: number | null;
   availableServices: string[];
 };
 
@@ -82,10 +97,11 @@ export type ServiceAvailability = {
 };
 
 export type ResponseEngine = {
-  avgArrivalMins: number;
-  acceptanceRate: number;
-  completionRate: number;
-  cancellationRate: number;
+  avgArrivalMins: number | null;
+  /** All null = UNMEASURED. Rendered as an absence, never as a number. */
+  acceptanceRate: number | null;
+  completionRate: number | null;
+  cancellationRate: number | null;
 };
 
 export type CityCoverageDetail = {
@@ -106,8 +122,10 @@ export type CoverageSearchResult = {
   cityName: string;
   label: string;
   sublabel: string;
-  partnersNearby: number;
-  expectedArrivalMins: number;
+  /** null = UNMEASURED. */
+  partnersNearby: number | null;
+  /** null = UNMEASURED. The city-level arrival time is measured, not seeded, so it can be absent. */
+  expectedArrivalMins: number | null;
   availableToday: boolean;
 };
 
@@ -624,37 +642,23 @@ export function seeded(seed: string, min: number, max: number): number {
   return min + ((hashSeed(seed) % 10_000) / 10_000) * (max - min);
 }
 
-function seededInt(seed: string, min: number, max: number): number {
-  return Math.round(seeded(seed, min, max));
-}
-
-const STATUS_PARTNER_FACTOR: Record<CoverageStatus, number> = {
-  AVAILABLE: 1,
-  LIMITED: 0.45,
-  COMING_SOON: 0,
-};
-
 export function deriveAreaCoverage(city: CitySeed, area: AreaSeed): AreaCoverage {
-  const key = `${city.slug}:${area.name}`;
-  const base = city.tier === 1 ? seededInt(`${key}:p`, 24, 85) : seededInt(`${key}:p`, 10, 42);
-  const activePartners = Math.round(base * STATUS_PARTNER_FACTOR[area.status]);
   return {
-    id: key,
+    id: `${city.slug}:${area.name}`,
     name: area.name,
     status: area.status,
     pincodes: area.pincodes,
     societyCount: area.societies.length,
-    activePartners,
-    density: activePartners >= 45 ? "HIGH" : activePartners >= 18 ? "MEDIUM" : "LOW",
-    avgArrivalMins:
-      area.status === "COMING_SOON" ? 0 : seededInt(`${key}:eta`, 22, area.status === "LIMITED" ? 55 : 42),
+    // Unmeasurable at this granularity — see AreaCoverage. Status and geography carry the page.
+    activePartners: null,
+    density: null,
+    avgArrivalMins: null,
   };
 }
 
 export function derivePincodes(city: CitySeed): PincodeCoverage[] {
   const seen = new Map<string, PincodeCoverage>();
   for (const area of city.areas) {
-    const areaCov = deriveAreaCoverage(city, area);
     for (const pin of area.pincodes) {
       const existing = seen.get(pin);
       // A pincode shared by areas takes the best status among them.
@@ -663,7 +667,8 @@ export function derivePincodes(city: CitySeed): PincodeCoverage[] {
           pincode: pin,
           areaName: area.name,
           status: area.status,
-          partnerCount: Math.max(existing?.partnerCount ?? 0, Math.round(areaCov.activePartners * seeded(`${city.slug}:${pin}`, 0.4, 0.9))),
+          // No provider is attributed to a pincode, so there is nothing to count here.
+          partnerCount: null,
         });
       }
     }
@@ -681,8 +686,6 @@ export function deriveSocieties(city: CitySeed, serviceNames?: string[]): Societ
   for (const area of city.areas) {
     for (const society of area.societies) {
       const key = `${city.slug}:${area.name}:${society}`;
-      const partnerCount =
-        area.status === "COMING_SOON" ? 0 : seededInt(`${key}:p`, area.status === "LIMITED" ? 3 : 8, area.status === "LIMITED" ? 14 : 40);
       // Deterministic per-society service subset (COMING_SOON societies expose none).
       const availableServices =
         area.status === "COMING_SOON"
@@ -693,9 +696,16 @@ export function deriveSocieties(city: CitySeed, serviceNames?: string[]): Societ
         name: society,
         areaName: area.name,
         status: area.status,
-        partnerCount,
-        avgResponseMins: area.status === "COMING_SOON" ? 0 : seededInt(`${key}:rt`, 20, area.status === "LIMITED" ? 60 : 45),
-        rating: area.status === "COMING_SOON" ? 0 : Math.round(seeded(`${key}:r`, 4.3, 4.95) * 10) / 10,
+        /**
+         * Unmeasurable at society granularity — see SocietyCoverage.
+         *
+         * `rating` was the worst of these: a seeded 4.3-4.95 star rating beside a society name, on a
+         * surface customers read as social proof. Real ratings exist per provider and nothing maps a
+         * provider to a society, so there is no honest number to show here at all.
+         */
+        partnerCount: null,
+        avgResponseMins: null,
+        rating: null,
         availableServices,
       });
     }
@@ -725,42 +735,69 @@ export function deriveServiceAvailability(
   });
 }
 
-export function deriveResponseEngine(city: CitySeed): ResponseEngine {
-  const key = `${city.slug}:engine`;
+/**
+ * ── acceptanceRate is measured or absent, never seeded ───────────────────────
+ *
+ * This returned `seeded(91, 98)` — a deterministic number between 91 and 98 with no connection to
+ * any dispatch that ever happened — and `apps/web` renders it to customers as
+ * "Booking Acceptance: 94.3%". `CityLiveOverrides` carried activePartners, customers and
+ * servicesCompleted, so those got real values; acceptanceRate was never in that list and so could
+ * never be corrected by live data. It was a permanent fabrication on a public page.
+ *
+ * It now comes from the same measurement the provider column uses (lib/acceptance-rate.ts: ACCEPTED
+ * over ACCEPTED+REJECTED+TIMEOUT, 30-day window) and is `null` when that sample is empty. A city
+ * with no dispatch history has an unknown acceptance rate, which is a fact; 94.3% is not.
+ *
+ * The other three figures were seeded the same way and are now measured the same way.
+ * `completionRate` and `cancellationRate` come from the shared definition in
+ * lib/fulfillment-rates.ts — the one the executive dashboard uses — so a city page and a KPI panel
+ * cannot disagree about what "completion rate" means. `avgArrivalMins` is the mean recorded ETA for
+ * the city's bookings. Each is null when there is nothing to measure.
+ */
+export function deriveResponseEngine(_city: CitySeed, live?: CityLiveOverrides): ResponseEngine {
   return {
-    avgArrivalMins: seededInt(`${key}:eta`, 24, city.tier === 1 ? 34 : 44),
-    acceptanceRate: Math.round(seeded(`${key}:acc`, 91, 98) * 10) / 10,
-    completionRate: Math.round(seeded(`${key}:comp`, 96.5, 99.4) * 10) / 10,
-    cancellationRate: Math.round(seeded(`${key}:can`, 0.6, 2.8) * 10) / 10,
+    avgArrivalMins: live?.avgArrivalMins ?? null,
+    acceptanceRate: live?.acceptanceRate ?? null,
+    completionRate: live?.completionRate ?? null,
+    cancellationRate: live?.cancellationRate ?? null,
   };
 }
 
+/**
+ * Coverage from declared availability alone.
+ *
+ * Forty percent of this score used to come from a seeded partner count — a hash of the area name
+ * scaled against a tier threshold. That made the score itself a fabrication, and it is displayed as
+ * a percentage. What remains is the one thing this module genuinely knows: how much of the city has
+ * been declared AVAILABLE, LIMITED or COMING_SOON. Rescaled to 0-100 so the number still means what
+ * its label says.
+ */
 export function deriveCoverageScore(city: CitySeed): number {
   const areas = city.areas;
   const available = areas.filter((a) => a.status === "AVAILABLE").length;
   const limited = areas.filter((a) => a.status === "LIMITED").length;
-  const areaScore = ((available + limited * 0.5) / Math.max(1, areas.length)) * 60;
-  const partners = areas.reduce((sum, a) => sum + deriveAreaCoverage(city, a).activePartners, 0);
-  const densityScore = Math.min(1, partners / (city.tier === 1 ? 300 : 120)) * 40;
-  return Math.round(areaScore + densityScore);
+  return Math.round(((available + limited * 0.5) / Math.max(1, areas.length)) * 100);
 }
 
 export type CityLiveOverrides = {
   activePartners?: number;
   customers?: number;
   servicesCompleted?: number;
+  /**
+   * Measured operational figures for this city, or `null` when there is nothing to measure.
+   * Never seeded — see `deriveResponseEngine`.
+   */
+  acceptanceRate?: number | null;
+  completionRate?: number | null;
+  cancellationRate?: number | null;
+  avgArrivalMins?: number | null;
   /** Admin-managed operational status; supersedes the derived (seed) status. */
   statusOverride?: CoverageStatus;
 };
 
 export function deriveCitySummary(city: CitySeed, live?: CityLiveOverrides): CityCoverageSummary {
-  const areaCovs = city.areas.map((a) => deriveAreaCoverage(city, a));
-  const baselinePartners = areaCovs.reduce((sum, a) => sum + a.activePartners, 0);
   const pincodeCount = new Set(city.areas.flatMap((a) => a.pincodes)).size;
   const societyCount = city.areas.reduce((sum, a) => sum + a.societies.length, 0);
-  const ageYears = Math.max(1, new Date().getFullYear() - city.launchedYear + 1);
-  const baselineCustomers = seededInt(`${city.slug}:cust`, 4000, city.tier === 1 ? 16000 : 8000) * ageYears;
-  const baselineCompleted = Math.round(baselineCustomers * seeded(`${city.slug}:freq`, 1.6, 3.2));
   const anyAvailable = city.areas.some((a) => a.status === "AVAILABLE");
   const anyLimited = city.areas.some((a) => a.status !== "COMING_SOON");
   return {
@@ -772,11 +809,30 @@ export function deriveCitySummary(city: CitySeed, live?: CityLiveOverrides): Cit
     areaCount: city.areas.length,
     pincodeCount,
     societyCount,
-    activePartners: live?.activePartners && live.activePartners > 0 ? live.activePartners : baselinePartners,
-    customers: live?.customers && live.customers > 0 ? live.customers : baselineCustomers,
-    servicesCompleted:
-      live?.servicesCompleted && live.servicesCompleted > 0 ? live.servicesCompleted : baselineCompleted,
-    fulfillmentRate: Math.round(seeded(`${city.slug}:ful`, 98.2, 99.6) * 10) / 10,
+    /**
+     * ── A measured zero is a measurement ────────────────────────────────────
+     *
+     * These read `live?.x && live.x > 0 ? live.x : baseline`, so a real count of ZERO fell through
+     * to the seeded baseline. Measured against the database, Delhi had 0 partners and 0 completed
+     * bookings and this published "250 verified partners", "30,267 customers" and "70,389 services
+     * completed" to customers. 590 providers exist platform-wide and 18 of them have a city set, so
+     * ten of the eleven cities on this page were publishing invented operating history.
+     *
+     * The aggregates are authoritative, including when they are zero. A city Homigo has not launched
+     * in reports nothing, which is what the COMING_SOON status is for.
+     */
+    activePartners: live?.activePartners ?? null,
+    customers: live?.customers ?? null,
+    servicesCompleted: live?.servicesCompleted ?? null,
+    /**
+     * OWNER_DECISION_REQUIRED — "Service Fulfillment" has no definition.
+     *
+     * It was `seeded(98.2, 99.6)`. It is a third label alongside completionRate and
+     * cancellationRate with no distinct authoritative meaning, so it is reported as unmeasured
+     * rather than quietly aliased onto the completion rate — showing one number under two labels
+     * would be its own kind of misleading.
+     */
+    fulfillmentRate: null,
     coverageScore: deriveCoverageScore(city),
   };
 }
@@ -792,7 +848,7 @@ export function deriveCityDetail(
     pincodes: derivePincodes(city),
     societies,
     services: deriveServiceAvailability(city, opts?.services),
-    responseEngine: deriveResponseEngine(city),
+    responseEngine: deriveResponseEngine(city, opts?.live),
     generatedAt: new Date().toISOString(),
   };
 }
@@ -868,9 +924,6 @@ export function searchCoverage(rawQuery: string, limit = 12): CoverageSearchResu
       }
       for (const society of area.societies) {
         if (society.toLowerCase().includes(q)) {
-          const key = `${city.slug}:${area.name}:${society}`;
-          const partners =
-            area.status === "COMING_SOON" ? 0 : seededInt(`${key}:p`, area.status === "LIMITED" ? 3 : 8, area.status === "LIMITED" ? 14 : 40);
           push({
             type: "SOCIETY",
             covered: area.status !== "COMING_SOON",
@@ -879,8 +932,10 @@ export function searchCoverage(rawQuery: string, limit = 12): CoverageSearchResu
             cityName: city.name,
             label: society,
             sublabel: `${area.name}, ${city.name}`,
-            partnersNearby: partners,
-            expectedArrivalMins: area.status === "COMING_SOON" ? 0 : seededInt(`${key}:rt`, 20, 45),
+            // No provider is attributed to a society.
+            partnersNearby: null,
+            // Unmeasurable per society; the city-level figure is the only measured arrival time.
+            expectedArrivalMins: null,
             availableToday: area.status === "AVAILABLE",
           });
         }

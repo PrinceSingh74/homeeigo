@@ -17,6 +17,7 @@ import { openBook } from "@/lib/navigation";
 import { useWalletBalanceQuery } from "@/hooks/use-core-data";
 import { formatINR } from "@/lib/wallet-mobile-data";
 import { shadowStyles } from "@/lib/colors";
+import { useAuthStore } from "@/stores/auth-store";
 
 const WALLET_IMG = require("../../assets/wallet-3d.png");
 
@@ -25,6 +26,17 @@ const STAGE = width - 48;
 const BANNER_W = STAGE * 0.6;
 const SIDE_W = STAGE * 0.4 - 10;
 
+const BAR_MAX = 18;
+const BAR_MIN = 4;
+
+/**
+ * Seven endless bar animations. They used to animate `height`, which the native driver cannot do, so
+ * every frame of all seven ran on the JS thread and re-laid out the tree — and the Home tab stays
+ * mounted under every other screen. On the emulator the JS thread sat near 100 % on Home and on the
+ * live-tracking map opened from Home, and at 0–8 % on the same map with Home never mounted; these
+ * were the only JS-driven endless loops on Home. The bars now scale on the UI thread (scaleY,
+ * anchored at the bottom with a matching translateY) — same look.
+ */
 function Waveform() {
   const bars = [0.35, 0.7, 0.5, 1, 0.6, 0.4, 0.8];
   const anims = useRef(bars.map((h) => new Animated.Value(h))).current;
@@ -38,13 +50,13 @@ function Waveform() {
             duration: 420,
             delay: i * 70,
             easing: Easing.inOut(Easing.ease),
-            useNativeDriver: false,
+            useNativeDriver: true,
           }),
           Animated.timing(val, {
             toValue: bars[i] * 0.5,
             duration: 420,
             easing: Easing.inOut(Easing.ease),
-            useNativeDriver: false,
+            useNativeDriver: true,
           }),
         ]),
       ),
@@ -58,11 +70,17 @@ function Waveform() {
       {anims.map((val, i) => (
         <Animated.View
           key={i}
+          testID="waveform-bar"
           style={{
             width: 3,
+            height: BAR_MAX,
             borderRadius: 2,
             backgroundColor: "#34d399",
-            height: val.interpolate({ inputRange: [0, 1], outputRange: [4, 18] }),
+            transform: [
+              // keep the bottom edge fixed while the bar scales about its centre
+              { translateY: val.interpolate({ inputRange: [0, 1], outputRange: [(BAR_MAX - BAR_MIN) / 2, 0] }) },
+              { scaleY: val.interpolate({ inputRange: [0, 1], outputRange: [BAR_MIN / BAR_MAX, 1] }) },
+            ],
           }}
         />
       ))}
@@ -70,10 +88,17 @@ function Waveform() {
   );
 }
 
+/** The signed-in customer's first name, never an invented one ("Hi Arjun!" was shown to everyone). */
+export function bannerGreeting(firstName: string | null | undefined): string {
+  const name = firstName?.trim();
+  return name ? `Hi ${name}! 👋` : "Hi there! 👋";
+}
+
 export const FeatureBanner: React.FC = () => {
   const router = useRouter();
   const { colors: themeColors } = useTheme();
   const { data: walletData } = useWalletBalanceQuery();
+  const firstName = useAuthStore((s) => s.user?.firstName ?? null);
   const float = useRef(new Animated.Value(0)).current;
   const trail = useRef(new Animated.Value(0)).current;
 
@@ -177,7 +202,7 @@ export const FeatureBanner: React.FC = () => {
             style={[styles.miniCard, shadowStyles.glowPrimary]}
           >
             <View style={styles.miniTop}>
-              <Text style={styles.miniGreet}>Hi Arjun! 👋</Text>
+              <Text style={styles.miniGreet}>{bannerGreeting(firstName)}</Text>
               <View style={styles.botOrb}>
                 <Sparkles size={14} color="#fff" />
               </View>

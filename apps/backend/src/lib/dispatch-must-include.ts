@@ -1,84 +1,53 @@
 import { normalizeEmail, normalizePhone } from "./pii-normalize";
+import { devAffordancesAllowed } from "./deployed-environment";
 
 /**
- * Customer → partner phone pins for dispatch.
+ * Customer → partner dispatch PREFERENCE, for local development and test runs only.
  *
- * Location-qualified partners still receive the broadcast offer. These partners
- * are force-included at the front of the offer list so they cannot be dropped
- * by distance, presence freshness, ranking cutoff, or offline matching.
+ * W2-D2. This module used to be a bypass, not a preference:
  *
- * Override with DISPATCH_MUST_INCLUDE JSON:
- *   {"customer@email.com":["+919876543211"]}
+ *   * it shipped a hardcoded default mapping a personal e-mail (and a typo'd copy of it) to a
+ *     personal phone number, active on every host including production;
+ *   * a pinned partner was never matched — it was SYNTHESISED with a score of 10,000, pushed to the
+ *     front, and forced dispatch into broadcast mode;
+ *   * at offer time it could skip OFFLINE, PAUSED, STALE_PRESENCE, STALE_LOCATION,
+ *     OUTSIDE_SERVICE_AREA, NO_CAPACITY, CAPACITY_LIMIT, CONFLICT and SKILL_MISMATCH;
+ *   * at accept time it WROTE a fresh heartbeat and location timestamp for a stale partner;
+ *   * at arrive/start it substituted the job address for the partner's GPS, so a partner who was
+ *     nowhere near the job could still be recorded as arrived.
+ *
+ * What it is now, and nothing more:
+ *
+ *   * **No default.** The mapping comes only from `DISPATCH_MUST_INCLUDE`; there is no fallback.
+ *   * **Never on a deployed host.** `devAffordancesAllowed()` is false for production and staging,
+ *     and a pin there resolves to nothing, whatever the environment variable says.
+ *   * **Soft preference only.** A pinned partner is moved to the front of the list ONLY if they are
+ *     already in it — that is, only if they passed every hard gate matching applies. A partner who
+ *     failed a gate is not offered, pinned or not. Nothing is bypassed and nothing is fabricated.
+ *
+ * Override (development/test only):
+ *   DISPATCH_MUST_INCLUDE='{"customer@example.test":["+919800000000"]}'
  */
-export const DEFAULT_DISPATCH_MUST_INCLUDE: Record<string, string[]> = {
-  "princesingh40343@gmail.com": ["+919876543211"],
-  "princesingh40343@gamil.com": ["+919876543211"],
-};
-
-/** Offer-time gates that a pinned partner may skip. Lifecycle / ban / approval still apply. */
-export const MUST_INCLUDE_BYPASS_BLOCKS = new Set([
-  "OFFLINE",
-  "PAUSED",
-  "STALE_PRESENCE",
-  "STALE_LOCATION",
-  "LOCATION_INVALID",
-  "NOT_AVAILABLE",
-  "SCHEDULE_BLOCKED",
-  "OUTSIDE_WORKING_HOURS",
-  "BREAK_ACTIVE",
-  "OUTSIDE_SERVICE_AREA",
-  "LOCATION_REQUIRED",
-  "NO_CAPACITY",
-  "CAPACITY_LIMIT",
-  "CONFLICT",
-  "SKILL_MISMATCH",
-]);
-
-/**
- * When a pinned partner's GPS is missing or outside the arrival radius,
- * substitute the job address so Arrive/Start can proceed. Unpinned partners
- * still fail with the original proximity error.
- */
-export function applyMustIncludeProximityBypass(opts: {
-  ok: boolean;
-  error?: string | null;
-  pinned: boolean;
-  latitude: number;
-  longitude: number;
-  jobLatitude?: number | null;
-  jobLongitude?: number | null;
-}): { ok: true; latitude: number; longitude: number } | { ok: false; error: string } {
-  if (opts.ok) return { ok: true, latitude: opts.latitude, longitude: opts.longitude };
-  const code = opts.error ?? "LOCATION_REQUIRED";
-  if (!opts.pinned || !canBypassMustIncludeBlock(code)) {
-    return { ok: false, error: code };
-  }
-  const jobLat = opts.jobLatitude;
-  const jobLng = opts.jobLongitude;
-  if (
-    jobLat != null &&
-    jobLng != null &&
-    Number.isFinite(jobLat) &&
-    Number.isFinite(jobLng) &&
-    !(jobLat === 0 && jobLng === 0)
-  ) {
-    return { ok: true, latitude: jobLat, longitude: jobLng };
-  }
-  return { ok: true, latitude: opts.latitude, longitude: opts.longitude };
-}
+export const DEFAULT_DISPATCH_MUST_INCLUDE: Readonly<Record<string, string[]>> = Object.freeze({});
 
 export function canonicalDispatchEmail(email: string): string {
-  return normalizeEmail(email)
-    .replace(/@gamil\.com$/, "@gmail.com")
-    .replace(/@gmial\.com$/, "@gmail.com");
+  return normalizeEmail(email);
 }
 
+/**
+ * Parse the pin map. Returns an EMPTY map on any deployed host, and when the variable is absent or
+ * malformed. There is deliberately no fallback mapping: a missing configuration must mean "no
+ * preference", never "someone's hardcoded preference".
+ */
 export function parseDispatchMustInclude(
   raw: string | undefined,
-  fallback: Record<string, string[]> = DEFAULT_DISPATCH_MUST_INCLUDE,
+  opts: { allowed?: boolean } = {},
 ): Map<string, string[]> {
-  const source = parseJsonPins(raw) ?? fallback;
   const map = new Map<string, string[]>();
+  const allowed = opts.allowed ?? devAffordancesAllowed();
+  if (!allowed) return map;
+  const source = parseJsonPins(raw);
+  if (!source) return map;
   for (const [email, phones] of Object.entries(source)) {
     if (!email || !Array.isArray(phones)) continue;
     const key = canonicalDispatchEmail(email);
@@ -108,20 +77,20 @@ export function mustIncludePhonesForEmail(
   return pins.get(canonicalDispatchEmail(email)) ?? [];
 }
 
-export function mergeMustIncludeFront<T extends { providerId: string }>(
-  eligible: T[],
-  mustInclude: T[],
+/**
+ * Reorder an ALREADY-ELIGIBLE, already-ranked list so pinned partners come first.
+ *
+ * The whole safety property is in what this function cannot do: it never adds a provider. A pinned
+ * id that is not present in `ranked` stays absent, because its absence means it failed a hard gate
+ * — offline, stale, out of area, at capacity, double-booked, or without the skill. Order within the
+ * pinned group and within the rest is preserved, so the result stays deterministic.
+ */
+export function preferPinnedAmongEligible<T extends { providerId: string }>(
+  ranked: readonly T[],
+  pinnedIds: ReadonlySet<string>,
 ): T[] {
-  const seen = new Set<string>();
-  const out: T[] = [];
-  for (const row of [...mustInclude, ...eligible]) {
-    if (seen.has(row.providerId)) continue;
-    seen.add(row.providerId);
-    out.push(row);
-  }
-  return out;
-}
-
-export function canBypassMustIncludeBlock(code: string | null | undefined): boolean {
-  return Boolean(code && MUST_INCLUDE_BYPASS_BLOCKS.has(code));
+  if (pinnedIds.size === 0) return [...ranked];
+  const pinned = ranked.filter((m) => pinnedIds.has(m.providerId));
+  const rest = ranked.filter((m) => !pinnedIds.has(m.providerId));
+  return [...pinned, ...rest];
 }

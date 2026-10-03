@@ -5,6 +5,7 @@ global:
 rule_files:
   - /etc/prometheus/rules/homigo-alerts.yml
   - /etc/prometheus/rules/homigo-enterprise-alerts.yml
+  - /etc/prometheus/rules/homigo-agent-alerts.yml
 
 scrape_configs:
   - job_name: homigo-backend
@@ -16,15 +17,17 @@ scrape_configs:
         target_label: instance
         replacement: homigo-api
 
-  - job_name: homigo-ready
-    metrics_path: /ready
-    scrape_interval: 30s
-    static_configs:
-      - targets: ["backend:3000"]
+  # NOTE: there is deliberately no scrape job for /ready.
+  #
+  # /ready returns application/json (an orchestrator probe), not Prometheus text format, so a scrape
+  # of it fails with "received unsupported Content-Type" on every attempt. A job pointed at it is a
+  # target that is permanently down — which is worse than no job, because it trains people to ignore
+  # target-down alerts, and target-down is exactly the signal that matters here: this stack scraped a
+  # nonexistent port for months and nobody noticed.
+  #
+  # If readiness needs to be alertable, the boot/integration checks in /ready have to be exposed as
+  # metrics on /metrics. That is an exposition change, not a scrape-config change.
 
-  # Host-level metrics (disk / CPU / memory pressure alerts). Deploy a
-  # node_exporter sidecar/daemonset; rules DiskPressure/CpuPressure/MemoryPressureNode
-  # depend on this job. Safe to leave: if absent, those alerts simply never fire.
   - job_name: node
     static_configs:
       - targets: ["node-exporter:9100"]

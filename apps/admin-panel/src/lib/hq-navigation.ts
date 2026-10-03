@@ -11,7 +11,6 @@ import {
   Brain,
   CalendarCheck,
   CheckCircle,
-  ClipboardList,
   Clock,
   CloudSun,
   Coins,
@@ -57,6 +56,7 @@ import {
   Wallet,
   Workflow,
   Wrench,
+  ClipboardList,
 } from "lucide-react";
 import type { Icon3DTone } from "@/components/hq/Icon3D";
 
@@ -127,7 +127,7 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     icon: Rocket,
     iconTone: "default",
     dashboardHref: "/hq/operations",
-    description: "Mission control, live ops, availability, and geo intelligence.",
+    description: "Mission control, live jobs, partner availability, coverage, and geo intelligence — each number is labelled so you know what it means.",
     accent: "blue",
     items: [
       { href: "/command-center", label: "Command Center", icon: Gauge },
@@ -274,6 +274,7 @@ export const HQ_SECTIONS: readonly HqSection[] = [
       { href: "/finance/integrity", label: "Integrity", icon: ShieldCheck },
       { href: "/finance/validation", label: "Validation", icon: CheckCircle },
       { href: "/compliance", label: "Compliance", icon: Scale },
+      { href: "/cases", label: "Cases", icon: ClipboardList },
       { href: "/trust-safety", label: "Trust & Safety", icon: ShieldCheck },
       { href: "/trust-safety/compliance", label: "Partner Compliance", icon: Scale },
       { href: "/trust-safety/risk", label: "Partner Risk", icon: ShieldAlert },
@@ -368,6 +369,7 @@ export const HQ_SECTIONS: readonly HqSection[] = [
     accent: "zinc",
     items: [
       { href: "/settings", label: "Settings", icon: Settings },
+      { href: "/team", label: "Team & roles", icon: ShieldCheck },
       { href: "/finance/migrations", label: "Migrations", icon: Database },
       { href: "/support", label: "Support", icon: Headphones },
     ],
@@ -441,6 +443,7 @@ export const NAV_ITEM_HINTS: Record<string, string> = {
   "/finance/integrity": "Ledger integrity checks",
   "/finance/validation": "Finance validation gates",
   "/compliance": "Policy and compliance status",
+  "/cases": "Complaint and warranty-claim cases",
   "/trust-safety": "Trust operations overview",
   "/trust-safety/compliance": "Partner compliance posture",
   "/trust-safety/risk": "Partner risk scores",

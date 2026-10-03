@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import prisma from "../lib/prisma";
+import { partnerAcquisitionEvents } from "./partner-acquisition-events.service";
 
 const UPLOAD_DIR =
   process.env.FILE_UPLOAD_DIR ||
@@ -50,6 +51,7 @@ export class DocumentUploadService {
     file: Buffer,
     fileName: string,
     documentType: string,
+    meta?: { expiryDate?: Date | null; issuer?: string | null; issueDate?: Date | null },
   ): Promise<{ documentId: string; documentUrl: string }> {
     if (file.length > MAX_FILE_SIZE) {
       throw new Error("File exceeds maximum size (5MB)");
@@ -83,6 +85,9 @@ export class DocumentUploadService {
         fileSize: file.length,
         fileFormat,
         uploadStatus: "uploaded",
+        expiryDate: meta?.expiryDate ?? null,
+        issuer: meta?.issuer ?? null,
+        issueDate: meta?.issueDate ?? null,
       },
     });
 
@@ -98,12 +103,47 @@ export class DocumentUploadService {
         id: true,
         documentType: true,
         documentName: true,
-        documentUrl: true,
         fileSize: true,
         fileFormat: true,
         uploadStatus: true,
         uploadedAt: true,
         isVerified: true,
+        expiryDate: true,
+        issuer: true,
+        issueDate: true,
+      },
+    });
+  }
+
+  async setDocumentMeta(
+    documentId: string,
+    actor: { userId?: string; admin?: boolean },
+    meta: { expiryDate?: Date | null; issuer?: string | null; issueDate?: Date | null },
+  ) {
+    const doc = await prisma.providerDocument.findUnique({
+      where: { id: documentId },
+      include: { provider: { select: { userId: true } } },
+    });
+    if (!doc) throw new Error("NOT_FOUND:Document not found");
+    if (!actor.admin && doc.provider.userId !== actor.userId) {
+      throw new Error("FORBIDDEN:You do not own this document");
+    }
+    // A verified document's facts are what the admin verified. The partner may not rewrite them
+    // (e.g. push the expiry out) while `isVerified` stays true — upload a new document instead.
+    if (!actor.admin && doc.isVerified) {
+      const sameDate = (a: Date | null, b: Date | null | undefined) => b === undefined || (a?.getTime() ?? null) === (b?.getTime() ?? null);
+      const unchanged =
+        sameDate(doc.expiryDate, meta.expiryDate) &&
+        sameDate(doc.issueDate, meta.issueDate) &&
+        (meta.issuer === undefined || (doc.issuer ?? null) === (meta.issuer ?? null));
+      if (!unchanged) throw new Error("DOCUMENT_LOCKED:A verified document cannot be edited; upload a new document");
+    }
+    return prisma.providerDocument.update({
+      where: { id: documentId },
+      data: {
+        expiryDate: meta.expiryDate === undefined ? undefined : meta.expiryDate,
+        issuer: meta.issuer === undefined ? undefined : meta.issuer,
+        issueDate: meta.issueDate === undefined ? undefined : meta.issueDate,
       },
     });
   }
@@ -129,18 +169,36 @@ export class DocumentUploadService {
     return fs.existsSync(filePath) ? filePath : null;
   }
 
-  async verifyDocument(documentId: string, adminId: string, notes?: string) {
-    return prisma.providerDocument.update({
+  async verifyDocument(
+    documentId: string,
+    adminId: string,
+    notes?: string,
+    meta?: { expiryDate?: Date | null; issuer?: string | null; issueDate?: Date | null },
+  ) {
+    const doc = await prisma.providerDocument.update({
       where: { id: documentId },
-      data: { isVerified: true, verifiedAt: new Date(), verificationNotes: notes ?? null },
+      data: {
+        isVerified: true,
+        verifiedAt: new Date(),
+        verificationNotes: notes ?? null,
+        expiryDate: meta?.expiryDate === undefined ? undefined : meta.expiryDate,
+        issuer: meta?.issuer === undefined ? undefined : meta.issuer,
+        issueDate: meta?.issueDate === undefined ? undefined : meta.issueDate,
+      },
     });
+    await partnerAcquisitionEvents.emitKycVerified(doc.providerId, adminId).catch(() => undefined);
+    const { partnerReferralService } = await import("./partner-referral.service");
+    void partnerReferralService.onVerified(doc.providerId).catch(() => undefined);
+    return doc;
   }
 
   async rejectDocument(documentId: string, reason: string) {
-    return prisma.providerDocument.update({
+    const doc = await prisma.providerDocument.update({
       where: { id: documentId },
       data: { isVerified: false, uploadStatus: "rejected", verificationNotes: reason },
     });
+    await partnerAcquisitionEvents.emitKycRejected(doc.providerId, reason).catch(() => undefined);
+    return doc;
   }
 
   async listAllPending(limit = 50) {

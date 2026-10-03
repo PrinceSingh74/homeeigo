@@ -71,7 +71,24 @@ export async function cancelUpcomingBookings(token: string) {
   }
 }
 
-export async function ensureDefaultAddress(token: string) {
+export async function ensureDefaultAddress(
+  token: string,
+  place: {
+    addressLine1: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    latitude: number;
+    longitude: number;
+  } = {
+    addressLine1: "Sector 49, Gurugram",
+    city: "Gurugram",
+    state: "Haryana",
+    zipCode: "122018",
+    latitude: 28.4595,
+    longitude: 77.0266,
+  },
+) {
   const res = await fetch(`${API}/api/users/addresses`, {
     method: "POST",
     headers: {
@@ -80,13 +97,8 @@ export async function ensureDefaultAddress(token: string) {
     },
     body: JSON.stringify({
       label: "Home",
-      addressLine1: "Sector 49, Gurugram",
       addressLine2: "E2E test address",
-      city: "Gurugram",
-      state: "Haryana",
-      zipCode: "122018",
-      latitude: 28.4595,
-      longitude: 77.0266,
+      ...place,
     }),
   });
   if (!res.ok) throw new Error(`address create failed: ${res.status} ${await res.text()}`);
@@ -192,19 +204,43 @@ export async function fillOtp(page: Page, otp: string) {
   }
 }
 
-export async function confirmBookingAndWait(page: Page) {
+function isBookingCreateResponse(r: { request: () => { method: () => string }; url: () => string; ok: () => boolean }) {
+  if (r.request().method() !== "POST" || !r.ok()) return false;
+  try {
+    const path = new URL(r.url()).pathname.replace(/\/$/, "");
+    return path.endsWith("/api/bookings");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * /book only enables "Confirm" once a server-approved slot is picked (the prefilled date/time is a
+ * suggestion, not a choice). Picks the first bookable slot when none is chosen yet; the summary chip
+ * carries a clock icon, the grid slots do not.
+ */
+export async function chooseFirstBookableSlot(page: Page) {
   const confirm = page
     .getByRole("button", { name: /confirm booking securely|^confirm$/i })
     .first();
+  const chooseTime = page.getByRole("button", { name: /^choose a time/i }).first();
+  await expect(confirm.or(chooseTime)).toBeVisible({ timeout: 30_000 });
+  if (await chooseTime.isVisible()) {
+    const slot = page
+      .getByRole("button", { name: /^\d{2}:\d{2} (am|pm)$/i })
+      .filter({ hasNot: page.locator("svg") })
+      .and(page.locator(":enabled"))
+      .first();
+    await expect(slot, "no bookable slot offered for the selected day").toBeVisible({ timeout: 30_000 });
+    await slot.click();
+  }
+  return confirm;
+}
+
+export async function confirmBookingAndWait(page: Page) {
+  const confirm = await chooseFirstBookableSlot(page);
   await expect(confirm).toBeVisible({ timeout: 30_000 });
-  const bookRes = page.waitForResponse(
-    (r) =>
-      r.request().method() === "POST" &&
-      r.url().includes("/api/bookings") &&
-      !r.url().includes("/cancel") &&
-      r.ok(),
-    { timeout: 45_000 },
-  );
+  const bookRes = page.waitForResponse(isBookingCreateResponse, { timeout: 45_000 });
   const orderRes = page.waitForResponse(
     (r) =>
       r.request().method() === "POST" &&
@@ -238,6 +274,7 @@ export async function mockRazorpayCheckout(page: Page) {
   );
 
   await page.addInitScript((base: string) => {
+    (window as unknown as { __HOMIGO_E2E_RAZORPAY_MOCK?: boolean }).__HOMIGO_E2E_RAZORPAY_MOCK = true;
     async function signPayment(orderId: string, paymentId: string): Promise<string> {
       let lastErr = "unknown";
       for (let attempt = 0; attempt < 6; attempt++) {
