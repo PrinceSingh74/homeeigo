@@ -151,9 +151,10 @@ describe("ObjectStorageService against a real process env", () => {
       send.mockRejectedValueOnce(Object.assign(new Error("denied"), { name: "AccessDenied", $metadata: { httpStatusCode: 403 } }));
       const err = await objectStorageService.headObject("chargeback-evidence", "abc").then(() => null, (e: unknown) => e);
       expect((err as StorageError).code).toBe("STORAGE_ACCESS_DENIED");
-      // The declared test bucket is namespaced by the test database.
+      // The declared test bucket is namespaced by the test database (whatever DATABASE_URL names).
       const key = (send.mock.calls[0]?.[0] as { input?: { Key?: string } })?.input?.Key;
-      expect(key).toMatch(/^test\/homigo_test[^/]*\/chargeback-evidence\/abc$/);
+      const dbName = process.env.DATABASE_URL?.split("/").pop()?.split("?")[0] ?? "homigo_test";
+      expect(key).toBe(`test/${dbName}/chargeback-evidence/abc`);
     } finally {
       send.mockRestore();
     }
