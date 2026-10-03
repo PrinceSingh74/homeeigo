@@ -13,7 +13,7 @@
   ./deploy-backend.ps1 migrate  -Tag <sha>            # prisma migrate deploy inside the image (staging DB)
   ./deploy-backend.ps1 deploy   -Tag <sha>            # start homigo-staging-backend on :3010 from that image
   ./deploy-backend.ps1 rollback -Tag <previous-sha>   # same as deploy, named for the audit trail
-  ./deploy-backend.ps1 status                         # running image, /health, /ready
+  ./deploy-backend.ps1 status                         # running image, /health, /readyz
   ./deploy-backend.ps1 stop
 
   Secrets come from deploy/local-staging/backend.env (gitignored; see backend.env.example).
@@ -83,15 +83,15 @@ switch ($Action) {
       docker logs --tail 40 $Container
       exit 1
     }
-    $ready = try { (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/ready" -TimeoutSec 5).StatusCode } catch { $_.Exception.Response.StatusCode.value__ }
-    Write-Host "[$Action] $Container running ${Image}:$Tag  health=200 ready=$ready"
+    $ready = try { (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/readyz" -TimeoutSec 5).StatusCode } catch { $_.Exception.Response.StatusCode.value__ }
+    Write-Host "[$Action] $Container running ${Image}:$Tag  health=200 readyz=$ready"
   }
   "status" {
     $img = docker ps --filter "name=^/$Container$" --format '{{.Image}} ({{.Status}})'
     if (-not $img) { Write-Host "status: $Container not running"; exit 1 }
     $h = try { (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 5).StatusCode } catch { "ERR" }
-    $r = try { (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/ready" -TimeoutSec 5).StatusCode } catch { $_.Exception.Response.StatusCode.value__ }
-    Write-Host "status: $img health=$h ready=$r"
+    $r = try { (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/readyz" -TimeoutSec 5).StatusCode } catch { $_.Exception.Response.StatusCode.value__ }
+    Write-Host "status: $img health=$h readyz=$r"
   }
   "stop" { docker rm -f $Container | Out-Null; Write-Host "stopped $Container" }
 }
