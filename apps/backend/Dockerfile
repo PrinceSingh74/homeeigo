@@ -17,6 +17,8 @@ COPY package.json bun.lock tsconfig.json ./
 COPY prisma ./prisma
 RUN bunx prisma generate
 COPY src ./src
+# analytics/ sits beside src/ (imports like ../../analytics/...); omitting it crashes maintenance at boot.
+COPY analytics ./analytics
 
 # ---- runtime: minimal, non-root, reads $PORT (Cloud Run sets it) ----
 FROM oven/bun:1.3-slim AS runtime
@@ -26,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-cert
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/src ./src
+COPY --from=build /app/analytics ./analytics
 COPY --from=build /app/package.json ./package.json
 # tsconfig.json carries the `@/*` → `./src/*` path mapping that Bun uses to resolve imports at
 # runtime — without it the app crashes with "Cannot find module '@/...'".
