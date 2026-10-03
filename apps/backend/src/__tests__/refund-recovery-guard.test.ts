@@ -17,8 +17,13 @@ const load = (name: string): Record<string, string> => {
   const p = resolve(dir, name);
   return existsSync(p) ? parse(readFileSync(p)) : {};
 };
-/** What a `bun --env-file=.env run --watch src/index.ts` process ends up with after load-env. */
-const devServerEnv = () => ({ ...load(".env"), ...load(".env.local") });
+/**
+ * What a `bun --env-file=.env run --watch src/index.ts` process ends up with after load-env.
+ * `.env` / `.env.local` are per-machine and untracked; a clean checkout (CI, a fresh worktree) has
+ * only the shipped template, which names the same live-shaped database, so that is the file a
+ * developer's server would be loading there.
+ */
+const devServerEnv = () => ({ ...(existsSync(resolve(dir, ".env")) ? load(".env") : load(".env.example")), ...load(".env.local") });
 
 describe("refund auto-recovery guard", () => {
   test("a dev server loaded from .env / .env.local cannot enable recovery, even with the flag set in the file", () => {

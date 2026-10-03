@@ -418,6 +418,9 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       const webAudience = audienceFromRequest(request);
       if (webAudience && body.setAuthCookies !== false) appendAuthCookies(set, webAudience, refreshToken);
 
+      // A created account is 201 on both registration paths (the OTP-first branch above already
+      // answers 201); clients read `res.ok` + `success`, never the exact code.
+      set.status = 201;
       return {
         success: true,
         message: "Registration successful",

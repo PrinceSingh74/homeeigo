@@ -17,7 +17,9 @@ const load = (name: string): Record<string, string> => {
   const p = resolve(dir, name);
   return existsSync(p) ? parse(readFileSync(p)) : {};
 };
-const devServerEnv = () => ({ ...load(".env"), ...load(".env.local") });
+// `.env` is per-machine and untracked; a clean checkout (CI, a fresh worktree) has only the shipped
+// template, which names the same live-shaped database a developer's server would load there.
+const devServerEnv = () => ({ ...(existsSync(resolve(dir, ".env")) ? load(".env") : load(".env.example")), ...load(".env.local") });
 const PROD_URL = "postgresql://u:p@db.internal:5432/homigo_db";
 
 describe("maintenance target guard — decisions", () => {
