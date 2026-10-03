@@ -16,18 +16,32 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const CONTAINER = process.env.BACKUP_DOCKER_CONTAINER ?? "homigo-postgres";
-const TEST_DB = "homigo_test";
-const DEFAULT_URL = `postgresql://postgres:homigo_dev@localhost:5433/${TEST_DB}`;
+const DEFAULT_TEST_DB = "homigo_test";
+const DEFAULT_URL = `postgresql://postgres:homigo_dev@localhost:5433/${DEFAULT_TEST_DB}`;
 const MIGRATIONS = join(import.meta.dir, "..", "prisma", "migrations");
+
+function dbNameOf(url: string): string {
+  return url.split("/").pop()?.split("?")[0] ?? "";
+}
 
 function testDatabaseUrl(): string {
   const injected = process.env.HOMIGO_TEST_DATABASE_URL || process.env.DATABASE_URL || DEFAULT_URL;
-  const dbName = injected.split("/").pop()?.split("?")[0] ?? "";
+  const dbName = dbNameOf(injected);
   if (/test/i.test(dbName) || dbName === "homigo_p39") return injected;
   return DEFAULT_URL;
 }
 
 const TEST_URL = testDatabaseUrl();
+/**
+ * The database this script creates, drops, and configures is the one DATABASE_URL names — not a
+ * fixed "homigo_test". Measured 2026-10-03 on a clean checkout pointed at `homigo_test_clean`: the
+ * `ALTER DATABASE homigo_test SET homigo.allow_financial_purge` opt-out below went to the OTHER
+ * database, the financial-history delete guard stayed on in the one the suites used, every fixture
+ * teardown that deletes a paid booking was refused (23001), and 49 tests failed on the leftovers
+ * (duplicate booking_id, slot EXCLUDE conflicts, activity_logs FK). CI only passed because its
+ * database happens to be called homigo_test.
+ */
+const TEST_DB = dbNameOf(TEST_URL);
 
 function dockerPsql(db: string, sql: string) {
   return spawnSync("docker", ["exec", "-i", CONTAINER, "psql", "-U", "postgres", "-d", db, "-c", sql], {
@@ -390,7 +404,8 @@ console.log("   ✅ invariant constraints present");
 
 // Fixtures here are created and deleted by design. The financial-history delete guard
 // (migration 20260920090000) stays ON everywhere else; on this disposable database only, the
-// deliberate opt-out is the database default. TEST_DB is a constant ("homigo_test").
+// deliberate opt-out is the database default. TEST_DB is the database DATABASE_URL names (name must
+// contain "test", see testDatabaseUrl).
 const purge = prismaExecute(`ALTER DATABASE ${TEST_DB} SET homigo.allow_financial_purge = 'on';`);
 if (purge.status !== 0) {
   console.error(`   ❌ financial purge default: ${(purge.stderr ?? "").trim().split("\n").pop()}`);
