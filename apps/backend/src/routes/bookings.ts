@@ -1006,7 +1006,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
           body.latitude ?? null,
           body.longitude ?? null,
           body.notes,
-          { photos, completedChecklist },
+          { photos, completedChecklist, professionalConfirmed: (raw as { professionalConfirmation?: unknown })?.professionalConfirmation === true },
         );
         return {
           success: true,
@@ -1045,6 +1045,10 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
           set.status = 409;
           return { success: false, error: "Complete the service checklist before finishing this job", code, data: { verdictId: refusalVerdict?.id ?? null, verdict: refusalVerdict?.verdict ?? null } };
         }
+        if (code === "QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED") {
+          set.status = 409;
+          return { success: false, error: "Confirm the completion criteria were met before finishing this job", code, data: { verdictId: refusalVerdict?.id ?? null, verdict: refusalVerdict?.verdict ?? null } };
+        }
         // §10: the recorded verdict refused completion (REWORK_REQUIRED / FAILED / ESCALATED).
         if (err instanceof QualityVerdictError) {
           set.status = 409;
@@ -1079,6 +1083,8 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
          */
         completedChecklist: t.Optional(t.Array(t.String())),
         checklistComplete: t.Optional(t.Boolean()),
+        /** The professional's attestation, required only where the frozen quality policy asks for it. */
+        professionalConfirmation: t.Optional(t.Boolean()),
       }),
     },
   )

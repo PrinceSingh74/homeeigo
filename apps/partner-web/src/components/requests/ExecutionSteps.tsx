@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, CircleDashed, ListChecks, Lock, PlayCircle, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleDashed, HardHat, ListChecks, Lock, Package, PlayCircle, Wrench, XCircle } from "lucide-react";
+import { BriefChips } from "@/components/requests/BriefChips";
 import { apiRequest } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/api-error";
 import { fileToDataUrl } from "@/lib/file-to-data-url";
@@ -24,8 +25,22 @@ type StepView = {
   code: string; stepNumber: number; title: string; description: string | null; kind: string; mandatory: boolean; skippable: boolean;
   evidence: string; estimatedMinutes: number | null; ppe: string[]; warnings: string[]; state: string;
   blockedBy: { reason: string; detail: string[] } | null; note: string | null; reason: string | null; actions: string[];
+  /** What this step needs to hand. Absent on a server that predates the fields. */
+  materials?: string[]; equipment?: string[];
 };
-type ExecutionView = { enforced: boolean; steps: StepView[]; gate: { ok: boolean; blocking: Array<{ code: string; reason: string }> } };
+export type ExecutionView = { enforced: boolean; steps: StepView[]; gate: { ok: boolean; blocking: Array<{ code: string; reason: string }> } };
+
+export const jobExecutionKey = (bookingId: string) => ["partner", "execution", bookingId] as const;
+
+/** One fetch for the steps section and the escalation section (same key, react-query dedupes). */
+export function useJobExecution(bookingId: string, enabled = true) {
+  return useQuery({
+    queryKey: jobExecutionKey(bookingId),
+    queryFn: () => apiRequest<ApiResponse<ExecutionView>>(`/api/bookings/${bookingId}/execution`, { auth: true }).then((r) => r.data!),
+    enabled: !!bookingId && enabled,
+    staleTime: 10_000,
+  });
+}
 
 const BLOCK_LABEL: Record<string, string> = {
   BOOKING_NOT_IN_PROGRESS: "Start the job first",
@@ -42,7 +57,17 @@ function Icon({ state }: { state: string }) {
   return <CircleDashed className={`${c} text-partner-muted`} aria-hidden="true" />;
 }
 
-export function ExecutionSteps({ bookingId }: { bookingId: string }) {
+export function ExecutionSteps({
+  bookingId,
+  heading = true,
+  emptyText,
+}: {
+  bookingId: string;
+  /** The page's section heading already names this block. */
+  heading?: boolean;
+  /** Shown instead of nothing when the booking has no step plan. */
+  emptyText?: string;
+}) {
   const qc = useQueryClient();
   const showToast = useToastStore((s) => s.showToast);
   const [reasonFor, setReasonFor] = useState<{ code: string; action: "SKIP" | "FAIL" | "ESCALATE" } | null>(null);
@@ -50,12 +75,8 @@ export function ExecutionSteps({ bookingId }: { bookingId: string }) {
   // Per step: the photos picked for Done (in the plan's order: before, after) and the note.
   const [files, setFiles] = useState<Record<string, Array<File | null>>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const key = ["partner", "execution", bookingId];
-  const query = useQuery({
-    queryKey: key,
-    queryFn: () => apiRequest<ApiResponse<ExecutionView>>(`/api/bookings/${bookingId}/execution`, { auth: true }).then((r) => r.data!),
-    staleTime: 10_000,
-  });
+  const key = jobExecutionKey(bookingId);
+  const query = useJobExecution(bookingId);
   const act = useMutation({
     mutationFn: async (v: { code: string; action: string; body?: Record<string, string>; plan?: CompletePlan; files?: Array<File | null>; note?: string }) => {
       let body = v.body ?? {};
@@ -88,14 +109,22 @@ export function ExecutionSteps({ bookingId }: { bookingId: string }) {
   });
 
   const view = query.data;
-  if (!view || !view.enforced || view.steps.length === 0) return null;
+  if (!view || !view.enforced || view.steps.length === 0) {
+    if (!emptyText) return null;
+    return (
+      <p className="text-sm text-partner-muted" data-testid="execution-steps-empty">
+        {query.isLoading ? "Loading service steps…" : query.isError ? "Service steps could not be loaded — refresh to try again." : emptyText}
+      </p>
+    );
+  }
   const done = view.steps.filter((s) => s.state === "COMPLETED" || s.state === "SKIPPED_WITH_REASON").length;
 
   return (
     <section className="space-y-3" data-testid="execution-steps" aria-labelledby={`exec-${bookingId}`}>
       <p id={`exec-${bookingId}`} className="flex items-center gap-1.5 text-sm font-semibold text-partner-text">
         <ListChecks className="h-4 w-4 text-partner-primary" aria-hidden="true" />
-        Work steps <span className="font-normal text-partner-muted">· {done} of {view.steps.length} done</span>
+        {heading ? "Work steps " : <span className="sr-only">Work steps </span>}
+        <span className="font-normal text-partner-muted">{heading ? "· " : ""}{done} of {view.steps.length} done</span>
       </p>
       {!view.gate.ok ? (
         <p role="status" className="flex items-start gap-2 rounded-xl border border-amber-400/60 bg-amber-50 p-3 text-xs text-amber-900" data-testid="execution-gate-blocked">
@@ -125,8 +154,15 @@ export function ExecutionSteps({ bookingId }: { bookingId: string }) {
                     {s.estimatedMinutes ? ` · ~${s.estimatedMinutes} min` : ""}
                   </p>
                   {s.description ? <p className="mt-0.5 text-xs text-partner-text-secondary">{s.description}</p> : null}
-                  {s.ppe.length ? <p className="mt-0.5 text-xs text-partner-text-secondary">Wear: {s.ppe.join(", ")}</p> : null}
-                  {s.warnings.map((w) => <p key={w} className="mt-0.5 text-xs text-amber-900 dark:text-amber-400">⚠ {w}</p>)}
+                  <BriefChips label="Wear" items={s.ppe} icon={HardHat} className="mt-1.5" testId={`step-${s.code}-ppe`} />
+                  <BriefChips label="Materials" items={s.materials ?? []} icon={Package} className="mt-1.5" testId={`step-${s.code}-materials`} />
+                  <BriefChips label="Equipment" items={s.equipment ?? []} icon={Wrench} className="mt-1.5" testId={`step-${s.code}-equipment`} />
+                  {s.warnings.map((w) => (
+                    <p key={w} className="mt-1 flex items-start gap-1.5 text-xs text-amber-900 dark:text-amber-400">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <span><span className="font-semibold">Warning: </span>{w}</span>
+                    </p>
+                  ))}
                   {s.blockedBy ? <p className="mt-0.5 text-xs text-partner-muted">{BLOCK_LABEL[s.blockedBy.reason] ?? s.blockedBy.reason}</p> : null}
                   {s.reason ? <p className="mt-0.5 text-xs text-partner-muted">Reason: {s.reason}</p> : null}
                 </div>

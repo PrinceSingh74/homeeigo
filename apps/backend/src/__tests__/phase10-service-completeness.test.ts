@@ -195,23 +195,33 @@ describe("assessService — concept mapping", () => {
     expect(CONCEPTS.map((c) => c.concept)).toEqual(ALL);
   });
 
-  test("concepts with no canonical home are never present and never required", () => {
-    const r = assessService("test-service", full());
-    for (const c of ["chemical_restrictions", "incident_protocol", "damage_policy"]) {
-      const f = field(r, c);
-      expect(f.canonicalPath).toBeNull();
-      expect(f.present).toBe(false);
-      expect(f.required).toBe(false);
-      expect(f.note).toContain("NO CANONICAL HOME");
+  test("every concept has a canonical home; chemical restrictions, incident protocol, damage policy and the guarantee are reported when set and never gate", () => {
+    expect(CONCEPTS.filter((c) => c.canonicalPath === null || c.gating === "NO_CANONICAL_HOME")).toEqual([]);
+    const bare = assessService("test-service", full());
+    for (const c of ["chemical_restrictions", "incident_protocol", "damage_policy", "guarantee"]) {
+      expect(field(bare, c).present).toBe(false);
+      expect(field(bare, c).required).toBe(false);
     }
+    const base = full() as Record<string, unknown>;
+    const set = assessService("test-service", {
+      ...base,
+      safety: { ...(base.safety as object), ppe: ["Gloves"], chemicalRestrictions: ["Products other than the ones the professional brings are not used on this job."], incidentProtocol: "Stop that part of the job and report it in the app." },
+      warranty: { enabled: true, durationDays: 2, guarantee: "We offer a free rework first.", damagePolicy: "Report damage in the app with a photo." },
+    });
+    expect(set.status).toBe(bare.status);
+    for (const c of ["PPE", "chemical_restrictions", "incident_protocol", "damage_policy", "guarantee"]) {
+      expect(field(set, c).present).toBe(true);
+      expect(field(set, c).required).toBe(false);
+    }
+    // The old internal note is not the customer-facing guarantee.
+    expect(field(assessService("test-service", { ...base, trust: { guarantee: "internal note" } }), "guarantee").present).toBe(false);
   });
 
   test("optional policies are reported when present and do not gate the status", () => {
     const cfg = {
       ...full(),
-      warranty: { enabled: true, durationDays: 7, eligibleIssueTypes: ["QUALITY"], exclusions: ["Normal wear"] },
+      warranty: { enabled: true, durationDays: 7, eligibleIssueTypes: ["QUALITY"], exclusions: ["Normal wear"], guarantee: "Rework first." },
       rework: { fee: "WAIVED" },
-      trust: { guarantee: "Rework first." },
       customerPolicy: { age: { mode: "NONE" }, version: 1 },
       quality: { ...QUALITY, complaintWindowDays: 3, customerConfirmation: true, completionCriteria: ["Rooms clean"] },
     };

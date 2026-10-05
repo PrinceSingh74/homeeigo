@@ -1,10 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Shield, Users, KeyRound, FileText } from "lucide-react";
+import { Shield, Users, KeyRound, FileText, CircleSlash } from "lucide-react";
 import { adminApi } from "@/services/admin-api";
 import { formatNumber } from "@/lib/format";
 import { GlassPanel } from "../GlassPanel";
+import { DispatchPolicyPanel } from "../DispatchPolicyPanel";
 import { StatTile, DataUnavailable, SectionHeading } from "../primitives";
 
 export function PlatformHqDashboard() {
@@ -60,14 +61,29 @@ export function PlatformHqDashboard() {
             <div className="biz-skeleton h-32 w-full rounded" />
           ) : pi && pi.featureFlags.length > 0 ? (
             <div className="space-y-1.5">
-              {pi.featureFlags.map((f) => (
-                <div key={f.key} className="flex items-center justify-between rounded-lg bg-[var(--color-biz-bg)] px-3 py-2 text-xs">
-                  <span className="truncate font-mono">{f.key}</span>
-                  <span className={f.enabled ? "text-[var(--color-biz-success)]" : "text-[var(--color-biz-muted)]"}>
-                    {f.enabled ? `ON ${f.rolloutPct}%` : "OFF"}
-                  </span>
-                </div>
-              ))}
+              {pi.featureFlags.map((f) => {
+                // Rows of every environment are listed; one for another environment is stored but never read here.
+                const inert = pi.runtimeEnvironment !== undefined && f.environment !== pi.runtimeEnvironment;
+                return (
+                  <div key={f.id ?? f.key} className="flex items-center justify-between gap-3 rounded-lg bg-[var(--color-biz-bg)] px-3 py-2 text-xs">
+                    <span className="min-w-0 truncate font-mono">{f.key}</span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      {inert ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--color-biz-line)] px-2 py-0.5 text-[11px] text-[var(--color-biz-muted)]">
+                          <CircleSlash className="h-3 w-3" aria-hidden />
+                          inactive here (env: {f.environment})
+                        </span>
+                      ) : null}
+                      <span className={f.enabled && !inert ? "text-[var(--color-biz-success)]" : "text-[var(--color-biz-muted)]"}>
+                        {f.enabled ? `ON ${f.rolloutPct}%` : "OFF"}
+                      </span>
+                    </span>
+                  </div>
+                );
+              })}
+              {pi.runtimeEnvironment !== undefined ? (
+                <p className="pt-1 text-[11px] text-[var(--color-biz-faint)]">This backend reads flags for: {pi.runtimeEnvironment}</p>
+              ) : null}
             </div>
           ) : (
             <DataUnavailable title="No flags configured" reason="PATCH /api/admin/platform/flags to register flags and rollouts." />
@@ -92,6 +108,8 @@ export function PlatformHqDashboard() {
           )}
         </GlassPanel>
       </div>
+
+      <DispatchPolicyPanel flags={pi?.featureFlags} dispatchPolicy={pi?.dispatchPolicy} runtimeEnvironment={pi?.runtimeEnvironment} loading={platform.isLoading} unavailable={platform.isError} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <GlassPanel className="p-5">

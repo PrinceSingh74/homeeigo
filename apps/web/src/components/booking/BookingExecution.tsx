@@ -22,13 +22,18 @@ const STATE: Record<string, { label: string; Icon: typeof CheckCircle2; cls: str
 };
 const PENDING = { label: "Not started", Icon: CircleDashed, cls: "text-muted" };
 
-export function BookingExecution({ bookingId }: { bookingId: string }) {
-  const query = useQuery({
+/** One cache entry per booking — the progress rail reads the same view. */
+export function useBookingExecutionQuery(bookingId: string) {
+  return useQuery({
     queryKey: ["bookings", "execution", bookingId],
     queryFn: () => apiRequest<ApiResponse<ExecutionView>>(`/api/bookings/${bookingId}/execution`, { auth: true }).then((r) => r.data!),
     enabled: !!bookingId,
     staleTime: 15_000,
   });
+}
+
+export function BookingExecution({ bookingId }: { bookingId: string }) {
+  const query = useBookingExecutionQuery(bookingId);
   const view = query.data;
   if (!view || !view.enforced || view.steps.length === 0) return null;
   const done = view.steps.filter((s) => s.state === "COMPLETED").length;

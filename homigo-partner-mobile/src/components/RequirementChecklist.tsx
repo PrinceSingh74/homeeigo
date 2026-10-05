@@ -63,7 +63,7 @@ export function RequirementChecklist({ bookingId, active }: { bookingId: string;
   return (
     <View testID="requirement-checklist">
       <HqCard>
-        <Text style={styles.title}>Requirements</Text>
+        <Text style={styles.title} accessibilityRole="header">Requirement checks</Text>
         {active ? (
           <Text
             accessibilityRole="text"

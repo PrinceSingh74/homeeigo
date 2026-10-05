@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
-import { partnerLogin, partnerToken, test } from "./enterprise/fixtures";
+import { partnerLogin, partnerToken, recoverDevChunkAbort, test } from "./enterprise/fixtures";
 import { assertAxeSerious } from "./helpers/p0-a11y";
 
 const API = (process.env.E2E_API_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -77,11 +77,12 @@ test.describe("Section 09 partner notifications", () => {
   });
 
   test("12-width matrix for notifications and settings", async ({ page }) => {
-    test.setTimeout(240_000);
+    test.setTimeout(600_000);
     await partnerLogin(page);
     for (const vp of VIEWPORTS) {
       await page.setViewportSize(vp);
       await page.goto("/notifications", { waitUntil: "domcontentloaded" });
+      await recoverDevChunkAbort(page);
       await expect(page.getByRole("heading", { name: /notification/i }).first()).toBeVisible({
         timeout: 30_000,
       });
@@ -89,6 +90,7 @@ test.describe("Section 09 partner notifications", () => {
       await page.screenshot({ path: path.join(ART, `notifications-${vp.width}.png`), fullPage: true });
 
       await page.goto("/settings", { waitUntil: "domcontentloaded" });
+      await recoverDevChunkAbort(page);
       await expect(page.getByRole("heading", { name: /^profile$/i })).toBeVisible({ timeout: 30_000 });
       await page.locator("nav").getByRole("button", { name: /^notifications$/i }).click();
       await expect(page.getByText(/choose how homeeigo reaches you/i)).toBeVisible({

@@ -356,6 +356,19 @@ export function useRequirementItemsQuery() {
   });
 }
 
+/**
+ * Academy catalogue for the service editor's training gates. Same key and payload as the Academy
+ * page, so the two share one cache entry; fetched only while a service is being edited.
+ */
+export function useAcademyCatalogQuery(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["admin", "academy"] as const,
+    queryFn: () => adminApi.academyModules(),
+    staleTime: 20_000,
+    enabled: options?.enabled ?? true,
+  });
+}
+
 /** Mutations never retry (QueryProvider): a failed create is shown, not silently repeated. */
 export function useCreateRequirementItemMutation() {
   const qc = useQueryClient();

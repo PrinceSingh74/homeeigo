@@ -30,7 +30,16 @@ import type { z } from "zod";
 import type { executionStepSchema } from "../../src/lib/service-execution";
 import { CATALOGUE, CONTENT, type ContentAssignment } from "./phase-06-requirement-content-final";
 
-export const DRAFT_VERSION = "2026-09-28.draft.2";
+/**
+ * draft.3 (2026-10-05) adds only DERIVED fields — nothing new is asserted by hand (see `enrich` at the
+ * end of this file): service-level PPE (the union of the steps' own PPE), the product restriction (who
+ * provides the products, from Phase 06), the incident protocol (the app's own reporting path), the
+ * completion criteria (the shape of the plan and the proof decision), and — where a plan has exactly
+ * one WORK step — that step's materials and equipment (the Phase 06 items of the service). Every
+ * authored string of draft.2 is unchanged. A new version changes every content hash, so each service
+ * needs the owner's approval again before it is applied.
+ */
+export const DRAFT_VERSION = "2026-10-05.draft.3";
 
 export type DraftStatus = "DRAFT_FOR_OWNER_REVIEW" | "OWNER_APPROVAL_REQUIRED" | "SAFETY_HOLD";
 export type DraftStep = z.input<typeof executionStepSchema>;
@@ -42,8 +51,12 @@ export type DraftSafety = {
   providerRequirements?: string[];
   medicalDisclaimer?: string;
   emergencyProtocol?: string;
+  /** Derived by `enrich` — never authored per service. */
+  ppe?: string[];
+  chemicalRestrictions?: string[];
+  incidentProtocol?: string;
 };
-export type DraftQuality = { checklist: string[]; proofRequired: boolean; beforeAfterPhotos: boolean };
+export type DraftQuality = { checklist: string[]; proofRequired: boolean; beforeAfterPhotos: boolean; /** Derived by `enrich`. */ completionCriteria?: string[] };
 export type ServiceDraft = {
   status: DraftStatus;
   execution?: { steps: DraftStep[] };
@@ -200,7 +213,7 @@ const prepare = (slug: string, extra: string[] = []) => [...customerRequirements
 /* The 31 services                                                     */
 /* ------------------------------------------------------------------ */
 
-export const DRAFT: Record<string, ServiceDraft> = {
+const AUTHORED: Record<string, ServiceDraft> = {
   /* ── Home cleaning ───────────────────────────────────────────────── */
   "deep-cleaning": draft({
     status: "DRAFT_FOR_OWNER_REVIEW",
@@ -1052,6 +1065,79 @@ export const DRAFT: Record<string, ServiceDraft> = {
     ],
   }),
 };
+
+/* ------------------------------------------------------------------ */
+/* Derived fields (draft.3)                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What a professional does when something goes wrong that is not an emergency. It names only what the
+ * app already does: a stop condition raises a safety hold, a step can be escalated, evidence takes a photo.
+ */
+export const INCIDENT_PROTOCOL =
+  "If something goes wrong that is not an emergency — something is broken, spilled or nearly causes an injury, or the customer disputes the work: stop that part of the job, make the area safe and tell the customer. Report it in the app, as a stop condition or by escalating the step you are on, and add a photo. Do not carry on with that part until the Homeeigo team responds.";
+
+const unique = (xs: string[]) => [...new Set(xs)];
+
+/** Who provides the products, said as a restriction. Nothing about what any product is. */
+export function derivedProductRestrictions(slug: string, prohibited: readonly string[]): string[] {
+  const out: string[] = [];
+  const material = derivedResponsibility(slug, "MATERIAL");
+  if (material === "PROFESSIONAL_PROVIDED") out.push("Products other than the ones the professional brings are not used on this job.");
+  else if (material === "CUSTOMER_PROVIDED") out.push("Products other than the ones the customer provides are not used on this job.");
+  else if (material === "MIXED") out.push("Products other than the ones listed for this job are not used.");
+  if (prohibited.includes(PC.allergyConflict)) out.push("A product the customer reports an allergy or skin reaction to is not used.");
+  return out;
+}
+
+/** What "done" means, read off the plan's own shape and the proof decision. */
+export function derivedCompletionCriteria(steps: readonly DraftStep[], quality: DraftQuality): string[] {
+  const kinds = new Set(steps.map((s) => s.kind));
+  const out: string[] = [];
+  if (steps.length) out.push("Every step of the work plan is completed.");
+  if (quality.checklist.length) out.push("Every item on the quality checklist is met.");
+  if (quality.beforeAfterPhotos) out.push("Before and after photos of the work are uploaded.");
+  else if (quality.proofRequired) out.push("A photo of the finished work is uploaded.");
+  if (kinds.has("QUALITY_CHECK")) out.push("The result has been shown to the customer.");
+  if (kinds.has("CLOSEOUT")) out.push("The work area is left tidy.");
+  return out;
+}
+
+/** The Phase 06 items of a service by kind, as their catalogue labels. */
+function itemLabels(slug: string, k: "MATERIAL" | "EQUIPMENT"): string[] {
+  return unique(assignments(slug).filter((a) => kind.get(a.itemCode) === k).map((a) => label.get(a.itemCode) ?? a.itemCode)).slice(0, 15);
+}
+
+/**
+ * Adds the derived fields to one authored draft. Held services (no WORK step) get the safety fields —
+ * a professional on site still needs them — but no completion criteria, since there is no work to finish.
+ */
+function enrich(slug: string, d: ServiceDraft): ServiceDraft {
+  const steps = d.execution?.steps ?? [];
+  const work = steps.filter((s) => s.kind === "WORK");
+  const materials = itemLabels(slug, "MATERIAL");
+  const equipment = itemLabels(slug, "EQUIPMENT");
+  // With one WORK step the service's items are that step's items. With several, which item belongs to
+  // which step is not recorded anywhere, so no step claims any — the brief shows them for the job.
+  const execution = d.execution
+    ? {
+        steps: steps.map((s) =>
+          work.length === 1 && s.kind === "WORK"
+            ? { ...s, ...(materials.length ? { materials } : {}), ...(equipment.length ? { equipment } : {}) }
+            : s,
+        ),
+      }
+    : undefined;
+  const ppe = unique(steps.flatMap((s) => s.ppe ?? []));
+  const restrictions = d.safety ? derivedProductRestrictions(slug, d.safety.prohibitedConditions ?? []) : [];
+  const safety = d.safety
+    ? { ...d.safety, ...(ppe.length ? { ppe } : {}), ...(restrictions.length ? { chemicalRestrictions: restrictions } : {}), incidentProtocol: INCIDENT_PROTOCOL }
+    : undefined;
+  const quality = d.quality && d.status === "DRAFT_FOR_OWNER_REVIEW" ? { ...d.quality, completionCriteria: derivedCompletionCriteria(steps, d.quality) } : d.quality;
+  return { ...d, ...(execution ? { execution } : {}), ...(safety ? { safety } : {}), ...(quality ? { quality } : {}) };
+}
+
+export const DRAFT: Record<string, ServiceDraft> = Object.fromEntries(Object.entries(AUTHORED).map(([slug, d]) => [slug, enrich(slug, d)]));
 
 /** Short owner-facing digest per status (the validator prints it). */
 export const STATUS_ORDER: DraftStatus[] = ["DRAFT_FOR_OWNER_REVIEW", "OWNER_APPROVAL_REQUIRED", "SAFETY_HOLD"];

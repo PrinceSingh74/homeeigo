@@ -82,7 +82,7 @@ test("Login → Address → Booking → Assignment → Tracking → Checkout →
   const target = page.locator("ul li").filter({ hasText: BOOKING_ID }).first();
   await expect(target).toBeVisible({ timeout: 20_000 });
   await target.click();
-  await expect(page.getByRole("heading", { name: /Status timeline/i })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: /Booking progress/i })).toBeVisible({ timeout: 30_000 });
   console.log("[3] BOOKING detail open (assigned) @", new Date().toISOString());
 
   // ── 4) TRACKING ──────────────────────────────────────────────────────────────

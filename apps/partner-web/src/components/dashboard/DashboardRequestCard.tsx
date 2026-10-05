@@ -69,7 +69,7 @@ export function DashboardRequestCard({
               {customerName}
             </p>
             {isNew && (
-              <span className="rounded-md bg-partner-primary/25 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-partner-primary">
+              <span className="rounded-md bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-900 dark:bg-blue-950 dark:text-blue-100">
                 New
               </span>
             )}
@@ -129,7 +129,7 @@ export function DashboardRequestCard({
           type="button"
           onClick={handleReject}
           disabled={busy !== null}
-          className="h-10 flex-1 rounded-lg border border-partner-danger text-xs font-semibold text-partner-danger transition hover:bg-partner-danger/10 active:scale-[0.97] disabled:opacity-60 lg:w-full"
+          className="h-10 flex-1 rounded-lg border border-red-800 text-xs font-semibold text-red-800 transition hover:bg-red-50 active:scale-[0.97] disabled:opacity-60 dark:border-red-300 dark:text-red-200 dark:hover:bg-red-950/40 lg:w-full"
         >
           {busy === "reject" ? "Declining…" : "Reject"}
         </button>

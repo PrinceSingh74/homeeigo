@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
-import { partnerLogin, test } from "./enterprise/fixtures";
+import { partnerLogin, recoverDevChunkAbort, test } from "./enterprise/fixtures";
 import { assertAxeSerious } from "./helpers/p0-a11y";
 
 const ART = path.join(__dirname, "__artifacts__", "section05");
@@ -33,6 +33,7 @@ test.describe("Section 05 a11y + responsive", () => {
     await partnerLogin(page);
     for (const route of ROUTES) {
       await page.goto(route.path, { waitUntil: "domcontentloaded" });
+      await recoverDevChunkAbort(page);
       await expect(page.getByRole("heading", { name: route.heading })).toBeVisible({ timeout: 30_000 });
       await assertAxeSerious(page, `section05 ${route.path}`);
     }
@@ -46,6 +47,7 @@ test.describe("Section 05 a11y + responsive", () => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       for (const route of ROUTES) {
         await page.goto(route.path, { waitUntil: "domcontentloaded" });
+        await recoverDevChunkAbort(page);
         await expect(page.getByRole("heading", { name: route.heading })).toBeVisible({ timeout: 30_000 });
         await page.screenshot({
           path: path.join(ART, `partner-${route.name}-${vp.width}.png`),

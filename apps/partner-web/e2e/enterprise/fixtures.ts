@@ -14,7 +14,7 @@ export function attachEnterpriseMonitor(page: Page): EnterpriseMonitor {
   page.on("console", (msg) => {
     if (msg.type() === "error") {
       const t = msg.text();
-      if (/favicon|hydration|devtools|401 \(Unauthorized\)|404 \(Not Found\)|_next\/static|429 \(\)|hot-reloader|hmr|fast refresh|webpack-hmr|Failed to fetch.*hmr|Failed to load resource: the server responded with a status of 500/i.test(t)) return;
+      if (/favicon|hydration|devtools|401 \(Unauthorized\)|404 \(Not Found\)|_next\/static|429 \(\)|hot-reloader|hmr|fast refresh|webpack-hmr|Failed to fetch.*hmr|Failed to load resource: the server responded with a status of 500|ChunkLoadError|Loading chunk /i.test(t)) return;
       consoleErrors.push(t);
     }
   });
@@ -35,6 +35,48 @@ export function attachEnterpriseMonitor(page: Page): EnterpriseMonitor {
 
 export const SEED_PARTNER = { email: "partner@homigo.demo", password: "Homigo@123" };
 
+/** React 19 attaches `_valueTracker` only after hydration. Typing earlier is wiped and Sign in never posts. */
+export async function waitForPartnerFormHydration(page: Page) {
+  await page.waitForFunction(() => {
+    const el = document.querySelector("#partner-email") as (HTMLInputElement & { _valueTracker?: unknown }) | null;
+    return Boolean(el?._valueTracker);
+  });
+}
+
+const DEV_CRASH = /Unexpected end of JSON input|Loading chunk|ChunkLoadError|client-side exception has occurred/i;
+
+/**
+ * The browser's chunk loader gives up while webpack is still compiling (common after a long
+ * dev session). A reload then hits the same timeout. Fetch the chunk from Node first so the
+ * compile finishes, then reload. A product error that is still on screen after that still fails.
+ */
+async function warmFailedDevChunk(page: Page) {
+  const body = await page.locator("body").innerText({ timeout: 3_000 }).catch(() => "");
+  const found = body.match(/https?:\/\/[^\s)]+\.js/g) ?? [];
+  const origin = new URL(page.url()).origin;
+  const chunkUrls = found.filter((u) => u.includes("/_next/static/chunks/"));
+  const urls = [...new Set(chunkUrls.length > 0 ? chunkUrls : [`${origin}/_next/static/chunks/app/layout.js`])];
+  for (const url of urls.slice(0, 2)) {
+    await page.request.get(url, { timeout: 90_000, failOnStatusCode: false }).catch(() => null);
+  }
+}
+
+/**
+ * Next dev sometimes aborts the client chunk mid-navigation (`net::ERR_ABORTED` on main-app.js).
+ * The document then stays on the server-rendered auth spinner because hydration never starts.
+ * One warm + reload. A product hang survives the reload and the caller's assertion still fails.
+ */
+export async function recoverDevChunkAbort(page: Page) {
+  const spinner = page.locator("div.h-8.w-8.animate-spin");
+  const devCrash = page.getByText(DEV_CRASH).first();
+  const gone = await spinner.waitFor({ state: "hidden", timeout: 12_000 }).then(() => true).catch(() => false);
+  const crashed = await devCrash.isVisible().catch(() => false);
+  const stuckSpinner = !gone && (await spinner.isVisible().catch(() => false));
+  if (!stuckSpinner && !crashed) return;
+  if (crashed) await warmFailedDevChunk(page);
+  await page.reload({ waitUntil: "domcontentloaded" });
+}
+
 export async function partnerLogin(page: Page) {
   await page.context().clearCookies();
   await page.goto("/login", { waitUntil: "domcontentloaded" });
@@ -49,8 +91,20 @@ export async function partnerLogin(page: Page) {
       await page.goto("/login", { waitUntil: "domcontentloaded" });
       const email = page.locator("#partner-email");
       const password = page.locator("#partner-password");
-      await expect(email).toBeVisible({ timeout: 30_000 });
+      const crash = page.getByText(DEV_CRASH).first();
+      // The login form and the dev chunk overlay are mutually exclusive. Waiting only for the
+      // form burns the whole attempt while webpack is still compiling layout.js.
+      const surface = await Promise.race([
+        email.waitFor({ state: "visible", timeout: 25_000 }).then(() => "email" as const),
+        crash.waitFor({ state: "visible", timeout: 25_000 }).then(() => "crash" as const),
+      ]).catch(() => "timeout" as const);
+      if (surface !== "email") {
+        await warmFailedDevChunk(page);
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await expect(email).toBeVisible({ timeout: 30_000 });
+      }
       await expect(email).toBeEnabled({ timeout: 15_000 });
+      await waitForPartnerFormHydration(page);
       // Controlled React inputs: clear + type so onChange commits state (fill alone can leave state empty → no POST).
       await email.click();
       await email.fill("");
@@ -68,8 +122,8 @@ export async function partnerLogin(page: Page) {
         { timeout: 60_000 },
       );
       const meRes = page.waitForResponse(
-        (r) => r.url().includes("/api/user/me") && r.status() === 200,
-        { timeout: 60_000 },
+        (r) => r.url().includes("/api/user/me") && r.request().method() === "GET",
+        { timeout: 30_000 },
       );
       await button.click();
       const res = await loginRes;
@@ -81,7 +135,11 @@ export async function partnerLogin(page: Page) {
         const body = await res.text().catch(() => "");
         throw new Error(`login HTTP ${res.status()}: ${body.slice(0, 300)}`);
       }
-      await meRes;
+      const me = await meRes;
+      if (me.status() !== 200) {
+        const body = await me.text().catch(() => "");
+        throw new Error(`me HTTP ${me.status()}: ${body.slice(0, 300)}`);
+      }
       await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
       await expect(page.getByRole("heading", { name: /new booking requests/i })).toBeVisible({
         timeout: 60_000,
@@ -89,7 +147,8 @@ export async function partnerLogin(page: Page) {
       return;
     } catch (err) {
       lastErr = err;
-      await page.waitForTimeout(500 * (attempt + 1));
+      if (page.isClosed()) break;
+      await page.waitForTimeout(500 * (attempt + 1)).catch(() => undefined);
     }
   }
   throw lastErr;

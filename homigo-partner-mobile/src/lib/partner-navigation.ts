@@ -120,6 +120,8 @@ export const PARTNER_HQ_NAV: PartnerNavSection[] = [
     items: [
       { id: "academy-training", label: "Training", subtitle: "Training modules and SOPs", icon: GraduationCap },
       { id: "academy-certifications", label: "Certifications", subtitle: "Earned certifications list", icon: Award },
+      { id: "academy-credentials", label: "My credentials", subtitle: "Declare skills, certificates, equipment, insurance, languages", icon: FileCheck2 },
+      { id: "academy-services", label: "My services", subtitle: "Services you perform and whether you are offered their jobs", icon: ClipboardList },
     ],
   },
   {

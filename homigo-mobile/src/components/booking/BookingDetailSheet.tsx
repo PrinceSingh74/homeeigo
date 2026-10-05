@@ -32,6 +32,7 @@ import type { SavedBooking } from "@/lib/store";
 import { useAppStore } from "@/lib/store";
 import { useQuery } from "@tanstack/react-query";
 import {
+  mapBackendBookingToSaved,
   useCancelBookingMutation,
   useCancellationQuoteQuery,
   useReportProviderNoShowMutation,
@@ -46,7 +47,7 @@ import {
 import { RescheduleBookingPanel } from "./RescheduleBookingPanel";
 import { STATUS_CONFIG } from "@/lib/booking-status";
 import { BookingStatusBadge } from "./BookingStatusBadge";
-import { BookingTimeline } from "./BookingTimeline";
+import { BookingProgressRail } from "./BookingProgressRail";
 import { Button } from "@/components/Button";
 import { openBook } from "@/lib/navigation";
 import { getServiceImage } from "@/lib/service-assets";
@@ -60,9 +61,11 @@ type Props = {
   visible: boolean;
   booking: SavedBooking | null;
   onClose: () => void;
+  /** Show another booking in this sheet (a case's follow-up visit). Omit and the link is not offered. */
+  onOpenBooking?: (booking: SavedBooking) => void;
 };
 
-export function BookingDetailSheet({ visible, booking, onClose }: Props) {
+export function BookingDetailSheet({ visible, booking, onClose, onOpenBooking }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors: c } = useTheme();
@@ -82,12 +85,26 @@ export function BookingDetailSheet({ visible, booking, onClose }: Props) {
     staleTime: 8_000,
   });
 
+  const [followUpError, setFollowUpError] = React.useState<string | null>(null);
+
   React.useEffect(() => {
     if (!visible) {
       setCancelOpen(false);
       setRescheduleOpen(false);
+      setFollowUpError(null);
     }
   }, [visible]);
+
+  /** Fetch the follow-up booking from the server, then hand it to the screen that owns this sheet. */
+  async function openFollowUp(followUpBookingId: string) {
+    setFollowUpError(null);
+    try {
+      const next = (await coreApi.bookings.byId(followUpBookingId)).booking;
+      onOpenBooking?.(mapBackendBookingToSaved(next));
+    } catch {
+      setFollowUpError("We couldn't open the follow-up booking. Please find it in My Bookings.");
+    }
+  }
 
   if (!booking) return null;
 
@@ -236,6 +253,15 @@ export function BookingDetailSheet({ visible, booking, onClose }: Props) {
               ) : null}
             </View>
 
+            {/* Six real stages with server timestamps only — see lib/booking-progress. */}
+            <Text style={[styles.sectionTitle, { color: c.text }]}>Booking progress</Text>
+            <BookingProgressRail
+              bookingId={booking.id}
+              booking={detailQuery.data}
+              loading={detailQuery.isLoading}
+              failed={detailQuery.isError}
+            />
+
             {/* Service-start PIN — shown while the job hasn't started yet */}
             {booking.status === "confirmed" ? (
               <ServiceStartPinCard bookingId={booking.id} proName={booking.proName} />
@@ -248,18 +274,15 @@ export function BookingDetailSheet({ visible, booking, onClose }: Props) {
             {/* §8: what was done — server truth, titles and states only. */}
             <BookingExecutionCard bookingId={booking.id} />
             {/* §10: verdict in plain words + confirmation window; §11: report an issue. */}
-            <BookingCompletionCard bookingId={booking.id} />
-
-            <Text style={[styles.sectionTitle, { color: c.text }]}>Status timeline</Text>
-            <View
-              style={[
-                styles.block,
-                styles.timelineBlock,
-                { backgroundColor: c.bg, borderColor: c.border },
-              ]}
-            >
-              <BookingTimeline events={booking.timeline} />
-            </View>
+            <BookingCompletionCard
+              bookingId={booking.id}
+              onOpenFollowUp={onOpenBooking ? (id) => void openFollowUp(id) : undefined}
+            />
+            {followUpError ? (
+              <Text style={[styles.followUpError, { color: c.error }]} accessibilityRole="alert">
+                {followUpError}
+              </Text>
+            ) : null}
 
             <View style={styles.actions}>
               {canTrack && (
@@ -519,9 +542,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     marginBottom: spacing.lg,
   },
-  timelineBlock: {
-    marginBottom: spacing.xl,
-  },
+  followUpError: { ...type.small, marginBottom: spacing.md },
   sectionTitle: {
     ...type.section,
     marginBottom: spacing.md,

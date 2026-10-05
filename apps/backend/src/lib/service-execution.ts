@@ -40,6 +40,9 @@ export const executionStepSchema = z
     safetyRequirement: requirementCode.optional(),
     ppe: z.array(text(80)).max(10).optional(),
     warnings: z.array(text(300)).max(10).optional(),
+    /** What the professional uses in this step. Guidance only — enforceable items are requirements. */
+    materials: z.array(text(120)).max(15).optional(),
+    equipment: z.array(text(120)).max(15).optional(),
     when: z
       .object({
         variantIds: z.array(optionCode).max(30).optional(),
@@ -146,6 +149,9 @@ export type ResolvedStep = {
   safetyRequirement: string | null;
   ppe: string[];
   warnings: string[];
+  /** Absent on bookings frozen before per-step materials/equipment existed. */
+  materials?: string[];
+  equipment?: string[];
   source: "BASE" | "VARIANT" | "ADDON" | "QUANTITY";
 };
 
@@ -181,6 +187,8 @@ export function resolveExecutionPlan(cfg: Cfg, sel: RequirementSelection): Execu
       safetyRequirement: s.safetyRequirement ?? null,
       ppe: s.ppe ?? [],
       warnings: s.warnings ?? [],
+      materials: s.materials ?? [],
+      equipment: s.equipment ?? [],
       source: s.when?.addonIds?.length ? "ADDON" : s.when?.variantIds?.length ? "VARIANT" : s.when?.minQuantity != null ? "QUANTITY" : "BASE",
     })),
   };

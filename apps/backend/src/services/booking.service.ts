@@ -2297,6 +2297,8 @@ export class BookingService {
       photos?: string[];
       skipSideEffects?: boolean;
       completedChecklist?: string[];
+      /** The professional's attestation that the completion criteria were met (asked for only where the frozen policy requires it). */
+      professionalConfirmed?: boolean;
       /** §5: who actually completed it, when that is not the partner (admin mark-complete). */
       auditActor?: { actorType: "admin"; actorId: string; reason: string };
     },
@@ -2327,7 +2329,7 @@ export class BookingService {
       incCounter("completion_blocked_total", { reason });
       if (!verdictsOn) return;
       const v = await bookingQualityService
-        .recordRefusal(id, verdictActor, { completedChecklist: opts?.completedChecklist })
+        .recordRefusal(id, verdictActor, { completedChecklist: opts?.completedChecklist, professionalConfirmed: opts?.professionalConfirmed })
         .catch((e: unknown) => {
           logger.error("quality_verdict_refusal_record_failed", { bookingId: id, error: e instanceof Error ? e.message : String(e) });
           return null;
@@ -2412,6 +2414,14 @@ export class BookingService {
         await recordCompletionRefusal(refusal, blocked);
         throw refusal;
       }
+      // An admin mark-complete is its own audited act; the attestation is asked of the professional.
+      if (quality.professionalConfirmation && !opts?.auditActor && opts?.professionalConfirmed !== true) {
+        const code = "QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED";
+        incCounter("service_quality_completion_block_total", { reason: code });
+        const refusal = new Error(code);
+        await recordCompletionRefusal(refusal, code);
+        throw refusal;
+      }
     }
 
     void import("./partner-risk.service").then(async ({ partnerRiskService }) => {
@@ -2460,7 +2470,11 @@ export class BookingService {
          * (and recorded by recordCompletionRefusal once this transaction has rolled back).
          */
         if (verdictsOn) {
-          const v = await bookingQualityService.evaluateAndRecord(tx, id, verdictActor, { completedChecklist: opts?.completedChecklist });
+          const v = await bookingQualityService.evaluateAndRecord(tx, id, verdictActor, {
+            completedChecklist: opts?.completedChecklist,
+            // An admin mark-complete stands in for the attestation; it is audited as the admin's act.
+            professionalConfirmed: opts?.professionalConfirmed === true || Boolean(opts?.auditActor),
+          });
           if (v && !verdictAllowsCompletion(v.verdict)) {
             throw new QualityVerdictError({ verdict: v.verdict, reasonCodes: v.reasonCodes });
           }

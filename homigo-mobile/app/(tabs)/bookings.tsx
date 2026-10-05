@@ -244,6 +244,7 @@ export default function BookingsScreen() {
         visible={!!selected}
         booking={selected}
         onClose={() => setSelected(null)}
+        onOpenBooking={setSelected}
       />
     </SafeAreaView>
     </AuthGuard>

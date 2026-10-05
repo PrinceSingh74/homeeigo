@@ -36,7 +36,9 @@ import {
   checklistCompletionFields,
   completionGate,
   describeCompletionRefusal,
+  professionalConfirmationField,
   type CompletionRefusal,
+  type ProfessionalConfirmationState,
 } from "@/lib/completion-checklist";
 import { localActionsFromBooking, primaryActionToLocalCta, primaryControlState, type JobActionResult } from "@/lib/job-action-policy";
 import { getPartnerCoords, type PartnerCoords } from "@/lib/partner-coords";
@@ -58,7 +60,14 @@ export function BookingRequestCard({
    * exactly the ticked items. When absent (list cards), this card cannot show a checklist and never
    * invents one — a `QUALITY_CHECKLIST_REQUIRED` refusal is answered with a link to the job page.
    */
-  completion?: { checklist: string[]; ticked: ReadonlySet<string>; loading?: boolean; unavailable?: boolean };
+  completion?: {
+    checklist: string[];
+    ticked: ReadonlySet<string>;
+    loading?: boolean;
+    unavailable?: boolean;
+    /** The policy's "I confirm the completion criteria were met" attestation and whether it is ticked. */
+    confirmation?: ProfessionalConfirmationState;
+  };
   /**
    * The job page's server answer (`GET /api/bookings/:id/actions`), which realtime frames refresh.
    * Preferred over the list-row mirror, which can lag a hold placed or released while the page is open.
@@ -84,7 +93,7 @@ export function BookingRequestCard({
   // The server refused "Mark complete" for a missing checklist — shown inline with the way out.
   const [checklistRefusal, setChecklistRefusal] = useState<CompletionRefusal | null>(null);
 
-  const gate = completion ? completionGate(completion.checklist, completion.ticked) : null;
+  const gate = completion ? completionGate(completion.checklist, completion.ticked, completion.confirmation) : null;
   const completeBlocked = completion
     ? completion.loading === true || completion.unavailable === true || !gate!.allowed
     : false;
@@ -421,7 +430,7 @@ export function BookingRequestCard({
                 >
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold">Checklist not complete</p>
+                    <p className="font-semibold">{checklistRefusal.title}</p>
                     <p>{checklistRefusal.message}</p>
                     {!completion ? (
                       <Link href={checklistRefusal.href} className="mt-1 inline-block font-semibold underline">
@@ -453,6 +462,8 @@ export function BookingRequestCard({
                         longitude: coords?.longitude ?? null,
                         // Only what the partner ticked on the job page; nothing when no checklist was shown.
                         ...(completion ? checklistCompletionFields(completion.checklist, completion.ticked) : {}),
+                        // The attestation is the partner's own act: sent only when asked for and ticked.
+                        ...professionalConfirmationField(completion?.confirmation),
                       });
                     } catch (error) {
                       const refusal = describeCompletionRefusal(error, request.id, { onJobPage: !!completion });

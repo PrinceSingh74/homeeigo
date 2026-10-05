@@ -4,6 +4,12 @@ const path = require("path");
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Next dev disposes inactive pages after 60s. A long customer Playwright run then
+  // times out recompiling the root layout. Production builds ignore this.
+  onDemandEntries: {
+    maxInactiveAge: 60 * 60 * 1000,
+    pagesBufferLength: 50,
+  },
   // Windows often opens the app as 127.0.0.1 while Next binds to localhost.
   // That mismatch breaks /_next/* (HMR + RSC) and makes tab switches hang.
   // Private LAN ranges too (same list as partner-web/admin-panel): opening the dev server as

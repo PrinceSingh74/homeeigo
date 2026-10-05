@@ -44,7 +44,21 @@ export type ProviderLanguageRow = { id: number; providerId: string; languageCode
 export type ProviderServiceCapabilityRow = { id: number; providerId: string; serviceId: string; status: ServiceCapabilityStatus; source: string; dataOrigin: DataOrigin | null };
 export type BusinessMembershipRow = { id: number; businessId: string; providerId: string; role: string; active: boolean; effectiveFrom: Date; effectiveTo: Date | null; businessStatus: "ACTIVE" | "SUSPENDED" | "CLOSED" };
 
+/**
+ * Facts the provider record itself carries (not typed capability rows): identity verification,
+ * the background check, declared experience and completed academy modules. Loaded with the rows so
+ * the gates stay pure.
+ */
+export type ProviderProfileFacts = {
+  kycVerified: boolean;
+  backgroundCheck: "NOT_DONE" | "PENDING" | "CLEARED" | "FAILED";
+  experienceYears: number;
+  completedTrainingModules: string[];
+};
+
 export type ProviderCapabilityRows = {
+  /** Absent = not loaded; a profile requirement then fails closed. */
+  profile?: ProviderProfileFacts | null;
   skills: ProviderSkillRow[];
   certifications: ProviderCertificationRow[];
   equipment: ProviderEquipmentRow[];
@@ -65,6 +79,16 @@ export type CapabilityRequirements = {
   requiredEquipment: Array<{ type: string; requirement: EquipmentRequirement }>;
   requiredInsurance: Array<{ type: string }>;
   languages: Array<{ code: string; minProficiency?: LanguageProficiency | null }>;
+  /** Profile requirements. Absent = none. Enforced in STRICT and LEGACY_FALLBACK alike. */
+  profile?: ProfileRequirements;
+};
+
+export type ProfileRequirements = {
+  kycRequired: boolean;
+  backgroundCheckRequired: boolean;
+  minExperienceYears: number;
+  /** Academy module slugs the provider must have completed. */
+  trainingModules: string[];
 };
 
 export const NO_CAPABILITY_REQUIREMENTS: CapabilityRequirements = Object.freeze({
@@ -82,7 +106,18 @@ export function capabilityRequirementsFromConfig(cfg: unknown): CapabilityRequir
   const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
   const legacySkills = arr<unknown>(pr.requiredSkills).flatMap((s) => (typeof s === "string" && CAPABILITY_CODE.test(s) ? [{ code: s }] : []));
   const typedSkills = arr<{ code: string; minLevel?: SkillLevel | null; verifiedOnly?: boolean }>(pr.skills).filter((s) => s && typeof s.code === "string");
+  const trust = (cfg as { trust?: Record<string, unknown> | null }).trust;
+  const profile: ProfileRequirements = {
+    // "Verified professional" has always meant the same record flag as KYC; either switch asks for it.
+    kycRequired: pr.kycRequired === true || pr.verifiedProfessionalRequired === true || trust?.verifiedProfessionalRequired === true,
+    backgroundCheckRequired: pr.backgroundCheckRequired === true || trust?.backgroundCheckRequired === true,
+    minExperienceYears: typeof pr.experienceYears === "number" && pr.experienceYears > 0 ? Math.floor(pr.experienceYears) : 0,
+    trainingModules: arr<unknown>(pr.trainingModules).filter((m): m is string => typeof m === "string" && CAPABILITY_CODE.test(m)),
+  };
+  const anyProfile =
+    profile.kycRequired || profile.backgroundCheckRequired || profile.minExperienceYears > 0 || profile.trainingModules.length > 0;
   return {
+    ...(anyProfile ? { profile } : {}),
     requiredSkills: typedSkills.length ? typedSkills : legacySkills,
     requiredCertifications: arr<{ type: string; verificationRequired?: boolean }>(pr.requiredCertifications).filter((c) => c && typeof c.type === "string"),
     requiredEquipment: arr<{ type: string; requirement: EquipmentRequirement }>(pr.requiredEquipment).filter((e) => e && typeof e.type === "string"),
@@ -157,6 +192,10 @@ export const MATCHING_REJECTION_REASONS = [
   "EQUIPMENT_MISSING",
   "INSURANCE_INVALID",
   "LANGUAGE_MISMATCH",
+  "KYC_UNVERIFIED",
+  "BACKGROUND_CHECK_NOT_CLEARED",
+  "EXPERIENCE_INSUFFICIENT",
+  "TRAINING_INCOMPLETE",
   "PROVIDER_NOT_AVAILABLE",
   "PRESENCE_STALE",
   "LOCATION_GATE_FAILED",
@@ -217,6 +256,26 @@ export function evaluateCapabilityGates(input: {
     if (!legacyOk) out.push({ reason: "SERVICE_CAPABILITY_MISSING", detail: `no ACTIVE capability for service ${input.serviceId}` });
   }
 
+  out.push(...evaluateCredentialGates({ requirements, rows, now, visible: vis }));
+  return out;
+}
+
+/**
+ * What a service asks of the PERSON, whoever authorised them for it: skills, certifications,
+ * equipment, insurance, languages, then the profile (identity, background check, experience,
+ * training). One definition, used by matching and by the professional's own readiness view — so
+ * what a professional is told they are missing is exactly what matching refuses them for.
+ */
+export function evaluateCredentialGates(input: {
+  requirements: CapabilityRequirements;
+  rows: ProviderCapabilityRows;
+  now: Date;
+  /** Whether a capability row counts for the population being judged. */
+  visible: (origin: DataOrigin | null) => boolean;
+}): CapabilityRejection[] {
+  const { requirements, rows, now, visible: vis } = input;
+  const out: CapabilityRejection[] = [];
+
   for (const req of requirements.requiredSkills) {
     const ok = rows.skills.some((s) => vis(s.dataOrigin) && s.skillCode === req.code && skillSatisfies(s, req, now));
     if (!ok) out.push({ reason: "SKILL_MISSING", detail: req.code });
@@ -249,5 +308,28 @@ export function evaluateCapabilityGates(input: {
     if (!ok) out.push({ reason: "LANGUAGE_MISMATCH", detail: req.code });
   }
 
+  out.push(...evaluateProfileGates(requirements.profile, rows.profile ?? null));
+  return out;
+}
+
+/**
+ * The profile half: identity verification, background check, experience and training. These read
+ * the provider record, so they bind every provider in every capability mode. Facts that were not
+ * loaded fail closed — an unknown background check is not a cleared one.
+ */
+export function evaluateProfileGates(req: ProfileRequirements | undefined, facts: ProviderProfileFacts | null): CapabilityRejection[] {
+  if (!req) return [];
+  const out: CapabilityRejection[] = [];
+  if (req.kycRequired && !facts?.kycVerified) out.push({ reason: "KYC_UNVERIFIED", detail: "identity_not_verified" });
+  if (req.backgroundCheckRequired && facts?.backgroundCheck !== "CLEARED") {
+    out.push({ reason: "BACKGROUND_CHECK_NOT_CLEARED", detail: facts?.backgroundCheck ?? "UNKNOWN" });
+  }
+  if (req.minExperienceYears > 0 && (facts?.experienceYears ?? 0) < req.minExperienceYears) {
+    out.push({ reason: "EXPERIENCE_INSUFFICIENT", detail: `${facts?.experienceYears ?? 0}<${req.minExperienceYears}` });
+  }
+  const done = new Set(facts?.completedTrainingModules ?? []);
+  for (const slug of req.trainingModules) {
+    if (!done.has(slug)) out.push({ reason: "TRAINING_INCOMPLETE", detail: slug });
+  }
   return out;
 }

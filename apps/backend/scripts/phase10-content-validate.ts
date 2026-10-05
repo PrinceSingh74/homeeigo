@@ -19,7 +19,7 @@ import { serviceCatalogConfigSchema } from "../src/lib/service-catalog-config";
 import { resolveExecutionPlan, validateExecutionPlan } from "../src/lib/service-execution";
 import { buildSafetySnapshot } from "../src/lib/service-safety";
 import { CATALOGUE, CONTENT } from "./data/phase-06-requirement-content-final";
-import { DRAFT, DRAFT_VERSION, GLOBAL_OPEN_QUESTIONS, STATUS_ORDER, derivedResponsibility, type ServiceDraft } from "./data/phase-10-execution-safety-content-draft";
+import { DRAFT, DRAFT_VERSION, GLOBAL_OPEN_QUESTIONS, STATUS_ORDER, derivedCompletionCriteria, derivedProductRestrictions, derivedResponsibility, type ServiceDraft } from "./data/phase-10-execution-safety-content-draft";
 
 export type Violation = { service: string; rule: string; detail: string };
 export type ServiceRow = {
@@ -103,7 +103,7 @@ function policyViolations(slug: string, d: ServiceDraft): Violation[] {
   const partnerText = strings(d.execution ?? {}, "execution");
   const customerText = [
     ...strings(d.customerSummary, "customerSummary"),
-    ...strings({ information: d.safety?.information, warnings: d.safety?.warnings }, "safety"),
+    ...strings({ information: d.safety?.information, warnings: d.safety?.warnings, chemicalRestrictions: d.safety?.chemicalRestrictions }, "safety"),
   ];
   const flag = (list: Array<[string, string]>, re: RegExp, rule: string, why: string) => {
     for (const [p, s] of list) if (re.test(s)) out.push({ service: slug, rule, detail: `${p}: "${s.slice(0, 90)}" — ${why}` });
@@ -222,6 +222,23 @@ function validateService(slug: string, d: ServiceDraft): { row: ServiceRow; viol
   const pcs = d.safety?.prohibitedConditions ?? [];
   if (!pcs.length) add("SAFETY_MISSING", "no prohibited conditions");
   if (!d.safety?.emergencyProtocol) add("SAFETY_MISSING", "no emergency protocol");
+  if (!d.safety?.incidentProtocol) add("SAFETY_MISSING", "no incident protocol");
+  // Derived fields must agree with what they are derived from — a hand edit that drifts is refused.
+  const stepPpe = new Set(steps.flatMap((s) => s.ppe ?? []));
+  const servicePpe = new Set(d.safety?.ppe ?? []);
+  for (const p of stepPpe) if (!servicePpe.has(p)) add("SAFETY_PPE_INCOMPLETE", `a step asks for "${p}" but the service-level PPE list does not`);
+  for (const p of servicePpe) if (!stepPpe.has(p)) add("SAFETY_PPE_UNSOURCED", `"${p}" is on the service-level PPE list but no step asks for it`);
+  const expectedRestrictions = derivedProductRestrictions(slug, pcs);
+  if (JSON.stringify(d.safety?.chemicalRestrictions ?? []) !== JSON.stringify(expectedRestrictions)) add("PRODUCT_RESTRICTION_DRIFT", "the product restriction does not match who provides the products (Phase 06)");
+  if (d.quality && d.status === "DRAFT_FOR_OWNER_REVIEW") {
+    const expected = derivedCompletionCriteria(d.execution?.steps ?? [], d.quality);
+    if (JSON.stringify(d.quality.completionCriteria ?? []) !== JSON.stringify(expected)) add("COMPLETION_CRITERIA_DRIFT", "the completion criteria do not match the plan and the proof decision");
+  }
+  const workSteps = steps.filter((s) => s.kind === "WORK");
+  for (const s of steps) {
+    const claims = (s.materials?.length ?? 0) + (s.equipment?.length ?? 0) > 0;
+    if (claims && !(workSteps.length === 1 && s.kind === "WORK")) add("STEP_ITEMS_UNSOURCED", `${s.id}: per-step materials/equipment are only derivable when the plan has exactly one WORK step`);
+  }
   const seen = new Set<string>();
   for (const c of pcs) {
     if (seen.has(c.toLowerCase())) add("PROHIBITED_DUPLICATE", c);

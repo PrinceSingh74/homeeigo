@@ -6,6 +6,7 @@ import { HqCard } from "@/components/HqUi";
 import { partnerApi } from "@/services/partner-api";
 import { partnerColors } from "@/theme/colors";
 import { completeBody, completePlan, stepMetaLabel, stepStateLabel, type CompletePlan, type EvidenceStage } from "@/lib/step-evidence";
+import { formatMinutes } from "@/lib/job-brief";
 
 /**
  * Phase 10 §8 — the partner's work plan (mirror of partner-web ExecutionSteps). Server truth; buttons
@@ -54,7 +55,7 @@ export function ExecutionSteps({ bookingId }: { bookingId: string }) {
   return (
     <View testID="execution-steps">
       <HqCard>
-        <Text style={styles.title}>Work steps</Text>
+        <Text style={styles.title} accessibilityRole="header">Service steps</Text>
         <Text style={[styles.gate, view.gate.ok ? styles.ok : styles.blocked]}>
           {view.gate.ok ? "All required steps are done." : "The job can be completed once every required step is done."}
         </Text>
@@ -64,7 +65,14 @@ export function ExecutionSteps({ bookingId }: { bookingId: string }) {
           return (
             <View key={s.code} style={styles.item} testID={`step-${s.code}`} accessibilityLabel={`Step ${s.stepNumber}, ${s.title}: ${stepStateLabel(s.state)}`}>
               <Text style={styles.label}>{GLYPH[s.state] ?? "○"} {s.stepNumber}. {s.title}{s.mandatory ? "" : " (optional)"}</Text>
-              <Text style={styles.meta}>{stepMetaLabel(s.state, s.evidence)}</Text>
+              <Text style={styles.meta}>
+                {stepMetaLabel(s.state, s.evidence)}
+                {typeof s.estimatedMinutes === "number" && s.estimatedMinutes > 0 ? ` · about ${formatMinutes(s.estimatedMinutes)}` : ""}
+              </Text>
+              {s.description ? <Text style={styles.description}>{s.description}</Text> : null}
+              {/* Absent on an older server build: none. */}
+              {s.materials?.length ? <Text style={styles.meta}>Materials: {s.materials.join(", ")}</Text> : null}
+              {s.equipment?.length ? <Text style={styles.meta}>Equipment: {s.equipment.join(", ")}</Text> : null}
               {s.ppe.length ? <Text style={styles.meta}>Wear: {s.ppe.join(", ")}</Text> : null}
               {s.warnings.map((w) => <Text key={w} style={styles.warn}>⚠ {w}</Text>)}
               <View style={styles.actions}>
@@ -117,6 +125,7 @@ const styles = StyleSheet.create({
   item: { paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: partnerColors.line },
   label: { fontSize: 14, fontWeight: "600", color: partnerColors.text },
   meta: { fontSize: 12, color: partnerColors.textSecondary, marginTop: 2 },
+  description: { fontSize: 13, lineHeight: 19, color: partnerColors.text, marginTop: 4 },
   warn: { fontSize: 12, color: "#92400e", marginTop: 2 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
   reasonBox: { gap: 8, marginTop: 8 },

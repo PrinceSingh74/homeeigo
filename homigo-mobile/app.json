@@ -23,6 +23,8 @@
       "buildNumber": "1",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "HOMIGO uses your location to find nearby providers and track your service.",
+        "NSPhotoLibraryUsageDescription": "Homeeigo uses your photos so you can attach a picture to an issue you report on a booking.",
+        "NSCameraUsageDescription": "Homeeigo uses your camera so you can take a picture to attach to an issue you report on a booking.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -71,7 +73,15 @@
       "expo-notifications",
       "expo-secure-store",
       "expo-font",
-      "expo-updates"
+      "expo-updates",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Homeeigo uses your photos so you can attach a picture to an issue you report on a booking.",
+          "cameraPermission": "Homeeigo uses your camera so you can take a picture to attach to an issue you report on a booking.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "owner": "harekrishna_2003",
     "updates": {

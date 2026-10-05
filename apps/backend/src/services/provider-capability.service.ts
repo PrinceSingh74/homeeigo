@@ -435,7 +435,9 @@ class ProviderCapabilityService {
       }
       const row = await lockRow(tx, kind, providerId, rowId);
       if (!row) return fail("NOT_FOUND");
-      const withdrawable = kind === "languages" ? row.source === "SELF" : row.status === "DECLARED";
+      // A claim that was never accepted (still DECLARED, or REJECTED) is the partner's to withdraw; the
+      // audit trigger keeps the rejected row's before-image. VERIFIED and REVOKED rows are decisions.
+      const withdrawable = kind === "languages" ? row.source === "SELF" : row.status === "DECLARED" || row.status === "REJECTED";
       if (!withdrawable) return fail("CAPABILITY_LOCKED");
       await tx.$executeRaw(Prisma.sql`DELETE FROM ${Prisma.raw(TABLE[kind])} WHERE id = ${row.id}`);
       return { ok: true, data: { deleted: true } };

@@ -270,12 +270,15 @@ export const coreApi = {
         body: payload,
         auth: true,
       }).then((r) => r.data!),
-    create: (payload: Record<string, unknown>) =>
-      apiRequest<ApiResponse<{ booking: BackendBooking }>>("/api/bookings", {
+    create: (payload: Record<string, unknown> & { idempotencyKey?: string }) => {
+      const { idempotencyKey, ...body } = payload;
+      return apiRequest<ApiResponse<{ booking: BackendBooking }>>("/api/bookings", {
         method: "POST",
-        body: payload,
+        body,
         auth: true,
-      }).then((r) => r.data!),
+        headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+      }).then((r) => r.data!);
+    },
     byId: (id: string) =>
       apiRequest<ApiResponse<{ booking: BackendBooking }>>(`/api/bookings/${id}`, {
         auth: true,

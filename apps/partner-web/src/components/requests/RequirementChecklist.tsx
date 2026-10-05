@@ -57,8 +57,11 @@ export function RequirementChecklist({
   bookingId,
   active,
   gate,
+  heading = true,
 }: {
   bookingId: string;
+  /** The page's section heading already names this block (the title stays for screen readers). */
+  heading?: boolean;
   /** Only an active job can be worked on; a finished one is read-only. */
   active: boolean;
   /** The server's START gate from `/actions`, when already loaded — shown as the banner. */
@@ -98,7 +101,7 @@ export function RequirementChecklist({
 
   return (
     <section className="space-y-3" data-testid="requirement-checklist" aria-labelledby={`req-${bookingId}`}>
-      <p id={`req-${bookingId}`} className="flex items-center gap-1.5 text-sm font-semibold text-partner-text">
+      <p id={`req-${bookingId}`} className={heading ? "flex items-center gap-1.5 text-sm font-semibold text-partner-text" : "sr-only"}>
         <ShieldCheck className="h-4 w-4 text-partner-primary" aria-hidden="true" />
         Requirements
       </p>

@@ -333,6 +333,37 @@ describe.serial("Phase 11 capability APIs through the real routes", () => {
     expect(ok.json.data.row).toMatchObject({ insurer: "ACME Re", status: "DECLARED" });
   });
 
+  test("a REJECTED claim is the partner's to withdraw; the verifier's identity never reaches a partner; the profile lists the codes services ask for", async () => {
+    if (skip()) return;
+    const declared = await partnerCall("POST", `${ME}/certifications`, { certificationType: "withdrawn-cert" });
+    expect(declared.status).toBe(200);
+    const rowId: number = declared.json.data.row.id;
+    const rejected = await call("POST", `/api/admin/providers/${ctx.providerId}/capabilities/certifications/${rowId}/reject`, { reason: "document is unreadable" }, admin());
+    expect(rejected.status).toBe(200);
+    expect(rejected.json.data.row.status).toBe("REJECTED");
+    const withdrawn = await partnerCall("DELETE", `${ME}/certifications/${rowId}`);
+    expect(withdrawn.status).toBe(200);
+    expect(await prisma.$queryRaw<unknown[]>`SELECT 1 FROM provider_certifications WHERE id = ${rowId}`).toEqual([]);
+    // The rejected row's before-image survives the withdrawal in the append-only audit.
+    const audit = await lastAudit("provider_certifications", rowId);
+    expect(audit?.action).toBe("DELETE");
+
+    // Re-declaring an unchanged VERIFIED skill returns the stored row — without the admin's id.
+    const same = await partnerCall("POST", `${ME}/skills`, { skillCode, level: "SKILLED" });
+    expect(same.status).toBe(200);
+    expect(JSON.stringify(same.json)).not.toContain(ctx.superAdmin.id);
+    if (same.json.data.row) expect(same.json.data.row.verifiedBy).toBe("ADMIN");
+
+    const profile = await partnerCall("GET", ME);
+    expect(profile.status).toBe(200);
+    expect(JSON.stringify(profile.json)).not.toContain(ctx.superAdmin.id);
+    const cat = profile.json.data.requirementCatalogue;
+    for (const list of [cat.certifications, cat.equipment, cat.insurance]) {
+      expect(Array.isArray(list)).toBe(true);
+      expect(list.every((c: unknown) => typeof c === "string")).toBe(true);
+    }
+  });
+
   test("revoke needs a reason (400 REASON_REQUIRED); with one the row is REVOKED and cannot be re-verified", async () => {
     if (skip()) return;
     const none = await call("POST", `/api/admin/providers/${ctx.providerId}/capabilities/certifications/${certId}/revoke`, {}, admin());

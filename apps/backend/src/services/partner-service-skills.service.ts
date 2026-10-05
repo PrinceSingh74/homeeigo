@@ -9,16 +9,30 @@
  * list already covers. Dispatch ignores the signup list as soon as any capability
  * row exists, so skipping that step would silently stop their current work.
  */
-import type { Prisma } from "@prisma/client";
+import type { DataOrigin, Prisma } from "@prisma/client";
 import prisma from "../lib/prisma";
+import { isBusinessRow } from "../lib/analytics-scope";
+import { evaluateCredentialGates, type CapabilityRejection, type MatchingRejectionReason } from "../lib/provider-capability";
+import { loadCapabilityRowsFor, requirementsForMode, serviceCapabilityMode } from "./provider-capability-loader";
 import { classifyServiceSkill, withServiceTokens, withoutServiceTokens, type ServiceCapabilityStatus, type ServiceSkillLane } from "../lib/partner-service-skills";
 import { providerOffersService, resolvePartnerRegistrationSlugs, type ServiceMatchTokens } from "../lib/service-match";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
-type CatalogRow = { id: string; name: string; slug: string; category: string };
+type CatalogRow = { id: string; name: string; slug: string; category: string; catalogConfig?: unknown };
+
+/** One thing a service asks for that the professional does not currently meet. */
+export type ReadinessGap = { code: MatchingRejectionReason; detail: string; title?: string };
+
+/**
+ * Whether the professional would pass this service's credential gates right now. Present only on
+ * services they perform: being authorised for a service is not the same as being matched for it, and
+ * a professional who is silently never offered a job has no way to find out why.
+ */
+export type ServiceReadiness = { ready: boolean; missing: ReadinessGap[] };
 
 export type ServiceSkillCard = {
+  readiness?: ServiceReadiness;
   serviceId: string;
   name: string;
   slug: string;
@@ -39,7 +53,7 @@ export type ServiceSkillBoard = {
   available: ServiceSkillCard[];
 };
 
-const catalogSelect = { id: true, name: true, slug: true, category: true } as const;
+const catalogSelect = { id: true, name: true, slug: true, category: true, catalogConfig: true } as const;
 
 async function loadCatalog(db: Db): Promise<CatalogRow[]> {
   return db.service.findMany({
@@ -174,10 +188,21 @@ function card(service: CatalogRow, lane: ServiceSkillLane, hit: CapabilityHit | 
 export async function buildServiceSkillBoard(providerId: string, approvalWorkflow: boolean): Promise<ServiceSkillBoard | null> {
   const provider = await prisma.provider.findUnique({
     where: { id: providerId },
-    select: { serviceCategories: true },
+    select: { serviceCategories: true, user: { select: { dataOrigin: true } } },
   });
   if (!provider) return null;
   const catalog = await loadCatalog(prisma);
+  const [rows, mode] = await Promise.all([loadCapabilityRowsFor(providerId), serviceCapabilityMode()]);
+  const now = new Date();
+  // Judged for the professional's own population — the customers they can actually be matched to.
+  const ownIsBusiness = isBusinessRow(provider.user.dataOrigin);
+  const visible = (origin: DataOrigin | null) => isBusinessRow(origin ?? provider.user.dataOrigin) === ownIsBusiness;
+  const gapsByService = new Map<string, CapabilityRejection[]>();
+  const readinessFor = (service: CatalogRow): CapabilityRejection[] => {
+    const gaps = evaluateCredentialGates({ requirements: requirementsForMode(service.catalogConfig, mode), rows, now, visible });
+    gapsByService.set(service.id, gaps);
+    return gaps;
+  };
   const idsByCategory = indexCatalog(catalog);
   const hits = approvalWorkflow ? await loadCapabilityHits(prisma, providerId) : [];
   const byService = new Map(hits.map((hit) => [hit.serviceId, hit]));
@@ -196,7 +221,23 @@ export async function buildServiceSkillBoard(providerId: string, approvalWorkflo
       capabilityStatus: hit?.status ?? null,
       hasAnyCapabilityRow: hasAny,
     });
-    lanes[lane].push(card(service, lane, hit));
+    const c = card(service, lane, hit);
+    if (lane === "performing") {
+      const gaps = readinessFor(service);
+      c.readiness = { ready: gaps.length === 0, missing: gaps.map((g) => ({ code: g.reason, detail: g.detail })) };
+    }
+    lanes[lane].push(c);
+  }
+  // Name the training a professional still has to finish, rather than showing them a slug.
+  const slugs = [...new Set([...gapsByService.values()].flat().filter((g) => g.reason === "TRAINING_INCOMPLETE").map((g) => g.detail))];
+  if (slugs.length) {
+    const modules = await prisma.partnerAcademyModule.findMany({ where: { slug: { in: slugs } }, select: { slug: true, title: true, isPublished: true } });
+    const titles = new Map(modules.filter((m) => m.isPublished).map((m) => [m.slug, m.title]));
+    for (const c of lanes.performing) {
+      for (const gap of c.readiness?.missing ?? []) {
+        if (gap.code === "TRAINING_INCOMPLETE" && titles.has(gap.detail)) gap.title = titles.get(gap.detail);
+      }
+    }
   }
   return { approvalWorkflow, ...lanes };
 }

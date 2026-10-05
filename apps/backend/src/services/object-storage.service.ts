@@ -21,7 +21,9 @@ export type StorageNamespace =
   | "support-attachments"
   | "admin-uploads"
   | "job-evidence"
-  | "rating-photos";
+  | "rating-photos"
+  /** Photos a customer attaches to a complaint. Private: served only through the case routes. */
+  | "case-evidence";
 
 const LOCAL_ROOT = process.env.LOCAL_UPLOAD_ROOT || path.join(process.cwd(), "uploads");
 const SIGNED_URL_TTL_SEC = Number(process.env.S3_SIGNED_URL_TTL_SEC ?? 300);

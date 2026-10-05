@@ -61,4 +61,49 @@ describe("BookingCompletionCard — report an issue", () => {
       expect(StyleSheet.flatten(screen.getByTestId("case-report-keyboard-avoider").props.style).paddingBottom).toBe(900),
     );
   });
+
+  it("shows the server's reason instead of the button when a report is not possible", async () => {
+    cases.mockResolvedValue({ available: true, cases: [], report: { canReport: false, reason: "COMPLAINT_WINDOW_CLOSED", openCaseId: null } });
+    await render(<BookingCompletionCard bookingId="b1" />);
+
+    expect(await screen.findByTestId("booking-report-refused")).toHaveTextContent(/time to report an issue on this booking has passed/);
+    expect(screen.queryByTestId("booking-report-issue")).toBeNull();
+  });
+
+  it("points to the open case, and offers details and a photo on it, instead of a second report", async () => {
+    const open = {
+      id: "case-1", caseNumber: "C-1001", bookingId: "b1", type: "COMPLAINT", category: "QUALITY", state: "TRIAGE",
+      description: null, createdAt: "2026-09-30T10:00:00.000Z", closedAt: null,
+      eligibility: { warrantyCovers: false, proofRequired: false, proofMissing: false, reasonCodes: [] },
+      resolution: null, evidence: [], timeline: [],
+    };
+    cases.mockResolvedValue({ available: true, cases: [open], report: { canReport: false, reason: null, openCaseId: "case-1" } });
+    await render(<BookingCompletionCard bookingId="b1" />);
+
+    expect(await screen.findByTestId("booking-report-open-case")).toHaveTextContent(/case C-1001/);
+    expect(screen.queryByTestId("booking-report-issue")).toBeNull();
+    expect(screen.getByLabelText("Add more details to case C-1001")).toBeTruthy();
+    expect(screen.getByLabelText("Add a photo to case C-1001")).toBeTruthy();
+
+    // The two photo routes appear only once the customer asks to add one.
+    expect(screen.queryByLabelText("Take a photo for case C-1001")).toBeNull();
+    await fireEvent.press(screen.getByLabelText("Add a photo to case C-1001"));
+    expect(await screen.findByLabelText("Take a photo for case C-1001")).toBeTruthy();
+    expect(screen.getByLabelText("Choose a photo from your library for case C-1001")).toBeTruthy();
+  });
+
+  it("offers nothing to add on a closed case", async () => {
+    const closed = {
+      id: "case-2", caseNumber: "C-1002", bookingId: "b1", type: "COMPLAINT", category: "QUALITY", state: "RESOLVED",
+      description: null, createdAt: "2026-09-30T10:00:00.000Z", closedAt: "2026-10-01T10:00:00.000Z",
+      eligibility: { warrantyCovers: false, proofRequired: false, proofMissing: false, reasonCodes: [] },
+      resolution: null, evidence: [], timeline: [],
+    };
+    cases.mockResolvedValue({ available: true, cases: [closed], report: { canReport: true, reason: null, openCaseId: null } });
+    await render(<BookingCompletionCard bookingId="b1" />);
+
+    expect(await screen.findByTestId("booking-case-C-1002")).toBeTruthy();
+    expect(screen.queryByTestId("booking-case-actions")).toBeNull();
+    expect(await screen.findByTestId("booking-report-issue")).toHaveTextContent("Report another issue");
+  });
 });

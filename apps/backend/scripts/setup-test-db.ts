@@ -462,6 +462,22 @@ for (const { object, dir } of LATE_ADDITIVE) {
     console.error(`   ⚠️ ${dir}: ${err}`);
   }
 }
+/**
+ * Trigger-function replacements for tables this script does not build from the migration history.
+ * `CREATE OR REPLACE FUNCTION` only, so each file is safe to replay; skipped while its table is
+ * absent. Without the replay a test database set up before the fix keeps the old function — and
+ * with it the defect the fix removes (a booking with a customer-policy decision could not be deleted).
+ */
+const FUNCTION_REPLACEMENTS: Array<{ object: string; dir: string }> = [
+  { object: "customer_policy_decisions", dir: "20261005120000_customer_policy_decisions_booking_unlink" },
+];
+for (const { object, dir } of FUNCTION_REPLACEMENTS) {
+  const probe = prismaExecute(`SELECT to_regclass('public.${object}') AS t;`);
+  if (!`${probe.stdout ?? ""} ${probe.stderr ?? ""}`.includes(object)) continue;
+  const r = prismaExecute(readFileSync(join(MIGRATIONS, dir, "migration.sql"), "utf8"));
+  if (r.status === 0) console.log(`   replayed ${dir}`);
+  else console.error(`   ⚠️ ${dir}: ${`${r.stderr ?? ""} ${r.stdout ?? ""}`.trim().split("\n").pop()}`);
+}
 prismaExecute(`ALTER TYPE "PartnerLifecycleState" ADD VALUE IF NOT EXISTS 'VERIFIED';`);
 prismaExecute(`ALTER TYPE "retention_category" ADD VALUE IF NOT EXISTS 'AI_TELEMETRY';`);
 prismaExecute(`ALTER TYPE "retention_category" ADD VALUE IF NOT EXISTS 'AUTOMATION_TELEMETRY';`);

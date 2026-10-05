@@ -26,6 +26,18 @@
  */
 import { PrismaClient } from "@prisma/client";
 
+type Cfg = Record<string, unknown>;
+
+/** apps/web/src/lib/legal/legal-data.ts, "Quality Disputes & Rework" — verbatim. */
+export const PUBLISHED_GUARANTEE =
+  "If the service didn't meet HOMEEIGO's standards, raise a dispute within 48 hours of completion through in-app support with photos where possible. We'll first offer a free rework by a professional; if that isn't feasible or acceptable, we may issue a partial or full refund based on a fair review.";
+
+/** apps/web/src/lib/legal/legal-data.ts, "Limitation of Liability" — verbatim. */
+export const PUBLISHED_LIABILITY =
+  "To the maximum extent permitted by law, HOMEEIGO acts as an intermediary and is not liable for indirect, incidental or consequential damages. Our aggregate liability for any claim is limited to the amount you paid for the specific service giving rise to the claim. Nothing limits liability that cannot be excluded by law.";
+
+export const PUBLISHED_DAMAGE_POLICY = `Damage is not part of the free-rework promise. If something is damaged during a visit, report it in the app within 48 hours of completion, with photos where possible, and our team will review it. ${PUBLISHED_LIABILITY}`;
+
 export const PUBLISHED_DISPUTE_POLICY = {
   complaintWindowDays: 2,
   warranty: {
@@ -37,11 +49,28 @@ export const PUBLISHED_DISPUTE_POLICY = {
     proofRequired: false,
     reworkFirst: true,
     refundAllowed: true,
+    /**
+     * The customer-facing texts, shown verbatim on the service page and frozen with each booking.
+     * `guarantee` IS the published "Quality Disputes & Rework" clause, word for word.
+     * `damagePolicy` says only what is already true: damage is not in that promise (see
+     * eligibleIssueTypes), it can still be reported inside the same 48-hour window (a complaint case,
+     * which the team triages), and liability is the published "Limitation of Liability" clause, word
+     * for word. The test pins both clauses to apps/web/src/lib/legal/legal-data.ts.
+     */
+    guarantee: PUBLISHED_GUARANTEE,
+    damagePolicy: PUBLISHED_DAMAGE_POLICY,
   },
   rework: { fee: "WAIVED" as const },
 };
 
-type Cfg = Record<string, unknown>;
+/** The two customer-facing texts. A service whose warranty matches the policy except for these is upgraded. */
+const TEXT_KEYS = ["guarantee", "damagePolicy"] as const;
+function withoutTexts(warranty: unknown): Cfg {
+  const w = { ...((warranty && typeof warranty === "object" ? warranty : {}) as Cfg) };
+  for (const k of TEXT_KEYS) delete w[k];
+  return w;
+}
+
 const stable = (v: unknown): string =>
   Array.isArray(v) ? `[${v.map(stable).join(",")}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable((v as Cfg)[k])}`).join(",")}}` : JSON.stringify(v ?? null);
 
@@ -53,13 +82,19 @@ export function disputePolicyDecision(catalogConfig: unknown): { decision: Dispu
   const quality = (cur.quality ?? {}) as Cfg;
   const P = PUBLISHED_DISPUTE_POLICY;
   const conflicts: string[] = [];
-  if (cur.warranty != null && stable(cur.warranty) !== stable(P.warranty)) conflicts.push("warranty");
+  // The terms decide whether a policy is the owner's own. The two texts are compared separately: a
+  // service that carries the published terms without them (applied before they existed) is upgraded;
+  // one whose texts were written differently by hand is the owner's wording and is kept.
+  if (cur.warranty != null && stable(withoutTexts(cur.warranty)) !== stable(withoutTexts(P.warranty))) conflicts.push("warranty");
+  const curWarranty = (cur.warranty ?? {}) as Cfg;
+  for (const k of TEXT_KEYS) if (curWarranty[k] != null && curWarranty[k] !== P.warranty[k]) conflicts.push(`warranty.${k}`);
   if (cur.rework != null && stable(cur.rework) !== stable(P.rework)) conflicts.push("rework");
   if (quality.complaintWindowDays != null && quality.complaintWindowDays !== P.complaintWindowDays) conflicts.push("quality.complaintWindowDays");
   if (quality.warrantyDays != null && quality.warrantyDays !== 0 && quality.warrantyDays !== P.warranty.durationDays) conflicts.push("quality.warrantyDays");
   if (quality.notApplicable === true) conflicts.push("quality.notApplicable");
   if (conflicts.length) return { decision: "KEEP_EXISTING", next: null, conflicts };
-  const identical = cur.warranty != null && cur.rework != null && quality.complaintWindowDays === P.complaintWindowDays;
+  const identical =
+    cur.warranty != null && cur.rework != null && quality.complaintWindowDays === P.complaintWindowDays && TEXT_KEYS.every((k) => curWarranty[k] === P.warranty[k]);
   if (identical) return { decision: "IDENTICAL", next: null, conflicts: [] };
   const next: Cfg = { ...cur, quality: { ...quality, complaintWindowDays: P.complaintWindowDays }, warranty: { ...P.warranty }, rework: { ...P.rework } };
   delete next.requirementItems;

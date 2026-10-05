@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import { partnerLogin, test } from "./enterprise/fixtures";
+import { partnerLogin, recoverDevChunkAbort, test } from "./enterprise/fixtures";
 import { assertAxeSerious } from "./helpers/p0-a11y";
 import path from "node:path";
 import fs from "node:fs";
@@ -88,12 +88,15 @@ test.describe("Section 04 a11y + responsive finance", () => {
   });
 
   test("responsive matrix for finance surfaces", async ({ page }) => {
-    test.setTimeout(600_000);
+    // 12 widths × 5 routes. Each navigation reloads the partner shell. Section 05's 36-navigation
+    // matrix needed ~9.5 min, so 60 navigations need a larger budget than 10 minutes.
+    test.setTimeout(1_200_000);
     await partnerLogin(page);
     for (const vp of VIEWPORTS) {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       for (const route of ROUTES) {
         await page.goto(route.path, { waitUntil: "domcontentloaded" });
+        await recoverDevChunkAbort(page);
         await expect(page.getByRole("heading", { level: 1 }).last()).toBeVisible({ timeout: 30_000 });
         await page.screenshot({
           path: path.join(ART, `${route.name}-${vp.width}.png`),

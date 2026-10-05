@@ -54,6 +54,8 @@ import {
   WorkServiceHistoryScreen,
 } from "@/screens/hq-work-earnings";
 import { AvailabilityWorkspaceScreen } from "@/screens/availability-workspace";
+import { MyCredentialsScreen } from "@/screens/hq-credentials";
+import { MyServicesScreen } from "@/screens/hq-services";
 import { RequestsScreen } from "@/screens/RequestsScreen";
 
 type ScreenComponent = ComponentType;
@@ -91,6 +93,10 @@ export const HQ_SCREEN_REGISTRY: Record<string, ScreenComponent> = {
   "territory-analytics": TerritoryAnalyticsScreen,
   "academy-training": AcademyTrainingScreen,
   "academy-certifications": AcademyCertificationsScreen,
+  // Phase 11 capability self-service: declare skills, certifications, equipment, insurance, languages.
+  "academy-credentials": MyCredentialsScreen,
+  // The services the professional performs or has asked for, with readiness for each performing one.
+  "academy-services": MyServicesScreen,
   "trust-documents": TrustDocumentsScreen,
   "trust-verification": TrustVerificationScreen,
   "trust-compliance": TrustComplianceScreen,

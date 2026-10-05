@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Award,
+  BadgeCheck,
   BarChart3,
   Bell,
   Brain,
@@ -57,6 +58,7 @@ export const PARTNER_HQ_NAV: PartnerNavSection[] = [
     items: [
       { href: "/work-hq", label: "Live Status", icon: ClipboardList },
       { href: "/work-hq/services", label: "My Services", icon: ClipboardList },
+      { href: "/work-hq/credentials", label: "My Credentials", icon: BadgeCheck },
       { href: "/requests", label: "Requests", icon: ClipboardList },
       { href: "/requests", label: "Bookings", icon: Calendar },
       { href: "/route-center", label: "Route Center", icon: Route },

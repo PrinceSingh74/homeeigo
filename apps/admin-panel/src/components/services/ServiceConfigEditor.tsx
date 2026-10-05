@@ -3,6 +3,18 @@
 import { useState, type ReactNode } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { AdminServiceRow, RequirementAssignment, RequirementItemRow, ServiceCatalogConfig, ServiceInput } from "@/services/admin-api";
+import { Field, LinesField, Section, Toggle, clean, csv, lines, list, listIssue, listOrUndefined, num, str, wholeNumberIssue, type ConfigIssue } from "./config-form";
+import { ExecutionPlanSection, planIssues, stepsFromConfig, stepsToConfig, type PlanContext, type StepRow } from "./ExecutionPlanSection";
+import { AgePolicySection, SafetySection, agePolicyFromConfig, agePolicyIssues, agePolicyToConfig, safetyFromConfig, safetyIssues, safetyToConfig, type AgePolicyForm, type SafetyForm } from "./SafetySection";
+import { WarrantySection, reworkFromConfig, reworkToConfig, warrantyFromConfig, warrantyIssues, warrantyToConfig, type ReworkForm, type WarrantyForm } from "./WarrantySection";
+import {
+  ProviderRequirementsSection,
+  providerRequirementsFromConfig,
+  providerRequirementsIssues,
+  providerRequirementsToConfig,
+  type ProviderRequirementsForm,
+  type TrainingModuleOption,
+} from "./ProviderRequirementsSection";
 
 /**
  * Structured editor for a service's booking + content configuration. Writes the
@@ -167,10 +179,19 @@ export type ServiceExtras = {
   seoNoindex: boolean;
   seoTitle: string;
   operationsNotes: string;
+  /* Phase 10–11. Each block is owned by its section file (from/to converters live there). */
+  executionSteps: StepRow[];
+  safety: SafetyForm;
+  agePolicy: AgePolicyForm;
+  completionCriteria: string;
+  professionalConfirmation: boolean;
+  complaintWindowDays: string;
+  confirmationWindowHours: string;
+  warranty: WarrantyForm;
+  rework: ReworkForm;
+  providerRequirements: ProviderRequirementsForm;
+  preferredProvider: boolean;
 };
-
-const lines = (xs?: string[] | null) => (xs ?? []).join("\n");
-const str = (n?: number | null) => (n == null ? "" : String(n));
 
 export function extrasFromRow(s?: AdminServiceRow): ServiceExtras {
   const c: ServiceCatalogConfig = s?.catalogConfig ?? {};
@@ -297,26 +318,50 @@ export function extrasFromRow(s?: AdminServiceRow): ServiceExtras {
     seoNoindex: Boolean(c.seo?.noindex),
     seoTitle: s?.seoTitle ?? "",
     operationsNotes: s?.operationsNotes ?? "",
+    executionSteps: stepsFromConfig(c),
+    safety: safetyFromConfig(c),
+    agePolicy: agePolicyFromConfig(c),
+    completionCriteria: lines(c.quality?.completionCriteria),
+    professionalConfirmation: c.quality?.professionalConfirmation === true,
+    complaintWindowDays: str(c.quality?.complaintWindowDays),
+    confirmationWindowHours: str(c.quality?.confirmationWindowHours),
+    warranty: warrantyFromConfig(c),
+    rework: reworkFromConfig(c),
+    providerRequirements: providerRequirementsFromConfig(c),
+    preferredProvider: c.matching?.preferredProvider === true,
   };
 }
 
-const num = (s: string) => (s.trim() === "" ? undefined : Number(s));
-const list = (s: string) =>
-  s
-    .split("\n")
-    .map((x) => x.trim())
-    .filter(Boolean);
+/** What the work plan is validated against: this service's assignments and its bookable options. */
+const planContext = (e: ServiceExtras): PlanContext => ({
+  requirements: e.requirementAssignments.map((r) => ({ id: r.id.trim(), enforcement: r.enforcement, active: r.active })),
+  variantIds: e.variants.filter((v) => v.active).map((v) => v.id.trim()),
+  // Without its own add-ons a service has none the plan can be conditioned on (the shared catalogue is not per-service).
+  addonIds: e.ownAddons ? e.addons.filter((a) => a.active).map((a) => a.id.trim()) : [],
+});
 
-/** Drop undefined keys; an object left with no keys becomes undefined (so the key is removed). */
-function clean<T extends Record<string, unknown>>(o: T): T | undefined {
-  const out = Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
-  return Object.keys(out).length ? out : undefined;
+const qualityIssues = (e: ServiceExtras): ConfigIssue[] =>
+  e.qualityNotApplicable
+    ? []
+    : [listIssue(e.completionCriteria, 20, 200), wholeNumberIssue(e.complaintWindowDays, 0, 365), wholeNumberIssue(e.confirmationWindowHours, 1, 720)]
+        .filter((m): m is string => Boolean(m))
+        .map((message) => ({ tab: "quality", section: "Quality", message }));
+
+/**
+ * Everything in the Phase 10–11 sections the backend would refuse (or that would leave the service
+ * unbookable). The page blocks the save while this is non-empty; each message is also shown next
+ * to its field.
+ */
+export function configIssues(e: ServiceExtras): ConfigIssue[] {
+  return [
+    ...planIssues(e.executionSteps, planContext(e)),
+    ...safetyIssues(e.safety),
+    ...agePolicyIssues(e.agePolicy),
+    ...qualityIssues(e),
+    ...warrantyIssues(e.warranty, e.rework),
+    ...providerRequirementsIssues(e.providerRequirements),
+  ];
 }
-const csv = (s: string) =>
-  s
-    .split(",")
-    .map((x) => x.trim().toLowerCase())
-    .filter(Boolean);
 
 /**
  * Form → API body fields.
@@ -483,7 +528,19 @@ export function extrasToInput(e: ServiceExtras, base?: ServiceCatalogConfig | nu
     }),
   );
   const skills = csv(e.requiredSkills);
-  put("providerRequirements", clean({ ...(base?.providerRequirements ?? {}), requiredSkills: skills.length ? skills : undefined }));
+  put(
+    "providerRequirements",
+    clean({
+      ...(base?.providerRequirements ?? {}),
+      requiredSkills: skills.length ? skills : undefined,
+      ...providerRequirementsToConfig(e.providerRequirements, base?.providerRequirements),
+    }),
+  );
+  put("execution", stepsToConfig(e.executionSteps, base?.execution));
+  put("safety", safetyToConfig(e.safety, base?.safety));
+  put("customerPolicy", agePolicyToConfig(e.agePolicy, base?.customerPolicy));
+  put("warranty", warrantyToConfig(e.warranty, base?.warranty));
+  put("rework", reworkToConfig(e.rework, base?.rework));
   put("inspectionRequired", e.inspectionRequired ? true : undefined);
   put("payment", {
     ...(base?.payment ?? {}),
@@ -506,6 +563,11 @@ export function extrasToInput(e: ServiceExtras, base?: ServiceCatalogConfig | nu
         proofRequired: e.proofRequired || undefined,
         beforeAfterPhotos: e.beforeAfterPhotos || undefined,
         warrantyDays: num(e.warrantyDays),
+        completionCriteria: listOrUndefined(e.completionCriteria),
+        // `customerConfirmation` is not owned by this form (nothing reads it): a stored value rides through in prevQuality.
+        professionalConfirmation: e.professionalConfirmation || undefined,
+        complaintWindowDays: num(e.complaintWindowDays),
+        confirmationWindowHours: num(e.confirmationWindowHours),
       }),
     );
   }
@@ -518,9 +580,11 @@ export function extrasToInput(e: ServiceExtras, base?: ServiceCatalogConfig | nu
       availabilityWeight: num(e.availabilityWeight),
       responseWeight: num(e.responseWeight),
       completionWeight: num(e.completionWeight),
+      // A ranking boost for a returning professional; never a gate.
+      preferredProvider: e.preferredProvider || undefined,
     }),
   );
-  const lines = (s: string) => (list(s).length ? list(s) : undefined);
+  const lines = listOrUndefined;
   put(
     "content",
     clean({
@@ -563,18 +627,6 @@ export function extrasToInput(e: ServiceExtras, base?: ServiceCatalogConfig | nu
 
 /* ------------------------------------------------------------------ */
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode; open?: boolean }) {
-  return (
-    <section className="sv-config-section">
-      <header className="sv-config-section__head">
-        <h3>{title}</h3>
-        {hint ? <p>{hint}</p> : null}
-      </header>
-      <div className="sv-config-section__body">{children}</div>
-    </section>
-  );
-}
-
 const EDITOR_NAV = [
   {
     group: "Storefront",
@@ -603,29 +655,17 @@ const EDITOR_NAV = [
       ["coverage", "Coverage", ["coverage"]],
       ["requirements", "Requirements", ["requirements"]],
       ["materials", "Fulfilment", ["materials", "equipment", "provider", "bookingRules"]],
+      ["workplan", "Work plan", []],
+      ["safety", "Safety", ["safety"]],
       ["quality", "Quality", ["quality"]],
+      ["warranty", "Warranty & rework", []],
+      ["professionals", "Professionals", ["provider"]],
       ["matching", "Matching", ["matching"]],
       ["operations", "Operations", ["operations"]],
       ["analytics", "Analytics", ["analytics"]],
     ],
   },
 ] as const;
-
-function Field({ label, children, consumer }: { label: string; children: ReactNode; consumer?: string }) {
-  return (
-    <label className="sv-field">
-      <span>
-        {label}
-        {consumer ? (
-          <span className="ml-2 text-[10px] font-normal uppercase tracking-wide text-[var(--color-biz-muted)]">
-            {consumer}
-          </span>
-        ) : null}
-      </span>
-      {children}
-    </label>
-  );
-}
 
 export function ServiceConfigEditor({
   value: e,
@@ -634,6 +674,8 @@ export function ServiceConfigEditor({
   sections,
   requirementItems,
   onCreateRequirementItem,
+  trainingModules,
+  trainingModulesState,
   lead,
   footer,
 }: {
@@ -644,6 +686,9 @@ export function ServiceConfigEditor({
   /** Phase 06 catalogue (active items) for the assignment picker. */
   requirementItems?: RequirementItemRow[];
   onCreateRequirementItem?: (input: { code: string; kind: RequirementItemRow["kind"]; name: string; customerLabel?: string | null }) => Promise<void>;
+  /** Published academy modules, offered as training gates on the Professionals tab. */
+  trainingModules?: TrainingModuleOption[];
+  trainingModulesState?: "loading" | "error" | "ready";
   /** Full-page "Offer" canvas: name, price, shelf flags. */
   lead?: ReactNode;
   /** Shown on every canvas — audit reason, errors, version. */
@@ -653,6 +698,8 @@ export function ServiceConfigEditor({
   const toggleIn = (arr: string[], v: string) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const [tab, setTab] = useState(lead ? "offer" : "identity");
   const active = tab === "offer" && !lead ? "identity" : tab;
+  const issues = configIssues(e);
+  const tabLabel = (id: string) => EDITOR_NAV.flatMap((g) => g.items as readonly (readonly [string, string, readonly string[]])[]).find(([tabId]) => tabId === id)?.[1] ?? id;
 
   const worst = (marks: readonly string[]) => {
     const statuses = marks.map((id) => sections?.find((s) => s.id === id)?.status).filter(Boolean);
@@ -677,7 +724,8 @@ export function ServiceConfigEditor({
           <div key={group.group} className="sv-nav__group">
             <p className="sv-nav__label">{group.group}</p>
             {group.items.map(([id, label, marks]) => {
-              const status = worst(marks);
+              // A section the save would be refused for outranks the backend's completeness mark.
+              const status = issues.some((x) => x.tab === id) ? ("missing" as const) : worst(marks);
               return (
                 <button key={id} type="button" className={active === id ? "is-on" : ""} onClick={() => setTab(id)}>
                   <span>{label}</span>
@@ -698,6 +746,24 @@ export function ServiceConfigEditor({
             {gaps.map((g) => (
               <li key={g}>{g}</li>
             ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {issues.length ? (
+        <div className="sv-gaps" role="alert" data-testid="config-issues">
+          <p>Fix before saving</p>
+          <ul>
+            {issues.slice(0, 8).map((x, i) => (
+              <li key={i}>
+                <button type="button" className="underline" onClick={() => setTab(x.tab)}>
+                  {tabLabel(x.tab)}
+                </button>
+                {" — "}
+                {x.message}
+              </li>
+            ))}
+            {issues.length > 8 ? <li>and {issues.length - 8} more</li> : null}
           </ul>
         </div>
       ) : null}
@@ -865,6 +931,7 @@ export function ServiceConfigEditor({
       ) : null}
 
       {active === "audience" && (
+      <>
       <Section title="Audience & eligibility" hint="Leave empty for services that are not audience-specific.">
         <div className="flex flex-wrap gap-3">
           {AUDIENCES.map(([id, name]) => (
@@ -881,7 +948,26 @@ export function ServiceConfigEditor({
           Professional preference is not offered: the assignment engine cannot honour a gender preference yet, so customers are never shown one.
         </p>
       </Section>
+      <AgePolicySection value={e.agePolicy} onChange={(v) => set("agePolicy", v)} />
+      </>
       )}
+
+      {active === "safety" ? <SafetySection value={e.safety} onChange={(v) => set("safety", v)} /> : null}
+
+      {active === "workplan" ? <ExecutionPlanSection rows={e.executionSteps} onChange={(rows) => set("executionSteps", rows)} context={planContext(e)} /> : null}
+
+      {active === "warranty" ? (
+        <WarrantySection warranty={e.warranty} rework={e.rework} onWarranty={(v) => set("warranty", v)} onRework={(v) => set("rework", v)} legacyWarrantyDays={e.qualityNotApplicable ? "" : e.warrantyDays} />
+      ) : null}
+
+      {active === "professionals" ? (
+        <ProviderRequirementsSection
+          value={e.providerRequirements}
+          onChange={(v) => set("providerRequirements", v)}
+          trainingModules={trainingModules ?? []}
+          trainingModulesState={trainingModulesState}
+        />
+      ) : null}
 
       {active === "content" ? (
       <Section title="Content" hint="One item per line. Only what the service really includes — customers see this verbatim.">
@@ -921,7 +1007,7 @@ export function ServiceConfigEditor({
         <Field label="Preparation instructions">
           <textarea className="sv-input sv-textarea" rows={3} value={e.preparation} onChange={(x) => set("preparation", x.target.value)} />
         </Field>
-        <Field label="Safety notes">
+        <Field label="Safety notes" help="Legacy free text, shown as warnings. Structured safety content lives on the Safety tab.">
           <textarea className="sv-input sv-textarea" rows={2} value={e.safetyNotes} onChange={(x) => set("safetyNotes", x.target.value)} />
         </Field>
         <div className="flex flex-col gap-2">
@@ -976,6 +1062,9 @@ export function ServiceConfigEditor({
         <Field label="Required provider skills (comma-separated slugs)" consumer="Matching + eligibility">
           <input className="sv-input" value={e.requiredSkills} onChange={(x) => set("requiredSkills", x.target.value)} placeholder="ac-repair, electrician" />
         </Field>
+        <p className="text-xs text-[var(--color-biz-muted)]">
+          Typed skills, certifications, equipment, insurance, languages, training and background checks are on the Professionals tab.
+        </p>
         <Field label="Cancellation policy">
           <textarea className="sv-input sv-textarea" rows={2} value={e.cancellationPolicy} onChange={(x) => set("cancellationPolicy", x.target.value)} />
         </Field>
@@ -1140,9 +1229,42 @@ export function ServiceConfigEditor({
             Before / after photos
             <span className="text-[10px] uppercase text-[var(--color-biz-muted)]">Completion gate</span>
           </label>
-          <Field label="Warranty days" consumer="Booking snapshot">
+          <Field label="Warranty days" consumer="Booking snapshot" help="Legacy input. A policy saved on the Warranty & rework tab replaces it.">
             <input className="sv-input" type="number" min={0} value={e.warrantyDays} onChange={(x) => set("warrantyDays", x.target.value)} />
           </Field>
+          {e.qualityNotApplicable ? (
+            <p className="text-xs text-[var(--color-biz-muted)]">Quality is marked not applicable, so the completion and confirmation settings below are not saved.</p>
+          ) : (
+            <>
+              <LinesField
+                label="Completion criteria"
+                consumer="Professional + quality verdict"
+                value={e.completionCriteria}
+                onChange={(v) => set("completionCriteria", v)}
+                maxItems={20}
+                maxLen={200}
+                placeholder="All surfaces dry and streak-free"
+              />
+              <Toggle
+                label="Professional must confirm the criteria were met before completing"
+                consumer="Completion gate"
+                checked={e.professionalConfirmation}
+                onChange={(v) => set("professionalConfirmation", v)}
+              />
+              {/* No "ask the customer to confirm" switch: the platform always asks; a service only sets the window. */}
+              <p className="text-xs text-[var(--color-biz-muted)]">
+                The customer is always asked to confirm the work after completion, and it is confirmed automatically when the confirmation window passes. This cannot be switched off per service — the field below only sets the window.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Confirmation window (hours)" consumer="Customer" error={wholeNumberIssue(e.confirmationWindowHours, 1, 720)} help="How long the customer has to confirm or report an issue before the work is confirmed automatically. Blank = 48 hours.">
+                  <input className="sv-input" type="number" min={1} max={720} value={e.confirmationWindowHours} onChange={(x) => set("confirmationWindowHours", x.target.value)} placeholder="48" />
+                </Field>
+                <Field label="Complaint window (days)" consumer="Customer" error={wholeNumberIssue(e.complaintWindowDays, 0, 365)} help="Days after completion in which a problem can be reported, with or without a warranty. Empty or 0 = no window.">
+                  <input className="sv-input" type="number" min={0} max={365} value={e.complaintWindowDays} onChange={(x) => set("complaintWindowDays", x.target.value)} />
+                </Field>
+              </div>
+            </>
+          )}
         </Section>
       ) : null}
 
@@ -1165,6 +1287,15 @@ export function ServiceConfigEditor({
               <input className="sv-input" type="number" min={0} max={1} step={0.05} value={e.completionWeight} onChange={(x) => set("completionWeight", x.target.value)} />
             </Field>
           </div>
+          <Toggle
+            label="Prefer a professional who already completed a job for this customer"
+            consumer="Ranking boost"
+            checked={e.preferredProvider}
+            onChange={(v) => set("preferredProvider", v)}
+          />
+          <p className="text-xs text-[var(--color-biz-muted)]">
+            A ranking boost only: the returning professional must still pass every requirement on the Professionals tab and be available.
+          </p>
         </Section>
       ) : null}
 

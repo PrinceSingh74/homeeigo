@@ -30,10 +30,15 @@ export type WarrantySnapshot = {
   refundAllowed: boolean;
   /** Days after completion during which a complaint (warranty or not) may be raised. 0 = no window. */
   complaintWindowDays: number;
+  /** Customer-facing texts, shown verbatim. Absent on bookings frozen before they existed. */
+  damagePolicy?: string | null;
+  guarantee?: string | null;
 };
 
 type WarrantyCfg = {
   warranty?: {
+    damagePolicy?: string;
+    guarantee?: string;
     enabled?: boolean;
     durationDays?: number;
     startEvent?: WarrantyStartEvent;
@@ -72,6 +77,8 @@ export function buildWarrantySnapshot(cfg: WarrantyCfg): WarrantySnapshot {
       reworkFirst: w.reworkFirst !== false,
       refundAllowed: w.refundAllowed !== false,
       complaintWindowDays,
+      damagePolicy: w.damagePolicy ?? null,
+      guarantee: w.guarantee ?? null,
     };
   }
   return {

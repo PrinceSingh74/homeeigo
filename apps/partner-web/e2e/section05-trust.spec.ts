@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
-import { partnerLogin, partnerToken, test } from "./enterprise/fixtures";
+import { partnerLogin, partnerToken, recoverDevChunkAbort, test } from "./enterprise/fixtures";
 
 const API = (process.env.E2E_API_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const ART = path.join(__dirname, "__artifacts__", "section05");
@@ -42,6 +42,7 @@ test.describe("Section 05 partner trust live E2E", () => {
       timeout: 45_000,
     });
     await page.goto("/wellbeing/sos", { waitUntil: "domcontentloaded" });
+    await recoverDevChunkAbort(page);
     await sosWait;
     await expect(page.getByRole("heading", { name: /safety|sos/i })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(/emergency contact/i).first()).toBeVisible();

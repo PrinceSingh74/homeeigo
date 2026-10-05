@@ -10,7 +10,9 @@
  *                                     the candidate SQL already scopes the population).
  *   2. BUSINESS_NOT_AUTHORIZED      — business-owned service, no active membership.
  *   3. SERVICE_CAPABILITY_MISSING, SKILL_MISSING, CERTIFICATION_*, EQUIPMENT_MISSING,
- *      INSURANCE_INVALID, LANGUAGE_MISMATCH — `evaluateCapabilityGates`.
+ *      INSURANCE_INVALID, LANGUAGE_MISMATCH, then the profile gates KYC_UNVERIFIED,
+ *      BACKGROUND_CHECK_NOT_CLEARED, EXPERIENCE_INSUFFICIENT, TRAINING_INCOMPLETE —
+ *      `evaluateCapabilityGates`.
  *   4. PROVIDER_NOT_AVAILABLE       — offline / paused / outside working hours / in a break.
  *   5. LOCATION_GATE_FAILED         — position unknown, beyond the max distance, outside the
  *                                     provider's radius or declared service zones.
@@ -35,6 +37,10 @@ export const MATCHING_GATE_ORDER: readonly MatchingRejectionReason[] = [
   "EQUIPMENT_MISSING",
   "INSURANCE_INVALID",
   "LANGUAGE_MISMATCH",
+  "KYC_UNVERIFIED",
+  "BACKGROUND_CHECK_NOT_CLEARED",
+  "EXPERIENCE_INSUFFICIENT",
+  "TRAINING_INCOMPLETE",
   "PROVIDER_NOT_AVAILABLE",
   "LOCATION_GATE_FAILED",
   "PRESENCE_STALE",

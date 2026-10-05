@@ -28,6 +28,7 @@ import { ServiceCategoryNav } from "@/components/services-catalog/ServiceCategor
 import { CatalogError, ServiceEmptyState } from "@/components/services-catalog/ServiceStates";
 import { Breadcrumbs } from "@/components/services-catalog/primitives";
 import { HowItWorks } from "@/components/services-catalog/TrustSections";
+import { ServiceVisit } from "@/components/services-catalog/detail/ServiceVisit";
 import { HourlyHelpModule, hourlyBooking, type HourlySelection } from "@/components/services-catalog/HourlyHelpModule";
 import { BeautyAudienceSelector, BeautyProfessionalSelector } from "@/components/services-catalog/beauty/BeautySelectors";
 import { ServiceHero } from "@/components/services-catalog/detail/ServiceHero";
@@ -473,16 +474,26 @@ function LiveBody({
             <ServiceAvailability service={service} cities={content.cities} member={Boolean(entitlements?.premiumAccess)} />
           </DetailSection>
 
-          {(content.prepare.length > 0 || content.safety.length > 0) && (
+          {detail?.visit ? (
+            <ServiceVisit visit={detail.visit} omitRepeatedRequirements={hasPreparation(detail.preparation)} />
+          ) : (
+            (content.prepare.length > 0 || content.safety.length > 0) && (
+              <DetailSection id="prepare" title="Before your service">
+                <div className="space-y-4">
+                  <ServiceRequirements items={content.prepare} />
+                  <ServiceSafety items={content.safety} />
+                </div>
+              </DetailSection>
+            )
+          )}
+
+          {detail?.visit && (content.prepare.length > 0) && (
             <DetailSection id="prepare" title="Before your service">
-              <div className="space-y-4">
-                <ServiceRequirements items={content.prepare} />
-                <ServiceSafety items={content.safety} />
-              </div>
+              <ServiceRequirements items={content.prepare} />
             </DetailSection>
           )}
 
-          <HowItWorks compact />
+          <HowItWorks compact title={detail?.visit ? "How booking works" : "How it works"} />
 
           <DetailSection id="faq" title="Frequently asked questions">
             <ServiceFAQ faqs={content.faqs} />

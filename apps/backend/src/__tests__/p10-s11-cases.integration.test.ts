@@ -174,6 +174,69 @@ describe.serial("§11 cases through the real routes", () => {
     expect((await call("GET", `/api/bookings/${parentId}/cases/nope/evidence`, undefined, customer())).status).toBe(404);
   });
 
+  test("the customer is told whether an issue can be reported, and a photo attached to their case is private to the case's parties", async () => {
+    if (!dbOk) return;
+    const PNG = Buffer.from(
+      "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a2e5b5a00000000049454e44ae426082",
+      "hex",
+    );
+    const upload = async (bookingId: string, id: string, bytes: Buffer, token: string) => {
+      const form = new FormData();
+      form.append("file", new File([bytes], "photo", { type: "image/png" }));
+      const res = await app.handle(new Request(`http://localhost/api/bookings/${bookingId}/cases/${id}/evidence/photo`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form }));
+      return { status: res.status, json: (await res.json().catch(() => ({}))) as any };
+    };
+    const media = (path: string, token: string) => app.handle(new Request(`http://localhost${path}`, { headers: { Authorization: `Bearer ${token}` } }));
+
+    // A completed booking with no case yet: reporting is open. The partner view carries no such block.
+    const bookingId = await completedBooking();
+    const fresh = await call("GET", `/api/bookings/${bookingId}/cases`, undefined, customer());
+    expect(fresh.json.data.report).toEqual({ canReport: true, reason: null, openCaseId: null });
+    expect((await call("GET", `/api/bookings/${bookingId}/cases`, undefined, partner())).json.data.report).toBeUndefined();
+    const opened = await open(bookingId);
+    expect(opened.status).toBe(201);
+    const id: string = opened.json.data.case.id;
+    // With a case open a second cannot be opened; the customer is pointed at the open one.
+    expect((await call("GET", `/api/bookings/${bookingId}/cases`, undefined, customer())).json.data.report).toEqual({ canReport: false, reason: null, openCaseId: id });
+
+    // The bytes decide the type, and only the case's own customer may attach.
+    expect(await upload(bookingId, id, Buffer.from("<html><script>alert(1)</script></html>"), customer())).toMatchObject({ status: 400, json: { code: "VALIDATION_ERROR" } });
+    expect((await upload(bookingId, id, PNG, outsider())).status).toBe(404);
+    expect((await upload(bookingId, id, PNG, partner())).status).toBe(404);
+    const ok = await upload(bookingId, id, PNG, customer());
+    expect(ok.status).toBe(201);
+    const photo = ok.json.data.case.evidence.at(-1);
+    expect(photo).toMatchObject({ kind: "CUSTOMER_MEDIA", hasStoredMedia: true, mediaUrl: null });
+    expect(photo.mediaStorageKey).toBeUndefined();
+    const [stored] = await prisma.$queryRaw<{ media_storage_key: string }[]>`SELECT media_storage_key FROM booking_case_evidence WHERE id = ${photo.id}`;
+    expect(stored.media_storage_key.startsWith(`${id}/`)).toBe(true);
+
+    try {
+      // Customer, assigned partner and admin can read it; an outsider cannot, and a customer cannot use the admin route.
+      const mine = await media(`/api/bookings/${bookingId}/cases/${id}/evidence/${photo.id}/media`, customer());
+      expect(mine.status).toBe(200);
+      expect(mine.headers.get("content-type")).toBe("image/png");
+      expect(mine.headers.get("cache-control")).toContain("private");
+      expect(Buffer.from(await mine.arrayBuffer()).equals(PNG)).toBe(true);
+      expect((await media(`/api/bookings/${bookingId}/cases/${id}/evidence/${photo.id}/media`, partner())).status).toBe(200);
+      expect((await media(`/api/admin/cases/${id}/evidence/${photo.id}/media`, admin())).status).toBe(200);
+      expect((await media(`/api/bookings/${bookingId}/cases/${id}/evidence/${photo.id}/media`, outsider())).status).toBe(404);
+      expect((await media(`/api/admin/cases/${id}/evidence/${photo.id}/media`, customer())).status).toBe(403);
+      // The photo belongs to this case only: another case id in the path does not serve it.
+      expect((await media(`/api/bookings/${parentId}/cases/${caseId}/evidence/${photo.id}/media`, customer())).status).toBe(404);
+
+      // A storage key a client supplied is recorded but never read back: it cannot be used to fetch another object.
+      const forged = await call("POST", `/api/bookings/${bookingId}/cases/${id}/evidence`, { evidence: [{ kind: "CUSTOMER_MEDIA", mediaStorageKey: stored.media_storage_key.replace(`${id}/`, `${caseId}/`) }] }, customer());
+      expect(forged.status).toBe(200);
+      const forgedItem = forged.json.data.case.evidence.at(-1);
+      expect((await media(`/api/bookings/${bookingId}/cases/${id}/evidence/${forgedItem.id}/media`, customer())).status).toBe(404);
+      expect((await media(`/api/admin/cases/${id}/evidence/${forgedItem.id}/media`, admin())).status).toBe(404);
+    } finally {
+      const { objectStorageService } = await import("../services/object-storage.service");
+      await objectStorageService.deleteObject("case-evidence", stored.media_storage_key).catch(() => undefined);
+    }
+  });
+
   test("admin transitions follow the map with CAS: CASE_CREATED→ACTION 409, →TRIAGE ok, stale version 409, blank reason 400, unknown state 400", async () => {
     if (!dbOk) return;
     const forbidden = await transition(caseId, "ACTION");

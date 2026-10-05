@@ -11,6 +11,77 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { BookingLiveTracking } from "@/components/tracking/BookingLiveTracking";
 import { adminApi, ADMIN_QUALITY_VERDICTS } from "@/services/admin-api";
 import { formatDate, inr } from "@/lib/format";
+import { matchingReasonLabel } from "@/lib/matching-reasons";
+import { FrozenRules, presentRules, type FrozenRule } from "@/components/operations/FrozenRules";
+import type { AdminQualityView } from "@/services/admin-api";
+
+const days = (n: number) => `${n} ${n === 1 ? "day" : "days"}`;
+const words = (s: string) => s.replace(/_/g, " ").toLowerCase();
+
+/**
+ * The frozen quality + cover policy as plain statements. Only rules that change something are
+ * listed: `customerConfirmation` is stored but nothing reads it (the customer is always asked),
+ * and a disabled warranty contributes no cover lines.
+ */
+function frozenQualityRules(policy: NonNullable<AdminQualityView["policy"]>): FrozenRule[] {
+  const q = policy.quality;
+  const w = policy.warranty;
+  const proof = q ? [q.proofRequired ? "Proof of work required" : "", q.beforeAfterPhotos ? "Before and after photos required" : ""].filter(Boolean) : [];
+  const cover = w?.enabled && (w.durationDays ?? 0) > 0;
+  const remedy = w && cover ? [w.reworkFirst ? "A free rework is offered first" : "", w.refundAllowed ? "A refund may be decided" : "A refund is not available under this cover", w.proofRequired ? "The customer must attach proof to claim" : ""].filter(Boolean) : [];
+  return presentRules([
+    { label: "Completion checklist", audience: "Professional — completion gate", value: q?.checklist },
+    { label: "Completion criteria", audience: "Professional + quality verdict", value: q?.completionCriteria },
+    { label: "Proof at completion", audience: "Completion gate", value: proof },
+    { label: "Professional confirmation", audience: "Completion gate", value: q?.professionalConfirmation ? "The professional must confirm the completion criteria were met before completing." : null },
+    { label: "Customer confirmation window", audience: "Customer", value: q?.confirmationWindowHours ? `${q.confirmationWindowHours} hours, then confirmed automatically` : null },
+    { label: "Warranty", audience: "Customer", value: w ? (cover ? `${days(w.durationDays!)} from ${w.startEvent === "CONFIRMATION" ? "customer confirmation" : "job completion"}` : null) : null },
+    { label: "Issues covered", audience: "Case eligibility", value: cover ? (w?.eligibleIssueTypes ?? []).map(words) : null },
+    { label: "Remedy", audience: "Case decision", value: remedy },
+    { label: "Exclusions", audience: "Customer", value: cover ? w?.exclusions : null },
+    { label: "Complaint window", audience: "Customer", value: w?.complaintWindowDays ? `${days(w.complaintWindowDays)} after completion` : null },
+    { label: "Service guarantee", audience: "Customer — shown verbatim", value: w?.guarantee },
+    { label: "Damage policy", audience: "Customer — shown verbatim", value: w?.damagePolicy },
+  ]);
+}
+
+type StepDetail = { title: string; description?: string | null; estimatedMinutes?: number | null; ppe?: string[]; warnings?: string[]; materials?: string[]; equipment?: string[] };
+
+/** The step title, with what the frozen plan says about doing it behind a disclosure so the table stays scannable. */
+function StepCell({ step: s }: { step: StepDetail }) {
+  const lists: [string, string[] | undefined][] = [
+    ["Materials", s.materials],
+    ["Equipment", s.equipment],
+    ["Protective equipment", s.ppe],
+    ["Warnings", s.warnings],
+  ];
+  const shown = lists.filter(([, v]) => v && v.length > 0);
+  const minutes = s.estimatedMinutes ? `about ${s.estimatedMinutes} min` : null;
+  if (shown.length === 0 && !s.description) {
+    return (
+      <span>
+        {s.title}
+        {minutes ? <span className="block text-xs text-[var(--color-biz-muted)]">{minutes}</span> : null}
+      </span>
+    );
+  }
+  return (
+    <details className="max-w-[420px]">
+      <summary className="cursor-pointer">
+        {s.title}
+        <span className="ml-2 text-xs text-[var(--color-biz-muted)]">{[minutes, "details"].filter(Boolean).join(" · ")}</span>
+      </summary>
+      <div className="mt-1.5 space-y-1 whitespace-normal text-xs text-[var(--color-biz-muted)]">
+        {s.description ? <p>{s.description}</p> : null}
+        {shown.map(([label, v]) => (
+          <p key={label}>
+            <span className="font-semibold text-[var(--color-biz-text)]">{label}:</span> {v!.join("; ")}
+          </p>
+        ))}
+      </div>
+    </details>
+  );
+}
 
 type ActionType = "cancel" | "complete" | "dispatch" | "repair" | "refund" | null;
 
@@ -367,6 +438,25 @@ export default function BookingDetailPage() {
           </div>
         </div>
         {safetyData && !safetyData.gate.ok ? <p className="text-sm text-red-400" role="status">{safetyData.gate.message}</p> : null}
+        {/* The safety rules this booking was made under (its own safety.v1 snapshot); the professional sees all of them, the customer the ones marked so. */}
+        {safetyData?.safety ? (
+          <FrozenRules
+            testId="admin-safety-frozen-rules"
+            rules={[
+              { label: "Do not proceed if", audience: "Professional — can raise a hold for these", value: safetyData.safety.prohibitedConditions },
+              { label: "Warnings", audience: "Customer + professional", value: safetyData.safety.warnings },
+              { label: "What the customer must do", audience: "Customer + professional", value: safetyData.safety.customerRequirements },
+              { label: "What the professional must do", audience: "Professional", value: safetyData.safety.providerRequirements },
+              { label: "Protective equipment", audience: "Professional", value: safetyData.safety.ppe },
+              { label: "Chemical restrictions", audience: "Customer + professional", value: safetyData.safety.chemicalRestrictions },
+              { label: "Safety information", audience: "Customer + professional", value: safetyData.safety.information },
+              { label: "Medical disclaimer", audience: "Customer + professional", value: safetyData.safety.medicalDisclaimer },
+              { label: "Emergency protocol", audience: "Customer + professional", value: safetyData.safety.emergencyProtocol },
+              { label: "Incident protocol", audience: "Professional", value: safetyData.safety.incidentProtocol },
+            ]}
+            footnote="Frozen when the booking was made. A later change to the service does not alter these."
+          />
+        ) : null}
         {holdForm ? (
           <form
             className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] items-end"
@@ -427,7 +517,7 @@ export default function BookingDetailPage() {
           headers={["#", "Step", "Kind", "Required", "Evidence", "State", "Finished", "Note / reason", "Action"]}
           rows={(executionData?.steps ?? []).map((s) => [
             String(s.stepNumber),
-            s.title,
+            <StepCell key={"sc-" + s.code} step={s} />,
             s.kind.replace(/_/g, " "),
             s.mandatory ? "Mandatory" : "Optional",
             s.evidence.replace(/_/g, " "),
@@ -546,6 +636,18 @@ export default function BookingDetailPage() {
             </p>
           ) : null}
         </div>
+        {/* The quality and cover rules this booking froze — what an override or a complaint decision is judged against. Absent on an older backend: nothing is claimed. */}
+        {qualityData?.policy ? (
+          frozenQualityRules(qualityData.policy).length > 0 ? (
+            <FrozenRules
+              testId="admin-quality-frozen-rules"
+              rules={frozenQualityRules(qualityData.policy)}
+              footnote="Frozen when the booking was made. The customer is always asked to confirm the work after completion."
+            />
+          ) : (
+            <p className="text-xs text-[var(--color-biz-muted)]">No quality or cover policy was frozen with this booking.</p>
+          )
+        ) : null}
         <DataTable
           title="Completion audit"
           headers={["When", "Action", "Change", "Verdict / case", "Actor", "Reason", "Request / trace"]}
@@ -595,8 +697,8 @@ export default function BookingDetailPage() {
             {Object.keys(diagData.counts).length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
                 {Object.entries(diagData.counts).map(([reason, n]) => (
-                  <span key={reason} className="rounded-full bg-[var(--color-biz-elevated)] px-2 py-0.5 text-[11px]">
-                    {reason.replace(/_/g, " ").toLowerCase()} · {n}
+                  <span key={reason} className="rounded-full bg-[var(--color-biz-elevated)] px-2 py-0.5 text-[11px]" title={reason}>
+                    {matchingReasonLabel(reason)} · {n}
                   </span>
                 ))}
               </div>
@@ -617,7 +719,7 @@ export default function BookingDetailPage() {
               headers={["Provider", "Reasons", "Details"]}
               rows={diagData.rejections.map((r) => [
                 <Link key={"rj-" + r.providerId} href={"/vendors/" + r.providerId} className="underline">{r.providerId.slice(0, 12)}…</Link>,
-                r.reasons.map((x) => x.replace(/_/g, " ").toLowerCase()).join(", "),
+                <span key={"rr-" + r.providerId} title={r.reasons.join(", ")}>{r.reasons.map(matchingReasonLabel).join(", ")}</span>,
                 <span key={"rd-" + r.providerId} className="block max-w-[360px] truncate text-xs text-[var(--color-biz-muted)]" title={JSON.stringify(r.details)}>
                   {JSON.stringify(r.details)}
                 </span>,

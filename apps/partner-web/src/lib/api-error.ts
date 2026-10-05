@@ -77,6 +77,8 @@ export function parseApiError<T>(body: ApiResponse<T>, status: number): PartnerA
                   ? "Required job proof is missing — add the photos before completing."
                 : body.code === "QUALITY_CHECKLIST_REQUIRED"
                   ? "Complete the service checklist before finishing this job."
+                : body.code === "QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED"
+                  ? "Confirm the completion criteria were met before finishing this job."
                 : body.code === "SAFETY_HOLD_ACTIVE"
                   ? "Work is on safety hold — it cannot be completed until the safety team clears it."
                 : body.code === "EXECUTION_GATE_BLOCKED"

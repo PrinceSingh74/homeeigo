@@ -11,7 +11,6 @@ import {
   MessageSquare,
   Navigation,
   XCircle,
-  CheckCircle2,
   RotateCcw,
   Star,
   ReceiptText,
@@ -23,6 +22,7 @@ import { cn } from "@/lib/utils";
 import type { SavedBooking } from "@/lib/bookings";
 import { useAppStore } from "@/stores/app-store";
 import {
+  mapBackendBookingToSaved,
   useBookingDetailQuery,
   useCancelBookingMutation,
   useReportProviderNoShowMutation,
@@ -34,7 +34,7 @@ import { RatingModal } from "@/components/ratings/RatingModal";
 import { STATUS_CONFIG } from "@/lib/booking-status";
 import { canCancelBooking, cancelBlockedReason, canReportProviderNoShow } from "@/lib/booking-cancel-rules";
 import { BookingStatusBadge } from "./BookingStatusBadge";
-import { BookingTimeline } from "./BookingTimeline";
+import { BookingProgressRail } from "./BookingProgressRail";
 import { bookUrl } from "@/lib/booking-url";
 import { useBookingPayment } from "@/hooks/use-booking-payment";
 import { RescheduleBookingModal } from "@/components/booking/RescheduleBookingModal";
@@ -43,7 +43,7 @@ import { ServiceStartPin } from "@/components/tracking/ServiceStartPin";
 import { BookingRequirements } from "@/components/booking/BookingRequirements";
 import { BookingExecution } from "@/components/booking/BookingExecution";
 import { BookingSafety } from "@/components/booking/BookingSafety";
-import { BookingCompletion } from "@/components/booking/BookingCompletion";
+import { BookingCompletion, useBookingCompletionQuery } from "@/components/booking/BookingCompletion";
 import { BookingCases } from "@/components/booking/BookingCases";
 import { BookingChatPanel } from "@/components/booking/BookingChatPanel";
 import { WalletCheckoutSummary } from "@/components/checkout/WalletCheckoutSummary";
@@ -52,10 +52,13 @@ export function BookingDetailModal({
   open,
   booking,
   onClose,
+  onOpenBooking,
 }: {
   open: boolean;
   booking: SavedBooking | null;
   onClose: () => void;
+  /** Show another booking in this modal (a case's follow-up visit). Omit and the link is not offered. */
+  onOpenBooking?: (booking: SavedBooking) => void;
 }) {
   const router = useRouter();
   const updateBookingStatus = useAppStore((s) => s.updateBookingStatus);
@@ -72,6 +75,8 @@ export function BookingDetailModal({
   const detailQuery = useBookingDetailQuery(open ? bookingId : undefined);
   const cancelQuoteQuery = useCancellationQuoteQuery(bookingId, cancelOpen);
   const ratingQuery = useRatingByBookingQuery(open ? bookingId : undefined);
+  // While the customer has not confirmed the work, confirming is the one primary action.
+  const awaitingConfirmation = useBookingCompletionQuery(open ? bookingId : "").data?.completion?.state === "PENDING_CUSTOMER";
   const liveStatus = detailQuery.data?.status?.toLowerCase();
   const resolvedStatus =
     liveStatus === "in_progress" || liveStatus === "en_route"
@@ -93,8 +98,6 @@ export function BookingDetailModal({
   const cfg = STATUS_CONFIG[resolvedStatus];
   const img = booking?.imagePath;
   const canTrack = resolvedStatus === "confirmed" || resolvedStatus === "in_progress";
-  const canComplete =
-    resolvedStatus === "confirmed" || resolvedStatus === "in_progress";
   // O3b: decided on the BACKEND status, not the collapsed one — the `in_progress`
   // presentation state also covers EN_ROUTE, where cancelling is still allowed.
   const canCancel = canCancelBooking(liveStatus);
@@ -132,6 +135,16 @@ export function BookingDetailModal({
   async function reconcileBooking(message?: string) {
     await refreshBooking.mutateAsync(bookingId);
     if (message) showToast(message, "info");
+  }
+
+  /** Fetch the follow-up booking from the server, then hand it to the page that owns this modal. */
+  async function openFollowUp(followUpBookingId: string) {
+    try {
+      const next = await refreshBooking.mutateAsync(followUpBookingId);
+      onOpenBooking?.(mapBackendBookingToSaved(next));
+    } catch {
+      showToast("We couldn't open the follow-up booking. Please find it in My Bookings.", "error");
+    }
   }
 
   return (
@@ -198,10 +211,14 @@ export function BookingDetailModal({
             ) : null}
 
             <div>
-              <h3 className="mb-3 font-display text-lg font-bold text-content">Status timeline</h3>
-              <div className="rounded-2xl glass-card p-4">
-                <BookingTimeline events={booking.timeline} />
-              </div>
+              <h3 className="mb-3 font-display text-lg font-bold text-content">Booking progress</h3>
+              {/* Six real stages with server timestamps only — see lib/booking-progress. */}
+              <BookingProgressRail
+                bookingId={bookingId}
+                booking={detailQuery.data}
+                loading={detailQuery.isLoading}
+                failed={detailQuery.isError}
+              />
             </div>
 
             {/* Service-start PIN — the customer shares it in person so the
@@ -221,7 +238,7 @@ export function BookingDetailModal({
             <BookingCompletion bookingId={bookingId} />
 
             {/* §11: the customer's reported issues and their progress — server truth. */}
-            <BookingCases bookingId={bookingId} />
+            <BookingCases bookingId={bookingId} onOpenBooking={onOpenBooking ? (id) => void openFollowUp(id) : undefined} />
 
             {/* Live provider tracking (real backend WS — graceful when no provider/offline). */}
             {canTrack && (
@@ -274,17 +291,8 @@ export function BookingDetailModal({
                   }}
                 />
               )}
-              {canComplete && (
-                <ActionBtn
-                  icon={CheckCircle2}
-                  label="Mark as completed"
-                  onClick={() =>
-                    void reconcileBooking(
-                      "Status refreshed from server. Completion is confirmed by provider.",
-                    )
-                  }
-                />
-              )}
+              {/* No "mark as completed" here: the professional completes the job, and the customer's
+                  confirmation is the real confirm-completion call in BookingCompletion above. */}
               {canReschedule && (
                 <ActionBtn
                   icon={Calendar}
@@ -324,7 +332,7 @@ export function BookingDetailModal({
               )}
               {canRebook && (
                 <ActionBtn
-                  primary
+                  primary={!awaitingConfirmation}
                   icon={RotateCcw}
                   label="Book again"
                   onClick={() => {
@@ -335,7 +343,7 @@ export function BookingDetailModal({
               )}
               {canRate && (
                 <ActionBtn
-                  primary={!existingRating}
+                  primary={!existingRating && !awaitingConfirmation}
                   icon={Star}
                   label={existingRating ? "Edit your review" : "Rate your service"}
                   onClick={() => setRatingOpen(true)}

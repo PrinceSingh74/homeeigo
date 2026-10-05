@@ -214,6 +214,10 @@ export type PartnerBooking = {
       beforeAfterPhotos: boolean;
       checklist: string[];
       warrantyDays: number;
+      /** "What done means" for this job. Absent on a policy that sets none. */
+      completionCriteria?: string[];
+      /** True when /complete must carry `professionalConfirmation: true` (409 QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED otherwise). */
+      professionalConfirmation?: boolean;
     } | null;
     durationMinutes: number | null;
   };
@@ -701,4 +705,247 @@ export type BookingRequirementsView = {
   serviceVersion: number | null;
   items: RequirementItemView[];
   gate: { arrival: RequirementGateResult; start: RequirementGateResult };
+};
+
+/* ---- Phase 10 §9 — booking safety (mirror of backend SafetySnapshot, partner view) ---- */
+export type BookingSafetyView = {
+  gate: { ok: boolean; message: string };
+  safety: {
+    prohibitedConditions: string[];
+    warnings: string[];
+    customerRequirements: string[];
+    providerRequirements: string[];
+    information: string | null;
+    medicalDisclaimer: string | null;
+    emergencyProtocol: string | null;
+    /** Empty / null on bookings frozen before these fields existed. */
+    ppe: string[];
+    chemicalRestrictions: string[];
+    incidentProtocol: string | null;
+  } | null;
+  /** Prohibited conditions the partner can report right now; empty when reporting is not available. */
+  canReport: string[];
+};
+
+/* ---- Phase 10 §8 — execution steps (mirror of backend execution view, partner audience) ---- */
+export type ExecutionStepView = {
+  code: string;
+  stepNumber: number;
+  title: string;
+  description: string | null;
+  mandatory: boolean;
+  evidence: string;
+  estimatedMinutes: number | null;
+  ppe: string[];
+  warnings: string[];
+  materials: string[];
+  equipment: string[];
+  state: string;
+  actions: string[];
+};
+export type BookingExecutionView = {
+  enforced: boolean;
+  steps: ExecutionStepView[];
+  gate: { ok: boolean; blocking: Array<{ code: string; reason: string }> };
+};
+
+/* ---- Phase 11 — partner capability self-service (mirror of backend provider-capability.service) ----
+ * Rows are the database rows with camelCased keys plus the computed `validity` / `nearExpiry`;
+ * timestamps arrive as ISO strings. The partner view never carries `verifiedBy`. */
+export type CapabilityStatus = "DECLARED" | "VERIFIED" | "REJECTED" | "REVOKED";
+export type CapabilityKind = "skills" | "certifications" | "equipment" | "insurance" | "languages";
+export type SkillLevel = "BASIC" | "SKILLED" | "EXPERT";
+export type LanguageProficiency = "BASIC" | "CONVERSATIONAL" | "FLUENT" | "NATIVE";
+export type EquipmentOwnership = "OWNED" | "RENTED" | "EMPLOYER";
+export type EquipmentOperational = "OPERATIONAL" | "OUT_OF_SERVICE";
+
+export type SkillCatalogueEntry = { code: string; category: string; name: string; active: boolean; createdAt: string; updatedAt: string };
+
+type CapabilityRowBase = { id: number; providerId: string; dataOrigin: string | null; createdAt: string; updatedAt: string };
+
+export type ProviderSkillView = CapabilityRowBase & {
+  skillCode: string;
+  level: SkillLevel | null;
+  status: CapabilityStatus;
+  source: "SELF" | "ADMIN" | "DOCUMENT" | "IMPORT" | "LEGACY";
+  sourceRef: string | null;
+  verifiedAt: string | null;
+  expiresAt: string | null;
+  skillName: string;
+  skillCategory: string;
+  skillActive: boolean;
+  validity: "VALID" | "UNVERIFIED" | "EXPIRED" | "REJECTED" | "REVOKED";
+  nearExpiry: boolean;
+};
+
+export type ProviderCertificationView = CapabilityRowBase & {
+  certificationType: string;
+  issuer: string | null;
+  referenceNumber: string | null;
+  issuedAt: string | null;
+  expiresAt: string | null;
+  status: CapabilityStatus;
+  verificationSource: string | null;
+  documentId: string | null;
+  proofRef: string | null;
+  verifiedAt: string | null;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  validity: "VALID" | "EXPIRED" | "REVOKED" | "UNVERIFIED" | "REJECTED";
+  nearExpiry: boolean;
+};
+
+export type ProviderEquipmentView = CapabilityRowBase & {
+  equipmentType: string;
+  ownership: EquipmentOwnership;
+  operational: EquipmentOperational;
+  status: CapabilityStatus;
+  verifiedAt: string | null;
+  inspectionDueAt: string | null;
+  note: string | null;
+  validity: "VALID" | "REVOKED" | "REJECTED" | "UNVERIFIED" | "OUT_OF_SERVICE" | "INSPECTION_OVERDUE";
+  /** For equipment this flags the inspection due date, not an expiry. */
+  nearExpiry: boolean;
+};
+
+export type ProviderInsuranceView = CapabilityRowBase & {
+  insuranceType: string;
+  insurer: string | null;
+  policyReference: string | null;
+  effectiveFrom: string | null;
+  expiresAt: string;
+  status: CapabilityStatus;
+  documentId: string | null;
+  proofRef: string | null;
+  verifiedAt: string | null;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  validity: "VALID" | "EXPIRED" | "REVOKED" | "UNVERIFIED" | "NOT_YET_EFFECTIVE" | "REJECTED";
+  nearExpiry: boolean;
+};
+
+/** Languages have no review lifecycle — no `status`; `source` says who recorded the row. */
+export type ProviderLanguageView = CapabilityRowBase & {
+  languageCode: string;
+  proficiency: LanguageProficiency;
+  source: "SELF" | "ADMIN";
+  active: boolean;
+  validity: "ACTIVE" | "INACTIVE";
+};
+
+export type PartnerCapabilityProfile = {
+  providerId: string;
+  dataOrigin: string | null;
+  generatedAt: string;
+  skills: ProviderSkillView[];
+  certifications: ProviderCertificationView[];
+  equipment: ProviderEquipmentView[];
+  insurance: ProviderInsuranceView[];
+  languages: ProviderLanguageView[];
+  /** Service capabilities and business memberships — sent by the server, not shown by this app yet. */
+  services: Array<Record<string, unknown>>;
+  memberships: Array<Record<string, unknown>>;
+  summary: { nearExpiry: number; expired: number; pendingReview: number };
+  /** Active skills the partner can declare (empty when the catalogue could not be read). */
+  skillCatalogue: SkillCatalogueEntry[];
+  /**
+   * The certification / equipment / insurance codes operational services require (sorted, possibly
+   * empty). Absent on a backend that predates it.
+   */
+  requirementCatalogue?: { certifications: string[]; equipment: string[]; insurance: string[] };
+};
+
+/** POST bodies — fact fields only; status, verifier, source and origin are the server's. */
+export type DeclareSkillBody = { skillCode: string; level?: SkillLevel | null };
+export type DeclareCertificationBody = {
+  certificationType: string;
+  issuer?: string | null;
+  referenceNumber?: string | null;
+  issuedAt?: string | null;
+  expiresAt?: string | null;
+  documentId?: string | null;
+};
+export type DeclareEquipmentBody = { equipmentType: string; ownership?: EquipmentOwnership | null; operational?: EquipmentOperational | null; note?: string | null };
+export type DeclareInsuranceBody = {
+  insuranceType: string;
+  insurer?: string | null;
+  policyReference?: string | null;
+  effectiveFrom?: string | null;
+  expiresAt: string;
+  documentId?: string | null;
+};
+export type DeclareLanguageBody = { languageCode: string; proficiency?: LanguageProficiency | null };
+/** PATCH /:kind/:rowId — certifications and insurance only; a key left out keeps its stored value. */
+export type EditCapabilityBody = {
+  issuer?: string | null;
+  referenceNumber?: string | null;
+  issuedAt?: string | null;
+  expiresAt?: string | null;
+  insurer?: string | null;
+  policyReference?: string | null;
+  effectiveFrom?: string | null;
+  documentId?: string | null;
+};
+/**
+ * The stored row as returned by a declare / edit: no computed `validity`, so the profile is re-read.
+ * `verifiedBy` is never an identity — `null` (nobody verified it) or the constant "ADMIN".
+ */
+export type CapabilityWriteRow = { id: number; status?: CapabilityStatus; verifiedBy?: "ADMIN" | null } & Record<string, unknown>;
+
+/* ---- Partner service skills (mirror of backend partner-service-skills.service ServiceSkillBoard) ---- */
+export type ServiceSkillLane = "performing" | "pending" | "suspended" | "revoked" | "available";
+/** One thing a service asks for that the professional does not currently meet. `code` is a matching rejection reason. */
+export type ServiceReadinessGap = { code: string; detail: string; title?: string };
+export type ServiceReadiness = { ready: boolean; missing: ServiceReadinessGap[] };
+export type PartnerServiceSkillCard = {
+  serviceId: string;
+  name: string;
+  slug: string;
+  category: string;
+  lane: ServiceSkillLane;
+  capabilityId: number | null;
+  source: string | null;
+  requestedAt: string | null;
+  requestNote: string | null;
+  /** Only on `performing` cards; absent on other lanes and on a backend that predates it. */
+  readiness?: ServiceReadiness;
+};
+export type PartnerServiceSkillBoard = {
+  /** False while the capability tables are not deployed: requests cannot be made. */
+  approvalWorkflow: boolean;
+  performing: PartnerServiceSkillCard[];
+  pending: PartnerServiceSkillCard[];
+  suspended: PartnerServiceSkillCard[];
+  revoked: PartnerServiceSkillCard[];
+  available: PartnerServiceSkillCard[];
+};
+
+/* ---- Phase 10 §11 — a reported issue as the assigned partner sees it (backend partnerView) ---- */
+export type PartnerCaseEvidence = {
+  id: number;
+  kind: string;
+  jobEvidenceId: string | null;
+  mediaUrl: string | null;
+  note: string | null;
+  /**
+   * True when the customer's photo is stored privately and served by
+   * GET /api/bookings/:id/cases/:caseId/evidence/:evidenceId/media (authenticated). Absent on a
+   * backend that predates it.
+   */
+  hasStoredMedia?: boolean;
+  createdAt: string;
+};
+export type PartnerCaseView = {
+  id: string;
+  caseNumber: string;
+  bookingId: string;
+  type: string;
+  category: string;
+  state: string;
+  description: string | null;
+  createdAt: string;
+  closedAt: string | null;
+  resolution: { action: string | null; followUpBookingId: string | null } | null;
+  /** Absent on a backend that predates case evidence in the partner view. */
+  evidence?: PartnerCaseEvidence[];
 };

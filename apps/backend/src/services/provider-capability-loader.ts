@@ -16,7 +16,8 @@ import { isBusinessRow } from "../lib/analytics-scope";
 import { isMarketplaceSeedAccount } from "../lib/data-provenance";
 import { loadHydratedCatalog } from "../lib/service-catalog-store";
 import { resolveServiceMatchTokens, serviceCategoryMatchWhere, type ServiceMatchTokens } from "../lib/service-match";
-import { isFeatureEnabled } from "./feature-flag.service";
+import { currentEnvironment, evaluateFlag, isFeatureEnabled } from "./feature-flag.service";
+import { userPiiService } from "./user-pii.service";
 import {
   EMPTY_CAPABILITY_ROWS,
   capabilityRequirementsFromConfig,
@@ -102,9 +103,34 @@ export async function loadCapabilityRows(providerIds: string[], db: Db = prisma)
   const ids = [...new Set(providerIds)];
   if (ids.length === 0) return out;
   for (const id of ids) out.set(id, emptyRows());
-  const present = await presentTables(db);
+  // Profile facts live on the provider record and the academy tables, which always exist — loaded
+  // before the capability-table probe so a profile requirement binds even where those are absent.
+  const [profiles, training, present] = await Promise.all([
+    db.provider.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, isVerified: true, backgroundCheckStatus: true, experienceYears: true },
+    }),
+    db.partnerAcademyProgress.findMany({
+      where: { providerId: { in: ids }, completedAt: { not: null } },
+      select: { providerId: true, module: { select: { slug: true } } },
+    }),
+    presentTables(db),
+  ]);
+  for (const p of profiles) {
+    const bucket = out.get(p.id);
+    if (bucket) {
+      bucket.profile = {
+        kycVerified: p.isVerified,
+        backgroundCheck: p.backgroundCheckStatus,
+        experienceYears: p.experienceYears,
+        completedTrainingModules: [],
+      };
+    }
+  }
+  for (const t of training) out.get(t.providerId)?.profile?.completedTrainingModules.push(t.module.slug);
   if (present.size === 0) return out;
-  const push = <K extends keyof ProviderCapabilityRows>(providerId: string, key: K, row: ProviderCapabilityRows[K][number]) => {
+  type RowKey = Exclude<keyof ProviderCapabilityRows, "profile">;
+  const push = <K extends RowKey>(providerId: string, key: K, row: ProviderCapabilityRows[K][number]) => {
     const bucket = out.get(providerId);
     if (bucket) (bucket[key] as Array<ProviderCapabilityRows[K][number]>).push(row);
   };
@@ -195,6 +221,12 @@ export type ServiceGateContext = {
    * anonymous caller is business, exactly like `matchingService.candidatePopulation`.
    */
   bookingIsBusiness: boolean;
+  /**
+   * Whether a business booking may fall back to an on-duty `@homigo.demo` seed partner when no
+   * business partner can take it (`SEED_PARTNER_FALLBACK_FLAG`). Absent = off: by default a
+   * business customer is matched to business partners only.
+   */
+  seedPartnerFallback?: boolean;
 };
 
 /**
@@ -215,6 +247,60 @@ export async function serviceCapabilityMode(): Promise<ServiceCapabilityMode> {
   return (await isFeatureEnabled(STRICT_SERVICE_CAPABILITY_FLAG)) ? "STRICT" : "LEGACY_FALLBACK";
 }
 
+/**
+ * Feature flag that lets a business booking fall back to an on-duty `@homigo.demo` seed partner when
+ * the business pool cannot take the job. The Phase 11 policy is BUSINESS PROVIDERS ONLY for a business
+ * customer; the flag is the owner's switch for an environment with no real partners on duty. Suite
+ * fixtures never qualify, flag or not.
+ */
+export const SEED_PARTNER_FALLBACK_FLAG = "matching.seed_partner_fallback";
+
+/**
+ * Environments whose marketplace IS the seed accounts: there the fallback is on unless a flag row
+ * says otherwise. Everywhere else (staging, production, anything unrecognised) a missing row is off.
+ */
+const DEMO_ENVIRONMENTS: readonly string[] = ["dev", "development", "local"];
+
+export type DispatchPolicyState = { enabled: boolean; source: "FLAG" | "ENVIRONMENT_DEFAULT" };
+
+/** What the fallback is when no flag row exists for this environment. Pure. */
+export function seedPartnerFallbackDefault(environment: string): boolean {
+  return DEMO_ENVIRONMENTS.includes(environment.trim().toLowerCase());
+}
+
+/**
+ * The effective fallback policy. An explicit flag row always decides — ON or OFF, in any
+ * environment. Only a MISSING row falls back to the environment default, and a flag-store failure is
+ * off (a database blip must not start sending customers' jobs to demo accounts).
+ */
+export async function seedPartnerFallbackPolicy(): Promise<DispatchPolicyState> {
+  const decision = await evaluateFlag(SEED_PARTNER_FALLBACK_FLAG);
+  if (decision.reason === "FLAG_MISSING") return { enabled: seedPartnerFallbackDefault(currentEnvironment()), source: "ENVIRONMENT_DEFAULT" };
+  return { enabled: decision.enabled, source: "FLAG" };
+}
+
+export type SeedCandidateUser = { id: string; email: string | null; emailEncrypted?: string | null; dataOrigin: DataOrigin | null };
+
+/**
+ * Whether a partner's account is the application's own `@homigo.demo` seed.
+ *
+ * A seed account is recognised by its address, and `users.email` is NULL for every account written
+ * since PII encryption — the address lives in `email_encrypted`. Reading only the plaintext column
+ * recognised no encrypted seed account at all, so the fallback silently offered the job to nobody.
+ * Only a non-business row is ever decrypted; a business partner is in the strict pool already.
+ */
+export async function isSeedPartnerUser(user: SeedCandidateUser): Promise<boolean> {
+  if (isBusinessRow(user.dataOrigin)) return false;
+  const email = user.email ?? (await userPiiService.resolveEmail(user).catch(() => null));
+  return isMarketplaceSeedAccount(email);
+}
+
+/** Ids of the seed-account partners in a candidate list. Decrypts at most the non-business rows. */
+export async function seedPartnerIds(candidates: ReadonlyArray<{ id: string; user: SeedCandidateUser }>): Promise<Set<string>> {
+  const flags = await Promise.all(candidates.map(async (c) => ((await isSeedPartnerUser(c.user)) ? c.id : null)));
+  return new Set(flags.filter((id): id is string => id != null));
+}
+
 /** Everything the gate needs about the service and the booking's population. Reads via `db`. */
 export async function loadServiceGateContext(
   serviceId: string,
@@ -222,20 +308,23 @@ export async function loadServiceGateContext(
   db: Db = prisma,
   opts: { mode?: ServiceCapabilityMode } = {},
 ): Promise<ServiceGateContext> {
-  const [service, customer, businessId, mode] = await Promise.all([
+  const [service, customer, businessId, mode, seedPartnerFallback] = await Promise.all([
     db.service.findUnique({ where: { id: serviceId }, select: { id: true, catalogConfig: true } }),
     customerId ? db.user.findUnique({ where: { id: customerId }, select: { dataOrigin: true } }) : Promise.resolve(null),
     serviceBusinessId(serviceId, db),
     opts.mode ? Promise.resolve(opts.mode) : serviceCapabilityMode(),
+    seedPartnerFallbackPolicy().then((p) => p.enabled),
   ]);
   const catalog = service ? await loadHydratedCatalog({ id: serviceId, catalogConfig: service.catalogConfig }, db as never) : null;
+  const bookingIsBusiness = customer ? isBusinessRow(customer.dataOrigin) : true;
   return {
     serviceId,
     serviceBusinessId: businessId,
     mode,
     requirements: requirementsForMode(catalog, mode),
     legacyRequiredSkills: catalog?.providerRequirements?.requiredSkills ?? [],
-    bookingIsBusiness: customer ? isBusinessRow(customer.dataOrigin) : true,
+    bookingIsBusiness,
+    seedPartnerFallback: bookingIsBusiness && seedPartnerFallback,
   };
 }
 
@@ -338,12 +427,15 @@ export async function recheckProviderCapability(
   now: Date = new Date(),
 ): Promise<{ reason: MatchingRejectionReason; detail: string } | null> {
   const [owner, rows] = await Promise.all([
-    db.provider.findUnique({ where: { id: providerId }, select: { user: { select: { dataOrigin: true, email: true } } } }),
+    db.provider.findUnique({ where: { id: providerId }, select: { user: { select: { id: true, dataOrigin: true, email: true, emailEncrypted: true } } } }),
     loadCapabilityRowsFor(providerId, db),
   ]);
   const origin = owner?.user.dataOrigin ?? null;
-  // A seed/demo partner may accept a real customer's job. A suite fixture still cannot.
-  const seedForBusinessBooking = Boolean(ctx.bookingIsBusiness && owner && isMarketplaceSeedAccount(owner.user.email));
+  // A seed/demo partner may accept a real customer's job only while the owner keeps the seed fallback
+  // on. A suite fixture never can.
+  const seedForBusinessBooking = Boolean(
+    ctx.bookingIsBusiness && ctx.seedPartnerFallback && owner && (await isSeedPartnerUser(owner.user)),
+  );
   if (owner && isBusinessRow(origin) !== ctx.bookingIsBusiness && !seedForBusinessBooking) {
     return { reason: "PROVENANCE_INVALID", detail: ctx.bookingIsBusiness ? "non_business_provider" : "business_provider" };
   }

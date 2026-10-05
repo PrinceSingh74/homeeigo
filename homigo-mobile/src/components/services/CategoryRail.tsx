@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, StyleSheet, FlatList, Image, Dimensions } from "react-native";
+import { View, Text, StyleSheet, FlatList, Image, Dimensions, Pressable } from "react-native";
+import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { ArrowRight, Sparkles } from "lucide-react-native";
 import { SectionHeader } from "./common/SectionHeader";
@@ -46,6 +47,7 @@ export function CategoryRail({
 }) {
   const { c, layout: L } = useServicesTheme();
   const { book } = useServicesActions();
+  const router = useRouter();
   const { services: catalog } = useCatalogServices();
 
   const findCatalog = (name: string) =>
@@ -70,8 +72,17 @@ export function CategoryRail({
           return (
             <PressableScale
               haptic={!soon}
+              // The card opens the service's detail page (what is promised, then Book); the arrow
+              // below stays the one-tap route straight into the booking flow.
               onPress={() => {
-                if (!soon && svc) book({ service: svc.id });
+                if (!soon && svc) router.push({ pathname: "/service/[id]", params: { id: svc.id } });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={soon ? `${item.name}, coming soon` : `${item.name}${price ? `, from ${price}` : ""}. View details`}
+              // The card is one accessible element, so the nested Book arrow is offered as an action.
+              accessibilityActions={!soon && svc ? [{ name: "book", label: `Book ${item.name} now` }] : undefined}
+              onAccessibilityAction={(e) => {
+                if (e.nativeEvent.actionName === "book" && !soon && svc) book({ service: svc.id });
               }}
               style={[styles.card, { shadowColor: accent }]}
             >
@@ -110,9 +121,18 @@ export function CategoryRail({
                     <View />
                   )}
                   {!soon ? (
-                    <View style={[styles.arrow, { backgroundColor: accent }]}>
+                    <Pressable
+                      onPress={() => {
+                        if (svc) book({ service: svc.id });
+                      }}
+                      disabled={!svc}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Book ${item.name} now`}
+                      style={[styles.arrow, { backgroundColor: accent }]}
+                    >
                       <ArrowRight size={15} color="#fff" strokeWidth={2.6} />
-                    </View>
+                    </Pressable>
                   ) : null}
                 </View>
               </View>

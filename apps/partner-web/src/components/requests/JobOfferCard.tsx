@@ -159,7 +159,7 @@ export function JobOfferCard({
               className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
                 expired
                   ? "bg-partner-line text-partner-muted"
-                  : "bg-partner-success/15 text-partner-success"
+                  : "bg-green-100 text-green-900 dark:bg-green-950 dark:text-green-100"
               }`}
             >
               {expired ? <TimerOff className="h-3 w-3" /> : <Sparkles className="h-3 w-3" />}

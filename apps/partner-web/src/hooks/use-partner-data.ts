@@ -595,6 +595,7 @@ export function useCompleteBookingMutation() {
       notes,
       photos,
       completedChecklist,
+      professionalConfirmation,
     }: {
       bookingId: string;
       latitude: number | null;
@@ -607,7 +608,9 @@ export function useCompleteBookingMutation() {
        * all-ticked list from a surface that did not show the checklist to the partner.
        */
       completedChecklist?: string[];
-    }) => partnerApi.completeBooking(bookingId, latitude, longitude, notes, photos, completedChecklist),
+      /** `true` only when the policy asks for the attestation and the partner ticked it. */
+      professionalConfirmation?: true;
+    }) => partnerApi.completeBooking(bookingId, latitude, longitude, notes, photos, completedChecklist, professionalConfirmation),
     onMutate: async ({ bookingId }) => {
       await qc.cancelQueries({ queryKey: partnerKeys.bookingsAll });
       const snapshots = patchBookingsCache(qc, bookingId, {

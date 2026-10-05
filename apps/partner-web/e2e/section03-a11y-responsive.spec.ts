@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import { partnerLogin, test } from "./enterprise/fixtures";
+import { partnerLogin, recoverDevChunkAbort, test } from "./enterprise/fixtures";
 import { assertAxeSerious } from "./helpers/p0-a11y";
 
 const VIEWPORTS = [
@@ -130,6 +130,7 @@ test.describe("Section 03 a11y + responsive (mocked UI)", () => {
 
       for (const path of ["/requests", "/requests/job-e2e-section03"] as const) {
         await page.goto(path);
+        await recoverDevChunkAbort(page);
         if (path === "/requests") {
           await expect(page.getByRole("heading", { name: /bookings/i })).toBeVisible({
             timeout: 30_000,

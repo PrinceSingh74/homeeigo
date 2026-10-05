@@ -42,8 +42,55 @@ function Group({ icon: Icon, title, children }: { icon: typeof Package; title: s
  * recorded when the customer booked), never from the service's current configuration. A booking
  * made before Phase 06 has no snapshot and renders nothing.
  */
-export function JobPreparation({ requirements }: { requirements: PartnerRequirementsBrief | null | undefined }) {
+export type JobPreparationPart = "materials" | "equipment" | "customer";
+
+/** Whether the snapshot has anything to show for one part of the brief. */
+export function hasPreparationPart(requirements: PartnerRequirementsBrief | null | undefined, part: JobPreparationPart): boolean {
+  if (!requirements || requirements.empty) return false;
+  if (part === "materials") return requirements.bringMaterials.length > 0;
+  if (part === "equipment") return requirements.bringEquipment.length > 0;
+  return requirements.customerProvides.length > 0 || requirements.preconditions.length > 0;
+}
+
+export function JobPreparation({
+  requirements,
+  only,
+}: {
+  requirements: PartnerRequirementsBrief | null | undefined;
+  /**
+   * Render just one part, without the "Job preparation" title — the execution brief places
+   * materials, equipment and the customer's side under its own section headings.
+   */
+  only?: JobPreparationPart;
+}) {
   if (!requirements || requirements.empty) return null;
+  if (only) {
+    if (!hasPreparationPart(requirements, only)) return null;
+    return (
+      <div className="space-y-4" data-testid={`job-preparation-${only}`}>
+        {only === "materials" && (
+          <Group icon={Package} title="Materials to bring">
+            {requirements.bringMaterials.map((r) => <Item key={r.label} r={r} />)}
+          </Group>
+        )}
+        {only === "equipment" && (
+          <Group icon={Wrench} title="Equipment to bring">
+            {requirements.bringEquipment.map((r) => <Item key={r.label} r={r} />)}
+          </Group>
+        )}
+        {only === "customer" && requirements.customerProvides.length > 0 && (
+          <Group icon={UserRound} title="Customer provides">
+            {requirements.customerProvides.map((r) => <Item key={r.label} r={r} extra="Confirm it is on site before you start." />)}
+          </Group>
+        )}
+        {only === "customer" && requirements.preconditions.length > 0 && (
+          <Group icon={CheckCircle2} title="Customer preconditions">
+            {requirements.preconditions.map((r) => <Item key={r.label} r={r} extra={CHECK_LABEL[r.check]} />)}
+          </Group>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="space-y-4" data-testid="job-preparation">
       <p className="flex items-center gap-1.5 text-sm font-semibold text-partner-text">

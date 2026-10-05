@@ -192,9 +192,12 @@ describe("the client's checklistComplete is never an input", () => {
     expect(svc).not.toMatch(/checklistComplete\??:\s*boolean/);
     expect(svc).not.toMatch(/[^`]opts\??\.checklistComplete/);
     const quality = read("src/services/booking-quality.service.ts");
-    // The verdict service takes only `completedChecklist` (matched item by item); never the boolean.
+    // The verdict service takes `completedChecklist` (matched item by item) and the professional's
+    // attestation, which is asked for only where the frozen policy requires it and never replaces
+    // proof (p11-profile-gates.test.ts). It never takes the checklist boolean.
     expect(quality).not.toMatch(/opts\??\.checklistComplete/);
-    expect(quality).toContain("opts: { completedChecklist?: readonly string[] }");
+    expect(quality).not.toMatch(/checklistComplete\??:\s*boolean/);
+    expect(quality).toContain("export type CompletionSubmission = { completedChecklist?: readonly string[]; professionalConfirmed?: boolean };");
   });
 });
 

@@ -18,6 +18,7 @@ import {
 } from "../lib/service-catalog-config";
 import { loadHydratedCatalog, syncRelationalCatalog, syncServiceExecution, syncServiceRequirements, withRequirementItems, withRequirementItemsMany } from "../lib/service-catalog-store";
 import { customerRequirementsView, resolveServiceRequirements, type CustomerRequirementsView } from "../lib/service-requirements";
+import { customerVisitPromise, customerQualitySummary, startPinRequired } from "../lib/customer-visit";
 
 /** Phase 06 customer view for the base selection; null when the configuration cannot be resolved (never a guess). */
 function baseCustomerRequirements(cfg: ServiceCatalogConfig | null): CustomerRequirementsView | null {
@@ -57,7 +58,6 @@ import {
   partnerEquipmentCopy,
   partnerMaterialsCopy,
   paymentCapabilities,
-  qualitySnapshot,
 } from "../lib/service-runtime-policy";
 
 // Catalog data changes rarely (no runtime mutation endpoints) and is read on
@@ -256,7 +256,6 @@ export class CatalogService {
     const agg = (await ratingsForServices([s.id])).get(s.id);
     const profile = parseProfile(s.capabilityProfile, s.category);
     const pay = paymentCapabilities(cfg);
-    const quality = qualitySnapshot(cfg);
     observeHist("service_catalog_lookup_latency", (Date.now() - started) / 1000);
     incCounter("service_view_total");
     return {
@@ -321,14 +320,13 @@ export class CatalogService {
       paymentCapabilities: pay,
       materialsResponsibility: customerMaterialsCopy(cfg?.materialPolicy),
       equipmentResponsibility: customerEquipmentCopy(cfg?.equipmentPolicy),
-      qualitySummary: quality
-        ? {
-            proofRequired: quality.proofRequired,
-            beforeAfterPhotos: quality.beforeAfterPhotos,
-            warrantyDays: quality.warrantyDays,
-            checklistCount: quality.checklist.length,
-          }
-        : null,
+      /**
+       * Numeric proof flags and warranty days. Days follow warranty.v1, the same snapshot a booking
+       * freezes — not the legacy quality.warrantyDays field. The checklist is not included.
+       */
+      qualitySummary: customerQualitySummary(cfg),
+      /** Customer-safe visit promise. Partner steps, holds and matching never appear here. */
+      visit: customerVisitPromise(cfg, { startPinRequired: startPinRequired(process.env.SERVICE_START_OTP_REQUIRED) }),
     };
   }
 

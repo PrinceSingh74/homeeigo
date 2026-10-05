@@ -58,6 +58,7 @@ import {
   type ResolveAction,
 } from "../lib/booking-case-policy";
 import { bookingRefundService } from "./booking-refund.service";
+import { objectStorageService } from "./object-storage.service";
 import { bookingValidationService } from "./booking-validation.service";
 import { partnerOperationsService } from "./partner-operations.service";
 import { bookingExecutionService } from "./booking-execution.service";
@@ -109,6 +110,10 @@ type Fail = { ok: false; error: CaseError; data?: Record<string, unknown> };
 const fail = (error: CaseError, data?: Record<string, unknown>): Fail => ({ ok: false, error, data });
 
 const MAX_EVIDENCE_PER_CASE = 20;
+
+const CASE_MEDIA_NAMESPACE = "case-evidence" as const;
+export const CASE_MEDIA_MIME = { ".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp" } as const;
+export type CaseMediaExt = keyof typeof CASE_MEDIA_MIME;
 /** A REFUND attempt younger than this is assumed to still be running; an older one may be re-driven (same key). */
 const REFUND_REDRIVE_AFTER_MS = 2 * 60_000;
 
@@ -326,6 +331,72 @@ class BookingCaseService {
     return { ok: true as const, case: await this.customerView((await loadCase(prisma, c.id))!) };
   }
 
+  /**
+   * Whether this customer may report an issue on the booking right now — the same arithmetic `openCase`
+   * applies, so a client can show or withhold the action instead of finding out by being refused.
+   * `openCaseId` is set when a case is already open (more can be added to it; a second cannot be opened).
+   */
+  async reportability(bookingId: string, customerId: string): Promise<{ canReport: boolean; reason: CaseError | null; openCaseId: string | null }> {
+    const no = (reason: CaseError) => ({ canReport: false, reason, openCaseId: null });
+    if (!(await tablesPresent())) return no(CASE_ERRORS.CASES_UNAVAILABLE);
+    const b = await prisma.booking.findUnique({ where: { id: bookingId }, select: { id: true, userId: true, status: true, completedAt: true, serviceConfigSnapshot: true } });
+    if (!b || b.userId !== customerId) return no(CASE_ERRORS.NOT_FOUND);
+    if (b.status !== "COMPLETED" || !b.completedAt) return no(CASE_ERRORS.BOOKING_NOT_COMPLETED);
+    const open = await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM booking_cases WHERE open_key = ${openKeyFor(b.id)}`;
+    if (open[0]) return { canReport: false, reason: null, openCaseId: open[0].id };
+    const row = await warrantyRow(prisma, b.id);
+    // The complaint window does not depend on the category; QUALITY is only a placeholder input.
+    const eligibility = evaluateWarrantyEligibility({
+      policy: policyFor(b.serviceConfigSnapshot, row),
+      row: row ? { state: row.state, startsAt: row.starts_at, expiresAt: row.expires_at } : null,
+      completedAt: b.completedAt,
+      category: "QUALITY",
+      proofPresent: false,
+      now: new Date(),
+    });
+    if (eligibility.complaintWindowOpen) return { canReport: true, reason: null, openCaseId: null };
+    return no(eligibility.reasonCodes.includes("NO_COMPLAINT_WINDOW") ? CASE_ERRORS.COMPLAINT_WINDOW_NOT_CONFIGURED : CASE_ERRORS.COMPLAINT_WINDOW_CLOSED);
+  }
+
+  /**
+   * A photo the customer attaches to their own open case. The bytes are stored privately under
+   * `<caseId>/…` and recorded as CUSTOMER_MEDIA; ownership, the open state and the evidence limit are
+   * checked before anything is written, and `addEvidence` re-checks them under the case lock.
+   */
+  async addCustomerPhoto(input: { bookingId: string; caseId: string; customerId: string; body: Buffer; ext: CaseMediaExt }) {
+    if (!(await tablesPresent())) return fail(CASE_ERRORS.CASES_UNAVAILABLE);
+    const c = await loadCase(prisma, input.caseId);
+    if (!c || c.booking_id !== input.bookingId || c.customer_id !== input.customerId) return fail(CASE_ERRORS.CASE_NOT_FOUND);
+    if (isTerminalCaseState(c.state)) return fail(CASE_ERRORS.CASE_CLOSED);
+    const [{ n }] = await prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*)::bigint AS n FROM booking_case_evidence WHERE case_id = ${c.id}`;
+    if (Number(n) + 1 > MAX_EVIDENCE_PER_CASE) return fail(CASE_ERRORS.EVIDENCE_LIMIT);
+    const storageKey = `${c.id}/${crypto.randomUUID()}${input.ext}`;
+    await objectStorageService.putObject(CASE_MEDIA_NAMESPACE, input.body, { fileName: `case-photo${input.ext}`, mimeType: CASE_MEDIA_MIME[input.ext], storageKey });
+    return this.addEvidence({ bookingId: input.bookingId, caseId: c.id, customerId: input.customerId, evidence: [{ kind: "CUSTOMER_MEDIA", mediaStorageKey: storageKey }] });
+  }
+
+  /**
+   * The bytes of one stored evidence photo, for someone allowed to see that evidence row. Only a key
+   * this service wrote (`<caseId>/…`) is ever read: `mediaStorageKey` can also arrive from a client,
+   * and a client-chosen key must never become a way to read other objects.
+   */
+  async evidenceMedia(input: { caseId: string; evidenceId: number; audience: { role: "CUSTOMER"; userId: string } | { role: "PARTNER"; providerId: string } | { role: "ADMIN" } }) {
+    if (!(await tablesPresent())) return fail(CASE_ERRORS.CASES_UNAVAILABLE);
+    const c = await loadCase(prisma, input.caseId);
+    if (!c) return fail(CASE_ERRORS.CASE_NOT_FOUND);
+    const a = input.audience;
+    if (a.role === "CUSTOMER" && c.customer_id !== a.userId) return fail(CASE_ERRORS.CASE_NOT_FOUND);
+    if (a.role === "PARTNER" && c.provider_id !== a.providerId) return fail(CASE_ERRORS.CASE_NOT_FOUND);
+    if (!Number.isInteger(input.evidenceId)) return fail(CASE_ERRORS.CASE_NOT_FOUND);
+    const [row] = await prisma.$queryRaw<{ media_storage_key: string | null; actor_type: string }[]>`
+      SELECT media_storage_key, actor_type FROM booking_case_evidence WHERE id = ${input.evidenceId} AND case_id = ${c.id}`;
+    const key = row?.media_storage_key ?? null;
+    const ext = key ? (Object.keys(CASE_MEDIA_MIME) as CaseMediaExt[]).find((e) => key.endsWith(e)) : undefined;
+    if (!row || !key || !ext || !key.startsWith(`${c.id}/`) || !evidenceVisibleTo(a.role, row.actor_type)) return fail(CASE_ERRORS.CASE_NOT_FOUND);
+    if (!(await objectStorageService.headObject(CASE_MEDIA_NAMESPACE, key))) return fail(CASE_ERRORS.CASE_NOT_FOUND);
+    return { ok: true as const, body: await objectStorageService.getObjectBuffer(CASE_MEDIA_NAMESPACE, key), mimeType: CASE_MEDIA_MIME[ext] };
+  }
+
   /* ------------------------------------------------------------------ */
   /* Views                                                              */
   /* ------------------------------------------------------------------ */
@@ -342,6 +413,8 @@ class BookingCaseService {
       .filter((e) => evidenceVisibleTo(audience, e.actor_type))
       .map((e) => ({
         id: Number(e.id), kind: e.kind, jobEvidenceId: e.job_evidence_id, mediaUrl: e.media_url, note: e.note,
+        // A stored photo is fetched through the case media route with the viewer's own token.
+        hasStoredMedia: Boolean(e.media_storage_key),
         // X-29: the raw object-storage key is an admin concern; customer and partner use the media URL.
         ...(audience === "ADMIN" ? { mediaStorageKey: e.media_storage_key, actorType: e.actor_type, actorId: e.actor_id } : {}),
         createdAt: e.created_at.toISOString(),

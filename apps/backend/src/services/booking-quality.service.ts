@@ -22,6 +22,7 @@ import { setBookingAuditContext } from "../lib/booking-audit-context";
 import { publishBookingRequirementBackground } from "../lib/booking-realtime";
 import { resolveQualityEvidence, hasAuthoritativeMedia } from "../lib/quality-evidence";
 import { qualityFromSnapshot } from "../lib/service-runtime-policy";
+import { warrantyFromLegacyBookingSnapshot } from "../lib/service-warranty";
 import { evaluateExecutionGate, executionStepsFromSnapshot, type StepRow, type StepState } from "../lib/service-execution";
 import { evaluateSafetyGate, OPEN_INCIDENT_STATES, type SafetyHoldRow } from "../lib/service-safety";
 import {
@@ -114,8 +115,11 @@ function snapshotVersion(snap: unknown): number | null {
   return typeof v === "number" ? v : null;
 }
 
+/** What the partner submitted with a completion attempt. Matched against the frozen policy, never trusted as proof. */
+export type CompletionSubmission = { completedChecklist?: readonly string[]; professionalConfirmed?: boolean };
+
 /** The facts the derivation needs, read from durable rows. */
-async function gatherFacts(db: Db, b: BookingFacts, opts: { completedChecklist?: readonly string[] }) {
+async function gatherFacts(db: Db, b: BookingFacts, opts: CompletionSubmission) {
   const quality = qualityFromSnapshot(b.serviceConfigSnapshot);
   const evidenceRows = await db.jobEvidence.findMany({
     where: { bookingId: b.id, isCurrent: true },
@@ -123,7 +127,11 @@ async function gatherFacts(db: Db, b: BookingFacts, opts: { completedChecklist?:
   });
   const evidenceIds = evidenceRows.filter(hasAuthoritativeMedia).map((r) => r.id);
   const evidence = quality
-    ? { ...resolveQualityEvidence({ checklist: quality.checklist, submitted: opts.completedChecklist, evidenceRows }), evidenceIds }
+    ? {
+        ...resolveQualityEvidence({ checklist: quality.checklist, submitted: opts.completedChecklist, evidenceRows }),
+        evidenceIds,
+        professionalConfirmed: opts.professionalConfirmed === true,
+      }
     : { photos: evidenceIds.length, hasBefore: false, hasAfter: false, checklistComplete: true, missingChecklistItems: [], evidenceIds };
 
   // Steps: the frozen plan, overlaid with stored state. A step the plan names but no row holds is PENDING.
@@ -174,7 +182,7 @@ async function blockingOverride(db: Db, bookingId: string): Promise<VerdictRecor
   return verdictAllowsCompletion(row.verdict) ? null : toRecord(row);
 }
 
-export async function deriveFor(db: Db, b: BookingFacts, opts: { completedChecklist?: readonly string[] } = {}): Promise<DerivedVerdict> {
+export async function deriveFor(db: Db, b: BookingFacts, opts: CompletionSubmission = {}): Promise<DerivedVerdict> {
   const f = await gatherFacts(db, b, opts);
   const derived = deriveQualityVerdict({
     qualityPolicy: f.quality, evidence: f.evidence, executionSteps: f.executionSteps, executionGate: f.executionGate,
@@ -235,7 +243,7 @@ class BookingQualityService {
     tx: Prisma.TransactionClient,
     bookingId: string,
     actor: VerdictActor,
-    opts: { completedChecklist?: readonly string[] } = {},
+    opts: CompletionSubmission = {},
   ): Promise<VerdictRecord | null> {
     if (!(await qualityVerdictTablesPresent(tx))) return null;
     await lockBookingRow(tx, bookingId);
@@ -250,7 +258,7 @@ class BookingQualityService {
    * refusing transaction rolled back, so the verdict is recorded here in its own short transaction and
    * committed — the refusal leaves a durable record even though the booking stays IN_PROGRESS.
    */
-  async recordRefusal(bookingId: string, actor: VerdictActor, opts: { completedChecklist?: readonly string[] } = {}): Promise<VerdictRecord | null> {
+  async recordRefusal(bookingId: string, actor: VerdictActor, opts: CompletionSubmission = {}): Promise<VerdictRecord | null> {
     if (!(await qualityVerdictTablesPresent())) return null;
     const res = await prisma.$transaction(async (tx) => {
       await setBookingAuditContext(tx, { actorType: actor.type === "PARTNER" ? "partner" : "system", actorId: actor.id, reason: "completion refused: quality verdict" });
@@ -332,6 +340,14 @@ class BookingQualityService {
       enforced,
       latest: latest ? { ...latest, createdAt: latest.createdAt.toISOString() } : null,
       history: history.map((v) => ({ ...v, createdAt: v.createdAt.toISOString() })),
+      /**
+       * The rules THIS booking froze, so whoever overrides a verdict or decides a complaint reads the
+       * policy that actually bound the job — not today's catalogue. Null where the booking froze none.
+       */
+      policy: {
+        quality: qualityFromSnapshot(b.serviceConfigSnapshot),
+        warranty: warrantyFromLegacyBookingSnapshot(b.serviceConfigSnapshot),
+      },
     };
   }
 }

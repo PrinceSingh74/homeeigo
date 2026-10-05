@@ -1,11 +1,17 @@
 import prisma from "../lib/prisma";
 import { AuditLogService } from "./audit-log.service";
-import { invalidateFlagCache } from "./feature-flag.service";
+import { currentEnvironment, invalidateFlagCache } from "./feature-flag.service";
+import { seedPartnerFallbackPolicy, serviceCapabilityMode } from "./provider-capability-loader";
 
 export class PlatformIntelligenceService {
-  async listFlags(environment = "production") {
+  /**
+   * Every flag row, or only one environment's. There is one row per key, and a row takes effect only
+   * when its `environment` equals the backend's own (`currentEnvironment()`), so a listing limited to
+   * "production" hid every flag that was actually live on any other backend.
+   */
+  async listFlags(environment?: string) {
     return prisma.platformFeatureFlag.findMany({
-      where: { environment },
+      where: environment ? { environment } : {},
       orderBy: { key: "asc" },
     });
   }
@@ -31,7 +37,8 @@ export class PlatformIntelligenceService {
         description: input.description ?? null,
         enabled: input.enabled,
         rolloutPct: input.rolloutPct,
-        environment: input.environment ?? "production",
+        // A flag written without an environment is meant for the backend that received the write.
+        environment: input.environment ?? currentEnvironment(),
         isKillSwitch: input.isKillSwitch ?? false,
         updatedBy: actor.adminId,
       },
@@ -148,14 +155,28 @@ export class PlatformIntelligenceService {
 
   async getIntelligence() {
     const [flags, experiments] = await Promise.all([this.listFlags(), this.listExperiments()]);
+    const runtimeEnvironment = currentEnvironment();
+    const [seedPartnerFallback, strictMode] = await Promise.all([seedPartnerFallbackPolicy(), serviceCapabilityMode()]);
     return {
+      /**
+       * What dispatch is doing RIGHT NOW on this backend, and why — a missing flag row is not always
+       * "off" (the demo-partner fallback has an environment default), so the console shows this rather
+       * than inferring the state from the rows.
+       */
+      dispatchPolicy: {
+        seedPartnerFallback,
+        strictServiceCapability: { enabled: strictMode === "STRICT", source: "FLAG" as const },
+      },
       generatedAt: new Date().toISOString(),
+      /** The environment a flag row must carry to take effect on this backend. */
+      runtimeEnvironment,
       featureFlags: flags,
       killSwitches: flags.filter((f) => f.isKillSwitch),
       experiments: experiments.experiments,
       experimentMetrics: experiments.prometheusMetrics,
       flagCount: flags.length,
-      enabledFlags: flags.filter((f) => f.enabled).length,
+      // A row for another environment is stored but inert here; it is not an enabled flag.
+      enabledFlags: flags.filter((f) => f.enabled && f.environment === runtimeEnvironment).length,
     };
   }
 }

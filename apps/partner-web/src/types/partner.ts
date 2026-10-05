@@ -533,6 +533,219 @@ export type PartnerEntitlements = {
   benefits: Array<{ type: string; value: number | null; label: string }>;
 };
 
+/* ---- Phase 11 — partner capability self-service (mirror of backend provider-capability) ----
+ * `GET /api/providers/me/capabilities` (partner view: no `verifiedBy`). Rows are the table rows with
+ * camelCased columns; timestamps arrive as ISO strings. `validity` and `nearExpiry` are computed by
+ * the server against ITS clock — the UI shows them, it does not recompute them.
+ */
+export type CapabilityKind = "skills" | "certifications" | "equipment" | "insurance" | "languages";
+export type CapabilityStatus = "DECLARED" | "VERIFIED" | "REJECTED" | "REVOKED";
+export type SkillLevel = "BASIC" | "SKILLED" | "EXPERT";
+export type LanguageProficiency = "BASIC" | "CONVERSATIONAL" | "FLUENT" | "NATIVE";
+export type EquipmentOwnership = "OWNED" | "RENTED" | "EMPLOYER";
+export type EquipmentOperational = "OPERATIONAL" | "OUT_OF_SERVICE";
+
+export type SkillCatalogueEntry = {
+  code: string;
+  category: string;
+  name: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProviderSkillRow = {
+  id: number;
+  providerId: string;
+  skillCode: string;
+  level: SkillLevel | null;
+  status: CapabilityStatus;
+  source: "SELF" | "ADMIN" | "DOCUMENT" | "IMPORT" | "LEGACY";
+  sourceRef: string | null;
+  verifiedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  skillName: string;
+  skillCategory: string;
+  skillActive: boolean;
+  validity: "VALID" | "EXPIRED" | "REVOKED" | "UNVERIFIED" | "REJECTED";
+  nearExpiry: boolean;
+};
+
+export type ProviderCertificationRow = {
+  id: number;
+  providerId: string;
+  certificationType: string;
+  issuer: string | null;
+  referenceNumber: string | null;
+  issuedAt: string | null;
+  expiresAt: string | null;
+  status: CapabilityStatus;
+  verificationSource: string | null;
+  documentId: string | null;
+  verifiedAt: string | null;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  validity: "VALID" | "EXPIRED" | "REVOKED" | "UNVERIFIED" | "REJECTED";
+  nearExpiry: boolean;
+};
+
+export type ProviderEquipmentRow = {
+  id: number;
+  providerId: string;
+  equipmentType: string;
+  ownership: EquipmentOwnership;
+  operational: EquipmentOperational;
+  status: CapabilityStatus;
+  verifiedAt: string | null;
+  inspectionDueAt: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  validity: "VALID" | "REVOKED" | "REJECTED" | "UNVERIFIED" | "OUT_OF_SERVICE" | "INSPECTION_OVERDUE";
+  /** For equipment this flags the inspection due date, not an expiry. */
+  nearExpiry: boolean;
+};
+
+export type ProviderInsuranceRow = {
+  id: number;
+  providerId: string;
+  insuranceType: string;
+  insurer: string | null;
+  policyReference: string | null;
+  effectiveFrom: string | null;
+  expiresAt: string;
+  status: CapabilityStatus;
+  documentId: string | null;
+  verifiedAt: string | null;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  validity: "VALID" | "EXPIRED" | "REVOKED" | "UNVERIFIED" | "NOT_YET_EFFECTIVE" | "REJECTED";
+  nearExpiry: boolean;
+};
+
+/** Languages have no verification lifecycle: a row is the partner's (SELF) or an admin's record. */
+export type ProviderLanguageRow = {
+  id: number;
+  providerId: string;
+  languageCode: string;
+  proficiency: LanguageProficiency;
+  source: "SELF" | "ADMIN";
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  validity: "ACTIVE" | "INACTIVE";
+};
+
+/**
+ * The certification / equipment / insurance codes operational services require, sorted. A kind's
+ * list may be empty; the whole block is absent on a backend that predates it.
+ */
+export type RequirementCatalogue = { certifications: string[]; equipment: string[]; insurance: string[] };
+
+/**
+ * Every row also carries `dataOrigin` (and certifications / insurance a `proofRef`); the profile
+ * also carries `services` and `memberships`. They are not read by this app and are left untyped.
+ * Write responses (declare / edit) additionally carry `verifiedBy: null | "ADMIN"` — a constant,
+ * never an admin's id — which nothing here reads or shows.
+ */
+export type ProviderCapabilityProfile = {
+  requirementCatalogue?: RequirementCatalogue;
+  providerId: string;
+  dataOrigin: string | null;
+  generatedAt: string;
+  services: unknown[];
+  memberships: unknown[];
+  skills: ProviderSkillRow[];
+  certifications: ProviderCertificationRow[];
+  equipment: ProviderEquipmentRow[];
+  insurance: ProviderInsuranceRow[];
+  languages: ProviderLanguageRow[];
+  summary: { nearExpiry: number; expired: number; pendingReview: number };
+  /** Active skills the partner may declare (`code` is what `POST /skills` takes). */
+  skillCatalogue: SkillCatalogueEntry[];
+};
+
+/** Request bodies of `POST /api/providers/me/capabilities/<kind>`. Only facts — never a status. */
+export type DeclareSkillBody = { skillCode: string; level?: SkillLevel | null };
+export type DeclareCertificationBody = {
+  certificationType: string;
+  issuer?: string | null;
+  referenceNumber?: string | null;
+  issuedAt?: string | null;
+  expiresAt?: string | null;
+  documentId?: string | null;
+};
+export type DeclareEquipmentBody = {
+  equipmentType: string;
+  ownership?: EquipmentOwnership | null;
+  operational?: EquipmentOperational | null;
+  note?: string | null;
+};
+export type DeclareInsuranceBody = {
+  insuranceType: string;
+  insurer?: string | null;
+  policyReference?: string | null;
+  effectiveFrom?: string | null;
+  /** Required by the server. */
+  expiresAt: string;
+  documentId?: string | null;
+};
+export type DeclareLanguageBody = { languageCode: string; proficiency?: LanguageProficiency | null };
+/** `PATCH /:kind/:rowId` — certifications and insurance only, DECLARED or REJECTED rows only. */
+export type EditCapabilityBody = {
+  issuer?: string | null;
+  referenceNumber?: string | null;
+  issuedAt?: string | null;
+  expiresAt?: string | null;
+  insurer?: string | null;
+  policyReference?: string | null;
+  effectiveFrom?: string | null;
+  documentId?: string | null;
+};
+
+/* ---- Service readiness (mirror of backend partner-service-skills `ServiceReadiness`) ----
+ * On `performing` cards of `GET /api/providers/me/service-skills` only; absent on an older backend.
+ * `code` is a matching rejection reason (kept as a string: an unknown one must still render).
+ */
+export type ServiceReadinessGap = { code: string; detail: string; title?: string };
+export type ServiceReadiness = { ready: boolean; missing: ServiceReadinessGap[] };
+
+/* ---- Phase 10 §11 — reported issues, partner view (mirror of bookingCaseService.partnerView) ---- */
+export type PartnerCaseEvidence = {
+  id: number;
+  kind: string;
+  jobEvidenceId?: string | null;
+  mediaUrl?: string | null;
+  note: string | null;
+  /**
+   * The customer's photo is stored privately: fetch it from
+   * `GET /api/bookings/:id/cases/:caseId/evidence/:evidenceId/media` with the session's token —
+   * it is not a URL an `<img>` can load. Absent on a backend that predates the field.
+   */
+  hasStoredMedia?: boolean;
+  createdAt: string;
+};
+
+export type PartnerCase = {
+  id: string;
+  caseNumber: string;
+  bookingId: string;
+  type: string;
+  category: string;
+  state: string;
+  description: string | null;
+  createdAt: string;
+  closedAt: string | null;
+  resolution: { action: string | null; followUpBookingId: string | null } | null;
+  evidence: PartnerCaseEvidence[];
+};
+
 export type AuthStatus = "idle" | "initializing" | "authenticated" | "unauthenticated";
 
 export type OtpLoginPayload = {

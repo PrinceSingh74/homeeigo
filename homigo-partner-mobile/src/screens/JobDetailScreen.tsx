@@ -9,6 +9,7 @@ import { RequirementChecklist } from "@/components/RequirementChecklist";
 import { ExecutionSteps } from "@/components/ExecutionSteps";
 import { SafetyPanel } from "@/components/SafetyPanel";
 import { QualityPanel } from "@/components/QualityPanel";
+import { EscalationCard } from "@/components/EscalationCard";
 import { EmptyState, ErrorBlock, HqCard, LoadingBlock, StatRow } from "@/components/HqUi";
 import { PartnerScreen } from "@/components/PartnerScreen";
 import { useRealtimeFallbackInterval } from "@/hooks/use-partner-realtime";
@@ -26,10 +27,12 @@ import {
 import { customerName, formatCurrency, formatDateTime } from "@/lib/format";
 import { getAvailableJobActions, primaryActionLabel } from "@/lib/job-action-policy";
 import { toggleChecklistItem } from "@/lib/quality-checklist";
+import { confirmationRequired, PROFESSIONAL_CONFIRMATION_LABEL } from "@/lib/professional-confirmation";
+import { formatMinutes, stepItemsNotListed, uniqueStepItems } from "@/lib/job-brief";
 import { followUpLine } from "@/lib/follow-up";
 import { CUSTOMER_CALL_AVAILABLE, CUSTOMER_CALL_UNAVAILABLE_NOTE, customerCallLabel } from "@/lib/customer-call";
 import { partnerApi } from "@/services/partner-api";
-import type { PartnerBooking } from "@/types/partner";
+import type { PartnerBooking, PartnerRequirementLine } from "@/types/partner";
 import { partnerColors } from "@/theme/colors";
 
 const TIMELINE: Array<{
@@ -110,10 +113,20 @@ export function JobDetailScreen() {
    */
   const [ticked, setTicked] = useState<string[]>([]);
   const [stillNeeded, setStillNeeded] = useState<string[]>([]);
+  /**
+   * The professional's confirmation that the completion criteria were met — ticked by the partner,
+   * never for them. `confirmationDemanded` is set when the server refused with
+   * `QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED`: the row is then required (and flagged) even if the
+   * booking copy on screen did not carry the policy flag.
+   */
+  const [confirmed, setConfirmed] = useState(false);
+  const [confirmationDemanded, setConfirmationDemanded] = useState(false);
 
   useEffect(() => {
     setTicked([]);
     setStillNeeded([]);
+    setConfirmed(false);
+    setConfirmationDemanded(false);
   }, [bookingId]);
 
   useEffect(() => {
@@ -193,6 +206,15 @@ export function JobDetailScreen() {
     enabled: !!bookingId && !!booking,
   });
 
+  // Same query and cache as ExecutionSteps: the Materials / Equipment cards also list what the
+  // individual service steps name, so nothing a step needs is missing from the brief.
+  const execution = useQuery({
+    queryKey: ["partner", "execution", bookingId],
+    queryFn: () => partnerApi.getExecution(bookingId),
+    enabled: !!bookingId && !!booking,
+    staleTime: 10_000,
+  });
+
   // GPS publishing: committed, unfinished work only (IN_PROGRESS included, COMPLETED excluded).
   const isLive = booking != null && isActiveWorkStatus(booking.status);
   // Call/chat keep their previous visibility (accepted onward, including completed).
@@ -252,6 +274,31 @@ export function JobDetailScreen() {
     setStillNeeded(needed);
   }
 
+  const quality = booking.execution?.quality ?? null;
+  const completionCriteria: readonly string[] = quality?.completionCriteria ?? [];
+  const needsConfirmation = confirmationRequired(quality, confirmationDemanded);
+  const jobStatus = normalizeBookingStatus(booking.status);
+  const inProgress = jobStatus === BOOKING_STATUS.IN_PROGRESS;
+  const notStartedYet = statusRank(booking.status) < statusRank(BOOKING_STATUS.IN_PROGRESS);
+
+  function onConfirmationRefused() {
+    // Server truth wins: the confirmation did not reach it, so the row goes back to unticked.
+    setConfirmed(false);
+    setConfirmationDemanded(true);
+  }
+
+  // Materials / equipment: the preparation lines frozen at booking, the service's own note, and
+  // anything a service step names that the lines above do not already list.
+  const bringMaterials = booking.requirements?.bringMaterials ?? [];
+  const bringEquipment = booking.requirements?.bringEquipment ?? [];
+  const customerProvides = booking.requirements?.customerProvides ?? [];
+  const preconditions = booking.requirements?.preconditions ?? [];
+  const stepMaterials = stepItemsNotListed(uniqueStepItems(execution.data?.steps, "materials"), bringMaterials.map((r) => r.label));
+  const stepEquipment = stepItemsNotListed(uniqueStepItems(execution.data?.steps, "equipment"), bringEquipment.map((r) => r.label));
+  const materialsNote = booking.execution?.materials ?? null;
+  const equipmentNote = booking.execution?.equipment ?? null;
+  const evidenceRows = evidence.data?.evidence ?? [];
+
   async function openMaps() {
     const lat = booking!.address.latitude;
     const lng = booking!.address.longitude;
@@ -285,6 +332,9 @@ export function JobDetailScreen() {
       checklist={checklist}
       completedChecklist={ticked}
       onChecklistRefused={onChecklistRefused}
+      professionalConfirmationRequired={needsConfirmation}
+      professionalConfirmed={confirmed}
+      onConfirmationRefused={onConfirmationRefused}
     />
   );
 
@@ -323,11 +373,41 @@ export function JobDetailScreen() {
           <StatRow label="When" value={formatDateTime(booking.scheduledDate)} />
         </HqCard>
 
+        <HqCard>
+          <Text style={styles.sectionTitle} accessibilityRole="header">Location</Text>
+          <Text style={styles.address}>{booking.address.fullAddress}</Text>
+          <Pressable onPress={() => void openMaps()} accessibilityRole="link" accessibilityLabel="Open in Maps" style={styles.mapsBtn}>
+            <Text style={styles.mapsText}>Open in Maps</Text>
+          </Pressable>
+        </HqCard>
+
+        {showComms ? (
+          <View style={styles.comms}>
+            {/* X-28: no masked-call relay — the customer's number is never given to a partner; use Chat. */}
+            <Pressable testID="job-call-btn" disabled accessibilityState={{ disabled: true }} accessibilityHint={CUSTOMER_CALL_UNAVAILABLE_NOTE} style={[styles.commBtn, { opacity: 0.5 }]}>
+              <Text style={styles.commText}>{customerCallLabel(booking.customer.phoneMasked)}</Text>
+            </Pressable>
+            <Pressable
+              testID="job-chat-btn"
+              onPress={() => setChatOpen(true)}
+              style={styles.commBtn}
+            >
+              <Text style={styles.commText}>Chat</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {showComms && !CUSTOMER_CALL_AVAILABLE ? <Text style={styles.warn}>{CUSTOMER_CALL_UNAVAILABLE_NOTE}</Text> : null}
+
+        {/*
+          The execution brief, in the order the work happens: 1 Job summary · 2 Requirements ·
+          3 Materials · 4 Equipment · 5 Safety · 6 Service steps · 7 Quality checklist · 8 Proof ·
+          9 Escalation. Every card is server truth; a card with nothing to say is not rendered.
+        */}
         {booking.job && (booking.job.variant || booking.job.unit || booking.job.addons.length || booking.job.durationMinutes) ? (
           <View testID="job-brief">
           <HqCard>
-            <Text style={styles.sectionTitle}>What was booked</Text>
-            {booking.job.variant ? <StatRow label="Option" value={booking.job.variant} /> : null}
+            <Text style={styles.sectionTitle} accessibilityRole="header">Job summary</Text>
+            {booking.job.variant ? <StatRow label="Variant" value={booking.job.variant} /> : null}
             {booking.job.unit ? <StatRow label="Quantity" value={`${booking.job.quantity} ${booking.job.unit}`} /> : null}
             {booking.job.audience ? <StatRow label="For" value={booking.job.audience} /> : null}
             {booking.job.addons.length ? (
@@ -347,52 +427,64 @@ export function JobDetailScreen() {
           </View>
         ) : null}
 
-        {booking.requirements && !booking.requirements.empty ? (
+        {/* 2 Requirements — what the customer provides and the preconditions recorded at booking… */}
+        {customerProvides.length || preconditions.length ? (
           <View testID="job-preparation">
           <HqCard>
-            <Text style={styles.sectionTitle}>Job preparation</Text>
-            {([
-              ["Materials to bring", booking.requirements.bringMaterials],
-              ["Equipment to bring", booking.requirements.bringEquipment],
-              ["Customer provides", booking.requirements.customerProvides],
-              ["Customer preconditions", booking.requirements.preconditions],
-            ] as const).map(([title, items]) =>
-              items.length ? (
-                <View key={title}>
-                  <Text style={styles.address}>{title}</Text>
-                  {items.map((r) => (
-                    <Text key={r.label} style={styles.address}>
-                      • {r.label}
-                      {r.quantity ? ` · ${r.quantity}` : ""}
-                      {r.optional ? " (optional)" : ""}
-                      {r.chargeable ? " (chargeable add-on)" : ""}
-                      {"check" in r ? ` — ${r.check === "CONFIRMED_BY_CUSTOMER" ? "confirmed by the customer" : r.check === "VERIFY_ON_ARRIVAL" ? "verify on arrival" : r.check === "VERIFY_AT_START" ? "verify before you start" : "for your information"}` : ""}
-                      {r.instructions ? `
-  ${r.instructions}` : ""}
-                    </Text>
-                  ))}
-                </View>
-              ) : null,
-            )}
+            <Text style={styles.sectionTitle} accessibilityRole="header">Requirements</Text>
+            <RequirementLines title="Customer provides" items={customerProvides} />
+            <RequirementLines title="Customer preconditions" items={preconditions} />
+          </HqCard>
+          </View>
+        ) : null}
+        {/* …and §6: the booking's own requirement state and the START gate — server truth. */}
+        <RequirementChecklist bookingId={booking.id} active={isActiveWorkStatus(booking.status)} />
+
+        {/* 3 Materials */}
+        {bringMaterials.length || materialsNote || stepMaterials.length ? (
+          <View testID="job-materials">
+          <HqCard>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Materials</Text>
+            <RequirementLines title="Bring" items={bringMaterials} />
+            {materialsNote ? <Text style={styles.address}>{materialsNote}</Text> : null}
+            <PlainList title="Named in the service steps" items={stepMaterials} />
           </HqCard>
           </View>
         ) : null}
 
-        {/* §6: the booking's own requirement state and the START gate — server truth. */}
-        {/* §9 precedence: safety first. */}
-        <SafetyPanel bookingId={booking.id} />
-        <RequirementChecklist bookingId={booking.id} active={isActiveWorkStatus(booking.status)} />
-        {/* §8: the booking's work plan — server truth. */}
-        <ExecutionSteps bookingId={booking.id} />
-        {/* §10: the recorded quality verdict (and why a complete was refused); §11: reported issues. */}
-        <QualityPanel bookingId={booking.id} />
+        {/* 4 Equipment */}
+        {bringEquipment.length || equipmentNote || stepEquipment.length ? (
+          <View testID="job-equipment">
+          <HqCard>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Equipment</Text>
+            <RequirementLines title="Bring" items={bringEquipment} />
+            {equipmentNote ? <Text style={styles.address}>{equipmentNote}</Text> : null}
+            <PlainList title="Named in the service steps" items={stepEquipment} />
+          </HqCard>
+          </View>
+        ) : null}
 
-        {booking.execution && (booking.execution.materials || booking.execution.equipment || booking.execution.quality?.checklist.length) ? (
+        {/* 5 Safety — §9: holds, what to wear, what not to use, prohibited conditions. */}
+        <SafetyPanel bookingId={booking.id} />
+        {/* 6 Service steps — §8: the booking's work plan, server truth. */}
+        <ExecutionSteps bookingId={booking.id} />
+
+        {/* 7 Quality checklist — what done means, the frozen checklist, the professional's confirmation. */}
+        {checklist.length || completionCriteria.length || needsConfirmation ? (
           <View testID="job-execution">
           <HqCard>
-            <Text style={styles.sectionTitle}>Job requirements</Text>
-            {booking.execution.materials ? <Text style={styles.address}>{booking.execution.materials}</Text> : null}
-            {booking.execution.equipment ? <Text style={styles.address}>{booking.execution.equipment}</Text> : null}
+            <Text style={styles.sectionTitle} accessibilityRole="header">Quality checklist</Text>
+            {completionCriteria.length ? (
+              <View testID="job-completion-criteria" style={styles.block}>
+                <Text style={styles.subLabel}>What done means</Text>
+                {completionCriteria.map((item) => (
+                  <Text key={item} style={styles.address}>
+                    • {item}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+            {checklist.length ? <Text style={styles.subLabel}>Checklist</Text> : null}
             {checklistTickable ? (
               <View testID="job-quality-checklist">
                 <Text style={styles.muted}>Tick each item as you finish it — all are needed to complete the job.</Text>
@@ -431,38 +523,78 @@ export function JobDetailScreen() {
                 </Text>
               ))
             )}
-            {booking.execution.quality?.proofRequired ? <Text style={styles.address}>Photo proof required at completion.</Text> : null}
+            {needsConfirmation && inProgress ? (
+              <View testID="job-professional-confirmation-block" style={styles.confirmBlock}>
+                <Text style={styles.subLabel}>Your confirmation · required</Text>
+                <Pressable
+                  testID="job-professional-confirmation"
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: confirmed }}
+                  accessibilityLabel={`${PROFESSIONAL_CONFIRMATION_LABEL}. Required to complete this job.`}
+                  onPress={() => setConfirmed((prev) => !prev)}
+                  style={styles.checkRow}
+                >
+                  <View style={[styles.checkBox, confirmed ? styles.checkBoxOn : null]}>
+                    {confirmed ? <Text style={styles.checkMark}>✓</Text> : null}
+                  </View>
+                  <View style={styles.checkBody}>
+                    <Text style={styles.confirmLabel}>{PROFESSIONAL_CONFIRMATION_LABEL}</Text>
+                    {confirmationDemanded && !confirmed ? (
+                      <Text style={styles.warn} accessibilityRole="alert">
+                        Still needed — the server did not receive your confirmation
+                      </Text>
+                    ) : null}
+                  </View>
+                </Pressable>
+                <Text style={styles.muted}>
+                  Tick this only when the work meets {completionCriteria.length ? "every point under “What done means”" : "the completion criteria for this service"}. The job cannot be completed without it.
+                </Text>
+              </View>
+            ) : needsConfirmation && notStartedYet ? (
+              <Text testID="job-professional-confirmation-note" style={styles.address}>
+                When you complete this job you will be asked to confirm: “{PROFESSIONAL_CONFIRMATION_LABEL}”.
+              </Text>
+            ) : null}
           </HqCard>
           </View>
         ) : null}
+        {/* §10: the recorded quality verdict (and why a complete was refused); §11: reported issues. */}
+        <QualityPanel bookingId={booking.id} />
 
+        {/* 8 Proof — what the frozen policy asks for, and what has been captured so far. */}
+        <View testID="job-proof">
         <HqCard>
-          <Text style={styles.sectionTitle}>Location</Text>
-          <Text style={styles.address}>{booking.address.fullAddress}</Text>
-          <Pressable onPress={() => void openMaps()} style={styles.mapsBtn}>
-            <Text style={styles.mapsText}>Open in Maps</Text>
-          </Pressable>
+          <Text style={styles.sectionTitle} accessibilityRole="header">Proof</Text>
+          {quality?.proofRequired ? <Text style={styles.address}>Photo proof required at completion.</Text> : null}
+          {quality?.beforeAfterPhotos ? (
+            <Text testID="job-before-after-required" style={styles.address}>
+              Before and after photos are required for this job.
+            </Text>
+          ) : null}
+          <Text style={styles.subLabel}>Captured so far</Text>
+          {evidence.isLoading ? (
+            <ActivityIndicator color={partnerColors.primary} accessibilityLabel="Loading evidence" />
+          ) : evidence.isError ? (
+            <ErrorBlock message="Could not load evidence." />
+          ) : evidenceRows.length === 0 ? (
+            <Text style={styles.muted}>No photos yet — capture on arrive or complete.</Text>
+          ) : (
+            evidenceRows.map((e) => (
+              <StatRow
+                key={e.id}
+                label={e.stage}
+                value={formatDateTime(e.capturedAt) + (e.isCurrent ? " · current" : "")}
+              />
+            ))
+          )}
         </HqCard>
+        </View>
 
-        {showComms ? (
-          <View style={styles.comms}>
-            {/* X-28: no masked-call relay — the customer's number is never given to a partner; use Chat. */}
-            <Pressable testID="job-call-btn" disabled accessibilityState={{ disabled: true }} accessibilityHint={CUSTOMER_CALL_UNAVAILABLE_NOTE} style={[styles.commBtn, { opacity: 0.5 }]}>
-              <Text style={styles.commText}>{customerCallLabel(booking.customer.phoneMasked)}</Text>
-            </Pressable>
-            <Pressable
-              testID="job-chat-btn"
-              onPress={() => setChatOpen(true)}
-              style={styles.commBtn}
-            >
-              <Text style={styles.commText}>Chat</Text>
-            </Pressable>
-          </View>
-        ) : null}
-        {showComms && !CUSTOMER_CALL_AVAILABLE ? <Text style={styles.warn}>{CUSTOMER_CALL_UNAVAILABLE_NOTE}</Text> : null}
+        {/* 9 Escalation — protocols and the in-app ways to raise a problem. */}
+        <EscalationCard bookingId={booking.id} />
 
         <HqCard>
-          <Text style={styles.sectionTitle}>Lifecycle</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">Lifecycle</Text>
           {disabledHint ? <Text style={styles.warn}>{disabledHint}</Text> : null}
           {nextLabel ? <Text style={styles.next}>Next action: {nextLabel}</Text> : null}
           {TIMELINE.map((step, i) => {
@@ -484,25 +616,6 @@ export function JobDetailScreen() {
           })}
         </HqCard>
 
-        <HqCard>
-          <Text style={styles.sectionTitle}>Evidence</Text>
-          {evidence.isLoading ? (
-            <ActivityIndicator color={partnerColors.primary} />
-          ) : evidence.isError ? (
-            <ErrorBlock message="Could not load evidence." />
-          ) : (evidence.data?.evidence ?? []).length === 0 ? (
-            <Text style={styles.muted}>No photos yet — capture on arrive or complete.</Text>
-          ) : (
-            (evidence.data?.evidence ?? []).map((e) => (
-              <StatRow
-                key={e.id}
-                label={e.stage}
-                value={formatDateTime(e.capturedAt) + (e.isCurrent ? " · current" : "")}
-              />
-            ))
-          )}
-        </HqCard>
-
         <JobChatModal
           bookingId={booking.id}
           customerName={name}
@@ -516,11 +629,47 @@ export function JobDetailScreen() {
   );
 }
 
-function formatMinutes(n: number): string {
-  if (n < 60) return `${n} min`;
-  const h = Math.floor(n / 60);
-  const m = n % 60;
-  return m ? `${h} hr ${m} min` : `${h} hr`;
+type BriefLine = PartnerRequirementLine & { check?: "CONFIRMED_BY_CUSTOMER" | "VERIFY_ON_ARRIVAL" | "VERIFY_AT_START" | "INFORMATIONAL" };
+
+const CHECK_LABEL: Record<NonNullable<BriefLine["check"]>, string> = {
+  CONFIRMED_BY_CUSTOMER: "confirmed by the customer",
+  VERIFY_ON_ARRIVAL: "verify on arrival",
+  VERIFY_AT_START: "verify before you start",
+  INFORMATIONAL: "for your information",
+};
+
+/** One titled group of the booking's preparation lines; renders nothing when the group is empty. */
+function RequirementLines({ title, items }: { title: string; items: readonly BriefLine[] }) {
+  if (items.length === 0) return null;
+  return (
+    <View style={styles.block}>
+      <Text style={styles.subLabel}>{title}</Text>
+      {items.map((r) => (
+        <Text key={r.label} style={styles.address}>
+          • {r.label}
+          {r.quantity ? ` · ${r.quantity}` : ""}
+          {r.optional ? " (optional)" : ""}
+          {r.chargeable ? " (chargeable add-on)" : ""}
+          {r.check ? ` — ${CHECK_LABEL[r.check] ?? "for your information"}` : ""}
+          {r.instructions ? `\n  ${r.instructions}` : ""}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+function PlainList({ title, items }: { title: string; items: readonly string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <View style={styles.block}>
+      <Text style={styles.subLabel}>{title}</Text>
+      {items.map((item) => (
+        <Text key={item} style={styles.address}>
+          • {item}
+        </Text>
+      ))}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -606,4 +755,9 @@ const styles = StyleSheet.create({
   checkBody: { flex: 1 },
   checkLabel: { fontSize: 13, lineHeight: 18, color: partnerColors.text },
   checkLabelDone: { color: partnerColors.textSecondary },
+  // Execution brief: a titled group inside a card, and the required confirmation row.
+  block: { marginBottom: 4 },
+  subLabel: { fontSize: 13, fontWeight: "600", color: partnerColors.text, marginBottom: 4 },
+  confirmBlock: { marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: partnerColors.line },
+  confirmLabel: { fontSize: 14, lineHeight: 20, fontWeight: "600", color: partnerColors.text },
 });

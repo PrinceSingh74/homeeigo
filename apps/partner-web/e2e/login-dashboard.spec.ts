@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { waitForPartnerFormHydration } from "./enterprise/fixtures";
 
 const SEED_PARTNER = {
   email: "partner@homigo.demo",
@@ -11,6 +12,7 @@ test.describe("Partner app", () => {
     await page.evaluate(() => localStorage.clear());
     await page.reload();
     await expect(page.locator("#partner-email")).toBeVisible();
+    await waitForPartnerFormHydration(page);
 
     await page.locator("#partner-email").fill(SEED_PARTNER.email);
     await page.locator("#partner-password").fill(SEED_PARTNER.password);

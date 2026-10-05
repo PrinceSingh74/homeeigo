@@ -4,6 +4,9 @@
  *   customer  POST /api/bookings/:id/cases                     report an issue (idempotent per booking)
  *             GET  /api/bookings/:id/cases                     own cases (the assigned partner gets the partner view)
  *             POST /api/bookings/:id/cases/:caseId/evidence    attach evidence while the case is open
+ *             POST /api/bookings/:id/cases/:caseId/evidence/photo               attach one photo (multipart `file`)
+ *             GET  /api/bookings/:id/cases/:caseId/evidence/:evidenceId/media   a stored photo, for whoever may see that row
+ *   admin     GET  /api/admin/cases/:id/evidence/:evidenceId/media              the same photo for the case team
  *   admin     GET  /api/admin/cases                            queue (state / type / slaBreached / bookingId)
  *             GET  /api/admin/cases/:id                        full detail: history, evidence, follow-ups, refunds
  *             POST /api/admin/cases/:id/transition             {to, reason, expectedVersion}
@@ -21,6 +24,7 @@ import { validate } from "../middleware/validation.middleware";
 import { idParamSchema } from "../schemas/common.schema";
 import { bookingCaseService, CASE_ERRORS, type CaseError } from "../services/booking-case.service";
 import { CASE_CATEGORIES } from "../lib/service-warranty";
+import { detectImageType } from "../lib/rating-photos";
 import { CASE_STATES, RESOLVE_ACTIONS, type EvidenceInput } from "../lib/booking-case-policy";
 
 /** Every code the service can return, with its status and a customer-safe message. Exhaustive by type. */
@@ -78,6 +82,15 @@ function toEvidence(items: EvidenceBody[] | undefined): EvidenceInput[] {
   });
 }
 
+const MAX_CASE_PHOTO_BYTES = 8 * 1024 * 1024;
+
+/** A private photo: never cached by a shared cache, never sniffed into another type. */
+function mediaResponse(r: { body: Buffer; mimeType: string }) {
+  return new Response(new Uint8Array(r.body), {
+    headers: { "Content-Type": r.mimeType, "Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff" },
+  });
+}
+
 const customerCaseRoutes = new Elysia({ prefix: "/api/bookings" })
   .use(authPlugin)
   .post(
@@ -109,7 +122,43 @@ const customerCaseRoutes = new Elysia({ prefix: "/api/bookings" })
       ? await bookingCaseService.listForBooking(params.id, { role: "PARTNER", providerId: auth.providerId })
       : await bookingCaseService.listForBooking(params.id, { role: "CUSTOMER", userId: auth.userId });
     if (!r.ok) return refuse(set, r);
-    return { success: true as const, data: { available: r.available, cases: r.cases, categories: CASE_CATEGORIES } };
+    // Customer only: whether an issue can be reported now, so the app never offers a dead-end form.
+    const report = auth.providerId ? null : await bookingCaseService.reportability(params.id, auth.userId);
+    return { success: true as const, data: { available: r.available, cases: r.cases, categories: CASE_CATEGORIES, ...(report ? { report } : {}) } };
+  })
+  .post(
+    "/:id/cases/:caseId/evidence/photo",
+    async ({ requireAuth, params: rawParams, body, set }) => {
+      const auth = requireAuth();
+      const params = validate(idParamSchema, { id: rawParams.id });
+      const file = body.file;
+      if (!file || typeof file === "string" || file.size > MAX_CASE_PHOTO_BYTES) {
+        set.status = 400;
+        return { success: false as const, error: "Attach one JPG, PNG or WEBP photo of up to 8MB", code: "VALIDATION_ERROR" };
+      }
+      const buffer = Buffer.from(await file.arrayBuffer());
+      // The type comes from the bytes, never from what the client declared.
+      const ext = detectImageType(buffer);
+      if (!ext) {
+        set.status = 400;
+        return { success: false as const, error: "Only JPG, PNG or WEBP photos are allowed", code: "VALIDATION_ERROR" };
+      }
+      const r = await bookingCaseService.addCustomerPhoto({ bookingId: params.id, caseId: rawParams.caseId, customerId: auth.userId, body: buffer, ext });
+      if (!r.ok) return refuse(set, r);
+      set.status = 201;
+      return { success: true as const, data: { case: r.case } };
+    },
+    { body: t.Object({ file: t.File({ maxSize: "8m" }) }) },
+  )
+  .get("/:id/cases/:caseId/evidence/:evidenceId/media", async ({ requireAuth, params, set }) => {
+    const auth = requireAuth();
+    const r = await bookingCaseService.evidenceMedia({
+      caseId: params.caseId,
+      evidenceId: Number(params.evidenceId),
+      audience: auth.providerId ? { role: "PARTNER", providerId: auth.providerId } : { role: "CUSTOMER", userId: auth.userId },
+    });
+    if (!r.ok) return refuse(set, r);
+    return mediaResponse(r);
   })
   .post(
     "/:id/cases/:caseId/evidence",
@@ -158,6 +207,11 @@ const adminCaseRoutes = new Elysia({ prefix: "/api/admin" })
     const r = await bookingCaseService.adminDetail(params.id);
     if (!r.ok) return refuse(set, r);
     return { success: true as const, data: r };
+  })
+  .get("/cases/:id/evidence/:evidenceId/media", async ({ params, set }) => {
+    const r = await bookingCaseService.evidenceMedia({ caseId: params.id, evidenceId: Number(params.evidenceId), audience: { role: "ADMIN" } });
+    if (!r.ok) return refuse(set, r);
+    return mediaResponse(r);
   })
   .post("/cases/:id/transition", async ({ params, body, requireAuth, set }) => {
     const auth = requireAuth();

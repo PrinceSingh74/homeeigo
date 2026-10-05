@@ -5,7 +5,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { PUBLISHED_DISPUTE_POLICY, disputePolicyDecision } from "../../scripts/phase10-apply-published-dispute-policy";
+import { PUBLISHED_DAMAGE_POLICY, PUBLISHED_DISPUTE_POLICY, PUBLISHED_GUARANTEE, PUBLISHED_LIABILITY, disputePolicyDecision } from "../../scripts/phase10-apply-published-dispute-policy";
 import { buildWarrantySnapshot, evaluateWarrantyEligibility } from "../lib/service-warranty";
 import { serviceCatalogConfigSchema } from "../lib/service-catalog-config";
 
@@ -18,6 +18,31 @@ describe("published dispute policy", () => {
     expect(legal).toContain("We'll first offer a free rework");
     expect(legal).toContain("partial or full refund");
     expect(legal).toContain("with photos where possible");
+  });
+
+  it("the customer-facing guarantee and liability texts are the published clauses, word for word", () => {
+    const legal = readFileSync(join(import.meta.dir, "../../../web/src/lib/legal/legal-data.ts"), "utf8");
+    expect(legal).toContain(PUBLISHED_GUARANTEE);
+    expect(legal).toContain(PUBLISHED_LIABILITY);
+    expect(PUBLISHED_DAMAGE_POLICY.endsWith(PUBLISHED_LIABILITY)).toBe(true);
+    // The damage text promises nothing beyond the policy: damage is not covered, and the report window is the policy's own.
+    expect(PUBLISHED_DISPUTE_POLICY.warranty.eligibleIssueTypes).not.toContain("DAMAGE" as never);
+    expect(PUBLISHED_DAMAGE_POLICY).toContain("within 48 hours of completion");
+    expect(PUBLISHED_DISPUTE_POLICY.complaintWindowDays * 24).toBe(48);
+    const snap = buildWarrantySnapshot(disputePolicyDecision({ requirements: [] }).next as never);
+    expect(snap.guarantee).toBe(PUBLISHED_GUARANTEE);
+    expect(snap.damagePolicy).toBe(PUBLISHED_DAMAGE_POLICY);
+  });
+
+  it("a service that already carries the published terms without the texts is upgraded; hand-written texts are kept", () => {
+    const { guarantee: _g, damagePolicy: _d, ...terms } = PUBLISHED_DISPUTE_POLICY.warranty;
+    const before = { quality: { complaintWindowDays: 2 }, warranty: terms, rework: { fee: "WAIVED" } };
+    const up = disputePolicyDecision(before);
+    expect(up.decision).toBe("APPLY");
+    expect((up.next!.warranty as Record<string, unknown>).guarantee).toBe(PUBLISHED_GUARANTEE);
+    expect(disputePolicyDecision(up.next).decision).toBe("IDENTICAL");
+    const own = disputePolicyDecision({ ...before, warranty: { ...terms, guarantee: "Our own promise." } });
+    expect(own).toMatchObject({ decision: "KEEP_EXISTING", conflicts: ["warranty.guarantee"] });
   });
 
   it("an unconfigured service gets the policy; the result passes the catalogue schema", () => {

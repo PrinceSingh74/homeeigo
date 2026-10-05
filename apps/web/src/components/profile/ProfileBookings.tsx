@@ -153,6 +153,7 @@ export function ProfileBookings() {
         open={!!selected}
         booking={selected}
         onClose={() => setSelected(null)}
+        onOpenBooking={setSelected}
       />
     </>
   );

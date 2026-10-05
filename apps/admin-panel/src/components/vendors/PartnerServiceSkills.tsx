@@ -3,7 +3,8 @@
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BadgeCheck, BadgeX, ClipboardList, Search } from "lucide-react";
+import { BadgeCheck, BadgeX, CircleCheck, ClipboardList, Search, TriangleAlert } from "lucide-react";
+import { matchingGapLabel } from "@/lib/matching-reasons";
 import { adminApi, type PartnerServiceSkillCard } from "@/services/admin-api";
 import { getErrorMessage } from "@/lib/api-error";
 
@@ -72,6 +73,7 @@ export function PartnerServiceSkills({ providerId }: { providerId: string }) {
           </h2>
           <p className="mt-1 max-w-2xl text-xs text-[var(--color-biz-muted)]">
             Add any catalogue service to this partner. It goes live immediately. A request the partner sent waits until you approve it.
+            A granted service is only offered jobs once the partner also meets that service’s requirements — each one below says whether they do.
           </p>
         </div>
         <Link href="/vendors/skills" className="text-xs font-semibold text-[var(--color-biz-accent)]">
@@ -204,14 +206,41 @@ function SkillLane({
     <div>
       <h3 className="text-sm font-semibold">{title} <span className="font-normal text-[var(--color-biz-muted)]">({items.length})</span></h3>
       {items.length === 0 ? <p className="mt-1 text-xs text-[var(--color-biz-muted)]">{empty}</p> : (
-        <ul className="mt-2 flex max-h-64 flex-wrap gap-2 overflow-auto">
-          {items.map((s) => (
-            <li key={s.serviceId} className="flex items-center gap-2 rounded-full border border-[var(--color-biz-line)] px-3 py-1 text-xs">
-              <span>{s.name}</span>
-              {action ? <button type="button" className="font-semibold text-emerald-400" onClick={() => action.onClick(s)}>{action.label}</button> : null}
-              {secondary ? <button type="button" className="font-semibold text-red-400" onClick={() => secondary.onClick(s)}>{secondary.label}</button> : null}
-            </li>
-          ))}
+        <ul className="mt-2 flex max-h-64 flex-wrap items-start gap-2 overflow-auto">
+          {items.map((s) => {
+            const gaps = s.readiness && !s.readiness.ready ? s.readiness.missing : null;
+            return (
+              // A service with unmet requirements becomes a card so the list of what is missing has room; the rest stay pills.
+              <li key={s.serviceId} className={`border border-[var(--color-biz-line)] px-3 text-xs ${gaps ? "w-full rounded-xl py-2" : "rounded-full py-1"}`} data-testid="service-skill-card">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>{s.name}</span>
+                  {s.readiness?.ready ? (
+                    <span className="inline-flex items-center gap-1 text-[var(--color-biz-success)]">
+                      <CircleCheck className="h-3.5 w-3.5" aria-hidden /> Ready for jobs
+                    </span>
+                  ) : null}
+                  {gaps ? (
+                    <span className="inline-flex items-center gap-1 font-semibold text-[var(--color-biz-warning)]">
+                      <TriangleAlert className="h-3.5 w-3.5" aria-hidden /> Not offered jobs
+                    </span>
+                  ) : null}
+                  {action ? <button type="button" className="font-semibold text-emerald-400" onClick={() => action.onClick(s)}>{action.label}</button> : null}
+                  {secondary ? <button type="button" className="font-semibold text-red-400" onClick={() => secondary.onClick(s)}>{secondary.label}</button> : null}
+                </div>
+                {gaps ? (
+                  gaps.length > 0 ? (
+                    <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[var(--color-biz-muted)]" aria-label={"What " + s.name + " still needs"}>
+                      {gaps.map((g, i) => (
+                        <li key={g.code + ":" + g.detail + ":" + i}>{matchingGapLabel(g)}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1.5 text-[var(--color-biz-muted)]">The service’s requirements are not met; the backend gave no detail.</p>
+                  )
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

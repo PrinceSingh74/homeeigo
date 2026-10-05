@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { waitForPartnerFormHydration } from "./enterprise/fixtures";
 
 /**
  * Partner enterprise journey (fresh-env Playwright): Login → Bookings → Route Center.
@@ -17,6 +18,7 @@ test.describe("Partner journey", () => {
     await page.goto("/login");
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await waitForPartnerFormHydration(page);
     await page.locator("#partner-email").fill(SEED_PARTNER.email);
     await page.locator("#partner-password").fill(SEED_PARTNER.password);
     const loginResponse = page.waitForResponse(

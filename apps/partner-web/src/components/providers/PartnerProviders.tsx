@@ -15,11 +15,12 @@ function PartnerAuthBootstrap({ children }: { children: React.ReactNode }) {
       if (usePartnerStore.getState().status === "idle") void bootstrap();
     };
     const persistApi = usePartnerStore.persist;
-    if (persistApi.hasHydrated()) {
-      start();
-      return;
-    }
-    return persistApi.onFinishHydration(start);
+    // Subscribe first. Hydration can finish between a prior check and this subscription, and
+    // then the listener never fires: status stays "idle" and PartnerAuthGuard spins forever.
+    const unsub = persistApi.onFinishHydration(start);
+    if (persistApi.hasHydrated()) start();
+    else void persistApi.rehydrate();
+    return unsub;
   }, [bootstrap]);
 
   return <>{children}</>;

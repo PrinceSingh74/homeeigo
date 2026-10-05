@@ -4,6 +4,12 @@ const path = require("path");
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Next dev disposes inactive pages after 60s and keeps only 2. A 50-minute Playwright
+  // run then times out recompiling app/layout.js (ChunkLoadError). Production ignores this.
+  onDemandEntries: {
+    maxInactiveAge: 60 * 60 * 1000,
+    pagesBufferLength: 50,
+  },
   // Lets a production build be produced into a separate folder while `next dev` holds `.next`
   // (measuring prod navigation without disturbing a running dev server). No-op when unset.
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),

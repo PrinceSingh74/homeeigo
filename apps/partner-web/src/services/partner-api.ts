@@ -3,6 +3,20 @@ import { parseExecutionPolicyCopy, parseExecutionQuality, type BookingExecutionQ
 import type {
   ApiResponse,
   BookingRequirementsView,
+  CapabilityKind,
+  DeclareCertificationBody,
+  DeclareEquipmentBody,
+  DeclareInsuranceBody,
+  DeclareLanguageBody,
+  DeclareSkillBody,
+  EditCapabilityBody,
+  ProviderCapabilityProfile,
+  ProviderCertificationRow,
+  ProviderEquipmentRow,
+  ProviderInsuranceRow,
+  ProviderLanguageRow,
+  ProviderSkillRow,
+  ServiceReadiness,
   JobActionResult,
   RequirementGateResult,
   JobChatList,
@@ -268,6 +282,8 @@ export type PartnerServiceSkillCard = {
   source: string | null;
   requestedAt: string | null;
   requestNote: string | null;
+  /** Performing lane only, and only from a backend that reports it — absent means unknown, not ready. */
+  readiness?: ServiceReadiness;
 };
 
 export type PartnerServiceSkillBoard = {
@@ -361,6 +377,30 @@ export const partnerApi = {
       method: "DELETE",
       auth: true,
     }).then((r) => r.data!),
+
+  /* ---- Phase 11 — capability self-service (`/api/providers/me/capabilities`) ----
+   * A partner only DECLARES; an admin verifies. Keyed kinds (skills, equipment, languages) are
+   * changed by declaring the same key again; certifications and insurance are edited with PATCH.
+   * A VERIFIED / REVOKED row answers 409 CAPABILITY_LOCKED.
+   */
+  capabilities: {
+    profile: () =>
+      apiRequest<ApiResponse<ProviderCapabilityProfile>>("/api/providers/me/capabilities", { auth: true }).then((r) => r.data!),
+    declareSkill: (body: DeclareSkillBody) =>
+      apiRequest<ApiResponse<{ row: ProviderSkillRow; changed: boolean }>>("/api/providers/me/capabilities/skills", { method: "POST", auth: true, body }).then((r) => r.data!),
+    declareCertification: (body: DeclareCertificationBody) =>
+      apiRequest<ApiResponse<{ row: ProviderCertificationRow; changed: boolean }>>("/api/providers/me/capabilities/certifications", { method: "POST", auth: true, body }).then((r) => r.data!),
+    declareEquipment: (body: DeclareEquipmentBody) =>
+      apiRequest<ApiResponse<{ row: ProviderEquipmentRow; changed: boolean }>>("/api/providers/me/capabilities/equipment", { method: "POST", auth: true, body }).then((r) => r.data!),
+    declareInsurance: (body: DeclareInsuranceBody) =>
+      apiRequest<ApiResponse<{ row: ProviderInsuranceRow; changed: boolean }>>("/api/providers/me/capabilities/insurance", { method: "POST", auth: true, body }).then((r) => r.data!),
+    declareLanguage: (body: DeclareLanguageBody) =>
+      apiRequest<ApiResponse<{ row: ProviderLanguageRow; changed: boolean }>>("/api/providers/me/capabilities/languages", { method: "POST", auth: true, body }).then((r) => r.data!),
+    edit: (kind: "certifications" | "insurance", rowId: number, body: EditCapabilityBody) =>
+      apiRequest<ApiResponse<{ row: ProviderCertificationRow | ProviderInsuranceRow }>>(`/api/providers/me/capabilities/${kind}/${rowId}`, { method: "PATCH", auth: true, body }).then((r) => r.data!),
+    withdraw: (kind: CapabilityKind, rowId: number) =>
+      apiRequest<ApiResponse<{ deleted: true }>>(`/api/providers/me/capabilities/${kind}/${rowId}`, { method: "DELETE", auth: true }).then((r) => r.data!),
+  },
 
   /** Weather warnings at the partner's current location (safety + ETA impact). */
   weatherAlerts: (lat: number, lng: number) =>
@@ -610,6 +650,8 @@ export const partnerApi = {
     notes?: string,
     photos?: string[],
     completedChecklist?: string[],
+    /** The partner's attestation — pass `true` only when they ticked it (`professionalConfirmationField`). */
+    professionalConfirmation?: true,
   ) =>
     apiRequest<
       ApiResponse<{
@@ -622,6 +664,7 @@ export const partnerApi = {
         notes,
         ...(photos?.length ? { photos } : {}),
         ...(completedChecklist !== undefined ? { completedChecklist } : {}),
+        ...(professionalConfirmation === true ? { professionalConfirmation: true } : {}),
       }),
     }).then((r) => r.data!),
 

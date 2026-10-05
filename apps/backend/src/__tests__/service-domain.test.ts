@@ -81,6 +81,11 @@ describe("public projection never leaks matching weights", () => {
     });
     const pub = publicCatalogConfig(cfg)!;
     expect(pub.matching).toBeUndefined();
+    expect(pub.execution).toBeUndefined();
+    expect(pub.safety).toBeUndefined();
+    expect(pub.quality).toBeUndefined();
+    expect(pub.warranty).toBeUndefined();
+    expect(pub.trust).toBeUndefined();
     expect(pub.providerRequirements?.requiredSkills).toBeUndefined();
     expect(pub.providerRequirements?.kycRequired).toBeUndefined();
     expect(pub.providerRequirements?.verifiedProfessionalRequired).toBe(true);

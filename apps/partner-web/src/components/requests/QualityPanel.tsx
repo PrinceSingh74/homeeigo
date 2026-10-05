@@ -3,7 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { BadgeCheck, CircleAlert, FileWarning } from "lucide-react";
 import { apiRequest } from "@/lib/api-client";
-import type { ApiResponse } from "@/types/partner";
+import { CaseEvidencePhotos } from "@/components/requests/CaseEvidencePhotos";
+import type { ApiResponse, PartnerCase } from "@/types/partner";
 
 /**
  * Phase 10 §10/§11 — quality for this job, from the server's recorded verdict (partner projection:
@@ -30,20 +31,6 @@ type CompletionView = {
   warranty: { state: string; startsAt: string; expiresAt: string } | null;
 };
 
-/** Mirrored by hand from bookingCaseService.partnerView. */
-type PartnerCase = {
-  id: string;
-  caseNumber: string;
-  bookingId: string;
-  type: string;
-  category: string;
-  state: string;
-  description: string | null;
-  createdAt: string;
-  closedAt: string | null;
-  resolution: { action: string | null; followUpBookingId: string | null } | null;
-  evidence: Array<{ id: number; kind: string; note: string | null; createdAt: string }>;
-};
 type CasesView = { available: boolean; cases: PartnerCase[]; categories: string[] };
 
 const VERDICT_LABEL: Record<string, string> = {
@@ -62,6 +49,7 @@ const REASON_LABEL: Record<string, string> = {
   EXECUTION_STEP_FAILED: "A work step failed and needs to be redone",
   QUALITY_PROOF_REQUIRED: "Required proof photos are missing",
   QUALITY_CHECKLIST_REQUIRED: "The service checklist is not complete",
+  QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED: "You have not confirmed the completion criteria were met",
   EXECUTION_STEP_INCOMPLETE: "Required work steps are not finished",
   EXECUTION_STEP_SKIPPED: "An optional step was skipped with a reason",
   NO_QUALITY_POLICY: "No quality checks are configured for this service",
@@ -99,7 +87,14 @@ const CASE_ACTION_LABEL: Record<string, string> = {
 
 const dt = (iso: string) => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
-export function QualityPanel({ bookingId }: { bookingId: string }) {
+export function QualityPanel({
+  bookingId,
+  heading = true,
+}: {
+  bookingId: string;
+  /** The page's section heading already names this block. */
+  heading?: boolean;
+}) {
   const quality = useQuery({
     queryKey: ["partner", "quality", bookingId],
     queryFn: () => apiRequest<ApiResponse<QualityView>>(`/api/bookings/${bookingId}/quality`, { auth: true }).then((r) => r.data!),
@@ -130,7 +125,7 @@ export function QualityPanel({ bookingId }: { bookingId: string }) {
   return (
     <section className="space-y-2" data-testid="quality-panel" aria-labelledby={`quality-${bookingId}`}>
       <p id={`quality-${bookingId}`} className="flex items-center gap-1.5 text-sm font-semibold text-partner-text">
-        <BadgeCheck className="h-4 w-4 text-partner-primary" aria-hidden="true" /> Quality
+        <BadgeCheck className="h-4 w-4 text-partner-primary" aria-hidden="true" /> {heading ? "Quality" : "Quality result"}
       </p>
 
       {latest ? (
@@ -186,6 +181,7 @@ export function QualityPanel({ bookingId }: { bookingId: string }) {
                   <span className="font-normal text-partner-muted"> · {k.caseNumber} · {CASE_STATE_LABEL[k.state] ?? k.state}</span>
                 </p>
                 {k.description ? <p className="mt-1 text-partner-text-secondary">{k.description}</p> : null}
+                <CaseEvidencePhotos bookingId={bookingId} caseId={k.id} caseNumber={k.caseNumber} evidence={k.evidence ?? []} />
                 {k.resolution?.action ? (
                   <p className="mt-1 text-partner-text-secondary">{CASE_ACTION_LABEL[String(k.resolution.action)] ?? "Resolved"}.</p>
                 ) : null}

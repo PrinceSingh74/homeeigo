@@ -6,6 +6,43 @@ Written for the owner running the live actions the agent session is not permitte
 
 The rehearsal also found three defects in the procedure itself, all fixed before this version: step G wrote the flag for environment `production`, but the backend on this machine reads `dev` (strict would have stayed off); the content apply lost the audit row of its last change (the script now waits for audit writes before exiting); the verifier used `≥ N` thresholds (now exact sets, baseline-bound parity, and FAIL on a vacuous comparison).
 
+## 2026-10-05 — content draft.3 and the customer-facing cover texts (two owner steps)
+
+The content draft moved to `2026-10-05.draft.3`. It adds only fields DERIVED from what is already approved (service-level PPE = the steps' own PPE; a product restriction = who provides the products per Phase 06; the incident protocol = the app's own reporting path; completion criteria = the plan's shape and the proof decision; per-step materials/equipment only where a plan has exactly one WORK step). No authored sentence of draft.2 changed. A new draft version changes every content hash, so the 25 approvals of draft.2 no longer match and the content needs your name again. The dispute policy gains two customer-facing texts taken word for word from the published policy (`warranty.guarantee` = "Quality Disputes & Rework"; `warranty.damagePolicy` = a report-within-48-hours line + "Limitation of Liability").
+
+Dry run on `homigo_db`, 2026-10-05 (read-only): content — 25 would apply, 0 identical, 6 refused by status (the held services, unchanged), 0 invalid on target; dispute policy — 25 would apply, 0 kept, 0 invalid. Nothing new is enforced on a partner client by either step (the new fields are shown, not gated), so it is safe with the partner apps already installed.
+
+**Step 0 — one migration first.** `20261005120000_customer_policy_decisions_booking_unlink` replaces one trigger function and touches no data. Without it, a booking that carries an age-policy decision row — since the age policy was applied, every business booking — cannot be deleted at all (the append-only trigger refuses the foreign key's own SET NULL), which blocks any data-erasure purge. With it, direct updates and deletes of a decision are still refused; only the unlink fired by deleting the booking passes, and the decision row is kept. Proven on `homigo_test` by `phase10-11-spec-conformance.integration.test.ts` ("AGE POLICY RECORD").
+
+```bash
+cd /d/homigo/apps/backend
+export DB_URL="$(grep '^DATABASE_URL=' .env | cut -d= -f2-)"       # must end in /homigo_db
+export ACTOR=cmq9h67pk0000tz8s6tvnpet5                                # SUPER_ADMIN admin@homigo.demo
+export OWNER="<your real name>"                                       # a placeholder is refused
+export APPROVAL=backups/phase10-approval-draft3-$(date -u +%Y-%m-%dT%H-%M-%SZ).json
+MSYS_NO_PATHCONV=1 docker exec homigo-postgres pg_dump -U postgres -Fc homigo_db > backups/homigo_pre-draft3_$(date -u +%Y-%m-%dT%H-%M-%SZ).dump
+
+# 0. the migration (stop any --watch backend on homigo_db first)
+bunx prisma migrate status      # expect exactly one pending: 20261005120000_customer_policy_decisions_booking_unlink
+bunx prisma migrate deploy
+
+# 1. content (execution / safety / quality) — review the plan, then apply under your name
+bun run scripts/phase10-content-validate.ts                                              # expect: violations=0
+bun run scripts/phase10-emit-approval.ts --approved-by "$OWNER" --out "$APPROVAL"
+bun run scripts/phase10-content-apply-plan.ts --url "$DB_URL" --summary                   # expect: 25 would apply
+bun run scripts/phase10-content-apply-plan.ts --url "$DB_URL" --summary --apply --allow-live \
+  --approved-by "$OWNER" --owner-approval "$APPROVAL" --actor-id "$ACTOR"
+
+# 2. dispute policy with the guarantee and damage texts — review the report, then apply
+bun run scripts/phase10-apply-published-dispute-policy.ts --url "$DB_URL"                 # expect: would-apply=25
+bun run scripts/phase10-apply-published-dispute-policy.ts --url "$DB_URL" --apply --actor-id "$ACTOR" --allow-live
+
+# read back
+bun run scripts/live-closure-verify.ts --url "$DB_URL"       # expect PASS: C content, C approval provenance, E2 dispute policy
+```
+
+Say no to step 2 if a 48-hour window, a free rework first, or the published liability wording is NOT what you want shown on every service page — then edit the texts in the admin editor (Services → Warranty & rework) per service instead; a hand-written text is never overwritten by the script.
+
 ## Shortest path — one command
 
 ```bash

@@ -13,11 +13,16 @@ import type {
   BackendRating,
   BackendRefund,
   BackendService,
+  BackendServiceDetail,
   BackendTracking,
   BackendWalletTransaction,
   BackendWithdrawal,
 } from "@/types/backend";
 import { normalizeBackendAddress } from "@/lib/addresses";
+import type { CasePhotoPart, CaseReportability } from "@/lib/case-report";
+
+/** A photo upload outlasts the API client's default request window on a slow connection. */
+const CASE_PHOTO_UPLOAD_TIMEOUT_MS = 120_000;
 import { apiRequest } from "@/services/auth/api-client";
 
 export type StatsOverview = {
@@ -150,7 +155,7 @@ export const coreApi = {
         { method: "POST", body: payload },
       ).then((r) => r.data!),
     details: (id: string) =>
-      apiRequest<ApiResponse<{ service: BackendService }>>(`/api/services/${id}`).then((r) => r.data!),
+      apiRequest<ApiResponse<{ service: BackendServiceDetail }>>(`/api/services/${id}`).then((r) => r.data!),
     byCategory: (category: string, query = "") =>
       apiRequest<ApiResponse<{ services: BackendService[]; total: number }>>(
         `/api/services/category/${encodeURIComponent(category)}${query}`,
@@ -237,7 +242,7 @@ export const coreApi = {
     safety: (id: string) =>
       apiRequest<ApiResponse<{
         gate: { ok: boolean; message: string };
-        safety: { warnings: string[]; customerRequirements: string[]; information: string | null; medicalDisclaimer: string | null; emergencyProtocol: string | null } | null;
+        safety: { warnings: string[]; customerRequirements: string[]; chemicalRestrictions?: string[]; information: string | null; medicalDisclaimer: string | null; emergencyProtocol: string | null } | null;
         holds: Array<{ condition: string }>;
       }>>(`/api/bookings/${id}/safety`, { auth: true }).then((r) => r.data!),
     /** Phase 10 §8 — the booking's work steps (titles + states only for the customer). */
@@ -272,10 +277,15 @@ export const coreApi = {
         cases: Array<{
           id: string; caseNumber: string; bookingId: string; type: string; category: string; state: string;
           description: string | null; createdAt: string; closedAt: string | null;
+          eligibility: { warrantyCovers: boolean; proofRequired: boolean; proofMissing: boolean; reasonCodes: string[] };
           resolution: { action: string | null; status: string | null; refundPaise: number | null; followUpBookingId: string | null } | null;
+          /** `hasStoredMedia`: the photo's bytes are behind the authenticated case media route. Absent on an older backend. */
+          evidence: Array<{ id: number; kind: string; jobEvidenceId: string | null; mediaUrl: string | null; note: string | null; hasStoredMedia?: boolean; createdAt: string }>;
           timeline: Array<{ state: string; at: string }>;
         }>;
         categories: string[];
+        /** Whether an issue can be reported now (bookingCaseService.reportability). Absent on an older backend. */
+        report?: CaseReportability;
       }>>(`/api/bookings/${id}/cases`, { auth: true }).then((r) => r.data!),
     /** Phase 10 §11 — report an issue on a completed booking (idempotent per booking + category). */
     reportCase: (id: string, payload: { category: string; description?: string }) =>
@@ -283,6 +293,49 @@ export const coreApi = {
         `/api/bookings/${id}/cases`,
         { method: "POST", auth: true, body: payload },
       ).then((r) => r.data!),
+    /** Phase 10 §11 — add a note to the customer's own open case (the server refuses a closed one). */
+    addCaseNote: (id: string, caseId: string, note: string) =>
+      apiRequest<ApiResponse<{ case: { id: string } }>>(
+        `/api/bookings/${id}/cases/${encodeURIComponent(caseId)}/evidence`,
+        { method: "POST", auth: true, body: { evidence: [{ kind: "NOTE", note }] } },
+      ).then((r) => r.data!),
+    /**
+     * Phase 10 §11 — one photo on the customer's own open case: multipart, field `file`. `apiRequest`
+     * only sends JSON, so this sends the form itself with the same bearer and one refresh-and-retry.
+     * No Content-Type is set (the runtime writes the boundary), and the window is longer than the
+     * API client's default because a photo on a slow connection outlasts it.
+     * Throws AuthApiError carrying the server's `code` (VALIDATION_ERROR, CASE_CLOSED, …).
+     */
+    addCasePhoto: async (id: string, caseId: string, file: CasePhotoPart): Promise<void> => {
+      const { useAuthStore } = await import("@/stores/auth-store");
+      const { getApiBaseUrl } = await import("@/lib/api-config");
+      const { AuthApiError } = await import("@/lib/auth/errors");
+      const url = `${getApiBaseUrl()}/api/bookings/${id}/cases/${encodeURIComponent(caseId)}/evidence/photo`;
+      const send = async (): Promise<Response> => {
+        const body = new FormData();
+        // React Native's FormData takes a { uri, name, type } file part; the DOM typing does not know it.
+        body.append("file", file as unknown as Blob);
+        const token = useAuthStore.getState().accessToken;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), CASE_PHOTO_UPLOAD_TIMEOUT_MS);
+        try {
+          return await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body, signal: controller.signal });
+        } catch (error) {
+          const aborted = error instanceof Error && error.name === "AbortError";
+          throw new AuthApiError(
+            aborted ? "The upload took too long. Check your connection and try again." : "The photo couldn't be sent. Check your connection and try again.",
+            0,
+            aborted ? "TIMEOUT" : "NETWORK_ERROR",
+          );
+        } finally {
+          clearTimeout(timer);
+        }
+      };
+      let res = await send();
+      if (res.status === 401 && (await useAuthStore.getState().refreshSession())) res = await send();
+      const json = (await res.json().catch(() => null)) as { success?: boolean; error?: string; code?: string } | null;
+      if (!res.ok || !json?.success) throw new AuthApiError(json?.error ?? "The photo couldn't be added", res.status, json?.code);
+    },
     /** READY = "it is in place now, please check again". A customer can never mark a partner check satisfied. */
     requirementAction: (id: string, code: string, action: "READY" | "ATTEST", note?: string) =>
       apiRequest<ApiResponse<{ code: string; state: string; changed: boolean }>>(

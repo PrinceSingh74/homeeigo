@@ -21,10 +21,17 @@ export type SafetySnapshot = {
   information: string | null;
   medicalDisclaimer: string | null;
   emergencyProtocol: string | null;
+  /** Absent on bookings frozen before these fields existed — read through `safetyFromSnapshot`. */
+  ppe: string[];
+  chemicalRestrictions: string[];
+  incidentProtocol: string | null;
 };
 
 type SafetyCfg = {
   safety?: {
+    ppe?: string[];
+    chemicalRestrictions?: string[];
+    incidentProtocol?: string;
     information?: string;
     warnings?: string[];
     prohibitedConditions?: string[];
@@ -48,6 +55,9 @@ export function buildSafetySnapshot(cfg: SafetyCfg): SafetySnapshot {
     information: s?.information ?? null,
     medicalDisclaimer: s?.medicalDisclaimer ?? null,
     emergencyProtocol: s?.emergencyProtocol ?? null,
+    ppe: [...(s?.ppe ?? [])],
+    chemicalRestrictions: [...(s?.chemicalRestrictions ?? [])],
+    incidentProtocol: s?.incidentProtocol ?? null,
   };
 }
 
@@ -55,13 +65,30 @@ export function safetyFromSnapshot(bookingSnapshot: unknown): SafetySnapshot | n
   const rec = bookingSnapshot && typeof bookingSnapshot === "object" ? (bookingSnapshot as { safety?: unknown }).safety : null;
   if (!rec || typeof rec !== "object") return null;
   const r = rec as Partial<SafetySnapshot>;
-  return r.schema === "safety.v1" ? (r as SafetySnapshot) : null;
+  if (r.schema !== "safety.v1") return null;
+  // Older snapshots predate ppe / chemical restrictions / incident protocol: absent means none.
+  return {
+    ...(r as SafetySnapshot),
+    ppe: Array.isArray(r.ppe) ? r.ppe : [],
+    chemicalRestrictions: Array.isArray(r.chemicalRestrictions) ? r.chemicalRestrictions : [],
+    incidentProtocol: typeof r.incidentProtocol === "string" ? r.incidentProtocol : null,
+  };
 }
 
-/** Customer projection: warnings, what they must do, the disclaimer and emergency protocol. Never provider requirements. */
+/**
+ * Customer projection: warnings, what they must do, chemical restrictions, the disclaimer and
+ * emergency protocol. Never provider requirements, PPE or the incident protocol.
+ */
 export function customerSafetyView(s: SafetySnapshot | null) {
   if (!s) return null;
-  return { warnings: s.warnings, customerRequirements: s.customerRequirements, information: s.information, medicalDisclaimer: s.medicalDisclaimer, emergencyProtocol: s.emergencyProtocol };
+  return {
+    warnings: s.warnings,
+    customerRequirements: s.customerRequirements,
+    chemicalRestrictions: s.chemicalRestrictions ?? [],
+    information: s.information,
+    medicalDisclaimer: s.medicalDisclaimer,
+    emergencyProtocol: s.emergencyProtocol,
+  };
 }
 
 export const OPEN_INCIDENT_STATES = ["OPEN", "ACKNOWLEDGED", "IN_PROGRESS"] as const;

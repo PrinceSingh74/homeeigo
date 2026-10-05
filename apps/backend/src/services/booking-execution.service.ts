@@ -115,6 +115,9 @@ export type ExecutionStepView = {
   estimatedMinutes: number | null;
   ppe: string[];
   warnings: string[];
+  /** What the professional uses in this step. Empty for the customer and for older bookings. */
+  materials: string[];
+  equipment: string[];
   dependsOn: string[];
   safetyRequirement: string | null;
   state: EffectiveStepState;
@@ -192,6 +195,8 @@ class BookingExecutionService {
         code: r.code, stepNumber: r.stepNumber, title: def?.title ?? r.code, description: def?.description ?? null, kind: r.raw.kind,
         mandatory: r.mandatory, skippable: !r.mandatory && r.skipPolicy === "SKIP_WITH_REASON", evidence: r.evidence,
         estimatedMinutes: def?.estimatedMinutes ?? null, ppe: def?.ppe ?? [], warnings: def?.warnings ?? [], dependsOn: r.dependsOn,
+        materials: audience.role === "CUSTOMER" ? [] : (def?.materials ?? []),
+        equipment: audience.role === "CUSTOMER" ? [] : (def?.equipment ?? []),
         safetyRequirement: r.safetyRequirement, state, blockedBy: blk, finishedAt: r.raw.finished_at ? r.raw.finished_at.toISOString() : null,
         // The partner's notes and reasons are operational; the customer sees titles and states only.
         note: audience.role === "CUSTOMER" ? null : r.raw.note,

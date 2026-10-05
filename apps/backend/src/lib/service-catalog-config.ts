@@ -342,6 +342,12 @@ export const serviceCatalogConfigSchema = z
         providerRequirements: z.array(text(300)).max(15).optional(),
         medicalDisclaimer: text(1000).optional(),
         emergencyProtocol: text(1000).optional(),
+        /** Protective equipment the professional wears for the whole job (a step may add its own). */
+        ppe: z.array(text(80)).max(15).optional(),
+        /** Chemicals or products that must not be used, or only under a stated condition. */
+        chemicalRestrictions: z.array(text(300)).max(15).optional(),
+        /** What the professional does when something goes wrong on site (shown to the professional). */
+        incidentProtocol: text(1000).optional(),
       })
       .strict()
       .optional(),
@@ -352,7 +358,10 @@ export const serviceCatalogConfigSchema = z
         proofRequired: z.boolean().optional(),
         beforeAfterPhotos: z.boolean().optional(),
         customerConfirmation: z.boolean().optional(),
+        /** The professional must attest the completion criteria were met before the job can complete. */
+        professionalConfirmation: z.boolean().optional(),
         warrantyDays: z.number().int().min(0).max(3650).optional(),
+        /** @deprecated stored only — the enforced revisit rules are `rework` and the case engine. */
         revisitPolicy: text(500).optional(),
         complaintWindowDays: z.number().int().min(0).max(365).optional(),
         /** Phase 10 §10: hours the customer has to confirm or report an issue after completion (platform default 48). */
@@ -375,6 +384,10 @@ export const serviceCatalogConfigSchema = z
         proofRequired: z.boolean().optional(),
         reworkFirst: z.boolean().optional(),
         refundAllowed: z.boolean().optional(),
+        /** Customer-facing: how damage caused during the visit is handled. Shown verbatim. */
+        damagePolicy: text(1000).optional(),
+        /** Customer-facing service guarantee. Shown verbatim; frozen with the booking. */
+        guarantee: text(500).optional(),
       })
       .strict()
       .optional(),
@@ -412,12 +425,20 @@ export const serviceCatalogConfigSchema = z
     providerRequirements: z
       .object({
         requiredSkills: z.array(idText).max(20).optional(),
+        /** @deprecated stored only — the enforced level is `skills[].minLevel`. */
         skillLevel: text(40).optional(),
+        /** @deprecated display only — the enforced training gate is `trainingModules`. */
         trainingRequired: z.boolean().optional(),
         certifications: z.array(text(80)).max(15).optional(),
         kycRequired: z.boolean().optional(),
         verifiedProfessionalRequired: z.boolean().optional(),
         experienceYears: z.number().int().min(0).max(50).optional(),
+        backgroundCheckRequired: z.boolean().optional(),
+        /** Academy module slugs a professional must have completed to be matched. */
+        trainingModules: z
+          .array(z.string().trim().min(1).max(80).regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "use an academy module slug (lowercase letters, digits, single hyphens)"))
+          .max(20)
+          .optional(),
         /** Phase 11 typed requirements (src/lib/provider-capability.ts). Codes: ^[a-z0-9]+(-[a-z0-9]+)*$ */
         skills: z.array(z.object({ code: idText, minLevel: z.enum(["BASIC", "SKILLED", "EXPERT"]).optional(), verifiedOnly: z.boolean().optional() }).strict()).max(20).optional(),
         requiredCertifications: z.array(z.object({ type: idText, verificationRequired: z.boolean().optional() }).strict()).max(15).optional(),
@@ -429,7 +450,9 @@ export const serviceCatalogConfigSchema = z
       .optional(),
     matching: z
       .object({
+        /** @deprecated stored only — there is one matcher. */
         strategy: text(40).optional(),
+        /** @deprecated stored only — skill is a hard gate (`providerRequirements.skills`), not a ranking signal. */
         skillWeight: z.number().min(0).max(1).optional(),
         distanceWeight: z.number().min(0).max(1).optional(),
         ratingWeight: z.number().min(0).max(1).optional(),
@@ -458,6 +481,7 @@ export const serviceCatalogConfigSchema = z
         verifiedProfessionalRequired: z.boolean().optional(),
         backgroundCheckRequired: z.boolean().optional(),
         insuranceSupported: z.boolean().optional(),
+        /** @deprecated internal note, never shown — the customer-facing text is `warranty.guarantee`. */
         guarantee: text(300).optional(),
         supportPolicy: text(500).optional(),
         badges: z.array(text(40)).max(10).optional(),
@@ -754,11 +778,27 @@ export function coverageAllowsAddress(
   return { ok: true };
 }
 
-/** What customers may see: inactive items removed, unsupported preferences and matching weights hidden. */
+/**
+ * What customers may see. Inactive options, matching weights and partner-only blocks are removed.
+ * The customer visit promise (safety warnings, proof, warranty, age) is a separate projection
+ * (`customerVisitPromise`) — these blocks stay off the catalogue payload so a client cannot
+ * read the partner SOP, the checklist, or a guarantee the runtime does not enforce.
+ */
 export function publicCatalogConfig(cfg: ServiceCatalogConfig | null): ServiceCatalogConfig | null {
   if (!cfg) return null;
-  // requirements carry partner instructions and internal notes; customers get customerRequirementsView instead.
-  const { matching: _matching, requirements: _requirements, requirementItems: _items, ...rest } = cfg;
+  const {
+    matching: _matching,
+    requirements: _requirements,
+    requirementItems: _items,
+    execution: _execution,
+    safety: _safety,
+    quality: _quality,
+    warranty: _warranty,
+    rework: _rework,
+    trust: _trust,
+    customerPolicy: _customerPolicy,
+    ...rest
+  } = cfg;
   return {
     ...rest,
     variants: cfg.variants?.filter((v) => v.active).map((v) => ({ ...v, professionalPreferences: undefined })),

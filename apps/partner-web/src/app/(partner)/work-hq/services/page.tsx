@@ -2,15 +2,18 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList } from "lucide-react";
+import Link from "next/link";
+import { CircleAlert, CircleCheck, ClipboardList, Clock, ListTodo } from "lucide-react";
 import { HqPageShell } from "@/components/hq/HqPageShell";
+import { describeReadiness, summarizeReadiness } from "@/lib/service-readiness";
 import { partnerApi, type PartnerServiceSkillCard } from "@/services/partner-api";
 
 export default function PartnerServicesPage() {
   const qc = useQueryClient();
   const [query, setQuery] = useState("");
   const [note, setNote] = useState("");
-  const [showPerforming, setShowPerforming] = useState(false);
+  // null = the partner has not chosen: the lane opens by itself when a service needs attention.
+  const [showPerforming, setShowPerforming] = useState<boolean | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,6 +51,9 @@ export default function PartnerServicesPage() {
   }, [board.data?.available, query]);
 
   const data = board.data;
+  // Null when the server reports no readiness (older backend): then no readiness UI at all.
+  const readiness = summarizeReadiness(data?.performing ?? []);
+  const performingOpen = showPerforming ?? (readiness?.notReady ?? 0) > 0;
 
   return (
     <HqPageShell
@@ -60,6 +66,14 @@ export default function PartnerServicesPage() {
     >
       {message ? <p className="rounded-xl border border-partner-line bg-partner-primary/10 px-4 py-3 text-sm">{message}</p> : null}
       {error ? <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</p> : null}
+      {readiness?.sentence ? (
+        <p role="status" className="flex items-start gap-2 rounded-xl border border-partner-line bg-partner-warning/10 px-4 py-3 text-sm text-partner-text" data-testid="readiness-summary">
+          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-partner-warning" aria-hidden="true" />
+          <span>
+            <span className="font-semibold">{readiness.sentence}</span> Each one below lists what is missing.
+          </span>
+        </p>
+      ) : null}
       {data && !data.approvalWorkflow ? (
         <p className="text-sm text-partner-muted">New skill requests are not available on this server yet. Your signup services are unchanged.</p>
       ) : null}
@@ -114,13 +128,14 @@ export default function PartnerServicesPage() {
           <h2 className="font-display text-lg font-semibold">Services you perform ({data?.performing.length ?? 0})</h2>
           <button
             type="button"
-            onClick={() => setShowPerforming((open) => !open)}
+            onClick={() => setShowPerforming(!performingOpen)}
+            aria-expanded={performingOpen}
             className="min-h-11 rounded-lg border border-partner-line px-4 text-sm font-semibold"
           >
-            {showPerforming ? "Hide" : "Show"}
+            {performingOpen ? "Hide" : "Show"}
           </button>
         </div>
-        {showPerforming ? <Lane title="" empty="No services yet. Finish onboarding first." items={data?.performing ?? []} /> : null}
+        {performingOpen ? <PerformingLane items={data?.performing ?? []} /> : null}
       </section>
 
       <section className="space-y-3">
@@ -153,6 +168,69 @@ export default function PartnerServicesPage() {
         <Lane title="Paused by admin" empty="" items={data?.suspended ?? []} hint="These services are not offered until an admin restores them." />
       ) : null}
     </HqPageShell>
+  );
+}
+
+/**
+ * Services the partner performs, each with whether it is actually being matched. Being authorised
+ * for a service is not the same as being offered its jobs: a requirement the partner does not meet
+ * silently removes them from matching, so each gap is said in a sentence with its next step.
+ */
+function PerformingLane({ items }: { items: PartnerServiceSkillCard[] }) {
+  if (items.length === 0) return <p className="text-sm text-partner-muted">No services yet. Finish onboarding first.</p>;
+  return (
+    <div className="grid gap-3">
+      {items.map((s) => {
+        const lines = describeReadiness(s.readiness);
+        return (
+          <article key={s.serviceId} className="partner-card space-y-3 p-4" data-testid="performing-service" data-ready={s.readiness ? s.readiness.ready : undefined}>
+            <div className="flex flex-wrap items-baseline justify-between gap-3">
+              <h3 className="font-display text-lg font-semibold">{s.name}</h3>
+              <span className="text-xs uppercase tracking-wide text-partner-muted">{s.category}</span>
+            </div>
+            {!s.readiness ? null : s.readiness.ready ? (
+              <p className="flex items-center gap-1.5 text-sm font-medium text-partner-text" data-testid="service-ready">
+                <CircleCheck className="h-4 w-4 shrink-0 text-partner-success" aria-hidden="true" />
+                Ready for jobs
+              </p>
+            ) : (
+              <div className="space-y-2" data-testid="service-not-ready">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-partner-text">
+                  <CircleAlert className="h-4 w-4 shrink-0 text-partner-warning" aria-hidden="true" />
+                  Not being offered jobs yet
+                </p>
+                <ul className="space-y-2" aria-label={`What ${s.name} still needs`}>
+                  {lines.map((line, i) => (
+                    <li key={i} className="rounded-xl border border-partner-line p-3">
+                      <p className="flex items-start gap-2 text-sm text-partner-text-secondary">
+                        {line.waiting ? (
+                          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-partner-muted" aria-hidden="true" />
+                        ) : (
+                          <ListTodo className="mt-0.5 h-4 w-4 shrink-0 text-partner-primary" aria-hidden="true" />
+                        )}
+                        <span>
+                          <span className="font-semibold text-partner-text">{line.waiting ? "Waiting on us: " : line.step ? "To do: " : "Note: "}</span>
+                          {line.sentence}
+                        </span>
+                      </p>
+                      {line.step ? (
+                        <Link
+                          href={line.step.href}
+                          aria-label={`${line.step.label} — for ${s.name}`}
+                          className="mt-2 inline-flex min-h-11 items-center rounded-lg border border-partner-line px-4 text-sm font-semibold text-partner-text transition hover:border-partner-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-partner-primary"
+                        >
+                          {line.step.label}
+                        </Link>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </article>
+        );
+      })}
+    </div>
   );
 }
 

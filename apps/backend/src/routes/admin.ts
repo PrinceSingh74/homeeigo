@@ -1654,7 +1654,8 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
           description: typeof payload.description === "string" ? payload.description : undefined,
           enabled: Boolean(payload.enabled),
           rolloutPct: Number(payload.rolloutPct ?? 100),
-          environment: typeof payload.environment === "string" ? payload.environment : "production",
+          // Omitted: a new row is created for this backend's own environment and an existing row keeps its own.
+          environment: typeof payload.environment === "string" && payload.environment.trim() ? payload.environment.trim() : undefined,
           isKillSwitch: Boolean(payload.isKillSwitch),
         },
         { adminId: admin.adminId, userId: admin.userId },

@@ -13,6 +13,11 @@
  *                                        { code: "QUALITY_CHECKLIST_REQUIRED", data: { verdictId } }
  *   GET  /api/bookings/:id/quality    → data.history[last].missingChecklistItems: string[]
  *
+ * The frozen policy may also carry `completionCriteria: string[]` ("what done means") and
+ * `professionalConfirmation: true`. With the latter the complete body must send
+ * `professionalConfirmation: true` — the partner's own attestation — or the server refuses with 409
+ * { code: "QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED" }.
+ *
  * Everything in this file is pure so `bun test tests` can pin it: which items are still missing,
  * whether the client may even offer "Mark complete", what goes on the wire, and how a refusal is
  * explained. The server stays the authority — a client that thinks it is allowed is only allowed
@@ -20,18 +25,25 @@
  */
 
 export const QUALITY_CHECKLIST_REQUIRED = "QUALITY_CHECKLIST_REQUIRED";
+export const QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED = "QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED";
 
 /** What the partner UI needs from `GET /api/bookings/:id` → `booking.execution.quality`. */
 export type BookingExecutionQuality = {
   checklist: string[];
   proofRequired: boolean;
   beforeAfterPhotos: boolean;
+  /** "What done means" — shown above the checklist. Empty when the policy defines none. */
+  completionCriteria: string[];
+  /** The partner must attest the criteria were met before completing. */
+  professionalConfirmation: boolean;
 };
 
 export const EMPTY_EXECUTION_QUALITY: BookingExecutionQuality = Object.freeze({
   checklist: [],
   proofRequired: false,
   beforeAfterPhotos: false,
+  completionCriteria: [],
+  professionalConfirmation: false,
 }) as BookingExecutionQuality;
 
 /**
@@ -52,6 +64,10 @@ export function parseExecutionQuality(raw: unknown): BookingExecutionQuality {
     checklist,
     proofRequired: q.proofRequired === true,
     beforeAfterPhotos: q.beforeAfterPhotos === true,
+    completionCriteria: Array.isArray(q.completionCriteria)
+      ? q.completionCriteria.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+      : [],
+    professionalConfirmation: q.professionalConfirmation === true,
   };
 }
 
@@ -88,10 +104,32 @@ export type CompletionGate = {
   hint: string | null;
 };
 
-/** Whether the client may ASK for completion, and the sentence shown next to a disabled button. */
-export function completionGate(checklist: readonly string[], ticked: Iterable<string>): CompletionGate {
+/** The partner's attestation that the completion criteria were met, when the policy asks for one. */
+export type ProfessionalConfirmationState = { required: boolean; confirmed: boolean };
+
+export const PROFESSIONAL_CONFIRMATION_LABEL = "I confirm the completion criteria were met";
+
+/**
+ * Whether the client may ASK for completion, and the sentence shown next to a disabled button. The
+ * checklist is reported first; the confirmation only once every item is ticked, so the partner is
+ * told one next step at a time.
+ */
+export function completionGate(
+  checklist: readonly string[],
+  ticked: Iterable<string>,
+  confirmation?: ProfessionalConfirmationState,
+): CompletionGate {
   const missing = missingChecklistItems(checklist, ticked);
-  if (missing.length === 0) return { allowed: true, missing, hint: null };
+  if (missing.length === 0) {
+    if (confirmation?.required && !confirmation.confirmed) {
+      return {
+        allowed: false,
+        missing,
+        hint: `Tick "${PROFESSIONAL_CONFIRMATION_LABEL}" in the quality checklist before marking this job complete.`,
+      };
+    }
+    return { allowed: true, missing, hint: null };
+  }
   const n = missing.length;
   return {
     allowed: false,
@@ -125,8 +163,21 @@ export function checklistCompletionFields(
   return completedChecklist === undefined ? {} : { completedChecklist };
 }
 
+/**
+ * The `professionalConfirmation` field of the complete request: `true` ONLY when the policy asks
+ * for the attestation AND the partner ticked it. Never `false`, never sent for a booking that does
+ * not ask — an unticked box is an absent key, and the server refuses.
+ */
+export function professionalConfirmationField(
+  confirmation: ProfessionalConfirmationState | undefined,
+): { professionalConfirmation?: true } {
+  return confirmation?.required && confirmation.confirmed ? { professionalConfirmation: true } : {};
+}
+
 export type CompletionRefusal = {
-  code: typeof QUALITY_CHECKLIST_REQUIRED;
+  code: typeof QUALITY_CHECKLIST_REQUIRED | typeof QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED;
+  /** Short heading for the inline notice. */
+  title: string;
   /** What the partner is told. */
   message: string;
   /** Where the checklist can actually be completed. */
@@ -137,8 +188,8 @@ export type CompletionRefusal = {
 
 /**
  * Maps a failed complete call to something a surface WITHOUT a checklist (a list card, the dashboard)
- * can act on. Only `QUALITY_CHECKLIST_REQUIRED` is mapped; every other refusal keeps its own
- * message. `onJobPage` changes the sentence: on the job page the checklist is already in view, so
+ * can act on. Only `QUALITY_CHECKLIST_REQUIRED` and `QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED`
+ * are mapped; every other refusal keeps its own message. `onJobPage` changes the sentence: on the job page the checklist is already in view, so
  * "go to the job page" would be nonsense there.
  */
 export function describeCompletionRefusal(
@@ -147,14 +198,28 @@ export function describeCompletionRefusal(
   opts: { onJobPage?: boolean } = {},
 ): CompletionRefusal | null {
   const code = pick(error, "code");
-  if (code !== QUALITY_CHECKLIST_REQUIRED) return null;
+  if (code !== QUALITY_CHECKLIST_REQUIRED && code !== QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED) return null;
   const verdictIdRaw = pick(pick(error, "data"), "verdictId");
+  const href = `/requests/${encodeURIComponent(bookingId)}`;
+  const verdictId = typeof verdictIdRaw === "number" ? verdictIdRaw : null;
+  if (code === QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED) {
+    return {
+      code,
+      title: "Confirmation needed",
+      message: opts.onJobPage
+        ? `The server needs your confirmation that the completion criteria were met. Tick "${PROFESSIONAL_CONFIRMATION_LABEL}" in the quality checklist above and try again.`
+        : "This service asks you to confirm the completion criteria were met. Open the job page, review what done means, and confirm there before marking the job complete.",
+      href,
+      verdictId,
+    };
+  }
   return {
     code: QUALITY_CHECKLIST_REQUIRED,
+    title: "Checklist not complete",
     message: opts.onJobPage
       ? "The server still reports the service checklist as incomplete. The items it needs are marked in the checklist above — tick them and try again."
       : "This service has a quality checklist that must be completed on the job page before the job can be marked complete.",
-    href: `/requests/${encodeURIComponent(bookingId)}`,
-    verdictId: typeof verdictIdRaw === "number" ? verdictIdRaw : null,
+    href,
+    verdictId,
   };
 }

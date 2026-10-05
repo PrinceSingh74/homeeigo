@@ -33,7 +33,7 @@ export function PartnerBottomNav() {
                   "flex flex-col items-center gap-0.5 rounded-xl px-3 py-2 text-[10px] font-medium transition",
                   active
                     ? "text-partner-primary"
-                    : "text-partner-muted hover:text-partner-text"
+                    : "text-slate-700 hover:text-partner-text dark:text-slate-200"
                 )}
               >
                 <Icon

@@ -17,7 +17,7 @@ import { matchingService, type MatchingDiagnostics, type MatchingRequest } from 
 import { partnerOperationsService } from "../services/partner-operations.service";
 import { assignmentEngine } from "../services/assignment-engine.service";
 import { resetMemoryLocksForTests } from "../lib/redis";
-import { __capabilityLoaderCalls, STRICT_SERVICE_CAPABILITY_FLAG, loadServiceGateContext } from "../services/provider-capability-loader";
+import { __capabilityLoaderCalls, SEED_PARTNER_FALLBACK_FLAG, STRICT_SERVICE_CAPABILITY_FLAG, loadServiceGateContext, seedPartnerFallbackDefault, seedPartnerFallbackPolicy } from "../services/provider-capability-loader";
 import { currentEnvironment, invalidateFlagCache } from "../services/feature-flag.service";
 import { sumCounterWhere } from "../lib/metrics";
 import type { MatchingRejectionReason } from "../lib/provider-capability";
@@ -449,6 +449,121 @@ describe.serial("Phase 11 — capability gates through the real matcher", () => 
     await clearCerts(p);
     await clearLanguages(p);
     await setRequirements();
+  });
+});
+
+describe.serial("Phase 11 — profile gates read the provider record", () => {
+  test("KYC, background check, experience and academy training each refuse until the record meets them", async () => {
+    if (!dbOk) return;
+    const p = ctx.providerId;
+    const before = await prisma.provider.findUniqueOrThrow({ where: { id: p }, select: { isVerified: true, backgroundCheckStatus: true, experienceYears: true } });
+    const mod = await prisma.partnerAcademyModule.create({ data: { slug: `p11-train-${RUN}`, title: "P11 training", contentType: "ARTICLE", isPublished: true, categoryIds: [] } });
+    try {
+      await prisma.provider.update({ where: { id: p }, data: { isVerified: false, backgroundCheckStatus: "PENDING", experienceYears: 1 } });
+      await setRequirements({ kycRequired: true, backgroundCheckRequired: true, experienceYears: 3, trainingModules: [mod.slug] });
+      expect(reasonsFor(await diag(ctx.customerA.id), p)).toEqual(["KYC_UNVERIFIED", "BACKGROUND_CHECK_NOT_CLEARED", "EXPERIENCE_INSUFFICIENT", "TRAINING_INCOMPLETE"]);
+
+      await prisma.provider.update({ where: { id: p }, data: { isVerified: true, backgroundCheckStatus: "CLEARED", experienceYears: 3 } });
+      expect(reasonsFor(await diag(ctx.customerA.id), p)).toEqual(["TRAINING_INCOMPLETE"]);
+
+      // A module that was opened but not finished is not completed training.
+      const progress = await prisma.partnerAcademyProgress.create({ data: { providerId: p, moduleId: mod.id } });
+      expect(reasonsFor(await diag(ctx.customerA.id), p)).toEqual(["TRAINING_INCOMPLETE"]);
+      await prisma.partnerAcademyProgress.update({ where: { id: progress.id }, data: { completedAt: new Date() } });
+      expect(matched(await diag(ctx.customerA.id), p)).toBe(true);
+
+      // A failed check refuses again, and a service that asks for nothing ignores the record.
+      await prisma.provider.update({ where: { id: p }, data: { backgroundCheckStatus: "FAILED" } });
+      expect(reasonsFor(await diag(ctx.customerA.id), p)).toEqual(["BACKGROUND_CHECK_NOT_CLEARED"]);
+      await setRequirements();
+      expect(matched(await diag(ctx.customerA.id), p)).toBe(true);
+    } finally {
+      await prisma.partnerAcademyModule.delete({ where: { id: mod.id } });
+      await prisma.provider.update({ where: { id: p }, data: before });
+      await setRequirements();
+    }
+  });
+});
+
+describe.serial("Phase 11 — a business customer gets business partners only unless the owner turns the seed fallback on", () => {
+  /** `true` / `false` write an explicit flag row (which always decides); `null` removes the row (environment default). */
+  async function setSeedFallback(enabled: boolean | null) {
+    if (enabled === null) {
+      await prisma.platformFeatureFlag.deleteMany({ where: { key: SEED_PARTNER_FALLBACK_FLAG } });
+    } else {
+      await prisma.platformFeatureFlag.upsert({
+        where: { key: SEED_PARTNER_FALLBACK_FLAG },
+        create: { key: SEED_PARTNER_FALLBACK_FLAG, enabled, rolloutPct: 100, environment: currentEnvironment(), description: `p11 test ${RUN}` },
+        update: { enabled, rolloutPct: 100, environment: currentEnvironment() },
+      });
+    }
+    await invalidateFlagCache(SEED_PARTNER_FALLBACK_FLAG);
+  }
+
+  test("with no flag row the environment decides: on only where the marketplace is the seed accounts; an explicit row always wins", async () => {
+    if (!dbOk) return;
+    expect(seedPartnerFallbackDefault("dev")).toBe(true);
+    expect(seedPartnerFallbackDefault("Development")).toBe(true);
+    expect(seedPartnerFallbackDefault("local")).toBe(true);
+    for (const env of ["production", "staging", "test", "prod", ""]) expect(seedPartnerFallbackDefault(env)).toBe(false);
+    try {
+      await setSeedFallback(null);
+      expect(await seedPartnerFallbackPolicy()).toEqual({ enabled: seedPartnerFallbackDefault(currentEnvironment()), source: "ENVIRONMENT_DEFAULT" });
+      await setSeedFallback(false);
+      expect(await seedPartnerFallbackPolicy()).toEqual({ enabled: false, source: "FLAG" });
+      await setSeedFallback(true);
+      expect(await seedPartnerFallbackPolicy()).toEqual({ enabled: true, source: "FLAG" });
+    } finally {
+      await setSeedFallback(null);
+    }
+  });
+
+  test("flag off: a paid business job with no business partner matches nobody; flag on: the on-duty seed partner, never a suite fixture", async () => {
+    if (!dbOk) return;
+    const svc = await prisma.service.create({
+      data: { name: `P11 seed ${RUN}`, slug: `p11-seed-${TAG}`, description: "seed fallback fixture", category: `p11seed-${RUN}`, basePrice: 500, estimatedDuration: 60, availableCities: ["Noida"], tags: ["adv"] },
+    });
+    // The only two partners who offer this service: the application's own seed account and a suite fixture.
+    const seedUser = await prisma.user.create({
+      data: {
+        email: `${TAG}-seed@homigo.demo`, dataOrigin: "INFERRED_SYNTHETIC", phoneNumber: fixturePhone(RUN, "seed"), firstName: "P11", lastName: "seed",
+        password: passwordHash, role: UserRole.VENDOR, isEmailVerified: true, isPhoneVerified: true,
+      },
+    });
+    const seed = await prisma.provider.create({
+      data: {
+        userId: seedUser.id, serviceCategories: [svc.id], serviceRegions: [], serviceRadiusKm: 50, baseLatitude: LAT, baseLongitude: LNG, workingDays: ALL_DAYS,
+        workingHoursStart: "00:00", workingHoursEnd: "23:59", isVerified: true, isApproved: true, lifecycleState: "ACTIVE", isActive: true, isOnline: true, rating: 4.2,
+      },
+    });
+    extraProviderIds.push(seed.id);
+    extraUserIds.push(seedUser.id);
+    const fixture = await mkProvider("seedfx", "FIXTURE");
+    await prisma.provider.update({ where: { id: fixture.providerId }, data: { serviceCategories: [svc.id] } });
+    try {
+      await setSeedFallback(false);
+      const off = await diag(ctx.customerB.id, { serviceId: svc.id });
+      expect(off.matches).toEqual([]);
+      expect(candidate(off, seed.id)).toBe(false);
+      expect((await loadServiceGateContext(svc.id, ctx.customerB.id)).seedPartnerFallback).toBe(false);
+
+      await setSeedFallback(true);
+      expect((await loadServiceGateContext(svc.id, ctx.customerB.id)).seedPartnerFallback).toBe(true);
+      const on = await diag(ctx.customerB.id, { serviceId: svc.id });
+      // The seed account is recognised although its address is stored encrypted (`users.email` is NULL).
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: seedUser.id }, select: { email: true } })).email).toBeNull();
+      expect(on.matches.map((m) => m.providerId)).toEqual([seed.id]);
+      expect(matched(on, fixture.providerId)).toBe(false);
+      // The switch never applies to a fixture customer, who keeps its own population.
+      expect((await loadServiceGateContext(svc.id, ctx.customerA.id)).seedPartnerFallback).toBe(false);
+      const forFixture = await diag(ctx.customerA.id, { serviceId: svc.id });
+      expect(matched(forFixture, fixture.providerId)).toBe(true);
+    } finally {
+      await setSeedFallback(null);
+      await prisma.providerMatchScore.deleteMany({ where: { providerId: { in: [seed.id, fixture.providerId] } } });
+      await prisma.provider.updateMany({ where: { id: { in: [seed.id, fixture.providerId] } }, data: { serviceCategories: [] } });
+      await prisma.service.delete({ where: { id: svc.id } });
+    }
   });
 });
 

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Linking, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { router } from "expo-router";
 import { KpiCard } from "@/components/KpiCard";
 import { EmptyState, HqCard, HqCardTitle, HqMuted, LoadingBlock, ProgressRow, StatRow } from "@/components/HqUi";
 import { PartnerScreen } from "@/components/PartnerScreen";
@@ -69,6 +70,20 @@ export function AcademyCertificationsScreen() {
         ) : (
           unique.map((c) => <StatRow key={c} label={c} value="Verified" />)
         )}
+      </HqCard>
+      <HqCard>
+        <HqCardTitle>My credentials</HqCardTitle>
+        <HqMuted>Verified credentials make a professional eligible for jobs that require them.</HqMuted>
+        <Pressable
+          testID="open-my-credentials"
+          onPress={() => router.push("/hq/academy-credentials")}
+          style={styles.outlineBtn}
+          accessibilityRole="link"
+          accessibilityLabel="Manage my credentials"
+          accessibilityHint="Declare skills, certifications, equipment, insurance and languages"
+        >
+          <Text style={styles.outlineBtnText}>Manage my credentials</Text>
+        </Pressable>
       </HqCard>
     </HqShell>
   );

@@ -1,5 +1,20 @@
 import { getApiBaseUrl } from "@/lib/api-config";
-import type { BookingRequirementsView, RequirementGateResult } from "@/types/partner";
+import type {
+  BookingExecutionView,
+  BookingRequirementsView,
+  BookingSafetyView,
+  CapabilityWriteRow,
+  DeclareCertificationBody,
+  DeclareEquipmentBody,
+  DeclareInsuranceBody,
+  DeclareLanguageBody,
+  DeclareSkillBody,
+  EditCapabilityBody,
+  PartnerCapabilityProfile,
+  PartnerCaseView,
+  PartnerServiceSkillBoard,
+  RequirementGateResult,
+} from "@/types/partner";
 import {
   classifyRefreshResponse,
   createRefreshCoordinator,
@@ -504,6 +519,10 @@ export const partnerApi = {
    * the exact frozen strings — matched item by item server-side. Pass `undefined` (key omitted) when
    * the service has no checklist. The server answers `QUALITY_CHECKLIST_REQUIRED` (409) while any
    * frozen item is missing; the missing items are then readable from `getQuality(...).history`.
+   *
+   * `professionalConfirmation` is sent only as `true`, and only when the partner ticked the
+   * confirmation row (`lib/professional-confirmation.ts`); where the frozen policy requires it and it
+   * is absent the server answers `QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED` (409).
    */
   completeBooking: (
     bookingId: string,
@@ -512,6 +531,7 @@ export const partnerApi = {
     notes?: string,
     photos?: string[],
     completedChecklist?: string[],
+    professionalConfirmation?: true,
   ) =>
     request<{ booking: { status: string } }>(`/api/bookings/${bookingId}/complete`, {
       method: "POST",
@@ -521,6 +541,7 @@ export const partnerApi = {
         ...(notes ? { notes } : {}),
         ...(photos?.length ? { photos } : {}),
         ...(completedChecklist ? { completedChecklist } : {}),
+        ...(professionalConfirmation === true ? { professionalConfirmation: true } : {}),
       },
     }),
 
@@ -534,12 +555,7 @@ export const partnerApi = {
     ),
 
   /* ---- Phase 10 §9 — safety ---- */
-  getSafety: (bookingId: string) =>
-    request<{
-      gate: { ok: boolean; message: string };
-      safety: { prohibitedConditions: string[]; warnings: string[]; providerRequirements: string[]; emergencyProtocol: string | null } | null;
-      canReport: string[];
-    }>(`/api/bookings/${bookingId}/safety`),
+  getSafety: (bookingId: string) => request<BookingSafetyView>(`/api/bookings/${bookingId}/safety`),
   reportProhibitedCondition: (bookingId: string, condition: string, note?: string) =>
     request<{ holdId: number | null; changed: boolean }>(`/api/bookings/${bookingId}/safety/prohibited-condition`, { method: "POST", body: { condition, ...(note ? { note } : {}) } }),
 
@@ -563,23 +579,24 @@ export const partnerApi = {
     }>(`/api/bookings/${bookingId}/completion`),
   /** The customer's reported issues on this job (partnerView: description + outcome, read-only). */
   getCases: (bookingId: string) =>
-    request<{
-      available: boolean;
-      cases: Array<{
-        id: string; caseNumber: string; bookingId: string; type: string; category: string; state: string;
-        description: string | null; createdAt: string; closedAt: string | null;
-        resolution: { action: string | null; followUpBookingId: string | null } | null;
-      }>;
-      categories: string[];
-    }>(`/api/bookings/${bookingId}/cases`),
+    request<{ available: boolean; cases: PartnerCaseView[]; categories: string[] }>(`/api/bookings/${bookingId}/cases`),
+  /**
+   * An `Image` source for a case photo the server stores privately (`hasStoredMedia`). The media
+   * route is authenticated, so the source carries the same bearer token `request` sends — and only
+   * ever to this app's own API base. `null` when there is no token to send. An `Image` cannot use
+   * the 401 → refresh → retry that `request` does: pass the store's current token so the source is
+   * rebuilt after a refresh, and fall back to a text indicator when the image fails to load.
+   */
+  caseEvidenceImageSource: (bookingId: string, caseId: string, evidenceId: number, token: string | null = accessToken) =>
+    token
+      ? {
+          uri: `${getApiBaseUrl()}/api/bookings/${encodeURIComponent(bookingId)}/cases/${encodeURIComponent(caseId)}/evidence/${evidenceId}/media`,
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      : null,
 
   /* ---- Phase 10 §8 — execution steps ---- */
-  getExecution: (bookingId: string) =>
-    request<{
-      enforced: boolean;
-      steps: Array<{ code: string; stepNumber: number; title: string; mandatory: boolean; evidence: string; ppe: string[]; warnings: string[]; state: string; actions: string[] }>;
-      gate: { ok: boolean; blocking: Array<{ code: string; reason: string }> };
-    }>(`/api/bookings/${bookingId}/execution`),
+  getExecution: (bookingId: string) => request<BookingExecutionView>(`/api/bookings/${bookingId}/execution`),
   executionAction: (bookingId: string, code: string, action: string, body?: Record<string, string>) =>
     request<{ state: string; changed: boolean }>(`/api/bookings/${bookingId}/execution/${encodeURIComponent(code)}/${action}`, { method: "POST", body: body ?? {} }),
 
@@ -883,6 +900,52 @@ export const partnerApi = {
     serviceHistory: () => request<PartnerServiceHistory>("/api/providers/me/service-history"),
     documents: () => request<{ documents: PartnerDocument[] }>("/api/providers/me/documents"),
   },
+
+  /**
+   * Phase 11 — capability self-service (`routes/provider-capabilities.ts`). A partner can only
+   * DECLARE: the bodies carry fact fields, and status / verifier / source are set by the server. An
+   * administrator verifies; a VERIFIED or REVOKED row answers 409 `CAPABILITY_LOCKED` to any change.
+   * Before the capability tables are deployed every route answers 503 `NOT_DEPLOYED`.
+   */
+  capabilities: {
+    /** Own profile (every row with `validity` / `nearExpiry`) plus the active `skillCatalogue`. */
+    profile: () => request<PartnerCapabilityProfile>("/api/providers/me/capabilities"),
+    /** Keyed by skill: declaring one again updates its level while it is still a claim. */
+    declareSkill: (body: DeclareSkillBody) =>
+      request<{ row: CapabilityWriteRow; changed: boolean }>("/api/providers/me/capabilities/skills", { method: "POST", body }),
+    declareCertification: (body: DeclareCertificationBody) =>
+      request<{ row: CapabilityWriteRow; changed: boolean }>("/api/providers/me/capabilities/certifications", { method: "POST", body }),
+    /** Keyed by equipment type. On a VERIFIED row only `operational` may differ (same ownership, no note). */
+    declareEquipment: (body: DeclareEquipmentBody) =>
+      request<{ row: CapabilityWriteRow; changed: boolean }>("/api/providers/me/capabilities/equipment", { method: "POST", body }),
+    declareInsurance: (body: DeclareInsuranceBody) =>
+      request<{ row: CapabilityWriteRow; changed: boolean }>("/api/providers/me/capabilities/insurance", { method: "POST", body }),
+    /** Keyed by language code (ISO 639-1, two letters). */
+    declareLanguage: (body: DeclareLanguageBody) =>
+      request<{ row: CapabilityWriteRow; changed: boolean }>("/api/providers/me/capabilities/languages", { method: "POST", body }),
+    /** Edit the facts of an own certification / insurance claim; the row goes back to DECLARED. */
+    edit: (kind: "certifications" | "insurance", rowId: number, body: EditCapabilityBody) =>
+      request<{ row: CapabilityWriteRow }>(`/api/providers/me/capabilities/${kind}/${rowId}`, { method: "PATCH", body }),
+    /** Withdraw an own claim — DECLARED rows only (a language only while its source is SELF). */
+    remove: (kind: "skills" | "certifications" | "equipment" | "insurance" | "languages", rowId: number) =>
+      request<{ deleted: true }>(`/api/providers/me/capabilities/${kind}/${rowId}`, { method: "DELETE" }),
+  },
+
+  /**
+   * The professional's services by lane (performing / pending / suspended / revoked / available).
+   * Every `performing` card carries `readiness` — whether matching would offer them that service's
+   * jobs right now, and what is missing if not (`lib/service-readiness.ts`).
+   */
+  serviceSkills: () => request<PartnerServiceSkillBoard>("/api/providers/me/service-skills"),
+  /** Ask to perform a catalogue service. Always REQUESTED; an administrator approves it. */
+  requestServiceSkill: (serviceId: string, note?: string) =>
+    request<{ row: CapabilityWriteRow; changed: boolean }>("/api/providers/me/capabilities/services", {
+      method: "POST",
+      body: { serviceId, ...(note ? { note } : {}) },
+    }),
+  /** Withdraw an own request that is still awaiting approval (409 CAPABILITY_LOCKED otherwise). */
+  withdrawServiceSkill: (capabilityId: number) =>
+    request<{ deleted: true }>(`/api/providers/me/capabilities/services/${capabilityId}`, { method: "DELETE" }),
 
   attendance: () => request<PartnerAttendance>("/api/providers/me/attendance"),
   checkIn: () => request<unknown>("/api/providers/me/attendance/check-in", { method: "POST" }),

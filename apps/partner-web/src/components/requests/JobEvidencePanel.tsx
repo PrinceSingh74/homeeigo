@@ -23,7 +23,14 @@ function evidencePreviewUrl(item: JobEvidenceItem): string | null {
  * confirmation artifact at completion; customers rate post-job via Rating.
  * Do not fake confirmation evidence.
  */
-export function JobEvidencePanel({ bookingId }: { bookingId: string }) {
+export function JobEvidencePanel({
+  bookingId,
+  embedded = false,
+}: {
+  bookingId: string;
+  /** Rendered inside the execution brief's "Proof" section: no card of its own, no second title. */
+  embedded?: boolean;
+}) {
   const qc = useQueryClient();
   const [urlDraft, setUrlDraft] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -75,17 +82,21 @@ export function JobEvidencePanel({ bookingId }: { bookingId: string }) {
     }
   }
 
-  return (
-    <PartnerCard hover={false} className="space-y-4" data-testid="job-evidence-panel">
-      <div className="flex items-center gap-2">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-partner-primary/15">
-          <Camera className="h-4 w-4 text-partner-primary" />
+  const body = (
+    <>
+      {embedded ? (
+        <p className="text-xs text-partner-muted">Photos by stage · steps that need a photo ask for it in Service steps</p>
+      ) : (
+        <div className="flex items-center gap-2">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-partner-primary/15">
+            <Camera className="h-4 w-4 text-partner-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-partner-text">Job evidence</p>
+            <p className="text-[11px] text-partner-muted">Photos by stage · steps that need a photo ask for it in Work steps</p>
+          </div>
         </div>
-        <div>
-          <p className="text-sm font-semibold text-partner-text">Job evidence</p>
-          <p className="text-[11px] text-partner-muted">Photos by stage · steps that need a photo ask for it in Work steps</p>
-        </div>
-      </div>
+      )}
 
       {evidenceQuery.isLoading ? (
         <div className="flex justify-center py-6">
@@ -171,6 +182,11 @@ export function JobEvidencePanel({ bookingId }: { bookingId: string }) {
         </label>
         {uploadError ? <p className="text-xs text-partner-danger">{uploadError}</p> : null}
       </div>
-    </PartnerCard>
+    </>
+  );
+  return embedded ? (
+    <div className="space-y-4" data-testid="job-evidence-panel">{body}</div>
+  ) : (
+    <PartnerCard hover={false} className="space-y-4" data-testid="job-evidence-panel">{body}</PartnerCard>
   );
 }

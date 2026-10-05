@@ -211,6 +211,10 @@ function BookPageContent() {
     refetch: refetchServices,
   } = useServicesQuery();
   const createBookingMutation = useCreateBookingMutation();
+  /** One key per confirm attempt. A dropped response retries the same key so the server replays. */
+  const bookingAttemptKey = useRef<string | null>(null);
+  /** The last confirm never got a response. The slot may already be held by that unseen booking. */
+  const retryUnseenCreate = useRef(false);
   const { data: addressesData, isLoading: addressesLoading } = useAddressesQuery();
   const { payForBooking } = useBookingPayment();
   const services: Service[] = useMemo(() => {
@@ -458,7 +462,11 @@ function BookPageContent() {
       showToast("Checking available times…", "info");
       return;
     }
-    if (offered.length > 0 && !offered.some((s) => s.available && new Date(s.start).getTime() === scheduledAt.getTime())) {
+    if (
+      !retryUnseenCreate.current &&
+      offered.length > 0 &&
+      !offered.some((s) => s.available && new Date(s.start).getTime() === scheduledAt.getTime())
+    ) {
       setSlotChosen(false);
       showToast("That time isn't available. Pick another slot.", "error");
       scrollTo(dateRef.current);
@@ -484,6 +492,7 @@ function BookPageContent() {
         showToast("Your price was refreshed — please review the total and confirm again", "info");
         return;
       }
+      if (!bookingAttemptKey.current) bookingAttemptKey.current = crypto.randomUUID();
       const created = await createBookingMutation.mutateAsync({
         serviceId: svc.id,
         scheduledDate: scheduledAt.toISOString(),
@@ -494,8 +503,11 @@ function BookPageContent() {
         addonIds,
         couponCode: appliedCoupon || undefined,
         quoteToken: quote.quoteToken,
+        idempotencyKey: bookingAttemptKey.current,
         ...(mustConfirm.length ? { requirementAttestations: mustConfirm.filter((r) => attested.has(r.code)).map((r) => r.code) } : {}),
       });
+      bookingAttemptKey.current = null;
+      retryUnseenCreate.current = false;
       if (!created.booking?.id) {
         showToast("Booking could not be confirmed", "error");
         return;
@@ -526,9 +538,16 @@ function BookPageContent() {
         },
       });
     } catch (err) {
+      // A dropped response may already have created the booking. Keep the key so the next confirm
+      // replays it. A server answer (price, slot, validation) released the key, so the next confirm
+      // is a new attempt.
+      const failed = err as { code?: string; status?: number } | null;
+      const keepKey = failed?.status === 0 || failed?.code === "IDEMPOTENCY_IN_PROGRESS";
+      retryUnseenCreate.current = keepKey;
+      if (!keepKey) bookingAttemptKey.current = null;
       // The mutation toasts the server's message. A price change or an expired quote also means
       // the total on screen is stale: reload the server quote so the customer re-confirms the real one.
-      const code = (err as { code?: string } | null)?.code;
+      const code = failed?.code;
       if (code === "PRICE_CHANGED" || code === "QUOTE_EXPIRED" || code === "QUOTE_MISMATCH") {
         void priceQuoteQuery.refetch();
       }

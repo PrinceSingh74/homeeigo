@@ -10,6 +10,7 @@ import { OAuthProviderButtons } from "@/components/auth/OAuthProviderButtons";
 import { PhoneOtpLoginForm } from "@/components/auth/PhoneOtpLoginForm";
 import { Button } from "@/components/buttons/Button";
 import { Input } from "@/components/ui/Input";
+import { sanitizeOAuthReturnUrl } from "@/lib/auth/google-oauth";
 import { loginSchema, type LoginFormValues } from "@/lib/auth/schemas";
 import { cn } from "@/lib/utils";
 import { runAuthAction, useAuthStore } from "@/stores/auth-store";
@@ -32,8 +33,7 @@ export function LoginForm() {
 
   function goAfterLogin() {
     showToast("Welcome back to HOMEEIGO", "success");
-    const returnUrl = searchParams.get("returnUrl");
-    router.replace(returnUrl && returnUrl.startsWith("/") ? returnUrl : "/");
+    router.replace(sanitizeOAuthReturnUrl(searchParams.get("returnUrl")));
   }
 
   function switchMethod(next: AuthMethod) {

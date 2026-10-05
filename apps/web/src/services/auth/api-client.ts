@@ -52,6 +52,7 @@ function proxyLooksDead(status: number, contentType: string | null): boolean {
 async function fetchWithApiFallback(
   path: string,
   init: RequestInit,
+  timeoutMs: number = API_FETCH_MS,
 ): Promise<{ response: Response; usedBase: string }> {
   const candidates = getApiBaseCandidates(path);
   let lastError: unknown;
@@ -65,7 +66,7 @@ async function fetchWithApiFallback(
         credentials: "include", // the refresh cookie must travel on auth calls
         ...init,
         headers: { ...((init.headers as Record<string, string>) ?? {}), "X-Homigo-Audience": AUTH_AUDIENCE },
-        signal: AbortSignal.timeout(API_FETCH_MS),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       const usedBase = base || `(proxy ${typeof window !== "undefined" ? window.location.origin : "ssr"})`;
       const canFailover =
@@ -116,6 +117,7 @@ type RequestOptions = {
   method?: string;
   body?: unknown;
   auth?: boolean;
+  headers?: Record<string, string>;
   skipRefresh?: boolean;
   /**
    * Calls made BY the bootstrap flow itself (e.g. /api/user/me) must not wait
@@ -177,12 +179,23 @@ async function refreshAccessToken(): Promise<boolean> {
  * Same bearer + single coordinated refresh-and-retry-once as `apiRequest`, so no caller hand-rolls
  * auth: a raw `fetch` either forgot the header (the Vision page always got 401) or never refreshed
  * an expired token (invoice / export failed after an hour).
+ *
+ * `body` is for a multipart upload: no Content-Type is set, so the browser writes the boundary.
+ * An upload outlasts the default fetch window on a slow connection — pass `timeoutMs` for it.
  */
-export async function apiRequestRaw(path: string, init: { method?: string } = {}, retried = false): Promise<Response> {
+export async function apiRequestRaw(
+  path: string,
+  init: { method?: string; body?: FormData; timeoutMs?: number } = {},
+  retried = false,
+): Promise<Response> {
   const headers: Record<string, string> = {};
   const token = clientConfig?.getAccessToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-  const { response } = await fetchWithApiFallback(path, { method: init.method ?? "GET", credentials: "include", headers });
+  const { response } = await fetchWithApiFallback(
+    path,
+    { method: init.method ?? "GET", credentials: "include", headers, ...(init.body ? { body: init.body } : {}) },
+    init.timeoutMs,
+  );
   if (response.status === 401 && !retried && clientConfig?.hasSession()) {
     if (await coordinatedRefresh(refreshAccessToken)) return apiRequestRaw(path, init, true);
     clientConfig.clearSession();
@@ -194,7 +207,7 @@ export async function apiRequest<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { method = "GET", body, auth = false, skipRefresh = false, skipBootstrapGate = false } = options;
+  const { method = "GET", body, auth = false, headers: extraHeaders, skipRefresh = false, skipBootstrapGate = false } = options;
 
   if (auth && !skipBootstrapGate) {
     const { waitForAuthBootstrap, markProtectedApiAttempt } = await import("@/lib/auth/bootstrap-gate");
@@ -206,6 +219,7 @@ export async function apiRequest<T>(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...getFraudHeaders(),
+    ...extraHeaders,
   };
 
   if (auth && clientConfig) {

@@ -22,6 +22,8 @@
  *        code:  QUALITY_PROOF_REQUIRED
  *      Frozen checklist item not submitted                         → REWORK_REQUIRED
  *        code:  QUALITY_CHECKLIST_REQUIRED
+ *      Professional's completion attestation required and absent   → REWORK_REQUIRED
+ *        code:  QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED
  *      Mandatory step not COMPLETED / execution gate blocked       → REWORK_REQUIRED
  *        code:  EXECUTION_STEP_INCOMPLETE
  *   5. Optional step SKIPPED_WITH_REASON (nothing above applies)   → PASS_WITH_EXCEPTION
@@ -50,6 +52,7 @@ export const QUALITY_REASON_CODES = [
   "EXECUTION_STEP_FAILED",
   "QUALITY_PROOF_REQUIRED",
   "QUALITY_CHECKLIST_REQUIRED",
+  "QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED",
   "EXECUTION_STEP_INCOMPLETE",
   "EXECUTION_STEP_SKIPPED",
   "NO_QUALITY_POLICY",
@@ -140,6 +143,7 @@ export function deriveQualityVerdict(input: DeriveVerdictInput): DerivedVerdict 
     if (q.beforeAfterPhotos && !(ev?.hasBefore && ev?.hasAfter)) add("REWORK_REQUIRED", "QUALITY_PROOF_REQUIRED");
     if (q.proofRequired && photos < 1) add("REWORK_REQUIRED", "QUALITY_PROOF_REQUIRED");
     if (q.checklist.length > 0 && !(ev?.checklistComplete ?? false)) add("REWORK_REQUIRED", "QUALITY_CHECKLIST_REQUIRED");
+    if (q.professionalConfirmation && ev?.professionalConfirmed !== true) add("REWORK_REQUIRED", "QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED");
   }
 
   if (verdict === "PASS" && steps.some((s) => !s.mandatory && s.state === "SKIPPED_WITH_REASON")) {

@@ -177,6 +177,7 @@ export default function BookingsPage() {
         open={!!selected}
         booking={selected}
         onClose={() => setSelected(null)}
+        onOpenBooking={setSelected}
       />
     </>
   );

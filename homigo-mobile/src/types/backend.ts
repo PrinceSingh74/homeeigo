@@ -26,6 +26,78 @@ export type BackendService = {
   } | null;
 };
 
+/** One line of the customer's preparation view (service-requirements CustomerRequirement). */
+export type CustomerRequirement = {
+  /** Only used to confirm blocking requirements on booking; never rendered. */
+  code: string;
+  label: string;
+  quantity: string | null;
+  note: string | null;
+  warning: string | null;
+  chargeText: string | null;
+  procurementText: string | null;
+  timingText: string | null;
+  mustConfirm: boolean;
+};
+
+export type CustomerRequirementsView = {
+  weBring: CustomerRequirement[];
+  youProvide: CustomerRequirement[];
+  shared: CustomerRequirement[];
+  beforeArrival: CustomerRequirement[];
+  beforeBooking: CustomerRequirement[];
+  optional: CustomerRequirement[];
+  empty: boolean;
+};
+
+/**
+ * Phase 10 customer visit promise (backend lib/customer-visit CustomerVisit). Every sentence is
+ * produced by the server from the engines that enforce it; an absent rule is null / empty.
+ */
+export type CustomerVisit = {
+  process: { code: "ARRIVAL" | "VERIFICATION" | "SERVICE" | "CONFIRMATION"; title: string; detail: string }[];
+  safety: {
+    warnings: string[];
+    customerRequirements: string[];
+    /** Products not used, or used only under a stated condition. Verbatim. */
+    chemicalRestrictions: string[];
+    information: string | null;
+    medicalDisclaimer: string | null;
+    emergencyProtocol: string | null;
+  } | null;
+  proof: { statements: string[] } | null;
+  /** `statements` can be empty when only `guarantee` / `damagePolicy` (the service's own text) are set. */
+  warranty: { statements: string[]; exclusions: string[]; guarantee: string | null; damagePolicy: string | null } | null;
+  age: { statement: string } | null;
+};
+
+/** GET /api/services/:id (catalog.service byId) — only the fields the app reads are mirrored. */
+export type BackendServiceDetail = BackendService & {
+  detailedDescription?: string | null;
+  /** False when the server would refuse a booking for this service. */
+  bookable?: boolean;
+  comingSoon?: boolean;
+  content?: {
+    summary: string;
+    valueProposition: string | null;
+    highlights: string[];
+    keyBenefits: string[];
+    included: string[];
+    excluded: string[];
+    limitations: string[];
+    importantNotes: string[];
+    customerDisclosures: string[];
+  };
+  /** Base selection duration from the server's one duration calculator. */
+  duration?: {
+    totalMinutes: number;
+    customerEstimate: { estimatedMinutes: number; minMinutes: number | null; maxMinutes: number | null };
+  };
+  /** Preparation for the base selection, customer view. null = configuration invalid. */
+  preparation?: CustomerRequirementsView | null;
+  visit?: CustomerVisit | null;
+};
+
 export type BackendProvider = {
   id: string;
   name: string;
@@ -83,6 +155,10 @@ export type BackendBooking = {
     | "provider_no_show";
   scheduledDate?: string;
   completedAt?: string | null;
+  /** Lifecycle timestamps from GET /api/bookings/:id — null until the server records the event. */
+  enRouteAt?: string | null;
+  arrivedAt?: string | null;
+  startedAt?: string | null;
   amount?: number;
   finalAmount?: number;
   addons?: BookingAddon[];

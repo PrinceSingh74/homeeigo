@@ -23,7 +23,25 @@ const cfg = {
 
 describe("snapshot — frozen, nothing invented", () => {
   test("an unconfigured service has an empty safety snapshot, not a generic one", () => {
-    expect(buildSafetySnapshot(null)).toEqual({ schema: "safety.v1", prohibitedConditions: [], warnings: [], customerRequirements: [], providerRequirements: [], information: null, medicalDisclaimer: null, emergencyProtocol: null });
+    expect(buildSafetySnapshot(null)).toEqual({ schema: "safety.v1", prohibitedConditions: [], warnings: [], customerRequirements: [], providerRequirements: [], information: null, medicalDisclaimer: null, emergencyProtocol: null, ppe: [], chemicalRestrictions: [], incidentProtocol: null });
+  });
+
+  test("a snapshot frozen before PPE / chemical restrictions / incident protocol reads them as none", () => {
+    const old = { schema: "safety.v1", prohibitedConditions: ["Gas smell in the room"], warnings: [], customerRequirements: [], providerRequirements: [], information: null, medicalDisclaimer: null, emergencyProtocol: null };
+    const s = safetyFromSnapshot({ safety: old })!;
+    expect(s.ppe).toEqual([]);
+    expect(s.chemicalRestrictions).toEqual([]);
+    expect(s.incidentProtocol).toBeNull();
+    expect(s.prohibitedConditions).toEqual(["Gas smell in the room"]);
+  });
+
+  test("PPE and the incident protocol are for the professional; chemical restrictions reach the customer too", () => {
+    const s = buildSafetySnapshot({ safety: { ppe: ["Goggles"], chemicalRestrictions: ["No acid cleaners"], incidentProtocol: "Call the desk." } });
+    expect(s.ppe).toEqual(["Goggles"]);
+    const v = customerSafetyView(s)!;
+    expect(v.chemicalRestrictions).toEqual(["No acid cleaners"]);
+    expect(v).not.toHaveProperty("ppe");
+    expect(v).not.toHaveProperty("incidentProtocol");
   });
 
   test("configured content is frozen verbatim; legacy safety notes become warnings", () => {

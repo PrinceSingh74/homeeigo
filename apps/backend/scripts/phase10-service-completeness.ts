@@ -81,24 +81,24 @@ export const CONCEPTS: ConceptMapping[] = [
   { group: "SAFETY", concept: "safety", canonicalPath: "safety (frozen per booking as safety.v1)", gating: "REQUIRED", basis: "buildSafetySnapshot" },
   { group: "SAFETY", concept: "warnings", canonicalPath: "safety.warnings[] (+ legacy safetyNotes[], both frozen as safety.v1 warnings)", gating: "REQUIRED", basis: "buildSafetySnapshot; step-level execution.steps[].warnings are partner-facing and do not replace it" },
   { group: "SAFETY", concept: "prohibited_conditions", canonicalPath: "safety.prohibitedConditions[]", gating: "REQUIRED", basis: "what a partner may raise as a safety hold (matchProhibitedCondition)" },
-  { group: "SAFETY", concept: "PPE", canonicalPath: "execution.steps[].ppe[]", gating: "REPORTED", basis: "optional per step; not every service needs PPE" },
-  { group: "SAFETY", concept: "chemical_restrictions", canonicalPath: null, gating: "NO_CANONICAL_HOME", basis: "no typed field exists; service-safety.ts states the platform invents no chemical rule" },
+  { group: "SAFETY", concept: "PPE", canonicalPath: "safety.ppe[] (whole job, frozen in safety.v1) + execution.steps[].ppe[] (per step)", gating: "REPORTED", basis: "optional; not every service needs PPE" },
+  { group: "SAFETY", concept: "chemical_restrictions", canonicalPath: "safety.chemicalRestrictions[]", gating: "REPORTED", basis: "frozen in safety.v1; shown to the professional and, verbatim, to the customer. The platform still invents no chemical rule — an unset list is none" },
   { group: "SAFETY", concept: "age_restrictions", canonicalPath: "customerPolicy.age (mode + minimumAge / adultAge / guardianMinimumAge), customerPolicy.version", gating: "REPORTED", basis: "src/lib/customer-policy.ts; unset = NONE" },
   { group: "SAFETY", concept: "medical_disclaimer", canonicalPath: "safety.medicalDisclaimer", gating: "REPORTED", basis: "optional; frozen in safety.v1" },
   { group: "SAFETY", concept: "emergency_protocol", canonicalPath: "safety.emergencyProtocol", gating: "REQUIRED", basis: "frozen in safety.v1; the content validator fails a service without it" },
-  { group: "SAFETY", concept: "incident_protocol", canonicalPath: null, gating: "NO_CANONICAL_HOME", basis: "no per-service field; incidents and holds are platform runtime (evaluateSafetyGate), the per-service text is safety.emergencyProtocol" },
+  { group: "SAFETY", concept: "incident_protocol", canonicalPath: "safety.incidentProtocol", gating: "REPORTED", basis: "frozen in safety.v1; professional-facing only. Incidents and holds themselves stay platform runtime (evaluateSafetyGate)" },
   { group: "QUALITY", concept: "quality", canonicalPath: "quality (frozen per booking; policy version quality.v1)", gating: "REQUIRED", basis: "qualitySnapshot / deriveQualityVerdict" },
   { group: "QUALITY", concept: "quality_checklist", canonicalPath: "quality.checklist[]", gating: "REQUIRED", basis: "QUALITY_CHECKLIST_REQUIRED is derived from it" },
-  { group: "QUALITY", concept: "completion_criteria", canonicalPath: "quality.completionCriteria[]", gating: "REPORTED", basis: "schema-only: not frozen by qualitySnapshot and not read by the verdict; completion is gated by mandatory steps + checklist + proof" },
+  { group: "QUALITY", concept: "completion_criteria", canonicalPath: "quality.completionCriteria[]", gating: "REPORTED", basis: "frozen by qualitySnapshot and shown to the professional as what done means; the verdict itself is gated by mandatory steps + checklist + proof (+ quality.professionalConfirmation where set)" },
   { group: "QUALITY", concept: "customer_confirmation", canonicalPath: "quality.customerConfirmation (+ quality.confirmationWindowHours)", gating: "REPORTED", basis: "optional; unset = false, window defaults to the platform's 48 h" },
-  { group: "QUALITY", concept: "professional_confirmation", canonicalPath: "execution.steps[] where kind = QUALITY_CHECK and mandatory (equivalent — there is no dedicated boolean)", gating: "REQUIRED", basis: "the professional confirms the result by completing the mandatory quality-check step; the content validator demands one" },
+  { group: "QUALITY", concept: "professional_confirmation", canonicalPath: "execution.steps[] where kind = QUALITY_CHECK and mandatory (+ optional quality.professionalConfirmation: an explicit attestation at completion)", gating: "REQUIRED", basis: "the professional confirms the result by completing the mandatory quality-check step; the content validator demands one. The attestation switch is additional and optional" },
   { group: "WARRANTY", concept: "warranty", canonicalPath: "warranty (frozen per booking as warranty.v1; legacy input quality.warrantyDays)", gating: "REPORTED", basis: "buildWarrantySnapshot; unset = no warranty" },
   { group: "WARRANTY", concept: "warranty_days", canonicalPath: "warranty.durationDays (legacy quality.warrantyDays)", gating: "REPORTED", basis: "buildWarrantySnapshot; `services` has no warranty column" },
   { group: "WARRANTY", concept: "conditions", canonicalPath: "warranty.eligibleIssueTypes[] / warranty.exclusions[] / warranty.startEvent / warranty.proofRequired", gating: "REPORTED", basis: "evaluateWarrantyEligibility" },
   { group: "WARRANTY", concept: "revisit", canonicalPath: "rework (fee, sameProviderPreferred, windowDays) + warranty.reworkFirst (legacy text quality.revisitPolicy)", gating: "REPORTED", basis: "Phase 10 §11 rework policy" },
   { group: "WARRANTY", concept: "complaint_window", canonicalPath: "quality.complaintWindowDays", gating: "REPORTED", basis: "frozen in warranty.v1; unset = 0 = NO_COMPLAINT_WINDOW" },
-  { group: "WARRANTY", concept: "guarantee", canonicalPath: "trust.guarantee", gating: "REPORTED", basis: "free text (≤300), schema-only: nothing at runtime reads it" },
-  { group: "WARRANTY", concept: "damage_policy", canonicalPath: null, gating: "NO_CANONICAL_HOME", basis: "no typed field; the nearest facts are warranty.eligibleIssueTypes containing DAMAGE and trust.insuranceSupported, neither states a damage policy" },
+  { group: "WARRANTY", concept: "guarantee", canonicalPath: "warranty.guarantee (legacy internal note trust.guarantee is not shown to anyone)", gating: "REPORTED", basis: "customer-facing text, frozen in warranty.v1 and shown verbatim" },
+  { group: "WARRANTY", concept: "damage_policy", canonicalPath: "warranty.damagePolicy", gating: "REPORTED", basis: "customer-facing text, frozen in warranty.v1 and shown verbatim; whether damage is COVERED is still warranty.eligibleIssueTypes" },
 ];
 
 const PATH = new Map(CONCEPTS.map((c) => [c.concept, c.canonicalPath]));
@@ -288,13 +288,14 @@ export function assessService(slug: string, catalogConfig: unknown, opts: Assess
   add("warnings", frozenSafety.warnings.length > 0, true, frozenSafety.warnings.length ? `${frozenSafety.warnings.length} frozen warning(s)` : `none${stepWarnings ? ` (${stepWarnings} partner-facing step warning(s) exist, which safety.v1 does not carry)` : ""}`);
   add("prohibited_conditions", frozenSafety.prohibitedConditions.length > 0, true, `${frozenSafety.prohibitedConditions.length} condition(s)`);
   const ppeSteps = active.filter((s) => s.ppe.length);
-  add("PPE", ppeSteps.length > 0, false, ppeSteps.length ? `${ppeSteps.length} step(s): ${[...new Set(ppeSteps.flatMap((s) => s.ppe))].join(", ")}` : "no step lists PPE");
-  add("chemical_restrictions", false, false, "NO CANONICAL HOME: no typed field exists for chemical restrictions. Free text in safety.warnings / safety.prohibitedConditions is the only place such wording could live.");
+  const jobPpe = frozenSafety.ppe;
+  add("PPE", ppeSteps.length > 0 || jobPpe.length > 0, false, ppeSteps.length || jobPpe.length ? `whole job: ${jobPpe.join(", ") || "none"}; ${ppeSteps.length} step(s): ${[...new Set(ppeSteps.flatMap((s) => s.ppe))].join(", ") || "none"}` : "no PPE listed for the job or any step");
+  add("chemical_restrictions", frozenSafety.chemicalRestrictions.length > 0, false, frozenSafety.chemicalRestrictions.length ? `${frozenSafety.chemicalRestrictions.length} restriction(s)` : "none set (no restriction is assumed)");
   const age = obj(obj(view.customerPolicy).age);
   add("age_restrictions", hasText(age.mode), false, hasText(age.mode) ? `mode = ${age.mode}, version = ${obj(view.customerPolicy).version ?? "unset"}` : "no explicit customerPolicy.age (runtime reads unset as NONE)");
   add("medical_disclaimer", frozenSafety.medicalDisclaimer != null, false);
   add("emergency_protocol", frozenSafety.emergencyProtocol != null, true);
-  add("incident_protocol", false, false, "NO CANONICAL HOME: there is no per-service incident protocol field. Incidents and safety holds are platform runtime; the per-service guidance is safety.emergencyProtocol.");
+  add("incident_protocol", frozenSafety.incidentProtocol != null, false, frozenSafety.incidentProtocol != null ? undefined : "not set: the professional sees only the emergency protocol");
 
   /* ---- 6. quality ---- */
   const frozenQuality = cfg ? qualitySnapshot(cfg) : null;
@@ -302,10 +303,10 @@ export function assessService(slug: string, catalogConfig: unknown, opts: Assess
   const qualityHasContent = Object.keys(quality).some((k) => k !== "notApplicable");
   add("quality", qualityHasContent && !qualityOff, true, qualityOff ? "quality.notApplicable is true: no quality policy is frozen for a booking" : qualityHasContent ? undefined : "no quality block");
   add("quality_checklist", checklist.length > 0 && !qualityOff, true, qualityOff ? "ignored at runtime: quality.notApplicable is true" : `${checklist.length} item(s)${cfg && checklist.length && !frozenQuality ? " — but nothing is frozen" : ""}`);
-  add("completion_criteria", texts(quality.completionCriteria).length > 0, false, "schema-only field: not frozen per booking, not read by the quality verdict");
+  add("completion_criteria", texts(quality.completionCriteria).length > 0, false, texts(quality.completionCriteria).length ? `${texts(quality.completionCriteria).length} criterion/criteria, frozen per booking` : "not set");
   add("customer_confirmation", typeof quality.customerConfirmation === "boolean", false, typeof quality.customerConfirmation === "boolean" ? `= ${quality.customerConfirmation}${isInt(quality.confirmationWindowHours) ? `, window ${quality.confirmationWindowHours} h` : ""}` : "not set (runtime reads unset as false)");
   const proChecks = active.filter((s) => s.kind === "QUALITY_CHECK" && s.mandatory);
-  add("professional_confirmation", proChecks.length > 0, true, proChecks.length ? `mandatory QUALITY_CHECK step: ${proChecks.map(label).join(", ")} (equivalent — no dedicated field)` : "no mandatory QUALITY_CHECK step (no dedicated field exists either)");
+  add("professional_confirmation", proChecks.length > 0, true, proChecks.length ? `mandatory QUALITY_CHECK step: ${proChecks.map(label).join(", ")}${quality.professionalConfirmation === true ? " + attestation required at completion" : ""}` : "no mandatory QUALITY_CHECK step");
 
   /* ---- 7. warranty ---- */
   const warranty = obj(view.warranty);
@@ -319,8 +320,8 @@ export function assessService(slug: string, catalogConfig: unknown, opts: Assess
   add("conditions", list(warranty.eligibleIssueTypes).length > 0 || texts(warranty.exclusions).length > 0 || hasText(warranty.startEvent) || typeof warranty.proofRequired === "boolean", false);
   add("revisit", Object.keys(rework).length > 0 || typeof warranty.reworkFirst === "boolean" || hasText(quality.revisitPolicy), false);
   add("complaint_window", typeof quality.complaintWindowDays === "number", false, typeof quality.complaintWindowDays === "number" ? `${quality.complaintWindowDays} day(s)` : "not set: a booking freezes 0 and a complaint resolves to NO_COMPLAINT_WINDOW");
-  add("guarantee", hasText(obj(view.trust).guarantee), false, "free text, schema-only: nothing at runtime reads trust.guarantee");
-  add("damage_policy", false, false, "NO CANONICAL HOME: no typed damage-policy field exists. Nearest facts: warranty.eligibleIssueTypes containing DAMAGE, trust.insuranceSupported.");
+  add("guarantee", hasText(warranty.guarantee), false, hasText(warranty.guarantee) ? "shown to the customer verbatim" : hasText(obj(view.trust).guarantee) ? "not set — trust.guarantee holds an internal note that no customer sees" : "not set");
+  add("damage_policy", hasText(warranty.damagePolicy), false, hasText(warranty.damagePolicy) ? "shown to the customer verbatim" : "not set");
 
   /* ---- 8. classification ---- */
   const missingRequired = fields.filter((f) => f.required && !f.present).map((f) => f.concept);

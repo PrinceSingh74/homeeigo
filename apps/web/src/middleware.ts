@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { sanitizeOAuthReturnUrl } from "@/lib/auth/google-oauth";
 import { isAuthRoute, isProtectedRoute } from "@/lib/auth/routes";
 import { SESSION_COOKIE } from "@/lib/auth/session-cookie";
 import { resolveApiBase } from "@/lib/api-base";
@@ -46,8 +47,7 @@ export async function middleware(request: NextRequest) {
   if (isAuthRoute(pathname) && hasSession) {
     // OAuth callbacks must complete even with an existing session.
     if (pathname.startsWith("/auth/")) return NextResponse.next();
-    const returnUrl = request.nextUrl.searchParams.get("returnUrl");
-    const target = returnUrl && returnUrl.startsWith("/") ? returnUrl : "/";
+    const target = sanitizeOAuthReturnUrl(request.nextUrl.searchParams.get("returnUrl"));
     return NextResponse.redirect(new URL(target, request.url));
   }
 

@@ -30,6 +30,7 @@ import {
   useServiceTransitionMutation,
   useServiceVersionsQuery,
   useRequirementItemsQuery,
+  useAcademyCatalogQuery,
   useCreateRequirementItemMutation,
   useAdminAnalyticsQuery,
   useAdminServicesQuery,
@@ -43,6 +44,7 @@ import { useAfterFirstPaint } from "@/hooks/use-after-first-paint";
 import type { AdminServiceRow, RequestableLifecycle, ServiceCatalogConfig, ServiceInput } from "@/services/admin-api";
 import {
   ServiceConfigEditor,
+  configIssues,
   extrasFromRow,
   extrasToInput,
   type ServiceExtras,
@@ -119,7 +121,9 @@ function formValid(form: FormState) {
     form.category.trim().length >= 1 &&
     Number(form.basePrice) > 0 &&
     Number(form.estimatedDuration) >= 1 &&
-    form.description.trim().length >= 2
+    form.description.trim().length >= 2 &&
+    // Phase 10–11 sections: anything the backend would refuse is listed in the editor ("Fix before saving").
+    configIssues(form.extras).length === 0
   );
 }
 
@@ -307,6 +311,12 @@ export default function ServicesPage() {
   const taxonomy = useServiceTaxonomyQuery();
   const versions = useServiceVersionsQuery(selected && !editing ? selected.id : null);
   const requirementItemsQuery = useRequirementItemsQuery();
+  const academyQuery = useAcademyCatalogQuery({ enabled: composing || editing });
+  // Only a published module can be completed, so only those are offered as training gates.
+  const trainingModules = useMemo(
+    () => (academyQuery.data?.modules ?? []).filter((m) => m.isPublished).map((m) => ({ slug: m.slug, title: m.title })),
+    [academyQuery.data?.modules],
+  );
   const createRequirementItem = useCreateRequirementItemMutation();
   const transitionMut = useServiceTransitionMutation();
   const filtersOn =
@@ -828,6 +838,8 @@ export default function ServicesPage() {
                 gaps={editing && selected ? selected.configGaps : undefined}
                 sections={editing && selected ? selected.configSections : undefined}
                 requirementItems={requirementItemsQuery.data?.items}
+                trainingModules={trainingModules}
+                trainingModulesState={academyQuery.isError ? "error" : academyQuery.isSuccess ? "ready" : "loading"}
                 onCreateRequirementItem={async (input) => {
                   await createRequirementItem.mutateAsync(input);
                 }}

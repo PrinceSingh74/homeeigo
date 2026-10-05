@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Image, StyleSheet, Text, View } from "react-native";
+import { useAuthStore } from "@/stores/auth-store";
 import { HqCard } from "@/components/HqUi";
 import { warrantyLine } from "@/lib/warranty";
 import { partnerApi } from "@/services/partner-api";
@@ -28,6 +30,7 @@ const REASON_LABEL: Record<string, string> = {
   EXECUTION_STEP_FAILED: "A work step failed and needs to be redone",
   QUALITY_PROOF_REQUIRED: "Required proof photos are missing",
   QUALITY_CHECKLIST_REQUIRED: "The service checklist is not complete",
+  QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED: "The completion criteria were not confirmed by the professional",
   EXECUTION_STEP_INCOMPLETE: "Required work steps are not finished",
   EXECUTION_STEP_SKIPPED: "An optional step was skipped with a reason",
   NO_QUALITY_POLICY: "No quality checks are configured for this service",
@@ -83,7 +86,7 @@ export function QualityPanel({ bookingId }: { bookingId: string }) {
   return (
     <View testID="quality-panel">
       <HqCard>
-        <Text style={styles.title}>Quality</Text>
+        <Text style={styles.title} accessibilityRole="header">Quality result</Text>
         {latest ? (
           <View testID="quality-verdict">
             <Text style={blocking ? styles.blockingHead : styles.head} accessibilityRole={blocking ? "alert" : undefined}>
@@ -128,7 +131,14 @@ export function QualityPanel({ bookingId }: { bookingId: string }) {
                   {CATEGORY_LABEL[k.category] ?? k.category} · {k.caseNumber} · {CASE_STATE_LABEL[k.state] ?? k.state}
                 </Text>
                 {k.description ? <Text style={styles.meta}>{k.description}</Text> : null}
-                {k.resolution?.action ? <Text style={styles.meta}>{CASE_ACTION_LABEL[String(k.resolution.action)] ?? "Resolved"}.</Text> : null}
+                {(k.evidence ?? []).some((e) => e.hasStoredMedia) ? (
+                  <View style={styles.photos} testID={`quality-case-photos-${k.caseNumber}`}>
+                    {(k.evidence ?? []).filter((e) => e.hasStoredMedia).map((e, i) => (
+                      <CasePhoto key={e.id} bookingId={bookingId} caseId={k.id} evidenceId={e.id} label={`Customer photo ${i + 1} for ${k.caseNumber}`} />
+                    ))}
+                  </View>
+                ) : null}
+                {k.resolution?.action ?<Text style={styles.meta}>{CASE_ACTION_LABEL[String(k.resolution.action)] ?? "Resolved"}.</Text> : null}
               </View>
             ))}
           </View>
@@ -138,7 +148,31 @@ export function QualityPanel({ bookingId }: { bookingId: string }) {
   );
 }
 
+/**
+ * One photo the customer attached to a reported issue. The media route is private, so the image is
+ * requested with the partner's own bearer token (`partnerApi.caseEvidenceImageSource`), rebuilt when
+ * the token is refreshed. An `Image` cannot refresh-and-retry on a 401, so a photo that does not load
+ * (expired token, removed object) falls back to words — the attachment is never silently dropped.
+ */
+function CasePhoto({ bookingId, caseId, evidenceId, label }: { bookingId: string; caseId: string; evidenceId: number; label: string }) {
+  const token = useAuthStore((s) => s.accessToken);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [token]);
+  const source = partnerApi.caseEvidenceImageSource(bookingId, caseId, evidenceId, token);
+  if (!source || failed) {
+    return (
+      <View style={styles.photoFallback} accessible accessibilityLabel={`${label}: attached, could not be shown`}>
+        <Text style={styles.meta}>▣ Photo attached — could not be shown here</Text>
+      </View>
+    );
+  }
+  return <Image source={source} onError={() => setFailed(true)} accessibilityRole="image" accessibilityLabel={label} resizeMode="cover" style={styles.photo} />;
+}
+
 const styles = StyleSheet.create({
+  photos: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 },
+  photo: { width: 88, height: 88, borderRadius: 10, borderWidth: 1, borderColor: partnerColors.line, backgroundColor: partnerColors.sage },
+  photoFallback: { minHeight: 44, justifyContent: "center", paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: partnerColors.line },
   title: { fontSize: 15, fontWeight: "700", color: partnerColors.text, marginBottom: 6 },
   head: { fontSize: 13, fontWeight: "600", color: partnerColors.text, marginTop: 2 },
   blockingHead: { fontSize: 13, fontWeight: "700", color: "#92400e", marginTop: 2 },

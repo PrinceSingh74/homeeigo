@@ -12,7 +12,7 @@ import type { ApiResponse } from "@/types/auth";
  */
 type View = {
   gate: { ok: boolean; message: string };
-  safety: { warnings: string[]; customerRequirements: string[]; information: string | null; medicalDisclaimer: string | null; emergencyProtocol: string | null } | null;
+  safety: { warnings: string[]; customerRequirements: string[]; chemicalRestrictions?: string[]; information: string | null; medicalDisclaimer: string | null; emergencyProtocol: string | null } | null;
   holds: Array<{ condition: string }>;
 };
 
@@ -25,7 +25,8 @@ export function BookingSafety({ bookingId }: { bookingId: string }) {
   });
   const v = q.data;
   const s = v?.safety;
-  const has = !!s && (s.warnings.length || s.customerRequirements.length || s.information || s.medicalDisclaimer || s.emergencyProtocol);
+  const chemicalRestrictions = s?.chemicalRestrictions ?? [];
+  const has = !!s && (s.warnings.length || s.customerRequirements.length || chemicalRestrictions.length || s.information || s.medicalDisclaimer || s.emergencyProtocol);
   if (!v || (!has && v.gate.ok)) return null;
   return (
     <section aria-labelledby={`booking-safety-${bookingId}`} data-testid="booking-safety">
@@ -42,6 +43,14 @@ export function BookingSafety({ bookingId }: { bookingId: string }) {
         {s?.information ? <p className="text-content">{s.information}</p> : null}
         {s?.customerRequirements.map((r) => <p key={r} className="text-content">• {r}</p>)}
         {s?.warnings.map((w) => <p key={w} className="text-amber-900">⚠ {w}</p>)}
+        {chemicalRestrictions.length > 0 ? (
+          <div data-testid="booking-safety-chemicals">
+            <p className="font-semibold text-content">Products we don&apos;t use, or use with care</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5 text-muted">
+              {chemicalRestrictions.map((c) => <li key={c} className="break-words">{c}</li>)}
+            </ul>
+          </div>
+        ) : null}
         {s?.medicalDisclaimer ? <p className="text-xs text-muted">{s.medicalDisclaimer}</p> : null}
         {s?.emergencyProtocol ? <p className="text-xs text-muted">In an emergency: {s.emergencyProtocol}</p> : null}
       </div>

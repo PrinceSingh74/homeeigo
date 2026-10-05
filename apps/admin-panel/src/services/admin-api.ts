@@ -512,6 +512,12 @@ export type PartnerServiceSkillCard = {
   source: string | null;
   requestedAt: string | null;
   requestNote: string | null;
+  /**
+   * Whether this partner would pass the service's credential gates right now — the check matching
+   * applies. Only on the `performing` lane; absent on an older backend (then nothing is claimed).
+   * `code` is a matching rejection reason; wording lives in lib/matching-reasons.ts.
+   */
+  readiness?: { ready: boolean; missing: Array<{ code: string; detail: string; title?: string }> };
 };
 
 export type PartnerServiceSkillBoard = {
@@ -572,7 +578,38 @@ export type AdminBookingCompletion = {
   version: number;
 };
 
+/** The quality rules a booking froze (backend QualitySnapshot, lib/service-runtime-policy.ts). */
+export type AdminFrozenQualityPolicy = {
+  proofRequired?: boolean;
+  beforeAfterPhotos?: boolean;
+  checklist?: string[];
+  notApplicable?: boolean;
+  warrantyDays?: number;
+  /** Stored only — the customer is always asked to confirm; never shown as a rule. */
+  customerConfirmation?: boolean;
+  confirmationWindowHours?: number;
+  completionCriteria?: string[];
+  professionalConfirmation?: boolean;
+};
+
+/** The cover a booking froze (backend WarrantySnapshot, lib/service-warranty.ts). */
+export type AdminFrozenWarrantyPolicy = {
+  enabled?: boolean;
+  durationDays?: number;
+  startEvent?: string;
+  eligibleIssueTypes?: string[];
+  exclusions?: string[];
+  proofRequired?: boolean;
+  reworkFirst?: boolean;
+  refundAllowed?: boolean;
+  complaintWindowDays?: number;
+  damagePolicy?: string | null;
+  guarantee?: string | null;
+};
+
 export type AdminQualityView = {
+  /** The rules THIS booking froze, at any status. Absent on an older backend. */
+  policy?: { quality: AdminFrozenQualityPolicy | null; warranty: AdminFrozenWarrantyPolicy | null };
   enforced: boolean;
   latest: AdminQualityVerdict | null;
   history: AdminQualityVerdict[];
@@ -716,6 +753,12 @@ export type AdminCaseDetail = {
     jobEvidenceId: string | null;
     mediaStorageKey: string | null;
     mediaUrl: string | null;
+    /**
+     * A photo stored by the platform for this item — fetched with `cases.evidenceMedia`, never a plain
+     * <img src> (the route is private). Absent on an older backend. True does not promise bytes: the
+     * media route answers 404 for a key the case service did not store itself.
+     */
+    hasStoredMedia?: boolean;
     note: string | null;
     actorType?: string | null;
     actorId?: string | null;
@@ -1020,7 +1063,19 @@ export const adminApi = {
       ApiResponse<{
         gate: { ok: boolean; message: string };
         holdsEnforced: boolean;
-        safety: { prohibitedConditions: string[]; warnings: string[]; providerRequirements: string[]; medicalDisclaimer: string | null; emergencyProtocol: string | null } | null;
+        /** The full frozen `safety.v1` snapshot. Fields added later are absent on older bookings. */
+        safety: {
+          prohibitedConditions: string[];
+          warnings: string[];
+          customerRequirements?: string[];
+          providerRequirements: string[];
+          information?: string | null;
+          medicalDisclaimer: string | null;
+          emergencyProtocol: string | null;
+          ppe?: string[];
+          chemicalRestrictions?: string[];
+          incidentProtocol?: string | null;
+        } | null;
         holds: Array<{ id: number; condition: string; source: string; state: string; incidentId: string | null; note: string | null; raisedByRole: string; raisedAt: string; releasedAt: string | null; releaseReason: string | null }>;
         incidents: Array<{ id: string; type: string; status: string }>;
         audit: Array<{ id: number; condition: string; action: string; from_state: string | null; to_state: string; actor_type: string | null; reason: string | null; request_id: string | null; trace_id: string | null; incident_id: string | null; changed_at: string }>;
@@ -1041,7 +1096,26 @@ export const adminApi = {
       ApiResponse<{
         enforced: boolean;
         serviceVersion: number | null;
-        steps: Array<{ code: string; stepNumber: number; title: string; kind: string; mandatory: boolean; evidence: string; state: string; finishedAt: string | null; note: string | null; reason: string | null; actions: string[] }>;
+        steps: Array<{
+          code: string;
+          stepNumber: number;
+          title: string;
+          kind: string;
+          mandatory: boolean;
+          evidence: string;
+          state: string;
+          finishedAt: string | null;
+          note: string | null;
+          reason: string | null;
+          actions: string[];
+          /** The step as frozen with the booking. Absent on an older backend; empty on older bookings. */
+          description?: string | null;
+          estimatedMinutes?: number | null;
+          ppe?: string[];
+          warnings?: string[];
+          materials?: string[];
+          equipment?: string[];
+        }>;
         gate: { ok: boolean; blocking: Array<{ code: string; reason: string }> };
         audit: Array<{ id: number; code: string; action: string; from_state: string | null; to_state: string; actor_type: string | null; actor_id: string | null; reason: string | null; request_id: string | null; trace_id: string | null; evidence_ref: string | null; changed_at: string }>;
       }>
@@ -1090,6 +1164,10 @@ export const adminApi = {
 
     detail: (caseId: string) =>
       apiRequest<ApiResponse<AdminCaseDetail>>(`/api/admin/cases/${caseId}`, { auth: true }).then((r) => r.data!),
+
+    /** The stored photo of one evidence item (DISPUTES:READ). Rejects with a 404 AdminApiError when the bytes are not served. */
+    evidenceMedia: (caseId: string, evidenceId: number) =>
+      apiRequestBlob(`/api/admin/cases/${encodeURIComponent(caseId)}/evidence/${evidenceId}/media`, { auth: true }),
 
     /** Between OPEN states only; RESOLVED/REJECTED are reached through resolve. 409 CASE_VERSION_CONFLICT when stale. */
     transition: (caseId: string, input: { to: string; reason: string; expectedVersion?: number }) =>
@@ -1489,11 +1567,18 @@ export const adminApi = {
       (r) => r.data!,
     ),
 
+  /**
+   * One row per flag key. `environment` must equal the backend runtime environment
+   * (`PlatformIntelligence.runtimeEnvironment`) for the flag to be read at all. Omitted, a new row
+   * is created for that runtime environment and an existing row keeps its own. The route resets
+   * `isKillSwitch` to false when that is omitted — send it deliberately.
+   */
   platformFlagUpdate: (payload: {
     key: string;
     enabled: boolean;
     rolloutPct?: number;
     description?: string;
+    environment?: string;
     isKillSwitch?: boolean;
     reason?: string;
   }) =>
@@ -2947,8 +3032,25 @@ export type PlatformFeatureFlag = {
   isKillSwitch: boolean;
 };
 
+export type PlatformDispatchPolicyState = { enabled: boolean; source: "FLAG" | "ENVIRONMENT_DEFAULT" };
+
 export type PlatformIntelligence = {
   generatedAt: string;
+  /**
+   * The backend's own environment: a flag row takes effect there only when its `environment`
+   * equals this. Absent on an older backend — treat as unknown, never as "production".
+   * `featureFlags` lists rows of every environment; the others are stored but inert.
+   */
+  runtimeEnvironment?: string;
+  /**
+   * What dispatch is doing right now on this backend, and why. A missing flag row is not always
+   * off: the demo-partner fallback is on by default in demo environments (ENVIRONMENT_DEFAULT).
+   * Absent on an older backend — only then is the state derived from the rows.
+   */
+  dispatchPolicy?: {
+    seedPartnerFallback: PlatformDispatchPolicyState;
+    strictServiceCapability: PlatformDispatchPolicyState;
+  };
   featureFlags: PlatformFeatureFlag[];
   killSwitches: PlatformFeatureFlag[];
   experiments: Array<{ key: string; description?: string; status: string; variants?: unknown[]; source?: string }>;
@@ -3671,6 +3773,31 @@ export type RequirementAssignment = {
   active?: boolean;
 };
 
+/** Phase 10 §7 — mirror of backend executionStepSchema (lib/service-execution.ts). */
+export type ExecutionStepConfig = {
+  id: string;
+  title: string;
+  description?: string;
+  kind: "PREPARATION" | "WORK" | "SAFETY_CHECK" | "QUALITY_CHECK" | "CLOSEOUT";
+  mandatory?: boolean;
+  /** A mandatory step must be NOT_SKIPPABLE (the backend refuses anything else). */
+  skipPolicy?: "NOT_SKIPPABLE" | "SKIP_WITH_REASON";
+  evidence?: "NONE" | "NOTE" | "PHOTO" | "BEFORE_AFTER_PHOTOS";
+  estimatedMinutes?: number;
+  dependsOn?: string[];
+  /** A requirement assignment id of this service that must be SATISFIED before the step may start. */
+  safetyRequirement?: string;
+  ppe?: string[];
+  warnings?: string[];
+  materials?: string[];
+  equipment?: string[];
+  when?: { variantIds?: string[]; addonIds?: string[]; minQuantity?: number };
+  sortOrder?: number;
+  active?: boolean;
+};
+
+export type WarrantyIssueType = "QUALITY" | "INCOMPLETE" | "DAMAGE" | "BEHAVIOUR" | "NO_SHOW" | "BILLING" | "OTHER";
+
 export type ServiceCatalogConfig = {
   bookingMode?: "STANDARD" | "HOURLY";
   comingSoon?: boolean;
@@ -3748,7 +3875,66 @@ export type ServiceCatalogConfig = {
     maximumAdvanceDays?: number;
   };
   bookingRules?: { cancellationPolicy?: string; reschedulePolicy?: string };
-  providerRequirements?: { requiredSkills?: string[]; verifiedProfessionalRequired?: boolean };
+  /**
+   * Phase 11 hard matching gates (backend lib/provider-capability.ts). `requiredSkills` is the legacy
+   * comma list matched against service categories; `skills` is the typed list.
+   */
+  providerRequirements?: {
+    requiredSkills?: string[];
+    skillLevel?: string;
+    trainingRequired?: boolean;
+    certifications?: string[];
+    kycRequired?: boolean;
+    verifiedProfessionalRequired?: boolean;
+    experienceYears?: number;
+    backgroundCheckRequired?: boolean;
+    /** Academy module slugs a professional must have completed to be matched. */
+    trainingModules?: string[];
+    skills?: { code: string; minLevel?: "BASIC" | "SKILLED" | "EXPERT"; verifiedOnly?: boolean }[];
+    requiredCertifications?: { type: string; verificationRequired?: boolean }[];
+    requiredEquipment?: { type: string; requirement: "REQUIRED" | "OPTIONAL" | "NOT_REQUIRED" | "CUSTOMER_PROVIDED" }[];
+    requiredInsurance?: { type: string }[];
+    languages?: { code: string; minProficiency?: "BASIC" | "CONVERSATIONAL" | "FLUENT" | "NATIVE" }[];
+  };
+  /** Phase 10 §7 — the execution plan (work steps), versioned with the service. */
+  execution?: { steps: ExecutionStepConfig[] };
+  /** Phase 10 §9 — structured safety content; `safetyNotes` above is the legacy free text. */
+  safety?: {
+    information?: string;
+    warnings?: string[];
+    prohibitedConditions?: string[];
+    customerRequirements?: string[];
+    providerRequirements?: string[];
+    medicalDisclaimer?: string;
+    emergencyProtocol?: string;
+    ppe?: string[];
+    chemicalRestrictions?: string[];
+    incidentProtocol?: string;
+  };
+  /** Phase 10 §11 — warranty policy, frozen per booking. Once present it replaces `quality.warrantyDays`. */
+  warranty?: {
+    enabled?: boolean;
+    durationDays?: number;
+    startEvent?: "COMPLETION" | "CONFIRMATION";
+    eligibleIssueTypes?: WarrantyIssueType[];
+    exclusions?: string[];
+    proofRequired?: boolean;
+    reworkFirst?: boolean;
+    refundAllowed?: boolean;
+    damagePolicy?: string;
+    guarantee?: string;
+  };
+  rework?: { fee?: "WAIVED" | "QUOTED"; sameProviderPreferred?: boolean; windowDays?: number };
+  /** Phase 10 — age policy evaluated at booking. A mode other than NONE needs its matching number. */
+  customerPolicy?: {
+    age?: {
+      mode: "NONE" | "MINIMUM_AGE" | "ADULT_ONLY" | "GUARDIAN_REQUIRED";
+      minimumAge?: number;
+      adultAge?: number;
+      guardianMinimumAge?: number;
+    };
+    version?: number;
+  };
   /**
    * Mirrors `payment` / `quality` / `matching` in the backend's catalog-config schema
    * (apps/backend/src/lib/service-catalog-config.ts). This type is a HAND-WRITTEN MIRROR — the apps
@@ -3803,9 +3989,13 @@ export type ServiceCatalogConfig = {
     proofRequired?: boolean;
     beforeAfterPhotos?: boolean;
     customerConfirmation?: boolean;
+    /** The professional must attest the completion criteria were met before the job can complete. */
+    professionalConfirmation?: boolean;
     warrantyDays?: number;
     revisitPolicy?: string;
     complaintWindowDays?: number;
+    /** Hours the customer has to confirm or report an issue (1–720; unset = platform 48h). */
+    confirmationWindowHours?: number;
     notApplicable?: boolean;
   };
   seo?: { noindex?: boolean; canonicalUrl?: string };

@@ -138,8 +138,49 @@ async function main() {
   });
   const customerPasswordKnown = "Homigo@123";
 
-  const service = await prisma.service.findFirst({ where: { isActive: true } });
-  if (!service) throw new Error("No active service");
+  // An empty homigo_test has no catalogue. The live job needs one active service row in THIS
+  // database. Reuse any active service, otherwise create a deterministic cert row. Never copy
+  // production catalogue data.
+  // Onboarding reads the live catalogue once any active service exists, and stops using the
+  // compatibility list that includes "Electrician". Keep that skill row so the onboarding
+  // spec can still select it. The live job may use either active service.
+  await prisma.service.upsert({
+    where: { slug: "electrician" },
+    update: { isActive: true, availableCities: ["Mumbai", "Gurugram", "Bengaluru"] },
+    create: {
+      name: "Electrician",
+      slug: "electrician",
+      description: "Test-catalogue skill row so partner onboarding can select Electrician.",
+      category: "electrician",
+      basePrice: 500,
+      estimatedDuration: 60,
+      availableCities: ["Mumbai", "Gurugram", "Bengaluru"],
+      tags: ["s03-live"],
+    },
+  });
+
+  await prisma.service.updateMany({
+    where: { slug: "s03-live-cert-service" },
+    data: { isActive: true, availableCities: ["Bengaluru", "Gurugram"] },
+  });
+
+  let service = await prisma.service.findFirst({ where: { isActive: true } });
+  if (!service) {
+    service = await prisma.service.upsert({
+      where: { slug: "s03-live-cert-service" },
+      update: { isActive: true },
+      create: {
+        name: "S03 Live Cert Service",
+        slug: "s03-live-cert-service",
+        description: "Isolated catalogue row for the Section 03 live partner job.",
+        category: "cleaning",
+        basePrice: 500,
+        estimatedDuration: 60,
+        availableCities: ["Bengaluru", "Gurugram"],
+        tags: ["s03-live"],
+      },
+    });
+  }
 
   const address = await prisma.address.create({
     data: {

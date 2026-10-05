@@ -134,6 +134,10 @@ export type QualitySnapshot = {
    * absent = the platform default (48, the published legal window).
    */
   confirmationWindowHours?: number;
+  /** What "done" means for this service, shown to the professional. Absent on older bookings. */
+  completionCriteria?: string[];
+  /** The professional must attest the criteria were met before the job can complete. */
+  professionalConfirmation?: boolean;
 };
 
 function validWindowHours(h: unknown): number | undefined {
@@ -148,11 +152,20 @@ export function qualitySnapshot(cfg: ServiceCatalogConfig | null): QualitySnapsh
   const beforeAfterPhotos = q.beforeAfterPhotos === true;
   const warrantyDays = q.warrantyDays ?? 0;
   const customerConfirmation = q.customerConfirmation === true;
-  if (!proofRequired && !beforeAfterPhotos && checklist.length === 0 && warrantyDays <= 0) return null;
+  const completionCriteria = q.completionCriteria ?? [];
+  const professionalConfirmation = q.professionalConfirmation === true;
+  if (
+    !proofRequired && !beforeAfterPhotos && checklist.length === 0 && warrantyDays <= 0 &&
+    completionCriteria.length === 0 && !professionalConfirmation
+  ) {
+    return null;
+  }
   const confirmationWindowHours = validWindowHours(q.confirmationWindowHours);
   return {
     proofRequired, beforeAfterPhotos, checklist, notApplicable: false, warrantyDays, customerConfirmation,
     ...(confirmationWindowHours !== undefined ? { confirmationWindowHours } : {}),
+    ...(completionCriteria.length > 0 ? { completionCriteria: [...completionCriteria] } : {}),
+    ...(professionalConfirmation ? { professionalConfirmation } : {}),
   };
 }
 
@@ -169,6 +182,10 @@ export function qualityFromSnapshot(snap: unknown): QualitySnapshot | null {
     warrantyDays: typeof q.warrantyDays === "number" ? q.warrantyDays : 0,
     customerConfirmation: q.customerConfirmation === true,
     ...(validWindowHours(q.confirmationWindowHours) !== undefined ? { confirmationWindowHours: validWindowHours(q.confirmationWindowHours) } : {}),
+    ...(Array.isArray(q.completionCriteria) && q.completionCriteria.length > 0
+      ? { completionCriteria: q.completionCriteria.filter((x) => typeof x === "string") }
+      : {}),
+    ...(q.professionalConfirmation === true ? { professionalConfirmation: true } : {}),
   };
 }
 

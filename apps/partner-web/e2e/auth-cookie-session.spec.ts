@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { waitForPartnerFormHydration } from "./enterprise/fixtures";
 
 /**
  * Release certification Phase 3 — the refresh token must never be reachable from JavaScript.
@@ -37,6 +38,7 @@ test.describe("partner session lives in an HttpOnly cookie", () => {
       sessionStorage.clear();
     });
     await page.reload();
+    await waitForPartnerFormHydration(page);
     await page.locator("#partner-email").fill(SEED_PARTNER.email);
     await page.locator("#partner-password").fill(SEED_PARTNER.password);
     const loginResponse = page.waitForResponse(

@@ -38,6 +38,7 @@ export function AppearanceMenu() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
+        aria-label="Appearance"
         className={cn(
           "flex items-center gap-2 rounded-[10px] border px-3 py-2 text-sm font-medium transition",
           open

@@ -251,6 +251,7 @@ const rules: RouteRule[] = [
    */
   { methods: M.GET, pattern: /^\/api\/admin\/cases$/, resource: "DISPUTES", action: "READ" },
   { methods: M.GET, pattern: /^\/api\/admin\/cases\/[^/]+$/, resource: "DISPUTES", action: "READ" },
+  { methods: M.GET, pattern: /^\/api\/admin\/cases\/[^/]+\/evidence\/[^/]+\/media$/, resource: "DISPUTES", action: "READ" },
   { methods: M.POST, pattern: /^\/api\/admin\/cases\/[^/]+\/transition$/, resource: "DISPUTES", action: "UPDATE" },
   { methods: M.POST, pattern: /^\/api\/admin\/cases\/[^/]+\/resolve$/, resource: "DISPUTES", action: "APPROVE" },
   // Phase 11 — matching diagnostics (read-only: runs the matcher, never dispatches or persists).

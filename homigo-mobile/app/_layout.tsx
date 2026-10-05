@@ -78,6 +78,7 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen name="track/[bookingId]" options={{ animation: "slide_from_bottom", presentation: "card" }} />
+            <Stack.Screen name="service/[id]" options={{ animation: "slide_from_right", presentation: "card" }} />
             <Stack.Screen name="support/index" options={{ animation: "slide_from_right" }} />
             <Stack.Screen name="invoices" options={{ animation: "slide_from_right" }} />
             <Stack.Screen name="address/picker" options={{ animation: "slide_from_bottom", presentation: "modal" }} />

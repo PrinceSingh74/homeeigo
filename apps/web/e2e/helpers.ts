@@ -102,6 +102,16 @@ export async function ensureDefaultAddress(
     }),
   });
   if (!res.ok) throw new Error(`address create failed: ${res.status} ${await res.text()}`);
+  const created = (await res.json()) as { data?: { address?: { id?: string } } };
+  const id = created.data?.address?.id;
+  if (!id) throw new Error("address create returned no id");
+  // The book page prices the default address. A customer who already has one (the demo
+  // user) would otherwise keep quoting that older city and the new address would never be used.
+  const def = await fetch(`${API}/api/users/addresses/${id}/set-default`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!def.ok) throw new Error(`set-default failed: ${def.status} ${await def.text()}`);
 }
 
 /** Fill a field; SignupForm reads named inputs from the DOM on submit. */
@@ -204,14 +214,19 @@ export async function fillOtp(page: Page, otp: string) {
   }
 }
 
-function isBookingCreateResponse(r: { request: () => { method: () => string }; url: () => string; ok: () => boolean }) {
-  if (r.request().method() !== "POST" || !r.ok()) return false;
+function isBookingCreateResponse(r: { request: () => { method: () => string }; url: () => string }) {
+  if (r.request().method() !== "POST") return false;
   try {
     const path = new URL(r.url()).pathname.replace(/\/$/, "");
     return path.endsWith("/api/bookings");
   } catch {
     return false;
   }
+}
+
+async function dismissCookieBanner(page: Page) {
+  const accept = page.getByRole("button", { name: /^accept$/i });
+  if (await accept.isVisible().catch(() => false)) await accept.click();
 }
 
 /**
@@ -238,8 +253,10 @@ export async function chooseFirstBookableSlot(page: Page) {
 }
 
 export async function confirmBookingAndWait(page: Page) {
+  await dismissCookieBanner(page);
   const confirm = await chooseFirstBookableSlot(page);
   await expect(confirm).toBeVisible({ timeout: 30_000 });
+  await dismissCookieBanner(page);
   const bookRes = page.waitForResponse(isBookingCreateResponse, { timeout: 45_000 });
   const orderRes = page.waitForResponse(
     (r) =>
@@ -256,7 +273,8 @@ export async function confirmBookingAndWait(page: Page) {
     { timeout: 60_000 },
   );
   await confirm.click();
-  await bookRes;
+  const created = await bookRes;
+  expect(created.ok(), `booking create ${created.status()} ${await created.text()}`).toBeTruthy();
   await orderRes;
   await verifyRes;
   await expect(page.getByRole("heading", { name: /booking confirmed/i })).toBeVisible({

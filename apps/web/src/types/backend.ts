@@ -272,6 +272,26 @@ export type BackendServiceDetail = BackendService & {
    * never partner instructions, internal notes, codes or enums). null = configuration invalid.
    */
   preparation?: CustomerRequirementsView | null;
+  /**
+   * Phase 10 customer visit promise. Sentences are produced by the backend from the engines
+   * that enforce them. Absent on older responses — the page then keeps the booking steps only.
+   */
+  visit?: {
+    process: { code: "ARRIVAL" | "VERIFICATION" | "SERVICE" | "CONFIRMATION"; title: string; detail: string }[];
+    safety: {
+      warnings: string[];
+      customerRequirements: string[];
+      /** Products not used, or used only under a stated condition. Optional: older responses omit it. */
+      chemicalRestrictions?: string[];
+      information: string | null;
+      medicalDisclaimer: string | null;
+      emergencyProtocol: string | null;
+    } | null;
+    proof: { statements: string[] } | null;
+    /** `statements` can be empty when only `guarantee` / `damagePolicy` are set. Both are the service's own text. */
+    warranty: { statements: string[]; exclusions: string[]; guarantee?: string | null; damagePolicy?: string | null } | null;
+    age: { statement: string } | null;
+  } | null;
   /** Add-ons this service offers (its own, or the shared catalogue), server-priced. */
   addons?: {
     id: string;
@@ -368,6 +388,10 @@ export type BackendBooking = {
   service?: { name?: string; icon?: string | null } | null;
   scheduledDate?: string;
   completedAt?: string | null;
+  /** Lifecycle timestamps from GET /api/bookings/:id — null until the server records the event. */
+  enRouteAt?: string | null;
+  arrivedAt?: string | null;
+  startedAt?: string | null;
   amount?: number;
   finalAmount?: number;
   addons?: BookingAddon[];

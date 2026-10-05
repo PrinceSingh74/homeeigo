@@ -11,6 +11,7 @@ import { getAvailableJobActions, primaryActionLabel } from "@/lib/job-action-pol
 import { describeAcceptFailure, formatCountdown, type OfferWindow } from "@/lib/offer";
 import { getJobCoords, LOCATION_REQUIRED_MESSAGE, LOCATION_UNAVAILABLE_NOTE } from "@/lib/job-coords";
 import { canCompleteChecklist, completedChecklistFor, describeChecklistRefusal } from "@/lib/quality-checklist";
+import { canCompleteConfirmation, describeConfirmationRefusal, professionalConfirmationFor } from "@/lib/professional-confirmation";
 import { PartnerApiError, partnerApi } from "@/services/partner-api";
 import type { PartnerBooking, PartnerBookingsResponse } from "@/types/partner";
 import { partnerColors } from "@/theme/colors";
@@ -53,6 +54,15 @@ type Props = {
   completedChecklist?: readonly string[];
   /** The server refused with `QUALITY_CHECKLIST_REQUIRED`: these frozen items are still needed. */
   onChecklistRefused?: (stillNeeded: string[]) => void;
+  /**
+   * The frozen quality policy asks the professional to confirm the completion criteria were met
+   * (`execution.quality.professionalConfirmation`). Complete stays disabled until the row on the
+   * detail screen is ticked, and `professionalConfirmation: true` is sent only when it is.
+   */
+  professionalConfirmationRequired?: boolean;
+  professionalConfirmed?: boolean;
+  /** The server refused with `QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED`: the row must be ticked. */
+  onConfirmationRefused?: () => void;
 };
 
 async function pickEvidenceDataUrl(): Promise<string | undefined> {
@@ -102,6 +112,9 @@ export function JobLifecycleActions({
   checklist = [],
   completedChecklist = [],
   onChecklistRefused,
+  professionalConfirmationRequired = false,
+  professionalConfirmed = false,
+  onConfirmationRefused,
 }: Props) {
   const qc = useQueryClient();
   const insets = useSafeAreaInsets();
@@ -145,12 +158,18 @@ export function JobLifecycleActions({
     policy.primaryAction === "COMPLETE_SERVICE"
       ? canCompleteChecklist(checklist, completedChecklist)
       : null;
+  // Same shape for the professional confirmation: the row must be ticked before Complete is offered.
+  const confirmationGate =
+    policy.primaryAction === "COMPLETE_SERVICE"
+      ? canCompleteConfirmation(professionalConfirmationRequired, professionalConfirmed)
+      : null;
   const disabledHint =
     (policy.primaryAction && policy.disabledReasons[policy.primaryAction]) ||
     (policy.requiredGates.includes("PAYMENT_SETTLED")
       ? "Payment confirmation pending"
       : null) ||
-    (checklistGate && !checklistGate.allowed ? checklistGate.hint : null);
+    (checklistGate && !checklistGate.allowed ? checklistGate.hint : null) ||
+    (confirmationGate && !confirmationGate.allowed ? confirmationGate.hint : null);
 
   const countdown = useOfferCountdown(isPendingStatus(status) ? offer : null);
   /**
@@ -258,6 +277,8 @@ export function JobLifecycleActions({
         undefined,
         photos,
         completedChecklistFor(checklist, completedChecklist),
+        // `true` only when the row is required and the partner ticked it; otherwise the key is omitted.
+        professionalConfirmationFor(professionalConfirmationRequired, professionalConfirmed),
       );
       if (mediaUrl) {
         await partnerApi
@@ -276,6 +297,16 @@ export function JobLifecycleActions({
     onError: async (err) => {
       const code = err instanceof PartnerApiError ? err.code : null;
       const message = err instanceof Error ? err.message : "Complete failed";
+      const confirmation = describeConfirmationRefusal(code, message);
+      if (confirmation.confirmationRefused) {
+        // Server truth wins: the row goes back to unticked and is flagged; the booking is re-read so
+        // a copy that did not carry the policy flag picks it up.
+        setActionError(confirmation.message);
+        onConfirmationRefused?.();
+        void qc.invalidateQueries({ queryKey: ["partner", "quality", bookingId] });
+        void qc.invalidateQueries({ queryKey: ["partner", "bookings", "by-id", bookingId] });
+        return;
+      }
       if (code !== "QUALITY_CHECKLIST_REQUIRED") {
         setActionError(message);
         return;

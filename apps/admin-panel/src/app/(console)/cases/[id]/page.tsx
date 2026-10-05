@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { DataTable, StatusBadge } from "@/components/ui/DataTable";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { CaseEvidencePhoto } from "@/components/support/CaseEvidencePhoto";
 import {
   adminApi,
   ADMIN_CASE_TRANSITIONS,
@@ -234,10 +235,21 @@ export default function CaseDetailPage() {
           e.note ?? (e.jobEvidenceId ? "job evidence " + e.jobEvidenceId.slice(0, 10) + "…" : "—"),
           (e.actorType ?? "—") + (e.actorId ? " " + e.actorId.slice(0, 10) + "…" : ""),
           new Date(e.createdAt).toLocaleString(),
-          e.mediaUrl ? (
-            <a key={"ev-" + e.id} href={e.mediaUrl} target="_blank" rel="noreferrer" className="text-xs text-[var(--color-biz-accent)] underline">
-              View
-            </a>
+          e.hasStoredMedia || e.mediaUrl ? (
+            <div key={"ev-" + e.id} className="flex flex-wrap items-center gap-2">
+              {e.hasStoredMedia ? (
+                <CaseEvidencePhoto
+                  caseId={id}
+                  evidenceId={e.id}
+                  label={"Photo from " + (e.actorType ? e.actorType.toLowerCase() : "case evidence") + ", added " + new Date(e.createdAt).toLocaleString()}
+                />
+              ) : null}
+              {e.mediaUrl ? (
+                <a href={e.mediaUrl} target="_blank" rel="noreferrer" className="text-xs text-[var(--color-biz-accent)] underline">
+                  View
+                </a>
+              ) : null}
+            </div>
           ) : (
             "—"
           ),

@@ -4,12 +4,12 @@ import { SectionHeading, cardSurface } from "@/components/services-catalog/primi
 import { cn } from "@/lib/utils";
 
 /** `compact` is the in-page variant used on service detail pages. */
-export function HowItWorks({ compact = false }: { compact?: boolean }) {
+export function HowItWorks({ compact = false, title = "How it works" }: { compact?: boolean; title?: string }) {
   return (
     <section aria-labelledby="how-heading">
       {compact ? (
         <h2 id="how-heading" className="mb-4 font-display text-xl font-bold tracking-tight text-content sm:text-2xl">
-          How it works
+          {title}
         </h2>
       ) : (
         <SectionHeading id="how-heading" kicker="How HOMEEIGO works" title="Booked in minutes. Handled with care." />

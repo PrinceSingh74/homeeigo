@@ -1,12 +1,15 @@
 "use client";
 
 import { JobBrief } from "@/components/requests/JobBrief";
-import { JobPreparation } from "@/components/requests/JobPreparation";
+import { hasPreparationPart, JobPreparation } from "@/components/requests/JobPreparation";
 import { RequirementChecklist } from "@/components/requests/RequirementChecklist";
-import { ExecutionSteps } from "@/components/requests/ExecutionSteps";
-import { SafetyPanel } from "@/components/requests/SafetyPanel";
+import { ExecutionSteps, useJobExecution } from "@/components/requests/ExecutionSteps";
+import { SafetyPanel, useJobSafety } from "@/components/requests/SafetyPanel";
 import { QualityPanel } from "@/components/requests/QualityPanel";
 import { CompletionChecklist } from "@/components/requests/CompletionChecklist";
+import { BriefEmpty, BriefSection, BriefSectionNav, type BriefSectionDef } from "@/components/requests/ExecutionBriefLayout";
+import { ChecklistPreview, CompletionCriteria, ProfessionalConfirmation, ProofRequirements } from "@/components/requests/QualityBrief";
+import { EscalationGuide } from "@/components/requests/EscalationGuide";
 import { followUpLine } from "@/lib/follow-up";
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
@@ -14,13 +17,22 @@ import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  BadgeCheck,
+  Camera,
   CheckCircle2,
+  ClipboardList,
   Clock,
+  LifeBuoy,
+  ListChecks,
   MapPin,
   MapPinCheck,
   MessageSquare,
   Navigation,
+  Package,
   PlayCircle,
+  ShieldAlert,
+  ShieldCheck,
+  Wrench,
 } from "lucide-react";
 import { BookingRequestCard } from "@/components/requests/BookingRequestCard";
 import { CallCustomerButton } from "@/components/requests/CallCustomerButton";
@@ -30,6 +42,7 @@ import { PartnerCard } from "@/components/ui/PartnerCard";
 import {
   ACTIVE_BOOKINGS_PARAMS,
   partnerKeys,
+  useBookingRequirementsQuery,
   usePartnerBookingsQuery,
 } from "@/hooks/use-partner-data";
 import { getAvailableJobActions, primaryActionToLocalCta } from "@/lib/job-action-policy";
@@ -37,6 +50,24 @@ import { partnerLayout } from "@/lib/partner-layout";
 import { formatDate, formatTime } from "@/lib/format";
 import { partnerApi } from "@/services/partner-api";
 import type { PartnerBooking } from "@/types/partner";
+
+/**
+ * The execution brief, in the order a professional reads a job: what it is, what must be in place,
+ * what to bring, how to stay safe, what to do, what "done" means, what to prove, and who to call on.
+ * The ids are the in-page anchors of the section nav.
+ */
+const BRIEF = {
+  summary: { id: "brief-summary", title: "Job summary", icon: ClipboardList },
+  requirements: { id: "brief-requirements", title: "Requirements", icon: ShieldCheck },
+  materials: { id: "brief-materials", title: "Materials", icon: Package },
+  equipment: { id: "brief-equipment", title: "Equipment", icon: Wrench },
+  safety: { id: "brief-safety", title: "Safety", icon: ShieldAlert },
+  steps: { id: "brief-steps", title: "Service steps", icon: ListChecks },
+  quality: { id: "brief-quality", title: "Quality checklist", icon: BadgeCheck },
+  proof: { id: "brief-proof", title: "Proof", icon: Camera },
+  escalation: { id: "brief-escalation", title: "Escalation", icon: LifeBuoy },
+} as const satisfies Record<string, BriefSectionDef>;
+const BRIEF_ORDER: readonly BriefSectionDef[] = Object.values(BRIEF);
 
 function findInCaches(
   caches: Array<{ bookings?: PartnerBooking[] } | undefined>,
@@ -118,8 +149,24 @@ export default function JobDetailPage() {
     enabled: !!id,
     staleTime: 60_000,
   });
-  const checklist = executionQuery.data?.quality.checklist ?? [];
+  const quality = executionQuery.data?.quality ?? null;
+  const checklist = quality?.checklist ?? [];
   const policyCopy = executionQuery.data?.policy ?? null;
+  /**
+   * The partner's own attestation that the completion criteria were met — asked for only when the
+   * frozen policy sets `professionalConfirmation`. Page state for the same reason as the ticks: the
+   * Complete action reads it, and sends `true` only when this box is ticked.
+   */
+  const confirmationRequired = quality?.professionalConfirmation === true;
+  const [criteriaConfirmed, setCriteriaConfirmed] = useState(false);
+
+  // Same keys as the panels below, so these are the panels' own fetches, not extra requests.
+  // Enabled only once the booking is known to be this partner's — as when the panels fetched alone.
+  const safetyQuery = useJobSafety(id, !!booking);
+  const stepsQuery = useJobExecution(id, !!booking);
+  const requirementsQuery = useBookingRequirementsQuery(id, !!booking);
+  const hasSteps = stepsQuery.data?.enforced === true && stepsQuery.data.steps.length > 0;
+  const hasRequirementItems = requirementsQuery.data?.enforced === true && requirementsQuery.data.items.length > 0;
   const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set());
   const toggleItem = useCallback((item: string, checked: boolean) => {
     setTicked((prev) => {
@@ -185,42 +232,20 @@ export default function JobDetailPage() {
         </span>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-        <div className="space-y-6">
-          <PartnerCard hover={false} className="space-y-3">
+      <BriefSectionNav sections={BRIEF_ORDER} />
+
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+        <PartnerCard hover={false} className="divide-y divide-partner-line" data-testid="execution-brief">
+          <BriefSection def={BRIEF.summary} number={1}>
             <p className="flex items-start gap-2 text-sm text-partner-text-secondary">
-              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-partner-primary" />
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-partner-primary" aria-hidden="true" />
               {booking.address?.fullAddress ?? "Address pending"}
             </p>
             <p className="flex items-center gap-2 text-xs text-partner-muted">
-              <Clock className="h-3.5 w-3.5" />
+              <Clock className="h-3.5 w-3.5" aria-hidden="true" />
               Scheduled {formatDate(booking.scheduledDate)} · {formatTime(booking.scheduledDate)}
             </p>
             <JobBrief job={booking.job} />
-            <JobPreparation requirements={booking.requirements} />
-            {policyCopy && (policyCopy.materials || policyCopy.equipment) ? (
-              <div className="space-y-1" data-testid="job-policy-copy">
-                <p className="text-xs font-semibold uppercase tracking-wide text-partner-muted">Materials &amp; equipment</p>
-                {policyCopy.materials ? <p className="text-sm text-partner-text-secondary">{policyCopy.materials}</p> : null}
-                {policyCopy.equipment ? <p className="text-sm text-partner-text-secondary">{policyCopy.equipment}</p> : null}
-              </div>
-            ) : null}
-            {/* §9 precedence: safety first. */}
-            <SafetyPanel bookingId={booking.id} />
-            <RequirementChecklist bookingId={booking.id} active={isActive} gate={actionsQuery.data?.requirementGate ?? null} />
-            <ExecutionSteps bookingId={booking.id} />
-            {/* The service quality checklist "Mark complete" submits — server-matched item by item. */}
-            {isInProgress ? (
-              <CompletionChecklist
-                bookingId={booking.id}
-                checklist={checklist}
-                ticked={ticked}
-                onToggle={toggleItem}
-                loading={executionQuery.isLoading}
-              />
-            ) : null}
-            {/* §10: the recorded quality verdict (and why a complete was refused); §11: reported issues. */}
-            <QualityPanel bookingId={booking.id} />
             {nextCta ? (
               <p className="text-xs font-semibold text-partner-text-secondary">
                 Next:{" "}
@@ -252,7 +277,128 @@ export default function JobDetailPage() {
                 </button>
               </div>
             ) : null}
-          </PartnerCard>
+          </BriefSection>
+
+          <BriefSection def={BRIEF.requirements} number={2}>
+            <RequirementChecklist bookingId={booking.id} active={isActive} gate={actionsQuery.data?.requirementGate ?? null} heading={false} />
+            <JobPreparation requirements={booking.requirements} only="customer" />
+            {!hasRequirementItems && !requirementsQuery.isLoading && !hasPreparationPart(booking.requirements, "customer") ? (
+              <BriefEmpty>No requirements are recorded for this job.</BriefEmpty>
+            ) : null}
+          </BriefSection>
+
+          <BriefSection def={BRIEF.materials} number={3}>
+            <JobPreparation requirements={booking.requirements} only="materials" />
+            {policyCopy?.materials ? (
+              <p className="text-sm text-partner-text-secondary" data-testid="job-policy-materials">{policyCopy.materials}</p>
+            ) : null}
+            {!hasPreparationPart(booking.requirements, "materials") && !policyCopy?.materials ? (
+              <BriefEmpty>
+                {executionQuery.isLoading
+                  ? "Loading materials…"
+                  : hasSteps
+                    ? "No materials are listed for the job as a whole. Each service step shows the materials it needs."
+                    : "No materials are listed for this job."}
+              </BriefEmpty>
+            ) : null}
+          </BriefSection>
+
+          <BriefSection def={BRIEF.equipment} number={4}>
+            <JobPreparation requirements={booking.requirements} only="equipment" />
+            {policyCopy?.equipment ? (
+              <p className="text-sm text-partner-text-secondary" data-testid="job-policy-equipment">{policyCopy.equipment}</p>
+            ) : null}
+            {!hasPreparationPart(booking.requirements, "equipment") && !policyCopy?.equipment ? (
+              <BriefEmpty>
+                {executionQuery.isLoading
+                  ? "Loading equipment…"
+                  : hasSteps
+                    ? "No equipment is listed for the job as a whole. Each service step shows the equipment it needs."
+                    : "No equipment is listed for this job."}
+              </BriefEmpty>
+            ) : null}
+          </BriefSection>
+
+          {/* §9 precedence: a safety hold outranks every later section. */}
+          <BriefSection def={BRIEF.safety} number={5}>
+            <SafetyPanel bookingId={booking.id} heading={false} emptyText="No safety rules are recorded for this job." />
+          </BriefSection>
+
+          <BriefSection def={BRIEF.steps} number={6}>
+            <ExecutionSteps bookingId={booking.id} heading={false} emptyText="This service has no step-by-step plan. Follow the job summary and the quality checklist." />
+          </BriefSection>
+
+          <BriefSection def={BRIEF.quality} number={7}>
+            {executionQuery.isLoading ? (
+              <BriefEmpty>Loading the quality policy…</BriefEmpty>
+            ) : executionQuery.isError ? (
+              <BriefEmpty>The quality policy could not be loaded — refresh the page to try again.</BriefEmpty>
+            ) : (
+              <>
+                <CompletionCriteria criteria={quality?.completionCriteria ?? []} />
+                {/* The service quality checklist "Mark complete" submits — server-matched item by item. */}
+                {isInProgress ? (
+                  <CompletionChecklist
+                    bookingId={booking.id}
+                    checklist={checklist}
+                    ticked={ticked}
+                    onToggle={toggleItem}
+                    confirmationPending={confirmationRequired && !criteriaConfirmed}
+                  />
+                ) : (
+                  <ChecklistPreview checklist={checklist} />
+                )}
+                {confirmationRequired ? (
+                  isInProgress ? (
+                    <ProfessionalConfirmation bookingId={booking.id} confirmed={criteriaConfirmed} onChange={setCriteriaConfirmed} />
+                  ) : (
+                    <p className="text-xs text-partner-muted" data-testid="professional-confirmation-notice">
+                      Before you mark this job complete you will be asked to confirm the completion criteria were met.
+                    </p>
+                  )
+                ) : null}
+                {!quality?.completionCriteria.length && checklist.length === 0 && !confirmationRequired ? (
+                  <BriefEmpty>This service has no quality checklist.</BriefEmpty>
+                ) : null}
+              </>
+            )}
+            {/* §10: the recorded quality verdict (and why a complete was refused); §11: reported issues. */}
+            <QualityPanel bookingId={booking.id} heading={false} />
+          </BriefSection>
+
+          <BriefSection def={BRIEF.proof} number={8}>
+            {quality ? <ProofRequirements proofRequired={quality.proofRequired} beforeAfterPhotos={quality.beforeAfterPhotos} /> : null}
+            <JobEvidencePanel bookingId={booking.id} embedded />
+          </BriefSection>
+
+          <BriefSection def={BRIEF.escalation} number={9}>
+            <EscalationGuide
+              incidentProtocol={safetyQuery.data?.safety?.incidentProtocol ?? null}
+              emergencyProtocol={safetyQuery.data?.safety?.emergencyProtocol ?? null}
+              canReportCondition={(safetyQuery.data?.canReport.length ?? 0) > 0}
+              hasSteps={hasSteps}
+              safetySectionId={BRIEF.safety.id}
+              stepsSectionId={BRIEF.steps.id}
+            />
+          </BriefSection>
+        </PartnerCard>
+
+        <div className="space-y-6">
+          <BookingRequestCard
+            serverActions={actionsQuery.data ?? null}
+            request={booking}
+            completion={
+              isInProgress
+                ? {
+                    checklist,
+                    ticked,
+                    loading: executionQuery.isLoading,
+                    unavailable: executionQuery.isError,
+                    confirmation: { required: confirmationRequired, confirmed: criteriaConfirmed },
+                  }
+                : undefined
+            }
+          />
 
           <PartnerCard hover={false}>
             <p className="mb-3 text-sm font-semibold text-partner-text">Lifecycle</p>
@@ -261,7 +407,7 @@ export default function JobDetailPage() {
                 <li key={key} className="flex items-center gap-3 text-sm">
                   <span
                     className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                      at ? "bg-partner-success/15 text-partner-success" : "bg-partner-bg text-partner-muted"
+                      at ? "bg-green-100 text-green-900 dark:bg-green-950 dark:text-green-100" : "bg-partner-bg text-partner-muted"
                     }`}
                   >
                     <Icon className="h-4 w-4" />
@@ -277,19 +423,6 @@ export default function JobDetailPage() {
             </ol>
           </PartnerCard>
 
-          <BookingRequestCard
-            serverActions={actionsQuery.data ?? null}
-            request={booking}
-            completion={
-              isInProgress
-                ? { checklist, ticked, loading: executionQuery.isLoading, unavailable: executionQuery.isError }
-                : undefined
-            }
-          />
-        </div>
-
-        <div className="space-y-6">
-          <JobEvidencePanel bookingId={booking.id} />
           {showChat ? (
             <JobChatPanel
               bookingId={booking.id}

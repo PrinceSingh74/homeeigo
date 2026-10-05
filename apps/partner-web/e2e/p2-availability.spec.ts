@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { partnerLogin, partnerToken, test as enterpriseTest } from "./enterprise/fixtures";
+import { partnerLogin, partnerToken, recoverDevChunkAbort, test as enterpriseTest } from "./enterprise/fixtures";
 import { assertAxeSerious } from "./helpers/p0-a11y";
 
 const API = (process.env.E2E_API_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -114,8 +114,22 @@ test.describe("Section 02 partner operations", () => {
       expect(overflow, `${vp.w} overflow`).toBeLessThanOrEqual(24);
       await page.screenshot({ path: `e2e/__artifacts__/p2-availability-${vp.w}.png` });
     }
-    await page.reload();
-    await expect(page.getByRole("heading", { name: /availability/i }).first()).toBeVisible({ timeout: 30_000 });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const heading = page.getByRole("heading", { name: /availability/i }).first();
+    const authSpinner = page.locator("div.h-8.w-8.animate-spin");
+    // The server paint is the auth spinner. If the client chunk never runs, the heading
+    // never mounts. Wait for one or the other, then recover once.
+    const afterReload = await Promise.race([
+      heading.waitFor({ state: "visible", timeout: 20_000 }).then(() => "heading" as const),
+      authSpinner.waitFor({ state: "visible", timeout: 20_000 }).then(async () => {
+        const cleared = await authSpinner.waitFor({ state: "hidden", timeout: 12_000 }).then(() => true).catch(() => false);
+        return cleared ? "cleared" as const : "stuck" as const;
+      }),
+    ]).catch(() => "timeout" as const);
+    if (afterReload === "stuck" || afterReload === "timeout" || !(await heading.isVisible().catch(() => false))) {
+      await recoverDevChunkAbort(page);
+    }
+    await expect(heading).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(/working days/i).first()).toBeVisible();
     monitor.assertClean();
   });

@@ -31,7 +31,10 @@ export function CompletionChecklist({
   ticked,
   onToggle,
   loading = false,
+  confirmationPending = false,
 }: {
+  /** The policy also asks for the partner's confirmation and it is not ticked yet. */
+  confirmationPending?: boolean;
   bookingId: string;
   /** The frozen checklist, exact strings, in server order. */
   checklist: string[];
@@ -67,7 +70,9 @@ export function CompletionChecklist({
       </legend>
       {gate.allowed ? (
         <p id={`${legendId}-hint`} role="status" className="text-xs text-partner-success" data-testid="completion-checklist-ok">
-          Every item is ticked — you can mark this job complete.
+          {confirmationPending
+            ? "Every item is ticked — confirm the completion criteria below to finish."
+            : "Every item is ticked — you can mark this job complete."}
         </p>
       ) : (
         <p id={`${legendId}-hint`} role="status" className="flex items-start gap-2 rounded-xl border border-amber-400/60 bg-amber-50 p-3 text-xs text-amber-900" data-testid="completion-checklist-blocked">

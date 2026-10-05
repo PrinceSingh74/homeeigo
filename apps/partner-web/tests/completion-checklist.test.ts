@@ -15,7 +15,10 @@ import {
   describeCompletionRefusal,
   missingChecklistItems,
   parseExecutionQuality,
+  PROFESSIONAL_CONFIRMATION_LABEL,
+  professionalConfirmationField,
   QUALITY_CHECKLIST_REQUIRED,
+  QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED,
 } from "@/lib/completion-checklist";
 
 const CHECKLIST = ["Wipe all surfaces", "Vacuum carpets", "Empty bins"];
@@ -102,7 +105,7 @@ describe("reading the frozen checklist off GET /api/bookings/:id", () => {
         },
       },
     });
-    expect(q).toEqual({ checklist: CHECKLIST, proofRequired: true, beforeAfterPhotos: false });
+    expect(q).toEqual({ checklist: CHECKLIST, proofRequired: true, beforeAfterPhotos: false, completionCriteria: [], professionalConfirmation: false });
   });
 
   test("a booking without execution, or with quality: null, has an empty checklist", () => {
@@ -138,5 +141,50 @@ describe("refusal mapping", () => {
     expect(describeCompletionRefusal({ code: "EXECUTION_GATE_BLOCKED" }, "b1")).toBeNull();
     expect(describeCompletionRefusal(new Error("network"), "b1")).toBeNull();
     expect(describeCompletionRefusal(null, "b1")).toBeNull();
+  });
+
+  test("QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED is mapped, with its own wording per surface", () => {
+    const list = describeCompletionRefusal({ code: QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED, data: { verdictId: 7 } }, "b1");
+    expect(list!.code).toBe("QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED");
+    expect(list!.title).toBe("Confirmation needed");
+    expect(list!.message).toMatch(/job page/);
+    expect(list!.verdictId).toBe(7);
+    const page = describeCompletionRefusal({ code: QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED }, "b1", { onJobPage: true });
+    expect(page!.message).toContain(PROFESSIONAL_CONFIRMATION_LABEL);
+    expect(page!.message).not.toMatch(/job page/);
+  });
+});
+
+describe("professional confirmation", () => {
+  test("the policy fields are read; anything but `true` / a string list is absent", () => {
+    const q = parseExecutionQuality({
+      data: { booking: { execution: { quality: { checklist: [], completionCriteria: ["No streaks", 4, " "], professionalConfirmation: true } } } },
+    });
+    expect(q.completionCriteria).toEqual(["No streaks"]);
+    expect(q.professionalConfirmation).toBe(true);
+    expect(parseExecutionQuality({ data: { booking: { execution: { quality: { professionalConfirmation: "yes" } } } } }).professionalConfirmation).toBe(false);
+  });
+
+  test("Complete stays blocked until the confirmation is ticked — after the checklist, not before", () => {
+    const pending = completionGate(CHECKLIST, ["Wipe all surfaces"], { required: true, confirmed: false });
+    expect(pending.allowed).toBe(false);
+    expect(pending.hint).toMatch(/checklist item/);
+
+    const unconfirmed = completionGate(CHECKLIST, CHECKLIST, { required: true, confirmed: false });
+    expect(unconfirmed.allowed).toBe(false);
+    expect(unconfirmed.missing).toEqual([]);
+    expect(unconfirmed.hint).toContain(PROFESSIONAL_CONFIRMATION_LABEL);
+
+    expect(completionGate(CHECKLIST, CHECKLIST, { required: true, confirmed: true }).allowed).toBe(true);
+    expect(completionGate([], [], { required: true, confirmed: false }).allowed).toBe(false);
+    // Not asked for: a stray tick state changes nothing.
+    expect(completionGate(CHECKLIST, CHECKLIST, { required: false, confirmed: false }).allowed).toBe(true);
+  });
+
+  test("`professionalConfirmation: true` goes on the wire only when asked for AND ticked", () => {
+    expect(professionalConfirmationField({ required: true, confirmed: true })).toEqual({ professionalConfirmation: true });
+    expect(professionalConfirmationField({ required: true, confirmed: false })).toEqual({});
+    expect(professionalConfirmationField({ required: false, confirmed: true })).toEqual({});
+    expect(professionalConfirmationField(undefined)).toEqual({});
   });
 });

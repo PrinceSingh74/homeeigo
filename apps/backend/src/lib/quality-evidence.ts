@@ -41,6 +41,12 @@ export type QualityEvidence = {
   checklistComplete: boolean;
   /** Frozen checklist items the partner did not submit. Empty when complete. */
   missingChecklistItems: string[];
+  /**
+   * The assigned professional's own attestation that the completion criteria were met. It is a
+   * declaration, not proof — it never substitutes for photos or the checklist, and it is asked for
+   * only where the frozen policy sets `professionalConfirmation`.
+   */
+  professionalConfirmed?: boolean;
 };
 
 /**

@@ -1,6 +1,5 @@
 import { BookingStatus, Prisma } from "@prisma/client";
 import { analyticsSqlPredicate, analyticsWhere, dispatchFallbackWhere, isBusinessRow } from "../lib/analytics-scope";
-import { isMarketplaceSeedAccount } from "../lib/data-provenance";
 import prisma from "../lib/prisma";
 import { distanceKm, etaMinutes } from "../lib/geo";
 import {
@@ -27,6 +26,7 @@ import {
   capabilityRejections,
   loadCapabilityRows,
   loadServiceGateContext,
+  seedPartnerIds,
   serviceOfferWhere,
   type ServiceCapabilityMode,
   type ServiceGateContext,
@@ -101,8 +101,13 @@ export interface ProviderMatch {
   profileImage: string | null;
   premiumBoost?: number;
   careerPriorityBoost?: number;
+  /** Set when the service prefers a professional who already completed a job for this customer. */
+  preferredProviderBoost?: number;
   matchingConfigVersion?: number;
 }
+
+/** Ranking points for a returning professional when the service sets `matching.preferredProvider`. */
+const PREFERRED_PROVIDER_BOOST = 10;
 
 /** One provider the hard gates refused, with every failing reason in the mandated order. */
 export interface MatchingRejection {
@@ -240,10 +245,11 @@ export class MatchingService {
       return { matches, rejections, counts, latencyMs, candidateCount: providers.length, serviceCapabilityMode: gate.mode, serviceOffered };
     };
     // Strict SQL can be empty (every skilled partner is a seed account) or full of partners the
-    // gates then refuse. Either way a real customer's paid job gets one wider pass before we
-    // report nobody. The wider pass does not run when the strict pass already has a match.
+    // gates then refuse. When the owner has the seed fallback on, a real customer's paid job gets
+    // one wider pass before we report nobody. Off (the default), business means business partners
+    // only. The wider pass never runs when the strict pass already has a match.
     if (providers.length === 0) {
-      if (!opts.populationOverride && serviceOffered && gate.bookingIsBusiness) return widen();
+      if (!opts.populationOverride && serviceOffered && gate.seedPartnerFallback) return widen();
       return finish([], []);
     }
 
@@ -271,11 +277,18 @@ export class MatchingService {
     const catalog = await loadHydratedCatalog({ id: serviceId, catalogConfig: serviceRow?.catalogConfig });
     const weights = configuredMatchingWeights(catalog);
     const matchingConfigVersion = serviceRow?.version ?? 1;
+    // Ranking only: a returning professional is preferred, never exempted from a gate.
+    const preferred =
+      catalog?.matching?.preferredProvider === true && request.customerId
+        ? await this.loadReturningProviders(request.customerId, providerIds)
+        : new Set<string>();
 
     // A job without a usable position cannot be shown to be inside anyone's area. Never matched
     // around an invented point (the assignment engine used to substitute central Mumbai).
     const jobLocated = Number.isFinite(latitude) && Number.isFinite(longitude);
     const now = new Date();
+    // Only the widened pass, and only while the owner keeps the fallback on, treats a seed account as eligible.
+    const seedIds = opts.populationOverride && gate.seedPartnerFallback ? await seedPartnerIds(providers) : new Set<string>();
 
     const matches: ProviderMatch[] = [];
     const rejections: MatchingRejection[] = [];
@@ -284,7 +297,7 @@ export class MatchingService {
       const rawDistance = jobLocated ? this.rawDistanceKm(p, latitude, longitude) : null;
       // Seed/demo partners stay provenance-blocked on the strict pass. On the widened pass they
       // may take a real customer's job; suite fixtures are not in that pass at all.
-      const seedDispatch = Boolean(opts.populationOverride) && gate.bookingIsBusiness && isMarketplaceSeedAccount(p.user.email);
+      const seedDispatch = seedIds.has(p.id);
       const rejected = evaluateMatchingGates({
         providerIsBusiness: seedDispatch ? true : isBusinessRow(p.user.dataOrigin),
         bookingIsBusiness: gate.bookingIsBusiness,
@@ -317,6 +330,7 @@ export class MatchingService {
           weights,
           matchingConfigVersion,
           evidence: evidenceMap.get(p.id) ?? NO_EVIDENCE,
+          preferred: preferred.has(p.id),
         }),
       );
     }
@@ -324,7 +338,7 @@ export class MatchingService {
     matches.sort(compareRankedProviders);
     const available = matches.slice(0, maxResults);
 
-    if (available.length === 0 && !opts.populationOverride && serviceOffered && gate.bookingIsBusiness) {
+    if (available.length === 0 && !opts.populationOverride && serviceOffered && gate.seedPartnerFallback) {
       return widen();
     }
 
@@ -588,10 +602,11 @@ export class MatchingService {
     only: string[] | undefined,
     excludeIds: string[],
   ) {
-    if (!gate.bookingIsBusiness) return [];
+    if (!gate.bookingIsBusiness || !gate.seedPartnerFallback) return [];
     const widened = await this.loadCandidates(serviceId, { population: dispatchFallbackWhere(), gate, matchTokens, only });
     const seen = new Set(excludeIds);
-    const extra = widened.filter((p) => !seen.has(p.id) && isMarketplaceSeedAccount(p.user.email));
+    const seedIds = await seedPartnerIds(widened);
+    const extra = widened.filter((p) => !seen.has(p.id) && seedIds.has(p.id));
     if (extra.length === 0) return [];
     const now = new Date();
     const extraRows = await loadCapabilityRows(extra.map((p) => p.id));
@@ -675,7 +690,7 @@ export class MatchingService {
         ...(Object.keys(idFilter).length > 0 ? { id: idFilter } : {}),
       },
       include: {
-        user: { select: { firstName: true, lastName: true, isBanned: true, dataOrigin: true, email: true } },
+        user: { select: { id: true, firstName: true, lastName: true, isBanned: true, dataOrigin: true, email: true, emailEncrypted: true } },
         currentLocation: true,
       },
       orderBy: [{ rating: "desc" }, { completionRate: "desc" }],
@@ -756,6 +771,17 @@ export class MatchingService {
     return out;
   }
 
+  /** Candidates who have already completed a job for this customer. One query for the whole set. */
+  private async loadReturningProviders(customerId: string, providerIds: string[]): Promise<Set<string>> {
+    if (providerIds.length === 0) return new Set();
+    const rows = await prisma.booking.findMany({
+      where: { userId: customerId, status: "COMPLETED", providerId: { in: providerIds } },
+      select: { providerId: true },
+      distinct: ["providerId"],
+    });
+    return new Set(rows.flatMap((r) => (r.providerId ? [r.providerId] : [])));
+  }
+
   private scoreProvider(
     provider: ProviderForMatching,
     customerLat: number,
@@ -769,6 +795,7 @@ export class MatchingService {
       weights?: ReturnType<typeof configuredMatchingWeights>;
       matchingConfigVersion?: number;
       evidence?: ProviderEvidence;
+      preferred?: boolean;
     },
   ): ProviderMatch {
     const loc = provider.currentLocation;
@@ -826,7 +853,8 @@ export class MatchingService {
     };
     const coreScore = normalisedMatchScore(signals, extras?.weights ?? DEFAULT_SIGNAL_WEIGHTS);
 
-    const totalScore = round1(coreScore + premiumBoost + careerBoost);
+    const preferredBoost = extras?.preferred ? PREFERRED_PROVIDER_BOOST : 0;
+    const totalScore = round1(coreScore + premiumBoost + careerBoost + preferredBoost);
 
     return {
       providerId: provider.id,
@@ -855,6 +883,7 @@ export class MatchingService {
       profileImage: provider.profileImage,
       premiumBoost: isPremiumCustomer ? round1(premiumBoost) : undefined,
       careerPriorityBoost: careerBoost > 0 ? careerBoost : undefined,
+      preferredProviderBoost: preferredBoost > 0 ? preferredBoost : undefined,
       matchingConfigVersion: extras?.matchingConfigVersion,
     };
   }
