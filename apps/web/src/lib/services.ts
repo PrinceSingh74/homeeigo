@@ -1,7 +1,10 @@
 import { Scissors, type LucideIcon } from "lucide-react";
 
-export const MOCK_BUSINESS_DATA_ENABLED =
-  process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ENABLE_MOCK_BUSINESS_DATA === "true";
+/**
+ * Demo services, prices and offers for designing screens without a backend. Off unless asked for:
+ * a build that merely is not a production build must not show invented offers as if they were real.
+ */
+export const MOCK_BUSINESS_DATA_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MOCK_BUSINESS_DATA === "true";
 
 export type ServicePackage = {
   name: string;

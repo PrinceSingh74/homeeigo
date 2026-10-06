@@ -36,6 +36,9 @@ function checkReleaseEnv(env, opts = {}) {
     warnings.push("NEXT_PUBLIC_WS_URL is not set — the socket is derived from the API url, or falls back to port 3000 on the page host.");
   }
   if (env.NEXT_PUBLIC_API_PORT) errors.push("NEXT_PUBLIC_API_PORT is a development override and must not be set for a release.");
+  if (env.NEXT_PUBLIC_ENABLE_MOCK_BUSINESS_DATA === "true") {
+    errors.push("NEXT_PUBLIC_ENABLE_MOCK_BUSINESS_DATA is on — a release would show demo services, prices and offers to customers.");
+  }
   if (opts.requireSiteUrl) {
     const site = env.NEXT_PUBLIC_SITE_URL;
     if (!site) errors.push("NEXT_PUBLIC_SITE_URL is not set — canonical URLs and the sitemap would use a placeholder domain.");

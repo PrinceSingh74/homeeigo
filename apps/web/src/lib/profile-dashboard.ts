@@ -1,5 +1,5 @@
-const MOCK_BUSINESS_DATA_ENABLED =
-  process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ENABLE_MOCK_BUSINESS_DATA === "true";
+// Demo profile content is an explicit opt-in (see lib/services.ts).
+const MOCK_BUSINESS_DATA_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MOCK_BUSINESS_DATA === "true";
 
 type ProfileFeatureIcon = "clock" | "users" | "gift" | "zap" | "headphones";
 type ProfilePremiumFeature = { label: string; icon: ProfileFeatureIcon };
