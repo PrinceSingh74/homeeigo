@@ -9,6 +9,7 @@ import "../src/load-env";
 import prisma from "../src/lib/prisma";
 import { bookingService } from "../src/services/booking.service";
 import { assignmentEngine } from "../src/services/assignment-engine.service";
+import { directInsertLiveFlags } from "../src/lib/catalog-governance";
 
 const ts = Date.now();
 const line = (s: string) => console.log(s);
@@ -16,7 +17,7 @@ const line = (s: string) => console.log(s);
 async function main() {
   // ── setup: service, customer+address, eligible provider ──
   const service = await prisma.service.create({
-    data: { name: `E2E Clean ${ts}`, slug: `e2e-${ts}`, description: "x", category: "cleaning", basePrice: 800, estimatedDuration: 60, isActive: true },
+    data: { ...directInsertLiveFlags("e2e-booking-assignment"), name: `E2E Clean ${ts}`, slug: `e2e-${ts}`, description: "x", category: "cleaning", basePrice: 800, estimatedDuration: 60, isActive: true },
   });
   const customer = await prisma.user.create({
     data: { email: `e2e-cust-${ts}@homigo.test`, phoneNumber: `+9195${ts % 10000000}`, firstName: "Cust", lastName: "E2E", password: "x".repeat(20) },

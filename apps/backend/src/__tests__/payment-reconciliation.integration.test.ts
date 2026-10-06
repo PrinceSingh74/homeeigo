@@ -20,6 +20,7 @@ import { paymentService } from "../services/payment.service";
 import { settlementService } from "../services/settlement.service";
 import { paymentReconciliationService } from "../services/payment-reconciliation.service";
 import { gatewayReconciliationService } from "../services/gateway-reconciliation.service";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 const RUN = `prec-${Date.now().toString(36)}`;
 let seq = 0;
@@ -29,7 +30,7 @@ async function gatewayPaid(amount = 700) {
   const u = await prisma.user.create({
     data: { email: `${RUN}-${seq}@test.test`, phoneNumber: `+9179${Math.floor(1e6 + Math.random() * 8e6)}`, firstName: "Prec", lastName: `T${seq}`, password: "x".repeat(20), role: "CUSTOMER", walletBalance: 0 },
   });
-  const s = await prisma.service.create({ data: { name: `${RUN}-${seq}`, slug: `${RUN}-${seq}`, description: "x", category: "cleaning", basePrice: amount, estimatedDuration: 60 } });
+  const s = await prisma.service.create({ data: { ...LIVE_FIXTURE_SERVICE, name: `${RUN}-${seq}`, slug: `${RUN}-${seq}`, description: "x", category: "cleaning", basePrice: amount, estimatedDuration: 60 } });
   const a = await prisma.address.create({ data: { userId: u.id, label: "H", addressLine1: "1 St", city: "Mumbai", state: "MH", zipCode: "400001", latitude: 19.076, longitude: 72.8777 } });
   const b = await prisma.booking.create({
     data: { bookingNumber: `PREC-${RUN}-${seq}`, userId: u.id, serviceId: s.id, addressId: a.id, status: "PENDING", scheduledDate: new Date(Date.now() + 72 * 3_600_000), baseAmount: amount, finalAmount: amount, totalAmount: amount, paymentStatus: "PENDING" },

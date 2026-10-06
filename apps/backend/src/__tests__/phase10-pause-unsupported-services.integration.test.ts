@@ -15,6 +15,7 @@ import app from "../index";
 import { PAUSE_REASON } from "../../scripts/phase10-pause-unsupported-services";
 import { bearer, cleanupAdversarialFixtures, dbReachable, futureSlot, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 const RUN = `p10pause-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
@@ -55,7 +56,7 @@ beforeAll(async () => {
   const put = await call("PUT", `/api/admin/services/${ctx.serviceId}`, { pricingModel: "per-unit", basePrice: 250, minPrice: 250, maxPrice: 250, catalogConfig: BASE, changeReason: "pause test base" }, admin());
   if (put.status !== 200) throw new Error(`base: ${JSON.stringify(put.json)}`);
   const second = await prisma.service.create({
-    data: { name: `Adv Second ${RUN}`, slug: `adv-second-${RUN}`, description: "fixture", category: "cleaning", basePrice: 250, estimatedDuration: 60, isActive: true, dataOrigin: "INFERRED_TEST" },
+    data: { ...LIVE_FIXTURE_SERVICE, name: `Adv Second ${RUN}`, slug: `adv-second-${RUN}`, description: "fixture", category: "cleaning", basePrice: 250, estimatedDuration: 60, isActive: true, dataOrigin: "INFERRED_TEST" },
   });
   secondServiceId = second.id;
 }, 120_000);

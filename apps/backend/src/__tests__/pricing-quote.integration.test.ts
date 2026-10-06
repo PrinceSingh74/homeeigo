@@ -27,6 +27,7 @@ import { resetRateLimitSmart } from "../middleware/rate-limit.middleware";
 import { sumCounter } from "../lib/metrics";
 import { weatherService } from "../services/weather.service";
 import { cacheService } from "../services/cache.service";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 const RUN_ID = `pq-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
@@ -260,7 +261,7 @@ describe.serial("Phase 05 — authoritative quote", () => {
     // service binding (sid) can refuse the swap.
     const src = await prisma.service.findUniqueOrThrow({ where: { id: ctx.serviceId } });
     const other = await prisma.service.create({
-      data: {
+      data: { ...LIVE_FIXTURE_SERVICE,
         name: `Twin ${RUN_ID}`, slug: `twin-${RUN_ID}`, description: src.description, category: src.category,
         basePrice: src.basePrice, minPrice: src.minPrice, maxPrice: src.maxPrice, currency: src.currency,
         estimatedDuration: src.estimatedDuration, pricingModel: src.pricingModel, partnerSlotPolicy: src.partnerSlotPolicy,
@@ -308,7 +309,7 @@ describe.serial("Phase 05 — authoritative quote", () => {
   test("an unpriced service is PRICING_CONFIG_MISSING, not a ₹0 quote", async () => {
     if (!dbOk) return;
     const s = await prisma.service.create({
-      data: { name: `Unpriced ${RUN_ID}`, slug: `unpriced-${RUN_ID}`, description: "No price configured yet", category: "cleaning", basePrice: 0, estimatedDuration: 60, pricingModel: "quote" },
+      data: { ...LIVE_FIXTURE_SERVICE, name: `Unpriced ${RUN_ID}`, slug: `unpriced-${RUN_ID}`, description: "No price configured yet", category: "cleaning", basePrice: 0, estimatedDuration: 60, pricingModel: "quote" },
     });
     extraServices.push(s.id);
     const r = await call("POST", "/api/bookings/price-quote", { serviceId: s.id, addressId: ctx.addressAId }, customer());
@@ -359,7 +360,7 @@ describe.serial("Phase 05 — authoritative quote", () => {
   test("fixture / test services never enter customer commercial truth", async () => {
     if (!dbOk) return;
     const s = await prisma.service.create({
-      data: { name: `Fixture ${RUN_ID}`, slug: `fixture-${RUN_ID}`, description: "A fixture service", category: "cleaning", basePrice: 300, estimatedDuration: 60, dataOrigin: "INFERRED_FIXTURE" },
+      data: { ...LIVE_FIXTURE_SERVICE, name: `Fixture ${RUN_ID}`, slug: `fixture-${RUN_ID}`, description: "A fixture service", category: "cleaning", basePrice: 300, estimatedDuration: 60, dataOrigin: "INFERRED_FIXTURE" },
     });
     extraServices.push(s.id);
     expect((await call("GET", `/api/services/${s.id}`)).status).toBe(404);
@@ -376,7 +377,7 @@ describe.serial("Phase 05 — authoritative quote", () => {
     if (!dbOk) return;
     // Same row, flipped fixture → commercial: each surface must change, so the check cannot pass vacuously.
     const s = await prisma.service.create({
-      data: { name: `Surface ${RUN_ID}`, slug: `surface-${RUN_ID}`, description: "Surface probe", category: "cleaning", basePrice: 300, estimatedDuration: 60, dataOrigin: "INFERRED_FIXTURE" },
+      data: { ...LIVE_FIXTURE_SERVICE, name: `Surface ${RUN_ID}`, slug: `surface-${RUN_ID}`, description: "Surface probe", category: "cleaning", basePrice: 300, estimatedDuration: 60, dataOrigin: "INFERRED_FIXTURE" },
     });
     extraServices.push(s.id);
     const provider = await prisma.provider.findUniqueOrThrow({ where: { id: ctx.providerId }, select: { serviceCategories: true } });

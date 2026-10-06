@@ -19,6 +19,7 @@ import {
 } from "@prisma/client";
 import { PasswordService } from "../src/services/password.service";
 import { rbacService } from "../src/services/rbac.service";
+import { directInsertLiveFlags } from "../src/lib/catalog-governance";
 
 const prisma = new PrismaClient();
 
@@ -61,7 +62,7 @@ async function main() {
 
   const [deepCleaning, acService, plumbing] = await Promise.all([
     prisma.service.create({
-      data: {
+      data: { ...directInsertLiveFlags("seed"),
         name: "Deep Cleaning",
         slug: "deep-cleaning",
         description: "Professional deep cleaning for your entire home",
@@ -76,7 +77,7 @@ async function main() {
       },
     }),
     prisma.service.create({
-      data: {
+      data: { ...directInsertLiveFlags("seed"),
         name: "AC Service",
         slug: "ac-service",
         description: "AC maintenance, gas refill, and repair",
@@ -89,7 +90,7 @@ async function main() {
       },
     }),
     prisma.service.create({
-      data: {
+      data: { ...directInsertLiveFlags("seed"),
         name: "Plumbing Repair",
         slug: "plumbing",
         description: "Leak fixes, tap installation, and drainage",

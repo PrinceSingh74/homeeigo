@@ -23,6 +23,7 @@ import prisma from "../lib/prisma";
 import app from "../index";
 import { bearer, cleanupAdversarialFixtures, dbReachable, deleteBookingsForUsers, fixturePhone, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 const RUN = `p11it${Date.now().toString(36)}`; // lowercase alnum: also a valid capability code prefix
 const TAG = `adv-${RUN}`;
@@ -102,7 +103,7 @@ async function lastAudit(table: string, rowId: number | string) {
 
 async function createService(suffix: string, extra: Record<string, unknown> = {}) {
   const s = await prisma.service.create({
-    data: {
+    data: { ...LIVE_FIXTURE_SERVICE,
       name: `Adv ${suffix} ${TAG}`,
       slug: `${TAG}-${suffix}`,
       description: "Phase 11 capability integration fixture",

@@ -6,12 +6,14 @@
  */
 import "../load-env";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import prisma from "../lib/prisma";
-import { directCatalogWriteRefusal } from "../lib/catalog-governance";
+import { directCatalogWriteRefusal, directInsertLiveFlags } from "../lib/catalog-governance";
 import { catalogService } from "../services/catalog.service";
+import app from "../index";
 import { dbReachable } from "./helpers/adversarial-fixtures";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 
 describe("scripts that insert live services refuse a deployed environment", () => {
@@ -20,6 +22,32 @@ describe("scripts that insert live services refuse a deployed environment", () =
     expect(directCatalogWriteRefusal("seed-services", { NODE_ENV: "development", APP_ENV: "staging" } as NodeJS.ProcessEnv)).toContain("publish gate");
     expect(directCatalogWriteRefusal("seed-services", { NODE_ENV: "development", APP_ENV: "development" } as NodeJS.ProcessEnv)).toBeNull();
     expect(directCatalogWriteRefusal("seed-services", { NODE_ENV: "test" } as NodeJS.ProcessEnv)).toBeNull();
+  });
+
+  test("a script that inserts a service already on sale must ask for the flags, and is refused them on a deployed environment", () => {
+    expect(directInsertLiveFlags("smoke", { NODE_ENV: "test" } as NodeJS.ProcessEnv)).toEqual({ isActive: true, lifecycleStatus: "ACTIVE", isCustomerVisible: true, isBookable: true });
+    expect(() => directInsertLiveFlags("smoke", { NODE_ENV: "production" } as NodeJS.ProcessEnv)).toThrow("publish gate");
+    expect(() => directInsertLiveFlags("smoke", { NODE_ENV: "development", APP_ENV: "staging" } as NodeJS.ProcessEnv)).toThrow("smoke");
+  });
+
+  test("no script inserts a service without saying whether it is on sale", () => {
+    const dir = join(import.meta.dir, "..", "..", "scripts");
+    const offenders: string[] = [];
+    const walk = (d: string) => {
+      for (const e of readdirSync(d, { withFileTypes: true })) {
+        const p = join(d, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name.endsWith(".ts")) {
+          const src = readFileSync(p, "utf8");
+          for (const m of src.matchAll(/(prisma|tx|db)\.service\.(create|upsert)\(/g)) {
+            const window = src.slice(m.index!, m.index! + 500);
+            if (!/directInsertLiveFlags\(|LIVE_FIXTURE_SERVICE|lifecycleStatus:/.test(window)) offenders.push(`${e.name}@${m.index}`);
+          }
+        }
+      }
+    };
+    walk(dir);
+    expect(offenders).toEqual([]);
   });
 
   for (const script of ["seed-services.ts", "seed-popular-services.ts"]) {
@@ -44,10 +72,10 @@ describe("a live service that skipped the governed path is reported", () => {
     if (!dbOk) return;
     const [{ db }] = await prisma.$queryRaw<{ db: string }[]>`SELECT current_database() AS db`;
     refuseIfNotIsolatedTestDb(db);
-    // Exactly what a seed script does: the schema defaults make this row live.
-    const raw = await prisma.service.create({ data: { name: `Raw ${RUN}`, slug: `raw-${RUN}`, description: "Inserted directly", category: "cleaning", basePrice: 100, estimatedDuration: 30 } });
+    // A row forced live by a direct write (explicit flags, as a seed or a manual UPDATE would).
+    const raw = await prisma.service.create({ data: { ...LIVE_FIXTURE_SERVICE, name: `Raw ${RUN}`, slug: `raw-${RUN}`, description: "Inserted directly", category: "cleaning", basePrice: 100, estimatedDuration: 30 } });
     rawId = raw.id;
-    const governed = await prisma.service.create({ data: { name: `Governed ${RUN}`, slug: `governed-${RUN}`, description: "Published with a version row", category: "cleaning", basePrice: 100, estimatedDuration: 30 } });
+    const governed = await prisma.service.create({ data: { ...LIVE_FIXTURE_SERVICE, name: `Governed ${RUN}`, slug: `governed-${RUN}`, description: "Published with a version row", category: "cleaning", basePrice: 100, estimatedDuration: 30 } });
     governedId = governed.id;
     await prisma.serviceConfigVersion.create({ data: { serviceId: governed.id, version: 1, status: "PUBLISHED", catalogConfig: {}, snapshot: {}, publishedAt: new Date() } });
   }, 60_000);
@@ -63,6 +91,25 @@ describe("a live service that skipped the governed path is reported", () => {
     const found = await catalogService.ungovernedLiveServices();
     expect(found.find((s) => s.id === rawId)).toMatchObject({ slug: `raw-${RUN}`, reason: "NO_PUBLISHED_VERSION" });
     expect(found.find((s) => s.id === governedId)).toBeUndefined();
+  });
+
+  test("a row inserted with nothing but its required fields is a draft: not active, not visible, not bookable", async () => {
+    expect(dbOk).toBe(true);
+    const bare = await prisma.service.create({ data: { name: `Bare ${RUN}`, slug: `bare-${RUN}`, description: "Inserted with defaults only", category: "cleaning", basePrice: 100, estimatedDuration: 30 } });
+    try {
+      expect({ lifecycle: bare.lifecycleStatus, active: bare.isActive, visible: bare.isCustomerVisible, bookable: bare.isBookable }).toEqual({ lifecycle: "DRAFT", active: false, visible: false, bookable: false });
+      // The same through raw SQL, where no client default can help: the database's own default decides.
+      const id = `raw_${RUN}`;
+      await prisma.$executeRaw`INSERT INTO services (id, name, slug, description, category, base_price, estimated_duration, updated_at) VALUES (${id}, ${`Sql ${RUN}`}, ${`sql-${RUN}`}, 'Inserted by SQL', 'cleaning', 100, 30, now())`;
+      const sql = await prisma.service.findUniqueOrThrow({ where: { id } });
+      expect({ lifecycle: sql.lifecycleStatus, active: sql.isActive, visible: sql.isCustomerVisible, bookable: sql.isBookable }).toEqual({ lifecycle: "DRAFT", active: false, visible: false, bookable: false });
+      const listed = await app.handle(new Request(`http://localhost/api/services/${bare.id}`));
+      expect(listed.status).toBe(404);
+      expect((await catalogService.ungovernedLiveServices()).some((s) => s.id === bare.id || s.id === id)).toBe(false);
+      await prisma.service.delete({ where: { id } });
+    } finally {
+      await prisma.service.delete({ where: { id: bare.id } }).catch(() => {});
+    }
   });
 
   test("a row that is not customer-visible is not the report's business", async () => {

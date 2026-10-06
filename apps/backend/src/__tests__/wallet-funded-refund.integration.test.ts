@@ -15,6 +15,7 @@ import { walletService } from "../services/wallet.service";
 import { walletCheckoutService } from "../services/wallet-checkout.service";
 import { bookingService } from "../services/booking.service";
 import { bookingRefundService } from "../services/booking-refund.service";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 const createdUserIds: string[] = [];
 
@@ -40,7 +41,7 @@ async function walletPaidBooking(price = 500, hoursAhead = 72) {
     razorpaySignature: "sig",
   });
   const s = await prisma.service.create({
-    data: { name: `wfr-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, slug: `wfr-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, description: "x", category: "cleaning", basePrice: price, estimatedDuration: 60 },
+    data: { ...LIVE_FIXTURE_SERVICE, name: `wfr-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, slug: `wfr-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, description: "x", category: "cleaning", basePrice: price, estimatedDuration: 60 },
   });
   const a = await prisma.address.create({
     data: { userId: u.id, label: "H", addressLine1: "1 St", city: "Mumbai", state: "MH", zipCode: "400001", latitude: 19.076, longitude: 72.8777 },

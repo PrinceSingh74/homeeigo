@@ -23,6 +23,7 @@ import { sumCounterWhere } from "../lib/metrics";
 import type { MatchingRejectionReason } from "../lib/provider-capability";
 import { bearer, cleanupAdversarialFixtures, dbReachable, deleteBookingsForUsers, fixturePhone, futureSlot, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 const RUN = `p11mg-${Date.now().toString(36)}`;
 const TAG = `adv-${RUN}`;
@@ -521,7 +522,7 @@ describe.serial("Phase 11 — a business customer gets business partners only un
   test("flag off: a paid business job with no business partner matches nobody; flag on: the on-duty seed partner, never a suite fixture", async () => {
     if (!dbOk) return;
     const svc = await prisma.service.create({
-      data: { name: `P11 seed ${RUN}`, slug: `p11-seed-${TAG}`, description: "seed fallback fixture", category: `p11seed-${RUN}`, basePrice: 500, estimatedDuration: 60, availableCities: ["Noida"], tags: ["adv"] },
+      data: { ...LIVE_FIXTURE_SERVICE, name: `P11 seed ${RUN}`, slug: `p11-seed-${TAG}`, description: "seed fallback fixture", category: `p11seed-${RUN}`, basePrice: 500, estimatedDuration: 60, availableCities: ["Noida"], tags: ["adv"] },
     });
     // The only two partners who offer this service: the application's own seed account and a suite fixture.
     const seedUser = await prisma.user.create({
@@ -770,7 +771,7 @@ describe.serial("Phase 11 — Q18/Q20 duplicate assignment race", () => {
     // An isolated service (its own category) with ONE partner: the shared test database carries
     // leaked fixture partners from other suites, and a race proof must not depend on them.
     const svc = await prisma.service.create({
-      data: { name: `P11 race ${RUN}`, slug: `p11-race-${TAG}`, description: "race fixture", category: `p11race-${RUN}`, basePrice: 500, estimatedDuration: 60, availableCities: ["Noida"], tags: ["adv"] },
+      data: { ...LIVE_FIXTURE_SERVICE, name: `P11 race ${RUN}`, slug: `p11-race-${TAG}`, description: "race fixture", category: `p11race-${RUN}`, basePrice: 500, estimatedDuration: 60, availableCities: ["Noida"], tags: ["adv"] },
     });
     raceServiceId = svc.id;
     const racer = await mkProvider("race", "FIXTURE");

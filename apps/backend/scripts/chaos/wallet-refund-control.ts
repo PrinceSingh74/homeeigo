@@ -7,6 +7,7 @@
  *
  *   DATABASE_URL=...homigo_test REDIS_URL=redis://localhost:6380 bun scripts/chaos/wallet-refund-control.ts
  */
+import { directInsertLiveFlags } from "../../src/lib/catalog-governance";
 const dbUrl = process.env.DATABASE_URL ?? "";
 if (!/\/homigo_test(\?|$)/.test(dbUrl)) {
   console.error("REFUSED: DATABASE_URL must target homigo_test");
@@ -67,7 +68,7 @@ console.log("LEDGER BEFORE", JSON.stringify(before));
 
 // ── fixtures (tagged; kept as documented test data — journals are never deleted) ──
 const service = await prisma.service.create({
-  data: { name: `WRC ${RUN}`, slug: `wrc-${RUN}`.toLowerCase(), description: "wallet refund control", category: "cleaning",
+  data: { ...directInsertLiveFlags("wallet-refund-control"), name: `WRC ${RUN}`, slug: `wrc-${RUN}`.toLowerCase(), description: "wallet refund control", category: "cleaning",
     basePrice: PRICE, estimatedDuration: 60, availableCities: ["Noida"], tags: ["wrc"] },
 });
 const user = await prisma.user.create({

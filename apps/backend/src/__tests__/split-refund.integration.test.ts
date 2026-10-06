@@ -20,6 +20,7 @@ import { bookingService } from "../services/booking.service";
 import { allocateSplitRefund, bookingRefundService } from "../services/booking-refund.service";
 import { refundOrchestratorService } from "../services/refund-orchestrator.service";
 import { financialIntegrityService } from "../services/financial-integrity.service";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 const RUN = `spr-${Date.now().toString(36)}`;
 let seq = 0;
@@ -34,7 +35,7 @@ async function customer(walletFunding: number) {
     if ("error" in t) throw new Error(t.error);
     await walletService.verifyTopUp(u.id, { razorpayOrderId: t.razorpayOrderId, razorpayPaymentId: `pay_${RUN}_${seq}_t`, razorpaySignature: "sig" });
   }
-  const s = await prisma.service.create({ data: { name: `${RUN}-${seq}`, slug: `${RUN}-${seq}`, description: "x", category: "cleaning", basePrice: 1000, estimatedDuration: 60 } });
+  const s = await prisma.service.create({ data: { ...LIVE_FIXTURE_SERVICE, name: `${RUN}-${seq}`, slug: `${RUN}-${seq}`, description: "x", category: "cleaning", basePrice: 1000, estimatedDuration: 60 } });
   const a = await prisma.address.create({ data: { userId: u.id, label: "H", addressLine1: "1 St", city: "Mumbai", state: "MH", zipCode: "400001", latitude: 19.076, longitude: 72.8777 } });
   const b = await prisma.booking.create({
     data: { bookingNumber: `SPR-${RUN}-${seq}`, userId: u.id, serviceId: s.id, addressId: a.id, status: "PENDING", scheduledDate: new Date(Date.now() + 72 * 3_600_000), baseAmount: 1000, finalAmount: 1000, totalAmount: 1000, paymentStatus: "PENDING" },

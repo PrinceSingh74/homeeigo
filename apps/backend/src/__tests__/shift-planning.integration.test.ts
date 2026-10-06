@@ -16,6 +16,7 @@ import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { describe, test, expect, beforeAll } from "bun:test";
 import prisma from "../lib/prisma";
 import { shiftPlanningService, SHIFT_RULES_VERSION } from "../services/shift-planning.service";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 let providerRich = "";
 let providerBare = "";
@@ -56,7 +57,7 @@ beforeAll(async () => {
   const svc =
     (await prisma.service.findFirst({ select: { id: true } })) ??
     (await prisma.service.create({
-      data: {
+      data: { ...LIVE_FIXTURE_SERVICE,
         name: "SP Fixture Service " + stamp, slug: "sp-fixture-" + stamp, description: "fixture",
         category: "cleaning", basePrice: GROSS_PER_JOB, estimatedDuration: 60, isActive: true,
       },

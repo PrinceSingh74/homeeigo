@@ -11,6 +11,7 @@ import app from "../index";
 import { bearer, cleanupAdversarialFixtures, dbReachable, futureSlot, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { sumCounter, sumCounterWhere } from "../lib/metrics";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 const RUN = `req-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
@@ -187,7 +188,7 @@ describe.serial("Phase 06 — requirements end to end", () => {
   test("saving one service never touches another service's requirement rows or configuration", async () => {
     if (!dbOk) return;
     const sibling = await prisma.service.create({
-      data: { name: `Adv Sibling ${RUN}`, slug: `adv-service-adv-${RUN}-sibling`, description: "Phase 06 isolation fixture", category: "cleaning", basePrice: 250, estimatedDuration: 60, availableCities: ["Noida"], tags: ["adv"] },
+      data: { ...LIVE_FIXTURE_SERVICE, name: `Adv Sibling ${RUN}`, slug: `adv-service-adv-${RUN}-sibling`, description: "Phase 06 isolation fixture", category: "cleaning", basePrice: 250, estimatedDuration: 60, availableCities: ["Noida"], tags: ["adv"] },
     });
     const own = await call("PUT", `/api/admin/services/${sibling.id}`, { pricingModel: "per-unit", basePrice: 250, minPrice: 250, maxPrice: 250, catalogConfig: { ...CONFIG, requirements: [REQUIREMENTS[1]] } }, admin());
     expect(own.status).toBe(200);

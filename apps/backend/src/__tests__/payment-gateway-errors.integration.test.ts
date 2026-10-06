@@ -26,6 +26,7 @@ import {
 import { paymentService } from "../services/payment.service";
 import { dbReachable } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 describe("classifyGatewayOrderFailure", () => {
   const code = (e: unknown) => classifyGatewayOrderFailure(e).code;
@@ -119,7 +120,7 @@ async function payableBooking() {
   });
   made.users.push(u.id);
   const s = await prisma.service.create({
-    data: { name: `${RUN}-${seq}`, slug: `${RUN}-${seq}`, description: "x", category: "cleaning", basePrice: 1000, estimatedDuration: 60 },
+    data: { ...LIVE_FIXTURE_SERVICE, name: `${RUN}-${seq}`, slug: `${RUN}-${seq}`, description: "x", category: "cleaning", basePrice: 1000, estimatedDuration: 60 },
   });
   made.services.push(s.id);
   const a = await prisma.address.create({

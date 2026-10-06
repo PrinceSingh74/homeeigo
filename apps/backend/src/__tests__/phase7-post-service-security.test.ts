@@ -14,6 +14,7 @@ import prisma from "../lib/prisma";
 import { JWTService } from "../services/jwt.service";
 import { PlatformIntelligenceService } from "../services/platform-intelligence.service";
 import { invalidateFlagCache } from "../services/feature-flag.service";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 const jwt = new JWTService();
 const RUN_ID = `p7sec-${Date.now().toString(36)}`;
@@ -97,7 +98,7 @@ beforeAll(async () => {
   providerId = provider.id;
 
   const service = await prisma.service.create({
-    data: {
+    data: { ...LIVE_FIXTURE_SERVICE,
       name: `P7Sec Service ${RUN_ID}`,
       slug: `p7sec-service-${RUN_ID}`,
       description: "Phase 7 security test fixture",

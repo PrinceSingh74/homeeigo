@@ -17,6 +17,7 @@ import {
   EARNINGS_COACH_RULES_VERSION,
   MIN_JOBS_FOR_PLAN,
 } from "../services/earnings-coach.service";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 let providerRich = "";   // enough history for a plan
 let providerThin = "";   // below the sample floor
@@ -55,7 +56,7 @@ beforeAll(async () => {
   const svc =
     (await prisma.service.findFirst({ select: { id: true } })) ??
     (await prisma.service.create({
-      data: {
+      data: { ...LIVE_FIXTURE_SERVICE,
         name: "EC Fixture Service " + stamp,
         slug: "ec-fixture-" + stamp,
         description: "fixture",

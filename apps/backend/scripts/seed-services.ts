@@ -10,7 +10,7 @@
  *   bun --env-file=.env run scripts/seed-services.ts
  */
 import prisma from "../src/lib/prisma";
-import { directCatalogWriteRefusal } from "../src/lib/catalog-governance";
+import { directCatalogWriteRefusal, directInsertLiveFlags } from "../src/lib/catalog-governance";
 
 const refusal = directCatalogWriteRefusal("seed-services");
 if (refusal) {
@@ -98,7 +98,7 @@ async function main() {
       continue;
     }
     await prisma.service.create({
-      data: {
+      data: { ...directInsertLiveFlags("seed-services"),
         name: s.name,
         slug: s.slug,
         description: s.description,

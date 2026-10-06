@@ -8,6 +8,7 @@
  *
  *   NODE_ENV=test REDIS_URL=redis://localhost:6380 HTTPS_PROXY=... bun scripts/chaos/split-refund-control.ts
  */
+import { directInsertLiveFlags } from "../../src/lib/catalog-governance";
 if (process.env.NODE_ENV !== "test") {
   console.error("REFUSED: NODE_ENV must be 'test' so .env.test (no gateway keys) overrides .env");
   process.exit(2);
@@ -74,7 +75,7 @@ const topup = await walletService.addMoney(u.id, WALLET);
 if ("error" in topup) throw new Error(`top-up ${topup.error}`);
 await walletService.verifyTopUp(u.id, { razorpayOrderId: topup.razorpayOrderId, razorpayPaymentId: `pay_dev_${RUN}_topup`, razorpaySignature: "dev_unsigned" });
 const service = await prisma.service.create({
-  data: { name: `SPL ${RUN}`, slug: `spl-${RUN}`.toLowerCase(), description: "split refund control", category: "cleaning", basePrice: TOTAL, estimatedDuration: 60 },
+  data: { ...directInsertLiveFlags("split-refund-control"), name: `SPL ${RUN}`, slug: `spl-${RUN}`.toLowerCase(), description: "split refund control", category: "cleaning", basePrice: TOTAL, estimatedDuration: 60 },
 });
 const addr = await prisma.address.create({
   data: { userId: u.id, label: "H", addressLine1: "1 SPL St", city: "Noida", state: "UP", zipCode: "201301", latitude: 28.62, longitude: 77.37 },

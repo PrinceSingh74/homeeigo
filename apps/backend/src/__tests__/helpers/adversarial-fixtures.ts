@@ -7,6 +7,7 @@ import { rbacService } from "../../services/rbac.service";
 import prisma from "../../lib/prisma";
 import { walletService } from "../../services/wallet.service";
 import { walletCheckoutService } from "../../services/wallet-checkout.service";
+import { LIVE_FIXTURE_SERVICE } from "./live-fixture-service";
 
 const jwt = new JWTService();
 
@@ -82,7 +83,7 @@ export async function seedAdversarialFixtures(runId: string): Promise<AdvCtx> {
   const tag = `adv-${runId}`;
 
   const service = await prisma.service.create({
-    data: {
+    data: { ...LIVE_FIXTURE_SERVICE,
       name: `Adv Service ${tag}`,
       slug: `adv-service-${tag}`,
       description: "Adversarial integration fixture",

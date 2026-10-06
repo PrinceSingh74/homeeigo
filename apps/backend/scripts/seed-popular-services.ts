@@ -11,7 +11,7 @@
  * Run: cd apps/backend && bun --env-file=.env run scripts/seed-popular-services.ts
  */
 import prisma from "../src/lib/prisma";
-import { directCatalogWriteRefusal } from "../src/lib/catalog-governance";
+import { directCatalogWriteRefusal, directInsertLiveFlags } from "../src/lib/catalog-governance";
 
 const refusal = directCatalogWriteRefusal("seed-popular-services");
 if (refusal) {
@@ -75,7 +75,7 @@ async function main() {
       updated++;
     } else {
       await prisma.service.create({
-        data: {
+        data: { ...directInsertLiveFlags("seed-popular-services"),
           name: e.name,
           slug: e.slug,
           description: e.description,

@@ -14,6 +14,7 @@ import {
   cleanupEcoCertFixturesIdempotent,
   type EcoCertFixtures,
 } from "./lib/ecosystem-cert-cleanup";
+import { directInsertLiveFlags } from "../src/lib/catalog-governance";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..", "..", "..");
@@ -23,7 +24,7 @@ async function seedProbeFixtures(runId: string): Promise<EcoCertFixtures & { boo
   const passwordHash = await Bun.password.hash("Eco@123", { algorithm: "bcrypt", cost: 4 });
 
   const service = await prisma.service.create({
-    data: {
+    data: { ...directInsertLiveFlags("ecosystem-cleanup-probe"),
       name: `Probe Service ${runId}`,
       slug: `probe-svc-${runId}`,
       description: "Cleanup probe",

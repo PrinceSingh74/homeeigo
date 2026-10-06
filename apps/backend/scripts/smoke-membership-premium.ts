@@ -13,6 +13,7 @@ import { matchingService } from "../src/services/matching.service";
 import { campaignService } from "../src/services/campaign.service";
 import { supportTicketService } from "../src/services/support-ticket.service";
 import { membershipAnalyticsService } from "../src/services/membership-analytics.service";
+import { directInsertLiveFlags } from "../src/lib/catalog-governance";
 
 let pass = 0;
 let fail = 0;
@@ -79,7 +80,7 @@ async function main() {
   ids.plan = plan.id;
 
   const svc = await prisma.service.create({
-    data: {
+    data: { ...directInsertLiveFlags("smoke-membership-premium"),
       name: `TEST Service ${tag}`,
       slug: `test-svc-${tag}`,
       description: "x",

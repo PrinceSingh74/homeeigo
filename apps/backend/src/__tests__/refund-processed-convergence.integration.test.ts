@@ -25,6 +25,7 @@ import { bookingService } from "../services/booking.service";
 import { bookingRefundService } from "../services/booking-refund.service";
 import { paymentService } from "../services/payment.service";
 import { razorpayService } from "../services/razorpay.service";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 const rnd = () => Math.random().toString(36).slice(2, 8);
 
@@ -48,7 +49,7 @@ async function user(tag: string, role: "CUSTOMER" | "ADMIN" = "CUSTOMER") {
 async function gatewayPaid() {
   const u = await user("gw");
   const s = await prisma.service.create({
-    data: { name: `rpc-${rnd()}-${Date.now()}`, slug: `rpc-${rnd()}-${Date.now()}`, description: "x", category: "cleaning", basePrice: 500, estimatedDuration: 60 },
+    data: { ...LIVE_FIXTURE_SERVICE, name: `rpc-${rnd()}-${Date.now()}`, slug: `rpc-${rnd()}-${Date.now()}`, description: "x", category: "cleaning", basePrice: 500, estimatedDuration: 60 },
   });
   const a = await prisma.address.create({
     data: { userId: u.id, label: "H", addressLine1: "1 St", city: "Mumbai", state: "MH", zipCode: "400001", latitude: 19.076, longitude: 72.8777 },

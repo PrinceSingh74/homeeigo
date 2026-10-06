@@ -15,6 +15,7 @@ import crypto from "crypto";
 import { writeFileSync, mkdirSync, readFileSync } from "fs";
 import { spawn } from "node:child_process";
 import { BookingStatus, PaymentStatus, UserRole } from "@prisma/client";
+import { directInsertLiveFlags } from "../src/lib/catalog-governance";
 
 const root = resolve(import.meta.dir, "..");
 config({ path: join(root, ".env") });
@@ -284,7 +285,7 @@ async function createRefundFixture(
 ): Promise<{ paymentId: string; bookingId: string; serviceId: string; providerId: string; addressId: string }> {
   const amountInr = capturedAmountInr(captured);
   const service = await prisma.service.create({
-    data: {
+    data: { ...directInsertLiveFlags("razorpay-refund-certification"),
       name: `Rzp Refund ${RUN_ID}`,
       slug: `rzp-refund-${RUN_ID}`,
       description: "Refund cert fixture",

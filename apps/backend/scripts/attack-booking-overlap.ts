@@ -8,10 +8,11 @@
 import "../src/load-env";
 import prisma from "../src/lib/prisma";
 import { bookingService } from "../src/services/booking.service";
+import { directInsertLiveFlags } from "../src/lib/catalog-governance";
 
 async function seed() {
   const svc = await prisma.service.create({
-    data: { name: `atk-svc-${Date.now()}`, slug: `atk-svc-${Date.now()}`, description: "x", category: "cleaning", basePrice: 500, estimatedDuration: 60 },
+    data: { ...directInsertLiveFlags("attack-booking-overlap"), name: `atk-svc-${Date.now()}`, slug: `atk-svc-${Date.now()}`, description: "x", category: "cleaning", basePrice: 500, estimatedDuration: 60 },
   });
   return svc.id;
 }

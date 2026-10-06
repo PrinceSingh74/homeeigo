@@ -18,6 +18,7 @@ import {
   type CleanupResult,
   type EcoCertFixtures,
 } from "./lib/ecosystem-cert-cleanup";
+import { directInsertLiveFlags } from "../src/lib/catalog-governance";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..", "..", "..");
@@ -87,7 +88,7 @@ async function main() {
   // ── Setup fixtures (real rows, cleaned up at end) ──
   const passwordHash = await Bun.password.hash("Eco@123", { algorithm: "bcrypt", cost: 4 });
   const service = await prisma.service.create({
-    data: {
+    data: { ...directInsertLiveFlags("ecosystem-enterprise-certification"),
       name: `Eco Service ${RUN_ID}`,
       slug: `eco-svc-${RUN_ID}`,
       description: "Ecosystem cert",

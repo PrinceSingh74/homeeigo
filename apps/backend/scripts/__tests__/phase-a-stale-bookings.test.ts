@@ -28,6 +28,7 @@ import { provenanceForNewUser } from "../../src/lib/data-provenance";
 import { walletService } from "../../src/services/wallet.service";
 import { walletCheckoutService } from "../../src/services/wallet-checkout.service";
 import { freshLoopClock } from "../../src/__tests__/helpers/fresh-loop-clock";
+import { directInsertLiveFlags } from "../../src/lib/catalog-governance";
 
 const BACKEND = resolve(import.meta.dir, "../..");
 /** Overridable so the break-the-fix runs can point the same tests at a deliberately broken copy. */
@@ -111,7 +112,7 @@ async function customer(tag: string): Promise<string> {
 
 async function bookingFor(userId: string, number: string, data: Record<string, unknown>): Promise<string> {
   const s = await prisma.service.create({
-    data: { name: `stepb-${rnd()}-${Date.now()}`, slug: `stepb-${rnd()}-${Date.now()}`, description: "x", category: "cleaning", basePrice: 500, estimatedDuration: 60 },
+    data: { ...directInsertLiveFlags("phase-a-stale-bookings.test"), name: `stepb-${rnd()}-${Date.now()}`, slug: `stepb-${rnd()}-${Date.now()}`, description: "x", category: "cleaning", basePrice: 500, estimatedDuration: 60 },
   });
   const a = await prisma.address.create({
     data: { userId, label: "H", addressLine1: "1 St", city: "Mumbai", state: "MH", zipCode: "400001", latitude: 19.076, longitude: 72.8777 },

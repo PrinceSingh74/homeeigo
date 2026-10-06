@@ -13,6 +13,7 @@ import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { describe, test, expect, beforeAll } from "bun:test";
 import prisma from "../lib/prisma";
 import { performanceNudgesService, NUDGE_RULES_VERSION } from "../services/performance-nudges.service";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 let providerTrend = "";   // large, genuinely changed samples
 let providerThin = "";    // 1 event per period — the fabrication trap
@@ -53,7 +54,7 @@ beforeAll(async () => {
   const svc =
     (await prisma.service.findFirst({ select: { id: true } })) ??
     (await prisma.service.create({
-      data: {
+      data: { ...LIVE_FIXTURE_SERVICE,
         name: "PN Fixture Service " + stamp, slug: "pn-fixture-" + stamp, description: "fixture",
         category: "cleaning", basePrice: 500, estimatedDuration: 60, isActive: true,
       },

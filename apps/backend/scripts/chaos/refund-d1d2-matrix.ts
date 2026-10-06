@@ -16,6 +16,7 @@
  */
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { directInsertLiveFlags } from "../../src/lib/catalog-governance";
 
 if (process.env.NODE_ENV !== "test") {
   console.error("REFUSED: NODE_ENV must be 'test' (.env.test has no gateway keys)");
@@ -124,7 +125,7 @@ const ledger = async () => one(`SELECT
   (SELECT count(*)::int FROM payments WHERE refunded_amount > amount + 0.01) payment_overrun`);
 
 const service = await prisma.service.create({
-  data: { name: `D12 ${RUN}`, slug: `d12-${RUN}`.toLowerCase(), description: "d1d2 matrix", category: "cleaning", basePrice: 1000, estimatedDuration: 60 },
+  data: { ...directInsertLiveFlags("refund-d1d2-matrix"), name: `D12 ${RUN}`, slug: `d12-${RUN}`.toLowerCase(), description: "d1d2 matrix", category: "cleaning", basePrice: 1000, estimatedDuration: 60 },
 });
 let seq = 0;
 type Fx = { bookingId: string; userId: string; paymentId: string | null; gatewayRef: string | null; total: number; walletShare: number; gap0: number; kind: "split" | "gateway" };

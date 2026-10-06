@@ -13,6 +13,7 @@ import { bookingService } from "../src/services/booking.service";
 import { subscriptionService } from "../src/services/subscription.service";
 import { entitlementService } from "../src/services/entitlement.service";
 import { SubscriptionStatus } from "@prisma/client";
+import { directInsertLiveFlags } from "../src/lib/catalog-governance";
 
 let pass = 0;
 let fail = 0;
@@ -69,10 +70,10 @@ async function main() {
   ids.plan = plan.id;
 
   const normalSvc = await prisma.service.create({
-    data: { name: `TEST Normal Clean ${tag}`, slug: `test-normal-${tag}`, description: "x", category: "cleaning", basePrice: 1000, estimatedDuration: 60, premiumOnly: false },
+    data: { ...directInsertLiveFlags("smoke-entitlements"), name: `TEST Normal Clean ${tag}`, slug: `test-normal-${tag}`, description: "x", category: "cleaning", basePrice: 1000, estimatedDuration: 60, premiumOnly: false },
   });
   const premiumSvc = await prisma.service.create({
-    data: { name: `TEST Premium Spa ${tag}`, slug: `test-premium-${tag}`, description: "x", category: "spa", basePrice: 2000, estimatedDuration: 90, premiumOnly: true },
+    data: { ...directInsertLiveFlags("smoke-entitlements"), name: `TEST Premium Spa ${tag}`, slug: `test-premium-${tag}`, description: "x", category: "spa", basePrice: 2000, estimatedDuration: 90, premiumOnly: true },
   });
   ids.normalSvc = normalSvc.id;
   ids.premiumSvc = premiumSvc.id;

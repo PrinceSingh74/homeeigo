@@ -19,6 +19,7 @@ import {
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 const RUN_ID = `svcfnd-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
@@ -97,13 +98,13 @@ describe.serial("Phase 01 — identity is enforced by the database", () => {
   test("service_code defaults to slug; slug, service_code and internal_service_code are unique", async () => {
     if (!dbOk) return;
     const a = await prisma.service.create({
-      data: { name: `Raw A ${RUN_ID}`, slug: tag("raw-a"), description: "raw", category: "cleaning", basePrice: 100, estimatedDuration: 30, internalServiceCode: `INT-${RUN_ID}` },
+      data: { ...LIVE_FIXTURE_SERVICE, name: `Raw A ${RUN_ID}`, slug: tag("raw-a"), description: "raw", category: "cleaning", basePrice: 100, estimatedDuration: 30, internalServiceCode: `INT-${RUN_ID}` },
     });
     created.push(a.id);
     expect(a.serviceCode).toBe(tag("raw-a"));
     const dupe = async (data: Partial<Prisma.ServiceUncheckedCreateInput>) =>
       prisma.service.create({
-        data: { name: `Raw ${Math.random()}`, slug: tag(`raw-${Math.random().toString(36).slice(2, 8)}`), description: "raw", category: "cleaning", basePrice: 100, estimatedDuration: 30, ...data },
+        data: { ...LIVE_FIXTURE_SERVICE, name: `Raw ${Math.random()}`, slug: tag(`raw-${Math.random().toString(36).slice(2, 8)}`), description: "raw", category: "cleaning", basePrice: 100, estimatedDuration: 30, ...data },
       });
     await expect(dupe({ slug: tag("raw-a") })).rejects.toMatchObject({ code: "P2002" });
     await expect(dupe({ serviceCode: tag("raw-a") })).rejects.toMatchObject({ code: "P2002" });
@@ -114,7 +115,7 @@ describe.serial("Phase 01 — identity is enforced by the database", () => {
     if (!dbOk) return;
     const bad = async (data: Partial<Prisma.ServiceUncheckedCreateInput>) =>
       prisma.service.create({
-        data: { name: `Bad ${Math.random()}`, slug: tag(`bad-${Math.random().toString(36).slice(2, 8)}`), description: "raw", category: "cleaning", basePrice: 100, estimatedDuration: 30, ...data },
+        data: { ...LIVE_FIXTURE_SERVICE, name: `Bad ${Math.random()}`, slug: tag(`bad-${Math.random().toString(36).slice(2, 8)}`), description: "raw", category: "cleaning", basePrice: 100, estimatedDuration: 30, ...data },
       });
     await expect(bad({ slug: "Has Spaces", serviceCode: tag("valid-code") })).rejects.toThrow(/services_slug_format/);
     await expect(bad({ serviceCode: "UPPER_case" })).rejects.toThrow(/services_service_code_format/);
@@ -128,7 +129,7 @@ describe.serial("Phase 01 — identity is enforced by the database", () => {
     const home = await prisma.serviceCategory.findUniqueOrThrow({ where: { slug: "home-cleaning" } });
     const foreignSub = await prisma.serviceCategory.findUniqueOrThrow({ where: { slug: "hourly" } }); // child of home-help
     const s = await prisma.service.create({
-      data: { name: `Tax ${RUN_ID}`, slug: tag("tax"), description: "raw", category: "cleaning", basePrice: 100, estimatedDuration: 30 },
+      data: { ...LIVE_FIXTURE_SERVICE, name: `Tax ${RUN_ID}`, slug: tag("tax"), description: "raw", category: "cleaning", basePrice: 100, estimatedDuration: 30 },
     });
     created.push(s.id);
     expect(s.categoryId).toBe(home.id);

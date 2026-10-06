@@ -12,6 +12,7 @@ import { walletCheckoutService } from "../services/wallet-checkout.service";
 import { createBookingWithQuote } from "./helpers/quote-token";
 import { trackingService } from "../services/tracking.service";
 import { financialIntegrityService } from "../services/financial-integrity.service";
+import { LIVE_FIXTURE_SERVICE } from "./helpers/live-fixture-service";
 
 const LAT = 19.076;
 const LNG = 72.8777;
@@ -31,7 +32,7 @@ async function fundWallet(userId: string, inr: number) {
   await walletService.verifyTopUp(userId, { razorpayOrderId: t.razorpayOrderId, razorpayPaymentId: `pay_${Date.now()}_${Math.random()}`, razorpaySignature: "sig" });
 }
 async function newBooking(userId: string) {
-  const s = await prisma.service.create({ data: { name: `reg-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, slug: `reg-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, description: "x", category: "cleaning", basePrice: 500, estimatedDuration: 60 } });
+  const s = await prisma.service.create({ data: { ...LIVE_FIXTURE_SERVICE, name: `reg-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, slug: `reg-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, description: "x", category: "cleaning", basePrice: 500, estimatedDuration: 60 } });
   const a = await prisma.address.create({ data: { userId, label: "H", addressLine1: "1 St", city: "Mumbai", state: "MH", zipCode: "400001", latitude: LAT, longitude: LNG } });
   const c = await createBookingWithQuote(userId, { serviceId: s.id, addressId: a.id, scheduledDate: new Date(Date.now() + 3 * 86400_000).toISOString() });
   if (!("booking" in c) || !c.booking) throw new Error(JSON.stringify(c));
@@ -111,7 +112,7 @@ describe("Phase 17 — Tracking", () => {
     const cu = await newUser();
     const pu = await newUser("VENDOR");
     const pv = await prisma.provider.create({ data: { userId: pu.id, serviceCategories: ["cleaning"], serviceRegions: ["Mumbai"], isActive: true, isApproved: true, isVerified: true } });
-    const s = await prisma.service.create({ data: { name: `tr-${Date.now()}`, slug: `tr-${Date.now()}`, description: "x", category: "cleaning", basePrice: 500, estimatedDuration: 60 } });
+    const s = await prisma.service.create({ data: { ...LIVE_FIXTURE_SERVICE, name: `tr-${Date.now()}`, slug: `tr-${Date.now()}`, description: "x", category: "cleaning", basePrice: 500, estimatedDuration: 60 } });
     const a = await prisma.address.create({ data: { userId: cu.id, label: "H", addressLine1: "1", city: "Mumbai", state: "MH", zipCode: "400001", latitude: LAT, longitude: LNG } });
     const cr = await createBookingWithQuote(cu.id, { serviceId: s.id, addressId: a.id, scheduledDate: new Date(Date.now() + 3 * 86400_000).toISOString() });
     if (!("booking" in cr) || !cr.booking) throw new Error("setup");

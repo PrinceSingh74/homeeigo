@@ -16,6 +16,7 @@ import {
   PaymentStatus,
   PrismaClient,
 } from "@prisma/client";
+import { directInsertLiveFlags } from "../src/lib/catalog-governance";
 requireDeclaredTarget({ label: "section03-seed-live-job" });
 
 const prisma = new PrismaClient();
@@ -147,7 +148,7 @@ async function main() {
   await prisma.service.upsert({
     where: { slug: "electrician" },
     update: { isActive: true, availableCities: ["Mumbai", "Gurugram", "Bengaluru"] },
-    create: {
+    create: { ...directInsertLiveFlags("section03-seed-live-job"),
       name: "Electrician",
       slug: "electrician",
       description: "Test-catalogue skill row so partner onboarding can select Electrician.",
@@ -169,7 +170,7 @@ async function main() {
     service = await prisma.service.upsert({
       where: { slug: "s03-live-cert-service" },
       update: { isActive: true },
-      create: {
+      create: { ...directInsertLiveFlags("section03-seed-live-job"),
         name: "S03 Live Cert Service",
         slug: "s03-live-cert-service",
         description: "Isolated catalogue row for the Section 03 live partner job.",

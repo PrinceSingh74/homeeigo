@@ -8,6 +8,7 @@
  *   (internal) ... wallet-refund-matrix.ts --child <mode> <bookingId> <userId>
  */
 import { spawn } from "node:child_process";
+import { directInsertLiveFlags } from "../../src/lib/catalog-governance";
 
 const dbUrl = process.env.DATABASE_URL ?? "";
 if (!/\/homigo_test(\?|&|$)/.test(dbUrl.split("?")[0] + "?")) {
@@ -127,7 +128,7 @@ function rec(id: string, ok: boolean, detail: string) {
 }
 
 const service = await prisma.service.create({
-  data: { name: `WRM ${RUN}`, slug: `wrm-${RUN}`.toLowerCase(), description: "wallet refund matrix", category: "cleaning",
+  data: { ...directInsertLiveFlags("wallet-refund-matrix"), name: `WRM ${RUN}`, slug: `wrm-${RUN}`.toLowerCase(), description: "wallet refund matrix", category: "cleaning",
     basePrice: 1000, estimatedDuration: 60, availableCities: ["Noida"], tags: ["wrm"] },
 });
 let seq = 0;
