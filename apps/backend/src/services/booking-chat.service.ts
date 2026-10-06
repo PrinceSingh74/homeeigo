@@ -1,4 +1,5 @@
 import prisma from "../lib/prisma";
+import { ACTIVE_FULFILMENT_STATUSES } from "../lib/privacy-policy.engine";
 import { sanitizeUserInput } from "../utils/sanitizer";
 import { notificationService } from "./notification.service";
 import { consumeRateLimitSmart } from "../middleware/rate-limit.middleware";
@@ -19,6 +20,8 @@ class BookingChatService {
         id: true,
         userId: true,
         providerId: true,
+        status: true,
+        acceptedAt: true,
         provider: { select: { userId: true } },
       },
     });
@@ -35,6 +38,15 @@ class BookingChatService {
     const providerUserId = booking.provider?.userId ?? null;
     if (booking.userId === actorUserId || providerUserId === actorUserId) return;
     throw new Error("FORBIDDEN");
+  }
+
+  /**
+   * Chat is the contact channel of a job in hand, like the masked phone and the visit note: it is
+   * open while the booking is in an active fulfilment status and closed outside it. After the job a
+   * problem goes through a case, not a message to someone who no longer holds the job.
+   */
+  private assertOpen(booking: { status: unknown }) {
+    if (!ACTIVE_FULFILMENT_STATUSES.has(String(booking.status))) throw new Error("CHAT_CLOSED");
   }
 
   async ensureConversation(bookingId: string) {
@@ -61,14 +73,27 @@ class BookingChatService {
     const booking = await this.loadBookingParticipants(bookingId);
     if (!booking) throw new Error("NOT_FOUND");
     this.assertParticipant(booking, actor.userId);
+    if (booking.userId !== actor.userId) this.assertOpen(booking);
 
     const conversation = await this.ensureConversation(bookingId);
     const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100);
 
+    // The conversation belongs to the booking, not to a partner. A partner reads what they wrote and
+    // what the customer wrote since they took the job; what was said to an earlier partner stays there.
+    const isCustomer = booking.userId === actor.userId;
+    const partnerScope = isCustomer
+      ? {}
+      : {
+          OR: [
+            { senderUserId: actor.userId },
+            ...(booking.acceptedAt ? [{ senderUserId: booking.userId, createdAt: { gte: booking.acceptedAt } }] : []),
+          ],
+        };
     const messages = await prisma.bookingMessage.findMany({
       where: {
         conversationId: conversation.id,
         ...(opts?.cursor ? { createdAt: { lt: new Date(opts.cursor) } } : {}),
+        ...partnerScope,
       },
       orderBy: { createdAt: "desc" },
       take: limit,
@@ -104,6 +129,7 @@ class BookingChatService {
     const booking = await this.loadBookingParticipants(bookingId);
     if (!booking) throw new Error("NOT_FOUND");
     this.assertParticipant(booking, actorUserId);
+    this.assertOpen(booking);
 
     const cleaned = sanitizeUserInput(body, 2000).trim();
     if (!cleaned) throw new Error("VALIDATION_ERROR");
@@ -182,7 +208,8 @@ class BookingChatService {
         userId: recipientUserId,
         type: "booking_chat_message",
         title: "New message",
-        message: cleaned.slice(0, 120),
+        // The text stays in the conversation, which closes with the job; a notification outlives it.
+        message: actorUserId === booking.userId ? "Your customer sent a message about this job." : "Your professional sent a message about your booking.",
         referenceId: bookingId,
         referenceType: "booking",
       });
@@ -217,6 +244,7 @@ class BookingChatService {
     const booking = await this.loadBookingParticipants(bookingId);
     if (!booking) throw new Error("NOT_FOUND");
     this.assertParticipant(booking, actorUserId);
+    if (booking.userId !== actorUserId) this.assertOpen(booking);
 
     const conversation = await this.ensureConversation(bookingId);
     const result = await prisma.bookingMessage.updateMany({

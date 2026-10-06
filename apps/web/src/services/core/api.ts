@@ -437,7 +437,7 @@ export const coreApi = {
         }>
       >(`/api/bookings/${id}/cancellation-quote`, { auth: true }).then((r) => r.data!),
     cancellationPolicy: () =>
-      apiRequest<ApiResponse<{ tiers: Array<Record<string, unknown>> }>>(
+      apiRequest<ApiResponse<import("@/lib/cancellation-policy").CancellationPolicyResponse>>(
         "/api/bookings/cancellation-policy",
         { auth: false },
       ).then((r) => r.data!),

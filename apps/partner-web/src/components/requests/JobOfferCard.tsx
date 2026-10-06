@@ -1,17 +1,22 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { m as motion } from "framer-motion";
 import {
   Check,
+  ChevronRight,
   Clock,
   IndianRupee,
   MapPin,
+  Package,
   Sparkles,
   TimerOff,
+  Wrench,
   X,
 } from "lucide-react";
 import { PartnerButton } from "@/components/ui/PartnerButton";
+import { JobBrief } from "@/components/requests/JobBrief";
 import { OfferCountdownRing } from "@/components/requests/OfferCountdownRing";
 import { useOfferCountdown } from "@/hooks/use-offer-countdown";
 import {
@@ -21,6 +26,7 @@ import {
 } from "@/hooks/use-partner-data";
 import type { PartnerBooking } from "@/types/partner";
 import { formatInr, formatTime } from "@/lib/format";
+import { offerBringList } from "@/lib/job-access";
 import { getErrorMessage, PartnerApiError } from "@/lib/api-error";
 import { useToastStore } from "@/stores/toast-store";
 
@@ -103,6 +109,7 @@ export function JobOfferCard({
   const estimatedNet = rateUsable ? request.finalAmount * (1 - commissionRate! / 100) : null;
 
   const addonTotal = (request.addons ?? []).reduce((sum, a) => sum + a.price, 0);
+  const bring = offerBringList(request.requirements);
 
   const accent =
     expired
@@ -226,10 +233,33 @@ export function JobOfferCard({
           <span className="min-w-0">{request.address?.fullAddress ?? "Address pending"}</span>
         </p>
 
+        {/* Scope before commitment: what was booked (variant, quantity, expected time) from the snapshot. */}
+        <JobBrief job={request.job} compact />
+
         {request.addons?.length ? (
           <p className="mt-2 text-xs text-partner-muted">
             {request.addons.map((a) => `${a.name} (+${formatInr(a.price)})`).join(" · ")}
           </p>
+        ) : null}
+
+        {/* What to bring, from the booking's requirements snapshot — nothing is listed when it has none. */}
+        {bring ? (
+          <dl className="mt-2 space-y-1 text-xs" data-testid="offer-bring-list">
+            {bring.materials.length > 0 ? (
+              <div className="flex items-start gap-1.5">
+                <Package className="mt-0.5 h-3.5 w-3.5 shrink-0 text-partner-primary" aria-hidden="true" />
+                <dt className="shrink-0 font-semibold text-partner-text">Materials to bring:</dt>
+                <dd className="min-w-0 text-partner-text-secondary">{bring.materials.join(" · ")}</dd>
+              </div>
+            ) : null}
+            {bring.equipment.length > 0 ? (
+              <div className="flex items-start gap-1.5">
+                <Wrench className="mt-0.5 h-3.5 w-3.5 shrink-0 text-partner-primary" aria-hidden="true" />
+                <dt className="shrink-0 font-semibold text-partner-text">Equipment to bring:</dt>
+                <dd className="min-w-0 text-partner-text-secondary">{bring.equipment.join(" · ")}</dd>
+              </div>
+            ) : null}
+          </dl>
         ) : null}
 
         {request.description ? (
@@ -238,13 +268,22 @@ export function JobOfferCard({
           </p>
         ) : null}
 
+        <Link
+          href={`/requests/${request.id}`}
+          className="mt-2 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-partner-primary hover:underline"
+          aria-label={`View details of the ${request.service.name} request ${request.bookingNumber}`}
+        >
+          View details
+          <ChevronRight className="h-4 w-4" aria-hidden="true" />
+        </Link>
+
         {expired ? (
-          <p className="mt-4 rounded-xl border border-partner-line bg-partner-bg/60 px-3 py-3 text-center text-xs font-medium text-partner-muted">
+          <p className="mt-2 rounded-xl border border-partner-line bg-partner-bg/60 px-3 py-3 text-center text-xs font-medium text-partner-muted">
             This request timed out before it was answered. It has been offered to another partner —
             declining or accepting it now would not reach the customer.
           </p>
         ) : (
-          <div className="mt-4 grid grid-cols-[1fr_1.6fr] gap-2">
+          <div className="mt-2 grid grid-cols-[1fr_1.6fr] gap-2">
             <PartnerButton
               variant="outline"
               className="w-full"

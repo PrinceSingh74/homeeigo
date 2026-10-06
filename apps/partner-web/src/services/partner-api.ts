@@ -565,6 +565,8 @@ export const partnerApi = {
       const addr = b.address;
       return {
         ...b,
+        // The customer's note: present only while this partner holds the job, otherwise null.
+        description: b.description ?? null,
         amount: b.amount ?? b.finalAmount,
         completedAt: b.completedAt ?? null,
         enRouteAt: b.enRouteAt ?? null,

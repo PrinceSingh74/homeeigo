@@ -19,7 +19,7 @@ import {
 import { Modal } from "@/components/ui/Modal";
 import { ServiceImage } from "@/components/ui/ServiceImage";
 import { cn } from "@/lib/utils";
-import type { SavedBooking } from "@/lib/bookings";
+import { professionalLabel, type SavedBooking } from "@/lib/bookings";
 import { useAppStore } from "@/stores/app-store";
 import {
   mapBackendBookingToSaved,
@@ -193,8 +193,11 @@ export function BookingDetailModal({
             <div className="space-y-3 rounded-2xl glass-card p-4 text-sm">
               <DetailRow icon={Calendar} label="Schedule" value={`${booking.dateLabel} · ${booking.timeLabel}`} />
               <DetailRow icon={MapPin} label="Address" value={booking.address} />
-              <DetailRow icon={User} label="Professional" value={booking.proName} />
-              <DetailRow icon={MessageSquare} label="Package" value={`${booking.packageName} Package`} />
+              <DetailRow icon={User} label="Professional" value={professionalLabel(booking)} />
+              {/* A finished label ("Split AC · 3 unit", "Standard Package"); absent when the server sent none. */}
+              {booking.packageName?.trim() ? (
+                <DetailRow icon={MessageSquare} label="Selection" value={booking.packageName} />
+              ) : null}
               {booking.addons?.length ? (
                 <DetailRow
                   icon={MessageSquare}

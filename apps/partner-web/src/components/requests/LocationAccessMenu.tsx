@@ -1,24 +1,29 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { ChevronDown, MapPin, Navigation, Radio } from "lucide-react";
+import { ChevronDown, Navigation, Radio } from "lucide-react";
 import {
   browserGpsAvailable,
   getPartnerCoords,
-  rememberPartnerFix,
   requestLiveGps,
   type PartnerCoords,
 } from "@/lib/partner-coords";
 import { cn } from "@/lib/cn";
 
-type GpsChoice = "off" | "live" | "last" | "job";
+type GpsChoice = "off" | "live" | "last";
 
+/**
+ * Where the partner's position comes from for "I've arrived" / "Start job".
+ *
+ * Both choices resolve to a fix the DEVICE reported — a live browser read, or the last one it took
+ * (bounded by age in `getPartnerCoords`). There is deliberately no way to declare a position: the
+ * server checks the partner's distance from the job, and a position copied from the job would make
+ * that check compare the job with itself.
+ */
 export function LocationAccessMenu({
-  jobCoords,
   forceOpen,
   onResolved,
 }: {
-  jobCoords?: PartnerCoords | null;
   forceOpen?: boolean;
   onResolved?: (coords: PartnerCoords) => void;
 }) {
@@ -44,7 +49,7 @@ export function LocationAccessMenu({
       }
       if (next === "live") {
         if (!gpsOk) {
-          setHint("This page is not localhost/https, so the browser blocked live GPS. Pick “I’m at the customer”.");
+          setHint("The browser blocks live GPS on this address. Open the partner app over https and try again.");
           setChoice("off");
           return;
         }
@@ -62,25 +67,12 @@ export function LocationAccessMenu({
       if (next === "last") {
         const last = await getPartnerCoords("soft");
         if (!last) {
-          setHint("No saved GPS yet. Turn on live GPS or check in at the customer.");
+          setHint("No recent GPS fix is saved. Turn on live GPS.");
           setChoice("off");
           return;
         }
-        rememberPartnerFix(last.latitude, last.longitude, true);
         setHint("Using last saved GPS.");
         onResolved?.(last);
-        setOpen(false);
-        return;
-      }
-      if (next === "job") {
-        if (!jobCoords) {
-          setHint("Job pin is missing on this booking.");
-          setChoice("off");
-          return;
-        }
-        rememberPartnerFix(jobCoords.latitude, jobCoords.longitude, true);
-        setHint("Checked in at the customer location.");
-        onResolved?.(jobCoords);
         setOpen(false);
       }
     } finally {
@@ -89,7 +81,7 @@ export function LocationAccessMenu({
   }
 
   const label =
-    choice === "live" ? "GPS on" : choice === "last" ? "Last GPS" : choice === "job" ? "At customer" : "GPS off";
+    choice === "live" ? "GPS on" : choice === "last" ? "Last GPS" : "GPS off";
 
   return (
     <div className="relative">
@@ -118,7 +110,7 @@ export function LocationAccessMenu({
           className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-partner-line bg-white shadow-lg"
         >
           <p className="border-b border-partner-line px-3 py-2 text-[11px] font-medium text-partner-muted">
-            {gpsOk ? "Turn on GPS for arrive / start" : "Live GPS blocked on this URL — use check-in below"}
+            {gpsOk ? "Turn on GPS for arrive / start" : "Live GPS is blocked on this address — open the app over https"}
           </p>
           <button
             type="button"
@@ -137,15 +129,6 @@ export function LocationAccessMenu({
           >
             <Radio className="h-4 w-4 text-partner-muted" />
             Use last saved GPS
-          </button>
-          <button
-            type="button"
-            disabled={busy || !jobCoords}
-            onClick={() => void apply("job")}
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium text-partner-text hover:bg-partner-bg disabled:opacity-50"
-          >
-            <MapPin className="h-4 w-4 text-partner-success" />
-            I’m at the customer
           </button>
         </div>
       ) : null}

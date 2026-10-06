@@ -236,6 +236,7 @@ export type PartnerBooking = {
   paymentExempt?: boolean;
   /** §11: set on a case-created rework / revisit visit; null for an ordinary booking. */
   followUp?: { kind: string; parentBookingNumber: string | null; caseNumber: string | null } | null;
+  /** The customer's note. The server sends it non-null only while this partner holds the job. */
   description: string | null;
   eta: number | null;
   customer: {
@@ -255,6 +256,11 @@ export type PartnerBooking = {
     fullAddress: string;
     latitude: number | null;
     longitude: number | null;
+    /** Access details from `GET /api/bookings/:id` — null unless this partner holds an active job. */
+    flatNumber?: string | null;
+    buildingName?: string | null;
+    landmark?: string | null;
+    specialInstructions?: string | null;
   };
   ratingGiven: boolean;
   rating: number | null;
@@ -353,8 +359,7 @@ export type JobEvidenceItem = {
   mediaAccessUrl?: string | null;
   capturedAt: string;
   isCurrent: boolean;
-  latitude?: number | null;
-  longitude?: number | null;
+  // No coordinates: the server does not send where a proof was captured to the partner.
 };
 
 export type JobChatMessage = {

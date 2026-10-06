@@ -30,7 +30,7 @@ import { Breadcrumbs } from "@/components/services-catalog/primitives";
 import { ServiceVisit } from "@/components/services-catalog/detail/ServiceVisit";
 import { ServiceReviews } from "@/components/services-catalog/detail/ServiceReviews";
 import { HourlyHelpModule, hourlyBooking, type HourlySelection } from "@/components/services-catalog/HourlyHelpModule";
-import { BeautyAudienceSelector, BeautyProfessionalSelector } from "@/components/services-catalog/beauty/BeautySelectors";
+import { BeautyAudienceSelector } from "@/components/services-catalog/beauty/BeautySelectors";
 import { ServiceHero } from "@/components/services-catalog/detail/ServiceHero";
 import { HomeHelpHero } from "@/components/services-catalog/home-help/HomeHelpHero";
 import { HomeHelpShapes } from "@/components/services-catalog/home-help/HomeHelpShapes";
@@ -308,7 +308,7 @@ function LiveBody({
       };
     }
     const parts = [
-      variant?.name ?? (useTiers ? `${tierChoice.name} · ${tierChoice.tag}` : null),
+      variant?.name ?? (useTiers ? tierChoice.name : null),
       rule ? `${q} ${unitWord(rule, q)}` : null,
       audience && isBeauty ? audienceName(audience) : null,
     ].filter(Boolean);
@@ -372,7 +372,7 @@ function LiveBody({
     price: v.quantity?.unitPrice ?? v.price,
     priceSuffix: rule ? `/ ${rule.unitLabel}` : undefined,
   }));
-  const tierChoices: OptionChoice[] = tiers.map((t) => ({ id: String(t.index), name: t.name, tag: t.tag, price: t.price }));
+  const tierChoices: OptionChoice[] = tiers.map((t) => ({ id: String(t.index), name: t.name, price: t.price }));
   const showOptions = (isBeauty && audiences.length > 1) || variantChoices.length > 1 || useTiers || Boolean(rule);
   const duration = verdict?.duration ?? detail?.duration ?? null;
   const media = detail?.content;
@@ -440,7 +440,9 @@ function LiveBody({
                       <QuantitySelector rule={rule} {...bounds} value={q} onChange={setQuantity} />
                     </fieldset>
                   )}
-                  {isBeauty && <BeautyProfessionalSelector options={service.config?.professionalPreferences} />}
+                  {/* No professional-preference control: the backend offers none while assignment
+                      cannot honour one (PROFESSIONAL_PREFERENCE_SUPPORTED is false; the public
+                      config carries no preferences and the resolver refuses any but "no preference"). */}
                   {content.eligibility && <p className="text-sm text-muted">{content.eligibility}</p>}
                 </div>
               </DetailSection>

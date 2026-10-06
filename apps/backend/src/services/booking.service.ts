@@ -70,6 +70,7 @@ import {
   collectForbiddenPartnerKeys,
   partnerCancellationReason,
   partnerCustomerStage,
+  partnerJobNote,
   stripForbiddenPartnerKeys,
   toCustomerSafePartner,
   toPartnerSafeAddress,
@@ -1026,6 +1027,8 @@ export class BookingService {
           partnerCustomerStage({ isAssignee: b.providerId === providerId, status: String(b.status) }),
         ),
         address: toPartnerSafeAddress(addressRaw, privacyCtx),
+        // The customer's note for the visit: the job list row carries it, and the job page reads this payload.
+        description: partnerJobNote(b.description, partnerCustomerStage({ isAssignee: b.providerId === providerId, status: String(b.status) })),
         execution: partnerExecutionFromSnapshot(b.serviceConfigSnapshot),
         job: partnerJobBrief(b.serviceSelection, b.addons, b.estimatedDuration),
         // Phase 06: what THIS booking recorded at creation — never the service’s current configuration.

@@ -10,6 +10,13 @@
  *   bun --env-file=.env run scripts/seed-services.ts
  */
 import prisma from "../src/lib/prisma";
+import { directCatalogWriteRefusal } from "../src/lib/catalog-governance";
+
+const refusal = directCatalogWriteRefusal("seed-services");
+if (refusal) {
+  console.error(refusal);
+  process.exit(1);
+}
 
 const IMG = (id: string, w = 1200) =>
   `https://images.unsplash.com/${id}?w=${w}&q=90&auto=format&fit=crop`;

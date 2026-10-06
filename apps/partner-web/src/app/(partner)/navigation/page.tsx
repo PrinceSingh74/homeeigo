@@ -2,16 +2,21 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   Navigation2, Clock, Route as RouteIcon, Gauge, Zap, Brain, Flag,
   ArrowUp, CornerUpLeft, CornerUpRight, MoveUpLeft, MoveUpRight,
   RotateCcw, RotateCw, Split, Merge, MapPin, ChevronDown, ChevronUp,
-  Volume2, VolumeX, TriangleAlert,
+  Volume2, VolumeX, TriangleAlert, ExternalLink,
 } from "lucide-react";
+import Link from "next/link";
 import { useGeolocationWatcher } from "@/hooks/use-geolocation-watcher";
 import { usePartnerActiveBookingsQuery } from "@/hooks/use-partner-data";
 import { usePartnerIntelligence } from "@/hooks/use-partner-intelligence";
 import { partnerApi } from "@/services/partner-api";
+import { bookingDetailKey } from "@/lib/booking-cache";
+import { googleDirectionsUrl, navigationCustomerLabel, pickNavigationBooking } from "@/lib/job-navigation";
 import type { NavGuidance, NavRoute, NavStep } from "@/components/navigation/PartnerNavMap";
 import { MapPerformanceBoundary } from "@/components/perf/MapPerformanceBoundary";
 
@@ -26,8 +31,6 @@ const TRAFFIC: Record<NavRoute["trafficLevel"], { t: string; c: string }> = {
   light: { t: "Clear", c: "text-emerald-400" }, moderate: { t: "Moderate traffic", c: "text-amber-400" }, heavy: { t: "Heavy traffic", c: "text-red-400" },
 };
 const ROUTE_SOURCE: Record<string, string> = { google: "Google Maps route", osrm: "OpenStreetMap route", haversine: "Straight-line estimate" };
-const googleDirectionsUrl = (d: { lat: number; lng: number }) =>
-  `https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}&travelmode=driving`;
 
 /** Google maneuver string → arrow icon (the visual language every nav app speaks). */
 function ManeuverIcon({ maneuver, size = 26, className = "" }: { maneuver: string; size?: number; className?: string }) {
@@ -61,15 +64,29 @@ export default function PartnerNavigationPage() {
   const position = fix ? { lat: fix.latitude, lng: fix.longitude } : null;
   const accuracy = (fix as { accuracy?: number } | null)?.accuracy ?? null;
 
+  /**
+   * `?booking=<id>` (the job page's "Navigate") binds this screen to that job: its own read, under the
+   * key the job page uses, and never another job's address. Without the parameter the screen keeps its
+   * old behaviour — the first active booking that carries coordinates.
+   */
+  const requestedId = useSearchParams().get("booking");
   const activeQ = usePartnerActiveBookingsQuery();
-  const active = (activeQ.data as { bookings?: Array<{ id: string; customer?: { name?: string }; address?: { fullAddress?: string; latitude: number | null; longitude: number | null } }> } | undefined)?.bookings?.find((b) => b.address?.latitude != null && b.address?.longitude != null);
+  const requestedQ = useQuery({
+    queryKey: bookingDetailKey(requestedId ?? ""),
+    queryFn: () => partnerApi.getBooking(requestedId!),
+    enabled: !!requestedId,
+  });
+  const candidates = requestedId ? (requestedQ.data ? [requestedQ.data] : []) : activeQ.data?.bookings ?? [];
+  const active = pickNavigationBooking(candidates, requestedId);
+  const customerLabel = navigationCustomerLabel(active);
+  const destLat = active?.address?.latitude ?? null;
+  const destLng = active?.address?.longitude ?? null;
   const destination = useMemo(
-    () =>
-      active?.address?.latitude != null && active?.address?.longitude != null
-        ? { lat: active.address.latitude, lng: active.address.longitude }
-        : undefined,
-    [active?.address?.latitude, active?.address?.longitude],
+    () => (destLat != null && destLng != null ? { lat: destLat, lng: destLng } : undefined),
+    [destLat, destLng],
   );
+  // The requested job cannot be routed: it carries no coordinates, or it is not this partner's.
+  const requestedUnavailable = !!requestedId && !requestedQ.isLoading && !destination;
 
   const intel = usePartnerIntelligence(position);
   const best = useMemo(() => [...intel.zones].sort((a, b) => b.expectedEarnings2h.hi - a.expectedEarnings2h.hi)[0], [intel.zones]);
@@ -144,7 +161,7 @@ export default function PartnerNavigationPage() {
           position={position}
           accuracy={accuracy}
           destination={destination}
-          destLabel={active?.customer?.name ?? null}
+          destLabel={customerLabel}
           onRoute={setRoute}
           onGuidance={onGuidance}
           onArrival={() => { void partnerApi.navTelemetry({ type: "arrival" }); if (voiceOn) speak("You have arrived at the customer's location."); }}
@@ -212,7 +229,7 @@ export default function PartnerNavigationPage() {
               <li className="flex items-center gap-2.5 px-2 py-1.5">
                 <MapPin size={15} className="shrink-0 text-emerald-400" />
                 <p className="text-xs font-semibold text-emerald-300">
-                  {active?.customer?.name ? `${active.customer.name} · ` : ""}{active?.address?.fullAddress ?? "Destination"}
+                  {customerLabel ? `${customerLabel} · ` : ""}{active?.address?.fullAddress || "Destination"}
                 </p>
               </li>
             </ol>
@@ -236,11 +253,20 @@ export default function PartnerNavigationPage() {
             Navigate
           </a>
         </div>
-      ) : !destination ? (
+      ) : requestedId ? (
+        // Bound to one job: say why there is no route rather than routing to a different job.
+        <div role="status" className="absolute left-3 right-3 top-3 z-10 rounded-2xl border border-white/10 bg-slate-900/85 p-3 text-center text-sm text-slate-300 backdrop-blur-xl">
+          <Navigation2 size={16} className="mr-1 inline text-sky-400" aria-hidden />
+          {requestedUnavailable ? "This job has no location to navigate to. " : "Loading the job's location… "}
+          <Link href={`/requests/${encodeURIComponent(requestedId)}`} className="font-semibold text-sky-300 underline">
+            Back to the job
+          </Link>
+        </div>
+      ) : (
         <div className="absolute left-3 right-3 top-3 z-10 rounded-2xl border border-white/10 bg-slate-900/85 p-3 text-center text-sm text-slate-300 backdrop-blur-xl">
           <Navigation2 size={16} className="mr-1 inline text-sky-400" /> No active trip — positioning for the best next zone
         </div>
-      ) : null}
+      )}
 
       {/* ---- Bottom sheet: ETA + earnings merge + insights ---- */}
       <div className="absolute inset-x-0 bottom-0 z-10 space-y-2.5 rounded-t-3xl border-t border-white/10 bg-slate-900/90 p-4 backdrop-blur-xl">
@@ -263,6 +289,29 @@ export default function PartnerNavigationPage() {
               <Mini Icon={Gauge} label="Speed" value={guidance ? `${guidance.speedKmh} km/h` : "—"} />
               <Mini Icon={Navigation2} label="GPS" value={accuracy != null ? `±${Math.round(accuracy)}m` : "—"} />
             </div>
+          </div>
+        ) : null}
+
+        {/* Always available with a destination: turn-by-turn in the phone's maps app, no Maps key needed. */}
+        {destination ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={googleDirectionsUrl(destination)}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="nav-open-external"
+              className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 text-sm font-bold text-white hover:bg-sky-400"
+            >
+              <ExternalLink size={15} aria-hidden /> Open in Google Maps
+            </a>
+            {active ? (
+              <Link
+                href={`/requests/${encodeURIComponent(active.id)}`}
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-white/15 px-4 text-sm font-semibold text-slate-200 hover:bg-white/5"
+              >
+                Job details
+              </Link>
+            ) : null}
           </div>
         ) : null}
 

@@ -53,13 +53,13 @@ import {
 import { AddAddressModal } from "@/components/profile/AddAddressModal";
 import {
   SERVICES,
-  popularPackageIndex,
   packagePositionForTier,
   getLocation,
   type Service,
 } from "@/lib/services";
 import { bookUrl, parseBookParams } from "@/lib/booking-url";
-import { tierOptions } from "@/lib/catalog/pricing";
+import { bookingSummaryLine } from "@/lib/booking-summary";
+import { NEUTRAL_PRESENTATION, toUiService, type ServicePresentation } from "@/lib/book-services";
 import { SERVICE_IMAGES, type SavedBooking } from "@/lib/bookings";
 import { useAppStore } from "@/stores/app-store";
 import {
@@ -87,73 +87,57 @@ import { attemptFingerprint, attemptKeyFor, keepAttemptAfter, releaseAttempt, se
 
 // Only claims the product can back: partner approval, itemised server pricing,
 // live arrival tracking and gateway payments. (No guarantees or material claims.)
+// "Approved", not "Verified": every dispatchable partner is admin-approved, active and unrestricted
+// (backend DISPATCHABLE_PROVIDER_WHERE), but identity verification (KYC) is a gate only on services
+// whose configuration requires it — so "verified" is not true of every booking.
 const HERO_FEATURES: { icon: LucideIcon; label: string }[] = [
-  { icon: ShieldCheck, label: "Verified\nProfessionals" },
+  { icon: ShieldCheck, label: "Approved\nProfessionals" },
   { icon: BadgeCheck, label: "Itemised\nPricing" },
   { icon: Clock, label: "Live Arrival\nTracking" },
   { icon: CreditCard, label: "Secure\nPayments" },
 ];
 
 const TRUST = [
-  { icon: ShieldCheck, label: "Verified\nProfessionals" },
+  { icon: ShieldCheck, label: "Approved\nProfessionals" },
   { icon: UserCheck, label: "Start PIN\nat the Door" },
   { icon: Clock, label: "Live\nTracking" },
   { icon: BadgeCheck, label: "Cancellation Terms\nShown Upfront" },
   { icon: CreditCard, label: "Secure\nPayments" },
 ];
 
-const FALLBACK_SERVICE: Service = {
+/**
+ * What `svc` holds until the catalogue has loaded. It is never rendered as a service: the booking
+ * body appears only once `catalogueReady`, and until then the page says it is loading or that
+ * services are unavailable. It carries no price, tier, rating or copy on purpose.
+ */
+const PLACEHOLDER_SERVICE: Service = {
   id: "service-unavailable",
-  name: "Service",
-  price: "₹0",
+  name: "",
+  price: "",
   priceFrom: 0,
-  color: "#7C3AED",
-  title: "Service",
-  tagline: "Live catalog is syncing. Please retry shortly.",
-  rating: "0",
-  reviews: "0",
+  color: NEUTRAL_PRESENTATION.color,
+  title: "",
+  tagline: "",
+  rating: "",
+  reviews: "",
   homes: "",
-  packages: [{ name: "Standard", tag: "Default", price: 0, items: ["Live pricing unavailable"] }],
+  packages: [],
   keywords: [],
 };
 
 /**
- * Exactly the tiers the server prices (resolvePackagePrice: min / base / max, exact values only).
- * Not base × 1.35 when maxPrice is unset — the server refuses that price — and no per-tier feature
- * claims the service does not actually configure.
+ * The tier a service opens on when the URL names none: the base price (tier index 1, "Standard").
+ * A starting point for the picker only — nothing is shown or claimed about it.
  */
-function packagesFromApi(api: BackendService): Service["packages"] {
-  const base = api.basePrice ?? api.minPrice ?? 0;
-  const min = api.minPrice ?? base;
-  const max = api.maxPrice ?? Math.max(base, min);
-  return tierOptions({ base, min, max }).map((t) => ({
-    name: t.name,
-    tag: t.tag,
-    price: t.price,
-    popular: t.price === base,
-    items: [],
-    tierIndex: t.index,
-  }));
-}
+const DEFAULT_TIER_INDEX = 1;
 
-function toUiService(api: BackendService, fallbackIndex = 0): Service {
-  const fallback = SERVICES.length ? SERVICES[fallbackIndex % SERVICES.length]! : FALLBACK_SERVICE;
-  const priceFrom = api.basePrice ?? api.minPrice ?? fallback.priceFrom;
-  return {
-    ...fallback,
-    id: api.id,
-    slug: api.slug,
-    name: api.name || fallback.name,
-    title: api.name || fallback.title,
-    tagline: api.description || fallback.tagline,
-    priceFrom,
-    price: `₹${priceFrom}`,
-    packages: packagesFromApi(api),
-    rating: api.rating != null && api.rating > 0 && (api.reviewCount ?? 0) > 0 ? String(api.rating) : "New",
-    reviews: (api.reviewCount ?? 0) > 0 ? `${api.reviewCount}` : "0",
-    featured: api.isFeatured ?? fallback.featured,
-    img: api.thumbnail ?? api.icon ?? fallback.img,
-  };
+/**
+ * Colour, icon and picture only, borrowed from the built-in list by position (empty in production
+ * builds). Nothing commercial is taken from it — see lib/book-services.
+ */
+function presentationFor(index: number): ServicePresentation {
+  const entry = SERVICES[index % Math.max(SERVICES.length, 1)];
+  return entry ? { color: entry.color, icon: entry.icon, img: entry.img } : NEUTRAL_PRESENTATION;
 }
 
 /* ----------------------------- helpers ----------------------------- */
@@ -221,9 +205,12 @@ function BookPageContent() {
   const { payForBooking } = useBookingPayment();
   const services: Service[] = useMemo(() => {
     const incoming = servicesData?.services ?? [];
-    if (!incoming.length) return SERVICES.length ? SERVICES : [FALLBACK_SERVICE];
-    return incoming.map((service, index) => toUiService(service, index));
+    // Never the built-in list: its prices, ratings and package contents are not the server's.
+    if (!incoming.length) return [PLACEHOLDER_SERVICE];
+    return incoming.map((service, index) => toUiService(service, presentationFor(index)));
   }, [servicesData]);
+  /** The catalogue answered with services. Until then nothing about any service is shown. */
+  const catalogueReady = !servicesLoading && !servicesError && (servicesData?.services?.length ?? 0) > 0;
 
   const parsed = parseBookParams(searchParams);
   const initialService = parsed.serviceId
@@ -232,7 +219,7 @@ function BookPageContent() {
         services.findIndex((s) => s.id === parsed.serviceId || s.slug === parsed.serviceId),
       )
     : 0;
-  const initialPkg = packagePositionForTier(services[initialService] ?? services[0]!, parsed.packageIndex);
+  const initialPkg = packagePositionForTier(services[initialService] ?? services[0]!, parsed.packageIndex ?? DEFAULT_TIER_INDEX);
 
   const [service, setService] = useState(initialService);
   /** The customer chose a service on this page, so the one on screen is deliberate whatever the URL says. */
@@ -292,7 +279,7 @@ function BookPageContent() {
         services.findIndex((s) => s.id === sid || s.slug === sid),
       );
       setService(idx);
-      setPkg(packagePositionForTier(services[idx] ?? services[0]!, parsed.packageIndex));
+      setPkg(packagePositionForTier(services[idx] ?? services[0]!, parsed.packageIndex ?? DEFAULT_TIER_INDEX));
     }
     if (parsed.query) setSearchQuery(parsed.query);
     if (parsed.addons.length) {
@@ -339,7 +326,7 @@ function BookPageContent() {
     setSearchQuery(q);
     setPickedHere(true);
     setService(idx);
-    setPkg(popularPackageIndex(services[idx] ?? services[0]!));
+    setPkg(packagePositionForTier(services[idx] ?? services[0]!, DEFAULT_TIER_INDEX));
     setAddons(new Set());
     setSelection(null);
     showToast(`${(services[idx] ?? services[0]!).title} selected`, "info");
@@ -360,7 +347,7 @@ function BookPageContent() {
   const selectService = (i: number) => {
     setPickedHere(true);
     setService(i);
-    setPkg(popularPackageIndex(services[i] ?? services[0]!));
+    setPkg(packagePositionForTier(services[i] ?? services[0]!, DEFAULT_TIER_INDEX));
     setAddons(new Set());
     setSelection(null);
     showToast(`${(services[i] ?? services[0]!).title} selected`, "info");
@@ -385,7 +372,8 @@ function BookPageContent() {
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
-  const selected = svc.packages[pkg] ?? svc.packages[0];
+  // Null when the API gave the service no price: there is then no tier to show or to send.
+  const selected = svc.packages[pkg] ?? svc.packages[0] ?? null;
   const addonIds = Array.from(addons);
   const rawService = servicesData?.services?.find((s) => s.id === svc.id);
   const addonList = addonCatalogFor(rawService);
@@ -402,7 +390,9 @@ function BookPageContent() {
         audience: effectiveSelection.audience,
         professionalPreference: effectiveSelection.professionalPreference,
       }
-    : { packagePrice: selected.price };
+    : selected
+      ? { packagePrice: selected.price }
+      : {};
   /**
    * Which times the SERVER will accept for the chosen day. The booking step used to offer six
    * hardcoded times nobody had agreed to; this asks.
@@ -463,6 +453,12 @@ function BookPageContent() {
   const mustConfirm = requirements?.beforeBooking ?? [];
   const unconfirmed = mustConfirm.filter((r) => !attested.has(r.code));
   const sel = quote?.selection;
+  const summaryLine = bookingSummaryLine({
+    hasSelection: Boolean(effectiveSelection),
+    selection: sel,
+    serverPrice: quote?.packagePrice,
+    tier: selected,
+  });
 
   async function resolveAddressId(): Promise<string | null> {
     if (effectiveAddressId) return effectiveAddressId;
@@ -585,7 +581,9 @@ function BookPageContent() {
         serviceId: svc.id,
         serviceTitle: svc.title,
         serviceName: svc.name,
-        packageName: selected.name,
+        // What was booked: the server-priced selection, or the tier when the tier was the selection.
+        // A finished label, printed as is by every consumer; empty when there is nothing to name.
+        packageName: summaryLine.label ?? "",
         dateLabel: `${formatDateLabel(scheduledAt)}, ${scheduledAt.getFullYear()}`,
         timeLabel: formatTimeLabel(scheduledAt),
         address: addressText,
@@ -671,13 +669,12 @@ function BookPageContent() {
               </button>
             </div>
           ) : null}
-          {searchQuery.trim() && filteredServices.length === 0 ? (
+          {catalogueReady && searchQuery.trim() && filteredServices.length === 0 ? (
             <p className="col-span-full rounded-2xl border border-dashed border-line bg-surface/60 px-4 py-8 text-center text-sm text-muted">
-              No services match &ldquo;{searchQuery.trim()}&rdquo;. Try
-              cleaning, AC, plumbing, or electrical.
+              No services match &ldquo;{searchQuery.trim()}&rdquo;.
             </p>
           ) : null}
-          {(servicesLoading || servicesError ? [] : filteredServices).map(({ s, i }) => {
+          {(catalogueReady ? filteredServices : []).map(({ s, i }) => {
             const active = i === service;
             const Icon = s.icon;
             return (
@@ -705,7 +702,7 @@ function BookPageContent() {
                 />
                 {active && (
                   <span className="absolute right-2 top-2 z-10 rounded-full bg-white/95 px-2 py-0.5 text-[9px] font-bold text-emerald-700 shadow-e2 backdrop-blur sm:right-3 sm:top-3 sm:px-3 sm:py-1 sm:text-[11px]">
-                    Featured
+                    Selected
                   </span>
                 )}
                 <span
@@ -760,14 +757,31 @@ function BookPageContent() {
                     active ? "text-white/90" : "text-muted",
                   )}
                 >
-                  From {s.price}
+                  {/* The API's price, or nothing — never a placeholder amount. */}
+                  {s.price ? `From ${s.price}` : null}
                 </span>
               </motion.button>
             );
           })}
         </div>
 
-        {/* ---------- Two-column layout ---------- */}
+        {/* ---------- Two-column layout ----------
+            Only once the catalogue has answered. While it loads, fails or comes back empty there is
+            no service to describe, so no title, price, tier or total is shown — the built-in list
+            used to stand in here with prices and package contents that were not the server's. */}
+        {!catalogueReady ? (
+          <p
+            role="status"
+            data-testid="book-catalogue-state"
+            className="mt-8 rounded-2xl border border-line bg-surface/60 px-4 py-12 text-center text-sm text-muted"
+          >
+            {servicesLoading
+              ? "Loading services…"
+              : servicesError
+                ? "Services could not be loaded, so booking is unavailable right now. Retry above."
+                : "No services are available to book right now."}
+          </p>
+        ) : (
         <div className={bookSplitGrid}>
           {/* ================= LEFT ================= */}
           <div className="flex min-w-0 flex-col gap-6 sm:gap-8">
@@ -836,18 +850,23 @@ function BookPageContent() {
                 </div>
 
                 <div className="min-w-0 flex-1 text-center sm:text-left">
-                  <span className="inline-block rounded-full bg-success-strong px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg sm:px-4 sm:py-1.5 sm:text-xs">
-                    Best Seller
-                  </span>
+                  {/* Only the catalogue's own flag (services.isPopular), worded as the catalogue words it. */}
+                  {rawService?.isPopular ? (
+                    <span className="inline-block rounded-full bg-success-strong px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg sm:px-4 sm:py-1.5 sm:text-xs">
+                      Popular
+                    </span>
+                  ) : null}
                   <h2
                     className={cn(bookHeroTitle, "mt-3 sm:mt-4")}
                     style={{ fontSize: "clamp(1.75rem, 6vw, 3.75rem)" }}
                   >
                     {svc.title}
                   </h2>
-                  <p className="mt-2 text-sm text-white/75 sm:mt-3 sm:text-base lg:text-lg">
-                    {svc.tagline}
-                  </p>
+                  {svc.tagline ? (
+                    <p className="mt-2 text-sm text-white/75 sm:mt-3 sm:text-base lg:text-lg">
+                      {svc.tagline}
+                    </p>
+                  ) : null}
                   <div className="mt-4 flex flex-wrap items-center justify-center gap-4 sm:justify-start">
                     {rawService?.rating != null && rawService.rating > 0 && (rawService.reviewCount ?? 0) > 0 ? (
                       <span className="flex items-center gap-1.5 font-semibold">
@@ -914,17 +933,14 @@ function BookPageContent() {
                         aria-hidden
                         className="pointer-events-none absolute inset-x-0 top-0 h-20 sheen"
                       />
-                      {p.popular && (
-                        <span className="absolute right-3 top-3 rounded-full bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-lg sm:right-4 sm:top-4 sm:px-3 sm:py-1 sm:text-[10px]">
-                          Most Popular
-                        </span>
-                      )}
                       <span className="relative font-display text-lg font-bold text-content sm:text-xl">
                         {p.name}
                       </span>
-                      <span className="relative text-xs text-muted sm:text-sm">
-                        {p.tag}
-                      </span>
+                      {p.tag ? (
+                        <span className="relative text-xs text-muted sm:text-sm">
+                          {p.tag}
+                        </span>
+                      ) : null}
                       <span
                         className="relative mt-3 font-display font-bold text-content sm:mt-4"
                         style={{ fontSize: "clamp(2rem, 6vw, 3rem)" }}
@@ -1065,26 +1081,6 @@ function BookPageContent() {
                   className="scroll-mt-28"
                   containerClassName="rounded-2xl bg-surface/60"
                 />
-                <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[10px] text-muted sm:flex sm:items-center sm:justify-around sm:text-xs">
-                  <span>
-                    <span className="block text-sm font-bold text-content">
-                      50,000+
-                    </span>
-                    Happy Customers
-                  </span>
-                  <span>
-                    <span className="block text-sm font-bold text-content">
-                      4.9 ★
-                    </span>
-                    Average Rating
-                  </span>
-                  <span>
-                    <span className="block text-sm font-bold text-content">
-                      12K+
-                    </span>
-                    Bookings Today
-                  </span>
-                </div>
               </SectionCard>
             </div>
           </div>
@@ -1118,12 +1114,15 @@ function BookPageContent() {
                   <span className="block text-sm font-bold text-content">
                     {svc.title}
                   </span>
-                  <span className="block text-xs text-muted">
-                    {selected.name} Package
-                  </span>
+                  {/* The selection the server is pricing; a tier only when the tier is the selection. */}
+                  {summaryLine.label ? (
+                    <span data-testid="summary-selection" className="block text-xs text-muted">
+                      {summaryLine.label}
+                    </span>
+                  ) : null}
                 </span>
                 <span className="font-display font-bold text-content">
-                  ₹{selected.price}
+                  {summaryLine.amount != null ? `₹${summaryLine.amount}` : "—"}
                 </span>
               </div>
 
@@ -1339,6 +1338,7 @@ function BookPageContent() {
             </SectionCard>
           </div>
         </div>
+        )}
 
         {/* ---------- Trust bar ---------- */}
         <div className="mt-8 flex flex-col items-center justify-between gap-6 rounded-[20px] glass-card px-4 py-6 sm:mt-12 sm:gap-8 sm:rounded-[28px] sm:px-8 sm:py-8 lg:flex-row lg:px-10">
@@ -1362,13 +1362,15 @@ function BookPageContent() {
         </div>
       </main>
 
-      <BookStickyCheckout
-        total={total}
-        confirming={confirming}
-        slotChosen={slotChosen}
-        unavailable={notServiceable}
-        onConfirm={confirmBooking}
-      />
+      {catalogueReady ? (
+        <BookStickyCheckout
+          total={total}
+          confirming={confirming}
+          slotChosen={slotChosen}
+          unavailable={notServiceable}
+          onConfirm={confirmBooking}
+        />
+      ) : null}
 
       <BookingSuccessModal
         open={!!bookingDone}

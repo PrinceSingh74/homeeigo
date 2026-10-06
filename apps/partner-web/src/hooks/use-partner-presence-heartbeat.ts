@@ -12,6 +12,16 @@ import {
 import { usePartnerOperationsQuery } from "@/hooks/use-partner-data";
 import { usePartnerStore } from "@/stores/partner-store";
 import { rememberPartnerFix } from "@/lib/partner-coords";
+import {
+  DEFAULT_HEARTBEAT_INTERVAL_SEC,
+  fixNeedsRefresh,
+  LOCATION_FRESH_SEC,
+  PRESENCE_CADENCE,
+  type AvailabilityCadenceKey,
+  type PresenceCadence,
+} from "@/lib/presence-cadence";
+
+export { PRESENCE_CADENCE, type AvailabilityCadenceKey };
 
 declare global {
   interface Window {
@@ -26,38 +36,12 @@ declare global {
   }
 }
 
-export type AvailabilityCadenceKey =
-  | "OFFLINE"
-  | "AVAILABLE"
-  | "OFFERED"
-  | "ACCEPTING"
-  | "EN_ROUTE"
-  | "ON_JOB"
-  | "PAUSED";
-
-type PresenceCadence = {
-  heartbeat: boolean;
-  /** null = never attach GPS. 1 = every beat. 3 = every 3rd beat. */
-  locationEveryNthBeat: number | null;
-};
-
-export const PRESENCE_CADENCE: Record<AvailabilityCadenceKey, PresenceCadence> = {
-  OFFLINE: { heartbeat: false, locationEveryNthBeat: null },
-  AVAILABLE: { heartbeat: true, locationEveryNthBeat: 3 },
-  OFFERED: { heartbeat: true, locationEveryNthBeat: 1 },
-  ACCEPTING: { heartbeat: true, locationEveryNthBeat: 1 },
-  EN_ROUTE: { heartbeat: true, locationEveryNthBeat: 1 },
-  ON_JOB: { heartbeat: true, locationEveryNthBeat: 1 },
-  PAUSED: { heartbeat: true, locationEveryNthBeat: null },
-};
-
-const DEFAULT_INTERVAL_SEC = 25;
+const DEFAULT_INTERVAL_SEC = DEFAULT_HEARTBEAT_INTERVAL_SEC;
 const BACKOFF_CAP_MS = 60_000;
 const SESSION_REFRESH_MIN_MS = 5_000;
 const LOCATION_MAX_AGE_MS = 240_000;
 const PRESENCE_FRESH_SEC = 30;
 const PRESENCE_STALE_SEC = 60;
-const LOCATION_FRESH_SEC = 60;
 const LOCATION_STALE_SEC = 600;
 const FRESHNESS_TICK_MS = 5_000;
 /** Survives a client navigation so a new page does not immediately beat again. */
@@ -270,6 +254,36 @@ function syncGeoWatch(rt: SharedRuntime) {
   );
 }
 
+/**
+ * Before a beat that carries a location: if the watcher's last fix is getting old (a device that is
+ * not moving reports nothing new), ask the device once more. Its answer is the device's own position
+ * with a current capture time; when it cannot answer, the old fix is sent as it is and the server
+ * judges its age.
+ */
+async function refreshFixIfStale(rt: SharedRuntime, nth: number | null): Promise<void> {
+  if (nth == null || rt.geoDenied || rt.skipLocationOnce) return;
+  if (nth > 1 && (rt.beatCount + 1) % nth !== 0) return;
+  if (typeof navigator === "undefined" || !navigator.geolocation) return;
+  const captured = rt.lastFix ? Date.parse(rt.lastFix.capturedAt) : null;
+  if (!fixNeedsRefresh(captured, Date.now())) return;
+  await new Promise<void>((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        rt.lastFix = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : undefined,
+          capturedAt: new Date(pos.timestamp).toISOString(),
+        };
+        rememberPartnerFix(pos.coords.latitude, pos.coords.longitude);
+        resolve();
+      },
+      () => resolve(),
+      { enableHighAccuracy: false, maximumAge: 10_000, timeout: 6_000 },
+    );
+  });
+}
+
 function locationPayload(rt: SharedRuntime, nth: number | null): PartnerPresenceHeartbeatBody["location"] {
   if (nth == null || rt.skipLocationOnce) return undefined;
   if (nth > 1 && rt.beatCount % nth !== 0) return undefined;
@@ -346,6 +360,8 @@ async function beat(rt: SharedRuntime) {
       }
     }
 
+    await refreshFixIfStale(rt, plan.locationEveryNthBeat);
+    if (!isAlive(rt, generation)) return;
     rt.beatCount += 1;
     const body: PartnerPresenceHeartbeatBody = {
       sessionId: rt.sessionId!,

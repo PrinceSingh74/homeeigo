@@ -28,6 +28,7 @@ import { HOMIGO_RIDER_IMAGE } from "@/lib/demo-tracking-booking";
 import { useActiveTracking } from "@/hooks/use-active-tracking";
 import { useBookingDetailQuery } from "@/hooks/use-core-data";
 import { bookUrl } from "@/lib/booking-url";
+import { professionalLabel } from "@/lib/bookings";
 import { pageSection } from "@/lib/page-layout";
 import { cn } from "@/lib/utils";
 
@@ -154,10 +155,12 @@ export function LiveTrackingSection() {
     };
   }, [fullMapOpen]);
 
+  // The professional's real name, or the honest sentence when the server has assigned nobody.
+  const proLabel = activeBooking ? professionalLabel(activeBooking) : "";
   const riderLabel = hasLive
     ? enRoute && etaMin != null
-      ? `${activeBooking!.proName} · ${etaMin} min`
-      : activeBooking!.proName
+      ? `${proLabel} · ${etaMin} min`
+      : proLabel
     : null;
 
   return (
@@ -339,7 +342,7 @@ export function LiveTrackingSection() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-display text-sm font-bold text-content sm:text-base">
-                        {activeBooking!.proName}
+                        {proLabel}
                         {partnerRating != null ? (
                           <span className="ml-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
                             ★ {Number(partnerRating).toFixed(1)}
@@ -347,7 +350,7 @@ export function LiveTrackingSection() {
                         ) : null}
                       </p>
                       <p className="line-clamp-2 text-xs leading-snug text-muted">
-                        {activeBooking!.serviceName} · {activeBooking!.packageName}
+                        {[activeBooking!.serviceName, activeBooking!.packageName?.trim()].filter(Boolean).join(" · ")}
                       </p>
                       {/* Real telemetry — speed + heading from the live GPS feed */}
                       <p className="mt-1 flex items-center gap-2.5 text-xs font-semibold text-muted">
@@ -365,7 +368,7 @@ export function LiveTrackingSection() {
                     <div className="flex shrink-0 items-center gap-1.5">
                       <Link
                         href="/bookings"
-                        aria-label={`Message ${activeBooking!.proName}`}
+                        aria-label={`Message ${activeBooking!.proName?.trim() || "your professional"}`}
                         title="Open booking chat"
                         className="grid size-9 place-items-center rounded-full bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/20 transition hover:bg-emerald-500/20 active:scale-95"
                       >
@@ -535,7 +538,7 @@ export function LiveTrackingSection() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-white">
-                      {activeBooking!.proName}
+                      {proLabel}
                       {partnerRating != null ? (
                         <span className="ml-1.5 text-xs font-semibold text-amber-400">
                           ★ {Number(partnerRating).toFixed(1)}

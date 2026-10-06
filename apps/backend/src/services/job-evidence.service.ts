@@ -1,4 +1,4 @@
-import { AssignmentAttemptStatus, type JobEvidenceStage, type Prisma } from "@prisma/client";
+import { AssignmentAttemptStatus, type JobEvidence, type JobEvidenceStage, type Prisma } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { objectStorageService } from "./object-storage.service";
 
@@ -36,7 +36,7 @@ function withoutRawMedia(metadata: Prisma.JsonValue | null): Prisma.JsonValue | 
 }
 
 class JobEvidenceService {
-  async recordStage(input: RecordStageInput) {
+  async recordStage(input: RecordStageInput): Promise<JobEvidence> {
     const booking = await prisma.booking.findUnique({
       where: { id: input.bookingId },
       select: { id: true, providerId: true },
@@ -57,7 +57,10 @@ class JobEvidenceService {
           },
         },
       });
-      if (existing) return existing;
+      if (existing && existing.providerId === input.providerId) return existing;
+      // The same upload id from an earlier partner on this job (the system ids are "arrive:<booking>"
+      // and the like) is not this partner's row: it is neither handed back nor reused.
+      if (existing) return this.recordStage({ ...input, clientUploadId: `${clientUploadId}:${input.providerId}` });
     }
 
     const mediaUrl = input.mediaUrls?.[0] ?? null;
@@ -143,6 +146,20 @@ class JobEvidenceService {
     }
   }
 
+  /** What the partner who uploaded a row is told about it: enough to refer to it, nothing it must not hold. */
+  uploadReceipt(row: { id: string; bookingId: string; stage: unknown; capturedAt: Date; mediaMimeType: string | null; isCurrent: boolean; clientUploadId: string | null; createdAt: Date }) {
+    return {
+      id: row.id,
+      bookingId: row.bookingId,
+      stage: row.stage,
+      capturedAt: row.capturedAt,
+      mediaMimeType: row.mediaMimeType,
+      isCurrent: row.isCurrent,
+      clientUploadId: row.clientUploadId,
+      createdAt: row.createdAt,
+    };
+  }
+
   async listForBooking(bookingId: string, actor: JobEvidenceActor) {
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
@@ -151,9 +168,11 @@ class JobEvidenceService {
     if (!booking) throw new Error("NOT_FOUND");
 
     const isCustomer = booking.userId === actor.userId;
-    let isAssignedProvider =
+    const isAssignedProvider =
       Boolean(actor.providerId) && booking.providerId === actor.providerId;
-    // An offer opens the evidence only while nobody owns the booking (see partnerBookingAccessWhere).
+    // A partner who is only OFFERED the job may open the request, but is handed no evidence: the rows
+    // are an earlier partner's photos of the customer's home and the position they were taken at.
+    let isOfferedProvider = false;
     if (!isAssignedProvider && actor.providerId && booking.providerId === null) {
       const offered = await prisma.assignmentAttempt.findFirst({
         where: {
@@ -163,14 +182,17 @@ class JobEvidenceService {
         },
         select: { id: true },
       });
-      isAssignedProvider = Boolean(offered);
+      isOfferedProvider = Boolean(offered);
     }
-    if (!actor.isAdmin && !isCustomer && !isAssignedProvider) {
+    if (!actor.isAdmin && !isCustomer && !isAssignedProvider && !isOfferedProvider) {
       throw new Error("FORBIDDEN");
     }
+    if (!actor.isAdmin && !isCustomer && isOfferedProvider) return [];
+    // The partner holding the job reads the evidence they captured, not a previous partner's.
+    const ownRowsOnly = !actor.isAdmin && !isCustomer && isAssignedProvider;
 
     const rows = await prisma.jobEvidence.findMany({
-      where: { bookingId },
+      where: { bookingId, ...(ownRowsOnly ? { providerId: actor.providerId! } : {}) },
       orderBy: [{ stage: "asc" }, { capturedAt: "desc" }],
     });
 
@@ -199,8 +221,8 @@ class JobEvidenceService {
           bookingId: row.bookingId,
           providerId: row.providerId,
           stage: row.stage,
-          latitude: row.latitude,
-          longitude: row.longitude,
+          // Where the evidence was captured is the customer's doorstep: audit data, for an admin only.
+          ...(actor.isAdmin ? { latitude: row.latitude, longitude: row.longitude } : {}),
           capturedAt: row.capturedAt,
           mediaMimeType: row.mediaMimeType,
           isCurrent: row.isCurrent,

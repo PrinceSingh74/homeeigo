@@ -4,7 +4,7 @@ import { Check, Calendar, MapPin, ArrowRight } from "lucide-react";
 import { m as motion } from "framer-motion";
 import { Modal } from "@/components/ui/Modal";
 import Link from "next/link";
-import type { SavedBooking } from "@/lib/bookings";
+import { bookingSubtitle, type SavedBooking } from "@/lib/bookings";
 import { BookingStatusBadge } from "@/components/booking/BookingStatusBadge";
 
 export function BookingSuccessModal({
@@ -44,7 +44,7 @@ export function BookingSuccessModal({
           {booking.serviceTitle}
         </p>
         <p className="text-sm text-muted">
-          {booking.packageName} · {booking.proName}
+          {bookingSubtitle(booking)}
         </p>
       </motion.div>
 
@@ -58,12 +58,13 @@ export function BookingSuccessModal({
           {booking.address}
         </span>
         <span className="border-t border-line pt-3 font-display text-lg font-bold bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">
-          ₹{booking.total} payable at service
+          {/* Opened only from the server-verified payment callback (BookPageClient onVerified). */}
+          ₹{booking.total} paid online
         </span>
       </div>
 
       <p className="mt-4 text-center text-xs text-muted">
-        Track live, mark complete, or cancel anytime from My Bookings.
+        Track or manage this booking from My Bookings. Cancellation terms apply.
       </p>
 
       <div className="mt-6 flex flex-col gap-2">

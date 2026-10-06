@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search, Mic } from "lucide-react";
 import { m as motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { searchPriceLabel } from "@/lib/search-price";
 import { useServicesQuery } from "@/hooks/use-core-data";
 import { bookUrl } from "@/lib/booking-url";
 import { useAppStore } from "@/stores/app-store";
@@ -54,7 +55,8 @@ export function ServiceSearchInput({
       .map((s) => ({
         id: s.id,
         title: s.name,
-        price: `₹${s.basePrice ?? s.minPrice ?? 0}`,
+        // The lowest price the server holds, or none: an unpriced service is not "From ₹0".
+        price: searchPriceLabel(s),
         img: s.thumbnail ?? s.icon ?? undefined,
       })) ?? [];
 
@@ -220,9 +222,7 @@ export function ServiceSearchInput({
                     <span className="block font-bold text-content">
                       {s.title}
                     </span>
-                    <span className="text-xs text-muted">
-                      From {s.price}
-                    </span>
+                    {s.price ? <span className="text-xs text-muted">{s.price}</span> : null}
                   </span>
                 </button>
               </li>

@@ -12,13 +12,14 @@ import {
   controlPlaneState,
   evaluatePublishApproval,
   liveEditPolicyFor,
+  liveEditRegressions,
   platformPolicyIssues,
   PUBLISH_GATES,
   publishGateResults,
   publishRequiredSections,
   validateForActivation,
 } from "../lib/service-domain";
-import { serviceCatalogConfigSchema } from "../lib/service-catalog-config";
+import { catalogConfigGaps, serviceCatalogConfigSchema } from "../lib/service-catalog-config";
 
 const core = (over: Record<string, unknown> = {}) => ({
   id: "s1",
@@ -249,9 +250,22 @@ describe("owner-required sections", () => {
     expect(validateForActivation(core({ isActive: true }), policies, { grandfathered: true, required: ["safety", "quality"] }).ok).toBe(true);
   });
 
-  test("the requirement list is read from SERVICE_PUBLISH_REQUIRES and ignores unknown names", () => {
-    expect(publishRequiredSections("safety, quality ,nonsense,EXECUTION")).toEqual(["safety", "quality", "execution"]);
+  test("the requirement list is read from SERVICE_PUBLISH_REQUIRES, whatever separates the names", () => {
+    expect(publishRequiredSections("safety, quality ,EXECUTION")).toEqual(["safety", "quality", "execution"]);
+    expect(publishRequiredSections("safety;quality execution")).toEqual(["safety", "quality", "execution"]);
     expect(publishRequiredSections(undefined)).toEqual([]);
+  });
+
+  test("a name it does not recognise never loosens the gate: the deployed defaults are required as well", () => {
+    // A typo used to be dropped silently, so "saftey" alone required nothing at all.
+    expect(publishRequiredSections("saftey", true)).toEqual(["safety", "quality", "execution"]);
+    expect(publishRequiredSections("coverage,nonsense", true)).toEqual(["coverage", "safety", "quality", "execution"]);
+    expect(publishRequiredSections("none", true)).toEqual([]);
+  });
+
+  test("the configuration status agrees with the gate that NOT_SPECIFIED is not a policy", () => {
+    const gaps = catalogConfigGaps(core(), serviceCatalogConfigSchema.parse({ materialPolicy: "NOT_SPECIFIED", equipmentPolicy: "NOT_SPECIFIED" }));
+    expect(gaps).toEqual(expect.arrayContaining(["Materials policy not specified", "Equipment policy not specified"]));
   });
 
   test("with nothing configured, a deployed environment requires safety, quality and an execution plan; a developer machine requires nothing", () => {
@@ -332,5 +346,82 @@ describe("approval is bound to the approved content", () => {
     expect(evaluatePublishApproval({ ...input, approvedContentHash: approved, currentContentHash: approved })).toEqual({ ok: true });
     expect(evaluatePublishApproval({ ...input, approvedContentHash: approved, currentContentHash: current })).toEqual({ ok: false, code: "APPROVAL_STALE" });
     expect(evaluatePublishApproval({ ...input, approvedContentHash: null, currentContentHash: current })).toEqual({ ok: false, code: "APPROVAL_STALE" });
+  });
+});
+
+/**
+ * Audit of 2026-10-06: several gates answered PASS without looking at anything real — an empty
+ * safety object, quality marked "not applicable", a materials policy of NOT_SPECIFIED, a ₹0
+ * variant — and an edit to a live service ran a gate so lenient that the sections a first publish
+ * requires could be deleted from it afterwards.
+ */
+describe("a gate passes on content, not on the presence of a key", () => {
+  const parse = (extra: Record<string, unknown>) => serviceCatalogConfigSchema.parse({ ...policies, ...extra });
+  const statusOf = (cfg: typeof policies, gate: string) => publishGateResults(core(), cfg, { required: [] }).filter((g) => g.gate === gate).map((g) => `${g.code}:${g.status}`);
+
+  test("an empty safety object, or one holding only blank lists, is absent safety information", () => {
+    expect(statusOf(parse({ safety: {} }), "SAFETY")).toEqual(["SAFETY_ABSENT:WARNING"]);
+    expect(statusOf(parse({ safety: { warnings: [], ppe: [] } }), "SAFETY")).toEqual(["SAFETY_ABSENT:WARNING"]);
+    expect(statusOf(parse({ safety: { prohibitedConditions: ["Gas smell in the room"] } }), "SAFETY")).toEqual(["SAFETY:PASS"]);
+    expect(validateForActivation(core(), parse({ safety: {} }), { required: ["safety"] }).ok).toBe(false);
+  });
+
+  test("quality marked not applicable, or holding only a warranty number, is not a quality standard", () => {
+    expect(statusOf(parse({ quality: { notApplicable: true } }), "QUALITY")).toEqual(["QUALITY_ABSENT:WARNING"]);
+    expect(statusOf(parse({ quality: { warrantyDays: 30 } }), "QUALITY")).toEqual(["QUALITY_ABSENT:WARNING"]);
+    expect(statusOf(parse({ quality: { checklist: ["Work area left clean"] } }), "QUALITY")).toEqual(["QUALITY:PASS"]);
+    expect(statusOf(parse({ quality: { proofRequired: true } }), "QUALITY")).toEqual(["QUALITY:PASS"]);
+    expect(validateForActivation(core(), parse({ quality: { notApplicable: true } }), { required: ["quality"] }).ok).toBe(false);
+  });
+
+  test("NOT_SPECIFIED is not a materials or equipment policy", () => {
+    const cfg = serviceCatalogConfigSchema.parse({ materialPolicy: "NOT_SPECIFIED", equipmentPolicy: "NOT_SPECIFIED" });
+    const r = validateForActivation(core(), cfg, { required: [] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.issues.map((i) => i.code).sort()).toEqual(["EQUIPMENT_POLICY", "MATERIALS_POLICY"]);
+    // NOT_REQUIRED is a decision, and stays valid.
+    expect(validateForActivation(core(), serviceCatalogConfigSchema.parse({ materialPolicy: "NOT_REQUIRED", equipmentPolicy: "NOT_REQUIRED" }), { required: [] }).ok).toBe(true);
+  });
+
+  test("every active variant must have a price: one priced variant does not cover a free one", () => {
+    const cfg = parse({ variants: [{ id: "small", name: "Small", price: 199 }, { id: "large", name: "Large", price: 0 }] });
+    const r = validateForActivation(core(), cfg, { required: [] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.issues.map((i) => `${i.code}@${i.path}`)).toEqual(["VARIANT_UNPRICED@variants.large"]);
+    expect(publishGateResults(core(), cfg, { required: [] }).find((g) => g.gate === "VARIANT")?.status).toBe("FAIL");
+    // An inactive variant is not on sale, and a coming-soon service is not priced yet.
+    expect(validateForActivation(core(), parse({ variants: [{ id: "small", name: "Small", price: 199 }, { id: "large", name: "Large", price: 0, active: false }] }), { required: [] }).ok).toBe(true);
+    expect(validateForActivation(core(), parse({ comingSoon: true, variants: [{ id: "large", name: "Large", price: 0 }] }), { required: [] }).ok).toBe(true);
+  });
+
+  test("the booking-policy gate fails with the platform policy it reports on, and flags per-service wording it cannot enforce", () => {
+    const broken = { version: "cancellation.vX", tiers: [{ id: "t", feePercent: 30, refundPercent: 30 }] } as never;
+    expect(publishGateResults(core(), policies, { required: [], platformPolicy: broken }).filter((g) => g.gate === "BOOKING_POLICY").map((g) => g.status)).toEqual(["FAIL"]);
+    const worded = publishGateResults(core(), parse({ bookingRules: { cancellationPolicy: "Free cancellation any time" } }), { required: [] });
+    expect(worded.find((g) => g.code === "POLICY_WORDING_NOT_ENFORCED")).toMatchObject({ status: "WARNING", gate: "CANCELLATION" });
+  });
+});
+
+describe("an edit to a live service may not make it worse", () => {
+  const parse = (extra: Record<string, unknown>) => serviceCatalogConfigSchema.parse({ ...policies, ...extra });
+  const live = core({ isActive: true });
+  const full = parse({ safety: { prohibitedConditions: ["Gas smell in the room"] }, quality: { checklist: ["Work area left clean"] }, execution: { steps: [{ id: "work", title: "Do the work", kind: "WORK", sortOrder: 1 }] } });
+  const required = ["safety", "quality", "execution"] as const;
+  const codes = (before: typeof policies | null, after: typeof policies | null, s = live) => liveEditRegressions({ before: { service: live, cfg: before }, after: { service: s, cfg: after }, required }).map((i) => i.code).sort();
+
+  test("deleting safety, quality or the work plan from a live service is refused", () => {
+    expect(codes(full, parse({ quality: full.quality, execution: full.execution }))).toEqual(["SAFETY_ABSENT"]);
+    expect(codes(full, policies)).toEqual(["EXECUTION_ABSENT", "QUALITY_ABSENT", "SAFETY_ABSENT"]);
+    expect(codes(full, parse({ ...full, materialPolicy: "NOT_SPECIFIED" }))).toEqual(["MATERIALS_POLICY"]);
+  });
+
+  test("a gap the live service already had does not block an unrelated edit, so it is not frozen or unpublished", () => {
+    expect(codes(policies, policies, core({ isActive: true, description: "A better description of the same service" }))).toEqual([]);
+    expect(codes(policies, parse({ faqs: [{ q: "How long does it take?", a: "About forty minutes." }] }))).toEqual([]);
+  });
+
+  test("an edit that fixes a gap is accepted, and one that breaks pricing is refused whatever was there before", () => {
+    expect(codes(policies, full)).toEqual([]);
+    expect(codes(full, full, core({ isActive: true, basePrice: 0 }))).toContain("PRICING_MISSING");
   });
 });

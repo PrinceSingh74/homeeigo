@@ -122,6 +122,7 @@ import {
   approvalContentHash,
   contentDiff,
   liveEditPolicyFor,
+  liveEditRegressions,
   controlPlaneState,
   OFF_SALE_LIFECYCLES,
   type ContentChange,
@@ -1081,6 +1082,19 @@ export class CatalogService {
     }
   }
 
+  /**
+   * Customer-visible services with no published version row: they were written straight into the
+   * database (a seed script, a manual insert) and passed no gate, approval or audit. Reported, not
+   * unpublished — an operator decides what each one is.
+   */
+  async ungovernedLiveServices(): Promise<{ id: string; name: string; slug: string | null; lifecycleStatus: string; reason: "NO_PUBLISHED_VERSION" }[]> {
+    const live = await prisma.service.findMany({ where: CUSTOMER_CATALOG_WHERE, select: { id: true, name: true, slug: true, lifecycleStatus: true }, orderBy: { name: "asc" } });
+    if (live.length === 0) return [];
+    const versioned = await prisma.serviceConfigVersion.findMany({ where: { serviceId: { in: live.map((s) => s.id) }, status: "PUBLISHED" }, select: { serviceId: true }, distinct: ["serviceId"] });
+    const governed = new Set(versioned.map((v) => v.serviceId));
+    return live.filter((s) => !governed.has(s.id)).map((s) => ({ id: s.id, name: s.name, slug: s.slug, lifecycleStatus: String(s.lifecycleStatus), reason: "NO_PUBLISHED_VERSION" as const }));
+  }
+
   private gateFailure(issues: PublishIssue[]) {
     incCounter("service_configuration_validation_failures_total");
     // Phase 06: which requirement rule refused the publish (code only — no names, notes or ids).
@@ -1193,12 +1207,21 @@ export class CatalogService {
       isActive: wantActive,
       lifecycleStatus: target,
     };
+    // Visible-but-not-bookable (coming soon) to bookable is a publish, not an edit.
+    const becomingBookable = prevLifecycle === "PUBLISHED" && target === "ACTIVE";
     if (wantActive) {
-      const gate = validateForActivation(next, nextCfg, { grandfathered: exists.isActive, unavailableTrainingModules: (await trainingModuleGaps([nextCfg]))[0] });
-      if (!gate.ok) return this.gateFailure(gate.issues);
+      const unavailableTrainingModules = (await trainingModuleGaps([nextCfg]))[0];
+      if (exists.isActive && !becomingBookable) {
+        // An edit to a live service keeps the gaps it already had, and may not add one.
+        const regressions = liveEditRegressions({ before: { service: exists, cfg: prevCfg }, after: { service: next, cfg: nextCfg }, unavailableTrainingModules });
+        if (regressions.length) return this.gateFailure(regressions);
+      } else {
+        const gate = validateForActivation(next, nextCfg, { grandfathered: false, unavailableTrainingModules });
+        if (!gate.ok) return this.gateFailure(gate.issues);
+      }
     }
     // PUT is one more way into LIVE: it answers to the same approval and schedule as the lifecycle route.
-    if (wantActive && !exists.isActive) {
+    if (wantActive && (!exists.isActive || becomingBookable)) {
       const refused = this.publishAuthorization(exists.updatedBy ?? exists.createdBy ?? null, nextCfg, approvalContentHash(nextCore, nextCfg));
       if (refused) return refused;
     }
@@ -1527,6 +1550,14 @@ export class CatalogService {
       const refused = this.publishAuthorization(exists.updatedBy ?? exists.createdBy ?? null, cfg, approvalContentHash(exists, cfg));
       if (refused) return refused;
     }
+    // VALIDATING and REVIEW are where the configuration is checked, not labels: entering VALIDATING
+    // runs the gate and answers with what it found, and a service leaves it for review only clean.
+    let validation: { ok: boolean; blocking: PublishIssue[] } | undefined;
+    if (to === "CONFIGURATION_REQUIRED" || to === "READY_FOR_REVIEW") {
+      const gate = validateForActivation({ ...exists, isActive: true, categoryId: exists.categoryId }, cfg, { grandfathered: false, unavailableTrainingModules: (await trainingModuleGaps([cfg]))[0] });
+      validation = { ok: gate.ok, blocking: gate.ok ? [] : gate.issues };
+      if (to === "READY_FOR_REVIEW" && !gate.ok) return this.gateFailure(gate.issues);
+    }
     const becameLive = flags.isActive && !exists.isActive;
     try {
       const s = await prisma.$transaction(async (tx) => {
@@ -1558,7 +1589,7 @@ export class CatalogService {
       const impact = OFF_SALE_LIFECYCLES.includes(to)
         ? { openBookings: await prisma.booking.count({ where: { serviceId: id, status: { in: ["PENDING", "ACCEPTED", "ASSIGNED", "EN_ROUTE", "IN_PROGRESS"] } } }) }
         : undefined;
-      return { service: await this.hydratedAdminRow(s), ...(impact ? { impact } : {}) };
+      return { service: await this.hydratedAdminRow(s), ...(impact ? { impact } : {}), ...(validation ? { validation } : {}) };
     } catch (e) {
       if (e instanceof VersionConflict) return { error: "VERSION_CONFLICT" as const, message: "Another change was saved first — reload and try again" };
       throw e;

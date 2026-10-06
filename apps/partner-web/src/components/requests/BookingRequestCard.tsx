@@ -41,7 +41,7 @@ import {
   type ProfessionalConfirmationState,
 } from "@/lib/completion-checklist";
 import { localActionsFromBooking, primaryActionToLocalCta, primaryControlState, type JobActionResult } from "@/lib/job-action-policy";
-import { getPartnerCoords, type PartnerCoords } from "@/lib/partner-coords";
+import { getPartnerCoords } from "@/lib/partner-coords";
 import { StartJobOtpDialog } from "@/components/requests/StartJobOtpDialog";
 import { LocationAccessMenu } from "@/components/requests/LocationAccessMenu";
 import { useToastStore } from "@/stores/toast-store";
@@ -104,11 +104,6 @@ export function BookingRequestCard({
         ? "The service checklist could not be loaded — refresh the page before marking this job complete."
         : gate!.hint
     : null;
-
-  const jobCoords: PartnerCoords | null =
-    request.address?.latitude != null && request.address?.longitude != null
-      ? { latitude: request.address.latitude, longitude: request.address.longitude }
-      : null;
 
   const customerName =
     `${request.customer.firstName ?? ""} ${request.customer.lastName ?? ""}`.trim() ||
@@ -262,7 +257,6 @@ export function BookingRequestCard({
         {isActiveJob ? (
           <div className="mt-3">
             <LocationAccessMenu
-              jobCoords={jobCoords}
               forceOpen={gpsMenuOpen}
               onResolved={(coords) => {
                 setGpsMenuOpen(false);

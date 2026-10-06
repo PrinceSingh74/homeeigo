@@ -19,6 +19,7 @@ import type {
 import {
   collapseCustomerBookingStatus,
   customerTimelineFromBackendStatus,
+  providerNameFromBackend,
   type SavedBooking,
 } from "@/lib/bookings";
 
@@ -53,7 +54,9 @@ export function mapBackendBookingToSaved(b: BackendBooking): SavedBooking {
     serviceId: b.serviceId ?? "service",
     serviceTitle: b.serviceName ?? b.service?.name ?? "Service",
     serviceName: b.serviceName ?? b.service?.name ?? "Service",
-    packageName: "Standard",
+    // The customer booking payload carries no selection summary, so none is shown (never a tier
+    // nobody chose). A booking made on /book fills this from the server-priced selection.
+    packageName: "",
     dateLabel: date.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
     timeLabel: date.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
     address: b.address?.fullAddress ?? "Selected address",
@@ -65,7 +68,8 @@ export function mapBackendBookingToSaved(b: BackendBooking): SavedBooking {
     backendStatus: b.status,
     imagePath: b.serviceIcon ?? b.service?.icon ?? undefined,
     serviceColor: "#7C3AED",
-    proName: b.providerName ?? b.provider?.name ?? (b.status === "pending" ? "Matching a pro" : "Assigned Pro"),
+    // The real name or nothing; what to print for "nobody yet" is professionalLabel's decision.
+    proName: providerNameFromBackend(b),
     instructions: b.description ?? undefined,
     paymentStatus: b.paymentStatus,
     timeline: customerTimelineFromBackendStatus(b.status, now),
@@ -544,6 +548,15 @@ export function useCancellationQuoteQuery(bookingId?: string, enabled = false) {
     queryFn: () => coreApi.bookings.cancellationQuote(bookingId!),
     enabled: !!bookingId && enabled,
     staleTime: 30_000,
+  });
+}
+
+/** The published cancellation tiers and refund notes (public; the same for every customer). */
+export function useCancellationPolicyQuery() {
+  return useQuery({
+    queryKey: ["bookings", "cancellation-policy"],
+    queryFn: () => coreApi.bookings.cancellationPolicy(),
+    staleTime: 5 * 60_000,
   });
 }
 

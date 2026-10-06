@@ -38,19 +38,19 @@ export function AiAssistantSheet({ open }: { open: boolean }) {
 
     if (q.includes("cool100") || q.includes("ac")) {
       href = bookUrl({ service: "ac-service", promo: "COOL100" });
+      // No prices, discounts or popularity here: the booking page shows the server's price, and
+      // whether a code applies is the server's answer there.
       response =
-        "Great choice! AC Service with code COOL100 — ₹100 off. Opening booking…";
+        "Opening AC Service with code COOL100. The booking page shows whether the code applies and the price.";
     } else if (q.includes("clean")) {
       href = bookUrl({ service: "deep-cleaning" });
-      response =
-        "Home Cleaning from ₹199. I recommend the Standard package for 2BHK homes.";
+      response = "Opening Home Cleaning. The booking page shows the options and their prices.";
     } else if (q.includes("plumb")) {
       href = bookUrl({ service: "plumbing" });
-      response = "Plumbing from ₹249 with verified pros in your area.";
+      response = "Opening Plumbing. The booking page shows the options and their prices.";
     } else if (q.includes("2bhk") || q.includes("package")) {
       href = bookUrl({ service: "deep-cleaning", package: 1 });
-      response =
-        "For 2BHK, Standard Deep Cleaning (₹299) is our most popular pick.";
+      response = "Opening Deep Cleaning. Compare the options and their prices on the booking page.";
     } else {
       const matches = searchServices(userText);
       if (matches[0]) {

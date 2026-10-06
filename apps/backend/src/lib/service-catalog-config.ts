@@ -851,8 +851,9 @@ export function catalogConfigGaps(service: ServiceCore, cfg: ServiceCatalogConfi
   if (cfg?.audiences?.length && !cfg.variants?.length) {
     gaps.push("Audiences are set but there are no variants to price them");
   }
-  if (!cfg?.materialPolicy) gaps.push("Materials policy not specified");
-  if (!cfg?.equipmentPolicy) gaps.push("Equipment policy not specified");
+  // NOT_SPECIFIED is the absence of a decision, stored (the publish gate reads it the same way).
+  if (!cfg?.materialPolicy || cfg.materialPolicy === "NOT_SPECIFIED") gaps.push("Materials policy not specified");
+  if (!cfg?.equipmentPolicy || cfg.equipmentPolicy === "NOT_SPECIFIED") gaps.push("Equipment policy not specified");
   if (cfg?.professionalPreferences?.some((p) => p !== "NO_PREFERENCE") && !PROFESSIONAL_PREFERENCE_SUPPORTED) {
     gaps.push("Professional preference is configured but assignment cannot honour it yet — hidden from customers");
   }

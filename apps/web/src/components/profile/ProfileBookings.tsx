@@ -10,7 +10,7 @@ import {
   profilePanelShell,
 } from "@/components/profile/profile-page-layout";
 import { STATUS_CONFIG } from "@/lib/booking-status";
-import type { SavedBooking } from "@/lib/bookings";
+import { professionalLabel, type SavedBooking } from "@/lib/bookings";
 import { BookingDetailModal } from "@/components/booking/BookingDetailModal";
 import { useAppStore } from "@/stores/app-store";
 import { useUserRatingsQuery } from "@/hooks/use-core-data";
@@ -107,7 +107,7 @@ export function ProfileBookings() {
                       </p>
                       <p className="mt-1 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-muted sm:text-xs">
                         <User size={11} className="shrink-0" />
-                        <span className="truncate">{booking.proName}</span>
+                        <span className="truncate">{professionalLabel(booking)}</span>
                         {extra?.rating != null && (
                           <>
                             <span>·</span>

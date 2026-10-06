@@ -11,6 +11,13 @@
  * Run: cd apps/backend && bun --env-file=.env run scripts/seed-popular-services.ts
  */
 import prisma from "../src/lib/prisma";
+import { directCatalogWriteRefusal } from "../src/lib/catalog-governance";
+
+const refusal = directCatalogWriteRefusal("seed-popular-services");
+if (refusal) {
+  console.error(refusal);
+  process.exit(1);
+}
 
 type Entry = {
   name: string;

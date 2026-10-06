@@ -1,6 +1,6 @@
 export type PartnerCoords = { latitude: number; longitude: number };
 
-let remembered: { coords: PartnerCoords; at: number; pinned?: boolean } | null = null;
+let remembered: { coords: PartnerCoords; at: number } | null = null;
 
 function isUsable(latitude: number, longitude: number): boolean {
   return Number.isFinite(latitude) && Number.isFinite(longitude) && !(latitude === 0 && longitude === 0);
@@ -10,15 +10,25 @@ export function browserGpsAvailable(): boolean {
   return typeof window !== "undefined" && Boolean(window.isSecureContext && navigator.geolocation);
 }
 
-/** Last browser/watch fix. Shared so Arrive/Start can reuse GPS already running for tracking. */
-export function rememberPartnerFix(latitude: number, longitude: number, pinned = false): void {
+/**
+ * Last browser/watch fix. Shared so Arrive/Start can reuse GPS already running for tracking.
+ *
+ * Only a position the DEVICE reported belongs here (browser geolocation, or the partner's own presence
+ * fix read back from the server) — never the job's coordinates: the server compares this with the job
+ * to decide whether the partner is there. `capturedAtMs` is when the fix was taken; a fix that was
+ * already old when it was stored is aged from then, so storing it cannot make it fresh.
+ */
+export function rememberPartnerFix(latitude: number, longitude: number, capturedAtMs?: number): void {
   if (!isUsable(latitude, longitude)) return;
-  remembered = { coords: { latitude, longitude }, at: Date.now(), pinned };
+  const now = Date.now();
+  const at = typeof capturedAtMs === "number" && Number.isFinite(capturedAtMs) ? Math.min(capturedAtMs, now) : now;
+  remembered = { coords: { latitude, longitude }, at };
 }
 
+/** The remembered fix, or `null` once it is older than `maxAgeMs`. Nothing exempts a fix from its age. */
 export function readRememberedPartnerFix(maxAgeMs: number): PartnerCoords | null {
   if (!remembered) return null;
-  if (!remembered.pinned && Date.now() - remembered.at > maxAgeMs) return null;
+  if (Date.now() - remembered.at > maxAgeMs) return null;
   return remembered.coords;
 }
 
@@ -65,11 +75,9 @@ async function readPresenceFix(maxAgeMs: number): Promise<PartnerCoords | null> 
     const snap = await partnerApi.presenceSnapshot();
     const loc = snap.location;
     if (!loc || !isUsable(loc.latitude, loc.longitude)) return null;
-    if (loc.capturedAt) {
-      const age = Date.now() - Date.parse(loc.capturedAt);
-      if (Number.isFinite(age) && age > maxAgeMs) return null;
-    }
-    rememberPartnerFix(loc.latitude, loc.longitude);
+    const capturedAtMs = loc.capturedAt ? Date.parse(loc.capturedAt) : NaN;
+    if (Number.isFinite(capturedAtMs) && Date.now() - capturedAtMs > maxAgeMs) return null;
+    rememberPartnerFix(loc.latitude, loc.longitude, capturedAtMs);
     return { latitude: loc.latitude, longitude: loc.longitude };
   } catch {
     return null;
@@ -80,7 +88,8 @@ async function readPresenceFix(maxAgeMs: number): Promise<PartnerCoords | null> 
  * Resolve the partner's current GPS fix, or `null` when none is available.
  *
  * UNKNOWN is `null`, never `{0,0}`. Soft flows may proceed without a fix; strict
- * flows (arrive, start) need a real position. A pinned check-in from the GPS dropdown wins.
+ * flows (arrive, start) need a real position. Every source is the device: the remembered browser
+ * fix, a fresh browser read, then the partner's own presence fix — each bounded by its age.
  */
 export async function getPartnerCoords(mode: "soft" | "strict" = "soft"): Promise<PartnerCoords | null> {
   const cacheMs = mode === "strict" ? 120_000 : 240_000;

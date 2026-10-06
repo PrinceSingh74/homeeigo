@@ -7,6 +7,7 @@ import { m as motion, useReducedMotion } from "framer-motion";
 import { HOMIGO_RIDER_IMAGE } from "@/lib/demo-tracking-booking";
 import { useActiveTracking } from "@/hooks/use-active-tracking";
 import { AI_SECTION_IDS } from "@/lib/ai-page-actions";
+import { professionalLabel } from "@/lib/bookings";
 import { cn } from "@/lib/utils";
 
 type AiLiveTrackingCardProps = {
@@ -18,7 +19,8 @@ export function AiLiveTrackingCard({ embedded, className }: AiLiveTrackingCardPr
   const reduce = useReducedMotion();
   const { activeBooking, tracking } = useActiveTracking();
   const eta = tracking?.eta ?? 0;
-  const proName = activeBooking?.proName ?? "Assigned Pro";
+  // The real name or the honest sentence; with no active booking there is nobody to name.
+  const proName = activeBooking ? professionalLabel(activeBooking) : "";
   const serviceTitle = activeBooking?.serviceTitle ?? "Service";
 
   return (

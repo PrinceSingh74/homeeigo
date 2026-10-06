@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock,
+  ExternalLink,
   LifeBuoy,
   ListChecks,
   MapPin,
@@ -41,7 +42,10 @@ import { JobEvidencePanel } from "@/components/requests/JobEvidencePanel";
 import { PartnerCard } from "@/components/ui/PartnerCard";
 import { useBookingRequirementsQuery } from "@/hooks/use-partner-data";
 import { bookingDetailKey } from "@/lib/booking-cache";
+import { jobAccessDetails } from "@/lib/job-access";
 import { getAvailableJobActions, primaryActionToLocalCta } from "@/lib/job-action-policy";
+import { googleDirectionsUrl, jobDestination, navigationHref } from "@/lib/job-navigation";
+import { isActiveJobStatus, isOfferStatus, jobSubResourcesEnabled } from "@/lib/job-stage";
 import { partnerLayout } from "@/lib/partner-layout";
 import { formatDate, formatTime } from "@/lib/format";
 import { partnerApi } from "@/services/partner-api";
@@ -73,10 +77,19 @@ export default function JobDetailPage() {
   });
   const booking = detail.data ?? null;
 
+  /**
+   * An OFFER (status pending) is not this partner's job yet: the server answers its sub-resources
+   * (`/actions`, `/requirements`, `/execution`, `/safety`, `/quality`, `/completion`, `/evidence`) with
+   * 404 or an empty list by design. None of those reads fire for an offer — the brief below is drawn
+   * from the booking payload, and the sections that need the job to be held say when they open.
+   */
+  const isOffer = isOfferStatus(booking?.status);
+  const reads = jobSubResourcesEnabled(booking?.status);
+
   const actionsQuery = useQuery({
     queryKey: ["partner", "job-actions", id],
     queryFn: () => partnerApi.getJobActions(id),
-    enabled: !!id && !!booking,
+    enabled: !!id && reads.actions,
     staleTime: 15_000,
   });
 
@@ -89,9 +102,11 @@ export default function JobDetailPage() {
       "Customer"
     : "";
 
-  const isActive =
-    booking != null &&
-    ["accepted", "assigned", "en_route", "in_progress"].includes(booking.status);
+  const isActive = isActiveJobStatus(booking?.status);
+  // Only what the payload carries: the note and access fields arrive non-null while the job is held.
+  const accessDetails = booking ? jobAccessDetails(booking) : [];
+  // Navigation is offered only when the booking itself carries coordinates — and always to THIS job.
+  const destination = jobDestination(booking);
 
   const timeline = booking
     ? [
@@ -131,9 +146,9 @@ export default function JobDetailPage() {
 
   // Same keys as the panels below, so these are the panels' own fetches, not extra requests.
   // Enabled only once the booking is known to be this partner's — as when the panels fetched alone.
-  const safetyQuery = useJobSafety(id, !!booking);
-  const stepsQuery = useJobExecution(id, !!booking);
-  const requirementsQuery = useBookingRequirementsQuery(id, !!booking);
+  const safetyQuery = useJobSafety(id, reads.safety);
+  const stepsQuery = useJobExecution(id, reads.execution);
+  const requirementsQuery = useBookingRequirementsQuery(id, reads.requirements);
   const hasSteps = stepsQuery.data?.enforced === true && stepsQuery.data.steps.length > 0;
   const hasRequirementItems = requirementsQuery.data?.enforced === true && requirementsQuery.data.items.length > 0;
   const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set());
@@ -210,11 +225,49 @@ export default function JobDetailPage() {
               <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-partner-primary" aria-hidden="true" />
               {booking.address?.fullAddress ?? "Address pending"}
             </p>
+            {accessDetails.length > 0 ? (
+              <dl className="space-y-2 rounded-xl bg-partner-bg/60 px-3 py-3" data-testid="job-access-details">
+                {accessDetails.map((row) => (
+                  <div key={row.key} data-testid={`job-access-${row.key}`}>
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-partner-muted">{row.label}</dt>
+                    <dd className="whitespace-pre-line break-words text-sm text-partner-text">{row.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+            {destination ? (
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={navigationHref(booking.id)}
+                  data-testid="job-navigate"
+                  className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-partner-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-partner-primary focus-visible:ring-offset-2"
+                >
+                  <Navigation className="h-4 w-4" aria-hidden="true" />
+                  Navigate
+                </Link>
+                {/* Works without the in-app map (no Maps key, slow network): the phone's own maps app. */}
+                <a
+                  href={googleDirectionsUrl(destination)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="job-navigate-external"
+                  className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-partner-line px-4 py-2.5 text-sm font-semibold text-partner-text transition hover:border-partner-primary/50"
+                >
+                  <ExternalLink className="h-4 w-4 text-partner-primary" aria-hidden="true" />
+                  Open in Google Maps
+                </a>
+              </div>
+            ) : null}
             <p className="flex items-center gap-2 text-xs text-partner-muted">
               <Clock className="h-3.5 w-3.5" aria-hidden="true" />
               Scheduled {formatDate(booking.scheduledDate)} · {formatTime(booking.scheduledDate)}
             </p>
             <JobBrief job={booking.job} />
+            {isOffer ? (
+              <p role="status" data-testid="job-offer-notice" className="rounded-xl border border-partner-warning/40 bg-partner-warning/10 px-3 py-2.5 text-sm text-partner-text">
+                This job is offered to you and is not accepted yet. Arrival, service steps, the checklist and proof open once the job is accepted.
+              </p>
+            ) : null}
             {nextCta ? (
               <p className="text-xs font-semibold text-partner-text-secondary">
                 Next:{" "}
@@ -249,10 +302,17 @@ export default function JobDetailPage() {
           </BriefSection>
 
           <BriefSection def={BRIEF.requirements} number={2}>
-            <RequirementChecklist bookingId={booking.id} active={isActive} gate={actionsQuery.data?.requirementGate ?? null} heading={false} />
+            {/* The live requirement state belongs to the partner who holds the job; an offer shows the snapshot only. */}
+            {isOffer ? null : (
+              <RequirementChecklist bookingId={booking.id} active={isActive} gate={actionsQuery.data?.requirementGate ?? null} heading={false} />
+            )}
             <JobPreparation requirements={booking.requirements} only="customer" />
             {!hasRequirementItems && !requirementsQuery.isLoading && !hasPreparationPart(booking.requirements, "customer") ? (
-              <BriefEmpty>No requirements are recorded for this job.</BriefEmpty>
+              <BriefEmpty>
+                {isOffer
+                  ? "This offer records nothing the customer must provide or prepare. The on-site requirement checks open once the job is accepted."
+                  : "No requirements are recorded for this job."}
+              </BriefEmpty>
             ) : null}
           </BriefSection>
 
@@ -290,11 +350,19 @@ export default function JobDetailPage() {
 
           {/* §9 precedence: a safety hold outranks every later section. */}
           <BriefSection def={BRIEF.safety} number={5}>
-            <SafetyPanel bookingId={booking.id} heading={false} emptyText="No safety rules are recorded for this job." />
+            {isOffer ? (
+              <BriefEmpty>Safety rules and the report form open once the job is accepted.</BriefEmpty>
+            ) : (
+              <SafetyPanel bookingId={booking.id} heading={false} emptyText="No safety rules are recorded for this job." />
+            )}
           </BriefSection>
 
           <BriefSection def={BRIEF.steps} number={6}>
-            <ExecutionSteps bookingId={booking.id} heading={false} emptyText="This service has no step-by-step plan. Follow the job summary and the quality checklist." />
+            {isOffer ? (
+              <BriefEmpty>The step-by-step plan opens once the job is accepted.</BriefEmpty>
+            ) : (
+              <ExecutionSteps bookingId={booking.id} heading={false} emptyText="This service has no step-by-step plan. Follow the job summary and the quality checklist." />
+            )}
           </BriefSection>
 
           <BriefSection def={BRIEF.quality} number={7}>
@@ -332,12 +400,16 @@ export default function JobDetailPage() {
               </>
             )}
             {/* §10: the recorded quality verdict (and why a complete was refused); §11: reported issues. */}
-            <QualityPanel bookingId={booking.id} heading={false} />
+            {isOffer ? null : <QualityPanel bookingId={booking.id} heading={false} />}
           </BriefSection>
 
           <BriefSection def={BRIEF.proof} number={8}>
             {quality ? <ProofRequirements proofRequired={quality.proofRequired} beforeAfterPhotos={quality.beforeAfterPhotos} /> : null}
-            <JobEvidencePanel bookingId={booking.id} embedded />
+            {isOffer ? (
+              <BriefEmpty>Proof upload opens once the job is accepted.</BriefEmpty>
+            ) : (
+              <JobEvidencePanel bookingId={booking.id} embedded />
+            )}
           </BriefSection>
 
           <BriefSection def={BRIEF.escalation} number={9}>
@@ -395,6 +467,7 @@ export default function JobDetailPage() {
           {showChat ? (
             <JobChatPanel
               bookingId={booking.id}
+              status={booking.status}
               customerName={customerName}
               bookingNumber={booking.bookingNumber}
               phoneMasked={booking.customer.phoneMasked}

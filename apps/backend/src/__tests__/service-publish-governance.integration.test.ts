@@ -369,3 +369,123 @@ describe.serial("default policy", () => {
     expect(await drafts(id)).toBe(0);
   });
 });
+
+const POLICIES = { materialPolicy: "PROFESSIONAL_PROVIDED", equipmentPolicy: "PROFESSIONAL_PROVIDED" };
+const FULL = {
+  ...POLICIES,
+  safety: { prohibitedConditions: ["Gas smell in the room"] },
+  quality: { checklist: ["Work area left clean"] },
+  execution: { steps: [{ id: "work", title: "Do the work", kind: "WORK", sortOrder: 1 }] },
+};
+/** Live with `config`, published the governed way (review → second admin's approval → ACTIVE). */
+async function liveWith(config: Record<string, unknown>): Promise<string> {
+  const id = await serviceInReview();
+  await prisma.service.update({ where: { id }, data: { catalogConfig: config as never } });
+  if ((await call("POST", `/api/admin/services/${id}/approve`, {})).status !== 200) throw new Error("approve failed");
+  const live = await call("POST", `/api/admin/services/${id}/lifecycle`, { to: "ACTIVE" });
+  if (live.status !== 200) throw new Error(`publish failed: ${JSON.stringify(live.json)}`);
+  return id;
+}
+const configOf = async (id: string) => ((await row(id)).catalogConfig ?? {}) as Record<string, unknown>;
+
+describe.serial("an edit to a live service may not remove what a first publish requires", () => {
+  const before = process.env.SERVICE_PUBLISH_REQUIRES;
+  const requireSections = () => {
+    process.env.SERVICE_PUBLISH_REQUIRES = "safety,quality,execution";
+  };
+  afterAll(() => {
+    if (before === undefined) delete process.env.SERVICE_PUBLISH_REQUIRES;
+    else process.env.SERVICE_PUBLISH_REQUIRES = before;
+  });
+
+  test("deleting the safety section from a live service is refused, and the service keeps it", async () => {
+    expect(dbOk).toBe(true);
+    requireSections();
+    const id = await liveWith(FULL);
+    const { safety: _removed, ...withoutSafety } = FULL;
+    const r = await call("PUT", `/api/admin/services/${id}`, { catalogConfig: withoutSafety });
+    expect(r.json.code).toBe("SERVICE_NOT_BOOKABLE");
+    expect(JSON.stringify(r.json)).toContain("SAFETY_ABSENT");
+    expect((await configOf(id)).safety).toEqual(FULL.safety);
+    expect((await row(id)).lifecycleStatus).toBe("ACTIVE");
+  });
+
+  test("emptying it instead of deleting it is the same thing", async () => {
+    expect(dbOk).toBe(true);
+    requireSections();
+    const id = await liveWith(FULL);
+    const r = await call("PUT", `/api/admin/services/${id}`, { catalogConfig: { ...FULL, safety: {}, quality: { notApplicable: true } } });
+    expect(r.json.code).toBe("SERVICE_NOT_BOOKABLE");
+    expect((await configOf(id)).quality).toEqual(FULL.quality);
+  });
+
+  test("control: a live service that never had those sections can still be edited, and stays live", async () => {
+    expect(dbOk).toBe(true);
+    delete process.env.SERVICE_PUBLISH_REQUIRES;
+    process.env.SERVICE_PUBLISH_REQUIRES = "none";
+    const id = await liveWith(POLICIES);
+    requireSections();
+    const r = await call("PUT", `/api/admin/services/${id}`, { description: "A clearer description of the same fixture service" });
+    expect(r.status).toBe(200);
+    expect((await row(id)).lifecycleStatus).toBe("ACTIVE");
+    // …and adding the missing sections is accepted.
+    expect((await call("PUT", `/api/admin/services/${id}`, { catalogConfig: FULL })).status).toBe(200);
+  });
+
+  test("restoring an older version that lacks them is refused the same way", async () => {
+    expect(dbOk).toBe(true);
+    process.env.SERVICE_PUBLISH_REQUIRES = "none";
+    const id = await liveWith(POLICIES);
+    expect((await call("PUT", `/api/admin/services/${id}`, { catalogConfig: FULL })).status).toBe(200);
+    const first = await prisma.serviceConfigVersion.findFirstOrThrow({ where: { serviceId: id, status: "PUBLISHED" }, orderBy: { version: "asc" } });
+    requireSections();
+    const r = await call("POST", `/api/admin/services/${id}/versions/${first.version}/restore`, { reason: "Roll back to the first version" });
+    expect(r.json.code).toBe("SERVICE_NOT_BOOKABLE");
+    expect((await configOf(id)).safety).toEqual(FULL.safety);
+  });
+});
+
+describe.serial("visible-but-not-bookable to bookable is a publish", () => {
+  test("clearing 'coming soon' on a live service needs the gate and a second admin, like any other way into bookable", async () => {
+    expect(dbOk).toBe(true);
+    const id = await liveWith({ ...POLICIES, comingSoon: true });
+    expect((await row(id)).lifecycleStatus).toBe("PUBLISHED");
+    const r = await call("PUT", `/api/admin/services/${id}`, { catalogConfig: { ...POLICIES, comingSoon: false } });
+    expect(["APPROVAL_REQUIRED", "APPROVAL_STALE"]).toContain(r.json.code as string);
+    const s = await row(id);
+    expect({ lifecycle: s.lifecycleStatus, bookable: s.isBookable }).toEqual({ lifecycle: "PUBLISHED", bookable: false });
+  });
+});
+
+describe.serial("VALIDATING validates", () => {
+  async function draft(config: Record<string, unknown>): Promise<string> {
+    seq += 1;
+    const r = await call("POST", "/api/admin/services", { name: `Gov ${RUN_ID} ${seq}`, description: "A fixture service with a real description", category: "cleaning", basePrice: 300, estimatedDuration: 60, catalogConfig: config, isActive: false });
+    if (r.status !== 200) throw new Error(`create: ${JSON.stringify(r.json)}`);
+    created.push(r.json.data.service.id);
+    return r.json.data.service.id as string;
+  }
+
+  test("entering VALIDATING runs the gate and answers with what it found", async () => {
+    expect(dbOk).toBe(true);
+    const id = await draft({});
+    const r = await call("POST", `/api/admin/services/${id}/lifecycle`, { to: "CONFIGURATION_REQUIRED" });
+    expect(r.status).toBe(200);
+    expect(r.json.data.validation.ok).toBe(false);
+    expect((r.json.data.validation.blocking as { code: string }[]).map((b) => b.code).sort()).toEqual(["EQUIPMENT_POLICY", "MATERIALS_POLICY"]);
+  });
+
+  test("a service that fails validation cannot be sent for review; once fixed it can", async () => {
+    expect(dbOk).toBe(true);
+    const id = await draft({});
+    await call("POST", `/api/admin/services/${id}/lifecycle`, { to: "CONFIGURATION_REQUIRED" });
+    const refused = await call("POST", `/api/admin/services/${id}/lifecycle`, { to: "READY_FOR_REVIEW" });
+    expect(refused.json.code).toBe("SERVICE_NOT_BOOKABLE");
+    expect((await row(id)).lifecycleStatus).toBe("CONFIGURATION_REQUIRED");
+    expect((await call("PUT", `/api/admin/services/${id}`, { catalogConfig: POLICIES })).status).toBe(200);
+    const sent = await call("POST", `/api/admin/services/${id}/lifecycle`, { to: "READY_FOR_REVIEW" });
+    expect(sent.status).toBe(200);
+    expect(sent.json.data.validation.ok).toBe(true);
+    expect((await row(id)).lifecycleStatus).toBe("READY_FOR_REVIEW");
+  });
+});

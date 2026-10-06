@@ -172,7 +172,113 @@ describe.serial("every partner booking payload stays inside the allow-list", () 
   });
 });
 
+async function send(path: string, token: string, body: unknown) {
+  const res = await app.handle(
+    new Request(`http://localhost${path}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) }),
+  );
+  return { status: res.status, json: (await res.json().catch(() => ({}))) as { code?: string } };
+}
+const evidenceOf = async (token: string) => {
+  const r = await get(`/api/bookings/${id}/evidence`, token);
+  return { status: r.status, text: r.text, rows: (r.json.data?.evidence ?? []) as Record<string, unknown>[] };
+};
+
+describe.serial("evidence, the note and chat follow the stage too", () => {
+  test("offered: no evidence of the job is handed out (it holds an earlier partner's photos and position)", async () => {
+    expect(dbOk).toBe(true);
+    await prisma.jobEvidence.create({ data: { bookingId: id, providerId: ctx.providerId, stage: "ARRIVAL", latitude: 28.6201, longitude: 77.3702, clientUploadId: `${RUN}-arrival` } });
+    await setOffered();
+    const offered = await evidenceOf(partner());
+    expect({ status: offered.status, rows: offered.rows.length }).toEqual({ status: 200, rows: 0 });
+    expect(offered.text).not.toContain("28.6201");
+  });
+
+  test("holding the job: own evidence without coordinates, the note on the job detail, chat open", async () => {
+    expect(dbOk).toBe(true);
+    await setHeld("IN_PROGRESS");
+    const mine = await evidenceOf(partner());
+    expect(mine.rows.length).toBe(1);
+    expect(mine.rows[0]).not.toHaveProperty("latitude");
+    expect(mine.rows[0]).not.toHaveProperty("longitude");
+    expect(mine.text).not.toContain("28.6201");
+    // The admin who audits the visit still reads where the evidence was captured.
+    const audit = await evidenceOf(bearer(ctx.superAdmin));
+    expect(audit.rows[0]?.latitude).toBe(28.6201);
+
+    expect((await detail()).description).toBe(NOTE);
+
+    expect((await get(`/api/bookings/${id}/chat`, partner())).status).toBe(200);
+    expect((await send(`/api/bookings/${id}/chat`, partner(), { body: "On my way up" })).status).toBe(200);
+    expect((await send(`/api/bookings/${id}/chat`, bearer(ctx.customerA), { body: "Second floor" })).status).toBe(200);
+  });
+});
+
+describe.serial("what a partner is handed back, and what an earlier partner left behind", () => {
+  test("uploading evidence answers with the same safe view as the list: no coordinates, raw links or storage key", async () => {
+    expect(dbOk).toBe(true);
+    await setHeld("IN_PROGRESS");
+    const res = await app.handle(
+      new Request(`http://localhost/api/bookings/${id}/evidence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${partner()}` },
+        body: JSON.stringify({ stage: "START", mediaUrl: "https://example.test/raw-photo.jpg", latitude: 28.6203, longitude: 77.3704, clientUploadId: `${RUN}-start` }),
+      }),
+    );
+    const text = await res.text();
+    expect(res.status).toBe(200);
+    const row = (JSON.parse(text) as { data: { evidence: Record<string, unknown> } }).data.evidence;
+    expect(row.id).toBeTruthy();
+    for (const key of ["latitude", "longitude", "mediaUrl", "mediaStorageKey", "metadata", "providerId"]) expect({ key, present: key in row }).toEqual({ key, present: false });
+    expect(text).not.toContain("28.6203");
+    expect(text).not.toContain("raw-photo.jpg");
+  });
+
+  test("a chat message does not leave its text in the other side's notifications", async () => {
+    expect(dbOk).toBe(true);
+    await setHeld("IN_PROGRESS");
+    expect((await send(`/api/bookings/${id}/chat`, bearer(ctx.customerA), { body: "The key is under the blue pot" })).status).toBe(200);
+    await new Promise((r) => setTimeout(r, 400));
+    const notes = await prisma.notification.findMany({ where: { userId: ctx.vendorUserId, type: "booking_chat_message", referenceId: id } });
+    expect(notes.length).toBeGreaterThan(0);
+    expect(JSON.stringify(notes)).not.toContain("blue pot");
+  });
+
+  test("a partner reads the customer's messages from when they took the job, not what was written to an earlier partner", async () => {
+    expect(dbOk).toBe(true);
+    await setHeld("IN_PROGRESS");
+    const conversation = await prisma.bookingConversation.findUniqueOrThrow({ where: { bookingId: id } });
+    const tookJobAt = new Date();
+    await prisma.booking.update({ where: { id }, data: { acceptedAt: tookJobAt } });
+    await prisma.bookingMessage.create({ data: { conversationId: conversation.id, senderUserId: ctx.customerA.id, body: "For the first professional: alarm code 7788", createdAt: new Date(tookJobAt.getTime() - 3_600_000) } });
+    await prisma.bookingMessage.create({ data: { conversationId: conversation.id, senderUserId: ctx.customerA.id, body: "For you: please use the side door", createdAt: new Date(tookJobAt.getTime() + 1_000) } });
+    const mine = await get(`/api/bookings/${id}/chat`, partner());
+    expect(mine.status).toBe(200);
+    expect(mine.text).toContain("side door");
+    expect(mine.text).not.toContain("7788");
+    // The customer still reads everything they wrote.
+    expect((await get(`/api/bookings/${id}/chat`, bearer(ctx.customerA))).text).toContain("7788");
+  });
+});
+
 describe.serial("after the job is over", () => {
+  test("completed: the conversation is closed to the partner and to new messages; the customer keeps their copy", async () => {
+    expect(dbOk).toBe(true);
+    await setHeld("COMPLETED");
+    const read = await get(`/api/bookings/${id}/chat`, partner());
+    expect({ status: read.status, code: (read.json as { code?: string }).code }).toEqual({ status: 403, code: "CHAT_CLOSED" });
+    expect(read.text).not.toContain("Second floor");
+    expect(await send(`/api/bookings/${id}/chat`, partner(), { body: "hello again" })).toMatchObject({ status: 403, json: { code: "CHAT_CLOSED" } });
+    expect(await send(`/api/bookings/${id}/chat/read`, partner(), {})).toMatchObject({ status: 403, json: { code: "CHAT_CLOSED" } });
+    expect(await send(`/api/bookings/${id}/chat`, bearer(ctx.customerA), { body: "one more thing" })).toMatchObject({ status: 403, json: { code: "CHAT_CLOSED" } });
+    const own = await get(`/api/bookings/${id}/chat`, bearer(ctx.customerA));
+    expect(own.status).toBe(200);
+    expect(own.text).toContain("Second floor");
+
+    const after = await evidenceOf(partner());
+    expect(after.text).not.toContain("28.6201");
+    expect((await detail()).description).toBeNull();
+  });
+
   test("completed: first name only, city-level address, no note, no phone, still inside the allow-list", async () => {
     expect(dbOk).toBe(true);
     await setHeld("COMPLETED");

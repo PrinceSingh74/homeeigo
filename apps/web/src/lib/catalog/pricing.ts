@@ -102,15 +102,19 @@ export function formatDuration(minutes: number | undefined): string | null {
  * The booking API prices a service at one of three tiers: min, base, max
  * (see apps/backend booking-pricing.service resolvePackagePrice). /book shows
  * them as Basic / Standard / Premium at package indexes 0 / 1 / 2. Keep these
- * names and indexes in lockstep with BookPageClient's packagesFromApi.
+ * names and indexes in lockstep with lib/book-services packagesFromApi.
+ *
+ * Names only. The tiers once carried descriptions ("Essentials", "Most popular", "Full service"),
+ * but the server configures a price per tier and nothing about what a tier contains or how often
+ * it is bought, so there is nothing to describe.
  */
 export const PACKAGE_TIERS = [
-  { index: 0, name: "Basic", tag: "Essentials" },
-  { index: 1, name: "Standard", tag: "Most popular" },
-  { index: 2, name: "Premium", tag: "Full service" },
+  { index: 0, name: "Basic" },
+  { index: 1, name: "Standard" },
+  { index: 2, name: "Premium" },
 ] as const;
 
-export type TierOption = { index: number; name: string; tag: string; price: number };
+export type TierOption = { index: number; name: string; price: number };
 
 export function tierOptions(price: PriceInfo): TierOption[] {
   const prices = [price.min, price.base, price.max];

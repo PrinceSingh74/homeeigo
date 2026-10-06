@@ -247,6 +247,42 @@ export function pricingReadiness(
   return { ok: false, missing: [...missing] };
 }
 
+/**
+ * Active variants the resolver cannot price. `pricingReadiness` asks whether the service can be
+ * sold at all (one priced variant is enough); this asks whether everything on sale can be.
+ */
+function unpricedVariants(
+  service: Pick<ServiceDomainCore, "basePrice" | "minPrice" | "maxPrice" | "estimatedDuration" | "pricingModel" | "currency">,
+  cfg: ServiceCatalogConfig | null,
+): string[] {
+  const rule = cfg?.quantity && cfg.quantity.type !== "NONE" ? cfg.quantity : null;
+  const quantity = rule ? (rule.default ?? rule.min) : undefined;
+  const out: string[] = [];
+  for (const v of (cfg?.variants ?? []).filter((x) => x.active !== false)) {
+    const r = resolveServiceSelection(service, cfg, { variantId: v.id, quantity, audience: v.audiences?.[0] ?? cfg?.audiences?.[0] });
+    if (r.ok ? !(r.servicePricePaise > 0) : r.issues.some((i) => i.code === "PRICING_CONFIG_MISSING")) out.push(v.id);
+  }
+  return out;
+}
+
+const filled = (v: unknown): boolean => (typeof v === "string" ? v.trim().length > 0 : Array.isArray(v) ? v.some(filled) : false);
+
+/** Safety information exists when something in it says something: a key with nothing under it does not. */
+export function hasSafetyContent(cfg: ServiceCatalogConfig | null): boolean {
+  return filled(cfg?.safetyNotes) || Object.values(cfg?.safety ?? {}).some(filled);
+}
+
+/**
+ * A quality standard exists when there is something to hold the job to: a checklist, completion
+ * criteria, or a proof or confirmation the job cannot complete without. A warranty length, a
+ * complaint window or "not applicable" is not a standard.
+ */
+export function hasQualityContent(cfg: ServiceCatalogConfig | null): boolean {
+  const q = cfg?.quality;
+  if (!q) return false;
+  return filled(q.checklist) || filled(q.completionCriteria) || q.proofRequired === true || q.beforeAfterPhotos === true || q.customerConfirmation === true || q.professionalConfirmation === true;
+}
+
 /** Reasons a customer must not be charged / booked. Empty = bookable from a config standpoint. */
 export function blockingBookabilityIssues(service: ServiceDomainCore, cfg: ServiceCatalogConfig | null): PublishIssue[] {
   const issues: PublishIssue[] = [];
@@ -265,6 +301,11 @@ export function blockingBookabilityIssues(service: ServiceDomainCore, cfg: Servi
   if (!cfg?.comingSoon) {
     const pr = pricingReadiness(service, cfg);
     if (!pr.ok) push("PRICING_INCOMPLETE", "pricing", `Pricing is incomplete: ${pr.missing.join(", ")}`);
+  }
+  if (!cfg?.comingSoon) {
+    for (const id of unpricedVariants(service, cfg)) {
+      push("VARIANT_UNPRICED", `variants.${id}`, `Variant "${id}" is on sale and has no price, so a customer who picks it cannot be quoted`);
+    }
   }
   if (service.pricingModel === "hourly" && cfg?.quantity && cfg.quantity.type !== "HOUR") {
     push("QUANTITY_TYPE", "quantity.type", 'Pricing model "hourly" needs an HOUR quantity rule');
@@ -316,8 +357,9 @@ function profileIssues(profile: CapabilityProfile, service: ServiceDomainCore, c
       push("QUANTITY_TYPE", "quantity", "CARE_PROFILE needs duration (HOUR) when not a fixed visit");
     }
   }
-  if (!cfg?.materialPolicy) push("MATERIALS_POLICY", "materialPolicy", "Materials policy not specified");
-  if (!cfg?.equipmentPolicy) push("EQUIPMENT_POLICY", "equipmentPolicy", "Equipment policy not specified");
+  // NOT_SPECIFIED is the absence of a decision, stored. NOT_REQUIRED is a decision.
+  if (!cfg?.materialPolicy || cfg.materialPolicy === "NOT_SPECIFIED") push("MATERIALS_POLICY", "materialPolicy", "Materials policy not specified");
+  if (!cfg?.equipmentPolicy || cfg.equipmentPolicy === "NOT_SPECIFIED") push("EQUIPMENT_POLICY", "equipmentPolicy", "Equipment policy not specified");
   return issues;
 }
 
@@ -336,6 +378,35 @@ export function validateForActivation(
     .map((g) => ({ code: g.code, path: g.path, message: g.message }));
   if (issues.length) return { ok: false, code: "SERVICE_NOT_BOOKABLE", issues };
   return { ok: true };
+}
+
+/**
+ * What an edit to a LIVE service must not do: make it worse.
+ *
+ * A live service keeps the gaps it already has as warnings, so that a new requirement never
+ * unpublishes it. That leniency used to cover the edit as well, so the sections a first publish
+ * requires could be deleted from a service the day after it went live. The rule now: anything that
+ * blocks even a live service still blocks, and so does every finding a first publish would refuse
+ * that the service did not already have before this edit.
+ */
+export function liveEditRegressions(input: {
+  before: { service: ServiceDomainCore; cfg: ServiceCatalogConfig | null };
+  after: { service: ServiceDomainCore; cfg: ServiceCatalogConfig | null };
+  required?: readonly PublishRequiredSection[];
+  platformPolicy?: PlatformPolicyShape;
+  unavailableTrainingModules?: readonly string[];
+}): PublishIssue[] {
+  const shared = { required: input.required, platformPolicy: input.platformPolicy, unavailableTrainingModules: input.unavailableTrainingModules };
+  const key = (g: Pick<PublishGateResult, "code" | "path">) => `${g.code}@${g.path}`;
+  const strict = (x: { service: ServiceDomainCore; cfg: ServiceCatalogConfig | null }) => publishGateResults(x.service, x.cfg, { ...shared, grandfathered: false }).filter(isBlockingGate);
+  const already = new Set(strict(input.before).map(key));
+  const always = publishGateResults(input.after.service, input.after.cfg, { ...shared, grandfathered: true }).filter(isBlockingGate);
+  const out = new Map<string, PublishIssue>();
+  for (const g of always) out.set(key(g), { code: g.code, path: g.path, message: g.message });
+  for (const g of strict(input.after)) {
+    if (!already.has(key(g))) out.set(key(g), { code: g.code, path: g.path, message: `${g.message} This edit would introduce it on a live service.` });
+  }
+  return [...out.values()];
 }
 
 /** A rail entry that stops publication. Warnings and not-applicable entries never do. */
@@ -383,6 +454,7 @@ const GATE_REMEDIATION: Record<string, string> = {
   MATERIALS_POLICY: "Choose a materials policy. Do not invent a materials list.",
   EQUIPMENT_POLICY: "Choose an equipment policy. Do not invent an equipment list.",
   ADDON_VARIANT_INACTIVE: "Point the add-on at an active variant, or remove the compatibility rule.",
+  VARIANT_UNPRICED: "Give the variant a price, or switch it off.",
 };
 
 function gateResult(
@@ -435,10 +507,10 @@ export function publishGateResults(
   } else if (cities || pins || zones) pass("COVERAGE", "coverage", "Coverage is limited to the configured cities, zones or PIN codes.");
   else warn("COVERAGE_UNSPECIFIED", "coverage", "Coverage is unspecified and is treated as nationwide.", "Set cities or PIN codes if this service is not nationwide.");
 
-  if (cfg?.safety || cfg?.safetyNotes?.length) pass("SAFETY", "safety", "Safety information is configured.");
+  if (hasSafetyContent(cfg)) pass("SAFETY", "safety", "Safety information is configured.");
   else warn("SAFETY_ABSENT", "safety", "No safety information is configured.", "Add approved safety information, or leave the service unpublished until it exists. Do not invent it.");
 
-  if (cfg?.quality) pass("QUALITY", "quality", "Quality criteria are configured.");
+  if (hasQualityContent(cfg)) pass("QUALITY", "quality", "Quality criteria are configured.");
   else warn("QUALITY_ABSENT", "quality", "No quality criteria are configured.", "Add approved quality criteria, or leave them unset. Do not invent a checklist.");
 
   if ((cfg?.execution?.steps?.length ?? 0) > 0 && !results.some((g) => g.path.startsWith("execution") && g.status === "FAIL")) {
@@ -474,7 +546,21 @@ export function publishGateResults(
   // booking of this service would freeze today. If that policy is malformed, nothing may publish.
   const policy = opts.platformPolicy ?? CANCELLATION_POLICY;
   const policyProblems = platformPolicyIssues(policy);
-  pass("BOOKING_POLICY", "bookingRules", `A booking of this service freezes platform policy ${policy.version} at creation; later policy changes do not re-price it.`);
+  if (policyProblems.length) {
+    results.push(gateResult(service, "PLATFORM_POLICY_INVALID", "FAIL", "critical", "bookingRules", `A booking of this service would freeze platform policy ${policy.version}, which is inconsistent (${policyProblems.join("; ")}).`, "Fix the platform cancellation policy. No service can be published until it is consistent."));
+  } else {
+    pass("BOOKING_POLICY", "bookingRules", `A booking of this service freezes platform policy ${policy.version} at creation; later policy changes do not re-price it.`);
+  }
+  // Wording on the service is shown to customers, and nothing enforces it: the money follows the
+  // platform policy. The gate cannot read prose, so it says so instead of passing it.
+  const wording: [string, string, unknown][] = [
+    ["cancellation", "cancellation", cfg?.bookingRules?.cancellationPolicy],
+    ["refund", "refund", cfg?.payment?.refundPolicy],
+  ];
+  for (const [path, what, text] of wording) {
+    if (!filled(text)) continue;
+    warn("POLICY_WORDING_NOT_ENFORCED", path, `This service carries its own ${what} wording. It is shown as written; fees and refunds follow platform policy ${policy.version}.`, `Check the wording against platform policy ${policy.version}, or remove it.`);
+  }
   for (const [code, path, what] of [["CANCELLATION_POLICY", "cancellation", "Cancellation"], ["REFUND_POLICY", "refund", "Refund"]] as const) {
     if (policyProblems.length) {
       results.push(gateResult(service, "PLATFORM_POLICY_INVALID", "FAIL", "critical", path, `${what} terms cannot be relied on: platform policy ${policy.version} is inconsistent (${policyProblems.join("; ")}).`, "Fix the platform cancellation policy. No service can be published until it is consistent."));
@@ -712,10 +798,15 @@ export function publishRequiredSections(
   if (text.toLowerCase() === "none") return [];
   const known = Object.keys(REQUIRED_SECTION_ABSENT_CODE) as PublishRequiredSection[];
   const out: PublishRequiredSection[] = [];
-  for (const part of text.split(",")) {
-    const match = known.find((k) => k.toLowerCase() === part.trim().toLowerCase());
-    if (match && !out.includes(match)) out.push(match);
+  let unrecognised = false;
+  for (const part of text.split(/[\s,;]+/).filter(Boolean)) {
+    const match = known.find((k) => k.toLowerCase() === part.toLowerCase());
+    if (!match) unrecognised = true;
+    else if (!out.includes(match)) out.push(match);
   }
+  // A name this function does not know is a mistake in the setting, and a mistake must not loosen
+  // the gate: the sections a deployed environment requires by default are required as well.
+  if (unrecognised) for (const section of DEPLOYED_REQUIRED_SECTIONS) if (!out.includes(section)) out.push(section);
   return out;
 }
 

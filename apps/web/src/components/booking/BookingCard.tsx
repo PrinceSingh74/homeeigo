@@ -4,7 +4,7 @@ import { m as motion } from "framer-motion";
 import { Calendar, MapPin, ChevronRight } from "lucide-react";
 import { ServiceImage } from "@/components/ui/ServiceImage";
 import { cn } from "@/lib/utils";
-import type { SavedBooking } from "@/lib/bookings";
+import { bookingSubtitle, type SavedBooking } from "@/lib/bookings";
 import { STATUS_CONFIG } from "@/lib/booking-status";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 
@@ -89,7 +89,7 @@ export function BookingCard({
             {booking.serviceTitle}
           </h3>
           <p className="text-sm text-muted">
-            {booking.packageName} · {booking.proName}
+            {bookingSubtitle(booking)}
           </p>
           <p className="flex items-center gap-2 text-sm text-muted">
             <Calendar size={14} className="shrink-0 text-primary" />

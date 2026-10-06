@@ -1420,7 +1420,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
           mediaMimeType: body.mediaMimeType,
           replace: Boolean(body.replace),
         });
-        return { success: true, data: { evidence: row } };
+        return { success: true, data: { evidence: jobEvidenceService.uploadReceipt(row) } };
       } catch (err) {
         const code = err instanceof Error ? err.message : "FORBIDDEN";
         set.status = code === "NOT_FOUND" ? 404 : 403;
@@ -1457,7 +1457,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
     } catch (err) {
       const code = err instanceof Error ? err.message : "FORBIDDEN";
       set.status = code === "NOT_FOUND" ? 404 : 403;
-      return { success: false, error: code === "NOT_FOUND" ? "Not found" : "Forbidden", code };
+      return { success: false, error: code === "NOT_FOUND" ? "Not found" : code === "CHAT_CLOSED" ? "Chat is closed for this job" : "Forbidden", code };
     }
   })
   .post(
@@ -1489,7 +1489,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
           return { success: false, error: "Invalid message", code };
         }
         set.status = code === "NOT_FOUND" ? 404 : 403;
-        return { success: false, error: code === "NOT_FOUND" ? "Not found" : "Forbidden", code };
+        return { success: false, error: code === "NOT_FOUND" ? "Not found" : code === "CHAT_CLOSED" ? "Chat is closed for this job" : "Forbidden", code };
       }
     },
     {
@@ -1508,7 +1508,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
     } catch (err) {
       const code = err instanceof Error ? err.message : "FORBIDDEN";
       set.status = code === "NOT_FOUND" ? 404 : 403;
-      return { success: false, error: code === "NOT_FOUND" ? "Not found" : "Forbidden", code };
+      return { success: false, error: code === "NOT_FOUND" ? "Not found" : code === "CHAT_CLOSED" ? "Chat is closed for this job" : "Forbidden", code };
     }
   })
   .get("/:id/contact", async ({ requireProvider, params: rawParams, set }) => {

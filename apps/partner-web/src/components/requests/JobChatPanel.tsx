@@ -8,15 +8,27 @@ import { PartnerButton } from "@/components/ui/PartnerButton";
 import { partnerApi } from "@/services/partner-api";
 import { getErrorMessage } from "@/lib/api-error";
 import { formatTime } from "@/lib/format";
+import { CHAT_CLOSED_MESSAGE, isChatClosedError, isChatOpen } from "@/lib/job-stage";
 import { usePartnerStore } from "@/stores/partner-store";
 
+/**
+ * Chat with the customer of ONE job, for as long as the partner is serving it.
+ *
+ * The server closes chat (403 `CHAT_CLOSED`) once the job is no longer active. `status` lets the panel
+ * know that without asking: when chat is closed it reads nothing, marks nothing read, shows no composer
+ * and says so. A `CHAT_CLOSED` answer that arrives anyway (the job ended while the panel was open) is
+ * shown as the same sentence, not as an error.
+ */
 export function JobChatPanel({
   bookingId,
+  status,
   customerName,
   bookingNumber,
   phoneMasked,
 }: {
   bookingId: string;
+  /** The booking's status — decides whether chat is open (`isChatOpen`). */
+  status: string | null | undefined;
   customerName: string;
   bookingNumber: string;
   phoneMasked?: string | null;
@@ -25,16 +37,20 @@ export function JobChatPanel({
   const myUserId = usePartnerStore((s) => s.user?.id);
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const open = isChatOpen(status);
 
   const chatQuery = useQuery({
     queryKey: ["partner", "job-chat", bookingId],
     queryFn: () => partnerApi.listChat(bookingId, { limit: 50 }),
-    refetchInterval: 8_000,
+    enabled: open,
+    // Stop polling the moment the server says the chat is closed.
+    refetchInterval: (query) => (isChatClosedError(query.state.error) ? false : 8_000),
   });
 
   useEffect(() => {
+    if (!open) return;
     void partnerApi.markChatRead(bookingId).catch(() => undefined);
-  }, [bookingId, chatQuery.dataUpdatedAt]);
+  }, [bookingId, open, chatQuery.dataUpdatedAt]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -49,7 +65,8 @@ export function JobChatPanel({
     },
   });
 
-  const messages = chatQuery.data?.messages ?? [];
+  const closed = !open || isChatClosedError(chatQuery.error) || isChatClosedError(sendMutation.error);
+  const messages = closed ? [] : chatQuery.data?.messages ?? [];
 
   return (
     <PartnerCard hover={false} className="flex flex-col gap-3" data-testid="job-chat-panel">
@@ -68,6 +85,12 @@ export function JobChatPanel({
         </div>
       </div>
 
+      {closed ? (
+        <p role="status" data-testid="job-chat-closed" className="rounded-xl bg-partner-bg/60 px-3 py-6 text-center text-sm text-partner-muted">
+          {CHAT_CLOSED_MESSAGE}
+        </p>
+      ) : (
+      <>
       <div className="flex max-h-72 min-h-[10rem] flex-col gap-2 overflow-y-auto rounded-xl bg-partner-bg/60 p-3">
         {chatQuery.isLoading ? (
           <div className="flex flex-1 items-center justify-center py-8">
@@ -142,6 +165,8 @@ export function JobChatPanel({
       {sendMutation.isError ? (
         <p className="text-xs text-partner-danger">{getErrorMessage(sendMutation.error)}</p>
       ) : null}
+      </>
+      )}
     </PartnerCard>
   );
 }

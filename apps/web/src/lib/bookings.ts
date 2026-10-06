@@ -30,6 +30,10 @@ export type SavedBooking = {
   serviceId: string;
   serviceTitle: string;
   serviceName: string;
+  /**
+   * The selection as a finished label ("Split AC · 3 unit", "Standard Package"), printed as is.
+   * Known only for a booking made in this browser; empty when loaded from the server.
+   */
   packageName: string;
   dateLabel: string;
   timeLabel: string;
@@ -44,6 +48,7 @@ export type SavedBooking = {
   completedAt?: string;
   imagePath?: string;
   serviceColor: string;
+  /** The assigned professional's real name; empty until the server assigns one (see professionalLabel). */
   proName: string;
   instructions?: string;
   paymentStatus?: string;
@@ -53,6 +58,37 @@ export type SavedBooking = {
   backendStatus?: string;
   timeline: TimelineEvent[];
 };
+
+/**
+ * The professional's name as the booking API gives it: `providerName` on the list payload,
+ * `provider.name` on the detail payload, and neither until someone is assigned. Empty then —
+ * never a stand-in name.
+ */
+export function providerNameFromBackend(b: {
+  providerName?: string | null;
+  provider?: { name?: string | null } | null;
+}): string {
+  return (b.providerName ?? b.provider?.name ?? "").trim();
+}
+
+const OPEN_STATUSES: ReadonlySet<BookingStatus> = new Set(["confirmed", "in_progress"]);
+
+/** The professional's name, or what is true when the server has assigned nobody. */
+export function professionalLabel(b: Pick<SavedBooking, "proName" | "status">): string {
+  const name = b.proName?.trim();
+  if (name) return name;
+  // "Yet" only while the booking can still be assigned.
+  return OPEN_STATUSES.has(b.status) ? "Professional not assigned yet" : "No professional assigned";
+}
+
+/**
+ * The line under a booking's title: its selection, when one is known, and its professional.
+ * `packageName` is empty for bookings loaded from the server — the customer payload carries no
+ * selection summary — so nothing is printed for it rather than a package nobody chose.
+ */
+export function bookingSubtitle(b: Pick<SavedBooking, "packageName" | "proName" | "status">): string {
+  return [b.packageName?.trim(), professionalLabel(b)].filter(Boolean).join(" · ");
+}
 
 export const SERVICE_IMAGES: Record<string, string> = {
   cleaning: "/svc-cleaning.png",
