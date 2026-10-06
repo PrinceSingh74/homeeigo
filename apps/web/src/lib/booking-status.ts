@@ -11,10 +11,13 @@ export type StatusConfig = {
 };
 
 export const STATUS_CONFIG: Record<BookingStatus, StatusConfig> = {
+  // The neutral pre-start wording, for when nothing more is known. What a pre-start booking
+  // actually says is statusConfigFor's decision: awaiting payment, finding a professional, or
+  // professional assigned.
   confirmed: {
     label: "Booked",
-    shortLabel: "Upcoming",
-    description: "Your pro will arrive at the scheduled time",
+    shortLabel: "Booked",
+    description: "We'll keep this booking updated as things change",
     gradient: "linear-gradient(135deg, #2563EB 0%, #4F46E5 50%, #7C3AED 100%)",
     accent: "#2563EB",
     bg: "rgb(37 99 235 / 0.12)",
@@ -82,6 +85,53 @@ export const STATUS_CONFIG: Record<BookingStatus, StatusConfig> = {
     text: "#B91C1C",
   },
 };
+
+/**
+ * The wording for a booking, true to where it really is.
+ *
+ * The presentation status "confirmed" covers every pre-start backend state, and it used to say
+ * "Upcoming — your pro will arrive at the scheduled time" for all of them, including a booking
+ * nobody had accepted and one that was not paid. The customer payload carries the real state
+ * (`status`: pending until a professional accepts, then accepted / assigned; `paymentStatus`;
+ * a provider name or null), so the three are told apart here. With neither known, the neutral
+ * wording claims nothing about a professional.
+ */
+export function statusConfigFor(b: {
+  status: BookingStatus;
+  backendStatus?: string | null;
+  paymentStatus?: string | null;
+  proName?: string | null;
+}): StatusConfig {
+  const base = STATUS_CONFIG[b.status];
+  if (b.status !== "confirmed") return base;
+  const backend = (b.backendStatus ?? "").toLowerCase();
+  const payment = (b.paymentStatus ?? "").toLowerCase();
+  if (backend === "accepted" || backend === "assigned") {
+    return {
+      ...base,
+      label: "Professional assigned",
+      shortLabel: "Upcoming",
+      description: "Your professional is assigned for the scheduled time",
+    };
+  }
+  if (backend === "pending" && payment === "success") {
+    return {
+      ...base,
+      label: "Finding a professional",
+      shortLabel: "Finding a pro",
+      description: "Payment received. We're finding a professional for your slot — their name appears here once one accepts",
+    };
+  }
+  if (backend === "pending" && payment) {
+    return {
+      ...base,
+      label: "Payment pending",
+      shortLabel: "Awaiting payment",
+      description: "Complete the payment to go ahead with this booking",
+    };
+  }
+  return base;
+}
 
 export type BookingFilter = "all" | "upcoming" | "completed" | "cancelled";
 

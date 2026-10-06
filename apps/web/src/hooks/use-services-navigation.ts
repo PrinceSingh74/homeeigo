@@ -50,7 +50,6 @@ export function useServicesNavigation() {
   return {
     book,
     bookFromSearch,
-    bookFirstOffer: () => book({ service: "deep-cleaning", promo: "HOME150" }),
     openCategories: () => openOverlay("services-categories"),
     openTrending: () => {
       closeOverlay();

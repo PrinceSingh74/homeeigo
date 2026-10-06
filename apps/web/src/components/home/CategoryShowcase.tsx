@@ -37,15 +37,18 @@ const CATEGORIES: CategoryCard[] = [
  * service count per category so home and /services stay in perfect parity.
  */
 export function CategoryShowcase() {
-  const { homeCare, premiumCare, laundry, outdoor, express } = useMarketplaceSections();
+  const { homeCare, premiumCare, laundry, outdoor, express, isLive } = useMarketplaceSections();
 
+  // Counts of the LIVE catalogue only. Until it has answered (or if it is down or empty) there is
+  // no count to show — the built-in showcase lists used to be counted here instead.
+  const live = (n: number) => (isLive && n > 0 ? n : null);
   const countFor: Record<string, number | null> = {
     hourly: null,
-    "home-care": homeCare.length,
-    "premium-care": premiumCare.length,
-    laundry: laundry.length,
-    outdoor: outdoor.length,
-    express: express.length,
+    "home-care": live(homeCare.length),
+    "premium-care": live(premiumCare.length),
+    laundry: live(laundry.length),
+    outdoor: live(outdoor.length),
+    express: live(express.length),
     "coming-soon": null,
   };
 
@@ -95,17 +98,19 @@ export function CategoryShowcase() {
               </span>
 
               {/* Count / Soon badge — glass */}
-              <span className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-slate-950/45 px-2.5 py-1 text-xs font-semibold text-white ring-1 ring-white/20 backdrop-blur-md">
-                {c.soon ? (
-                  <>
-                    <Clock size={11} /> Soon
-                  </>
-                ) : count != null ? (
-                  `${count} service${count === 1 ? "" : "s"}`
-                ) : (
-                  "By the hour"
-                )}
-              </span>
+              {c.soon || count != null || c.key === "hourly" ? (
+                <span className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-slate-950/45 px-2.5 py-1 text-xs font-semibold text-white ring-1 ring-white/20 backdrop-blur-md">
+                  {c.soon ? (
+                    <>
+                      <Clock size={11} /> Soon
+                    </>
+                  ) : count != null ? (
+                    `${count} service${count === 1 ? "" : "s"}`
+                  ) : (
+                    "By the hour"
+                  )}
+                </span>
+              ) : null}
 
               <TileCaption title={c.title} subtitle={c.subtitle} accent={c.accent} className="z-10" />
             </Link>

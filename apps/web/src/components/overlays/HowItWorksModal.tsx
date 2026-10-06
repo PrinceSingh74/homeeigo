@@ -15,8 +15,10 @@ const STEPS = [
   },
   {
     icon: Cpu,
-    title: "AI matches your pro",
-    desc: "Verified, background-checked experts matched to your home & schedule.",
+    // Matching is rule-based (service, area, availability), and every professional who can be
+    // given a job is admin-approved; identity and background checks apply where a service asks.
+    title: "We match your pro",
+    desc: "An approved professional is matched to your service, area & schedule.",
   },
   {
     icon: MapPin,
@@ -25,8 +27,10 @@ const STEPS = [
   },
   {
     icon: Star,
-    title: "Pay securely & rate",
-    desc: "UPI, cards & wallet. Satisfaction guaranteed on every job.",
+    // What happens after every job: the customer confirms completion or reports an issue
+    // (POST /api/bookings/:id/confirm-completion, POST /api/bookings/:id/cases). No guarantee.
+    title: "Pay securely & review the job",
+    desc: "Pay online, then confirm the job is done — or report an issue for our team to look into.",
   },
 ];
 
@@ -36,8 +40,7 @@ export function HowItWorksModal({ open }: { open: boolean }) {
   return (
     <Modal open={open} onClose={closeOverlay} title="How HOMEEIGO works" size="lg">
       <p className="mb-6 text-sm text-muted">
-        Book premium home services in under 60 seconds — smart, fast, and
-        reliable.
+        Book a home service in four steps.
       </p>
       <ol className="grid gap-4 sm:grid-cols-2">
         {STEPS.map((s, i) => {

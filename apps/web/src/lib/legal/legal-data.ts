@@ -243,15 +243,8 @@ export const COOKIE_CATEGORIES: CookieCategory[] = [
 
 /* ============================ REFUND POLICY ============================ */
 
-export type RefundTier = { window: string; fee: string; note: string };
-
-/** Customer cancellation fee tiers — the exact window is confirmed at checkout. */
-export const REFUND_TIERS: RefundTier[] = [
-  { window: "More than 12 hours before slot", fee: "Free", note: "100% refund — no charge" },
-  { window: "4 – 12 hours before slot", fee: "25%", note: "Partial fee to compensate the reserved professional" },
-  { window: "1 – 4 hours before slot", fee: "50%", note: "Professional is likely already scheduled / en route" },
-  { window: "Less than 1 hour / after arrival", fee: "Up to 100%", note: "Covers travel and committed time" },
-];
+// The cancellation fee tiers are not written here: the refund page renders the server's policy
+// (components/legal/RefundTierTable), the one a cancellation is actually charged by.
 
 export const REFUND_SECTIONS: PrivacySection[] = [
   {

@@ -61,7 +61,7 @@ describe("toUiService", () => {
     expect(ui.price).toBe("₹599");
     expect(ui.rating).toBe("4.6");
     expect(ui.reviews).toBe("12");
-    expect(ui.packages.map((p) => [p.name, p.price, p.tierIndex])).toEqual([["Basic", 499, 0], ["Standard", 599, 1], ["Premium", 899, 2]]);
+    expect(ui.packages.map((p) => [p.name, p.price, p.tierIndex])).toEqual([["Lowest price", 499, 0], ["Base price", 599, 1], ["Highest price", 899, 2]]);
   });
 
   test("a rating with no reviews behind it is not shown as a rating", () => {

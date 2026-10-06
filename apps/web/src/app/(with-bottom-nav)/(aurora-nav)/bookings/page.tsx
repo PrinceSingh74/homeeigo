@@ -65,7 +65,7 @@ export default function BookingsPage() {
               My <span className="text-aurora">Bookings</span>
             </h1>
             <p className={pageLead}>
-              Track live, manage status, cancel anytime — same premium experience as the app.
+              Track live and manage your bookings. Cancellation terms are shown before you confirm a cancellation.
             </p>
           </div>
           <motion.button
@@ -144,7 +144,7 @@ export default function BookingsPage() {
         ) : bookings.length === 0 ? (
           <EmptyState
             title="No bookings yet"
-            subtitle="Book verified pros in under 60 seconds. Track live, cancel anytime, and see your full history here."
+            subtitle="Book an approved professional, track the visit live, and see your full history here. Cancellation terms are shown before you confirm a cancellation."
             cta="Book your first service"
           />
         ) : filtered.length === 0 ? (

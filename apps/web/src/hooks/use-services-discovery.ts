@@ -78,16 +78,14 @@ export function useServicesDiscovery() {
   }, [featuredQuery.data?.services, providersQuery.data?.providers, servicesQuery.data?.services]);
 
   const aiRecommendations = useMemo(() => {
-    return (featuredQuery.data?.services ?? servicesQuery.data?.services ?? []).slice(0, 4).map((s, i) => ({
+    return (featuredQuery.data?.services ?? servicesQuery.data?.services ?? []).slice(0, 4).map((s) => ({
       id: `ai-${s.id}`,
-      title: `${s.name} Recommended`,
-      description:
-        s.description ??
-        `Popular ${s.name.toLowerCase()} service with verified professionals in your city.`,
-      badge: (i % 3 === 0 ? "AI Recommended" : i % 3 === 1 ? "Popular" : "Urgent") as
-        | "AI Recommended"
-        | "Popular"
-        | "Urgent",
+      // The service as the catalogue describes it. The title used to append "Recommended", the
+      // description fell back to an invented sentence, and the badge ("AI Recommended" / "Popular" /
+      // "Urgent") was chosen by list position.
+      title: s.name,
+      description: s.description ?? "",
+      badge: (s.isFeatured ? "Featured" : s.isPopular ? "Popular" : null) as "Featured" | "Popular" | null,
       serviceId: s.id,
       gradient: "from-blue-500/15 to-violet-500/10",
       icon: iconMap[s.id] ?? fallbackIcon,

@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { Mic, Activity, ChevronRight } from "lucide-react";
+import { Mic } from "lucide-react";
 import { m as motion } from "framer-motion";
-import { AI_HERO_STATS, AI_USER, getTimeGreeting } from "@/lib/ai-dashboard";
+import { getTimeGreeting } from "@/lib/ai-dashboard";
+import { useAuthStore } from "@/stores/auth-store";
 import { useAiPageActions } from "@/hooks/use-ai-page-actions";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { AiParticles } from "@/components/ai/AiParticles";
@@ -16,9 +17,10 @@ import { cn } from "@/lib/utils";
  * All existing actions (voice capture, hero-stat taps) stay wired as before.
  */
 export function AiHeroSection() {
-  const { runHeroStatAction, toggleVoiceCapture, isRecording } = useAiPageActions();
+  const { toggleVoiceCapture, isRecording } = useAiPageActions();
   const isMobile = useIsMobile();
-  const firstName = AI_USER.name.split(" ")[0];
+  // The signed-in customer's own first name, or no name.
+  const firstName = useAuthStore((s) => s.user?.firstName?.trim() || null);
 
   return (
     <motion.section
@@ -64,13 +66,13 @@ export function AiHeroSection() {
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-70" />
               <span className="relative inline-flex size-1.5 rounded-full bg-emerald-400" />
             </span>
-            Systems nominal
+            Homeeigo Assistant
           </span>
           <span
             className="font-mono text-[10px] uppercase tracking-[0.22em] text-emerald-200/60 sm:text-[11px]"
             suppressHydrationWarning
           >
-            {getTimeGreeting()}, {firstName}
+            {getTimeGreeting()}{firstName ? `, ${firstName}` : ""}
           </span>
         </div>
 
@@ -110,7 +112,7 @@ export function AiHeroSection() {
               </span>
             </h2>
             <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-emerald-100/75 sm:text-base md:mx-0">
-              All systems monitored in real time — ask anything, or just tap to talk.
+              Ask about a home service, or just tap to talk.
             </p>
           </div>
 
@@ -158,34 +160,7 @@ export function AiHeroSection() {
           </div>
         </div>
 
-        {/* ---- HUD stat rail ---- */}
-        <div className="rounded-2xl border border-emerald-400/15 bg-emerald-950/40 px-2 py-1 backdrop-blur-md sm:px-3">
-          <div className="grid grid-cols-3 divide-x divide-emerald-400/15">
-            {AI_HERO_STATS.map((stat) => (
-              <button
-                key={stat.id}
-                type="button"
-                onClick={() => runHeroStatAction(stat.id)}
-                className="group flex min-w-0 flex-col items-center gap-0.5 px-2 py-2.5 text-center transition-colors hover:bg-emerald-400/5 sm:flex-row sm:justify-between sm:gap-3 sm:px-4 sm:text-left"
-              >
-                <span className="order-2 flex items-center gap-1.5 font-mono text-[8.5px] font-semibold uppercase leading-tight tracking-[0.18em] text-emerald-200/60 sm:order-1 sm:text-[10px]">
-                  <Activity size={11} className="hidden shrink-0 text-emerald-400/80 sm:block" aria-hidden />
-                  {stat.label}
-                </span>
-                <span className="order-1 flex items-center gap-1 sm:order-2">
-                  <span className="font-display text-lg font-bold tracking-tight text-emerald-50 sm:text-xl">
-                    {stat.value}
-                  </span>
-                  <ChevronRight
-                    size={13}
-                    className="text-emerald-400/0 transition-all group-hover:translate-x-0.5 group-hover:text-emerald-300"
-                    aria-hidden
-                  />
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* No stat rail: "12 active services / 95% home health / 4 AI optimizations" were constants. */}
       </div>
     </motion.section>
   );

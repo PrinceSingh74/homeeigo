@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import Link from "next/link";
 import { bookingSubtitle, type SavedBooking } from "@/lib/bookings";
 import { BookingStatusBadge } from "@/components/booking/BookingStatusBadge";
+import { statusConfigFor } from "@/lib/booking-status";
 
 export function BookingSuccessModal({
   open,
@@ -19,9 +20,13 @@ export function BookingSuccessModal({
   onViewBookings?: () => void;
 }) {
   if (!booking) return null;
+  // Opened when the server has verified the payment. That is all that is certain: a professional
+  // accepts later, so the title is the payment and the badge is the booking's real state
+  // ("Finding a pro" until someone is assigned).
+  const cfg = statusConfigFor(booking);
 
   return (
-    <Modal open={open} onClose={onClose} title="Booking confirmed!" size="md">
+    <Modal open={open} onClose={onClose} title="Payment received" size="md">
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -37,8 +42,9 @@ export function BookingSuccessModal({
           <Check size={32} strokeWidth={3} />
         </motion.span>
         <div className="mt-4">
-          <BookingStatusBadge status={booking.status} />
+          <BookingStatusBadge status={booking.status} label={cfg.shortLabel} />
         </div>
+        <p className="mt-2 text-xs text-muted">{cfg.description}</p>
         <p className="mt-3 font-mono text-sm font-bold text-emerald-600">{booking.id}</p>
         <p className="mt-2 font-display text-xl font-bold text-content">
           {booking.serviceTitle}

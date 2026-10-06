@@ -19,10 +19,17 @@ export function BookingStatusBadge({
   status,
   live,
   size = "md",
+  label,
 }: {
   status: BookingStatus;
   live?: boolean;
   size?: "sm" | "md";
+  /**
+   * The badge text for THIS booking (statusConfigFor(...).shortLabel). A pre-start booking is
+   * "Awaiting payment", "Finding a pro" or "Upcoming" depending on its real state; without it the
+   * neutral label for the status is shown.
+   */
+  label?: string;
 }) {
   const cfg = STATUS_CONFIG[status];
   const Icon = ICONS[status];
@@ -43,7 +50,7 @@ export function BookingStatusBadge({
         />
       )}
       <Icon size={sm ? 12 : 14} strokeWidth={2.5} />
-      {cfg.shortLabel}
+      {label ?? cfg.shortLabel}
     </span>
   );
 }

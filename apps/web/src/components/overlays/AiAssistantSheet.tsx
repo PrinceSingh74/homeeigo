@@ -8,40 +8,40 @@ import { useAppStore } from "@/stores/app-store";
 import { useRouter } from "next/navigation";
 import { bookUrl } from "@/lib/booking-url";
 import { searchServices } from "@/lib/services";
+import { useAuthStore } from "@/stores/auth-store";
 
+// No promo-code prompt: a code offered here would be one nobody issued.
 const QUICK_PROMPTS = [
   "Book home cleaning tomorrow",
   "AC not cooling — need repair",
-  "Best package for 2BHK",
-  "Apply promo COOL100",
+  "Cleaning for a 2BHK",
 ];
 
+/**
+ * A keyword shortcut to the booking page — it matches words in the message to a service. It is not
+ * an AI model, so nothing here says it is, and it greets the signed-in customer by their own first
+ * name or by none.
+ */
 export function AiAssistantSheet({ open }: { open: boolean }) {
   const closeOverlay = useAppStore((s) => s.closeOverlay);
   const showToast = useAppStore((s) => s.showToast);
+  const firstName = useAuthStore((s) => s.user?.firstName?.trim() || null);
   const router = useRouter();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<
     { role: "user" | "ai"; text: string }[]
-  >([
-    {
-      role: "ai",
-      text: "Hi Arjun! 👋 I can help you book a service, pick a package, or find offers. What do you need today?",
-    },
-  ]);
+  >([]);
+  const greeting = `Hi${firstName ? ` ${firstName}` : ""}! Tell me which service you need and I'll open its booking page.`;
 
   function reply(userText: string) {
     const q = userText.toLowerCase();
-    let response =
-      "I found matching services for you. Tap below to continue booking.";
+    let response = "Opening the booking page — pick a service there.";
     let href = bookUrl();
 
-    if (q.includes("cool100") || q.includes("ac")) {
-      href = bookUrl({ service: "ac-service", promo: "COOL100" });
-      // No prices, discounts or popularity here: the booking page shows the server's price, and
-      // whether a code applies is the server's answer there.
-      response =
-        "Opening AC Service with code COOL100. The booking page shows whether the code applies and the price.";
+    // No prices, discounts or popularity here: the booking page shows the server's price.
+    if (/\bac\b/.test(q) || q.includes("cooling")) {
+      href = bookUrl({ service: "ac-service" });
+      response = "Opening AC Service. The booking page shows the options and their prices.";
     } else if (q.includes("clean")) {
       href = bookUrl({ service: "deep-cleaning" });
       response = "Opening Home Cleaning. The booking page shows the options and their prices.";
@@ -68,7 +68,7 @@ export function AiAssistantSheet({ open }: { open: boolean }) {
     setTimeout(() => {
       closeOverlay();
       router.push(href);
-      showToast("AI picked the best match for you", "success");
+      showToast("Opening the booking page", "info");
     }, 900);
   }
 
@@ -80,14 +80,14 @@ export function AiAssistantSheet({ open }: { open: boolean }) {
   }
 
   return (
-    <Modal open={open} onClose={closeOverlay} title="HOMEEIGO AI" size="md">
+    <Modal open={open} onClose={closeOverlay} title="Booking shortcut" size="md">
       <div className="mb-4 flex items-center gap-2 rounded-2xl bg-aurora/10 px-4 py-3 text-sm text-content">
         <Sparkles size={18} className="text-primary" />
-        Powered by AI — instant answers, smart booking
+        Type a service and jump straight to booking it
       </div>
 
       <div className="mb-4 flex max-h-52 flex-col gap-3 overflow-y-auto">
-        {messages.map((m, i) => (
+        {[{ role: "ai" as const, text: greeting }, ...messages].map((m, i) => (
           <div
             key={i}
             className={
@@ -127,7 +127,7 @@ export function AiAssistantSheet({ open }: { open: boolean }) {
           showClear={false}
           className="min-w-0 flex-1"
           containerClassName="rounded-2xl bg-surface/60"
-          aria-label="Message to HOMEEIGO AI"
+          aria-label="Which service do you need?"
         />
         <button
           type="button"

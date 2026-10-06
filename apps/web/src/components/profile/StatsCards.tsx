@@ -76,7 +76,8 @@ export function StatsCards() {
                 className={cn(className, "w-full text-left")}
                 onClick={() => {
                   if (card.action === "location") openOverlay("location");
-                  else showToast("Invite friends & earn ₹200 per referral!", "info");
+                  // No amount: the customer referral API publishes no reward figure to quote.
+                  else showToast("Invite friends from the Referrals page", "info");
                 }}
               >
                 {inner}

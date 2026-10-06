@@ -6,13 +6,13 @@ import { useAppStore } from "@/stores/app-store";
 import { bookUrl } from "@/lib/booking-url";
 import { cn } from "@/lib/utils";
 
-// Slugs match the live backend catalog (services table), so each filter
-// deep-links to a real bookable service.
+// Shortcuts to a service by name. Slugs match the backend catalog (services table).
+// No price or popularity shortcut: neither was a catalogue query — both were a fixed link to one
+// service under a label that claimed a price ceiling or a ranking.
 const FILTERS = [
-  { label: "Under ₹300", href: bookUrl({ service: "bathroom-cleaning" }) },
-  { label: "Most Popular", href: bookUrl({ service: "deep-cleaning", package: 1 }) },
   { label: "AC & Cooling", href: bookUrl({ service: "ac-service" }) },
   { label: "Home Cleaning", href: bookUrl({ service: "deep-cleaning" }) },
+  { label: "Bathroom Cleaning", href: bookUrl({ service: "bathroom-cleaning" }) },
   { label: "Plumbing & Repairs", href: bookUrl({ service: "plumbing" }) },
   { label: "Salon at Home", href: bookUrl({ service: "salon-at-home" }) },
   { label: "Express Party Clean", href: bookUrl({ service: "pre-party-express-clean" }) },
@@ -26,7 +26,7 @@ export function QuickFiltersPanel({ open }: { open: boolean }) {
   return (
     <Modal open={open} onClose={closeOverlay} title="Quick filters" size="sm">
       <p className="mb-4 text-sm text-muted">
-        Jump straight to what you need — we&apos;ll pre-select the best match.
+        Jump straight to a service. Prices and availability are shown on the booking page.
       </p>
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (

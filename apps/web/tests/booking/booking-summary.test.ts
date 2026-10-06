@@ -21,7 +21,7 @@ const snapshot = (over: Partial<ServiceSelectionSnapshot> = {}): ServiceSelectio
   ...over,
 });
 
-const TIER = { name: "Standard", price: 499 };
+const TIER = { name: "Base price", price: 499 };
 
 describe("bookingSummaryLine", () => {
   test("a variant and quantity selection shows the variant, the quantity with its unit, and the server's figure", () => {
@@ -43,7 +43,7 @@ describe("bookingSummaryLine", () => {
     });
     expect(line.label).toBe("2 hour");
     expect(line.amount).toBe(398);
-    expect(line.label).not.toContain("Standard");
+    expect(line.label).not.toContain("Base price");
   });
 
   test("until the server has priced the selection there is no label and no amount — not the tier's", () => {
@@ -51,9 +51,9 @@ describe("bookingSummaryLine", () => {
     expect(line).toEqual({ label: null, amount: null });
   });
 
-  test("a legacy tier is shown only when the tier really is the selection", () => {
+  test("a price option is named only when it really is the selection, and never as a package", () => {
     const line = bookingSummaryLine({ hasSelection: false, selection: snapshot(), serverPrice: 499, tier: TIER });
-    expect(line).toEqual({ label: "Standard Package", amount: 499 });
+    expect(line).toEqual({ label: "Base price", amount: 499 });
   });
 
   test("a service with no priced tier names no tier and invents no amount", () => {

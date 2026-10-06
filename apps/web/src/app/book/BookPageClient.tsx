@@ -126,7 +126,7 @@ const PLACEHOLDER_SERVICE: Service = {
 };
 
 /**
- * The tier a service opens on when the URL names none: the base price (tier index 1, "Standard").
+ * The tier a service opens on when the URL names none: the base price (tier index 1).
  * A starting point for the picker only — nothing is shown or claimed about it.
  */
 const DEFAULT_TIER_INDEX = 1;
@@ -599,7 +599,8 @@ function BookPageContent() {
         bookingId: created.booking.id,
         description: `${svc.title} booking payment`,
         onVerified: () => {
-          setBookingDone(booking);
+          // The server has just verified this payment; the create response predates it.
+          setBookingDone({ ...booking, paymentStatus: "success" });
           showToast("Payment verified — we're finding your pro", "success");
         },
       });
@@ -900,10 +901,10 @@ function BookPageContent() {
               </div>
             </motion.div>
 
-            {/* Package picker */}
+            {/* Price picker (or the carried selection) */}
             <div className="min-w-0">
               <div className="mb-4 flex flex-wrap items-center gap-2 sm:mb-6 sm:gap-3">
-                <h3 className={bookSectionTitle}>{effectiveSelection ? "Your Selection" : "Choose Your Package"}</h3>
+                <h3 className={bookSectionTitle}>{effectiveSelection ? "Your Selection" : svc.packages.length > 1 ? "Choose a Price Option" : "Price"}</h3>
               </div>
               {effectiveSelection ? (
                 <SelectionSummary
@@ -918,7 +919,7 @@ function BookPageContent() {
                   const active = i === pkg;
                   return (
                     <motion.button
-                      key={p.name}
+                      key={p.tierIndex ?? i}
                       type="button"
                       onClick={() => setPkg(i)}
                       whileHover={{ y: -8 }}
@@ -933,9 +934,12 @@ function BookPageContent() {
                         aria-hidden
                         className="pointer-events-none absolute inset-x-0 top-0 h-20 sheen"
                       />
-                      <span className="relative font-display text-lg font-bold text-content sm:text-xl">
-                        {p.name}
-                      </span>
+                      {/* Named for what it is ("Base price"); a single price carries no name. */}
+                      {p.name ? (
+                        <span className="relative font-display text-lg font-bold text-content sm:text-xl">
+                          {p.name}
+                        </span>
+                      ) : null}
                       {p.tag ? (
                         <span className="relative text-xs text-muted sm:text-sm">
                           {p.tag}
@@ -962,6 +966,8 @@ function BookPageContent() {
                           </li>
                         ))}
                       </ul>
+                      {/* Nothing to select between when the service has one price. */}
+                      {svc.packages.length > 1 ? (
                       <span
                         className={cn(
                           "relative mt-7 inline-flex h-12 items-center justify-center gap-2 rounded-2xl text-sm font-bold transition",
@@ -978,6 +984,7 @@ function BookPageContent() {
                           "Select"
                         )}
                       </span>
+                      ) : null}
                     </motion.button>
                   );
                 })}
@@ -1265,7 +1272,7 @@ function BookPageContent() {
                 {quoteError ? (
                   <p role="alert" className="rounded-xl bg-warning/10 px-3 py-2 text-xs text-warning">{quoteError}</p>
                 ) : null}
-                <Row label={sel ? "Service + add-ons" : "Package + add-ons"} value={subtotal != null ? `₹${subtotal}` : "—"} />
+                <Row label="Service + add-ons" value={subtotal != null ? `₹${subtotal}` : "—"} />
                 {discount > 0 ? (
                   <Row label="Discounts" value={`-₹${discount}`} />
                 ) : null}

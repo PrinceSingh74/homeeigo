@@ -2,12 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Bike, Home, MapPin, Navigation } from "lucide-react";
-import { m as motion, useReducedMotion } from "framer-motion";
+import { Bike, Navigation } from "lucide-react";
+import { useReducedMotion } from "framer-motion";
 import { HOMIGO_RIDER_IMAGE } from "@/lib/demo-tracking-booking";
 import { useActiveTracking } from "@/hooks/use-active-tracking";
 import { AI_SECTION_IDS } from "@/lib/ai-page-actions";
 import { professionalLabel } from "@/lib/bookings";
+import { liveTrackingView } from "@/lib/live-tracking-view";
 import { cn } from "@/lib/utils";
 
 type AiLiveTrackingCardProps = {
@@ -15,41 +16,50 @@ type AiLiveTrackingCardProps = {
   className?: string;
 };
 
+/**
+ * Live tracking for the customer's real active booking, from the server's tracking record.
+ *
+ * With no professional on the way it says so. It used to render "Live · On the way", an arrival
+ * countdown (0 when there was no data), a named "assigned expert" and an animated route for every
+ * visitor, booking or not; the drawn route is gone too — the real map is on the booking.
+ */
 export function AiLiveTrackingCard({ embedded, className }: AiLiveTrackingCardProps) {
   const reduce = useReducedMotion();
   const { activeBooking, tracking } = useActiveTracking();
-  const eta = tracking?.eta ?? 0;
-  // The real name or the honest sentence; with no active booking there is nobody to name.
-  const proName = activeBooking ? professionalLabel(activeBooking) : "";
-  const serviceTitle = activeBooking?.serviceTitle ?? "Service";
+  const live = liveTrackingView(activeBooking, tracking);
+
+  if (!live || !activeBooking) {
+    return (
+      <div
+        id={AI_SECTION_IDS.liveTracking}
+        data-testid="ai-live-tracking-idle"
+        className={cn(!embedded && "w-full min-w-0 scroll-mt-24", className)}
+      >
+        <div className="rounded-xl border border-dashed border-emerald-400/20 px-4 py-6 text-center">
+          <p className="text-sm font-semibold text-ink dark:text-slate-100">No visit on the way right now</p>
+          <p className="mt-1 text-[11px] text-slate">
+            Live tracking appears here when your professional is travelling to you.
+          </p>
+          <Link
+            href="/bookings"
+            className="mt-3 inline-block rounded-md bg-emerald-500/15 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-500/25 dark:text-emerald-300"
+          >
+            My bookings
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
       id={AI_SECTION_IDS.liveTracking}
+      data-testid="ai-live-tracking-live"
       className={cn(!embedded && "w-full min-w-0 scroll-mt-24", className)}
     >
-      {/* HOMEEIGO Rider — hero strip */}
       <div className="relative mb-3 overflow-hidden rounded-xl bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 shadow-[0_12px_32px_-12px_rgb(16_185_129/0.4)] ring-1 ring-emerald-500/25 dark:ring-emerald-400/20">
-        <div
-          className="pointer-events-none absolute inset-0 opacity-40"
-          style={{
-            backgroundImage:
-              "linear-gradient(rgb(99_102_241/0.12)_1px,transparent_1px),linear-gradient(90deg,rgb(99_102_241/0.12)_1px,transparent_1px)",
-            backgroundSize: "24px 24px",
-          }}
-          aria-hidden
-        />
-        <div
-          className="pointer-events-none absolute -right-8 -top-8 size-32 rounded-full bg-cyan-500/20 blur-3xl"
-          aria-hidden
-        />
-        <div
-          className="pointer-events-none absolute -bottom-6 -left-6 size-28 rounded-full bg-teal-500/25 blur-3xl"
-          aria-hidden
-        />
-
-        <div className="relative flex items-end justify-between gap-2 px-3 pt-3 sm:px-4">
-          <div className="min-w-0 pb-1">
+        <div className="relative flex items-end justify-between gap-2 px-3 py-3 sm:px-4">
+          <div className="min-w-0">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-300 ring-1 ring-emerald-400/30">
               <span className="relative flex size-1.5">
                 {!reduce && (
@@ -59,147 +69,38 @@ export function AiLiveTrackingCard({ embedded, className }: AiLiveTrackingCardPr
               </span>
               Live · On the way
             </span>
-            <p className="mt-2 font-display text-sm font-bold tracking-tight text-white sm:text-base">
-              HOMEEIGO Rider
+            <p className="mt-2 truncate font-display text-sm font-bold tracking-tight text-white sm:text-base">
+              {professionalLabel(activeBooking)}
             </p>
-            <p className="text-[11px] text-white/70">Heading to your home now</p>
+            <p className="truncate text-[11px] text-white/70">{activeBooking.serviceTitle}</p>
           </div>
-          <span className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-2 py-1 text-[10px] font-bold text-cyan-200 backdrop-blur-sm">
-            <Bike size={12} />
-              {eta} min
-          </span>
+          <div className="relative h-14 w-16 shrink-0">
+            <Image src={HOMIGO_RIDER_IMAGE} alt="" fill className="object-contain object-bottom" sizes="64px" priority={embedded} />
+          </div>
         </div>
+      </div>
 
-        <div className="relative flex h-[120px] items-end justify-center sm:h-[132px]">
-          {!reduce && (
-            <motion.span
-              aria-hidden
-              className="absolute bottom-6 left-1/2 size-24 -translate-x-1/2 rounded-full bg-cyan-400/25"
-              animate={{ scale: [0.85, 1.35, 0.85], opacity: [0.45, 0, 0.45] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: "easeOut" }}
-            />
+      <div className="flex items-center justify-between gap-2">
+        {/* The server's ETA; when it has none, no number is shown. */}
+        <span className="flex min-w-0 items-center gap-1 text-[11px] font-semibold text-ink dark:text-slate-100">
+          {live.etaMin != null ? (
+            <>
+              <Bike size={12} className="shrink-0 text-emerald-500" />
+              <span className="truncate">Arriving in about {live.etaMin} min</span>
+            </>
+          ) : (
+            <>
+              <Navigation size={12} className="shrink-0 text-emerald-500" />
+              <span className="truncate">On the way</span>
+            </>
           )}
-          <motion.div
-            animate={reduce ? undefined : { y: [0, -5, 0] }}
-            transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
-            className="relative z-[1] h-full w-full max-w-[220px] sm:max-w-[260px]"
-          >
-            <Image
-              src={HOMIGO_RIDER_IMAGE}
-              alt="HOMEEIGO delivery rider"
-              width={260}
-              height={200}
-              className="h-full w-full object-contain object-bottom drop-shadow-[0_12px_28px_rgb(0_0_0/0.45)]"
-              priority={embedded}
-            />
-          </motion.div>
-        </div>
-      </div>
-
-      {/* Expert details */}
-      <div className="mb-3 flex min-w-0 items-center gap-3">
-        <span className="relative size-11 shrink-0 overflow-hidden rounded-xl ring-2 ring-white shadow-md dark:ring-slate-600">
-          <Image src="/svc-ac.png" alt="" fill className="object-cover" sizes="44px" />
-          <span className="absolute bottom-0 right-0 size-3 rounded-full border-2 border-white bg-emerald-500" />
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold text-ink dark:text-slate-100">
-            {proName}
-          </p>
-          <p className="truncate text-[11px] text-slate">
-            {serviceTitle}
-          </p>
-          <p className="mt-0.5 text-[11px] font-medium text-slate">Assigned expert</p>
-        </div>
-      </div>
-
-      {/* Live tracking map */}
-      <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate dark:text-slate-400">
-        Live route
-      </p>
-      <div className="relative h-[148px] overflow-hidden rounded-xl bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 shadow-[inset_0_1px_0_rgb(255_255_255/0.1),0_16px_40px_-12px_rgb(0_0_0/0.5)] ring-1 ring-slate-600/50">
-        <div
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage:
-              "linear-gradient(rgb(148_163_184/0.15)_1px,transparent_1px),linear-gradient(90deg,rgb(148_163_184/0.15)_1px,transparent_1px)",
-            backgroundSize: "20px 20px",
-          }}
-          aria-hidden
-        />
-        <div className="absolute inset-0 opacity-50">
-          <svg className="h-full w-full" viewBox="0 0 320 148" preserveAspectRatio="none" aria-hidden>
-            <defs>
-              <linearGradient id="ai-track-route" x1="0%" y1="100%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#06b6d4" />
-                <stop offset="50%" stopColor="#3b82f6" />
-                <stop offset="100%" stopColor="#a855f7" />
-              </linearGradient>
-            </defs>
-            <path
-              d="M 24 110 Q 100 35 180 75 T 296 42"
-              fill="none"
-              stroke="#1e40af"
-              strokeWidth="10"
-              strokeLinecap="round"
-              opacity="0.35"
-            />
-            <path
-              d="M 24 110 Q 100 35 180 75 T 296 42"
-              fill="none"
-              stroke="url(#ai-track-route)"
-              strokeWidth="3.5"
-              strokeLinecap="round"
-              strokeDasharray="8 5"
-            />
-            <circle cx="24" cy="110" r="7" fill="#22c55e" stroke="#fff" strokeWidth="2" />
-            <circle cx="296" cy="42" r="7" fill="#2563eb" stroke="#fff" strokeWidth="2" />
-          </svg>
-        </div>
-
-        {/* Rider pin on map */}
-        <motion.div
-          className="absolute left-[22%] top-[48%] z-[2] -translate-x-1/2 -translate-y-1/2"
-          animate={reduce ? undefined : { x: [0, 28, 48], y: [0, -18, -32] }}
-          transition={{ duration: 2.6, repeat: Infinity, repeatType: "reverse", ease: "easeInOut" }}
+        <Link
+          href="/bookings"
+          className="shrink-0 rounded-md bg-emerald-500/15 px-2 py-1 text-[10px] font-semibold text-emerald-700 transition hover:bg-emerald-500/25 dark:text-emerald-300"
         >
-          <span className="relative block size-11 sm:size-12">
-            <Image
-              src={HOMIGO_RIDER_IMAGE}
-              alt=""
-              width={48}
-              height={48}
-              className="size-11 object-contain drop-shadow-lg sm:size-12"
-            />
-          </span>
-        </motion.div>
-
-        <span className="absolute right-[10%] top-[18%] grid size-7 place-items-center rounded-full border border-cyan-500/50 bg-cyan-500/15 text-cyan-200">
-          <Home size={13} />
-        </span>
-
-        <motion.span
-          className="absolute left-[8%] top-[68%] grid size-7 place-items-center rounded-full bg-emerald-500/90 text-white shadow-md"
-          animate={reduce ? undefined : { scale: [1, 1.06, 1] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        >
-          <MapPin size={12} className="fill-white" />
-        </motion.span>
-
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-3 pb-3 pt-8">
-          <div className="flex items-center justify-between gap-2">
-            <span className="flex min-w-0 items-center gap-1 text-[11px] font-semibold text-white">
-              <Navigation size={12} className="shrink-0 text-cyan-300" />
-              <span className="truncate">Arriving in {eta} mins</span>
-            </span>
-            <Link
-              href="/bookings"
-              className="shrink-0 rounded-md bg-white/15 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur-sm transition hover:bg-white/25"
-            >
-              Track
-            </Link>
-          </div>
-        </div>
+          Track
+        </Link>
       </div>
     </div>
   );

@@ -9,7 +9,7 @@ import {
   profilePanelPad,
   profilePanelShell,
 } from "@/components/profile/profile-page-layout";
-import { STATUS_CONFIG } from "@/lib/booking-status";
+import { statusConfigFor } from "@/lib/booking-status";
 import { professionalLabel, type SavedBooking } from "@/lib/bookings";
 import { BookingDetailModal } from "@/components/booking/BookingDetailModal";
 import { useAppStore } from "@/stores/app-store";
@@ -60,7 +60,7 @@ export function ProfileBookings() {
 
         <ul className="flex flex-col gap-3 sm:gap-4">
           {bookings.map((booking, i) => {
-            const cfg = STATUS_CONFIG[booking.status];
+            const cfg = statusConfigFor(booking);
             const extra = {
               eta: undefined as string | undefined,
               rating: ratingsByBookingId.get(booking.id),

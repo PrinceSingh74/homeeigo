@@ -62,7 +62,7 @@ export function CitiesSection() {
       <div className="relative z-10">
         <div className="mb-8 text-center sm:mb-10">
           <h2 className="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-bold text-white">
-            Available in 11+ Indian Cities
+            Check Availability in Your City
           </h2>
           <p className="mt-3 text-base text-gray-300 sm:text-lg">
             Hyperlocal coverage — check your society, area or pincode
@@ -78,7 +78,9 @@ export function CitiesSection() {
           }} />
         </div>
 
-        <div className="mb-10 grid grid-cols-2 gap-6 sm:mb-16 md:grid-cols-4 md:gap-8">
+        {/* The server's stats only; with none, the row is not rendered at all. */}
+        {metrics.length > 0 && (
+        <div className="mb-10 flex flex-wrap justify-center gap-x-12 gap-y-6 sm:mb-16">
           {metrics.map((metric, i) => (
             <motion.div
               key={metric.label}
@@ -95,6 +97,7 @@ export function CitiesSection() {
             </motion.div>
           ))}
         </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
           {CITIES.map((city, i) => {

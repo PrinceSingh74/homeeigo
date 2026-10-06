@@ -5,7 +5,7 @@ import { Calendar, MapPin, ChevronRight } from "lucide-react";
 import { ServiceImage } from "@/components/ui/ServiceImage";
 import { cn } from "@/lib/utils";
 import { bookingSubtitle, type SavedBooking } from "@/lib/bookings";
-import { STATUS_CONFIG } from "@/lib/booking-status";
+import { statusConfigFor } from "@/lib/booking-status";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 
 export function BookingCard({
@@ -17,7 +17,8 @@ export function BookingCard({
   index: number;
   onClick: () => void;
 }) {
-  const cfg = STATUS_CONFIG[booking.status];
+  // Worded from the booking's real state (paid? professional assigned?), not the collapsed status.
+  const cfg = statusConfigFor(booking);
   const cancelled = booking.status === "cancelled";
   const img = booking.imagePath;
 
@@ -56,6 +57,7 @@ export function BookingCard({
           </span>
           <BookingStatusBadge
             status={booking.status}
+            label={cfg.shortLabel}
             live={booking.status === "in_progress"}
           />
         </div>

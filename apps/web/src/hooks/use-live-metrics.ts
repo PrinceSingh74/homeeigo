@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useStatsOverview } from "@/hooks/use-core-data";
+import { liveMetricsFromStats, type LiveMetric } from "@/lib/live-metrics";
 
-export type LiveMetric = { number: string; label: string; icon: string };
-
-const nf = (n: number) => n.toLocaleString("en-IN");
+export type { LiveMetric };
 
 /**
- * Marketplace hero/cities metrics backed by GET /api/stats/overview.
- * Falls back to the marketing defaults while loading or if the API is down.
+ * Marketplace metrics backed by GET /api/stats/overview. Empty while loading, when the API is
+ * down, or when the server has no real value — see liveMetricsFromStats.
  */
 export function useLiveMetrics(): LiveMetric[] {
   const { data: stats } = useStatsOverview();
@@ -17,24 +16,6 @@ export function useLiveMetrics(): LiveMetric[] {
   // Same hydration guard as elsewhere: keep server + first client paint identical.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  const live = mounted ? stats : undefined;
 
-  return [
-    { number: "11+", label: "Cities", icon: "🏙" },
-    {
-      number: live && live.completedBookings > 0 ? `${nf(live.completedBookings)}+` : "50,000+",
-      label: "Homes Served",
-      icon: "🏠",
-    },
-    {
-      number: live && live.activeProviders > 0 ? `${nf(live.activeProviders)}+` : "10,000+",
-      label: "Verified Partners",
-      icon: "👥",
-    },
-    {
-      number: live?.averageRating != null ? `${live.averageRating}★` : "4.9★",
-      label: "Customer Rating",
-      icon: "⭐",
-    },
-  ];
+  return liveMetricsFromStats(mounted ? stats : undefined);
 }

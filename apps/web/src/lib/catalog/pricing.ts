@@ -100,18 +100,19 @@ export function formatDuration(minutes: number | undefined): string | null {
 
 /**
  * The booking API prices a service at one of three tiers: min, base, max
- * (see apps/backend booking-pricing.service resolvePackagePrice). /book shows
- * them as Basic / Standard / Premium at package indexes 0 / 1 / 2. Keep these
- * names and indexes in lockstep with lib/book-services packagesFromApi.
+ * (see apps/backend booking-pricing.service resolvePackagePrice), at package
+ * indexes 0 / 1 / 2 — what `?package=` means. Keep the indexes in lockstep with
+ * lib/book-services packagesFromApi.
  *
- * Names only. The tiers once carried descriptions ("Essentials", "Most popular", "Full service"),
- * but the server configures a price per tier and nothing about what a tier contains or how often
- * it is bought, so there is nothing to describe.
+ * The names say what each one IS: a price. They used to read Basic / Standard / Premium (and
+ * before that carried "Essentials", "Most popular", "Full service"), which implies three packages
+ * with different contents; the server configures three prices and nothing about what any of them
+ * contains.
  */
 export const PACKAGE_TIERS = [
-  { index: 0, name: "Basic" },
-  { index: 1, name: "Standard" },
-  { index: 2, name: "Premium" },
+  { index: 0, name: "Lowest price" },
+  { index: 1, name: "Base price" },
+  { index: 2, name: "Highest price" },
 ] as const;
 
 export type TierOption = { index: number; name: string; price: number };
@@ -120,13 +121,15 @@ export function tierOptions(price: PriceInfo): TierOption[] {
   const prices = [price.min, price.base, price.max];
   const seen = new Set<number>();
   const out: TierOption[] = [];
-  // Standard first claims its price, so a min==base service shows "Standard", not "Basic".
+  // The base price claims its value first, so a min==base service keeps the base index.
   for (const i of [1, 0, 2]) {
     const p = prices[i]!;
     if (seen.has(p)) continue;
     seen.add(p);
     out.push({ ...PACKAGE_TIERS[i]!, price: p });
   }
+  // One price is just the price: there is nothing to tell apart, so it carries no name.
+  if (out.length === 1) return [{ ...out[0]!, name: "" }];
   return out.sort((a, b) => a.index - b.index);
 }
 

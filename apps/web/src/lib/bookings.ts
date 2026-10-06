@@ -31,7 +31,7 @@ export type SavedBooking = {
   serviceTitle: string;
   serviceName: string;
   /**
-   * The selection as a finished label ("Split AC · 3 unit", "Standard Package"), printed as is.
+   * The selection as a finished label ("Split AC · 3 unit", "Base price"), printed as is.
    * Known only for a booking made in this browser; empty when loaded from the server.
    */
   packageName: string;

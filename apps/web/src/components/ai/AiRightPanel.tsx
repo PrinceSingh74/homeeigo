@@ -5,25 +5,18 @@ import Link from "next/link";
 import {
   ArrowRight,
   Droplets,
-  Leaf,
   Shield,
   Sparkles,
   SprayCan,
   Thermometer,
-  Zap,
 } from "lucide-react";
 import { m as motion, useReducedMotion } from "framer-motion";
-import {
-  AI_INSIGHTS,
-  AI_PREDICTIONS,
-  AI_RECOMMENDED,
-} from "@/lib/ai-dashboard";
+import { AI_PREDICTIONS, AI_RECOMMENDED } from "@/lib/ai-dashboard";
 import { AiLiveTrackingCard } from "@/components/ai/AiLiveTrackingCard";
 import { AiRightPanelBlockHeader } from "@/components/ai/AiRightPanelBlockHeader";
 import {
   aiRightBlock,
   aiRightBrandStrip,
-  aiRightInsightCard,
   aiRightPredictionsGrid,
   aiRightRail,
   aiRightShell,
@@ -32,7 +25,6 @@ import { fadeUp } from "@/components/ai/ai-motion";
 import { cn } from "@/lib/utils";
 import { useAiPageActions } from "@/hooks/use-ai-page-actions";
 
-const INSIGHT_ICONS = [Thermometer, Leaf, Droplets, Sparkles] as const;
 const PREDICTION_ICONS = [SprayCan, Droplets, Thermometer, Shield] as const;
 
 function RightBrandHeader() {
@@ -48,29 +40,31 @@ function RightBrandHeader() {
         </span>
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-widest text-white/80">
-            HOMEEIGO Intelligence
+            HOMEEIGO
           </p>
-          <p className="font-display text-base font-bold tracking-tight">AI Insights Hub</p>
+          <p className="font-display text-base font-bold tracking-tight">Tracking &amp; shortcuts</p>
         </div>
       </div>
       <p className="relative mt-2 text-[11px] leading-relaxed text-white/85">
-        Personalized actions for your home — updated in real time.
+        Your live visit, and quick ways to book a service.
       </p>
     </div>
   );
 }
 
+/**
+ * The /ai sidebar: live tracking for a real visit, and booking shortcuts.
+ *
+ * The "AI Home Insights" list is gone — "AC service due in 7 days", "save up to ₹450", "water usage
+ * 18% lower" were constants shown to every customer. The remaining blocks are labelled as what they
+ * are: links to a service's booking page, not predictions or personal recommendations.
+ */
 export function AiRightPanel() {
   const reduce = useReducedMotion();
-  const {
-    runInsightAction,
-    runPredictionAction,
-    viewAllInsights,
-    viewAllPredictions,
-  } = useAiPageActions();
+  const { runPredictionAction } = useAiPageActions();
 
   return (
-    <aside className={aiRightRail} aria-label="AI insights sidebar">
+    <aside className={aiRightRail} aria-label="Tracking and shortcuts sidebar">
       <div className={aiRightShell}>
         <RightBrandHeader />
 
@@ -84,68 +78,10 @@ export function AiRightPanel() {
           <AiLiveTrackingCard embedded />
         </section>
 
-        {/* AI Home Insights */}
+        {/* One service shortcut */}
         <section className={aiRightBlock}>
           <AiRightPanelBlockHeader
-            title="AI Home Insights"
-            actionLabel="View All"
-            onAction={viewAllInsights}
-          />
-          <ul className="flex flex-col gap-2.5">
-            {AI_INSIGHTS.map((item, i) => {
-              const Icon = INSIGHT_ICONS[i] ?? Sparkles;
-              return (
-                <motion.li
-                  key={item.id}
-                  variants={fadeUp}
-                  initial="hidden"
-                  whileInView="show"
-                  viewport={{ once: true }}
-                  custom={i}
-                  className={cn(
-                    aiRightInsightCard,
-                    item.bg,
-                    item.border,
-                    "cursor-pointer",
-                  )}
-                  onClick={() => runInsightAction(item.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      runInsightAction(item.id);
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <span
-                    className={cn(
-                      "grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-white shadow-[0_4px_12px_rgb(0_0_0/0.12)]",
-                      item.gradient,
-                    )}
-                  >
-                    <Icon size={18} strokeWidth={2.2} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold leading-tight text-ink">{item.title}</p>
-                    <p className="mt-1 text-[11px] leading-[1.4] text-slate">{item.description}</p>
-                    {"cta" in item && item.cta && (
-                      <span className="mt-2 inline-flex items-center gap-0.5 rounded-lg bg-emerald-500/20 px-2.5 py-1 text-[10px] font-bold text-emerald-300 ring-1 ring-emerald-400/30">
-                        {item.cta}
-                        <ArrowRight size={10} />
-                      </span>
-                    )}
-                  </div>
-                </motion.li>
-              );
-            })}
-          </ul>
-        </section>
-
-        {/* Recommended */}
-        <section className={aiRightBlock}>
-          <AiRightPanelBlockHeader
-            title="Recommended for You"
+            title="Book a service"
             href="/services"
             actionLabel="View All"
           />
@@ -166,35 +102,28 @@ export function AiRightPanel() {
                 sizes="(max-width: 1280px) 100vw, 340px"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-              <span className="absolute left-3 top-3 rounded-full bg-violet px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white shadow-md">
-                {AI_RECOMMENDED.tag}
-              </span>
             </div>
             <div className="space-y-2.5 p-3.5">
               <h4 className="font-display text-sm font-bold leading-tight text-ink">
                 {AI_RECOMMENDED.title}
               </h4>
-              <p className="flex items-center gap-1 text-[11px] text-slate">
-                <Zap size={12} className="text-amber-500" />
-                {AI_RECOMMENDED.provider}
-              </p>
               <Link
                 href={AI_RECOMMENDED.href}
                 className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-sm font-semibold text-white shadow-[0_4px_14px_rgb(16_185_129/0.4)] transition hover:opacity-95"
               >
-                Book Instantly
+                See options &amp; price
                 <ArrowRight size={16} />
               </Link>
             </div>
           </motion.article>
         </section>
 
-        {/* AI Predictions */}
+        {/* Service shortcuts */}
         <section className={aiRightBlock}>
           <AiRightPanelBlockHeader
-            title="AI Predictions"
+            title="More services"
+            href="/services"
             actionLabel="View All"
-            onAction={viewAllPredictions}
           />
           <div className={aiRightPredictionsGrid}>
             {AI_PREDICTIONS.map((p, i) => {

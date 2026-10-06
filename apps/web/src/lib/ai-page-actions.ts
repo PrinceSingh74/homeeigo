@@ -50,10 +50,12 @@ export const AI_PREDICTION_ACTIONS: Record<
   string,
   { serviceId: string; toast: string }
 > = {
-  deep: { serviceId: "deep-cleaning", toast: "Deep cleaning slot suggested for you" },
-  filter: { serviceId: "plumbing", toast: "Water filter service recommended" },
-  ac: { serviceId: "ac-service", toast: "AC service due — book now" },
-  pest: { serviceId: "pest-control", toast: "Pest control inspection suggested" },
+  // Shortcuts to a booking page. The toasts say that, not that a slot was "suggested for you" or
+  // that a service is "due" — nothing computes either.
+  deep: { serviceId: "deep-cleaning", toast: "Opening deep cleaning booking…" },
+  filter: { serviceId: "plumbing", toast: "Opening plumbing booking…" },
+  ac: { serviceId: "ac-service", toast: "Opening AC service booking…" },
+  pest: { serviceId: "pest-control", toast: "Opening pest control booking…" },
 };
 
 export const AI_STATUS_ACTIONS: Record<
@@ -102,7 +104,7 @@ export const CHAT_QUICK_ACTION_MAP: Record<
   "Book Expert": {
     type: "book",
     serviceId: "ac-service",
-    toast: "Matching you with a verified expert…",
+    toast: "Opening AC service booking…",
   },
   "Upload Photo": {
     type: "scroll",

@@ -26,12 +26,13 @@ import {
   useBookingDetailQuery,
   useCancelBookingMutation,
   useReportProviderNoShowMutation,
+  useCancellationPolicyQuery,
   useCancellationQuoteQuery,
   useRatingByBookingQuery,
   useRefreshBookingFromServerMutation,
 } from "@/hooks/use-core-data";
 import { RatingModal } from "@/components/ratings/RatingModal";
-import { STATUS_CONFIG } from "@/lib/booking-status";
+import { statusConfigFor } from "@/lib/booking-status";
 import { canCancelBooking, cancelBlockedReason, canReportProviderNoShow } from "@/lib/booking-cancel-rules";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 import { BookingProgressRail } from "./BookingProgressRail";
@@ -74,6 +75,15 @@ export function BookingDetailModal({
 
   const detailQuery = useBookingDetailQuery(open ? bookingId : undefined);
   const cancelQuoteQuery = useCancellationQuoteQuery(bookingId, cancelOpen);
+  const cancellationPolicy = useCancellationPolicyQuery().data;
+  const refundNote = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const refundTimingNote = cancelQuoteQuery.data?.quote
+    ? refundNote(
+        cancelQuoteQuery.data.quote.refundMethodHint === "wallet_instant"
+          ? cancellationPolicy?.walletNote
+          : cancellationPolicy?.gatewayNote,
+      )
+    : null;
   const ratingQuery = useRatingByBookingQuery(open ? bookingId : undefined);
   // While the customer has not confirmed the work, confirming is the one primary action.
   const awaitingConfirmation = useBookingCompletionQuery(open ? bookingId : "").data?.completion?.state === "PENDING_CUSTOMER";
@@ -95,7 +105,14 @@ export function BookingDetailModal({
             liveStatus === "rejected"
           ? "cancelled"
           : (booking?.status ?? "confirmed");
-  const cfg = STATUS_CONFIG[resolvedStatus];
+  // Worded from the live booking: its backend status, payment status and whether a professional
+  // is on it. The live detail wins over the saved copy.
+  const cfg = statusConfigFor({
+    status: resolvedStatus,
+    backendStatus: liveStatus ?? booking?.backendStatus,
+    paymentStatus: detailQuery.data?.paymentStatus ?? booking?.paymentStatus,
+    proName: booking?.proName,
+  });
   const img = booking?.imagePath;
   const canTrack = resolvedStatus === "confirmed" || resolvedStatus === "in_progress";
   // O3b: decided on the BACKEND status, not the collapsed one — the `in_progress`
@@ -174,7 +191,7 @@ export function BookingDetailModal({
                 />
               ) : null}
               <div className="min-w-0 flex-1 space-y-2">
-                <BookingStatusBadge status={resolvedStatus} live />
+                <BookingStatusBadge status={resolvedStatus} label={cfg.shortLabel} live />
                 <h2 className="font-display text-2xl font-bold">{booking.serviceTitle}</h2>
                 <p className="text-sm text-white/85">{cfg.description}</p>
               </div>
@@ -194,7 +211,7 @@ export function BookingDetailModal({
               <DetailRow icon={Calendar} label="Schedule" value={`${booking.dateLabel} · ${booking.timeLabel}`} />
               <DetailRow icon={MapPin} label="Address" value={booking.address} />
               <DetailRow icon={User} label="Professional" value={professionalLabel(booking)} />
-              {/* A finished label ("Split AC · 3 unit", "Standard Package"); absent when the server sent none. */}
+              {/* A finished label ("Split AC · 3 unit", "Base price"); absent when the server sent none. */}
               {booking.packageName?.trim() ? (
                 <DetailRow icon={MessageSquare} label="Selection" value={booking.packageName} />
               ) : null}
@@ -363,7 +380,7 @@ export function BookingDetailModal({
                   {isRefundProcessed
                     ? `${refundAmountLabel} refund processed`
                     : isRefundPending
-                      ? `${refundAmountLabel} refund in progress (5–7 days for card/UPI)`
+                      ? `${refundAmountLabel} refund in progress`
                       : `${refundAmountLabel} refund needs attention — contact support`}
                 </div>
               )}
@@ -412,11 +429,9 @@ export function BookingDetailModal({
                 ) : (
                   <p className="text-muted">No payment to refund.</p>
                 )}
-                <p className="text-xs text-muted">
-                  {cancelQuoteQuery.data.quote.refundMethodHint === "wallet_instant"
-                    ? "Wallet refunds are instant."
-                    : "Card/UPI refunds typically take 5–7 business days."}
-                </p>
+                {/* How long a refund takes is the server's statement (the policy's wallet / gateway
+                    note, chosen by the quote's refund method) or it is not stated. */}
+                {refundTimingNote ? <p className="text-xs text-muted">{refundTimingNote}</p> : null}
               </div>
             ) : (
               <p className="text-sm text-muted">

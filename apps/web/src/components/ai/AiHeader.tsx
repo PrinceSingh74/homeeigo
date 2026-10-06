@@ -6,7 +6,7 @@ import { Bell, Mic, Sparkles } from "lucide-react";
 import { m as motion } from "framer-motion";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
-import { AI_USER } from "@/lib/ai-dashboard";
+import { useAuthStore } from "@/stores/auth-store";
 import { useAiPageActions } from "@/hooks/use-ai-page-actions";
 import { NotificationBadge } from "@/components/ui/NotificationBadge";
 import { useAppStore } from "@/stores/app-store";
@@ -18,6 +18,7 @@ import { slideHeader } from "@/components/ai/ai-motion";
 export function AiHeader() {
   const { toggleVoiceModeWithFeedback, voiceMode } = useAiPageActions();
   const openOverlay = useAppStore((s) => s.openOverlay);
+  const user = useAuthStore((s) => s.user);
 
   return (
     <motion.header
@@ -89,10 +90,15 @@ export function AiHeader() {
             type="button"
             onClick={() => openOverlay("profile")}
             className="flex items-center rounded-full p-0.5 transition hover:bg-white/10 dark:hover:bg-white/10"
-            aria-label={AI_USER.name}
+            aria-label="Open profile"
           >
-            <span className="relative size-8 overflow-hidden rounded-full border-2 border-white shadow-[0_2px_12px_rgb(0_0_0/0.12)] dark:border-slate-600 sm:size-10">
-              <Image src={AI_USER.avatar} alt="" fill className="object-cover" sizes="40px" />
+            {/* The signed-in customer's own picture or initial — never a stand-in person. */}
+            <span className="relative grid size-8 place-items-center overflow-hidden rounded-full border-2 border-white bg-emerald-600 text-xs font-bold text-white shadow-[0_2px_12px_rgb(0_0_0/0.12)] dark:border-slate-600 sm:size-10">
+              {user?.profileImage ? (
+                <Image src={user.profileImage} alt="" fill className="object-cover" sizes="40px" />
+              ) : (
+                <span aria-hidden>{(user?.firstName?.trim()?.[0] ?? "").toUpperCase()}</span>
+              )}
             </span>
           </button>
         </div>

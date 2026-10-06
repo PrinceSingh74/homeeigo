@@ -15,6 +15,7 @@ const PARTICLES = [
 
 export function HeroSectionServer({ stats }: { stats: StatsOverview | null }) {
   const nf = (n: number) => n.toLocaleString("en-IN");
+  const rating = stats?.averageRating != null && stats.reviewCount > 0 ? stats.averageRating : null;
 
   return (
     <section
@@ -65,8 +66,8 @@ export function HeroSectionServer({ stats }: { stats: StatsOverview | null }) {
           </h1>
 
           <p className={cn(sectionSubtitle, "mt-6 w-full max-w-md")}>
-            Smart. Fast. Reliable. Book verified professionals in under 60
-            seconds with real-time tracking and AI-matched experts.
+            Smart. Fast. Reliable. Book approved professionals with
+            real-time tracking and secure payments.
           </p>
 
           <HeroCtaButtons />
@@ -75,16 +76,17 @@ export function HeroSectionServer({ stats }: { stats: StatsOverview | null }) {
           <div className="mt-10 flex flex-wrap items-center gap-2.5 text-sm">
             <span className="inline-flex items-center gap-2 rounded-full border border-line/60 bg-surface/70 px-3.5 py-2 font-medium text-content shadow-e1 backdrop-blur-md">
               <ShieldCheck size={16} className="text-success" />
-              Verified &amp; background-checked
+              {/* True of every professional who can be given a job: admin approval. Identity and
+                  background checks are required only where a service asks for them. */}
+              Approved professionals
             </span>
-            <span className="inline-flex items-center gap-2 rounded-full border border-line/60 bg-surface/70 px-3.5 py-2 font-medium text-content shadow-e1 backdrop-blur-md">
-              <Star size={16} className="fill-gold text-gold" />
-              {stats?.averageRating != null
-                ? `${stats.averageRating} average rating`
-                : stats
-                  ? `${nf(stats.activeProviders)} verified pros`
-                  : "Top-rated pros"}
-            </span>
+            {/* The server's aggregate, and only when reviews produced it; otherwise no chip. */}
+            {rating != null ? (
+              <span className="inline-flex items-center gap-2 rounded-full border border-line/60 bg-surface/70 px-3.5 py-2 font-medium text-content shadow-e1 backdrop-blur-md">
+                <Star size={16} className="fill-gold text-gold" />
+                {rating} average rating
+              </span>
+            ) : null}
             {stats && stats.completedBookings > 0 ? (
               <span className="inline-flex items-center gap-2 rounded-full border border-line/60 bg-surface/70 px-3.5 py-2 font-medium text-content shadow-e1 backdrop-blur-md">
                 <Sparkles size={16} className="text-emerald-600" />
@@ -105,7 +107,7 @@ export function HeroSectionServer({ stats }: { stats: StatsOverview | null }) {
             <div className="relative aspect-[4/5] overflow-hidden rounded-[1.6rem]">
               <Image
                 src="/hero-professional.png"
-                alt="Verified HOMEEIGO home-service professional"
+                alt="HOMEEIGO home-service professional"
                 fill
                 sizes="(max-width: 1023px) 90vw, 0px"
                 priority
@@ -114,11 +116,13 @@ export function HeroSectionServer({ stats }: { stats: StatsOverview | null }) {
               <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-slate-950/45 via-transparent to-slate-950/10" />
             </div>
             <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-slate-950/50 px-3 py-1.5 text-xs font-semibold text-white ring-1 ring-white/25 backdrop-blur-md">
-              <ShieldCheck size={14} className="text-emerald-300" /> Verified Pro
+              <ShieldCheck size={14} className="text-emerald-300" /> Approved Pro
             </span>
-            <span className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-slate-950/50 px-3 py-1.5 text-xs font-bold text-white ring-1 ring-white/25 backdrop-blur-md">
-              <Star size={13} className="fill-gold text-gold" /> 4.9 rating
-            </span>
+            {rating != null ? (
+              <span className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-slate-950/50 px-3 py-1.5 text-xs font-bold text-white ring-1 ring-white/25 backdrop-blur-md">
+                <Star size={13} className="fill-gold text-gold" /> {rating} rating
+              </span>
+            ) : null}
             {/* Villa inset — keeps the existing smart-home image */}
             <div className="absolute -right-3 bottom-8 w-24 rounded-xl bg-surface/85 p-1 shadow-e2 ring-1 ring-line/60 backdrop-blur-md">
               <Image
@@ -156,7 +160,7 @@ export function HeroSectionServer({ stats }: { stats: StatsOverview | null }) {
                 <div className="relative aspect-[4/5] overflow-hidden rounded-[1.9rem]">
                   <Image
                     src="/hero-professional.png"
-                    alt="Verified HOMEEIGO home-service professional"
+                    alt="HOMEEIGO home-service professional"
                     fill
                     sizes="(min-width: 1280px) 512px, (min-width: 1024px) 420px, 0px"
                     priority
@@ -166,36 +170,22 @@ export function HeroSectionServer({ stats }: { stats: StatsOverview | null }) {
                 </div>
               </div>
 
-              {/* Verified-pro glass chip — top-left */}
+              {/* Approved-pro glass chip — top-left */}
               <div className="absolute -left-6 top-10 rounded-2xl glass-card glass-reflect card-sheen px-4 py-3">
                 <p className="relative z-10 inline-flex items-center gap-1.5 font-display text-sm font-bold text-content">
-                  <ShieldCheck size={16} className="text-success" /> Verified Pro
+                  <ShieldCheck size={16} className="text-success" /> Approved Pro
                 </p>
-                <p className="relative z-10 text-[11px] font-medium text-muted">Background-checked</p>
+                <p className="relative z-10 text-[11px] font-medium text-muted">Approved before any job</p>
               </div>
 
-              {/* Arriving glass chip — top-right */}
+              {/* Tracking glass chip — top-right. A feature label only: it used to show an
+                  arrival countdown and an "on the way" status for a visit that does not exist. */}
               <Link
                 href="#tracking"
                 className="absolute -right-6 top-16 rounded-2xl glass-card glass-reflect card-sheen px-4 py-3 text-left transition-transform duration-300 hover:-translate-y-1 hover:scale-[1.03]"
               >
-                <p className="relative z-10 text-[11px] font-medium text-muted">Arriving in</p>
-                <p className="relative z-10 font-display text-lg font-bold bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">12 min</p>
-              </Link>
-
-              {/* Live-tracking glass chip — bottom-left */}
-              <Link
-                href="#tracking"
-                className="absolute -bottom-3 -left-4 rounded-2xl glass-card glass-reflect card-sheen px-4 py-3 text-left transition-transform duration-300 hover:-translate-y-1 hover:scale-[1.03]"
-              >
-                <p className="text-[11px] font-medium text-muted">Live tracking</p>
-                <p className="inline-flex items-center gap-1.5 font-display text-sm font-bold text-success">
-                  <span className="relative flex size-2" aria-hidden>
-                    <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-60" />
-                    <span className="relative inline-flex size-2 rounded-full bg-success" />
-                  </span>
-                  On the way
-                </p>
+                <p className="relative z-10 text-[11px] font-medium text-muted">On the day</p>
+                <p className="relative z-10 font-display text-sm font-bold text-content">Live tracking</p>
               </Link>
 
               {/* Villa inset glass card — bottom-right (keeps existing smart-home image) */}
