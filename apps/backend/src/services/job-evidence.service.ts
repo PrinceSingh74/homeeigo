@@ -1,5 +1,6 @@
 import { AssignmentAttemptStatus, type JobEvidence, type JobEvidenceStage, type Prisma } from "@prisma/client";
 import prisma from "../lib/prisma";
+import { ACTIVE_FULFILMENT_STATUSES } from "../lib/privacy-policy.engine";
 import { objectStorageService } from "./object-storage.service";
 
 export type JobEvidenceActor = {
@@ -20,6 +21,8 @@ export type RecordStageInput = {
   clientUploadId?: string;
   replace?: boolean;
   metadata?: Prisma.InputJsonValue;
+  /** Set for a partner's own upload: refused once the job is no longer in an active status. */
+  requireActiveJob?: boolean;
 };
 
 /**
@@ -39,10 +42,13 @@ class JobEvidenceService {
   async recordStage(input: RecordStageInput): Promise<JobEvidence> {
     const booking = await prisma.booking.findUnique({
       where: { id: input.bookingId },
-      select: { id: true, providerId: true },
+      select: { id: true, providerId: true, status: true },
     });
     if (!booking) throw new Error("NOT_FOUND");
     if (booking.providerId !== input.providerId) throw new Error("FORBIDDEN");
+    // A partner's own upload belongs to a job in hand. (The system's completion stamp is written
+    // just after the job completes and does not ask for this.)
+    if (input.requireActiveJob && !ACTIVE_FULFILMENT_STATUSES.has(String(booking.status))) throw new Error("BOOKING_NOT_ACTIVE");
 
     const stage = input.stage as JobEvidenceStage;
     const clientUploadId = input.clientUploadId?.trim() || null;

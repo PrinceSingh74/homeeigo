@@ -27,6 +27,13 @@ export const LOCATION_FRESH_SEC = readSec("PRESENCE_LOCATION_FRESH_SEC", 60);
 export const LOCATION_STALE_SEC = readSec("PRESENCE_LOCATION_STALE_SEC", 600);
 
 /** Reject client timestamps more than this many seconds in the future. */
+/**
+ * Oldest server-held fix that still confirms where a partner is when they declare arrival or start a
+ * job. Two freshness windows: a partner on the way reports with every heartbeat, and one missed
+ * location beat must not turn an honest arrival into a refusal.
+ */
+export const ARRIVAL_FIX_MAX_AGE_SEC = readSec("PRESENCE_ARRIVAL_FIX_MAX_AGE_SEC", LOCATION_FRESH_SEC * 2);
+
 export const TIMESTAMP_FUTURE_TOLERANCE_SEC = readSec("PRESENCE_TIMESTAMP_FUTURE_TOLERANCE_SEC", 30);
 
 /** Reject client timestamps older than this (replay guard). */

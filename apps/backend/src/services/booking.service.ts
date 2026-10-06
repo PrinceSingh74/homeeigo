@@ -1934,7 +1934,9 @@ export class BookingService {
           | "INVALID_STATUS"
           | "LOCATION_INVALID"
           | "LOCATION_REQUIRED"
-          | "OUTSIDE_SERVICE_AREA";
+          | "OUTSIDE_SERVICE_AREA"
+          | "LOCATION_UNCONFIRMED"
+          | "LOCATION_MISMATCH";
       }
   > {
     const booking = await prisma.booking.findFirst({
@@ -1995,6 +1997,10 @@ export class BookingService {
       }
       return { ok: false as const, error: proximity.error };
     }
+    // The request's coordinates are the device's claim. What decides is the position the server holds.
+    const { confirmPartnerPosition } = await import("./arrival-position.service");
+    const held = await confirmPartnerPosition({ providerId, bookingId: id, action: "arrive", jobLatitude: booking.address?.latitude, jobLongitude: booking.address?.longitude });
+    if (!held.ok) return { ok: false as const, error: held.error };
 
     const distanceKm = booking.address
       ? distanceBetweenKm(arriveLat, arriveLng, booking.address.latitude, booking.address.longitude)
@@ -2072,6 +2078,9 @@ export class BookingService {
       });
       // W2-D2: no GPS substitution at start either — see the note at arrival.
       if (!proximity.ok) throw new Error(proximity.error);
+      const { confirmPartnerPosition } = await import("./arrival-position.service");
+      const held = await confirmPartnerPosition({ providerId, bookingId: id, action: "start", jobLatitude: bookingForGeo.address?.latitude, jobLongitude: bookingForGeo.address?.longitude });
+      if (!held.ok) throw new Error(held.error);
     }
 
     const startedAt = new Date();
@@ -2392,7 +2401,8 @@ export class BookingService {
       }
 
       const evidenceRows = await prisma.jobEvidence.findMany({
-        where: { bookingId: id, isCurrent: true },
+        // The completing partner's own evidence: an earlier partner's photos prove nothing about this visit.
+        where: { bookingId: id, isCurrent: true, providerId },
         select: { stage: true, mediaUrl: true, mediaStorageKey: true },
       });
       /**

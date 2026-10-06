@@ -108,8 +108,8 @@ describe("the nine control-plane states", () => {
 describe("the eighteen publish gates", () => {
   const complete = serviceCatalogConfigSchema.parse({
     ...policies,
-    safetyNotes: ["Keep children away from wet floors"],
-    quality: { proofRequired: true },
+    safety: { prohibitedConditions: ["Gas smell in the room"], incidentProtocol: "Stop work, make the area safe and call support" },
+    quality: { checklist: ["Work area left clean"], completionCriteria: ["Customer shown the finished work"] },
     execution: { steps: [{ id: "clean", title: "Clean the bathroom", kind: "WORK" }] },
     providerRequirements: { requiredSkills: ["cleaning"] },
     coverage: { cityIds: ["pune"] },
@@ -242,7 +242,7 @@ describe("owner-required sections", () => {
   });
 
   test("a required section that is configured passes", () => {
-    const cfg = serviceCatalogConfigSchema.parse({ ...policies, safetyNotes: ["Keep children away from wet floors"] });
+    const cfg = serviceCatalogConfigSchema.parse({ ...policies, safety: { prohibitedConditions: ["Gas smell in the room"], incidentProtocol: "Stop work, make the area safe and call support" } });
     expect(validateForActivation(core(), cfg, { required: ["safety"] }).ok).toBe(true);
   });
 
@@ -362,15 +362,14 @@ describe("a gate passes on content, not on the presence of a key", () => {
   test("an empty safety object, or one holding only blank lists, is absent safety information", () => {
     expect(statusOf(parse({ safety: {} }), "SAFETY")).toEqual(["SAFETY_ABSENT:WARNING"]);
     expect(statusOf(parse({ safety: { warnings: [], ppe: [] } }), "SAFETY")).toEqual(["SAFETY_ABSENT:WARNING"]);
-    expect(statusOf(parse({ safety: { prohibitedConditions: ["Gas smell in the room"] } }), "SAFETY")).toEqual(["SAFETY:PASS"]);
+    expect(statusOf(parse({ safety: { prohibitedConditions: ["Gas smell in the room"], incidentProtocol: "Stop work, make the area safe and call support" } }), "SAFETY")).toEqual(["SAFETY:PASS"]);
     expect(validateForActivation(core(), parse({ safety: {} }), { required: ["safety"] }).ok).toBe(false);
   });
 
   test("quality marked not applicable, or holding only a warranty number, is not a quality standard", () => {
     expect(statusOf(parse({ quality: { notApplicable: true } }), "QUALITY")).toEqual(["QUALITY_ABSENT:WARNING"]);
     expect(statusOf(parse({ quality: { warrantyDays: 30 } }), "QUALITY")).toEqual(["QUALITY_ABSENT:WARNING"]);
-    expect(statusOf(parse({ quality: { checklist: ["Work area left clean"] } }), "QUALITY")).toEqual(["QUALITY:PASS"]);
-    expect(statusOf(parse({ quality: { proofRequired: true } }), "QUALITY")).toEqual(["QUALITY:PASS"]);
+    expect(statusOf(parse({ quality: { checklist: ["Work area left clean"], completionCriteria: ["Customer shown the finished work"] } }), "QUALITY")).toEqual(["QUALITY:PASS"]);
     expect(validateForActivation(core(), parse({ quality: { notApplicable: true } }), { required: ["quality"] }).ok).toBe(false);
   });
 
@@ -402,10 +401,50 @@ describe("a gate passes on content, not on the presence of a key", () => {
   });
 });
 
+/**
+ * Owner decision, 2026-10-06: the minimum is what the job actually runs on. A prohibited condition
+ * is what stops a job on site and the incident protocol is what the professional then does; the
+ * checklist is what completion is held to and the completion criteria are what "done" means. All 25
+ * live services carried all four on that day. No count above one is required: a number would be an
+ * average of today's catalogue, not a rule.
+ */
+describe("the safety and quality a first publish requires", () => {
+  const parse = (extra: Record<string, unknown>) => serviceCatalogConfigSchema.parse({ ...policies, ...extra });
+  const gate = (cfg: typeof policies, name: string) => publishGateResults(core(), cfg, { required: [] }).find((g) => g.gate === name);
+
+  test("safety needs a prohibited condition and an incident protocol, and says which one is missing", () => {
+    const onlyCondition = gate(parse({ safety: { prohibitedConditions: ["Gas smell in the room"] } }), "SAFETY");
+    expect(onlyCondition).toMatchObject({ code: "SAFETY_ABSENT", status: "WARNING" });
+    expect(onlyCondition?.message).toContain("incident protocol");
+    expect(onlyCondition?.message).not.toContain("prohibited condition");
+    const onlyProtocol = gate(parse({ safety: { incidentProtocol: "Stop work and call support" } }), "SAFETY");
+    expect(onlyProtocol?.message).toContain("prohibited condition");
+    // General notes and warnings are welcome and are not the minimum.
+    expect(gate(parse({ safetyNotes: ["Keep children away from wet floors"], safety: { warnings: ["Wet floor"] } }), "SAFETY")?.code).toBe("SAFETY_ABSENT");
+    expect(gate(parse({ safety: { prohibitedConditions: ["Gas smell in the room"], incidentProtocol: "Stop work, make the area safe and call support" } }), "SAFETY")?.status).toBe("PASS");
+  });
+
+  test("quality needs a checklist item and a completion criterion; a proof flag alone is not a standard", () => {
+    expect(gate(parse({ quality: { proofRequired: true, beforeAfterPhotos: true } }), "QUALITY")).toMatchObject({ code: "QUALITY_ABSENT", status: "WARNING" });
+    const onlyChecklist = gate(parse({ quality: { checklist: ["Work area left clean"] } }), "QUALITY");
+    expect(onlyChecklist?.message).toContain("completion criterion");
+    expect(gate(parse({ quality: { completionCriteria: ["Customer shown the finished work"] } }), "QUALITY")?.message).toContain("checklist item");
+    expect(gate(parse({ quality: { checklist: ["Work area left clean"], completionCriteria: ["Customer shown the finished work"] } }), "QUALITY")?.status).toBe("PASS");
+  });
+
+  test("when the owner requires the sections, the same minimum blocks a first publish", () => {
+    const partial = parse({ safety: { prohibitedConditions: ["Gas smell in the room"] }, quality: { checklist: ["Work area left clean"] } });
+    const r = validateForActivation(core(), partial, { required: ["safety", "quality"] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.issues.map((i) => i.code).sort()).toEqual(["QUALITY_ABSENT", "SAFETY_ABSENT"]);
+    expect(validateForActivation(core(), parse({ safety: { prohibitedConditions: ["Gas smell in the room"], incidentProtocol: "Stop work, make the area safe and call support" }, quality: { checklist: ["Work area left clean"], completionCriteria: ["Customer shown the finished work"] } }), { required: ["safety", "quality"] }).ok).toBe(true);
+  });
+});
+
 describe("an edit to a live service may not make it worse", () => {
   const parse = (extra: Record<string, unknown>) => serviceCatalogConfigSchema.parse({ ...policies, ...extra });
   const live = core({ isActive: true });
-  const full = parse({ safety: { prohibitedConditions: ["Gas smell in the room"] }, quality: { checklist: ["Work area left clean"] }, execution: { steps: [{ id: "work", title: "Do the work", kind: "WORK", sortOrder: 1 }] } });
+  const full = parse({ safety: { prohibitedConditions: ["Gas smell in the room"], incidentProtocol: "Stop work, make the area safe and call support" }, quality: { checklist: ["Work area left clean"], completionCriteria: ["Customer shown the finished work"] }, execution: { steps: [{ id: "work", title: "Do the work", kind: "WORK", sortOrder: 1 }] } });
   const required = ["safety", "quality", "execution"] as const;
   const codes = (before: typeof policies | null, after: typeof policies | null, s = live) => liveEditRegressions({ before: { service: live, cfg: before }, after: { service: s, cfg: after }, required }).map((i) => i.code).sort();
 

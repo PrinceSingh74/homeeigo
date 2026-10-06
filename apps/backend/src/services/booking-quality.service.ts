@@ -122,7 +122,7 @@ export type CompletionSubmission = { completedChecklist?: readonly string[]; pro
 async function gatherFacts(db: Db, b: BookingFacts, opts: CompletionSubmission) {
   const quality = qualityFromSnapshot(b.serviceConfigSnapshot);
   const evidenceRows = await db.jobEvidence.findMany({
-    where: { bookingId: b.id, isCurrent: true },
+    where: { bookingId: b.id, isCurrent: true, ...(b.providerId ? { providerId: b.providerId } : {}) },
     select: { id: true, stage: true, mediaUrl: true, mediaStorageKey: true },
   });
   const evidenceIds = evidenceRows.filter(hasAuthoritativeMedia).map((r) => r.id);

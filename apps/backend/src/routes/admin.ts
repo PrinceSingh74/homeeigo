@@ -517,6 +517,23 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
       return { success: false, error: err instanceof Error ? err.message : "Complete failed", code: "BOOKING_COMPLETE_FAILED" };
     }
   }, { body: t.Object({ reason: t.String({ minLength: 3 }) }) })
+  .post("/bookings/:id/position-waiver", async ({ params, body, requireAuth, request, set }) => {
+    try {
+      const auth = requireAuth();
+      const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+      const result = await adminBookingOperationsService.waivePositionCheck(params.id, auth.userId, body.reason, ip ?? undefined);
+      return { success: true, data: result };
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "POSITION_WAIVER_FAILED";
+      set.status = code === "BOOKING_NOT_FOUND" ? 404 : 409;
+      const messages: Record<string, string> = {
+        BOOKING_NOT_FOUND: "Booking not found",
+        NO_ASSIGNED_PROVIDER: "No professional holds this booking",
+        INVALID_STATUS: "The position check applies only while a professional holds an active job",
+      };
+      return { success: false, error: messages[code] ?? "The position check could not be waived", code };
+    }
+  }, { body: t.Object({ reason: t.String({ minLength: 10, maxLength: 500 }) }) })
   .post("/bookings/:id/repair", async ({ params, body, requireAuth, request, set }) => {
     try {
       const auth = requireAuth();

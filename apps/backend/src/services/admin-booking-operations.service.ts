@@ -1,6 +1,7 @@
 import { evictProviderFromBooking } from "../lib/ws-eviction";
 import { PaymentStatus, BookingStatus } from "@prisma/client";
 import prisma from "../lib/prisma";
+import { ACTIVE_FULFILMENT_STATUSES } from "../lib/privacy-policy.engine";
 import { isBusinessRow } from "../lib/analytics-scope";
 import { eventPlatformConfig } from "../events/core/config";
 import { emitInTransaction } from "../events/core/event-publisher";
@@ -42,7 +43,9 @@ export type AdminBookingAction =
   | "REPAIR"
   | "REFUND"
   | "RETRY_REFUND"
-  | "DISPATCH_ELIGIBILITY_OVERRIDE";
+  | "DISPATCH_ELIGIBILITY_OVERRIDE"
+  /** The server-held position check on arrival and start is waived for this booking. */
+  | "POSITION_CHECK_WAIVED";
 
 export class AdminBookingOperationsService {
   async getDetail(bookingId: string, viewer?: { adminId: string; ipAddress?: string }) {
@@ -616,6 +619,20 @@ export class AdminBookingOperationsService {
     const sent = await assignmentEngine.dispatchBookingNow(bookingId);
     await this.recordAdminAction(bookingId, adminId, "FORCE_DISPATCH", reason, ipAddress, undefined, sent ? "DISPATCHED" : "NO_OP");
     return { dispatched: sent };
+  }
+
+  /**
+   * Waives the server-held position check on arrival and start for one booking: for a partner whose
+   * device cannot produce a location while the visit is confirmed some other way (the reason says
+   * how). The partner still performs the arrival and the start; this only vouches for where they are.
+   */
+  async waivePositionCheck(bookingId: string, adminId: string, reason: string, ipAddress?: string) {
+    const booking = await prisma.booking.findUnique({ where: { id: bookingId }, select: { status: true, providerId: true } });
+    if (!booking) throw new Error("BOOKING_NOT_FOUND");
+    if (!booking.providerId) throw new Error("NO_ASSIGNED_PROVIDER");
+    if (!ACTIVE_FULFILMENT_STATUSES.has(String(booking.status))) throw new Error("INVALID_STATUS");
+    await this.recordAdminAction(bookingId, adminId, "POSITION_CHECK_WAIVED", reason, ipAddress, booking.status, booking.status);
+    return { waived: true as const };
   }
 
   async markComplete(bookingId: string, adminId: string, reason: string, ipAddress?: string) {

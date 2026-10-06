@@ -373,8 +373,8 @@ describe.serial("default policy", () => {
 const POLICIES = { materialPolicy: "PROFESSIONAL_PROVIDED", equipmentPolicy: "PROFESSIONAL_PROVIDED" };
 const FULL = {
   ...POLICIES,
-  safety: { prohibitedConditions: ["Gas smell in the room"] },
-  quality: { checklist: ["Work area left clean"] },
+  safety: { prohibitedConditions: ["Gas smell in the room"], incidentProtocol: "Stop work, make the area safe and call support" },
+  quality: { checklist: ["Work area left clean"], completionCriteria: ["Customer shown the finished work"] },
   execution: { steps: [{ id: "work", title: "Do the work", kind: "WORK", sortOrder: 1 }] },
 };
 /** Live with `config`, published the governed way (review → second admin's approval → ACTIVE). */

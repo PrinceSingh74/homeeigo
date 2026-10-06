@@ -238,6 +238,7 @@ const rules: RouteRule[] = [
   { methods: M.POST, pattern: /^\/api\/admin\/bookings\/[^/]+\/dispatch$/, resource: "BOOKINGS", action: "UPDATE" },
   { methods: M.POST, pattern: /^\/api\/admin\/bookings\/[^/]+\/complete$/, resource: "BOOKINGS", action: "APPROVE" },
   { methods: M.POST, pattern: /^\/api\/admin\/bookings\/[^/]+\/repair$/, resource: "BOOKINGS", action: "UPDATE" },
+  { methods: M.POST, pattern: /^\/api\/admin\/bookings\/[^/]+\/position-waiver$/, resource: "BOOKINGS", action: "APPROVE" },
   // §52/§53: support overriding the evidence gate the partner and customer are bound by.
   { methods: M.POST, pattern: /^\/api\/admin\/bookings\/[^/]+\/no-show$/, resource: "BOOKINGS", action: "APPROVE" },
   // Phase 10 §6 — requirement operations view + the one admin action (force a re-check, with reason).

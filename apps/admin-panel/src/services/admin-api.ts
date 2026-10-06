@@ -1248,6 +1248,14 @@ export const adminApi = {
       body: { reason },
     }).then((r) => r.data!),
 
+  /** Waives the server-held position check on arrival and start for this booking (reason is recorded). */
+  adminWaivePositionCheck: (id: string, reason: string) =>
+    apiRequest<ApiResponse<{ waived: true }>>(`/api/admin/bookings/${id}/position-waiver`, {
+      method: "POST",
+      auth: true,
+      body: { reason },
+    }).then((r) => r.data!),
+
   adminRepairBooking: (id: string, reason: string) =>
     apiRequest<ApiResponse<Record<string, unknown>>>(`/api/admin/bookings/${id}/repair`, {
       method: "POST",

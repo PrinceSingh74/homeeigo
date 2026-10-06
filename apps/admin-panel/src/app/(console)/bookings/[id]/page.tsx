@@ -83,7 +83,7 @@ function StepCell({ step: s }: { step: StepDetail }) {
   );
 }
 
-type ActionType = "cancel" | "complete" | "dispatch" | "repair" | "refund" | null;
+type ActionType = "cancel" | "complete" | "dispatch" | "repair" | "refund" | "positionWaiver" | null;
 
 export default function BookingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -168,6 +168,7 @@ export default function BookingDetailPage() {
   const cancelMut = useMutation({ mutationFn: (reason: string) => adminApi.adminCancelBooking(id, reason, refundPolicy), onSuccess: () => { setAction(null); invalidate(); } });
   const completeMut = useMutation({ mutationFn: (reason: string) => adminApi.adminCompleteBooking(id, reason), onSuccess: () => { setAction(null); invalidate(); } });
   const dispatchMut = useMutation({ mutationFn: (reason: string) => adminApi.adminForceDispatch(id, reason), onSuccess: () => { setAction(null); invalidate(); } });
+  const positionWaiverMut = useMutation({ mutationFn: (reason: string) => adminApi.adminWaivePositionCheck(id, reason), onSuccess: () => { setAction(null); invalidate(); } });
   const repairMut = useMutation({ mutationFn: (reason: string) => adminApi.adminRepairBooking(id, reason), onSuccess: () => { setAction(null); invalidate(); } });
   const releaseHoldMut = useMutation({
     mutationFn: (vars: { holdId: number; reason: string }) => adminApi.adminReleaseSafetyHold(id, vars.holdId, vars.reason),
@@ -271,7 +272,7 @@ export default function BookingDetailPage() {
     a.respondedAt ? new Date(String(a.respondedAt)).toLocaleString() : "—",
   ]);
 
-  const isMutating = cancelMut.isPending || completeMut.isPending || dispatchMut.isPending || repairMut.isPending || refundMut.isPending;
+  const isMutating = cancelMut.isPending || completeMut.isPending || dispatchMut.isPending || repairMut.isPending || refundMut.isPending || positionWaiverMut.isPending;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -308,6 +309,7 @@ export default function BookingDetailPage() {
           <button type="button" onClick={() => setAction("complete")} className="rounded-lg border px-3 py-1.5 text-sm">Mark complete</button>
           <button type="button" onClick={() => setAction("dispatch")} className="rounded-lg border px-3 py-1.5 text-sm inline-flex items-center gap-1"><Truck className="h-3.5 w-3.5" /> Force dispatch</button>
           <button type="button" onClick={() => setAction("repair")} className="rounded-lg border px-3 py-1.5 text-sm inline-flex items-center gap-1"><Wrench className="h-3.5 w-3.5" /> Repair</button>
+          <button type="button" onClick={() => setAction("positionWaiver")} className="rounded-lg border px-3 py-1.5 text-sm">Waive position check</button>
           <button type="button" onClick={() => setAction("refund")} className="rounded-lg border px-3 py-1.5 text-sm">Refund</button>
         </div>
 
@@ -816,6 +818,18 @@ export default function BookingDetailPage() {
         isLoading={isMutating}
         onClose={() => setAction(null)}
         onConfirm={(reason) => { if (reason) dispatchMut.mutate(reason); }}
+      />
+
+      <ConfirmDialog
+        open={action === "positionWaiver"}
+        title="Waive position check"
+        description="Arrival and start are confirmed against the location the professional's device reports. Waive this only when the device cannot give a location and the visit is confirmed another way — say how in the reason (at least 10 characters). It applies to this booking only and is recorded with your name."
+        reasonLabel="How the visit was confirmed"
+        reasonRequired
+        confirmLabel="Waive check"
+        isLoading={isMutating}
+        onClose={() => setAction(null)}
+        onConfirm={(reason) => { if (reason) positionWaiverMut.mutate(reason); }}
       />
 
       <ConfirmDialog

@@ -5,6 +5,12 @@ import { bookingStartOtpService } from "../services/booking-start-otp.service";
 import { bookingRefundService } from "../services/booking-refund.service";
 import { cancellationPolicyService } from "../services/cancellation-policy.service";
 import { jobEvidenceService } from "../services/job-evidence.service";
+
+/** What a partner is told when the server cannot place them at the job (arrival and start). */
+const POSITION_MESSAGES = {
+  LOCATION_UNCONFIRMED: "We could not confirm your position. Keep the app open with location on for a moment and try again. If your phone cannot get a location, contact support.",
+  LOCATION_MISMATCH: "Your device's reported position is not at the service location. Go to the address, keep location on and try again.",
+} as const;
 import { bookingChatService } from "../services/booking-chat.service";
 import { bookingNoShowService } from "../services/booking-no-show.service";
 import { NO_SHOW_POLICY } from "../lib/no-show-policy";
@@ -721,6 +727,8 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         set.status =
           result.error === "NOT_FOUND"
             ? 404
+            : result.error === "LOCATION_UNCONFIRMED" || result.error === "LOCATION_MISMATCH"
+              ? 409
             : result.error === "OUTSIDE_SERVICE_AREA" ||
                 result.error === "LOCATION_INVALID" ||
                 result.error === "LOCATION_REQUIRED"
@@ -732,6 +740,8 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
           OUTSIDE_SERVICE_AREA: "Move closer to the service location and try again",
           LOCATION_INVALID: "Valid GPS coordinates are required to mark arrival",
           LOCATION_REQUIRED: "Location is required to mark arrival",
+          LOCATION_UNCONFIRMED: POSITION_MESSAGES.LOCATION_UNCONFIRMED,
+          LOCATION_MISMATCH: POSITION_MESSAGES.LOCATION_MISMATCH,
         };
         return {
           success: false,
@@ -942,6 +952,10 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
             LOCATION_REQUIRED: "Location is required to start this job",
           };
           return { success: false, error: messages[code] ?? code, code };
+        }
+        if (code === "LOCATION_UNCONFIRMED" || code === "LOCATION_MISMATCH") {
+          set.status = 409;
+          return { success: false, error: POSITION_MESSAGES[code], code };
         }
         if (code === "PAYMENT_NOT_SETTLED") {
           set.status = 403;
@@ -1419,10 +1433,15 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
           mediaStorageKey: body.mediaStorageKey,
           mediaMimeType: body.mediaMimeType,
           replace: Boolean(body.replace),
+          requireActiveJob: true,
         });
         return { success: true, data: { evidence: jobEvidenceService.uploadReceipt(row) } };
       } catch (err) {
         const code = err instanceof Error ? err.message : "FORBIDDEN";
+        if (code === "BOOKING_NOT_ACTIVE") {
+          set.status = 409;
+          return { success: false, error: "Evidence can be added only while the job is in hand", code };
+        }
         set.status = code === "NOT_FOUND" ? 404 : 403;
         return { success: false, error: code === "NOT_FOUND" ? "Not found" : "Forbidden", code };
       }

@@ -256,14 +256,16 @@ class BookingExecutionService {
         const need = row.evidence;
         if (need === "NOTE" && !(input.note ?? "").trim()) return { ok: false as const, error: EXECUTION_ERRORS.EVIDENCE_REQUIRED, detail: ["NOTE"] };
         if (need === "PHOTO" || need === "BEFORE_AFTER_PHOTOS") {
+          // Proof is the proof of the partner who holds the job, never an earlier partner's rows.
+          const byHolder = b.providerId ? { providerId: b.providerId } : {};
           const ev = await tx.jobEvidence.findMany({
-            where: { bookingId: b.id, ...(input.evidenceId ? { id: input.evidenceId } : {}) },
+            where: { bookingId: b.id, ...byHolder, ...(input.evidenceId ? { id: input.evidenceId } : {}) },
             select: { id: true, stage: true, mediaUrl: true, mediaStorageKey: true },
           });
           const real = ev.filter((e) => hasAuthoritativeMedia(e));
           if (need === "PHOTO" && (!input.evidenceId || real.length === 0)) return { ok: false as const, error: EXECUTION_ERRORS.EVIDENCE_REQUIRED, detail: ["PHOTO"] };
           if (need === "BEFORE_AFTER_PHOTOS") {
-            const all = input.evidenceId ? (await tx.jobEvidence.findMany({ where: { bookingId: b.id }, select: { id: true, stage: true, mediaUrl: true, mediaStorageKey: true } })).filter((e) => hasAuthoritativeMedia(e)) : real;
+            const all = input.evidenceId ? (await tx.jobEvidence.findMany({ where: { bookingId: b.id, ...byHolder }, select: { id: true, stage: true, mediaUrl: true, mediaStorageKey: true } })).filter((e) => hasAuthoritativeMedia(e)) : real;
             const before = all.some((e) => e.stage === "ARRIVAL" || e.stage === "START");
             const after = all.some((e) => e.stage === "COMPLETION");
             if (!before || !after) return { ok: false as const, error: EXECUTION_ERRORS.EVIDENCE_REQUIRED, detail: [before ? "" : "BEFORE", after ? "" : "AFTER"].filter(Boolean) };

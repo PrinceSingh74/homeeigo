@@ -267,21 +267,33 @@ function unpricedVariants(
 
 const filled = (v: unknown): boolean => (typeof v === "string" ? v.trim().length > 0 : Array.isArray(v) ? v.some(filled) : false);
 
-/** Safety information exists when something in it says something: a key with nothing under it does not. */
-export function hasSafetyContent(cfg: ServiceCatalogConfig | null): boolean {
-  return filled(cfg?.safetyNotes) || Object.values(cfg?.safety ?? {}).some(filled);
+/**
+ * What a service's safety section is missing before it can stand behind a job. The minimum is what
+ * the job runs on: a prohibited condition is what stops work on site (the partner reports it and a
+ * hold follows), and the incident protocol is what the professional then does. Notes, warnings and
+ * protective equipment are welcome and are not the minimum. Empty = the minimum is met.
+ */
+export function safetyGaps(cfg: ServiceCatalogConfig | null): string[] {
+  const gaps: string[] = [];
+  if (!filled(cfg?.safety?.prohibitedConditions)) gaps.push("a prohibited condition");
+  if (!filled(cfg?.safety?.incidentProtocol)) gaps.push("an incident protocol");
+  return gaps;
 }
 
 /**
- * A quality standard exists when there is something to hold the job to: a checklist, completion
- * criteria, or a proof or confirmation the job cannot complete without. A warranty length, a
- * complaint window or "not applicable" is not a standard.
+ * What a service's quality section is missing: the checklist is what completion is held to, and the
+ * completion criteria are what "done" means. A proof flag, a warranty length, a complaint window or
+ * "not applicable" is not a standard. Empty = the minimum is met.
  */
-export function hasQualityContent(cfg: ServiceCatalogConfig | null): boolean {
-  const q = cfg?.quality;
-  if (!q) return false;
-  return filled(q.checklist) || filled(q.completionCriteria) || q.proofRequired === true || q.beforeAfterPhotos === true || q.customerConfirmation === true || q.professionalConfirmation === true;
+export function qualityGaps(cfg: ServiceCatalogConfig | null): string[] {
+  const gaps: string[] = [];
+  if (!filled(cfg?.quality?.checklist)) gaps.push("a checklist item");
+  if (!filled(cfg?.quality?.completionCriteria)) gaps.push("a completion criterion");
+  return gaps;
 }
+
+export const hasSafetyContent = (cfg: ServiceCatalogConfig | null): boolean => safetyGaps(cfg).length === 0;
+export const hasQualityContent = (cfg: ServiceCatalogConfig | null): boolean => qualityGaps(cfg).length === 0;
 
 /** Reasons a customer must not be charged / booked. Empty = bookable from a config standpoint. */
 export function blockingBookabilityIssues(service: ServiceDomainCore, cfg: ServiceCatalogConfig | null): PublishIssue[] {
@@ -507,11 +519,13 @@ export function publishGateResults(
   } else if (cities || pins || zones) pass("COVERAGE", "coverage", "Coverage is limited to the configured cities, zones or PIN codes.");
   else warn("COVERAGE_UNSPECIFIED", "coverage", "Coverage is unspecified and is treated as nationwide.", "Set cities or PIN codes if this service is not nationwide.");
 
-  if (hasSafetyContent(cfg)) pass("SAFETY", "safety", "Safety information is configured.");
-  else warn("SAFETY_ABSENT", "safety", "No safety information is configured.", "Add approved safety information, or leave the service unpublished until it exists. Do not invent it.");
+  const safetyMissing = safetyGaps(cfg);
+  if (safetyMissing.length === 0) pass("SAFETY", "safety", "Safety information names what stops the job and what the professional then does.");
+  else warn("SAFETY_ABSENT", "safety", `Safety information is incomplete: it has no ${safetyMissing.join(" and no ").replace(/\b(a|an) /g, "")}.`, "Add the approved prohibited conditions and incident protocol, or leave the service unpublished until they exist. Do not invent them.");
 
-  if (hasQualityContent(cfg)) pass("QUALITY", "quality", "Quality criteria are configured.");
-  else warn("QUALITY_ABSENT", "quality", "No quality criteria are configured.", "Add approved quality criteria, or leave them unset. Do not invent a checklist.");
+  const qualityMissing = qualityGaps(cfg);
+  if (qualityMissing.length === 0) pass("QUALITY", "quality", "Quality criteria name what completion is checked against and what done means.");
+  else warn("QUALITY_ABSENT", "quality", `Quality criteria are incomplete: there is no ${qualityMissing.join(" and no ").replace(/\b(a|an) /g, "")}.`, "Add the approved checklist and completion criteria, or leave them unset. Do not invent a checklist.");
 
   if ((cfg?.execution?.steps?.length ?? 0) > 0 && !results.some((g) => g.path.startsWith("execution") && g.status === "FAIL")) {
     pass("EXECUTION", "execution", "The execution plan is structurally valid.");
