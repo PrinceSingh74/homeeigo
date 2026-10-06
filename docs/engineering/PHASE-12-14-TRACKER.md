@@ -1,106 +1,94 @@
 # Phase 12–14 tracker
 
-Started 2026-10-06, after an item-by-item audit of the Phase 12–14 specification against the code showed that the earlier "closed" status was too strong. This file is the working list. The certification document is corrected from it once P0 and P1 are verified.
+Started 2026-10-06, after an item-by-item audit of the Phase 12–14 specification against the code showed that the earlier "closed" status was too strong. This file is the working list; `PHASE-12-14-FINAL-CERTIFICATION.md` is corrected from it.
 
-Statuses: **OPEN**, **FIXED** (code and tests written, the evidence named ran green), **VERIFIED** (re-audited after the fix, and driven in a browser where the item is a screen), **DECISION NEEDED**.
+**Status: NOT CLOSED.** P0 and P1 are fixed and evidenced as listed below, and two adversarial re-audits were run after the fixes. Each re-audit found further defects; most were fixed, and the ones that remain are in "Open". P2 and P3 have not started.
 
-Rules for this pass: existing ACTIVE services stay live; no missing business fact is invented; no new Prisma lifecycle enum; no second booking, matching, payment, refund, execution, audit or capacity engine. P2 and P3 do not start until P0 and P1 are verified.
+Statuses: **FIXED** (code and tests written, the evidence named ran green; driven in a browser where it says so), **OPEN**, **DECISION NEEDED**.
 
-**P0 and P1 are NOT verified as a whole.** Each row marked FIXED has the evidence named and was driven in a browser where it is a screen, but an adversarial re-audit after the fixes found further defects (section "Re-audit"). Some were fixed the same day; the rest are open. P2 and P3 have not started.
+Rules for this pass: existing ACTIVE services stay live; no missing business fact is invented; no new Prisma lifecycle enum; no second booking, matching, payment, refund, execution, audit or capacity engine.
 
 ## P0 — trust, security, truth
 
 | # | Item | Status | Evidence |
 |---|---|---|---|
-| P0-1 | Customer `/book`: fabricated metrics, "Best Seller" on every service, "Featured", "Most Popular" on a price tier | FIXED | Stats removed; "Popular" only when the catalogue's own `isPopular` flag is set; "Selected" on the chosen card; tier tags removed. `apps/web/tests/booking/booking-page-truth.test.ts` |
-| P0-2 | Customer: cancellation card showed hard-coded 100 / 90 / 75 % | FIXED | The card renders `GET /api/bookings/cancellation-policy` (the server has two customer tiers, 100 % and 75 %: the 90 % row was a stale claim). No numbers while loading or on error. `cancellation-policy.test.ts` |
-| P0-3 | Customer: success dialog said "payable at service" after an online payment, and "cancel anytime" | FIXED | "₹X paid online"; "Cancellation terms apply". The dialog has one caller, after the server verifies payment |
-| P0-4 | Customer: summary and saved booking named a price tier when a variant / quantity selection was priced; every server-loaded booking showed package "Standard" and "Assigned Pro" | FIXED | Summary shows the server's selection label and price. Server-loaded bookings show the real professional's name or "Professional not assigned yet", and no package name (the customer booking payload carries no selection summary: see P2). `booking-summary.test.ts`, `booking-display.test.ts` |
-| P0-5 | Customer: professional-preference selector did nothing | FIXED (removed) | The backend cannot honour a preference (`PROFESSIONAL_PREFERENCE_SUPPORTED = false`: assignment cannot filter on it), so the control is removed rather than faked |
-| P0-5b | Customer: a ₹0 "Standard" tier and "Live catalog is syncing" placeholder were shown while the catalogue loaded or failed; demo catalogue with prices and warranty lines in non-production builds; a real service inherited another entry's tagline and price | FIXED | `/book` renders nothing bookable until the catalogue is loaded; commercial fields come only from the API (`apps/web/src/lib/book-services.ts`). `book-services.test.ts` |
-| P0-5c | Customer: "Verified Professionals" chip; invented prices and "most popular" claims in the assistant sheet | FIXED | Reworded to "Approved Professionals" (every dispatchable partner is approved; identity verification is required only where a service asks for it). Assistant replies carry no figure |
-| P0-6 | Partner: "I'm at the customer" submitted the job's own coordinates as the partner's GPS, and a saved fix was pinned forever | FIXED (client) / OPEN (server) | The option and pinning are removed; a remembered fix always expires; a presence fix keeps its capture time. `apps/partner-web/tests/arrival-position.test.ts`. **Open:** `/arrived` and `/start` still judge coordinates the client claims; the server does not compare them with the presence fix it holds, and a soft read can be up to 30 minutes old |
-| P0-7 | Partner: evidence list returned coordinates after the job, and an earlier partner's evidence to a partner only offered the job | FIXED | Coordinates are admin-only; an offered partner gets an empty list; the partner holding the job reads only their own rows. `partner-boundary.integration.test.ts` |
-| P0-8 | Partner: customer's note missing from the job detail; landmark, flat, building and access instructions sent but never shown | FIXED | `description` on the partner detail, by stage; a labelled list on the job page. Same suite; `job-access.test.ts` |
-| P0-9 | Partner: no navigation from the job; `/navigation` picked the first active job | FIXED | "Navigate" on the job page → `/navigation?booking=<id>`, which routes only to that job; external maps link works without a Maps key. `job-navigation.test.ts` |
-| P0-10 | Partner: an offer had no detail link and its brief panels answered 404 | FIXED | Offer card shows scope and what to bring, and links to the job page; for an offer the page renders the brief from the booking payload and does not call the owner-only reads. `job-stage.test.ts` |
-| P0-11 | Partner: chat readable after the job | FIXED | Chat is open while the booking is in an active fulfilment status (the rule the masked phone and the note already follow). After it the partner cannot read or send, nobody can send, and the customer keeps their copy. `partner-boundary.integration.test.ts` |
+| P0-1 | Customer `/book`: fabricated metrics and badges | FIXED, browser | "Popular" only on the catalogue's own flag; no invented tier names or tags. `booking-page-truth.test.ts`; journey step "no invented statistic or badge" |
+| P0-2 | Cancellation terms hard-coded on `/book` and on the refund policy page | FIXED, browser | Both render `GET /api/bookings/cancellation-policy`. Journey and public-page runs compare the page with the server's tiers |
+| P0-3 | Success dialog: "payable at service", "cancel anytime", "Booking confirmed!" before anyone accepted | FIXED, browser | "Payment received", "₹X paid online"; booking status wording follows payment and assignment (`statusConfigFor`) |
+| P0-4 | Summary and saved bookings named a price tier or a made-up package / professional | FIXED | Server selection label and price; real professional name or "Professional not assigned yet" |
+| P0-5 | Professional-preference selector did nothing | FIXED (removed) | The backend cannot honour a preference |
+| P0-5b | Placeholder ₹0 tier, demo catalogue, demo wallet and profile data outside production builds | FIXED, browser | Demo data is on only for `NEXT_PUBLIC_ENABLE_MOCK_BUSINESS_DATA=true`; a release build refuses the flag. The browser run found "COOL100 / ₹150 OFF" on the home page of a development build; `mock-data-opt-in.test.ts` now scans every source file |
+| P0-5c | Invented statistics, ratings, static reviews, promo codes, "AI" and "verified / background-checked" claims on home, services, assistant, wallet and support surfaces | FIXED, browser for home / services / bookings | Server values or nothing; "approved professionals". `tests/truth/*` (customer web 204 tests) |
+| P0-6 | Partner: "I'm at the customer" sent the job's coordinates as the partner's position; arrival and start trusted the request | FIXED, browser | The option is removed. `/arrived`, `/start` and the on-site requirement check are confirmed against the position the server holds (recent, at the job); `LOCATION_UNCONFIRMED` / `LOCATION_MISMATCH`; a mismatch records a FAKE_ARRIVAL signal. `arrival-position.test.ts`, `arrival-server-position.integration.test.ts` (10). Journey passes with the rule in force. **See Open 1–2 for what this does not stop** |
+| P0-6b | A device that cannot give a position | FIXED | Admin waiver for one booking and one partner, reason of at least ten non-blank characters, recorded with the admin's name; offered on the admin booking page. Browser: dialog, disabled without a reason, server records it |
+| P0-7 | Evidence: coordinates, another partner's rows, raw upload row, evidence after the job, an earlier partner's photos counted as proof | FIXED | Coordinates admin-only; offered partner gets none; holder reads and is credited only with their own rows; upload answers with a receipt; no upload once the job is over; `replace` touches only the uploader's rows; a client-supplied storage key must belong to the booking. `partner-boundary.integration.test.ts` (15), `evidence-by-holder.integration.test.ts` (4) |
+| P0-8 | Customer's note and access details missing from the job page | FIXED, browser | Shown while the job is held; absent at offer and after completion |
+| P0-9 | Navigation not bound to the job | FIXED, browser | `/navigation?booking=<id>` |
+| P0-10 | Offer had no detail and its panels 404'd | FIXED, browser | Offer card shows scope; the offered job page fires no refused read |
+| P0-11 | Chat readable after the job; text kept in notifications; a later partner read the earlier partner's conversation | FIXED, browser for the closed state | Open only while the job is active; notification without text; a partner reads the customer's messages from when they took the job (acceptance or hand-over, whichever is later) |
+| P0-12 | An available partner unmatchable for part of every cycle | FIXED in code, NOT verified on a device | Location with every heartbeat and a re-read of an old fix. A headless browser with a fixed position never yields a second reading (measured: every later read times out), so the browser run moves the position every 8 s. An earlier note here that the journey passed "with a stationary partner" was wrong: that pass came from page navigations restarting the watcher |
 
 ## P1 — publish governance and lifecycle
 
 | # | Item | Status | Evidence |
 |---|---|---|---|
-| P1-1 | Gates that could not fail | FIXED in part | Booking policy now fails with the platform policy it reports on. Per-service cancellation / refund wording produces a warning that says it is not enforced. **Unchanged, by design:** cancellation and refund validate the one platform policy every booking freezes — there are no per-service terms to validate (P3); duration cannot fail because the API and a database CHECK refuse a non-positive duration before the gate is reached |
-| P1-2 | Safety, quality, materials, equipment passed on an empty object, "not applicable" or `NOT_SPECIFIED` | FIXED | A gate passes on content: `hasSafetyContent`, `hasQualityContent`; `NOT_SPECIFIED` is the absence of a policy. `service-publish-governance.test.ts` |
-| P1-3 | Edits, revision applies and restores on a live service ran a weakened gate | FIXED | `liveEditRegressions`: a live service keeps the gaps it had, and no edit may add one. Removing or emptying safety / quality / the work plan is refused; restore is refused the same way; an unrelated edit to a service that never had them still saves. Clearing "coming soon" (visible → bookable) is treated as a publish: full gate and a second admin. `service-publish-governance.integration.test.ts` |
-| P1-4 | Seed scripts and direct database writes create live services | FIXED where application code can act / DECISION NEEDED for the rest | `seed-services` and `seed-popular-services` refuse a deployed environment. `catalogService.ungovernedLiveServices()` and `scripts/check-service-governance.ts` (read-only) report customer-visible services with no published version row. `catalog-governance.test.ts`. A read-only count on the live database on 2026-10-06 found all 25 commercial live services have a version row. **Not done:** the schema still defaults a new row to ACTIVE, and no database constraint ties visibility to the gate — changing either needs a migration, and several hundred test fixtures rely on the default |
-| P1-5 | VALIDATING was a label | FIXED | Entering VALIDATING runs the gate and returns what it found; a service that fails cannot be sent for review. Same integration suite |
-| P1-6 | A ₹0 variant passed the variant gate | FIXED | `VARIANT_UNPRICED` for every active variant the resolver cannot price (not on a coming-soon service). Pure suite |
+| P1-1 | Gates that could not fail | FIXED in part | Booking-policy gate fails with the platform policy it reports on; per-service wording is flagged as not enforced. Cancellation and refund still validate the single platform policy: there are no per-service terms (P3) |
+| P1-2 | Safety, quality, materials, equipment passed on nothing | FIXED | Safety needs a prohibited condition and an incident protocol; quality needs a checklist item and a completion criterion; `NOT_SPECIFIED` is not a policy. All 25 live services already carry these (read-only count, 2026-10-06) |
+| P1-3 | Edits to a live service ran a weakened gate | FIXED | `liveEditRegressions`, through update, revision apply, restore and "coming soon" |
+| P1-4 | Direct inserts created live services | FIXED | **Migration `20261006190000_service_defaults_draft`: a new row is a draft.** Defaults only; no existing row is touched. Fixtures and scripts that need a service on sale say so explicitly; such a script is refused on a deployed environment; a test fails if a script inserts a service without saying. `catalog-governance.test.ts` (8). **The migration has to be deployed by the owner; it was applied only to the test database** |
+| P1-5 | VALIDATING was a label | FIXED | The gate runs on entry; a failing service cannot be sent for review |
+| P1-6 | A ₹0 variant passed | FIXED in part | `VARIANT_UNPRICED`; see Open 9 |
+| P1-7 | `SERVICE_PUBLISH_REQUIRES` failed open on a typo | FIXED | An unrecognised name adds the deployed defaults |
 
-Existing live services: none is unpublished or paused by any change here. A stricter rule applies to a first publish and to what an edit adds; a gap a live service already has stays a warning.
+No live service was paused or unpublished by any change here.
 
-## Verification after the fixes (2026-10-06)
+## Verification
 
 | Check | Result |
 |---|---|
-| Full backend regression | Run 1, after the P0 / P1 fixes: 4322 pass, 0 fail (369 files, 646 s). Run 2, after the re-audit fixes: 4325 pass, 2 fail (369 files, 711 s). Both failures are in `split-refund.integration.test.ts` (crash-safe gateway refund: the recovery sweep found its row already claimed); refund code was not changed, the customer-web typecheck and lint were running on the same machine at the time, and the suite run alone passed 11 of 11 twice. It was not proven to be load-related, and the full suite was not run a third time |
+| Full backend regression with the migration applied (before the second re-audit's fixes) | 4349 pass, 0 fail, 372 files |
+| Full backend regression after the second re-audit's fixes | 4354 pass, 0 fail, 372 files |
 | Backend typecheck, lint | exit 0, exit 0 |
-| Customer web: unit tests, typecheck, lint | 148 pass, exit 0, exit 0 |
-| Partner web: unit tests, typecheck, lint | 171 pass, exit 0, exit 0 |
-| Admin panel: typecheck | exit 0 (no source change this round) |
-| Two-browser journey on the isolated stack | 47 of 47 steps, with the partner's position never changing. New steps: no invented statistic or badge on `/book`; cancellation terms equal the server's tiers; "paid online"; offer card has no customer note; offered job page explains the stage, fires no refused read, shows no street address, phone or navigation; the note appears once the job is held; Navigate carries this booking's id; no "at the customer" option; after the job the page says chat is closed; the partner's evidence list has no coordinates; the server answers `CHAT_CLOSED` |
-| Admin browser run | 22 of 22 |
-| Customer booking page and partner job page runs | 11 of 11, 4 of 4; 0 accessibility violations; no horizontal overflow |
+| Customer web | 204 unit tests, typecheck and lint clean |
+| Partner web | 171 unit tests, typecheck and lint clean |
+| Admin panel | typecheck and lint clean |
+| Two-browser journey (payment → offer → accept → arrival → PIN → steps → checklist → proof → complete) | 48 of 48, with the server-held position rule in force |
+| Admin, customer booking page, partner job page | 22 of 22, 11 of 11, 4 of 4; 0 accessibility violations; no horizontal overflow |
+| Public pages and admin waiver | 8 of 8: refund page equals the server's tiers; home, services and bookings carry no invented claim; waiver dialog |
 
-The browser runs were made before the re-audit fixes below (evidence upload receipt, chat scope, notification text, required-sections parsing, search price). Those have integration and unit evidence only.
+The browser runs were made before the second re-audit's fixes (waiver bound to the partner, requirement check, chat hand-over cut, storage key, wallet / FAQ / support copy). Those have unit and integration evidence only.
 
-## Found by the browser run and fixed
+## Open
 
-- **An available partner was unmatchable for part of every cycle.** The partner web attached a location to every third heartbeat (75 s apart) while the server treats a fix as fresh for 60 s from its capture time, and the fix sent was whatever the position watcher last reported. Dispatch rejected the on-duty partner as `PRESENCE_STALE`. Now: a location with every beat, and a fix older than 30 s is read again from the device first (`apps/partner-web/src/lib/presence-cadence.ts`, `tests/presence-location.test.ts`). Evidence: the journey passes with a position that never changes; before, it passed only when the harness moved the position every 8 s.
+Security and truth:
 
-## Re-audit (adversarial, read-only, after the fixes)
+1. **A modified client can still author its own position.** Every position the server holds comes from the partner's device: the presence heartbeat validates range, clock and a 200 km/h jump limit, and nothing more. A client that sends heartbeats placing itself at the job and then calls `/arrived` is believed. What the new rule stops is the unmodified app arriving on a stale fix, on the job's coordinates, or from a place the tracked position contradicts. Real proof needs something the client cannot write: device attestation in the mobile apps, or corroboration by the customer at arrival (start already has the customer's PIN). **DECISION NEEDED.**
+2. **GPS geofence arrival** (`tracking.service.ts`): two tracking pings carrying the job's coordinates record arrival without the check. Arrival is what a customer no-show is judged on.
+3. **Any URL counts as photo proof.** The upload stores the link it is given. A real fix is a server-side upload to storage; the partner web sends the image itself (a data URL), the mobile apps were not checked. **DECISION NEEDED** (touches the mobile apps).
+4. **Customer first name and address label** reach partners at offer stage and after completion (by the stage rule's design).
+5. **A background tab or a failed position read** can leave an available partner stale; a paused partner holding a job sends no location. Not verifiable without a device.
+6. **Legal pages** state refund timings and windows in their own words (list in the log below). The timings do have a server source (`walletNote`, `gatewayNote`); the legal text was not edited because it is the owner's.
+7. **Knowledge base**: the seeder now carries the three corrected FAQ answers; a knowledge base already seeded from the old text still cites it until it is re-seeded.
 
-Held: the cancellation card; the success dialog's payment line; no partner-web path sends coordinates that did not come from the device; evidence listing; the note's stage rule on every partner payload and on offer notifications; chat routes; the offered job page; navigation by booking id; the live-edit rule through update, revision apply, restore, the on/off toggle and "coming soon"; no other writer of a service's configuration or lifecycle exists in `src`.
+Governance:
 
-Fixed after the re-audit (integration / unit evidence, not yet re-driven in a browser):
+8. **Safety and quality accept any non-blank text** ("-"). The gate cannot judge prose; the second admin's approval is the control.
+9. **A variant with no price of its own inherits the base or unit price**, and one branch hides a missing price behind an audience error.
+10. **Coverage, availability and provider skills** are warnings unless the owner lists them as required.
+11. **A host with neither `NODE_ENV=production` nor `APP_ENV` set** counts as a developer machine and requires no safety, quality or execution section.
+12. **A service already in review can be edited into a failing state**; approval and activation still refuse it.
+13. **Certification scripts that insert with raw SQL** (`phase-2-live-certification`, `stage-d-step-10/11/12`) now create inconsistent drafts (active flag set, lifecycle draft) and have no deployed-environment refusal. They will not work as written until updated.
+14. **The ungoverned-service report** runs only as a script; no route, job or alert.
+15. Service delete has no reason or audit entry; lifecycle and approval audit writes are not awaited; a PAUSED service approved with a schedule is never auto-activated.
 
-| Finding | Fix | Evidence |
-|---|---|---|
-| `POST /api/bookings/:id/evidence` returned the raw row (coordinates, raw links, storage key), and its idempotency lookup returned an earlier partner's row for the system ids (`arrive:<booking>`) | The upload answers with a receipt (id, stage, times, upload id); another partner's row is neither returned nor reused | `partner-boundary.integration.test.ts` |
-| The first 120 characters of every chat message were stored as a notification that outlives the closed chat | The notification says a message arrived, without its text | same suite |
-| The conversation belongs to the booking, so a partner who took over a job read what the customer wrote to the earlier partner | A partner reads their own messages and the customer's from the time they took the job (`acceptedAt`); with no such time, only their own | same suite |
-| A typo or a wrong separator in `SERVICE_PUBLISH_REQUIRES` silently required nothing | Any separator is accepted; an unrecognised name adds the deployed defaults instead of being dropped | `service-publish-governance.test.ts` |
-| `configStatus` read READY for a service whose materials policy is `NOT_SPECIFIED` | `catalogConfigGaps` reads it as unspecified, like the gate | same suite |
-| `/book` search printed "From ₹0" for an unpriced service, and said "No services match" before the catalogue had answered | Lowest server price or nothing; the message waits for the catalogue and suggests no searches of its own | `apps/web/tests/booking/search-price.test.ts` |
+Process:
 
-## Open after the re-audit
-
-Security and truth (P0 level):
-
-1. **Arrival and start accept any position the client claims.** The server checks only the distance between the claimed coordinates and the job address; it does not compare them with the presence fix it holds, the request carries no capture time, and a job address without coordinates passes any position. The holder's payload contains the job's exact coordinates, so a modified client can arrive from anywhere. The partner web no longer fabricates a position, but that is not enforcement. Needs a server rule (compare with the presence fix and its age) — and a decision on what happens to a partner whose device cannot give a fix.
-2. **A partner can still arrive on an old fix.** "Use last saved GPS" may send a presence fix up to 30 minutes old (15 in strict mode); a presence fix with no capture time is treated as new.
-3. **Quality and execution gates count any partner's evidence for the booking**, so a partner who takes over a job can complete on photos the earlier partner took.
-4. **Evidence can be added after completion** (no status check on upload).
-5. **A background tab or a failed position read** can still leave an available partner stale for part of a cycle (the interval doubles to 50 s in the background; a failed read sends the old fix).
-6. **Customer web, other surfaces:** "4.9 rating", "Verified Pro / Background-checked" and counts on the home page; static service lists with prices, static five-star reviews and a hard-coded promo code when the API list is empty; the legal refund page states tiers (12 h free / 25 % / 50 %) that differ from the policy the server applies (24 h free / 10 % / 25 %); "5–7 days" refund timing; the success dialog says "Booking confirmed!" before any professional has accepted.
-7. **`/book`:** trust chips and payment sentences are client constants shown even when the catalogue fails; "Basic / Standard / Premium" name three price points the server does not describe; a service with no variant or quantity rule is summarised and saved as "Standard Package".
-
-Governance (P1 level):
-
-8. **Safety and quality accept any non-blank text** ("-", "n/a") and quality passes on `proofRequired` alone. The gate cannot judge prose; a minimum that is not arbitrary needs a product rule.
-9. **A variant with no price of its own can inherit the base or unit price**, and in one branch an audience error hides the missing price, so `VARIANT_UNPRICED` does not fire.
-10. **Safety and quality are required only where the owner's list says so**, which on a developer machine is nowhere. By design; recorded so it is not mistaken for enforcement.
-11. **A service already in review can be edited into a failing state** and stays in review. It cannot go live: approval and activation re-run the gate.
-12. **Scripts still insert live services directly**: `seed.ts`, `phase-2-live-certification.ts`, the smoke / ecosystem / razorpay scripts, and the stage-d certification scripts (staging by design). Only the two catalogue seeds are guarded.
-13. **The seed guard reads the process environment**, so an unknown `APP_ENV` (uat, preprod) or a laptop pointed at a production database is not refused.
-14. **The ungoverned-service report has no route, job or alert**; it runs only when someone runs the script. A service that once had a published version and was later altered by SQL is not reported.
-15. The schema default (a new row is ACTIVE) and the absence of a database constraint are unchanged: DECISION NEEDED (migration; several hundred fixtures rely on the default).
-
-Carried from before: service delete has no reason or audit entry; lifecycle and approval audit writes are not awaited; a PAUSED service approved with a schedule is never auto-activated; the "another partner cannot read the job" test uses a customer token; the customer booking payload has no selection summary.
+16. `prisma generate` could not replace the engine DLL while the dev backends were running. The generated client carries the new defaults; run it again with the backends stopped.
+17. The "another partner cannot read the job" test still uses a customer token.
 
 ## P2 — UX gaps that need no new business policy (not started)
 
-Options vs variants naming, changing variant / quantity on `/book`, add-on quantity, detail-page quality and availability sections, media gallery, progressive disclosure, per-job earnings line.
+Options vs variants naming, changing variant / quantity on `/book`, add-on quantity, detail-page quality and availability sections, media gallery, progressive disclosure, per-job earnings line, a selection summary on the customer booking payload.
 
 ## P3 — needs a product decision (not started)
 
@@ -109,6 +97,9 @@ Option groups, per-service capacity, per-service cancellation and refund terms, 
 ## Log
 
 - 2026-10-06: tracker created from three read-only audits (customer, partner, admin).
-- 2026-10-06: P0-1 … P0-11 and P1-1 … P1-6 fixed test-first.
-- 2026-10-06: browser runs on the isolated stack; presence cadence defect found and fixed; journey 47 of 47 with a stationary partner.
-- 2026-10-06: adversarial re-audit; six findings fixed, fifteen recorded as open above. Status: NOT CLOSED.
+- 2026-10-06: P0-1 … P0-11 and P1-1 … P1-6 fixed test-first; commit `714abee`.
+- 2026-10-06: first adversarial re-audit: 21 findings, 6 fixed in `714abee`.
+- 2026-10-06: owner approved four recommendations (server-held position with an admin waiver; draft by default; safety and quality minimum from the fields the job runs on; commit). Commits `2669680` (position, evidence, minimum), `72d91ad` (migration), `d3fec0d` and `b3d14b6` (customer web).
+- 2026-10-06: browser runs on the isolated stack; second adversarial re-audit: 14 findings; waiver scope, requirement check, chat hand-over, evidence replace, storage key, wallet / FAQ / support copy fixed.
+- Legal sentences left for the owner (`apps/web/src/lib/legal/legal-data.ts` lines 128, 168, 274, 281, 297, 309, 315; `lib/legal/content.ts` lines 59, 63; `app/legal/refund/page.tsx` metadata): refund "within 5–7 business days", "instant" wallet credit, "48 hours" to raise a quality dispute, "24 hours" to acknowledge a refund request, "72 hours / 30 days" for privacy requests, "rework guarantee".
+- Support phone tile and "call back within 5 minutes" were removed from the customer web: the number shown and the number dialled differed, and the call-back sent nothing. A real number is needed before the tile returns.

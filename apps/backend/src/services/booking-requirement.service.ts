@@ -389,6 +389,13 @@ class BookingRequirementService {
       incCounter("partner_check_refused_total", { reason: proximity.error });
       return { ok: false as const, error: proximity.error };
     }
+    // As at arrival and start: the request's coordinates are a claim; the server-held fix decides.
+    const { confirmPartnerPosition } = await import("./arrival-position.service");
+    const held = await confirmPartnerPosition({ providerId: input.providerId, bookingId: input.bookingId, action: "requirement_check", jobLatitude: b.address?.latitude, jobLongitude: b.address?.longitude });
+    if (!held.ok) {
+      incCounter("partner_check_refused_total", { reason: held.error });
+      return { ok: false as const, error: held.error };
+    }
     const ctx = getEventContext();
     const r = await this.transition({
       bookingId: input.bookingId, code: input.code,

@@ -82,6 +82,8 @@ class JobEvidenceService {
           await tx.jobEvidence.updateMany({
             where: {
               bookingId: input.bookingId,
+              // A partner replaces their own evidence, never an earlier partner's.
+              providerId: input.providerId,
               stage,
               isCurrent: true,
             },
@@ -119,7 +121,7 @@ class JobEvidenceService {
             },
           },
         });
-        if (raced) return raced;
+        if (raced && raced.providerId === input.providerId) return raced;
       }
       throw err;
     }

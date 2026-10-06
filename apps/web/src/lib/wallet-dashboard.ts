@@ -8,15 +8,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-const MOCK_BUSINESS_DATA_ENABLED =
-  process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ENABLE_MOCK_BUSINESS_DATA === "true";
-
-export const WALLET_TOTAL_BALANCE = MOCK_BUSINESS_DATA_ENABLED ? 4250.75 : 0;
-export const WALLET_ADDED_THIS_MONTH = MOCK_BUSINESS_DATA_ENABLED ? 850 : 0;
-export const WALLET_H_COINS = MOCK_BUSINESS_DATA_ENABLED ? 320 : 0;
-export const WALLET_GIFT_CARD_VALUE = MOCK_BUSINESS_DATA_ENABLED ? 850 : 0;
-export const WALLET_GIFT_CARD_COUNT = MOCK_BUSINESS_DATA_ENABLED ? 2 : 0;
-export const WALLET_SPEND_CHANGE_PCT = MOCK_BUSINESS_DATA_ENABLED ? 18 : 0;
+// Demo wallet content is an explicit opt-in (see lib/services.ts): a build that merely is not a
+// production build must not show invented content as if it were real.
+//
+// The demo balance, transactions ("Promo Applied"), offers with made-up promo codes, the spend
+// trend and the sparkline series that used to live here are deleted: the wallet shows the server's
+// ledger, offers and payments or nothing (see lib/wallet-offers, WalletRightRail).
+const MOCK_BUSINESS_DATA_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MOCK_BUSINESS_DATA === "true";
 
 export type WalletQuickAction = {
   id: string;
@@ -55,73 +53,3 @@ export type WalletRecentTxn = {
   iconBg: string;
   iconColor: string;
 };
-
-export const WALLET_RECENT_TXNS: WalletRecentTxn[] = MOCK_BUSINESS_DATA_ENABLED ? [
-  {
-    id: "1",
-    title: "Money added to wallet",
-    subtitle: "UPI · Today, 10:24 AM",
-    amount: 1000,
-    type: "credit",
-    status: "success",
-    iconBg: "#ECFDF5",
-    iconColor: "#059669",
-  },
-  {
-    id: "2",
-    title: "Home Deep Cleaning",
-    subtitle: "Wallet · Yesterday",
-    amount: -849,
-    type: "debit",
-    status: "success",
-    iconBg: "#FFF7ED",
-    iconColor: "#F59E0B",
-  },
-  {
-    id: "3",
-    title: "Promo Applied",
-    subtitle: "CLEAN15 · 2 days ago",
-    amount: 50,
-    type: "credit",
-    status: "success",
-    iconBg: "#F0FDFA",
-    iconColor: "#0d9488",
-  },
-  {
-    id: "4",
-    title: "Coins Redeemed",
-    subtitle: "H-Coins · 3 days ago",
-    amount: -120,
-    type: "debit",
-    status: "success",
-    iconBg: "#FFFBEB",
-    iconColor: "#D4AF37",
-  },
-] : [];
-
-export type WalletOffer = {
-  id: string;
-  badge: string;
-  title: string;
-  description: string;
-  code: string;
-};
-
-export const WALLET_OFFERS: WalletOffer[] = MOCK_BUSINESS_DATA_ENABLED ? [
-  {
-    id: "1",
-    badge: "15% OFF",
-    title: "Flat 15% Off",
-    description: "On Deep Cleaning Services",
-    code: "CLEAN15",
-  },
-  {
-    id: "2",
-    badge: "₹100 OFF",
-    title: "₹100 Off AC Service",
-    description: "Verified pros · Same-day",
-    code: "AC100",
-  },
-] : [];
-
-export const WALLET_SPARKLINE = MOCK_BUSINESS_DATA_ENABLED ? [42, 58, 45, 72, 68, 85, 78, 92, 88, 95, 82, 100] : [];

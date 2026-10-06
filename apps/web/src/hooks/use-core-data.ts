@@ -894,9 +894,17 @@ export function useRefundSupportTicketMutation() {
         category: "Payment & refunds",
         description: `Requested refund: ₹${amount}. Reason: ${reason}. Payment ID: ${paymentId}`,
       }),
-    onSuccess: () => {
+    onSuccess: (ticket) => {
       void qc.invalidateQueries({ queryKey: ["support"] });
-      showToast("Refund request submitted to support. We'll respond within 24 hours.", "success");
+      // The response deadline is the ticket's own `slaDueAt` (set by the server from its priority),
+      // or it is not stated — never a fixed number of hours.
+      const due = ticket?.slaDueAt ? new Date(ticket.slaDueAt) : null;
+      showToast(
+        due && !Number.isNaN(due.getTime())
+          ? `Refund request submitted to support. We aim to respond by ${due.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}.`
+          : "Refund request submitted to support.",
+        "success",
+      );
     },
     onError: (error) => showToast(getErrorMessage(error), "error"),
   });

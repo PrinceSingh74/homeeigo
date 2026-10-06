@@ -207,32 +207,8 @@ const DEMO_PROMO_OFFERS = [
 ] as const;
 export const PROMO_OFFERS = MOCK_BUSINESS_DATA_ENABLED ? DEMO_PROMO_OFFERS : [];
 
-/** Quick time slots on book screen (matches mobile app). */
-export const BOOKING_TIMES = [
-  "09:00 AM",
-  "11:00 AM",
-  "01:00 PM",
-  "03:00 PM",
-  "05:00 PM",
-  "07:00 PM",
-] as const;
-
-const DEMO_RECOMMENDED = [
-  { title: "Sofa Deep Clean", price: "₹499", rating: "4.9", serviceId: "sofa-deep-cleaning", packageIndex: 2, img: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=600&q=75" },
-  { title: "AC Gas Refill", price: "₹1,299", rating: "4.8", serviceId: "ac-service", packageIndex: 2, img: "https://images.unsplash.com/photo-1635048424329-a9bfb146d7aa?w=600&q=75" },
-  { title: "Kitchen Cleaning", price: "₹249", rating: "4.7", serviceId: "kitchen-cleaning", packageIndex: 1, img: "https://images.unsplash.com/photo-1556911220-bff31c812dba?w=600&q=75" },
-  { title: "Bathroom Cleaning", price: "₹399", rating: "4.8", serviceId: "bathroom-cleaning", packageIndex: 0, img: "https://images.unsplash.com/photo-1620626011761-996317b8d101?w=600&q=75" },
-] as const;
-export const RECOMMENDED = MOCK_BUSINESS_DATA_ENABLED ? DEMO_RECOMMENDED : [];
-
-export function getServiceById(id: string): Service | undefined {
-  return SERVICES.find((s) => s.id === id);
-}
-
-export function getServiceIndex(id: string): number {
-  const i = SERVICES.findIndex((s) => s.id === id);
-  return i === -1 ? 0 : i;
-}
+// Deleted, having no importer: a fixed list of booking times (the server offers the real slots), a
+// "recommended" list with prices and ratings, and two lookups over the demo list.
 
 /**
  * Array position of a URL tier index (0 Basic / 1 Standard / 2 Premium — what catalogue links send).

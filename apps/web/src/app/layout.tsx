@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     template: "%s | HOMEEIGO",
   },
   description:
-    "AI-powered luxury home services marketplace. Smart matching, real-time tracking, instant booking for cleaning, AC repair, plumbing, electrical work and more across India.",
+    "Home services marketplace. Get matched to an approved professional for your service, area and time, with real-time tracking and secure payments — cleaning, AC repair, plumbing, electrical work and more across India.",
   keywords: [
     "home services",
     "cleaning",
@@ -38,8 +38,6 @@ export const metadata: Metadata = {
     "plumbing",
     "electrician",
     "India",
-    "luxury",
-    "AI-powered",
     "book home services online",
   ],
   authors: [{ name: "HOMEEIGO Team" }],
@@ -50,7 +48,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "HOMEEIGO — The Future of Home Services",
     description:
-      "AI-powered home services marketplace. Smart matching, real-time tracking, instant booking.",
+      "Home services marketplace. Matched to an approved professional for your service, area and time, with real-time tracking.",
     type: "website",
     url: SITE_URL,
     siteName: "HOMEEIGO",
@@ -60,7 +58,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "HOMEEIGO — The Future of Home Services",
     description:
-      "AI-powered home services marketplace. Smart matching, real-time tracking, instant booking.",
+      "Home services marketplace. Matched to an approved professional for your service, area and time, with real-time tracking.",
   },
   robots: {
     index: true,

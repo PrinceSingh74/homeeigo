@@ -7,8 +7,11 @@
  * components. That made them impossible to govern: the knowledge base could not cite a page
  * component, and nothing stopped the two surfaces drifting from whatever the platform indexed.
  *
- * Nothing here is newly written. Every string is the text those pages already rendered, moved
- * verbatim, so this file is a relocation of official copy and not an authoring of it. The pages now
+ * The copy was moved here verbatim from those pages (a relocation, not an authoring). Since then
+ * three support answers were corrected on 2026-10-06 because they stated things the platform does
+ * not do: a cancellation-fee rule that is not the server's policy, refund timings as fixed numbers,
+ * and identity/background/skill checks for every professional. Any knowledge-base copy seeded from
+ * the earlier text needs the same correction. The pages now
  * import from here, which makes this the system of record a citation can point at — the same role
  * `legal-data.ts` plays for the policy documents.
  *
@@ -39,11 +42,13 @@ export type FaqSet = {
 export const SUPPORT_FAQS: FaqEntry[] = [
   {
     q: "How do I reschedule or cancel a booking?",
-    a: "Open Bookings, select the booking and choose Reschedule or Cancel. Cancellations before the pro is assigned are free; later cancellations may have a small fee.",
+    // No fee rule is stated here: the terms that apply are the server's cancellation policy, which
+    // the app shows before a cancellation is confirmed and the refund policy page renders.
+    a: "Open Bookings, select the booking and choose Reschedule or Cancel. The cancellation terms that apply, including any fee, are shown before you confirm a cancellation and are set out in our Refund Policy.",
   },
   {
     q: "When will I get my refund?",
-    a: "Wallet refunds are instant. Refunds to your original payment method (card/UPI) take 5–7 business days depending on your bank.",
+    a: "It depends on how you paid. The timing for wallet and card/UPI refunds is set out in our Refund Policy, and the refund for a cancellation is shown before you confirm it.",
   },
   {
     q: "How does the HOMEEIGO wallet work?",
@@ -51,7 +56,9 @@ export const SUPPORT_FAQS: FaqEntry[] = [
   },
   {
     q: "Are HOMEEIGO professionals verified?",
-    a: "Yes — every pro completes ID verification, background checks, and skill assessment before going live on the platform.",
+    // Universal: admin approval before a professional can be given any job. Identity and
+    // background checks are matching gates only on services whose configuration requires them.
+    a: "Every professional is approved by our team before they can be given a job. Identity and background checks apply where a service requires them, and a service's page says what is checked for it.",
   },
 ];
 

@@ -106,6 +106,8 @@ function requirementError(set: { status?: number | string }, code: string) {
     OUTSIDE_SERVICE_AREA: { status: 400, message: "Move closer to the service location to record this check" },
     LOCATION_INVALID: { status: 400, message: "Valid GPS coordinates are required to record this check" },
     LOCATION_REQUIRED: { status: 400, message: "Location is required to record this check" },
+    LOCATION_UNCONFIRMED: { status: 409, message: POSITION_MESSAGES.LOCATION_UNCONFIRMED },
+    LOCATION_MISMATCH: { status: 409, message: POSITION_MESSAGES.LOCATION_MISMATCH },
   };
   const m = table[code] ?? { status: 400, message: "Unable to update this requirement" };
   set.status = m.status;
@@ -1421,6 +1423,15 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         ...(typeof body.mediaUrl === "string" ? [body.mediaUrl] : []),
         ...(Array.isArray(body.photos) ? body.photos.filter((p) => typeof p === "string") : []),
       ];
+      // A storage key supplied by the client is signed back to it when the evidence is listed, so it
+      // must be a key of THIS booking — never a path into another booking's evidence.
+      if (typeof body.mediaStorageKey === "string" && body.mediaStorageKey.length > 0) {
+        const segments = body.mediaStorageKey.split("/");
+        if (!segments.includes(params.id) || segments.includes("..")) {
+          set.status = 400;
+          return { success: false, error: "The storage key does not belong to this booking", code: "VALIDATION_ERROR" };
+        }
+      }
       try {
         const row = await jobEvidenceService.recordStage({
           bookingId: params.id,

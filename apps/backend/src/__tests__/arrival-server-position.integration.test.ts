@@ -136,4 +136,39 @@ describe.serial("an admin can waive the position check for one booking, with a r
     // The waiver is for that booking only.
     expect((await post(`/api/bookings/${other}/arrived`, partner(), JOB)).json.code).toBe("LOCATION_UNCONFIRMED");
   });
+
+  test("a reason of spaces is no reason", async () => {
+    expect(dbOk).toBe(true);
+    const id = await acceptedBooking();
+    const r = await post(`/api/admin/bookings/${id}/position-waiver`, bearer(ctx.superAdmin), { reason: "            " });
+    expect(r.status).toBeGreaterThanOrEqual(400);
+    expect(await prisma.activityLog.count({ where: { bookingId: id, action: "ADMIN_BOOKING_POSITION_CHECK_WAIVED" } })).toBe(0);
+  });
+
+  test("the waiver vouches for the partner it was given for: a partner who takes the job over is checked again", async () => {
+    expect(dbOk).toBe(true);
+    const next = await seedAdversarialFixtures(`${RUN}-b`);
+    try {
+      const id = await acceptedBooking();
+      await serverFix(null);
+      expect((await post(`/api/admin/bookings/${id}/position-waiver`, bearer(ctx.superAdmin), { reason: "First partner's phone GPS failed; customer confirmed by phone" })).status).toBe(200);
+      await prisma.booking.update({ where: { id }, data: { providerId: next.providerId, status: "ASSIGNED", assignedAt: new Date() } });
+      await prisma.partnerPresence.updateMany({ where: { providerId: next.providerId }, data: { lastLocationLat: null, lastLocationLng: null, lastLocationAt: null } });
+      const r = await post(`/api/bookings/${id}/arrived`, bearer({ id: next.vendorUserId, email: `${RUN}-b@partner.test` }), JOB);
+      expect(r.json.code).toBe("LOCATION_UNCONFIRMED");
+    } finally {
+      await cleanupAdversarialFixtures(`${RUN}-b`);
+    }
+  }, 120_000);
+});
+
+describe.serial("an on-site requirement check follows the same rule", () => {
+  test("a check claimed from the job while the server places the partner elsewhere is refused", async () => {
+    expect(dbOk).toBe(true);
+    const { bookingRequirementService } = await import("../services/booking-requirement.service");
+    const id = await acceptedBooking();
+    await serverFix(FAR);
+    const r = await bookingRequirementService.partnerCheck({ bookingId: id, providerId: ctx.providerId, userId: ctx.vendorUserId, code: "anything", outcome: "SATISFIED", latitude: JOB.latitude, longitude: JOB.longitude });
+    expect(r).toMatchObject({ ok: false, error: "LOCATION_MISMATCH" });
+  });
 });

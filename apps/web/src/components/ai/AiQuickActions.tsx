@@ -34,7 +34,7 @@ export function AiQuickActions() {
     <section id={AI_SECTION_IDS.smartActions} className={cn(aiSection, "scroll-mt-24")}>
       <AiSectionHeader
         title="Smart Actions"
-        subtitle="One-tap shortcuts for booking, diagnosis, and AI-powered home care."
+        subtitle="One-tap shortcuts to book a service or ask the assistant."
       />
       <div className={cn("mt-3 sm:mt-5", aiSmartActionsGrid)}>
         {AI_SMART_ACTIONS.map((action, i) => {

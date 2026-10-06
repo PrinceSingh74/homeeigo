@@ -20,7 +20,7 @@ export function LocationPicker({ open }: { open: boolean }) {
     >
       <p className="mb-4 text-sm text-muted">
         Services and pricing may vary by area. We&apos;ll match you with nearby
-        verified professionals.
+        approved professionals.
       </p>
       <ul className="flex flex-col gap-2">
         {LOCATIONS.map((loc) => {

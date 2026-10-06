@@ -37,13 +37,11 @@ type AppState = {
   toasts: Toast[];
   bookings: SavedBooking[];
   isPremium: boolean;
-  supportCallbackQueued: boolean;
   setLocationId: (id: LocationId) => void;
   openOverlay: (o: Overlay) => void;
   closeOverlay: () => void;
   setActivePromo: (code: string | null) => void;
   setPremium: (value: boolean) => void;
-  requestSupportCallback: () => void;
   addBooking: (booking: SavedBooking) => void;
   /** Reconcile the local store with the authoritative server list (prunes stale bookings). */
   syncServerBookings: (serverBookings: SavedBooking[]) => void;
@@ -62,7 +60,6 @@ export const useAppStore = create<AppState>()(
       toasts: [],
       bookings: [],
       isPremium: false,
-      supportCallbackQueued: false,
 
       setLocationId: (id) => {
         set({ locationId: id });
@@ -76,11 +73,6 @@ export const useAppStore = create<AppState>()(
       setPremium: (value) => {
         set({ isPremium: value });
         if (value) get().showToast("Welcome to HOMEEIGO Premium! 🎉", "success");
-      },
-
-      requestSupportCallback: () => {
-        set({ supportCallbackQueued: true });
-        get().showToast("A HOMEEIGO specialist will call you within 5 minutes", "success");
       },
 
       addBooking: (booking) =>
@@ -152,7 +144,6 @@ export const useAppStore = create<AppState>()(
         activePromo: s.activePromo,
         bookings: dedupeBookingsById(s.bookings),
         isPremium: s.isPremium,
-        supportCallbackQueued: s.supportCallbackQueued,
       }),
     },
   ),

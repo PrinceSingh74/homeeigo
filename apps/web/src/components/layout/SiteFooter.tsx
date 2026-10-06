@@ -100,7 +100,7 @@ export function SiteFooter() {
             © {new Date().getFullYear()} HOMEEIGO. All rights reserved.
           </p>
           <p className="text-xs font-medium text-muted">
-            Verified pros · Secure payments · AI-powered
+            Approved pros · Secure payments · Live tracking
           </p>
         </div>
       </div>

@@ -1,43 +1,8 @@
 // Demo profile content is an explicit opt-in (see lib/services.ts).
 const MOCK_BUSINESS_DATA_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MOCK_BUSINESS_DATA === "true";
 
-type ProfileFeatureIcon = "clock" | "users" | "gift" | "zap" | "headphones";
-type ProfilePremiumFeature = { label: string; icon: ProfileFeatureIcon };
-
-export const PROFILE_PREMIUM_FEATURES: ProfilePremiumFeature[] = MOCK_BUSINESS_DATA_ENABLED ? [
-  { label: "Priority Booking", icon: "clock" },
-  { label: "Elite Professionals", icon: "users" },
-  { label: "Free Revisits", icon: "gift" },
-  { label: "AI Optimization", icon: "zap" },
-  { label: "Faster Support", icon: "headphones" },
-] : [];
-
-export const PROFILE_ADDRESSES = MOCK_BUSINESS_DATA_ENABLED ? [
-  {
-    id: "home",
-    type: "Home",
-    tag: "Primary",
-    line1: "A-201, Greenwood Residency, Sector 49",
-    line2: "Gurugram, Haryana — 122018",
-    badgeBg: "bg-[#EFF6FF] text-[#0C4A6E] dark:bg-primary/15 dark:text-primary",
-  },
-  {
-    id: "office",
-    type: "Office",
-    tag: "Work",
-    line1: "5, DLF Cyber City, Phase 2",
-    line2: "Gurugram, Haryana — 122002",
-    badgeBg: "bg-[#E0E7FF] text-[#3730A3] dark:bg-violet/15 dark:text-violet",
-  },
-  {
-    id: "parents",
-    type: "Secondary",
-    tag: "",
-    line1: "23, Park Avenue, Sector 28",
-    line2: "Gurugram, Haryana — 122001",
-    badgeBg: "bg-[#FCE7F3] text-[#BE185D] dark:bg-pink/15 dark:text-pink",
-  },
-] : [];
+// The demo premium features ("Free Revisits", "Elite Professionals") and demo addresses that used
+// to be declared here had no importer and were deleted.
 
 export const PROFILE_PAYMENT_ITEMS = MOCK_BUSINESS_DATA_ENABLED ? [
   { id: "cards", title: "Saved Cards", detail: "2 Cards" },

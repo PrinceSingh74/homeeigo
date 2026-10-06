@@ -258,6 +258,41 @@ describe.serial("what a partner is handed back, and what an earlier partner left
     // The customer still reads everything they wrote.
     expect((await get(`/api/bookings/${id}/chat`, bearer(ctx.customerA))).text).toContain("7788");
   });
+
+  test("when an admin hands the job to another partner, the hand-over time is the cut, not the first partner's acceptance", async () => {
+    expect(dbOk).toBe(true);
+    await setHeld("IN_PROGRESS");
+    const conversation = await prisma.bookingConversation.findUniqueOrThrow({ where: { bookingId: id } });
+    const handedOver = new Date();
+    // The first partner accepted two hours ago; the job reached this partner by reassignment just now.
+    await prisma.booking.update({ where: { id }, data: { acceptedAt: new Date(handedOver.getTime() - 7_200_000), assignedAt: handedOver } });
+    await prisma.bookingMessage.create({ data: { conversationId: conversation.id, senderUserId: ctx.customerA.id, body: "To the first professional: spare key is with flat 9", createdAt: new Date(handedOver.getTime() - 1_800_000) } });
+    const mine = await get(`/api/bookings/${id}/chat`, partner());
+    expect(mine.status).toBe(200);
+    expect(mine.text).not.toContain("flat 9");
+  });
+
+  test("an upload cannot point at storage that belongs to another booking", async () => {
+    expect(dbOk).toBe(true);
+    await setHeld("IN_PROGRESS");
+    const foreign = await app.handle(
+      new Request(`http://localhost/api/bookings/${id}/evidence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${partner()}` },
+        body: JSON.stringify({ stage: "COMPLETION", mediaStorageKey: "s3/evidence/some-other-booking/completion.jpg", clientUploadId: `${RUN}-foreign` }),
+      }),
+    );
+    expect(foreign.status).toBe(400);
+    expect(((await foreign.json()) as { code?: string }).code).toBe("VALIDATION_ERROR");
+    const own = await app.handle(
+      new Request(`http://localhost/api/bookings/${id}/evidence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${partner()}` },
+        body: JSON.stringify({ stage: "COMPLETION", mediaStorageKey: `s3/evidence/${id}/completion.jpg`, clientUploadId: `${RUN}-own-key` }),
+      }),
+    );
+    expect(own.status).toBe(200);
+  });
 });
 
 describe.serial("after the job is over", () => {

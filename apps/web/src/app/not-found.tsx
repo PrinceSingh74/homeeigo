@@ -13,7 +13,7 @@ const QUICK_LINKS = [
   { href: "/", label: "Home", description: "Back to the homepage", icon: Home },
   { href: "/services", label: "Browse Services", description: "Cleaning, repairs & more", icon: LayoutGrid },
   { href: "/bookings", label: "My Bookings", description: "Track active services", icon: CalendarDays },
-  { href: "/support", label: "Get Support", description: "We're here 24/7", icon: LifeBuoy },
+  { href: "/support", label: "Get Support", description: "FAQs & support tickets", icon: LifeBuoy },
 ];
 
 export default function NotFound() {

@@ -49,7 +49,7 @@ export function HeroSectionServer({ stats }: { stats: StatsOverview | null }) {
               <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
             </span>
             <Sparkles size={14} />
-            AI-Powered Home Services
+            Home Services, Booked Online
           </span>
 
           <h1 className={cn(heroTitle, "mt-5")}>

@@ -70,7 +70,9 @@ export function ReviewsSectionServer() {
       name: r.name || "HOMEEIGO Customer",
       location: r.service ? `${r.service} · Verified booking` : "Verified booking",
       rating: r.rating,
-      review: r.reviewText || "Great service experience with HOMEEIGO.",
+      // The customer's own words, or none: a rating left without text shows only its stars. It used
+      // to be given a stock sentence of praise, which nobody wrote.
+      review: r.reviewText?.trim() ?? "",
     })) ?? [];
 
   const unavailable = live === null;
@@ -81,7 +83,7 @@ export function ReviewsSectionServer() {
         title="Customer Reviews"
         subtitle={
           reviews.length > 0
-            ? "Real reviews from verified HOMEEIGO bookings across Gurugram and NCR."
+            ? "Real reviews from verified, completed HOMEEIGO bookings."
             : "Every review here comes from a verified, completed HOMEEIGO booking."
         }
       />
@@ -123,7 +125,7 @@ export function ReviewsSectionServer() {
                     {review.rating}
                   </span>
                 </div>
-                <p className="mt-4 text-sm leading-relaxed text-content">{review.review}</p>
+                {review.review ? <p className="mt-4 text-sm leading-relaxed text-content">{review.review}</p> : null}
               </article>
             );
           })}

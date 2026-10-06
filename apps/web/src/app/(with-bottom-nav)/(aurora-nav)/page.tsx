@@ -21,7 +21,7 @@ export const revalidate = 60;
 export const metadata: Metadata = {
   title: "HOMEEIGO — Book Trusted Home Services Online",
   description:
-    "Book verified professionals for cleaning, AC repair, plumbing, electrical work and more. AI-powered matching, real-time tracking, and secure payments across India.",
+    "Book approved professionals for cleaning, AC repair, plumbing, electrical work and more. Matched to your service, area and time, with real-time tracking and secure payments across India.",
   alternates: { canonical: "/" },
 };
 
@@ -30,7 +30,7 @@ const ORGANIZATION_JSONLD = {
   "@type": "Organization",
   name: "HOMEEIGO",
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://homigo.app",
-  description: "AI-powered home services marketplace in India.",
+  description: "Home services marketplace in India.",
   areaServed: "IN",
   sameAs: [],
 };

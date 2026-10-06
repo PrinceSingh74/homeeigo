@@ -64,16 +64,16 @@ const LEGAL_SOURCE = "apps/web/src/lib/legal/legal-data.ts";
 const FAQ_SOURCE = "apps/web/src/lib/faq/faq-data.ts";
 
 const SUPPORT_FAQ = `## How do I reschedule or cancel a booking?
-Open Bookings, select the booking and choose Reschedule or Cancel. Cancellations before the pro is assigned are free; later cancellations may have a small fee.
+Open Bookings, select the booking and choose Reschedule or Cancel. The cancellation terms that apply, including any fee, are shown before you confirm a cancellation and are set out in our Refund Policy.
 
 ## When will I get my refund?
-Wallet refunds are instant. Refunds to your original payment method (card/UPI) take 5–7 business days depending on your bank.
+It depends on how you paid. The timing for wallet and card/UPI refunds is set out in our Refund Policy, and the refund for a cancellation is shown before you confirm it.
 
 ## How does the HOMEEIGO wallet work?
 Add money via Razorpay (UPI, card, netbanking) and pay for any booking instantly. Cashback and referral earnings also land in your wallet.
 
 ## Are HOMEEIGO professionals verified?
-Yes — every pro completes ID verification, background checks, and skill assessment before going live on the platform.`;
+Every professional is approved by our team before they can be given a job. Identity and background checks apply where a service requires them, and a service's page says what is checked for it.`;
 
 const MEMBERSHIP_FAQ = `## How does billing work?
 You pay once per billing period via Razorpay (UPI, card, or netbanking). With auto-renew on, your plan renews automatically at the end of each period.

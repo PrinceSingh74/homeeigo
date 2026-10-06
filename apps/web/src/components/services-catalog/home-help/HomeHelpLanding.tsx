@@ -31,13 +31,15 @@ import { cn } from "@/lib/utils";
 const VISIT = [
   { n: "01", title: "Pick a rhythm", body: "By the hour — or one precise task." },
   { n: "02", title: "Set the work", body: "Dusting, utensils, laundry, prep. You name it." },
-  { n: "03", title: "They arrive", body: "A trained professional. On your clock." },
+  { n: "03", title: "They arrive", body: "An approved professional. On your clock." },
 ] as const;
 
+// What holds for every booking: admin approval, gateway payments, live tracking of the arrival.
+// ("Verified", "trained" and "on-time" were not things the platform checks or promises for all.)
 const TRUST = [
-  { icon: ShieldCheck, label: "Verified professionals" },
+  { icon: ShieldCheck, label: "Approved professionals" },
   { icon: Wallet, label: "Safe & secure payments" },
-  { icon: Clock3, label: "On-time service" },
+  { icon: Clock3, label: "Live arrival tracking" },
 ] as const;
 
 const h2 = "font-display type-title font-bold tracking-tight text-content";

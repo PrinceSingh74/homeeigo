@@ -384,7 +384,7 @@ function CreateTicketModal({ onClose }: { onClose: () => void }) {
       <div className="w-full max-w-lg rounded-2xl border border-line bg-canvas p-5 shadow-xl">
         <h3 className="font-display text-lg font-bold text-content">New support ticket</h3>
         <p className="mt-1 text-sm text-muted">
-          Our team typically responds within 2 hours for priority members.
+          Once it is created, your ticket shows when we aim to respond.
         </p>
         <div className="mt-4 space-y-3">
           <input

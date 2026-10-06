@@ -5,7 +5,7 @@ import {
   ShieldCheck,
   UserCheck,
   Lock,
-  Cpu,
+  Receipt,
   MapPin,
   Headphones,
   type LucideIcon,
@@ -15,13 +15,16 @@ import { SectionHeader } from "@/components/layout/SectionHeader";
 
 type Trust = { icon: LucideIcon; l1: string; l2: string };
 
+// Each line is something the platform does for every booking. Replaced: identity verification and
+// background checks (required only where a service asks for them), an "AI fraud detection" claim,
+// and round-the-clock support (tickets carry a response deadline; no always-on line exists).
 const TRUSTS: Trust[] = [
-  { icon: ShieldCheck, l1: "Verified", l2: "Professionals" },
-  { icon: UserCheck, l1: "Background", l2: "Checks" },
+  { icon: ShieldCheck, l1: "Approved", l2: "Professionals" },
+  { icon: UserCheck, l1: "Start PIN", l2: "at the Door" },
   { icon: Lock, l1: "Secure", l2: "Payments" },
-  { icon: Cpu, l1: "AI Fraud", l2: "Detection" },
+  { icon: Receipt, l1: "Itemised", l2: "Pricing" },
   { icon: MapPin, l1: "Live", l2: "Tracking" },
-  { icon: Headphones, l1: "Support", l2: "24/7" },
+  { icon: Headphones, l1: "In-app", l2: "Support" },
 ];
 
 export function TrustSection() {

@@ -2,14 +2,13 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Clock, Headphones, LifeBuoy, Mail, Phone } from "lucide-react";
+import { ArrowLeft, Clock, Headphones, LifeBuoy, Mail } from "lucide-react";
 import { PageShell } from "@/components/layout/PageShell";
 import { SupportCenter } from "@/components/support/SupportCenter";
 import { pageLead, pageTitle } from "@/lib/page-layout";
 import { SUPPORT_FAQS } from "@/lib/faq/faq-data";
 import { useAuthStore } from "@/stores/auth-store";
 
-const SUPPORT_PHONE = "+918000123456";
 const SUPPORT_EMAIL = "support@homigo.app";
 
 const FAQS = SUPPORT_FAQS;
@@ -31,24 +30,15 @@ export default function SupportPage() {
         </Link>
         <h1 className={pageTitle}>Help & Support</h1>
         <p className={pageLead}>
-          Raise a ticket, track replies in real time, and get help from our 24/7 support team.
+          Raise a ticket and track replies from our support team.
         </p>
       </header>
 
       <div className="flex flex-col gap-5">
-        <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <a
-            href={`tel:${SUPPORT_PHONE}`}
-            className="glass-card flex items-center gap-3 rounded-[24px] p-4 transition hover:bg-primary/5"
-          >
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-success/10 text-success">
-              <Phone size={20} />
-            </span>
-            <span>
-              <span className="block text-sm font-bold text-content">Call us</span>
-              <span className="block text-xs text-muted">1800-123-456 · 24/7</span>
-            </span>
-          </a>
+        {/* No phone tile and no response-time tile. The phone tile printed one placeholder number
+            and dialled another; the response time is each ticket's own deadline from the server,
+            shown on the ticket, not a fixed figure here. */}
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <a
             href={`mailto:${SUPPORT_EMAIL}`}
             className="glass-card flex items-center gap-3 rounded-[24px] p-4 transition hover:bg-primary/5"
@@ -67,7 +57,7 @@ export default function SupportPage() {
             </span>
             <span>
               <span className="block text-sm font-bold text-content">Response time</span>
-              <span className="block text-xs text-muted">Usually under 2 hours</span>
+              <span className="block text-xs text-muted">Shown on each ticket</span>
             </span>
           </div>
         </section>

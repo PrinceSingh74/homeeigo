@@ -631,7 +631,13 @@ export class AdminBookingOperationsService {
     if (!booking) throw new Error("BOOKING_NOT_FOUND");
     if (!booking.providerId) throw new Error("NO_ASSIGNED_PROVIDER");
     if (!ACTIVE_FULFILMENT_STATUSES.has(String(booking.status))) throw new Error("INVALID_STATUS");
-    await this.recordAdminAction(bookingId, adminId, "POSITION_CHECK_WAIVED", reason, ipAddress, booking.status, booking.status);
+    const why = reason.trim();
+    if (why.length < 10) throw new Error("REASON_REQUIRED");
+    // Written with the partner it vouches for, so it does not pass to whoever holds the job next.
+    await prisma.activityLog.create({
+      data: { bookingId, userId: adminId, providerId: booking.providerId, action: "ADMIN_BOOKING_POSITION_CHECK_WAIVED", description: why, ipAddress },
+    });
+    void AuditLogService.success("ADMIN_ACTION", { userId: adminId, ipAddress, reason: why, details: { bookingId, action: "POSITION_CHECK_WAIVED", providerId: booking.providerId } });
     return { waived: true as const };
   }
 

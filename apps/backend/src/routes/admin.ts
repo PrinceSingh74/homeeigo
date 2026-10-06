@@ -530,6 +530,7 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
         BOOKING_NOT_FOUND: "Booking not found",
         NO_ASSIGNED_PROVIDER: "No professional holds this booking",
         INVALID_STATUS: "The position check applies only while a professional holds an active job",
+        REASON_REQUIRED: "Say how the visit was confirmed (at least 10 characters).",
       };
       return { success: false, error: messages[code] ?? "The position check could not be waived", code };
     }

@@ -1,8 +1,8 @@
 import { AiDashboard } from "@/components/ai/AiDashboard";
 
 export const metadata = {
-  title: "HOMEEIGO AI — Your Home Intelligence",
-  description: "AI-powered home assistant with smart diagnostics, live tracking, and instant booking.",
+  title: "HOMEEIGO Assistant",
+  description: "Ask about a home service, follow a live visit and jump to booking.",
 };
 
 export default function AiPage() {

@@ -4,7 +4,6 @@ import { ArrowUpRight, Coins, Sparkles, Wallet } from "lucide-react";
 import { StaticSkeleton } from "@/components/ui/StaticSkeleton";
 import { cn } from "@/lib/utils";
 import type { WalletRecentTxn } from "@/lib/wallet-dashboard";
-import { WALLET_RECENT_TXNS } from "@/lib/wallet-dashboard";
 import { useWalletTransactionsQuery } from "@/hooks/use-core-data";
 
 function TxnIcon({ title }: { title: string }) {
@@ -15,7 +14,8 @@ function TxnIcon({ title }: { title: string }) {
 }
 
 export function WalletTransactionList({
-  items = WALLET_RECENT_TXNS,
+  // The server's ledger rows; with none passed, none are shown (there is no demo list).
+  items = [],
   compact = false,
 }: {
   items?: WalletRecentTxn[];
@@ -47,10 +47,7 @@ export function WalletTransactionList({
             >
               {t.type === "credit" ? "+" : ""}₹{Math.abs(t.amount).toLocaleString("en-IN")}
             </span>
-            <span className="flex items-center gap-1.5 text-[10px] font-medium text-success">
-              <span className="size-1.5 rounded-full bg-success" />
-              Success
-            </span>
+            {/* No status label: the ledger row carries none, and "Success" was printed on every row. */}
           </div>
         </li>
       ))}
@@ -58,7 +55,8 @@ export function WalletTransactionList({
   );
 }
 
-export function WalletTransactionsTab() {
+/** The wallet ledger from the server, as list rows. Empty until it answers — never a demo list. */
+export function useWalletTxnRows(): { rows: WalletRecentTxn[]; isLoading: boolean } {
   const { data, isLoading } = useWalletTransactionsQuery();
   const txns: WalletRecentTxn[] =
     data?.transactions?.map((t) => ({
@@ -70,7 +68,12 @@ export function WalletTransactionsTab() {
       status: "success",
       iconBg: t.type === "credit" ? "#F0FDFA" : "#FFF7ED",
       iconColor: t.type === "credit" ? "#0D9488" : "#F59E0B",
-    })) ?? WALLET_RECENT_TXNS;
+    })) ?? [];
+  return { rows: txns, isLoading };
+}
+
+export function WalletTransactionsTab() {
+  const { rows: txns, isLoading } = useWalletTxnRows();
 
   return (
     <div className="wallet-panel min-w-0 p-0">

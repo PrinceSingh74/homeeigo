@@ -23,12 +23,13 @@ export type PartnerPositionResult = PositionConfirmation | { ok: true; waived: t
 export async function confirmPartnerPosition(input: {
   providerId: string;
   bookingId: string;
-  action: "arrive" | "start";
+  action: "arrive" | "start" | "requirement_check";
   jobLatitude: number | null | undefined;
   jobLongitude: number | null | undefined;
 }): Promise<PartnerPositionResult> {
   const waiver = await prisma.activityLog.findFirst({
-    where: { bookingId: input.bookingId, action: POSITION_CHECK_WAIVED_ACTION },
+    // A waiver vouches for one partner on one booking: a partner who takes the job over is checked again.
+    where: { bookingId: input.bookingId, providerId: input.providerId, action: POSITION_CHECK_WAIVED_ACTION },
     select: { id: true },
   });
   if (waiver) {

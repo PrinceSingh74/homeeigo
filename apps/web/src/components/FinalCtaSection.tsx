@@ -33,7 +33,7 @@ export function FinalCtaSection() {
             Ready to experience the future?
           </h2>
           <p className="mt-4 text-base text-slate sm:text-lg">
-            Book premium AI-powered home services instantly.
+            Book a home service and get matched to an approved professional.
           </p>
           <div className="mt-8 w-fit">
             <ButtonLink href={bookUrl()} variant="primary" size="xl" className="group">

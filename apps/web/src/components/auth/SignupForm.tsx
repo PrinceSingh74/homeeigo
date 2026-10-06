@@ -143,7 +143,7 @@ export function SignupForm() {
   return (
     <AuthPageShell
       title="Create your account"
-      subtitle="Join HOMEEIGO for premium home services with AI-powered booking."
+      subtitle="Join HOMEEIGO to book home services and track every visit."
       badge="Get started"
       footer={<AuthFooterLink prompt="Already have an account?" href="/login" label="Sign in" />}
     >

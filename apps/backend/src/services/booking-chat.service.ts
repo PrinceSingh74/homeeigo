@@ -22,6 +22,7 @@ class BookingChatService {
         providerId: true,
         status: true,
         acceptedAt: true,
+        assignedAt: true,
         provider: { select: { userId: true } },
       },
     });
@@ -81,12 +82,15 @@ class BookingChatService {
     // The conversation belongs to the booking, not to a partner. A partner reads what they wrote and
     // what the customer wrote since they took the job; what was said to an earlier partner stays there.
     const isCustomer = booking.userId === actor.userId;
+    // When this partner took the job: their own acceptance, or the moment an admin handed it to them
+    // (a reassignment writes assignedAt and leaves the earlier partner's acceptedAt in place).
+    const tookJobAt = [booking.acceptedAt, booking.assignedAt].filter((d): d is Date => d instanceof Date).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
     const partnerScope = isCustomer
       ? {}
       : {
           OR: [
             { senderUserId: actor.userId },
-            ...(booking.acceptedAt ? [{ senderUserId: booking.userId, createdAt: { gte: booking.acceptedAt } }] : []),
+            ...(tookJobAt ? [{ senderUserId: booking.userId, createdAt: { gte: tookJobAt } }] : []),
           ],
         };
     const messages = await prisma.bookingMessage.findMany({
