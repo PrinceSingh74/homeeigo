@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { prisma } from "../lib/prisma";
 import { createDedicatedPoolClient } from "../lib/prisma-base";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { assignmentEngine } from "../services/assignment-engine.service";
 import {
   cleanupAdversarialFixtures,
@@ -55,7 +56,7 @@ async function settleInlineDispatch(): Promise<void> {
 describe("contended accept and the connection pool", () => {
   test(`${CONCURRENT_ACCEPTS} accepts queued on a held booking row leave the pool free for other traffic`, async () => {
     await heartbeatFresh(ctx);
-    const created = await bookingService.create(ctx.customerA.id, {
+    const created = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       addressId: ctx.addressAId,
       scheduledDate: futureSlot(180).toISOString(),

@@ -23,7 +23,7 @@ import {
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
-import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { paymentService } from "../services/payment.service";
 import {
   bookingPaymentExpiryService,
@@ -42,7 +42,7 @@ function istSlot(daysAhead: number, hhmm = "10:00"): Date {
 }
 
 async function createBooking(slot = istSlot((day += 1))) {
-  const created = await bookingService.create(ctx.customerA.id, {
+  const created = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
     addressId: ctx.addressAId,
@@ -116,7 +116,7 @@ describe.serial("the window closes and the slot comes back", () => {
     await age(id);
     await bookingPaymentExpiryService.expireStalePendingPayments(50, PAYMENT_PENDING_TTL_MINUTES, { bookingId: id });
 
-    const second = await bookingService.create(ctx.customerB.id, {
+    const second = await createBookingWithQuote(ctx.customerB.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       addressId: ctx.addressBId,

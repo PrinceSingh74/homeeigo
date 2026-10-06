@@ -1,5 +1,22 @@
 import type { ApiResponse } from "@/types/auth";
 import type { BookingRequirementsView } from "@/types/backend";
+
+/** Mirror of backend lib/customer-serviceability.ts. The message is the server's, shown verbatim. */
+export type ServiceabilityAnswer = {
+  status: "AVAILABLE" | "LIMITED" | "NOT_AVAILABLE" | "NEEDS_CONFIRMATION" | "TEMPORARILY_UNAVAILABLE";
+  message: string;
+};
+
+/** Mirror of the backend `ratingService.listPublicForService` response. */
+export type ServiceReviews = {
+  reviews: { id: string; name: string; rating: number; reviewText: string | null; createdAt: string; providerResponse: string | null }[];
+  total: number;
+  page: number;
+  limit: number;
+  ratingCount: number;
+  averageRating: number | null;
+  distribution: Record<"1" | "2" | "3" | "4" | "5", number>;
+};
 import type { ServiceResolution, ServiceSelectionRequest, ServiceSelectionSnapshot,
   BackendAddress,
   BackendAvailabilitySlot,
@@ -137,6 +154,15 @@ export const coreApi = {
       ).then((r) => r.data!),
     details: (id: string) =>
       apiRequest<ApiResponse<{ service: BackendService }>>(`/api/services/${id}`).then((r) => r.data!),
+    /** Public reviews of one service: real ratings only, reviewer reduced to a first name and an initial. */
+    reviews: (id: string, page = 1, limit = 5) =>
+      apiRequest<ApiResponse<ServiceReviews>>(`/api/services/${id}/reviews?page=${page}&limit=${limit}`).then((r) => r.data!),
+    /** Can this customer book the service at this address (and date)? One of five statuses and a sentence. */
+    serviceability: (id: string, addressId: string, date?: string) =>
+      apiRequest<ApiResponse<ServiceabilityAnswer>>(
+        `/api/services/${id}/serviceability?addressId=${encodeURIComponent(addressId)}${date ? `&date=${date}` : ""}`,
+        { auth: true },
+      ).then((r) => r.data!),
     /** Server verdict on a selection: price lines before tax, duration, every issue. */
     resolveSelection: (id: string, body: ServiceSelectionRequest) =>
       apiRequest<ApiResponse<ServiceResolution>>(`/api/services/${id}/resolve-selection`, { method: "POST", body }).then(
@@ -560,6 +586,14 @@ export const coreApi = {
         { auth: true },
       ).then((r) => r.data!),
     /** Server-side driving route (Google → OSRM fallback) — works without client Maps billing. */
+    serviceable: (lat: number, lng: number, category?: string) => {
+      const p = new URLSearchParams({ lat: String(lat), lng: String(lng) });
+      if (category) p.set("category", category);
+      return apiRequest<ApiResponse<{ serviceable: boolean; configured: boolean; zones: Array<{ id: string; name: string }> }>>(
+        `/api/geo/serviceable?${p.toString()}`,
+        { auth: true },
+      ).then((r) => r.data!);
+    },
     route: (from: { lat: number; lng: number }, to: { lat: number; lng: number }) =>
       apiRequest<
         ApiResponse<{

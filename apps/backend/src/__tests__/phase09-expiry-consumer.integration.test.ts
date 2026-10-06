@@ -19,7 +19,7 @@ import {
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
-import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import {
   bookingPaymentExpiryService,
   PAYMENT_PENDING_TTL_MINUTES,
@@ -41,7 +41,7 @@ function istSlot(daysAhead: number, hhmm = "10:00"): Date {
 
 /** A booking the TTL has actually expired, plus the event that expiry emitted. */
 async function expiredBooking() {
-  const created = await bookingService.create(ctx.customerA.id, {
+  const created = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
     addressId: ctx.addressAId,

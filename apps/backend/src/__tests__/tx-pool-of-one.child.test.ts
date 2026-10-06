@@ -12,6 +12,7 @@ import "../load-env";
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { prisma } from "../lib/prisma";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { assignmentEngine } from "../services/assignment-engine.service";
 import {
   cleanupAdversarialFixtures,
@@ -38,7 +39,7 @@ async function settleInlineDispatch(): Promise<void> {
 }
 
 async function paidBooking(hoursAhead: number): Promise<string> {
-  const created = await bookingService.create(ctx.customerA.id, {
+  const created = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     addressId: ctx.addressAId,
     scheduledDate: futureSlot(hoursAhead).toISOString(),

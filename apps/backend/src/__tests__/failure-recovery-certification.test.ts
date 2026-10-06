@@ -19,7 +19,7 @@ import {
   futureSlot,
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
-import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { walletService } from "../services/wallet.service";
 import { RefreshTokenService } from "../services/refresh-token.service";
 import { JWTService } from "../services/jwt.service";
@@ -171,7 +171,7 @@ describe.serial("Failure recovery certification", () => {
     const orphanTxn = await prisma.walletTransaction.count({
       where: { transactionNumber: `${RUN_ID}-orphan-probe` },
     });
-    const recovered = await bookingService.create(ctx.customerA.id, {
+    const recovered = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       scheduledDate: futureSlot(3).toISOString(),
@@ -280,7 +280,7 @@ describe.serial("Failure recovery certification", () => {
 
   test("P4 — booking lifecycle consistent after create", async () => {
     if (skipIfNoDb()) return;
-    const created = await bookingService.create(ctx.customerA.id, {
+    const created = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       scheduledDate: futureSlot(200).toISOString(),

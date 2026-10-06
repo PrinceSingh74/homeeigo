@@ -6,7 +6,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { BOOKING_ADDONS } from "../lib/service-catalog-config";
 import { partnerJobBrief } from "../lib/service-domain";
 
 const repo = join(import.meta.dir, "../../../..");
@@ -25,15 +24,10 @@ function typeBlock(src: string, name: string): string {
 }
 
 describe("frontend mirrors of the service contract", () => {
-  test("web shared add-on display list matches the server catalogue (ids, names, prices)", () => {
+  test("web add-on display does not ship a shared price list", () => {
     const src = read("apps/web/src/lib/catalog/pricing.ts");
-    const block = src.slice(src.indexOf("export const BOOKING_ADDONS"), src.indexOf("] as const", src.indexOf("export const BOOKING_ADDONS")));
-    const rows = [...block.matchAll(/id:\s*"([^"]+)",\s*name:\s*"([^"]+)"[^}]*price:\s*(\d+)/g)].map((m) => ({
-      id: m[1],
-      name: m[2],
-      price: Number(m[3]),
-    }));
-    expect(rows).toEqual(BOOKING_ADDONS.map((a) => ({ id: a.id, name: a.name, price: a.price })));
+    expect(src).not.toContain("BOOKING_ADDONS");
+    expect(src).not.toContain("Fridge Cleaning");
   });
 
   test("partner web and partner mobile declare every field of the job brief", () => {

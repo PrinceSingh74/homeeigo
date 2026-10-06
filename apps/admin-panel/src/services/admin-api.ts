@@ -1942,31 +1942,83 @@ export const adminApi = {
       }).then((r) => r.data!),
 
     update: (id: string, body: Partial<ServiceInput>) =>
-      apiRequest<ApiResponse<{ service: AdminServiceRow }>>(`/api/admin/services/${id}`, {
+      apiRequest<ApiResponse<{ service: AdminServiceRow; pendingRevision?: PendingRevisionView | null }>>(`/api/admin/services/${id}`, {
         method: "PUT",
         auth: true,
         body,
       }).then((r) => r.data!),
 
-    setStatus: (id: string, isActive: boolean) =>
-      apiRequest<ApiResponse<{ service: AdminServiceRow }>>(`/api/admin/services/${id}/status`, {
+    /** Switching a live service off needs a reason (400 REASON_REQUIRED without one). */
+    setStatus: (id: string, isActive: boolean, reason?: string) =>
+      apiRequest<ApiResponse<{ service: AdminServiceRow; impact?: { openBookings: number } }>>(`/api/admin/services/${id}/status`, {
         method: "PATCH",
         auth: true,
-        body: { isActive },
+        body: { isActive, reason },
       }).then((r) => r.data!),
 
     get: (id: string) =>
-      apiRequest<ApiResponse<{ service: AdminServiceRow }>>(`/api/admin/services/${id}`, { auth: true }).then((r) => r.data!),
+      apiRequest<ApiResponse<{ service: AdminServiceRow; actors?: ActorNames }>>(`/api/admin/services/${id}`, { auth: true }).then((r) => r.data!),
 
-    transition: (id: string, to: RequestableLifecycle, expectedVersion?: number) =>
-      apiRequest<ApiResponse<{ service: AdminServiceRow }>>(`/api/admin/services/${id}/lifecycle`, {
+    /** PAUSED, DEPRECATED and ARCHIVED need a reason (400 REASON_REQUIRED without one). */
+    transition: (id: string, to: RequestableLifecycle, expectedVersion?: number, reason?: string) =>
+      apiRequest<ApiResponse<{ service: AdminServiceRow; impact?: { openBookings: number } }>>(`/api/admin/services/${id}/lifecycle`, {
         method: "POST",
         auth: true,
-        body: { to, expectedVersion },
+        body: { to, expectedVersion, reason },
+      }).then((r) => r.data!),
+
+    /** Removes a scheduled go-live time; the approval stands. */
+    unschedule: (id: string) =>
+      apiRequest<ApiResponse<{ service: AdminServiceRow }>>(`/api/admin/services/${id}/unschedule`, { method: "POST", auth: true, body: {} }).then((r) => r.data!),
+
+    /** The approver sends back the hash and version they reviewed, so a concurrent edit is refused (409). */
+    approve: (id: string, opts: { scheduledLiveAt?: string; expectedVersion?: number; expectedContentHash?: string } = {}) =>
+      apiRequest<ApiResponse<{ service: AdminServiceRow }>>(`/api/admin/services/${id}/approve`, {
+        method: "POST",
+        auth: true,
+        body: opts,
+      }).then((r) => r.data!),
+
+    /** Field-by-field difference between two published versions, from their immutable snapshots. */
+    versionDiff: (id: string, from: number, to: number) =>
+      apiRequest<ApiResponse<ServiceVersionDiff>>(`/api/admin/services/${id}/versions/diff?from=${from}&to=${to}`, { auth: true }).then((r) => r.data!),
+
+    /** Restores a published version's price, duration and configuration as a NEW version (or a pending revision). */
+    restoreVersion: (id: string, version: number, reason: string) =>
+      apiRequest<ApiResponse<{ service: AdminServiceRow; pendingRevision?: PendingRevisionView | null }>>(`/api/admin/services/${id}/versions/${version}/restore`, {
+        method: "POST",
+        auth: true,
+        body: { reason },
+      }).then((r) => r.data!),
+
+    /** Who did what to this service, newest first. Needs AUDIT_LOGS / READ. */
+    audit: (id: string) =>
+      apiRequest<ApiResponse<{ entries: ServiceAuditEntry[]; actors?: ActorNames }>>(`/api/admin/services/${id}/audit`, { auth: true }).then((r) => r.data!),
+
+    createCategory: (body: { name: string; slug: string; parentId?: string | null; sortOrder?: number }) =>
+      apiRequest<ApiResponse<{ category: ServiceCategoryRow }>>("/api/admin/service-categories", { method: "POST", auth: true, body }).then((r) => r.data!),
+
+    /** The slug is not editable: customer URLs use it. */
+    updateCategory: (id: string, body: { name?: string; sortOrder?: number; isActive?: boolean }) =>
+      apiRequest<ApiResponse<{ category: ServiceCategoryRow }>>(`/api/admin/service-categories/${id}`, { method: "PUT", auth: true, body }).then((r) => r.data!),
+
+    /** With a future `scheduledLiveAt` the approved revision is held until then; otherwise it is published now. */
+    approveRevision: (id: string, expectedContentHash?: string, scheduledLiveAt?: string) =>
+      apiRequest<ApiResponse<{ service: AdminServiceRow; pendingRevision?: PendingRevisionView | null }>>(`/api/admin/services/${id}/revision/approve`, {
+        method: "POST",
+        auth: true,
+        body: { ...(expectedContentHash ? { expectedContentHash } : {}), ...(scheduledLiveAt ? { scheduledLiveAt } : {}) },
+      }).then((r) => r.data!),
+
+    rejectRevision: (id: string, reason?: string) =>
+      apiRequest<ApiResponse<{ service: AdminServiceRow }>>(`/api/admin/services/${id}/revision/reject`, {
+        method: "POST",
+        auth: true,
+        body: reason ? { reason } : {},
       }).then((r) => r.data!),
 
     versions: (id: string) =>
-      apiRequest<ApiResponse<{ currentVersion: number; versions: ServiceVersionRow[] }>>(`/api/admin/services/${id}/versions`, {
+      apiRequest<ApiResponse<{ currentVersion: number; versions: ServiceVersionRow[]; actors?: ActorNames }>>(`/api/admin/services/${id}/versions`, {
         auth: true,
       }).then((r) => r.data!),
     /** Phase 06 — reusable requirement catalogue (materials / equipment / customer preconditions). */
@@ -3663,8 +3715,27 @@ export type AdminServiceRow = {
   catalogConfigInvalid?: boolean;
   /** What is still missing — computed by the backend. */
   configGaps?: string[];
-  configSections?: { id: string; label: string; status: "ok" | "warn" | "missing"; issues: string[] }[];
+  configSections?: {
+    id: string;
+    label: string;
+    status: "ok" | "warn" | "missing";
+    issues: string[];
+    gates?: PublishGateView[];
+  }[];
+  publishGates?: PublishGateView[];
   publishBlocked?: { code: string; path: string; message: string }[];
+  publishApproval?: { actorId: string; editorId: string; approvedAt: string; version: number; contentHash?: string } | null;
+  /** Fingerprint of the content an approval covers. Sent back on approve. */
+  contentHash?: string;
+  /** STALE: the content or its editor changed after the approval. */
+  approvalState?: "NONE" | "VALID" | "STALE";
+  /** The control-plane state. APPROVED and SCHEDULED are derived from the approval, not stored. */
+  controlState?: "DRAFT" | "VALIDATING" | "REVIEW" | "APPROVED" | "SCHEDULED" | "LIVE" | "PAUSED" | "DEPRECATED" | "ARCHIVED";
+  /** Detail endpoint only. "four-eyes": a live edit is held as a pending revision. */
+  liveEditPolicy?: "direct" | "four-eyes";
+  /** Detail endpoint only. */
+  pendingRevision?: PendingRevisionView | null;
+  scheduledLiveAt?: string | null;
   bookable?: boolean;
   serviceCode?: string | null;
   /** Operational identifier (ops / ERP). Admin-only, unique when set. */
@@ -3724,6 +3795,41 @@ export type ServiceTaxonomyTree = {
   }>;
 };
 
+/** Admin id → display name, for the ids one response mentions. An id without a user row is absent. */
+export type ActorNames = Record<string, string>;
+
+export type ServiceVersionDiff = {
+  from: { version: number; publishedAt: string; publishedBy: string | null };
+  to: { version: number; publishedAt: string; publishedBy: string | null };
+  changes: { field: string; before: unknown; after: unknown }[];
+};
+
+export type ServiceAuditEntry = {
+  id: string;
+  at: string;
+  actorId: string | null;
+  action: string;
+  status: string | null;
+  version: number | null;
+  from: string | null;
+  to: string | null;
+  changes: string[];
+  reason: string | null;
+  approvedBy: string | null;
+};
+
+export type ServiceCategoryRow = {
+  id: string;
+  slug: string;
+  name: string;
+  shortName: string | null;
+  description: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  operationalCategories: string[];
+  parentId: string | null;
+};
+
 export type ServiceVersionRow = {
   version: number;
   status: string;
@@ -3733,7 +3839,34 @@ export type ServiceVersionRow = {
   snapshot: Record<string, unknown>;
 };
 
-export const REQUESTABLE_LIFECYCLES = ["DRAFT", "READY_FOR_REVIEW", "ACTIVE", "PAUSED", "DEPRECATED", "ARCHIVED"] as const;
+/** A proposed change to a live service, waiting for a different admin. */
+export type PendingRevisionView = {
+  version: number;
+  baseVersion: number | null;
+  contentHash: string | null;
+  proposedBy: string | null;
+  proposedAt: string | null;
+  changeReason: string | null;
+  changes: { field: string; before: unknown; after: unknown }[];
+  patch: Record<string, unknown>;
+  /** Set when a different admin approved it for a later time. */
+  approvedBy?: string | null;
+  scheduledLiveAt?: string | null;
+};
+
+export type PublishGateView = {
+  code: string;
+  status: "PASS" | "WARNING" | "FAIL" | "BLOCKED" | "NOT_APPLICABLE";
+  severity: "critical" | "warning" | "info";
+  message: string;
+  remediation: string;
+  path: string;
+  version: number | null;
+  /** One of the eighteen publish gates, or OTHER for information outside the publish rule. */
+  gate?: string;
+};
+
+export const REQUESTABLE_LIFECYCLES = ["DRAFT", "CONFIGURATION_REQUIRED", "READY_FOR_REVIEW", "PUBLISHED", "ACTIVE", "PAUSED", "DEPRECATED", "ARCHIVED"] as const;
 export type RequestableLifecycle = (typeof REQUESTABLE_LIFECYCLES)[number];
 
 /** Mirror of apps/backend src/lib/service-catalog-config.ts serviceCatalogConfigSchema. */
@@ -3873,6 +4006,9 @@ export type ServiceCatalogConfig = {
     sameDay?: boolean;
     minimumLeadTimeMinutes?: number;
     maximumAdvanceDays?: number;
+    allDay?: boolean;
+    operatingWindow?: { start: string; end: string };
+    blackoutDates?: string[];
   };
   bookingRules?: { cancellationPolicy?: string; reschedulePolicy?: string };
   /**

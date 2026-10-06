@@ -21,6 +21,7 @@ import type {
   RequirementGateResult,
   JobChatList,
   JobEvidenceItem,
+  PartnerBooking,
   PartnerBookingsResponse,
   PartnerDashboard,
   PartnerEarningsSummary,
@@ -295,6 +296,34 @@ export type PartnerServiceSkillBoard = {
   available: PartnerServiceSkillCard[];
 };
 
+function payoutsAsWalletHistory(
+  finance: PartnerPayoutsData,
+  query: { page?: number; limit?: number },
+): WalletTransactionsResponse {
+  const page = query.page ?? 1;
+  const limit = query.limit ?? 20;
+  const credits = (finance.analytics?.daily ?? []).map((d) => ({
+    id: `earn-${d.period}`,
+    type: "credit" as const,
+    amount: d.amount,
+    description: `Earnings ${d.period}`,
+    status: "posted",
+    createdAt: d.period,
+  }));
+  const debits = (finance.withdrawals ?? []).map((w) => ({
+    id: w.id,
+    transactionNumber: w.reference,
+    type: "debit" as const,
+    amount: w.amount,
+    description: `Payout ${w.reference}`,
+    status: w.status,
+    createdAt: w.requestedAt ?? w.settlementDate ?? "",
+  }));
+  const rows = [...credits, ...debits].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const start = Math.max(0, (page - 1) * limit);
+  return { transactions: rows.slice(start, start + limit), total: rows.length, page, limit };
+}
+
 export const partnerApi = {
   /* ----------------- Navigation telemetry (fire-and-forget) ----------- */
   navTelemetry: (body: { type: "session" | "reroute" | "arrival" | "pickup" | "drop"; latencyMs?: number; gpsAccuracy?: number; etaErrorMin?: number }) =>
@@ -527,6 +556,35 @@ export const partnerApi = {
       query: { ...query },
     }).then((r) => r.data!),
 
+  /** One job from GET /api/bookings/:id. List caches omit jobs outside the last page. */
+  getBooking: (bookingId: string) =>
+    apiRequest<ApiResponse<{ booking: PartnerBooking }>>(`/api/bookings/${bookingId}`, {
+      auth: true,
+    }).then((r) => {
+      const b = r.data!.booking;
+      const addr = b.address;
+      return {
+        ...b,
+        amount: b.amount ?? b.finalAmount,
+        completedAt: b.completedAt ?? null,
+        enRouteAt: b.enRouteAt ?? null,
+        arrivedAt: b.arrivedAt ?? null,
+        startedAt: b.startedAt ?? null,
+        service: {
+          id: b.service?.id ?? "",
+          name: b.service?.name ?? "Service",
+          icon: b.service?.icon ?? null,
+          basePrice: b.service?.basePrice ?? 0,
+        },
+        address: {
+          ...addr,
+          fullAddress: addr?.fullAddress ?? "",
+          latitude: addr?.latitude ?? null,
+          longitude: addr?.longitude ?? null,
+        },
+      } satisfies PartnerBooking;
+    }),
+
   /**
    * Partner AI assistant. Goes through the backend AI Gateway (`/api/ai/partner`), which
    * owns authentication, RBAC, prompt-injection screening, rate limiting, audit and cost
@@ -757,10 +815,9 @@ export const partnerApi = {
   // NOTE: there is deliberately no `walletBalance` client here. `/api/wallet/balance` is the
   // CUSTOMER wallet (users.wallet_balance); partner balance comes from `/me/payouts`.
   walletTransactions: (query: { page?: number; limit?: number } = {}) =>
-    apiRequest<ApiResponse<WalletTransactionsResponse>>("/api/wallet/transactions", {
+    apiRequest<ApiResponse<PartnerPayoutsData>>("/api/providers/me/payouts", {
       auth: true,
-      query: { ...query },
-    }).then((r) => r.data!),
+    }).then((r) => payoutsAsWalletHistory(r.data!, query)),
 
   withdraw: (payload: {
     amount: number;

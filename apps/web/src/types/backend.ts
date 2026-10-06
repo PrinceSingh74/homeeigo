@@ -273,6 +273,11 @@ export type BackendServiceDetail = BackendService & {
    */
   preparation?: CustomerRequirementsView | null;
   /**
+   * What matching enforces about the professional, as sentences written by the backend. Null or
+   * absent when nothing is enforced for this service — the page then shows no such section.
+   */
+  professional?: { statements: { code: string; text: string }[] } | null;
+  /**
    * Phase 10 customer visit promise. Sentences are produced by the backend from the engines
    * that enforce them. Absent on older responses — the page then keeps the booking steps only.
    */

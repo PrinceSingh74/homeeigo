@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Calendar, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/Input";
-import { BOOKING_TIMES } from "@/lib/services";
 import {
   formatDateLabel,
   formatTimeLabel,
@@ -12,7 +11,6 @@ import {
   toHm24Local,
   parseYmdLocal,
   parseHm24OnDate,
-  apply12hTimeOnDate,
   applyDatePart,
   sameCalendarDay,
   quickNextDays,
@@ -30,7 +28,7 @@ export type BookingScheduleSectionProps = {
   /**
    * The slots the SERVER says are bookable for the chosen day. When present these replace the static
    * chips entirely: the list, the times and the verdicts are the backend's, not this component's.
-   * Absent (still loading, or unauthenticated) the static chips remain, so the step never goes blank.
+   * Absent or empty: say so. This component does not invent times.
    */
   slots?: { start: string; available: boolean; reason?: string }[];
   slotsLoading?: boolean;
@@ -213,7 +211,13 @@ export function BookingScheduleSection({
         />
       </div>
 
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none snap-x sm:mx-0 sm:grid sm:grid-cols-3 sm:gap-3 sm:overflow-visible sm:pb-0 md:grid-cols-6">
+      {/* A horizontal scroller on phones: focusable, so a keyboard can scroll it even when every item is disabled. */}
+      <div
+        role="group"
+        aria-label="Choose a day"
+        tabIndex={0}
+        className="-mx-1 flex gap-2 overflow-x-auto rounded-xl px-1 pb-1 outline-none scrollbar-none snap-x focus-visible:ring-2 focus-visible:ring-emerald-500/60 sm:mx-0 sm:grid sm:grid-cols-3 sm:gap-3 sm:overflow-visible sm:pb-0 md:grid-cols-6"
+      >
         {quickDays.map((d) => {
           const active = sameCalendarDay(scheduledAt, d);
           return (
@@ -249,7 +253,12 @@ export function BookingScheduleSection({
         customer could pick a time the platform would refuse. They remain only as the fallback while
         the server list is loading.
       */}
-      <div className="-mx-1 mt-4 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none snap-x sm:mx-0 sm:grid sm:grid-cols-3 sm:gap-3 sm:overflow-visible sm:pb-0 md:grid-cols-6">
+      <div
+        role="group"
+        aria-label="Choose a time"
+        tabIndex={0}
+        className="-mx-1 mt-4 flex gap-2 overflow-x-auto rounded-xl px-1 pb-1 outline-none scrollbar-none snap-x focus-visible:ring-2 focus-visible:ring-emerald-500/60 sm:mx-0 sm:grid sm:grid-cols-3 sm:gap-3 sm:overflow-visible sm:pb-0 md:grid-cols-6"
+      >
         {(slots ?? []).length > 0
           ? slots!.map((slot) => {
               const at = new Date(slot.start);
@@ -276,32 +285,9 @@ export function BookingScheduleSection({
                 </button>
               );
             })
-          : BOOKING_TIMES.map((t) => {
-              const picked = apply12hTimeOnDate(scheduledAt, t);
-              const active =
-                timeSelected &&
-                !!picked &&
-                picked.getHours() === scheduledAt.getHours() &&
-                picked.getMinutes() === scheduledAt.getMinutes();
-              return (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => {
-                    const next = apply12hTimeOnDate(scheduledAt, t);
-                    if (next) (onPickTime ?? onScheduledAtChange)(next);
-                  }}
-                  className={cn(
-                    "min-w-[4.25rem] shrink-0 snap-start rounded-xl px-2 py-3 text-xs font-semibold transition sm:min-w-0 sm:rounded-2xl sm:py-4 sm:text-sm",
-                    active
-                      ? "bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-white shadow-[0_10px_26px_-8px_rgb(16_185_129/0.55)]"
-                      : "glass-card text-content hover:-translate-y-0.5",
-                  )}
-                >
-                  {t}
-                </button>
-              );
-            })}
+          : !slotsLoading && (
+              <p className="px-1 text-sm font-medium text-muted">No times are available for this day.</p>
+            )}
       </div>
 
       {slots && slots.length > 0 && slots.every((s) => !s.available) && (

@@ -62,20 +62,21 @@ export function hourlyBooking(service: ServiceView, sel: HourlySelection) {
 
 const T = {
   dark: {
-    root: "bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-500 text-white",
+    root: "overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-10 bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-500 text-white",
     muted: "text-white/80",
     chip: "border-white/20 bg-white/10 text-white hover:border-white/50",
     chipOn: "border-white bg-white text-emerald-800",
     chipOff: "border-white/15 text-white/45",
     panel: "border-white/20 bg-white/10",
   },
+  // Light: the copy sits on the page and the calculator is the one object — no card inside a card.
   light: {
-    root: "bg-surface/80 text-content border border-emerald-500/20 shadow-e2 backdrop-blur-md",
+    root: "text-content",
     muted: "text-muted",
-    chip: "border-line bg-surface text-content hover:border-emerald-300",
-    chipOn: "border-transparent bg-gradient-to-r from-emerald-500 to-teal-500 text-white",
+    chip: "border-line bg-surface text-content hover:border-emerald-400",
+    chipOn: "border-transparent bg-ink text-white dark:bg-emerald-400 dark:text-ink",
     chipOff: "border-line text-muted/60",
-    panel: "border-emerald-500/15 bg-canvas/80",
+    panel: "border-line bg-surface shadow-e2",
   },
 } as const;
 
@@ -127,7 +128,7 @@ export function HourlyHelpModule({
   return (
     <section
       aria-labelledby="hourly-heading"
-      className={cn("relative overflow-hidden rounded-[2.25rem] p-6 sm:rounded-[2.5rem] sm:p-8 lg:p-10", t.root)}
+      className={cn("relative", t.root)}
     >
       {tone === "dark" && (
         <>
@@ -139,21 +140,25 @@ export function HourlyHelpModule({
           <span aria-hidden className="pointer-events-none absolute right-24 bottom-6 size-14 rounded-full border border-white/15" />
         </>
       )}
-      <div className="relative grid gap-8 lg:grid-cols-[1fr_1.15fr] lg:gap-12">
+      <div className={cn("relative grid gap-8 lg:grid-cols-[1fr_1.15fr] lg:gap-12", tone === "light" && "lg:items-center lg:gap-16")}>
         <div>
-          <p className={cn("text-xs font-semibold uppercase tracking-[0.14em]", tone === "dark" ? "text-white" : "text-brand")}>
-            Hourly home help
-          </p>
-          <Heading id="hourly-heading" className="mt-3 font-display text-2xl font-bold tracking-tight sm:text-3xl">
+          <p className={cn("text-sm font-medium", tone === "dark" ? "text-white" : "text-brand")}>Hourly home help</p>
+          <Heading
+            id="hourly-heading"
+            className={cn(
+              "mt-2 font-display font-bold tracking-tight",
+              tone === "light" ? "type-title" : "text-2xl sm:text-3xl",
+            )}
+          >
             Need flexible help?
           </Heading>
-          <p className={cn("mt-3 max-w-md text-base leading-relaxed", t.muted)}>
+          <p className={cn("mt-3 max-w-md text-base leading-relaxed", tone === "light" && "sm:text-lg", t.muted)}>
             Book a trained professional by the hour for everyday household tasks — you set the agenda.
           </p>
           {live && (
             <p className="mt-6 flex items-baseline gap-2">
               <span className="font-display text-4xl font-bold tabular-nums">{formatInr(service!.price!.base)}</span>
-              <span className={t.muted}>/ hour</span>
+              <span className={t.muted}>per hour</span>
             </p>
           )}
           {showDetailsLink && service && (
@@ -172,7 +177,7 @@ export function HourlyHelpModule({
         </div>
 
         {live ? (
-          <div className={cn("rounded-[1.75rem] border p-5 sm:rounded-[2rem] sm:p-6", t.panel)}>
+          <div className={cn("rounded-3xl border p-5 sm:p-7", t.panel)}>
             <fieldset>
               <legend className="text-sm font-semibold">How long?</legend>
               <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-2">
@@ -226,7 +231,7 @@ export function HourlyHelpModule({
                       aria-pressed={on}
                       onClick={() => toggleTask(task)}
                       className={cn(
-                        "inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3.5 text-sm motion-safe:transition-colors",
+                        "inline-flex min-h-11 items-center gap-1.5 rounded-full border px-4 text-sm motion-safe:transition-colors",
                         focusRing,
                         on ? t.chipOn : t.chip,
                       )}
@@ -243,7 +248,7 @@ export function HourlyHelpModule({
               <div>
                 <p className={cn("flex items-center gap-1.5 text-xs", t.muted)}>
                   <Clock className="size-3.5" aria-hidden />
-                  {hours} {hours === 1 ? "hour" : "hours"} · estimate before taxes · final price at checkout
+                  Estimate for {hours} {hours === 1 ? "hour" : "hours"}, before taxes. Final price at checkout.
                 </p>
                 {quote && quote.amount != null && <AnimatedPrice amount={quote.amount} className="mt-1 font-display text-2xl font-bold" />}
               </div>

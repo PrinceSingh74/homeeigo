@@ -12,7 +12,7 @@ import "../load-env";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
-import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { serviceAvailabilityService } from "../services/service-availability.service";
 import { partnerOperationsService } from "../services/partner-operations.service";
 import {
@@ -80,7 +80,7 @@ describe("a customer-chosen partner whose app is not live", () => {
     const { date, dayStart } = dayAhead(6);
     const open = (await grid(date, new Date())).find((s) => s.available);
     expect(open).toBeDefined();
-    const created = await bookingService.create(ctx.customerA.id, {
+    const created = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       addressId: ctx.addressAId,
       scheduledDate: open!.start,

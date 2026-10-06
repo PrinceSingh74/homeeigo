@@ -18,7 +18,7 @@ import {
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
-import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { civilDate } from "../lib/service-availability";
 
 const RUN = `p10avail-${Date.now().toString(36)}`;
@@ -116,7 +116,7 @@ describe.serial("the projection agrees with booking create", () => {
     const offered = r.json.data.slots.find((s: any) => s.available);
     expect(offered).toBeTruthy();
 
-    const created = await bookingService.create(ctx.customerA.id, {
+    const created = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       addressId: ctx.addressAId,
@@ -131,7 +131,7 @@ describe.serial("the projection agrees with booking create", () => {
     const before = await availability(date, { providerId: ctx.providerId });
     const target = before.json.data.slots.find((s: any) => s.available && istTime(new Date(s.start)) === "12:00")
       ?? before.json.data.slots.find((s: any) => s.available);
-    const created = await bookingService.create(ctx.customerB.id, {
+    const created = await createBookingWithQuote(ctx.customerB.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       addressId: ctx.addressBId,
@@ -151,7 +151,7 @@ describe.serial("the projection agrees with booking create", () => {
     const date = dayAhead((day += 1));
     const r1 = await availability(date, { providerId: ctx.providerId });
     const target = r1.json.data.slots.find((s: any) => s.available);
-    await bookingService.create(ctx.customerA.id, {
+    await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId, providerId: ctx.providerId, addressId: ctx.addressAId, scheduledDate: target.start,
     });
 
@@ -159,7 +159,7 @@ describe.serial("the projection agrees with booking create", () => {
     const busy = r2.json.data.slots.find((s: any) => s.start === target.start);
     expect(busy.available).toBe(false);
 
-    const second = await bookingService.create(ctx.customerB.id, {
+    const second = await createBookingWithQuote(ctx.customerB.id, {
       serviceId: ctx.serviceId, providerId: ctx.providerId, addressId: ctx.addressBId, scheduledDate: target.start,
     });
     expect("error" in second).toBe(true);

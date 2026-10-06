@@ -6,7 +6,7 @@ import { heatmapService } from "../services/heatmap.service";
 import { opsMapService } from "../services/ops-map.service";
 import { catalogService } from "../services/catalog.service";
 import { requirementCatalogService } from "../services/requirement-catalog.service";
-import { REQUESTABLE_LIFECYCLES } from "../lib/service-domain";
+import { OFF_SALE_LIFECYCLES, REQUESTABLE_LIFECYCLES } from "../lib/service-domain";
 import { earningsService } from "../services/earnings.service";
 import { subscriptionService } from "../services/subscription.service";
 import { referralService } from "../services/referral.service";
@@ -163,6 +163,19 @@ const SERVICE_WRITE_STATUS: Record<string, number> = {
   VERSION_CONFLICT: 409,
   SERVICE_CODE_IMMUTABLE: 409,
   INVALID_LIFECYCLE_TRANSITION: 409,
+  APPROVAL_REQUIRED: 409,
+  APPROVER_IS_EDITOR: 409,
+  APPROVAL_STALE: 409,
+  NOT_AWAITING_APPROVAL: 409,
+  NO_PENDING_REVISION: 404,
+  SLUG_IMMUTABLE: 409,
+  NOT_SCHEDULED: 409,
+  REASON_REQUIRED: 400,
+  NOTHING_TO_RESTORE: 409,
+  CATEGORY_IN_USE: 409,
+  REVISION_OUTDATED: 409,
+  APPROVE_PERMISSION_REQUIRED: 403,
+  SCHEDULED_NOT_DUE: 409,
 };
 
 function serviceWriteFailure(
@@ -1705,10 +1718,89 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
     }
     return { success: true, data: result };
   })
+  .get("/services/:id/versions/diff", async ({ params, query, set }) => {
+    const q = query as Record<string, string | undefined>;
+    const from = Number(q.from);
+    const to = Number(q.to);
+    if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < 1) {
+      set.status = 400;
+      return { success: false, error: "from and to must be version numbers", code: "VALIDATION_ERROR" };
+    }
+    const result = await catalogService.versionDiff(params.id, from, to);
+    if ("error" in result) {
+      set.status = 404;
+      return { success: false, error: "Version not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: result };
+  })
+  .post(
+    "/services/:id/versions/:version/restore",
+    async ({ params, body, set, adminContext }) => {
+      const version = Number(params.version);
+      if (!Number.isInteger(version) || version < 1) {
+        set.status = 400;
+        return { success: false, error: "version must be a version number", code: "VALIDATION_ERROR" };
+      }
+      if (!body.reason?.trim()) {
+        set.status = 400;
+        return { success: false, error: "Give the reason for restoring this version.", code: "REASON_REQUIRED" };
+      }
+      const result = await catalogService.restoreVersion(params.id, version, adminContext?.userId, body.reason);
+      if ("error" in result && result.error) return serviceWriteFailure(set, result);
+      return { success: true, message: `Version ${version} restored as a new version`, data: result };
+    },
+    { body: t.Object({ reason: t.Optional(t.String({ maxLength: 400 })) }) },
+  )
+  .get("/services/:id/audit", async ({ params, query, set }) => {
+    const result = await catalogService.auditTrail(params.id, (query as Record<string, string>).limit);
+    if ("error" in result) {
+      set.status = 404;
+      return { success: false, error: "Service not found", code: "NOT_FOUND" };
+    }
+    return { success: true, data: result };
+  })
   .get("/service-categories", async () => {
     const data = await catalogService.adminCategories();
     return { success: true, data };
   })
+  .post(
+    "/service-categories",
+    async ({ body, set, adminContext }) => {
+      const result = await catalogService.createCategory(body, adminContext?.userId);
+      if ("error" in result && result.error) return serviceWriteFailure(set, result);
+      return { success: true, message: "Category created", data: result };
+    },
+    {
+      body: t.Object({
+        name: t.String({ minLength: 1, maxLength: 80 }),
+        slug: t.String({ minLength: 1, maxLength: 80 }),
+        parentId: t.Optional(t.Nullable(t.String({ maxLength: 64 }))),
+        shortName: t.Optional(t.Nullable(t.String({ maxLength: 40 }))),
+        description: t.Optional(t.Nullable(t.String({ maxLength: 500 }))),
+        sortOrder: t.Optional(t.Integer({ minimum: 0, maximum: 10_000 })),
+        operationalCategories: t.Optional(t.Array(t.String({ maxLength: 80 }), { maxItems: 30 })),
+      }),
+    },
+  )
+  .put(
+    "/service-categories/:id",
+    async ({ params, body, set, adminContext }) => {
+      const result = await catalogService.updateCategory(params.id, body, adminContext?.userId);
+      if ("error" in result && result.error) return serviceWriteFailure(set, result);
+      return { success: true, message: "Category updated", data: result };
+    },
+    {
+      body: t.Object({
+        name: t.Optional(t.String({ minLength: 1, maxLength: 80 })),
+        slug: t.Optional(t.String({ maxLength: 80 })),
+        shortName: t.Optional(t.Nullable(t.String({ maxLength: 40 }))),
+        description: t.Optional(t.Nullable(t.String({ maxLength: 500 }))),
+        sortOrder: t.Optional(t.Integer({ minimum: 0, maximum: 10_000 })),
+        isActive: t.Optional(t.Boolean()),
+        operationalCategories: t.Optional(t.Array(t.String({ maxLength: 80 }), { maxItems: 30 })),
+      }),
+    },
+  )
   // Phase 06 — requirement catalogue. Assignments to a service go through PUT /services/:id
   // (catalogConfig.requirements) so they share the editor's merge, version and 409 semantics.
   .get("/requirement-items", async ({ query }) => {
@@ -1777,7 +1869,7 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
   .patch(
     "/services/:id/status",
     async ({ params, body, set, adminContext }) => {
-      const result = await catalogService.setActive(params.id, body.isActive, adminContext?.userId);
+      const result = await catalogService.setActive(params.id, body.isActive, adminContext?.userId, body.reason);
       if ("error" in result && result.error) return serviceWriteFailure(set, result);
       return {
         success: true,
@@ -1785,12 +1877,17 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
         data: result,
       };
     },
-    { body: t.Object({ isActive: t.Boolean() }) },
+    { body: t.Object({ isActive: t.Boolean(), reason: t.Optional(t.String({ maxLength: 500 })) }) },
   )
   .post(
     "/services/:id/lifecycle",
     async ({ params, body, set, adminContext }) => {
-      const result = await catalogService.transition(params.id, body.to, adminContext?.userId, body.expectedVersion);
+      // Taking a service off sale is a decision someone must be able to explain later.
+      if ((OFF_SALE_LIFECYCLES as readonly string[]).includes(body.to) && !body.reason?.trim()) {
+        set.status = 400;
+        return { success: false, error: "Give the reason for taking this service off sale.", code: "REASON_REQUIRED" };
+      }
+      const result = await catalogService.transition(params.id, body.to, adminContext?.userId, body.expectedVersion, body.reason);
       if ("error" in result && result.error) return serviceWriteFailure(set, result);
       return { success: true, message: `Service moved to ${result.service.lifecycleStatus}`, data: result };
     },
@@ -1798,8 +1895,61 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
       body: t.Object({
         to: t.Union(REQUESTABLE_LIFECYCLES.map((l) => t.Literal(l))),
         expectedVersion: t.Optional(t.Integer({ minimum: 1 })),
+        reason: t.Optional(t.String({ maxLength: 500 })),
       }),
     },
+  )
+  .post("/services/:id/unschedule", async ({ params, set, adminContext }) => {
+    const result = await catalogService.unschedule(params.id, adminContext?.userId);
+    if ("error" in result && result.error) return serviceWriteFailure(set, result);
+    return { success: true, message: "Scheduled go-live removed", data: result };
+  })
+  .post(
+    "/services/:id/approve",
+    async ({ params, body, set, adminContext }) => {
+      const result = await catalogService.approve(params.id, adminContext?.userId, body.scheduledLiveAt, {
+        version: body.expectedVersion,
+        contentHash: body.expectedContentHash,
+      });
+      if ("error" in result && result.error) return serviceWriteFailure(set, result);
+      return { success: true, message: "Service approved", data: result };
+    },
+    {
+      body: t.Object({
+        scheduledLiveAt: t.Optional(t.Nullable(t.String({ maxLength: 40 }))),
+        expectedVersion: t.Optional(t.Integer({ minimum: 1 })),
+        /** `contentHash` from the service the approver reviewed. */
+        expectedContentHash: t.Optional(t.String({ pattern: "^[0-9a-f]{64}$" })),
+      }),
+    },
+  )
+  .post(
+    "/services/:id/revision/approve",
+    async ({ params, body, set, adminContext }) => {
+      const result = await catalogService.approveRevision(params.id, adminContext?.userId, {
+        contentHash: body.expectedContentHash,
+        scheduledLiveAt: body.scheduledLiveAt,
+      });
+      if ("error" in result && result.error) return serviceWriteFailure(set, result);
+      const scheduled = "pendingRevision" in result && result.pendingRevision?.scheduledLiveAt;
+      return { success: true, message: scheduled ? `Revision approved; it goes live at ${scheduled}` : "Revision approved and published", data: result };
+    },
+    {
+      body: t.Object({
+        expectedContentHash: t.Optional(t.String({ pattern: "^[0-9a-f]{64}$" })),
+        /** ISO timestamp (no offset = Asia/Kolkata). A future time holds the approved revision until then. */
+        scheduledLiveAt: t.Optional(t.Nullable(t.String({ maxLength: 40 }))),
+      }),
+    },
+  )
+  .post(
+    "/services/:id/revision/reject",
+    async ({ params, body, set, adminContext }) => {
+      const result = await catalogService.rejectRevision(params.id, adminContext?.userId, body.reason);
+      if ("error" in result && result.error) return serviceWriteFailure(set, result);
+      return { success: true, message: "Revision discarded", data: result };
+    },
+    { body: t.Object({ reason: t.Optional(t.Nullable(t.String({ maxLength: 500 }))) }) },
   )
   .delete("/services/:id", async ({ params, set }) => {
     const result = await catalogService.remove(params.id);

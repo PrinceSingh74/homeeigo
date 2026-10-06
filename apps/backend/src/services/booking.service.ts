@@ -68,6 +68,9 @@ import { toWaitTimeMsBigInt } from "../lib/wait-time-ms";
 import {
   ACTIVE_FULFILMENT_STATUSES,
   collectForbiddenPartnerKeys,
+  partnerCancellationReason,
+  partnerCustomerStage,
+  stripForbiddenPartnerKeys,
   toCustomerSafePartner,
   toPartnerSafeAddress,
   toPartnerSafeCustomer,
@@ -385,8 +388,8 @@ export class BookingService {
         return { error: "PRICE_CHANGED" as const, quote: priced.breakdown };
       }
     } else {
-      // Clients that predate quote tokens still book (priced server-side); counted for rollout.
       incCounter("quote_token_absent_total");
+      return { error: "QUOTE_REQUIRED" as const, quote: priced.breakdown };
     }
     phase("quote");
 
@@ -1011,6 +1014,8 @@ export class BookingService {
       const payload = {
         // X-29: the customer's refund amount / status are not partner data.
         ...withoutCustomerMoney(shared),
+        // Someone else's words about the cancellation (the customer's reason, an admin's note) stay with them.
+        cancellationReason: partnerCancellationReason(b.cancellationReason, b.cancelledBy),
         customer: toPartnerSafeCustomer(
           {
             firstName: b.user.firstName,
@@ -1018,7 +1023,7 @@ export class BookingService {
             profileImage: b.user.profileImage,
             phone,
           },
-          b.providerId === providerId ? "owner" : "offer",
+          partnerCustomerStage({ isAssignee: b.providerId === providerId, status: String(b.status) }),
         ),
         address: toPartnerSafeAddress(addressRaw, privacyCtx),
         execution: partnerExecutionFromSnapshot(b.serviceConfigSnapshot),
@@ -1034,7 +1039,7 @@ export class BookingService {
       if (leaked.length > 0) {
         logger.warn("partner_booking_payload_forbidden_keys", { bookingId: b.id, keys: leaked });
       }
-      return payload;
+      return stripForbiddenPartnerKeys(payload);
     }
 
     const partnerPhone = b.provider

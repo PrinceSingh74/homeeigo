@@ -20,6 +20,7 @@ import {
 } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { adminBookingOperationsService } from "../services/admin-booking-operations.service";
 import { eventPlatformConfig } from "../events/core/config";
 
@@ -35,7 +36,7 @@ function istSlot(daysAhead: number, hhmm = "10:00"): Date {
 }
 
 async function createBooking() {
-  const created = await bookingService.create(ctx.customerA.id, {
+  const created = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
     addressId: ctx.addressAId,

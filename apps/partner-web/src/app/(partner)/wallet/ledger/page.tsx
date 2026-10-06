@@ -30,7 +30,7 @@ export default function WalletLedgerPage() {
           <ArrowLeft className="h-3.5 w-3.5" /> Back to wallet
         </Link>
         <h1 className="font-display text-2xl font-bold">Transaction ledger</h1>
-        <p className="text-sm text-partner-muted">Complete wallet history from the backend</p>
+        <p className="text-sm text-partner-muted">Earnings and payouts from your provider account</p>
       </div>
 
       <PartnerCard>

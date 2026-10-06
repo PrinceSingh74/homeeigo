@@ -81,6 +81,7 @@ const QUOTE_ERRORS: Record<string, { status: number; message: string }> = {
   QUOTE_EXPIRED: { status: 409, message: "Your quote expired — please review the current price" },
   QUOTE_MISMATCH: { status: 400, message: "This quote was for a different selection" },
   QUOTE_INVALID: { status: 400, message: "Invalid quote" },
+  QUOTE_REQUIRED: { status: 400, message: "Review the current price before booking" },
 };
 
 /**

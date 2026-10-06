@@ -24,9 +24,24 @@ export type LiveProviderFlag =
   | "HOMIGO_REQUIRE_S3"
   | "HOMIGO_REQUIRE_AI";
 
-export function liveProviderAllowed(flag: LiveProviderFlag): boolean {
-  if (process.env.NODE_ENV !== "test") return true;
-  return process.env[flag] === "1";
+export function liveProviderAllowed(flag: LiveProviderFlag, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.NODE_ENV !== "test" && !onIsolatedDatabase(env)) return true;
+  return env[flag] === "1";
+}
+
+/**
+ * This process is on a disposable database (its name contains "test").
+ *
+ * An isolated verification stack runs with NODE_ENV=development so that it behaves like the app a
+ * developer sees, and it loads `.env`, which holds the REAL provider credentials. Keying the barrier
+ * on NODE_ENV alone therefore left such a stack free to create real payment orders, send real SMS
+ * and spend maps quota against fixture data (found 2026-10-06, before any such call was made). The
+ * database is the better witness: whatever mode the process claims, work on a test database is test
+ * work.
+ */
+export function onIsolatedDatabase(env: NodeJS.ProcessEnv = process.env): boolean {
+  const name = (env.DATABASE_URL ?? "").split("/").pop()?.split("?")[0] ?? "";
+  return /test/i.test(name);
 }
 
 /** Every provider flag, for the barrier's own coverage test. */

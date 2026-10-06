@@ -14,6 +14,7 @@ import {
 } from "./helpers/adversarial-fixtures";
 import { supportTicketService } from "../services/support-ticket.service";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { providerService } from "../services/provider.service";
 import { membershipCouponService } from "../services/membership-coupon.service";
 
@@ -91,7 +92,7 @@ describe.serial("Enterprise complete flows", () => {
     const slotA = futureSlot(400);
     const slotB = futureSlot(401);
 
-    const b1 = await bookingService.create(ctx.customerA.id, {
+    const b1 = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       scheduledDate: slotA.toISOString(),

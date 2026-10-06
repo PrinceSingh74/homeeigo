@@ -11,6 +11,7 @@ import path from "path";
 import app from "../index";
 import { prisma, dbReachable, seedAdversarialFixtures, cleanupAdversarialFixtures, bearer, fixturePhone, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { supportTicketService } from "../services/support-ticket.service";
 import { providerService } from "../services/provider.service";
 import { rbacService } from "../services/rbac.service";
@@ -57,7 +58,7 @@ function soakSlot(hoursFromNow: number): Date {
 
 async function seedAcceptedBooking(hoursFromNow: number): Promise<string> {
   const slot = soakSlot(hoursFromNow);
-  const created = await bookingService.create(ctx.customerA.id, {
+  const created = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
     scheduledDate: slot.toISOString(),

@@ -10,7 +10,7 @@
 import "../load-env";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { prisma } from "../lib/prisma";
-import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { assignmentEngine } from "../services/assignment-engine.service";
 import {
   cleanupAdversarialFixtures,
@@ -47,7 +47,7 @@ async function settleInlineDispatch(): Promise<void> {
 describe("dispatch of one job", () => {
   test(`${CONCURRENT_DISPATCHES} concurrent dispatches of a paid booking run once and spend one attempt`, async () => {
     await heartbeatFresh(ctx);
-    const created = await bookingService.create(ctx.customerA.id, {
+    const created = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       addressId: ctx.addressAId,
       scheduledDate: futureSlot(150).toISOString(),

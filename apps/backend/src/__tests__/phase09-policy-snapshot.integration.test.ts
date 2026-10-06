@@ -23,6 +23,7 @@ import {
 } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { CANCELLATION_POLICY_VERSION } from "../services/cancellation-policy.service";
 
 const RUN = `p09snap-${Date.now().toString(36)}`;
@@ -37,7 +38,7 @@ function istSlot(daysAhead: number, hhmm = "10:00"): Date {
 }
 
 async function createBooking() {
-  const created = await bookingService.create(ctx.customerA.id, {
+  const created = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
     addressId: ctx.addressAId,

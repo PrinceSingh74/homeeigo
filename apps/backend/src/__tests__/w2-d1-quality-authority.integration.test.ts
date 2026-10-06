@@ -29,6 +29,7 @@ import {
 } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 
 const RUN = `w2d1-${Date.now().toString(36)}`;
 const CHECKLIST = ["Wipe surfaces", "Mop floor", "Empty bins"];
@@ -56,7 +57,7 @@ async function setQuality(quality: Record<string, unknown> | null) {
 /** A paid booking the partner has already started. */
 async function startedBooking() {
   await keepPresenceFresh(ctx);
-  const result = await bookingService.create(ctx.customerA.id, {
+  const result = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
     addressId: ctx.addressAId,

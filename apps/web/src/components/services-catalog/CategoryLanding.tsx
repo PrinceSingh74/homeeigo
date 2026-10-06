@@ -1,7 +1,8 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import Image from "next/image";
+import { ShieldCheck, type LucideIcon } from "lucide-react";
 import {
   AUDIENCES,
   EMPTY_FILTERS,
@@ -33,16 +34,16 @@ import { HourlyHelpModule } from "@/components/services-catalog/HourlyHelpModule
 import { NotifyMeButton } from "@/components/services-catalog/NotifyMe";
 import { BeautyAudienceSelector, BeautyCategorySelector } from "@/components/services-catalog/beauty/BeautySelectors";
 import { BEAUTY_TYPE_COPY } from "@/lib/catalog/copy";
-import { Breadcrumbs, IconTile, SectionHeading, eyebrow } from "@/components/services-catalog/primitives";
+import { Breadcrumbs, SectionHeading } from "@/components/services-catalog/primitives";
 import { HomeHelpLanding } from "@/components/services-catalog/home-help/HomeHelpLanding";
 import { BrandMesh } from "@/components/layout/BrandCanvas";
 import { cn } from "@/lib/utils";
 
 const TREATMENT_HEADER: Record<string, string> = {
-  senior: "bg-amber-50/70 dark:bg-amber-500/[0.06]",
-  pet: "bg-orange-50/60 dark:bg-orange-500/[0.05]",
-  executive: "bg-slate-100/70 dark:bg-white/[0.03]",
-  beauty: "bg-rose-50/60 dark:bg-rose-500/[0.05]",
+  senior: "bg-amber-50 dark:bg-amber-500/[0.06]",
+  pet: "bg-orange-50 dark:bg-orange-500/[0.05]",
+  executive: "bg-slate-100 dark:bg-white/[0.03]",
+  beauty: "bg-rose-50 dark:bg-rose-500/[0.05]",
 };
 
 export function CategoryLanding({
@@ -138,33 +139,39 @@ function Landing({
 
   return (
     <>
-      <header className={cn("border-b border-line/60", TREATMENT_HEADER[def.treatment] ?? "bg-surface")}>
-        <div className={cn(pageSection, "pb-10 pt-6 sm:pb-12 sm:pt-8")}>
+      <header className={cn("border-b border-line/60", TREATMENT_HEADER[def.treatment])}>
+        <div className={cn(pageSection, "pb-10 pt-5 sm:pb-14 sm:pt-6")}>
           <Breadcrumbs items={crumbs} />
-          <div className="mt-8 flex flex-col gap-6 motion-safe:animate-catalog-in lg:flex-row lg:items-end lg:justify-between">
-            <div className="flex max-w-2xl gap-5">
-              <IconTile icon={def.icon} tone={def.tone} className="hidden size-16 shrink-0 rounded-2xl sm:grid" iconClassName="size-7" />
-              <div>
-                <p className={eyebrow}>
-                  {liveHere > 0 ? `${liveHere} bookable · ${base.length} services` : `${base.length} services · coming soon`}
+          <div className="mt-6 grid items-center gap-10 lg:mt-8 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16">
+            <div className="min-w-0 motion-safe:animate-catalog-in">
+              <h1 className="font-display type-display font-bold tracking-tight text-content">{title}</h1>
+              <p className="mt-4 max-w-xl text-lg leading-relaxed text-content sm:text-xl">
+                {audience ? AUDIENCES.find((a) => a.id === audience)!.hint : def.tagline}
+              </p>
+              <p className="mt-3 max-w-xl text-base leading-relaxed text-content/75">{def.description}</p>
+              <p className="mt-5 flex items-center gap-2.5 text-sm font-medium text-content">
+                <span
+                  aria-hidden
+                  className={cn("size-2 shrink-0 rounded-full", liveHere > 0 ? "bg-emerald-500" : "bg-content/30")}
+                />
+                {liveHere > 0
+                  ? `${liveHere} of ${base.length} services bookable now`
+                  : `${base.length} ${base.length === 1 ? "service" : "services"} planned, none bookable yet`}
+              </p>
+              {liveHere === 0 && (
+                <NotifyMeButton sourceKey={`category:${def.id}`} serviceName={def.name} variant="primary" className="mt-6" />
+              )}
+              {def.notice && (
+                <p className="mt-6 flex max-w-xl gap-3 border-l-2 border-current pl-4 text-sm leading-relaxed text-content" style={{ borderColor: def.tone }}>
+                  <ShieldCheck className="mt-0.5 size-5 shrink-0" style={{ color: def.tone }} aria-hidden />
+                  {def.notice}
                 </p>
-                <h1 className="mt-2 font-display type-title font-bold tracking-tight text-content">{title}</h1>
-                <p className="mt-3 text-lg leading-relaxed text-content/75">{audience ? AUDIENCES.find((a) => a.id === audience)!.hint : def.tagline}</p>
-                <p className="mt-2 text-base leading-relaxed text-content/75">{def.description}</p>
-              </div>
+              )}
             </div>
-            {liveHere === 0 && (
-              <NotifyMeButton sourceKey={`category:${def.id}`} serviceName={def.name} variant="primary" className="self-start lg:self-auto" />
-            )}
+            <HeaderMedia services={base} icon={def.icon} tone={def.tone} />
           </div>
-          {def.notice && (
-            <p className="mt-6 flex max-w-3xl gap-3 rounded-2xl border border-line bg-surface/80 p-4 text-sm text-content">
-              <ShieldCheck className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />
-              {def.notice}
-            </p>
-          )}
           {isBeauty && (
-            <div className="mt-8">
+            <div className="mt-10">
               <BeautyAudienceSelector
                 active={audience}
                 counts={Object.fromEntries(
@@ -234,6 +241,47 @@ function Landing({
   );
 }
 
+/**
+ * Header media: up to three real photos of THIS category's bookable services. With none,
+ * a calm tinted panel carrying the category mark — never a stand-in photo.
+ */
+function HeaderMedia({ services, icon: Icon, tone }: { services: ServiceView[]; icon: LucideIcon; tone: string }) {
+  const photos = services.filter((s) => s.status === "live" && s.image).slice(0, 3);
+  if (photos.length === 0) {
+    return (
+      <div
+        aria-hidden
+        className="hidden size-56 place-items-center justify-self-end rounded-3xl lg:grid"
+        style={{ backgroundColor: `${tone}14`, color: tone }}
+      >
+        <Icon className="size-20" strokeWidth={1.1} />
+      </div>
+    );
+  }
+  const frame = "relative overflow-hidden rounded-3xl bg-canvas";
+  const img = (s: ServiceView, sizes: string, priority = false) => (
+    <Image src={s.image!} alt="" fill priority={priority} sizes={sizes} className="object-cover object-[50%_25%]" />
+  );
+  if (photos.length === 1) {
+    return (
+      <div aria-hidden className={cn(frame, "aspect-[4/3] shadow-e3")}>
+        {img(photos[0]!, "(max-width: 1024px) 92vw, 560px", true)}
+      </div>
+    );
+  }
+  return (
+    <div aria-hidden className="grid aspect-[4/3] grid-cols-5 grid-rows-2 gap-3">
+      <div className={cn(frame, "col-span-3 row-span-2 shadow-e3")}>
+        {img(photos[0]!, "(max-width: 1024px) 56vw, 340px", true)}
+      </div>
+      <div className={cn(frame, "col-span-2", photos.length === 2 ? "row-span-2 mt-10" : "")}>
+        {img(photos[1]!, "(max-width: 1024px) 38vw, 220px")}
+      </div>
+      {photos[2] && <div className={cn(frame, "col-span-2")}>{img(photos[2], "(max-width: 1024px) 38vw, 220px")}</div>}
+    </div>
+  );
+}
+
 /** Unfiltered view: popular → subgroups → coming soon, instead of one giant wall. */
 function Browse({
   category,
@@ -267,10 +315,10 @@ function Browse({
             <div key={t.id}>
               <SectionHeading
                 title={t.name}
-                kicker={`${items.length} ${items.length === 1 ? "service" : "services"} · coming soon`}
+                kicker={`${items.length} coming soon`}
                 subtitle={BEAUTY_TYPE_COPY[t.id]}
               />
-              <ServiceGrid linkAudience={audience} services={items} label={`${t.name} services`} />
+              <ServiceGrid linkAudience={audience} services={items} label={`${t.name} services`} statusStated />
             </div>
           );
         })}
@@ -325,7 +373,7 @@ function Browse({
               ) : undefined
             }
           />
-          <ServiceGrid linkAudience={audience} services={soon} label={`${def.name} coming soon`} />
+          <ServiceGrid linkAudience={audience} services={soon} label={`${def.name} coming soon`} statusStated />
         </div>
       )}
     </div>

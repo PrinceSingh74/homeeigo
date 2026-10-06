@@ -145,7 +145,7 @@ async function login(page: Page) {
 test.describe("browse & discover", () => {
   test("1 hub renders hero, categories, hourly module and trust — no internal data", async ({ page }) => {
     await page.goto("/services");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Everything Your Home Needs. One Trusted Place.");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Everything your home needs. One trusted place.");
     await expect(page.getByRole("heading", { name: "All services, by category" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Need flexible help?" })).toBeVisible();
     await expect(page.getByText("₹199", { exact: true }).first()).toBeVisible();

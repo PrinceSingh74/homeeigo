@@ -39,6 +39,7 @@ import { partnerOperationsService } from "../services/partner-operations.service
 import { partnerLifecycleService } from "../services/partner-lifecycle.service";
 import { assignmentEngine } from "../services/assignment-engine.service";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { financialLedgerService } from "../services/financial-ledger.service";
 import { providerWalletReservationService } from "../services/provider-wallet-reservation.service";
 
@@ -240,7 +241,7 @@ beforeAll(async () => {
 
   // One real ACCEPTED job so the JOB axis holds a live, non-terminal value.
   const scheduled = futureSlot(40);
-  const created = await bookingService.create(ctx.customerA.id, {
+  const created = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     scheduledDate: scheduled.toISOString(),
     addressId: ctx.addressAId,

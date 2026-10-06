@@ -62,10 +62,17 @@ describe("payment mock gating", () => {
   it("allows mocks under bun test and under an explicit dev opt-in only", () => {
     setEnv({ NODE_ENV: "test", APP_ENV: "development", HOMIGO_ALLOW_PAYMENT_MOCKS: undefined });
     expect(paymentMocksAllowed()).toBe(true);
-    setEnv({ NODE_ENV: "development", APP_ENV: "development", HOMIGO_ALLOW_PAYMENT_MOCKS: undefined });
-    expect(paymentMocksAllowed()).toBe(false);
-    setEnv({ NODE_ENV: "development", APP_ENV: "development", HOMIGO_ALLOW_PAYMENT_MOCKS: "1" });
-    expect(paymentMocksAllowed()).toBe(true);
+    // A developer's own backend, on the developer's database. (This process is on the test
+    // database, so the environment is passed in rather than read from it.)
+    const dev = { NODE_ENV: "development", APP_ENV: "development", DATABASE_URL: "postgresql://u:p@localhost:5432/homigo_db" } as NodeJS.ProcessEnv;
+    expect(paymentMocksAllowed(dev)).toBe(false);
+    expect(paymentMocksAllowed({ ...dev, HOMIGO_ALLOW_PAYMENT_MOCKS: "1" })).toBe(true);
+  });
+
+  it("a development process on a disposable test database has mocks, because it has no gateway", () => {
+    const isolated = { NODE_ENV: "development", APP_ENV: "development", DATABASE_URL: "postgresql://u:p@localhost:5433/homigo_test" } as NodeJS.ProcessEnv;
+    expect(paymentMocksAllowed(isolated)).toBe(true);
+    expect(paymentMocksAllowed({ ...isolated, APP_ENV: "staging" })).toBe(false);
   });
 });
 

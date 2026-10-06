@@ -27,6 +27,7 @@ import {
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { assignmentEngine } from "../services/assignment-engine.service";
 import { createDedicatedPoolClient } from "../lib/prisma-base";
 
@@ -73,7 +74,7 @@ afterAll(async () => {
 
 describe("broadcast accept under concurrency", () => {
   test(`${CONCURRENT_ACCEPTS} concurrent accepts of a broadcast offer with a cold gate-context memo — exactly one wins, none throw`, async () => {
-    const created = await bookingService.create(ctx.customerA.id, {
+    const created = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       addressId: ctx.addressAId,
       scheduledDate: futureSlot(160).toISOString(),

@@ -8,8 +8,13 @@ import { cn } from "@/lib/utils";
 /* Shared class vocabulary — one definition per visual role. */
 export const cardSurface = "rounded-2xl border border-line bg-surface shadow-e1";
 export const cardHover =
-  "motion-safe:transition-[transform,box-shadow,border-color] motion-safe:duration-300 motion-safe:ease-[var(--ease-out-soft)] hover:border-emerald-200 hover:shadow-e3 motion-safe:hover:-translate-y-1 dark:hover:border-emerald-500/30";
-export const eyebrow = "text-xs font-semibold uppercase tracking-[0.14em] text-brand";
+  "motion-safe:transition-[box-shadow,border-color] motion-safe:duration-300 motion-safe:ease-[var(--ease-out-soft)] hover:border-emerald-300 hover:shadow-e3 dark:hover:border-emerald-500/40";
+/** A short sentence-case line above or beside a heading — never uppercase, never tracked out. */
+export const eyebrow = "text-sm font-medium text-brand";
+/** Text link in the brand colour — the only accent text. */
+export const textLink = "rounded-md font-semibold text-brand underline-offset-4 hover:underline";
+/** Full-bleed mint band behind a block inside the page container (see `bleed-band` in globals.css). */
+export const band = "bleed-band py-10 sm:py-14";
 export const focusRing =
   "outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas";
 export const pillBase = cn(
@@ -142,10 +147,13 @@ export function SectionHeading({
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 sm:mb-8">
       <div className="min-w-0 max-w-2xl">
-        {kicker && <p className={cn(eyebrow, "mb-2")}>{kicker}</p>}
-        <Tag id={id} className="font-display text-2xl font-bold tracking-tight text-content sm:text-3xl">
-          {title}
-        </Tag>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <Tag id={id} className="font-display text-2xl font-bold tracking-tight text-content sm:text-3xl">
+            {title}
+          </Tag>
+          {/* The kicker is a fact about the section (a count, a status), set beside the title. */}
+          {kicker && <p className="text-sm font-medium text-brand">{kicker}</p>}
+        </div>
         {subtitle && <p className="mt-2 text-base leading-relaxed text-muted">{subtitle}</p>}
       </div>
       {action}

@@ -10,7 +10,7 @@ import { BookingStatus, type DataOrigin } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { matchingService } from "../services/matching.service";
 import { partnerOperationsService } from "../services/partner-operations.service";
-import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { adminBookingOperationsService } from "../services/admin-booking-operations.service";
 import { ratingService } from "../services/rating.service";
 import { cleanupAdversarialFixtures, dbReachable, keepPresenceFresh, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
@@ -129,7 +129,7 @@ describe.serial("direct selection cannot cross populations either", () => {
     if (!dbOk) return;
     await setOrigin(ctx.customerB.id, "REAL");
     await keepPresenceFresh(ctx);
-    const r = await bookingService.create(ctx.customerB.id, {
+    const r = await createBookingWithQuote(ctx.customerB.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       addressId: ctx.addressBId,
@@ -142,7 +142,7 @@ describe.serial("direct selection cannot cross populations either", () => {
   test("the same fixture partner is bookable by a fixture customer", async () => {
     if (!dbOk) return;
     await keepPresenceFresh(ctx);
-    const r = await bookingService.create(ctx.customerA.id, {
+    const r = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       addressId: ctx.addressAId,
@@ -159,7 +159,7 @@ describe.serial("support cannot cross populations", () => {
     await keepPresenceFresh(ctx);
     // Create the booking while both are fixtures, then reclassify the customer as REAL — the state
     // an admin reassignment would meet in production.
-    const r = await bookingService.create(ctx.customerA.id, {
+    const r = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       addressId: ctx.addressAId,
       scheduledDate: istSlot((day += 1)),

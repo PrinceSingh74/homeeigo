@@ -16,7 +16,7 @@ import "../load-env";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import prisma from "../lib/prisma";
 import { matchingService } from "../services/matching.service";
-import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { partnerOperationsService } from "../services/partner-operations.service";
 import { cleanupAdversarialFixtures, dbReachable, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
@@ -117,7 +117,7 @@ describe.serial("matching — candidate population follows the customer's", () =
 
 describe.serial("booking provenance — inherited from a non-business customer", () => {
   const book = async (customerId: string, addressId: string, hoursAhead: number) => {
-    const r = await bookingService.create(customerId, {
+    const r = await createBookingWithQuote(customerId, {
       serviceId: ctx.serviceId,
       scheduledDate: new Date(Date.now() + hoursAhead * 3_600_000).toISOString(),
       addressId,

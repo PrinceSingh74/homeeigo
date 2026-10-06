@@ -10,7 +10,6 @@ import {
   ShieldCheck,
   BadgeCheck,
   Clock,
-  Sparkles,
   Lock,
   UserCheck,
   CreditCard,
@@ -60,7 +59,7 @@ import {
   type Service,
 } from "@/lib/services";
 import { bookUrl, parseBookParams } from "@/lib/booking-url";
-import { BOOKING_ADDONS, tierOptions } from "@/lib/catalog/pricing";
+import { tierOptions } from "@/lib/catalog/pricing";
 import { SERVICE_IMAGES, type SavedBooking } from "@/lib/bookings";
 import { useAppStore } from "@/stores/app-store";
 import {
@@ -68,6 +67,7 @@ import {
   useAddressesQuery,
   useAvailabilityQuery,
   useBookingPriceQuoteQuery,
+  useServiceabilityQuery,
   useCreateBookingMutation,
   useServicesQuery,
 } from "@/hooks/use-core-data";
@@ -80,6 +80,8 @@ import {
 } from "@/lib/booking-datetime";
 import type { BackendService, ServiceSelectionSnapshot } from "@/types/backend";
 import { getErrorMessage } from "@/lib/auth/errors";
+import { coreApi } from "@/services/core/api";
+import { attemptFingerprint, attemptKeyFor, keepAttemptAfter, releaseAttempt, sessionAttemptStore } from "@/lib/booking-attempt";
 
 /* ----------------------------- data ----------------------------- */
 
@@ -91,9 +93,6 @@ const HERO_FEATURES: { icon: LucideIcon; label: string }[] = [
   { icon: Clock, label: "Live Arrival\nTracking" },
   { icon: CreditCard, label: "Secure\nPayments" },
 ];
-
-// Shared with the service detail page so both show the same add-on prices.
-const ADDONS = BOOKING_ADDONS;
 
 const TRUST = [
   { icon: ShieldCheck, label: "Verified\nProfessionals" },
@@ -211,8 +210,11 @@ function BookPageContent() {
     refetch: refetchServices,
   } = useServicesQuery();
   const createBookingMutation = useCreateBookingMutation();
-  /** One key per confirm attempt. A dropped response retries the same key so the server replays. */
-  const bookingAttemptKey = useRef<string | null>(null);
+  /**
+   * One key per booking attempt, kept in per-tab storage with the request it belongs to: a dropped
+   * response, or a refresh after one, retries the same key so the server replays instead of booking twice.
+   */
+  const attemptStore = useRef(sessionAttemptStore());
   /** The last confirm never got a response. The slot may already be held by that unseen booking. */
   const retryUnseenCreate = useRef(false);
   const { data: addressesData, isLoading: addressesLoading } = useAddressesQuery();
@@ -233,6 +235,8 @@ function BookPageContent() {
   const initialPkg = packagePositionForTier(services[initialService] ?? services[0]!, parsed.packageIndex);
 
   const [service, setService] = useState(initialService);
+  /** The customer chose a service on this page, so the one on screen is deliberate whatever the URL says. */
+  const [pickedHere, setPickedHere] = useState(false);
   const [pkg, setPkg] = useState(initialPkg);
   const [searchQuery, setSearchQuery] = useState(parsed.query);
   const [scheduledAt, setScheduledAt] = useState(() => defaultScheduledSlot());
@@ -333,6 +337,7 @@ function BookPageContent() {
       services.findIndex((s) => s.id === serviceId),
     );
     setSearchQuery(q);
+    setPickedHere(true);
     setService(idx);
     setPkg(popularPackageIndex(services[idx] ?? services[0]!));
     setAddons(new Set());
@@ -344,13 +349,16 @@ function BookPageContent() {
     );
   };
 
+  // Where the customer actually is: the stepper used to sit on "Schedule" whatever had been done.
   const currentStep = useMemo(() => {
-    if (bookingDone) return 3;
-    if (pkg >= 0) return 2;
-    return 0;
-  }, [bookingDone, pkg]);
+    if (bookingDone) return 4; // every step ticked
+    if (svc.id === "service-unavailable") return 0;
+    if (pkg < 0) return 1;
+    return slotChosen ? 3 : 2;
+  }, [bookingDone, pkg, slotChosen, svc.id]);
 
   const selectService = (i: number) => {
+    setPickedHere(true);
     setService(i);
     setPkg(popularPackageIndex(services[i] ?? services[0]!));
     setAddons(new Set());
@@ -399,8 +407,33 @@ function BookPageContent() {
    * Which times the SERVER will accept for the chosen day. The booking step used to offer six
    * hardcoded times nobody had agreed to; this asks.
    */
+  /**
+   * The service on screen is the one to ask the server about. Until the catalogue has loaded, `svc`
+   * is a placeholder from the built-in list (an id the backend does not have), and for one render
+   * after it loads it can still be the first service rather than the one in the URL. Asking then
+   * produced a 404 for slots and a 400 for the quote on every page load.
+   */
+  const requestedKnown = parsed.serviceId ? services.some((s) => s.id === parsed.serviceId || s.slug === parsed.serviceId) : false;
+  const serviceResolved =
+    svc.id !== "service-unavailable" &&
+    !servicesLoading &&
+    (!requestedKnown || pickedHere || svc.id === parsed.serviceId || svc.slug === parsed.serviceId);
+
+  // Asked when the address is chosen, so a customer outside the service area learns it before
+  // picking a date and time. The confirm step and the server still check again. Asked only for the
+  // resolved service: for one render the page can hold the first service in the list instead, and
+  // its answer shown here would be an answer about a different service.
+  const serviceabilityQuery = useServiceabilityQuery({
+    serviceId: serviceResolved ? rawService?.id : null,
+    addressId: selectedAddress?.id,
+    date: toYmdLocal(scheduledAt),
+  });
+  const serviceability = serviceabilityQuery.data ?? null;
+  // The two answers that mean "this cannot be booked here": the confirm controls say so and are off.
+  const notServiceable = serviceability?.status === "NOT_AVAILABLE" || serviceability?.status === "TEMPORARILY_UNAVAILABLE";
+
   const availabilityQuery = useAvailabilityQuery({
-    serviceId: svc?.id,
+    serviceId: serviceResolved && !addressesLoading ? svc.id : null,
     date: toYmdLocal(scheduledAt),
     addressId: effectiveAddressId,
   });
@@ -408,7 +441,7 @@ function BookPageContent() {
   const priceQuoteQuery = useBookingPriceQuoteQuery(
     // Wait for addresses: the quote is priced at the selected address (surge), and a first quote
     // without it would show a total that silently changes a moment later.
-    svc.id && svc.id !== "service-unavailable" && !servicesLoading && !addressesLoading
+    serviceResolved && !addressesLoading
       ? {
           serviceId: svc.id,
           ...selectionPayload,
@@ -473,11 +506,31 @@ function BookPageContent() {
       return;
     }
     setConfirming(true);
+    let bookingAnswered = false;
     try {
       const addressId = await resolveAddressId();
       if (!addressId) {
         setConfirming(false);
         return;
+      }
+      const pin = savedAddresses.find((a) => a.id === addressId);
+      if (pin?.latitude != null && pin.longitude != null) {
+        try {
+          const zone = await coreApi.geo.serviceable(
+            pin.latitude,
+            pin.longitude,
+            rawService?.category ?? rawService?.taxonomy?.category?.slug,
+          );
+          if (!zone.serviceable) {
+            setConfirming(false);
+            showToast("This service is not currently available in your area", "error");
+            return;
+          }
+        } catch (err) {
+          setConfirming(false);
+          showToast(getErrorMessage(err, "Couldn't check if we serve this address"), "error");
+          return;
+        }
       }
       // The quote token lets the server refuse — rather than silently charge a different total —
       // if the price moved since the customer saw it.
@@ -492,7 +545,21 @@ function BookPageContent() {
         showToast("Your price was refreshed — please review the total and confirm again", "info");
         return;
       }
-      if (!bookingAttemptKey.current) bookingAttemptKey.current = crypto.randomUUID();
+      // The same request reuses its stored key (a retry, or a refresh after a lost response);
+      // a different slot, address or selection is a new attempt.
+      const idempotencyKey = attemptKeyFor(
+        attemptStore.current,
+        attemptFingerprint({
+          serviceId: svc.id,
+          addressId,
+          scheduledDate: scheduledAt.toISOString(),
+          ...selectionPayload,
+          addonIds,
+          couponCode: appliedCoupon || null,
+          description: instructions.trim() || null,
+        }),
+        () => crypto.randomUUID(),
+      );
       const created = await createBookingMutation.mutateAsync({
         serviceId: svc.id,
         scheduledDate: scheduledAt.toISOString(),
@@ -503,10 +570,11 @@ function BookPageContent() {
         addonIds,
         couponCode: appliedCoupon || undefined,
         quoteToken: quote.quoteToken,
-        idempotencyKey: bookingAttemptKey.current,
+        idempotencyKey,
         ...(mustConfirm.length ? { requirementAttestations: mustConfirm.filter((r) => attested.has(r.code)).map((r) => r.code) } : {}),
       });
-      bookingAttemptKey.current = null;
+      bookingAnswered = true;
+      releaseAttempt(attemptStore.current);
       retryUnseenCreate.current = false;
       if (!created.booking?.id) {
         showToast("Booking could not be confirmed", "error");
@@ -542,9 +610,10 @@ function BookPageContent() {
       // replays it. A server answer (price, slot, validation) released the key, so the next confirm
       // is a new attempt.
       const failed = err as { code?: string; status?: number } | null;
-      const keepKey = failed?.status === 0 || failed?.code === "IDEMPOTENCY_IN_PROGRESS";
+      // Only the create's own outcome can be "unseen": a payment error after it is a separate matter.
+      const keepKey = !bookingAnswered && keepAttemptAfter(err);
       retryUnseenCreate.current = keepKey;
-      if (!keepKey) bookingAttemptKey.current = null;
+      if (!keepKey) releaseAttempt(attemptStore.current);
       // The mutation toasts the server's message. A price change or an expired quote also means
       // the total on screen is stale: reload the server quote so the customer re-confirms the real one.
       const code = failed?.code;
@@ -561,13 +630,6 @@ function BookPageContent() {
     } finally {
       setConfirming(false);
     }
-  }
-
-  function applyAiRecommendation() {
-    const rec = popularPackageIndex(svc);
-    setPkg(rec);
-    showToast("Standard package applied — best for 2BHK", "success");
-    scrollTo(dateRef.current);
   }
 
   return (
@@ -823,9 +885,6 @@ function BookPageContent() {
             <div className="min-w-0">
               <div className="mb-4 flex flex-wrap items-center gap-2 sm:mb-6 sm:gap-3">
                 <h3 className={bookSectionTitle}>{effectiveSelection ? "Your Selection" : "Choose Your Package"}</h3>
-                <span className="rounded-full bg-success/15 px-2.5 py-0.5 text-[10px] font-bold text-success sm:px-3 sm:py-1 sm:text-xs">
-                  Save More
-                </span>
               </div>
               {effectiveSelection ? (
                 <SelectionSummary
@@ -1032,61 +1091,6 @@ function BookPageContent() {
 
           {/* ================= RIGHT (sidebar) ================= */}
           <div className="flex min-w-0 flex-col gap-6 sm:gap-8 lg:sticky lg:top-28 lg:self-start">
-            {/* AI recommendation */}
-            <div className="relative overflow-hidden rounded-[20px] p-5 ring-1 ring-emerald-500/25 shadow-[0_20px_48px_-16px_rgb(16_185_129/0.3)] sm:rounded-[28px] sm:p-7"
-              style={{
-                background:
-                  "linear-gradient(135deg, rgb(16 185 129 / 0.14) 0%, rgb(20 184 166 / 0.1) 100%)",
-              }}
-            >
-              <span
-                aria-hidden
-                className="pointer-events-none absolute -right-12 -top-12 size-40 rounded-full bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] opacity-20 blur-3xl"
-              />
-              <div className="relative flex items-center gap-2.5">
-                <span className="grid size-9 place-items-center rounded-xl bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-white shadow-[0_14px_34px_-10px_rgb(16_185_129/0.55)]">
-                  <Sparkles size={18} />
-                </span>
-                <span className="font-display text-lg font-bold text-content sm:text-xl">
-                  AI Recommendation
-                </span>
-              </div>
-              <p className="relative mt-2 text-xs text-muted sm:mt-3 sm:text-sm">
-                Based on your home size (2BHK) and cleaning needs
-              </p>
-              <div className="relative mt-4 rounded-2xl glass-card p-4">
-                <p className="text-sm text-muted">We recommend</p>
-                <p className="font-display text-xl font-bold bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">
-                  Standard Package
-                </p>
-              </div>
-              <p className="relative mt-5 text-sm font-bold text-content">
-                Why?
-              </p>
-              <ul className="relative mt-2 flex flex-col gap-2.5">
-                {[
-                  "Perfect for 2BHK homes",
-                  "Most booked in your area",
-                  "Best value for deep cleaning",
-                ].map((w) => (
-                  <li
-                    key={w}
-                    className="flex items-center gap-2 text-sm text-content"
-                  >
-                    <Check size={15} className="text-success" strokeWidth={3} />
-                    {w}
-                  </li>
-                ))}
-              </ul>
-              <button
-                type="button"
-                onClick={applyAiRecommendation}
-                className="relative mt-6 w-full rounded-2xl glass-card py-3 text-sm font-bold text-content transition hover:-translate-y-0.5"
-              >
-                Looks good 👍
-              </button>
-            </div>
-
             {/* Booking summary */}
             <SectionCard>
               <h3
@@ -1173,6 +1177,29 @@ function BookPageContent() {
                     {addressesLoading ? "Loading your addresses…" : "Add the address where the service will happen."}
                   </span>
                 )}
+                {selectedAddress && rawService ? (
+                  <p
+                    role="status"
+                    data-testid="serviceability-status"
+                    data-status={serviceability?.status ?? (serviceabilityQuery.isLoading ? "CHECKING" : "UNKNOWN")}
+                    className={`mt-2 text-xs font-medium ${
+                      notServiceable
+                        ? "text-error"
+                        : serviceability?.status === "AVAILABLE"
+                          ? "text-success"
+                          : serviceability?.status === "LIMITED" || serviceability?.status === "NEEDS_CONFIRMATION"
+                            ? "text-warning"
+                            : "text-muted"
+                    }`}
+                  >
+                    {/* The sentence is the server's (lib/customer-serviceability); nothing is derived here. */}
+                    {serviceability
+                      ? serviceability.message
+                      : serviceabilityQuery.isLoading
+                        ? "Checking availability for this address…"
+                        : "We couldn't check this address just now. We'll check again when you confirm."}
+                  </p>
+                ) : null}
                 <AddAddressModal
                   open={addAddressOpen}
                   onClose={() => setAddAddressOpen(false)}
@@ -1283,21 +1310,27 @@ function BookPageContent() {
                     Secure Payment
                   </span>
                   <span className="text-muted">
-                    Your data is 100% protected
+                    Card details are handled by Razorpay
                   </span>
                 </span>
               </div>
 
               <motion.button
                 type="button"
-                disabled={confirming}
+                disabled={confirming || notServiceable}
                 onClick={confirmBooking}
-                whileHover={{ y: confirming ? 0 : -3 }}
-                whileTap={{ scale: confirming ? 1 : 0.98 }}
+                whileHover={{ y: confirming || notServiceable ? 0 : -3 }}
+                whileTap={{ scale: confirming || notServiceable ? 1 : 0.98 }}
                 className="mt-5 hidden h-16 w-full items-center justify-center gap-2.5 rounded-2xl bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] text-base font-bold text-white shadow-[0_18px_40px_-10px_rgb(16_185_129/0.55)] disabled:opacity-70 lg:flex"
               >
                 <Lock size={18} />
-                {confirming ? "Securing your slot…" : slotChosen ? "Confirm Booking Securely" : "Choose a time slot"}
+                {confirming
+                  ? "Securing your slot…"
+                  : notServiceable
+                    ? "Not available at this address"
+                    : slotChosen
+                      ? "Confirm Booking Securely"
+                      : "Choose a time slot"}
                 <ArrowRight size={18} />
               </motion.button>
               <p className="mt-2 hidden text-center text-xs text-muted lg:block">
@@ -1333,6 +1366,7 @@ function BookPageContent() {
         total={total}
         confirming={confirming}
         slotChosen={slotChosen}
+        unavailable={notServiceable}
         onConfirm={confirmBooking}
       />
 
@@ -1368,11 +1402,11 @@ function Row({
   );
 }
 
-/** Add-ons offered for a service: its configured catalogue, else the shared one. */
+/** Add-ons offered for a service: only the catalogue on the service. */
 function addonCatalogFor(raw: BackendService | undefined): { id: string; name: string; desc: string; price: number }[] {
   const own = raw?.catalogConfig?.addons;
-  if (own) return own.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name, desc: "", price: a.price }));
-  return ADDONS.map((a) => ({ ...a }));
+  if (!own) return [];
+  return own.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name, desc: "", price: a.price }));
 }
 
 /** The server-priced selection carried from the service page (variant, quantity, audience). */

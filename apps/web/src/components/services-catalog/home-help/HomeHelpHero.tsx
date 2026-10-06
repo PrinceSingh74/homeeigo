@@ -50,10 +50,8 @@ export function HomeHelpHero({
     <div className="relative">
       <div className="relative grid items-center gap-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-16">
         <div className="motion-safe:animate-catalog-in">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#163326]/55 dark:text-muted">Home Help</p>
-          <h1 className="mt-5 font-display text-[clamp(2.15rem,6vw,3.75rem)] font-bold leading-[0.96] tracking-tight text-[#163326] dark:text-content">
-            {service.name}
-          </h1>
+          <p className="text-sm font-medium text-brand">Home Help</p>
+          <h1 className="mt-2 font-display type-display font-bold tracking-tight text-content">{service.name}</h1>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted">{service.description}</p>
 
           <div className="mt-6 flex flex-wrap items-center gap-2.5">
@@ -83,11 +81,11 @@ export function HomeHelpHero({
           </div>
 
           <div className="mt-8 flex flex-wrap items-end gap-4">
-            <p className="font-display text-[clamp(2rem,4vw,2.75rem)] font-bold tabular-nums leading-none text-content">
+            <p className="font-display type-title font-bold tabular-nums leading-none text-content">
               <span aria-hidden>{price.label}</span>
               <span className="sr-only">Price: {price.spoken}</span>
             </p>
-            <span className="mb-1 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white">
+            <span className="mb-1 text-sm font-medium text-brand">
               {service.hourly || service.pricingModel === "hourly" ? "By the hour" : "Single task"}
             </span>
           </div>
@@ -95,20 +93,12 @@ export function HomeHelpHero({
         </div>
 
         <div className="relative mx-auto w-full max-w-lg lg:mx-0 lg:max-w-none">
-          <span
-            aria-hidden
-            className="absolute -left-6 top-8 hidden size-24 rounded-full border border-emerald-500/25 lg:block"
-          />
-          <span
-            aria-hidden
-            className="absolute -right-4 bottom-10 hidden size-16 rounded-[1.25rem] bg-teal-400/20 lg:block"
-          />
           <HomeHelpPhoto
             src={src}
             alt={`${service.name} by a HOMEEIGO professional`}
             priority
             sizes="(max-width: 1024px) 90vw, 560px"
-            className="mx-auto aspect-square w-[90%] rounded-full shadow-[0_32px_90px_-28px_rgb(22_51_38/0.32)] ring-8 ring-white lg:w-[94%] dark:ring-canvas"
+            className="aspect-[4/3] w-full rounded-3xl shadow-e3"
           />
           {embed ? (
             <div className="relative mt-3 aspect-video overflow-hidden rounded-[1.75rem] bg-surface ring-1 ring-line sm:rounded-[2rem]">

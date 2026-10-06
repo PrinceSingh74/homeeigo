@@ -19,6 +19,7 @@ import {
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { supportTicketService } from "../services/support-ticket.service";
 import { providerService } from "../services/provider.service";
 import { bookingPricingService } from "../services/booking-pricing.service";
@@ -201,7 +202,7 @@ async function releaseProviderCapacity() {
 
 async function seedAcceptedBooking(hoursFromNow: number) {
   const slot = soakSlot(hoursFromNow);
-  const created = await bookingService.create(ctx.customerA.id, {
+  const created = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
     scheduledDate: slot.toISOString(),
@@ -461,7 +462,7 @@ describe.serial("Enterprise soak — adversarial certification", () => {
     let bookingsOk = 0;
     for (let i = 0; i < 10; i++) {
       const slot = soakSlot(520 + i * 12);
-      const created = await bookingService.create(ctx.customerA.id, {
+      const created = await createBookingWithQuote(ctx.customerA.id, {
         serviceId: ctx.serviceId,
         providerId: ctx.providerId,
         scheduledDate: slot.toISOString(),

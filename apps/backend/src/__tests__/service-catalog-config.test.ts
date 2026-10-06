@@ -55,9 +55,9 @@ describe("legacy tiers (no config) stay byte-compatible", () => {
       expect(resolveSelection(s, null, { packagePrice: tampered })).toEqual({ ok: false, error: "INVALID_PACKAGE_PRICE" });
     }
   });
-  test("shared add-ons priced server-side; unknown add-on rejected", () => {
+  test("a service with no add-ons rejects every add-on id", () => {
     const r = resolveSelection(svc(), null, { addonIds: ["fridge", "sofa"] });
-    expect(r.ok && r.addonTotal).toBe(248);
+    expect(r).toEqual({ ok: false, error: "INVALID_ADDON" });
     // 2026-09-21: a repeated id is rejected, not silently de-duplicated (every client builds
     // addonIds from a Set, so only a tampered request can repeat one).
     expect(resolveSelection(svc(), null, { addonIds: ["fridge", "sofa", "fridge"] })).toEqual({ ok: false, error: "INVALID_ADDON" });

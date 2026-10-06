@@ -19,7 +19,7 @@ import { payoutOperationsService } from "../services/payout-operations.service";
 import { chargebackWorkflowService } from "../services/chargeback-workflow.service";
 import { settlementResolutionService } from "../services/settlement-resolution.service";
 import { adminBookingOperationsService } from "../services/admin-booking-operations.service";
-import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { isLikelyValidPdf, minimalPdfBuffer } from "../lib/minimal-pdf";
 import { isRetryablePrismaError } from "../lib/prisma-errors";
 
@@ -379,7 +379,7 @@ describe("Phase 14 — Admin Booking Operations", () => {
 
     const slot = new Date(Date.now() + 72 * 3_600_000);
     slot.setMinutes(0, 0, 0);
-    const created = await bookingService.create(ctx.customerA.id, {
+    const created = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       scheduledDate: slot.toISOString(),
@@ -399,7 +399,7 @@ describe("Phase 14 — Admin Booking Operations", () => {
 
     const slot = new Date(Date.now() + 96 * 3_600_000);
     slot.setMinutes(0, 0, 0);
-    const created = await bookingService.create(ctx.customerA.id, {
+    const created = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       scheduledDate: slot.toISOString(),
@@ -424,7 +424,7 @@ describe("Phase 14 — Admin Booking Operations", () => {
 
     const slot = new Date(Date.now() + 48 * 3_600_000);
     slot.setMinutes(0, 0, 0);
-    const created = await bookingService.create(ctx.customerA.id, {
+    const created = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       scheduledDate: slot.toISOString(),
       addressId: ctx.addressAId,
@@ -449,7 +449,7 @@ describe("Phase 14 — Admin Booking Operations", () => {
       let ok = false;
       for (let attempt = 0; attempt < 4 && !ok; attempt++) {
         try {
-          const result = await bookingService.create(ctx.customerA.id, {
+          const result = await createBookingWithQuote(ctx.customerA.id, {
             serviceId: ctx.serviceId,
             scheduledDate: slot.toISOString(),
             addressId: ctx.addressAId,

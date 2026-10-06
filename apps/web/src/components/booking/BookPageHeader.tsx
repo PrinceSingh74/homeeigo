@@ -21,6 +21,7 @@ function BookingStepper({ currentStep }: { currentStep: number }) {
         return (
           <div key={label} className="flex min-w-0 flex-1 items-center sm:flex-none">
             <div
+              aria-current={active ? "step" : undefined}
               className={cn(
                 "flex min-w-0 flex-1 flex-col items-center gap-1.5 sm:flex-none sm:flex-row sm:gap-2",
                 active && "sm:rounded-full sm:bg-emerald-500/10 sm:px-3 sm:py-1.5",

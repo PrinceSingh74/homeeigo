@@ -326,7 +326,7 @@ describe.serial("Phase 05 — authoritative quote", () => {
     expect(book.status).toBe(400);
     expect(book.json.code).toBe("PRICING_CONFIG_MISSING");
     // The admin gate refuses to (re)publish it while unpriced …
-    await prisma.service.update({ where: { id: s.id }, data: { isActive: false, lifecycleStatus: "DRAFT", isCustomerVisible: false, isBookable: false } });
+    await prisma.service.update({ where: { id: s.id }, data: { isActive: false, lifecycleStatus: "READY_FOR_REVIEW", isCustomerVisible: false, isBookable: false } });
     const publish = await call("POST", `/api/admin/services/${s.id}/lifecycle`, { to: "ACTIVE" }, admin());
     expect(publish.status).toBe(400);
     expect(publish.json.issues.map((i: { code: string }) => i.code)).toContain("PRICING_INCOMPLETE");
@@ -335,6 +335,8 @@ describe.serial("Phase 05 — authoritative quote", () => {
       basePrice: 450, minPrice: 450, maxPrice: 450,
       catalogConfig: { materialPolicy: "PROFESSIONAL_PROVIDED", equipmentPolicy: "PROFESSIONAL_PROVIDED" },
     }, admin())).status).toBe(200);
+    await prisma.service.update({ where: { id: s.id }, data: { lifecycleStatus: "READY_FOR_REVIEW", updatedBy: ctx.supportAdmin.id } });
+    expect((await call("POST", `/api/admin/services/${s.id}/approve`, {}, admin())).status).toBe(200);
     const pub2 = await call("POST", `/api/admin/services/${s.id}/lifecycle`, { to: "ACTIVE" }, admin());
     expect(pub2.status).toBe(200);
     const q = await call("POST", "/api/bookings/price-quote", { serviceId: s.id, addressId: ctx.addressAId }, customer());

@@ -214,11 +214,27 @@ describe.serial("booking API path", () => {
   const API_BASE = futureSlot(24 * 9);
   const apiAt = (m: number) => new Date(API_BASE.getTime() + m * MIN);
   async function book(startMin: number, extra: Record<string, unknown> = {}, who = ctx.customerA, addressId = ctx.addressAId) {
+    const scheduledDate = apiAt(startMin).toISOString();
+    const quoteRes = await app.handle(
+      new Request("http://localhost/api/bookings/price-quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer(who)}` },
+        body: JSON.stringify({ serviceId: ctx.serviceId, addressId, scheduledDate, ...extra }),
+      }),
+    );
+    const quoteJson = (await quoteRes.json()) as { data?: { quote?: { quoteToken?: string } } };
     const res = await app.handle(
       new Request("http://localhost/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer(who)}` },
-        body: JSON.stringify({ serviceId: ctx.serviceId, addressId, scheduledDate: apiAt(startMin).toISOString(), providerId: ctx.providerId, ...extra }),
+        body: JSON.stringify({
+          serviceId: ctx.serviceId,
+          addressId,
+          scheduledDate,
+          providerId: ctx.providerId,
+          quoteToken: quoteJson.data?.quote?.quoteToken,
+          ...extra,
+        }),
       }),
     );
     return { status: res.status, json: (await res.json()) as any };

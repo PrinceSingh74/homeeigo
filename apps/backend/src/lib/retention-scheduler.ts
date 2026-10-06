@@ -39,6 +39,14 @@ function utcQuarterKey() {
  * compatible with HOMIGO's existing maintenance scheduler.
  */
 export async function runRetentionSchedulerTick(): Promise<void> {
+  await runWithLeaderLock("retention:scheduled_service_activation", 120, async () => {
+    const { catalogService } = await import("../services/catalog.service");
+    const result = await catalogService.activateScheduledServices();
+    if (result.activated + result.failed + result.revisionsApplied + result.revisionsFailed > 0) {
+      logger.info("scheduled_service_activation", result);
+    }
+  });
+
   await runWithLeaderLock("retention:wallet_pending_expire", 120, async () => {
     const expired = await walletService.expireStalePendingTopUps();
     if (expired > 0) {

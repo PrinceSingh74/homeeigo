@@ -70,9 +70,80 @@ export function assertBookingAudience(ctx: PrivacyContext, actor: { partnerId?: 
 
 /**
  * `offer`: the partner is one of several being offered the job and may never accept it — first name
- * only. `owner`: the partner holds the job (or held it, for their own history).
+ * only. `owner`: the partner holds the job and is fulfilling it. `history`: the partner held the
+ * job and it is over — they need to recognise it in their own records, not to keep the customer's
+ * surname, photo and phone indefinitely.
  */
-export type PartnerCustomerStage = "offer" | "owner";
+export type PartnerCustomerStage = "offer" | "owner" | "history";
+
+/** The stage a partner is at with a booking. Holding the job is decided by the caller (current `providerId`). */
+export function partnerCustomerStage(input: { isAssignee: boolean; status: string }): PartnerCustomerStage {
+  if (!input.isAssignee) return "offer";
+  return ACTIVE_FULFILMENT_STATUSES.has(String(input.status).toUpperCase()) ? "owner" : "history";
+}
+
+/**
+ * The customer's free-text note for the visit. It can hold anything the customer typed (a gate
+ * code, who is at home), so it reaches only the partner who holds the job, while they hold it.
+ */
+export function partnerJobNote(description: string | null | undefined, stage: PartnerCustomerStage): string | null {
+  if (stage !== "owner") return null;
+  return description?.trim() || null;
+}
+
+/**
+ * Why a booking was cancelled, as a partner may read it. The status already says who cancelled.
+ * The words are the customer's private reason or an admin's operational note (which can name a
+ * fraud review or a ticket), so a partner reads them only when the partner wrote them.
+ */
+export function partnerCancellationReason(reason: string | null | undefined, cancelledBy: string | null | undefined): string | null {
+  return cancelledBy === "provider" ? reason?.trim() || null : null;
+}
+
+/**
+ * A safety hold as a partner may read it: the condition, its state and who raised it are what the
+ * partner acts on. The admin's reason for releasing it and the incident id behind it are safety
+ * operations' records (owner decision 2026-10-06, closing the 2026-09-28 exposure audit item).
+ */
+export function partnerHoldView<T extends { incidentId: unknown; releaseReason: unknown }>(
+  hold: T,
+): Omit<T, "incidentId" | "releaseReason"> & { incidentId: null; releaseReason: null } {
+  return { ...hold, incidentId: null, releaseReason: null };
+}
+
+/**
+ * Every field a partner booking payload (job list row or job detail) may carry. Nested objects
+ * built by their own projections (job, requirements, execution, tracking, offer, followUp, addons)
+ * are listed by name; `customer`, `address` and `service` are listed field by field because they
+ * are read from user and catalogue rows, where a widened select would otherwise pass through.
+ */
+export const PARTNER_BOOKING_FIELDS = {
+  top: [
+    "id", "bookingNumber", "status", "scheduledDate", "completedAt", "enRouteAt", "arrivedAt", "startedAt", "eta",
+    "amount", "finalAmount", "addons", "paymentStatus", "paymentExempt", "description", "cancelledAt", "cancellationReason",
+    "tracking", "customer", "address", "service", "job", "requirements", "followUp", "execution", "ratingGiven", "rating", "offer",
+  ],
+  customer: ["firstName", "lastName", "profileImage", "phoneMasked"],
+  address: [
+    "label", "fullAddress", "addressLine1", "addressLine2", "buildingName", "flatNumber", "landmark", "specialInstructions",
+    "city", "state", "zipCode", "latitude", "longitude",
+  ],
+  service: ["id", "name", "icon", "basePrice"],
+} as const;
+
+/** Paths of fields outside the allow-list. Empty means the payload is within the partner boundary. */
+export function unknownPartnerBookingKeys(payload: Record<string, unknown>): string[] {
+  const unknown: string[] = [];
+  const top = PARTNER_BOOKING_FIELDS.top as readonly string[];
+  for (const key of Object.keys(payload)) if (!top.includes(key)) unknown.push(key);
+  for (const nested of ["customer", "address", "service"] as const) {
+    const value = payload[nested];
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const allowed = PARTNER_BOOKING_FIELDS[nested] as readonly string[];
+    for (const key of Object.keys(value)) if (!allowed.includes(key)) unknown.push(`${nested}.${key}`);
+  }
+  return unknown;
+}
 
 export function toPartnerSafeCustomer(
   input: {
@@ -83,7 +154,7 @@ export function toPartnerSafeCustomer(
   },
   stage: PartnerCustomerStage = "owner",
 ): PartnerSafeCustomer {
-  if (stage === "offer") return { firstName: input.firstName ?? null, lastName: null, profileImage: null, phoneMasked: null };
+  if (stage !== "owner") return { firstName: input.firstName ?? null, lastName: null, profileImage: null, phoneMasked: null };
   const phone = input.phone && /^\+?\d[\d\s-]{6,}$/.test(input.phone) ? input.phone : null;
   return {
     firstName: input.firstName ?? null,
@@ -199,6 +270,23 @@ export function withoutCustomerMoney<T extends Record<string, unknown>>(value: T
   const out: Record<string, unknown> = { ...value };
   for (const k of CUSTOMER_MONEY_KEYS) delete out[k];
   return out as Omit<T, (typeof CUSTOMER_MONEY_KEYS)[number]>;
+}
+
+/** Drop every partner-forbidden key, including nested objects, before a partner response is returned. */
+export function stripForbiddenPartnerKeys<T>(value: T): T {
+  const forbidden = new Set(partnerNeverSees());
+  const walk = (node: unknown): unknown => {
+    if (!node || typeof node !== "object") return node;
+    if (node instanceof Date) return node;
+    if (Array.isArray(node)) return node.map(walk);
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (forbidden.has(k)) continue;
+      out[k] = walk(v);
+    }
+    return out;
+  };
+  return walk(value) as T;
 }
 
 /** Walk a serialized partner-facing payload and return forbidden key names that leaked. */

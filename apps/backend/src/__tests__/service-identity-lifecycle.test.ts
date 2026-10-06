@@ -37,6 +37,15 @@ describe("lifecycle transitions", () => {
     expect(LIFECYCLE_TRANSITIONS.ARCHIVED).toEqual([]);
     for (const to of SERVICE_LIFECYCLE) if (to !== "ARCHIVED") expect(canTransition("ARCHIVED", to)).toBe(false);
   });
+  test("DRAFT cannot jump to ACTIVE or review", () => {
+    expect(canTransition("DRAFT", "ACTIVE")).toBe(false);
+    expect(canTransition("DRAFT", "PUBLISHED")).toBe(false);
+    expect(canTransition("DRAFT", "READY_FOR_REVIEW")).toBe(false);
+    expect(canTransition("DRAFT", "CONFIGURATION_REQUIRED")).toBe(true);
+    expect(canTransition("CONFIGURATION_REQUIRED", "ACTIVE")).toBe(false);
+    expect(canTransition("CONFIGURATION_REQUIRED", "READY_FOR_REVIEW")).toBe(true);
+    expect(canTransition("READY_FOR_REVIEW", "ACTIVE")).toBe(true);
+  });
   test("a live service must be paused or deprecated before it is archived", () => {
     expect(canTransition("ACTIVE", "ARCHIVED")).toBe(false);
     expect(canTransition("ACTIVE", "PAUSED")).toBe(true);

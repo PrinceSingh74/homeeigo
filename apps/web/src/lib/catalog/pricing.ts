@@ -130,30 +130,13 @@ export function tierOptions(price: PriceInfo): TierOption[] {
 /* Add-ons — server-authoritative catalogue.                           */
 /* ------------------------------------------------------------------ */
 
-/**
- * Must match apps/backend booking-pricing.service BOOKING_ADDONS (ids and
- * prices). The server ignores unknown ids and re-prices known ones, so a
- * mismatch can never overcharge — but the displayed total would be wrong.
- */
-export const BOOKING_ADDONS = [
-  { id: "fridge", name: "Fridge Cleaning", desc: "Deep cleaning & sanitization", price: 99 },
-  { id: "sofa", name: "Sofa Cleaning", desc: "Vacuum & stain removal", price: 149 },
-  { id: "microwave", name: "Microwave Cleaning", desc: "Interior cleaning", price: 79 },
-] as const;
+export type BookingAddon = { id: string; name: string; desc?: string; price: number };
 
-export type BookingAddon = (typeof BOOKING_ADDONS)[number];
-
-/**
- * Add-ons offered on a service: its own configured catalogue when the backend
- * has one (the server then accepts only those), else the shared catalogue for
- * services the taxonomy marks as add-on friendly.
- */
+/** Add-ons offered on a service: only the catalogue the backend configured. */
 export function addonsFor(svc: ServiceView): Addon[] {
   if (svc.status !== "live") return [];
-  if (svc.config?.addons) return svc.config.addons.filter((a) => a.active).map(({ active: _a, ...a }) => a);
-  if (!svc.def.addons) return [];
-  const skip = new Set(svc.def.excludeAddons ?? []);
-  return BOOKING_ADDONS.filter((a) => !skip.has(a.id)).map((a) => ({ ...a }));
+  if (!svc.config?.addons) return [];
+  return svc.config.addons.filter((a) => a.active).map(({ active: _a, ...a }) => a);
 }
 
 /* ------------------------------------------------------------------ */

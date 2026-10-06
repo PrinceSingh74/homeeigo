@@ -45,7 +45,6 @@ export default function SearchResults({
     <section id="search-results" aria-labelledby="results-heading" className="scroll-mt-32">
       <SectionHeading
         id="results-heading"
-        kicker="Search"
         title={<>Results for “{query}”</>}
         action={
           <button type="button" onClick={onClear} className={cn("rounded-md text-sm font-semibold text-brand hover:underline", focusRing)}>
@@ -63,7 +62,7 @@ export default function SearchResults({
           action={
             <div className="flex flex-wrap justify-center gap-2">
               {(["home-cleaning", "home-maintenance", "beauty"] as CategoryId[]).map((id) => (
-                <Link key={id} href={categoryHref(id)} className={cn("rounded-full border border-line px-3.5 py-2 text-sm hover:border-emerald-300", focusRing)}>
+                <Link key={id} href={categoryHref(id)} className={cn("inline-flex min-h-11 items-center rounded-full border border-line px-4 text-sm hover:border-emerald-300", focusRing)}>
                   {CATEGORY_BY_ID.get(id)!.name}
                 </Link>
               ))}

@@ -36,13 +36,51 @@ function istSlot(daysAhead: number, hhmm = "10:00"): Date {
   return new Date(`${ymd}T${hhmm}:00+05:30`);
 }
 
+const quoteTokens = new Map<string, Promise<string | undefined>>();
+
+async function tokenFor(body: Record<string, unknown>): Promise<string | undefined> {
+  const key = JSON.stringify({
+    serviceId: body.serviceId,
+    addressId: body.addressId,
+    quantity: body.quantity ?? null,
+    variantId: body.variantId ?? null,
+    addonIds: body.addonIds ?? null,
+  });
+  let pending = quoteTokens.get(key);
+  if (!pending) {
+    pending = (async () => {
+      const quote = await app.handle(
+        new Request("http://localhost/api/bookings/price-quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer(ctx.customerA)}` },
+          body: JSON.stringify({
+            serviceId: body.serviceId,
+            addressId: body.addressId,
+            quantity: body.quantity,
+            variantId: body.variantId,
+            addonIds: body.addonIds,
+            addonQuantities: body.addonQuantities,
+            packagePrice: body.packagePrice,
+            couponCode: body.couponCode,
+          }),
+        }),
+      );
+      const quoted = (await quote.json()) as { data?: { quote?: { quoteToken?: string } } };
+      return quoted.data?.quote?.quoteToken;
+    })();
+    quoteTokens.set(key, pending);
+  }
+  return pending;
+}
+
 async function post(body: Record<string, unknown>, key?: string) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${bearer(ctx.customerA)}`,
   };
   if (key) headers["Idempotency-Key"] = key;
-  const res = await app.handle(new Request("http://localhost/api/bookings", { method: "POST", headers, body: JSON.stringify(body) }));
+  const payload = body.quoteToken ? body : { ...body, quoteToken: await tokenFor(body) };
+  const res = await app.handle(new Request("http://localhost/api/bookings", { method: "POST", headers, body: JSON.stringify(payload) }));
   return { status: res.status, replayed: res.headers.get("idempotent-replayed"), json: (await res.json()) as any };
 }
 
@@ -134,7 +172,8 @@ describe.serial("over HTTP", () => {
     // claimed by the guard and has to be released by it.
     const refused = await post(request(istSlot((day += 1)), { addressId: ctx.addressBId }), key);
     expect(refused.status).toBe(400);
-    expect(refused.json.code).toBe("VALIDATION_ERROR");
+    // Another customer's address cannot be quoted, so create stops at the quote gate and releases the key.
+    expect(refused.json.code).toBe("QUOTE_REQUIRED");
 
     // Same key, corrected request: a first attempt, not a reuse and not a replay.
     const slot = istSlot((day += 1));

@@ -837,7 +837,8 @@ export const TOOL_CATALOG: Omit<ToolRegistryEntry, "handler">[] = [
   {
     toolId: "write.booking.createBooking",
     name: "createBooking",
-    description: "Create a new service booking",
+    description:
+      "Create a service booking in two calls. First call WITHOUT confirmedTotalPaise: nothing is booked and the server's total is returned. Tell the customer that total and ask them to confirm. Only after they agree, call again with confirmedTotalPaise set to the returned value.",
     category: "WRITE",
     version: "1.0.0",
     requiredPermission: "tools.write.customer.booking",
@@ -850,6 +851,12 @@ export const TOOL_CATALOG: Omit<ToolRegistryEntry, "handler">[] = [
       { name: "addressId", type: "string", required: true, description: "Address ID" },
       { name: "description", type: "string", required: false, description: "Notes" },
       { name: "couponCode", type: "string", required: false, description: "Coupon code" },
+      {
+        name: "confirmedTotalPaise",
+        type: "number",
+        required: false,
+        description: "The total in paise the customer agreed to, exactly as returned by the first call. Omit on the first call.",
+      },
     ],
     validationSchema: { type: "object", required: ["serviceId", "scheduledDate", "addressId"] },
     timeoutMs: 30_000,

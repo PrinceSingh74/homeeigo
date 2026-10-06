@@ -1,6 +1,7 @@
 import { config } from "dotenv";
 import { resolve } from "node:path";
 import { assertStagingSafety } from "./lib/staging-safety";
+import { redisUrlForDatabase } from "./lib/isolated-redis";
 
 /**
  * Global BigInt → JSON serializer. The schema stores money as BigInt `*Paise`
@@ -130,6 +131,24 @@ if (isTest) {
   if (!process.env.HASH_HMAC_KEY?.trim()) {
     process.env.HASH_HMAC_KEY = "test-hmac-pepper";
   }
+}
+
+/**
+ * A process on an isolated database never shares Redis with the developer's backend (see
+ * lib/isolated-redis). This also covers a stack started with NODE_ENV=development against a test
+ * database: there `.env` is loaded with override, and an explicit empty REDIS_URL from the launcher
+ * is dropped by the restore loop above, so without this the stack silently used the Redis in `.env`.
+ */
+if (!isCloudRuntime) {
+  const redis = redisUrlForDatabase({
+    databaseUrl: process.env.DATABASE_URL,
+    launcherRedisUrl: runtimeEnvPreserve.REDIS_URL,
+    effectiveRedisUrl: process.env.REDIS_URL,
+  });
+  if (redis.isolated && process.env.REDIS_URL) {
+    console.warn("[load-env] isolated database: not using the shared Redis from a dotenv file (in-memory instead). Set REDIS_URL in the launching environment to use one.");
+  }
+  if (redis.isolated) process.env.REDIS_URL = redis.url;
 }
 
 /**

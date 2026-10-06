@@ -13,6 +13,7 @@ import {
   searchServices,
   type Catalog,
 } from "@/lib/catalog";
+import { Button } from "@/components/buttons/Button";
 import { IconTile, focusRing } from "@/components/services-catalog/primitives";
 import { cn } from "@/lib/utils";
 
@@ -84,7 +85,7 @@ export function ServiceSearch({
           priceText(s).label,
         ]
           .filter(Boolean)
-          .join(" · "),
+          .join(", "),
         href: s.href,
       }));
     return [...svcs, ...cats];
@@ -151,9 +152,11 @@ export function ServiceSearch({
         </label>
         <div
           className={cn(
-            "flex items-center gap-3 rounded-2xl border border-line bg-surface shadow-e3",
-            "motion-safe:transition-[box-shadow,border-color] focus-within:border-emerald-400 focus-within:shadow-e4",
-            size === "lg" ? "h-16 px-5 sm:h-[4.5rem] sm:px-6" : "h-12 px-4",
+            "flex items-center gap-3 rounded-xl border bg-surface",
+            "motion-safe:transition-[box-shadow,border-color] focus-within:border-emerald-500 focus-within:ring-4 focus-within:ring-emerald-500/15",
+            size === "lg"
+              ? "h-16 border-emerald-600/30 pl-5 pr-2 shadow-e2 dark:border-emerald-400/30"
+              : "h-12 border-line px-4",
           )}
         >
           <Search className={cn("shrink-0 text-muted", size === "lg" ? "size-5 sm:size-6" : "size-5")} aria-hidden />
@@ -195,6 +198,11 @@ export function ServiceSearch({
               <X className="size-4" aria-hidden />
             </button>
           )}
+          {size === "lg" && (
+            <Button type="submit" variant="primary" size="lg" className="shrink-0 max-[380px]:px-4">
+              Search
+            </Button>
+          )}
         </div>
       </form>
 
@@ -205,7 +213,7 @@ export function ServiceSearch({
         )}
       >
         {!q.trim() && expanded && (
-          <p className="px-5 pt-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted">Try searching</p>
+          <p className="px-5 pt-4 text-sm font-medium text-muted">Try searching for</p>
         )}
         <ul
           id={`${listId}-list`}

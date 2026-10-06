@@ -46,25 +46,27 @@ export function BeautyAudienceSelector({
 }) {
   const tile = (on: boolean) =>
     cn(
-      "group flex min-h-24 flex-col justify-between gap-3 rounded-2xl border p-4 text-left",
-      "motion-safe:transition-[border-color,box-shadow,transform] motion-safe:duration-300",
+      "group flex min-h-24 flex-col justify-between gap-3 rounded-xl border p-4 text-left",
+      "motion-safe:transition-[border-color,background-color] motion-safe:duration-200",
       focusRing,
       on
-        ? "border-transparent bg-ink text-white shadow-e3 dark:bg-emerald-400 dark:text-ink"
-        : "border-line bg-surface text-content hover:border-rose-200 hover:shadow-e2 motion-safe:hover:-translate-y-0.5",
+        ? "border-transparent bg-ink text-white dark:bg-emerald-400 dark:text-ink"
+        : "border-line bg-surface text-content hover:border-rose-300 hover:bg-rose-50/60 dark:hover:border-rose-400/40 dark:hover:bg-rose-500/[0.06]",
     );
 
   const body = (a: (typeof AUDIENCES)[number], on: boolean) => {
     const Icon = AUDIENCE_ICON[a.id];
     return (
       <>
-        <Icon className={cn("size-5", on ? "" : "text-rose-600")} aria-hidden strokeWidth={1.75} />
+        <Icon className={cn("size-5", on ? "" : "text-rose-600 dark:text-rose-300")} aria-hidden strokeWidth={1.75} />
         <span>
-          <span className="block font-semibold">{a.name}</span>
-          <span className={cn("block text-xs", on ? "opacity-80" : "text-muted")}>
-            {a.hint}
-            {counts?.[a.id] != null && ` · ${counts[a.id]} services`}
-          </span>
+          <span className="block font-display text-base font-semibold">{a.name}</span>
+          <span className={cn("mt-0.5 block text-xs", on ? "opacity-80" : "text-muted")}>{a.hint}</span>
+          {counts?.[a.id] != null && (
+            <span className={cn("mt-1 block text-xs font-medium tabular-nums", on ? "opacity-80" : "text-content")}>
+              {counts[a.id]} {counts[a.id] === 1 ? "service" : "services"}
+            </span>
+          )}
         </span>
       </>
     );

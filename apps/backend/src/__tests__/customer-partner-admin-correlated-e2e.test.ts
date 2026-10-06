@@ -25,6 +25,7 @@ import { partnerOperationsService } from "../services/partner-operations.service
 import { matchingService } from "../services/matching.service";
 import { assignmentEngine } from "../services/assignment-engine.service";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { adminBookingOperationsService } from "../services/admin-booking-operations.service";
 import { financialLedgerService } from "../services/financial-ledger.service";
 
@@ -194,7 +195,7 @@ describe.serial("Pass 12 Customer → Partner → Admin correlated journey", () 
 
       const opening = await walletSnap(ctx.providerId);
 
-      const created = await bookingService.create(ctx.customerA.id, {
+      const created = await createBookingWithQuote(ctx.customerA.id, {
         serviceId: ctx.serviceId,
         scheduledDate: scheduled.toISOString(),
         addressId: ctx.addressAId,

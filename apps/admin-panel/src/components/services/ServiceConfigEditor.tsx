@@ -153,6 +153,10 @@ export type ServiceExtras = {
   durationSlot: string;
   minLeadTime: string;
   maxAdvanceDays: string;
+  operatingStart: string;
+  operatingEnd: string;
+  allDay: boolean;
+  blackoutDates: string;
   cancellationPolicy: string;
   reschedulePolicy: string;
   requiredSkills: string;
@@ -292,6 +296,10 @@ export function extrasFromRow(s?: AdminServiceRow): ServiceExtras {
     durationSlot: str(c.duration?.totalSlotMin),
     minLeadTime: str(c.availability?.minimumLeadTimeMinutes),
     maxAdvanceDays: str(c.availability?.maximumAdvanceDays),
+    operatingStart: c.availability?.operatingWindow?.start ?? "",
+    operatingEnd: c.availability?.operatingWindow?.end ?? "",
+    allDay: c.availability?.allDay === true,
+    blackoutDates: lines(c.availability?.blackoutDates),
     cancellationPolicy: c.bookingRules?.cancellationPolicy ?? "",
     reschedulePolicy: c.bookingRules?.reschedulePolicy ?? "",
     requiredSkills: (c.providerRequirements?.requiredSkills ?? []).join(", "),
@@ -517,6 +525,12 @@ export function extrasToInput(e: ServiceExtras, base?: ServiceCatalogConfig | nu
       minimumLeadTimeMinutes: num(e.minLeadTime),
       maximumAdvanceDays: num(e.maxAdvanceDays),
       sameDay: e.sameDayAvailable || undefined,
+      allDay: e.allDay || undefined,
+      operatingWindow:
+        e.operatingStart.trim() && e.operatingEnd.trim()
+          ? { start: e.operatingStart.trim(), end: e.operatingEnd.trim() }
+          : undefined,
+      blackoutDates: listOrUndefined(e.blackoutDates),
     }),
   );
   put(
@@ -926,6 +940,19 @@ export function ServiceConfigEditor({
         </Field>
         <Field label="Maximum advance days">
           <input className="sv-input" type="number" min={1} value={e.maxAdvanceDays} onChange={(x) => set("maxAdvanceDays", x.target.value)} />
+        </Field>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={e.allDay} onChange={(x) => set("allDay", x.target.checked)} />
+          Open all day (must be explicit — a blank window is not overnight)
+        </label>
+        <Field label="Operating window (HH:MM)" consumer="Availability">
+          <div className="grid grid-cols-2 gap-2">
+            <input className="sv-input" value={e.operatingStart} onChange={(x) => set("operatingStart", x.target.value)} placeholder="07:00" aria-label="Operating window start" />
+            <input className="sv-input" value={e.operatingEnd} onChange={(x) => set("operatingEnd", x.target.value)} placeholder="22:00" aria-label="Operating window end" />
+          </div>
+        </Field>
+        <Field label="Blackout dates" consumer="Availability" help="One YYYY-MM-DD per line. The availability service already refuses these days.">
+          <textarea className="sv-input min-h-20" value={e.blackoutDates} onChange={(x) => set("blackoutDates", x.target.value)} placeholder="2026-10-02" />
         </Field>
       </Section>
       ) : null}

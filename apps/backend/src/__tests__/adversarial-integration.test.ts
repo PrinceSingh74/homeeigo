@@ -23,6 +23,7 @@ import {
 } from "./helpers/adversarial-fixtures";
 import { walletService } from "../services/wallet.service";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote, quoteTokenForUser } from "./helpers/quote-token";
 import { paymentService } from "../services/payment.service";
 import {
   razorpayService,
@@ -151,15 +152,22 @@ describe.serial("Adversarial integration — PostgreSQL + services + HTTP", () =
       }),
     );
 
+    // Booking create requires a price quote. Each customer's token is fetched BEFORE the race (it is
+    // bound to user + selection, not to the slot), so the race itself is the same N creates at once.
+    const quoteTokens: Array<string | undefined> = [];
+    for (const c of customers) {
+      quoteTokens.push(await quoteTokenForUser(c.userId, { serviceId: ctx.serviceId, addressId: c.addressId }));
+    }
     // Seeding 50 users can outlast PRESENCE_FRESH_SEC; refresh presence right before the race.
     await heartbeatFresh(ctx);
     const results = await Promise.all(
-      customers.map((c) =>
+      customers.map((c, i) =>
         bookingService.create(c.userId, {
           serviceId: ctx.serviceId,
           providerId: ctx.providerId,
           scheduledDate: slot.toISOString(),
           addressId: c.addressId,
+          quoteToken: quoteTokens[i],
         }),
       ),
     );
@@ -193,7 +201,7 @@ describe.serial("Adversarial integration — PostgreSQL + services + HTTP", () =
     const createOrderSpy = spyOn(razorpayService, "createOrder");
 
     const slot = futureSlot(slotOffset);
-    const created = await bookingService.create(ctx.customerA.id, {
+    const created = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       scheduledDate: slot.toISOString(),
@@ -259,7 +267,7 @@ describe.serial("Adversarial integration — PostgreSQL + services + HTTP", () =
     if (skipIfNoDb()) return;
 
     const slot = futureSlot(220);
-    const created = await bookingService.create(ctx.customerA.id, {
+    const created = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       scheduledDate: slot.toISOString(),

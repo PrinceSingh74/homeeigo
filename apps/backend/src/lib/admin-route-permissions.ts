@@ -357,7 +357,20 @@ const rules: RouteRule[] = [
   { methods: M.PUT, pattern: /^\/api\/admin\/services\/[^/]+$/, resource: "SETTINGS", action: "UPDATE" },
   { methods: M.GET, pattern: /^\/api\/admin\/services\/[^/]+\/versions$/, resource: "SETTINGS", action: "READ" },
   { methods: M.POST, pattern: /^\/api\/admin\/services\/[^/]+\/lifecycle$/, resource: "SETTINGS", action: "UPDATE" },
+  { methods: M.POST, pattern: /^\/api\/admin\/services\/[^/]+\/approve$/, resource: "SETTINGS", action: "APPROVE" },
+  // Removing a scheduled go-live changes what an approval set: the approver's permission.
+  { methods: M.POST, pattern: /^\/api\/admin\/services\/[^/]+\/unschedule$/, resource: "SETTINGS", action: "APPROVE" },
+  // A pending revision of a live service: approving it publishes; discarding it changes nothing live.
+  { methods: M.POST, pattern: /^\/api\/admin\/services\/[^/]+\/revision\/approve$/, resource: "SETTINGS", action: "APPROVE" },
+  { methods: M.POST, pattern: /^\/api\/admin\/services\/[^/]+\/revision\/reject$/, resource: "SETTINGS", action: "UPDATE" },
+  { methods: M.GET, pattern: /^\/api\/admin\/services\/[^/]+\/versions\/diff$/, resource: "SETTINGS", action: "READ" },
+  // Restoring a version is an edit of the service: it goes through the same gate and approval.
+  { methods: M.POST, pattern: /^\/api\/admin\/services\/[^/]+\/versions\/[^/]+\/restore$/, resource: "SETTINGS", action: "UPDATE" },
+  // The audit trail of one service is audit data: the permission auditors already hold.
+  { methods: M.GET, pattern: /^\/api\/admin\/services\/[^/]+\/audit$/, resource: "AUDIT_LOGS", action: "READ" },
   { methods: M.GET, pattern: /^\/api\/admin\/service-categories$/, resource: "SETTINGS", action: "READ" },
+  { methods: M.POST, pattern: /^\/api\/admin\/service-categories$/, resource: "SETTINGS", action: "CREATE" },
+  { methods: M.PUT, pattern: /^\/api\/admin\/service-categories\/[^/]+$/, resource: "SETTINGS", action: "UPDATE" },
   // Phase 06 requirement catalogue (materials / equipment / customer preconditions): same authority as services.
   { methods: M.GET, pattern: /^\/api\/admin\/requirement-items$/, resource: "SETTINGS", action: "READ" },
   { methods: M.POST, pattern: /^\/api\/admin\/requirement-items$/, resource: "SETTINGS", action: "CREATE" },

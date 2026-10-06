@@ -1,13 +1,13 @@
 # Enterprise Soak Certification
 
-**Executed:** 2026-10-03T09:34:06.948Z
-**Run ID:** `soak-mus71nir`
+**Executed:** 2026-10-06T08:14:54.075Z
+**Run ID:** `soak-muwekeax`
 **Command:** `bun test src/__tests__/enterprise-soak-certification.test.ts`
 
 | # | Scenario | Verdict | Evidence |
 |---|----------|---------|----------|
-| 1 | 100 Customer Reschedules | **PASS** | 100/100 sequential reschedules succeeded {"ok":100,"fail":0,"finalSlot":"2026-10-14T17:00:00.000Z"} |
-| 2 | 100 Concurrent Reschedules | **PASS** | 94/100 succeeded; 0 corrupt; 0 connection-pool errors {"ok":94,"corrupt":0,"poolErrors":0,"total":100} |
+| 1 | 100 Customer Reschedules | **PASS** | 100/100 sequential reschedules succeeded {"ok":100,"fail":0,"finalSlot":"2026-10-17T16:00:00.000Z"} |
+| 2 | 100 Concurrent Reschedules | **PASS** | 92/100 succeeded; 0 corrupt; 0 connection-pool errors {"ok":92,"corrupt":0,"poolErrors":0,"total":100} |
 | 3 | 50 Partner Support Tickets | **PASS** | created=50 visible=50 {"created":50,"visible":50} |
 | 4 | 50 Admin Replies | **PASS** | replies=50/50 customerSeesAdmin=true partnerSeesAdmin=true {"replies":50,"custAdminMsg":1,"partnerAdminMsg":1} |
 | 5 | chain: Customer → Ticket → Admin Reply → Customer View | **PASS** | admin message in customer thread |

@@ -16,6 +16,7 @@ import {
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { prismaPoolConfigFromUrl } from "../lib/database-url";
 import { rescheduleGateStats } from "../lib/reschedule-gate";
 
@@ -139,7 +140,7 @@ async function seedAcceptedBooking(hoursFromNow: number) {
   // Presence is set once in beforeAll; by the 500 case the earlier cases have outlasted
   // PRESENCE_FRESH_SEC and every direct create is refused as a stale partner (PROVIDER_UNAVAILABLE).
   await keepPresenceFresh(ctx);
-  const created = await bookingService.create(ctx.customerA.id, {
+  const created = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
     scheduledDate: slot.toISOString(),

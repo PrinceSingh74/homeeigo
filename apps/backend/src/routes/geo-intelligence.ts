@@ -4,7 +4,8 @@
  *
  * RBAC:
  *   ADMIN-only      : revenue-forecast, fraud, exec-kpis  (business/security sensitive)
- *   ADMIN + VENDOR  : demand-forecast, surge, zone-scoring, provider-density
+ *   ADMIN + VENDOR  : demand-forecast, surge, provider-density
+ *   ADMIN           : zone-scoring (platform supply scores are not partner data)
  *                     (partners use these for earnings positioning — aggregate zone intel only)
  *   any authed user : eta
  * Every response carries { confidence, freshness, source, cached, generatedAt }.
@@ -48,7 +49,7 @@ export const geoIntelligenceRoutes = new Elysia({ prefix: "/api/geo-intel" })
 
   // Partner + Admin (aggregate zone intelligence) -------------------------
   .get("/zone-scoring", async ({ requireRole }) => {
-    requireRole("ADMIN", "VENDOR");
+    requireRole("ADMIN");
     return { success: true, ...(await svc.zoneScoring()) };
   })
 

@@ -9,7 +9,7 @@
 import "../load-env";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cleanupAdversarialFixtures, dbReachable, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
-import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { serviceAvailabilityService } from "../services/service-availability.service";
 
 const RUN_ID = `avail-overlap-${Date.now().toString(36)}`;
@@ -25,7 +25,7 @@ const AT = new Date(`${ymd}T11:00:00+05:30`);
 beforeAll(async () => {
   if (!(await dbReachable())) throw new Error("homigo_test is not reachable");
   ctx = await seedAdversarialFixtures(RUN_ID);
-  const created = await bookingService.create(ctx.customerA.id, {
+  const created = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     addressId: ctx.addressAId,
     scheduledDate: AT.toISOString(),
@@ -54,7 +54,7 @@ describe("availability respects the customer's own bookings", () => {
   });
 
   test("create agrees: booking that time again is refused OVERLAPPING_BOOKING", async () => {
-    const again = await bookingService.create(ctx.customerA.id, {
+    const again = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       addressId: ctx.addressAId,
       scheduledDate: AT.toISOString(),

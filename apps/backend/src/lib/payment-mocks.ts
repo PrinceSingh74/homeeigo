@@ -7,11 +7,16 @@
  * host any customer could mark their own booking / top-up / gift card / subscription as paid with
  * ₹0 moved. Mocks are now an explicit opt-in that production and staging can never enable.
  */
-import { isDeployedEnvironment } from "./deployed-environment";
+import { isDeployedEnvironment, isKnownLocalEnvironment } from "./deployed-environment";
+import { onIsolatedDatabase } from "./test-egress";
 
-export function paymentMocksAllowed(): boolean {
+export function paymentMocksAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
   // The deployment test is shared; see lib/deployed-environment for why NODE_ENV alone is wrong.
-  if (isDeployedEnvironment()) return false;
-  if (process.env.NODE_ENV === "test") return true;
-  return process.env.HOMIGO_ALLOW_PAYMENT_MOCKS === "1";
+  if (isDeployedEnvironment(env)) return false;
+  if (env.NODE_ENV === "test") return true;
+  // A known-local process on a disposable database (an isolated verification stack) is the same
+  // case as the suite: it has no gateway (lib/test-egress), so without mocks it could never pay.
+  // An unrecognised environment gets neither, whatever its database is called.
+  if (isKnownLocalEnvironment(env) && onIsolatedDatabase(env)) return true;
+  return env.HOMIGO_ALLOW_PAYMENT_MOCKS === "1";
 }

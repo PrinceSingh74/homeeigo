@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { BOOKING_ADDONS, BookingPricingService } from "../services/booking-pricing.service";
+import { effectiveAddonCatalogue } from "../lib/service-catalog-config";
+import { BookingPricingService } from "../services/booking-pricing.service";
 
 describe("Booking pricing — addon catalog", () => {
-  test("addon prices are fixed server-side", () => {
-    expect(BOOKING_ADDONS.find((a) => a.id === "fridge")?.price).toBe(99);
-    expect(BOOKING_ADDONS.find((a) => a.id === "sofa")?.price).toBe(149);
-    expect(BOOKING_ADDONS.find((a) => a.id === "microwave")?.price).toBe(79);
+  test("a service with no add-ons offers none", () => {
+    expect(effectiveAddonCatalogue(null)).toEqual([]);
   });
 });
 

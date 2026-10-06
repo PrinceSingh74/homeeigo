@@ -1,5 +1,8 @@
 import { Elysia, t } from "elysia";
 import { catalogService } from "../services/catalog.service";
+import { ratingService } from "../services/rating.service";
+import { authPlugin } from "../plugins/auth.plugin";
+import { serviceabilityForCustomer } from "../services/customer-serviceability.service";
 
 /**
  * The catalogue list is the hottest public read in the app, and every caller gets the same bytes for
@@ -15,6 +18,8 @@ const LIST_BODY_TTL_MS = 5_000;
 const listBodyCache = new Map<string, { body: string; expires: number }>();
 
 export const servicesRoutes = new Elysia({ prefix: "/api/services" })
+  // Derives `requireAuth`; a route is protected only where it calls it (the catalogue stays public).
+  .use(authPlugin)
   .get("/", async ({ query }) => {
     // Key on the parameters catalogService.list actually reads, so unknown query junk can neither
     // multiply cache entries nor thrash the map.
@@ -106,6 +111,30 @@ export const servicesRoutes = new Elysia({ prefix: "/api/services" })
       }),
     },
   )
+  // Can the signed-in customer book this service at one of their addresses (and on a date)?
+  // One of five statuses and a sentence; never the rule, zone or professional behind the answer.
+  .get("/:id/serviceability", async ({ requireAuth, params, query, set }) => {
+    const { userId } = requireAuth();
+    const q = query as Record<string, string | undefined>;
+    const answer = await serviceabilityForCustomer(userId, params.id, { addressId: q.addressId, date: q.date });
+    if (!answer.ok) {
+      set.status = answer.error === "SERVICE_NOT_FOUND" || answer.error === "ADDRESS_NOT_FOUND" ? 404 : 400;
+      const message = { SERVICE_NOT_FOUND: "Service not found", ADDRESS_NOT_FOUND: "Address not found", ADDRESS_REQUIRED: "Choose an address first", INVALID_DATE: "date must be YYYY-MM-DD" }[answer.error];
+      return { success: false, error: message, code: answer.error };
+    }
+    return { success: true, data: answer.result };
+  })
+  // Public reviews of one customer-visible service. A hidden or unknown service answers 404, so
+  // reviews cannot be used to probe services that are not in the catalogue.
+  .get("/:id/reviews", async ({ params, query, set }) => {
+    const service = await catalogService.byId(params.id);
+    if (!service) {
+      set.status = 404;
+      return { success: false, error: "Service not found", code: "NOT_FOUND" };
+    }
+    const data = await ratingService.listPublicForService(service.id, query as Record<string, string>);
+    return { success: true, data };
+  })
   .get("/:id", async ({ params, set }) => {
     const service = await catalogService.byId(params.id);
     if (!service) {

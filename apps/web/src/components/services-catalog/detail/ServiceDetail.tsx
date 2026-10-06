@@ -27,8 +27,8 @@ import { StaticSkeleton } from "@/components/ui/StaticSkeleton";
 import { ServiceCategoryNav } from "@/components/services-catalog/ServiceCategoryNav";
 import { CatalogError, ServiceEmptyState } from "@/components/services-catalog/ServiceStates";
 import { Breadcrumbs } from "@/components/services-catalog/primitives";
-import { HowItWorks } from "@/components/services-catalog/TrustSections";
 import { ServiceVisit } from "@/components/services-catalog/detail/ServiceVisit";
+import { ServiceReviews } from "@/components/services-catalog/detail/ServiceReviews";
 import { HourlyHelpModule, hourlyBooking, type HourlySelection } from "@/components/services-catalog/HourlyHelpModule";
 import { BeautyAudienceSelector, BeautyProfessionalSelector } from "@/components/services-catalog/beauty/BeautySelectors";
 import { ServiceHero } from "@/components/services-catalog/detail/ServiceHero";
@@ -44,11 +44,13 @@ import {
 } from "@/components/services-catalog/detail/ServiceOptions";
 import { ServiceBookingCTA, type BookingSummary } from "@/components/services-catalog/detail/ServiceBookingCTA";
 import {
+  BookingSteps,
   DetailSection,
   ServiceAvailability,
   ServiceDurationBreakdown,
-  ServiceFacts,
+  durationAddsDetail,
   ServiceFAQ,
+  ServiceProfessional,
   ServiceHighlights,
   ServiceNotes,
   ServicePolicies,
@@ -97,14 +99,14 @@ export function ServiceDetail({
 
 function DetailSkeleton() {
   return (
-    <div role="status" aria-label="Loading service" aria-busy="true" className="grid gap-10 lg:grid-cols-[1.1fr_1fr]">
-      <StaticSkeleton shimmer className="aspect-[4/3] rounded-3xl" />
-      <div className="space-y-4">
-        <StaticSkeleton className="h-4 w-32 rounded-full" />
-        <StaticSkeleton className="h-10 w-3/4 rounded-xl" />
-        <StaticSkeleton className="h-5 w-full rounded-md" />
-        <StaticSkeleton className="h-5 w-2/3 rounded-md" />
-        <StaticSkeleton className="mt-6 h-8 w-40 rounded-md" />
+    <div role="status" aria-label="Loading service" aria-busy="true" className="max-w-4xl space-y-5">
+      <StaticSkeleton className="h-4 w-40 rounded-full" />
+      <StaticSkeleton shimmer className="h-14 w-4/5 rounded-xl sm:h-16" />
+      <StaticSkeleton className="h-5 w-full rounded-lg" />
+      <StaticSkeleton className="h-5 w-2/3 rounded-lg" />
+      <div className="flex gap-10 border-t border-line pt-7">
+        <StaticSkeleton className="h-12 w-36 rounded-xl" />
+        <StaticSkeleton className="h-12 w-28 rounded-xl" />
       </div>
     </div>
   );
@@ -374,19 +376,27 @@ function LiveBody({
   const showOptions = (isBeauty && audiences.length > 1) || variantChoices.length > 1 || useTiers || Boolean(rule);
   const duration = verdict?.duration ?? detail?.duration ?? null;
   const media = detail?.content;
+  const heroDuration = formatDuration(service.durationMin);
+  const overviewAdds = content.overview.trim() !== service.description.trim();
+  const durationAdds = durationAddsDetail(duration, heroDuration);
 
   return (
     <>
       <div className="grid gap-10 lg:grid-cols-[1fr_360px] lg:gap-14">
-        <div className="min-w-0 space-y-12 sm:space-y-14">
-          <DetailSection id="overview" title="Service overview">
-            <p className="max-w-3xl text-base leading-relaxed text-muted">{content.overview}</p>
-            {media?.valueProposition && <p className="mt-3 max-w-3xl text-base text-content">{media.valueProposition}</p>}
-            <ServiceFacts service={service} />
-            <div className="mt-4">
-              <ServiceDurationBreakdown duration={duration} />
-            </div>
-          </DetailSection>
+        {/* Whichever section comes first sits directly under the category nav: no rule above it. */}
+        <div className="min-w-0 space-y-10 sm:space-y-12 [&>section:first-child]:border-t-0 [&>section:first-child]:pt-0">
+          {/* The hero already carries the lead line, price, pricing model and time. This section
+              exists only for what it adds: a fuller overview, the value proposition, or a duration
+              range / breakdown. With nothing to add, the page goes straight on to the next section. */}
+          {(overviewAdds || media?.valueProposition || durationAdds) && (
+            <DetailSection id="overview" title="Service overview">
+              <div className="space-y-4">
+                {overviewAdds && <p className="max-w-2xl text-lg leading-relaxed text-content">{content.overview}</p>}
+                {media?.valueProposition && <p className="max-w-2xl text-base leading-relaxed text-muted">{media.valueProposition}</p>}
+                {durationAdds && <ServiceDurationBreakdown duration={duration} alreadyShown={heroDuration} />}
+              </div>
+            </DetailSection>
+          )}
 
           {media && (media.highlights.length > 0 || media.keyBenefits.length > 0) && (
             <DetailSection id="what-you-get" title="What you get">
@@ -424,7 +434,7 @@ function LiveBody({
                   )}
                   {rule && bounds && (
                     <fieldset>
-                      <legend className="mb-3 text-sm font-semibold text-content">
+                      <legend className="mb-3 text-base font-semibold text-content">
                         How many {rule.unitLabelPlural ?? rule.unitLabel}?
                       </legend>
                       <QuantitySelector rule={rule} {...bounds} value={q} onChange={setQuantity} />
@@ -438,7 +448,7 @@ function LiveBody({
           )}
 
           {serverIssues.length > 1 && (
-            <ul role="alert" className="-mt-6 space-y-1 text-sm text-amber-700 dark:text-amber-400">
+            <ul role="alert" className="-mt-6 space-y-1 text-sm font-medium text-amber-700 dark:text-amber-400">
               {serverIssues.map((i) => (
                 <li key={`${i.code}-${i.id ?? ""}`}>{i.message}</li>
               ))}
@@ -470,6 +480,11 @@ function LiveBody({
             </DetailSection>
           )}
 
+          {/* Small screens: the ticket's breakdown and small print, in the page. The fixed bar holds the button. */}
+          <div className="mx-auto max-w-md lg:hidden">
+            <ServiceBookingCTA summary={summary} variant="stub" />
+          </div>
+
           <DetailSection id="availability" title="Availability">
             <ServiceAvailability service={service} cities={content.cities} member={Boolean(entitlements?.premiumAccess)} />
           </DetailSection>
@@ -493,7 +508,15 @@ function LiveBody({
             </DetailSection>
           )}
 
-          <HowItWorks compact title={detail?.visit ? "How booking works" : "How it works"} />
+          <BookingSteps title={detail?.visit ? "How booking works" : "How it works"} />
+
+          {detail?.professional?.statements.length ? (
+            <DetailSection id="professional" title="Your professional" lead="Checked before a professional can be given this job.">
+              <ServiceProfessional statements={detail.professional.statements} />
+            </DetailSection>
+          ) : null}
+
+          {detail?.id ? <ServiceReviews serviceId={detail.id} /> : null}
 
           <DetailSection id="faq" title="Frequently asked questions">
             <ServiceFAQ faqs={content.faqs} />

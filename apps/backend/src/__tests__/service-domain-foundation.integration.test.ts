@@ -56,6 +56,24 @@ async function call(method: string, path: string, body?: unknown, token?: string
   return { status: res.status, json: (await res.json().catch(() => ({}))) as Res["json"] };
 }
 const admin = () => bearer(ctx.superAdmin);
+
+async function approveAndPublish(serviceId: string) {
+  await prisma.service.update({
+    where: { id: serviceId },
+    data: {
+      lifecycleStatus: "READY_FOR_REVIEW",
+      isActive: false,
+      isBookable: false,
+      isCustomerVisible: false,
+      updatedBy: ctx.supportAdmin.id,
+    },
+  });
+  const approved = await call("POST", `/api/admin/services/${serviceId}/approve`, {}, admin());
+  if (approved.status !== 200) throw new Error(`approve: ${JSON.stringify(approved.json)}`);
+  const live = await call("POST", `/api/admin/services/${serviceId}/lifecycle`, { to: "ACTIVE" }, admin());
+  if (live.status !== 200) throw new Error(`publish: ${JSON.stringify(live.json)}`);
+  return live;
+}
 const tag = (s: string) => `${s}-${RUN_ID}`.toLowerCase();
 
 async function createService(over: Record<string, unknown> = {}) {
@@ -67,6 +85,7 @@ async function createService(over: Record<string, unknown> = {}) {
     estimatedDuration: 60,
     materialPolicy: undefined,
     catalogConfig: { materialPolicy: "PROFESSIONAL_PROVIDED", equipmentPolicy: "PROFESSIONAL_PROVIDED" },
+    isActive: false,
     ...over,
   };
   const r = await call("POST", "/api/admin/services", body, admin());
@@ -153,8 +172,10 @@ describe.serial("Phase 01 — admin identity & taxonomy API", () => {
     id = svc.id;
     expect(svc.taxonomy).toEqual({ category: { slug: "home-cleaning", name: "Home Cleaning" }, subcategory: { slug: "furnishings", name: "Furnishings" } });
     expect(svc.serviceCode).toBe(tag("sofa"));
+    expect(svc.lifecycleStatus).toBe("DRAFT");
     expect(svc.version).toBe(1);
     expect(svc.createdBy).toBe(ctx.superAdmin.id);
+    await approveAndPublish(id);
     const v = await prisma.serviceConfigVersion.findUniqueOrThrow({ where: { serviceId_version: { serviceId: id, version: 1 } } });
     expect(v.createdBy).toBe(ctx.superAdmin.id);
     expect(v.snapshot).toMatchObject({ slug: tag("sofa"), basePrice: 300, serviceCode: tag("sofa") });
@@ -185,16 +206,17 @@ describe.serial("Phase 01 — admin identity & taxonomy API", () => {
   });
   test("a price change on a live service bumps the version atomically; a stale editor is refused", async () => {
     if (!dbOk) return;
-    const r = await call("PUT", `/api/admin/services/${id}`, { basePrice: 350, expectedVersion: 1 }, admin());
+    const current = (await prisma.service.findUniqueOrThrow({ where: { id } })).version;
+    const r = await call("PUT", `/api/admin/services/${id}`, { basePrice: 350, expectedVersion: current }, admin());
     expect(r.status).toBe(200);
-    expect(r.json.data.service.version).toBe(2);
-    expect(await prisma.serviceConfigVersion.count({ where: { serviceId: id } })).toBe(2);
-    const stale = await call("PUT", `/api/admin/services/${id}`, { basePrice: 360, expectedVersion: 1 }, admin());
+    expect(r.json.data.service.version).toBe(current + 1);
+    expect(await prisma.serviceConfigVersion.count({ where: { serviceId: id } })).toBe(current + 1);
+    const stale = await call("PUT", `/api/admin/services/${id}`, { basePrice: 360, expectedVersion: current }, admin());
     expect(stale.status).toBe(409);
     expect(stale.json.code).toBe("VERSION_CONFLICT");
     // A content-only edit does not create a new selling version.
     const content = await call("PUT", `/api/admin/services/${id}`, { detailedDescription: "Longer copy" }, admin());
-    expect(content.json.data.service.version).toBe(2);
+    expect(content.json.data.service.version).toBe(current + 1);
   });
   test("concurrent price saves never share a version and never lose a version row", async () => {
     if (!dbOk) return;
@@ -232,7 +254,8 @@ describe.serial("Phase 01 — lifecycle", () => {
   test("ACTIVE → ARCHIVED directly is refused with the allowed moves", async () => {
     if (!dbOk) return;
     id = (await createService({ slug: tag("life") })).json.data.service.id;
-    const r = await call("POST", `/api/admin/services/${id}/lifecycle`, { to: "ARCHIVED" }, admin());
+    await approveAndPublish(id);
+    const r = await call("POST", `/api/admin/services/${id}/lifecycle`, { to: "ARCHIVED", reason: "Fixture retired" }, admin());
     expect(r.status).toBe(409);
     expect(r.json.code).toBe("INVALID_LIFECYCLE_TRANSITION");
     expect(r.json.allowed).toContain("PAUSED");
@@ -240,7 +263,7 @@ describe.serial("Phase 01 — lifecycle", () => {
   test("paused service disappears from the customer API", async () => {
     if (!dbOk) return;
     expect((await call("GET", `/api/services/${id}`)).status).toBe(200);
-    const r = await call("POST", `/api/admin/services/${id}/lifecycle`, { to: "PAUSED" }, admin());
+    const r = await call("POST", `/api/admin/services/${id}/lifecycle`, { to: "PAUSED", reason: "Fixture paused" }, admin());
     expect(r.status).toBe(200);
     expect(r.json.data.service).toMatchObject({ lifecycleStatus: "PAUSED", isActive: false, isBookable: false });
     expect((await call("GET", `/api/services/${id}`)).status).toBe(404);
@@ -248,7 +271,7 @@ describe.serial("Phase 01 — lifecycle", () => {
   });
   test("archived is terminal and never exposed; the legacy toggle cannot revive it", async () => {
     if (!dbOk) return;
-    expect((await call("POST", `/api/admin/services/${id}/lifecycle`, { to: "ARCHIVED" }, admin())).status).toBe(200);
+    expect((await call("POST", `/api/admin/services/${id}/lifecycle`, { to: "ARCHIVED", reason: "Fixture retired" }, admin())).status).toBe(200);
     const revive = await call("PATCH", `/api/admin/services/${id}/status`, { isActive: true }, admin());
     expect(revive.status).toBe(409);
     expect(revive.json.code).toBe("INVALID_LIFECYCLE_TRANSITION");
@@ -261,6 +284,7 @@ describe.serial("Phase 01 — lifecycle", () => {
   test("a live service cannot lose its description (content gate)", async () => {
     if (!dbOk) return;
     const live = (await createService({ slug: tag("content") })).json.data.service.id;
+    await approveAndPublish(live);
     const r = await call("PUT", `/api/admin/services/${live}`, { description: "   " }, admin());
     expect(r.status).toBe(400);
     expect(r.json.code).toBe("SERVICE_NOT_BOOKABLE");
@@ -391,18 +415,23 @@ describe.serial("Phases 03–04 — the backend is the authority (frontend bypas
   });
   test("a valid booking stores the resolved selection; the partner sees the job brief, not the config", async () => {
     if (!dbOk) return;
+    const selection = {
+      serviceId: ctx.serviceId,
+      addressId: ctx.addressAId,
+      variantId: "fabric",
+      quantity: 3,
+      addonIds: ["stain-guard", "deodorise"],
+      addonQuantities: { deodorise: 2 },
+    };
+    const quoted = await call("POST", "/api/bookings/price-quote", selection, bearer(ctx.customerA));
     const book = await call(
       "POST",
       "/api/bookings",
       {
-        serviceId: ctx.serviceId,
-        addressId: ctx.addressAId,
+        ...selection,
         scheduledDate: futureSlot(90).toISOString(),
-        variantId: "fabric",
-        quantity: 3,
-        addonIds: ["stain-guard", "deodorise"],
-        addonQuantities: { deodorise: 2 },
         providerId: ctx.providerId,
+        quoteToken: quoted.json.data?.quote?.quoteToken,
       },
       bearer(ctx.customerA),
     );

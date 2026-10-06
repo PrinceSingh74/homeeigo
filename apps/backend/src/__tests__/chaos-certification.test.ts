@@ -12,7 +12,7 @@ import { BookingStatus, PaymentStatus, PrismaClient } from "@prisma/client";
 import fs from "fs";
 import path from "path";
 import { prisma, dbReachable, seedAdversarialFixtures, heartbeatFresh, cleanupAdversarialFixtures, deleteBookingsForUsers, type AdvCtx } from "./helpers/adversarial-fixtures";
-import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { paymentService } from "../services/payment.service";
 import { assignmentEngine } from "../services/assignment-engine.service";
 import { webhookDedupService } from "../services/webhook-dedup.service";
@@ -187,7 +187,7 @@ describe.serial("Chaos & resilience certification", () => {
     const orphanTxn = await prisma.walletTransaction.count({
       where: { transactionNumber: `${RUN_ID}-chaos-booking-probe` },
     });
-    const recovered = await bookingService.create(ctx.customerA.id, {
+    const recovered = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       scheduledDate: soakSlot(51).toISOString(),
@@ -213,7 +213,7 @@ describe.serial("Chaos & resilience certification", () => {
 
   test("2 — PostgreSQL crash during payment verify (mid-tx rollback → recover)", async () => {
     if (skipIfNoDb()) return;
-    const created = await bookingService.create(ctx.customerA.id, {
+    const created = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       scheduledDate: soakSlot(52).toISOString(),
@@ -276,7 +276,7 @@ describe.serial("Chaos & resilience certification", () => {
       /* no-op during outage */
     };
 
-    const booking = await bookingService.create(ctx.customerA.id, {
+    const booking = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       scheduledDate: soakSlot(53).toISOString(),
       addressId: ctx.addressAId,
@@ -332,7 +332,7 @@ describe.serial("Chaos & resilience certification", () => {
 
   test("5 — Backend restart during active booking (state survives)", async () => {
     if (skipIfNoDb()) return;
-    const created = await bookingService.create(ctx.customerA.id, {
+    const created = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       scheduledDate: soakSlot(54).toISOString(),
@@ -379,7 +379,7 @@ describe.serial("Chaos & resilience certification", () => {
 
   test("6 — Razorpay timeout (no double-charge on retry)", async () => {
     if (skipIfNoDb()) return;
-    const created = await bookingService.create(ctx.customerA.id, {
+    const created = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       scheduledDate: soakSlot(55).toISOString(),
@@ -482,7 +482,7 @@ describe.serial("Chaos & resilience certification", () => {
     await deleteBookingsForUsers([ctx.customerA.id]);
     const bookingIds: string[] = [];
     for (let i = 0; i < 20; i++) {
-      const r = await bookingService.create(ctx.customerA.id, {
+      const r = await createBookingWithQuote(ctx.customerA.id, {
         serviceId: ctx.serviceId,
         scheduledDate: soakSlot(60 + i).toISOString(),
         addressId: ctx.addressAId,
@@ -581,7 +581,7 @@ describe.serial("Chaos & resilience certification", () => {
         });
       }
       try {
-        const r = await bookingService.create(ctx.customerA.id, {
+        const r = await createBookingWithQuote(ctx.customerA.id, {
           serviceId: ctx.serviceId,
           providerId: i % 5 === 0 ? undefined : ctx.providerId,
           scheduledDate: soakSlot(200 + i).toISOString(),

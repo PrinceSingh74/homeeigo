@@ -4,7 +4,6 @@ import { campaignService } from "./campaign.service";
 import { membershipCouponService } from "./membership-coupon.service";
 import { weatherService } from "./weather.service";
 import {
-  BOOKING_ADDONS,
   coverageAllowsAddress,
   resolveServiceSelection,
   type SelectedAddon,
@@ -34,8 +33,6 @@ import { selectionFingerprint, signQuote } from "../lib/quote-token";
 import { consumeRateLimitSmart, peekRateLimitSmart } from "../middleware/rate-limit.middleware";
 
 /** Re-exported for existing importers; the catalogue lives in lib/service-catalog-config. */
-export { BOOKING_ADDONS };
-export type BookingAddonId = (typeof BOOKING_ADDONS)[number]["id"];
 
 /**
  * Fees the platform charges on top of the service. None is configured today: the old

@@ -14,6 +14,10 @@ import {
   inferCapabilityProfile,
   isPartnerOperationalService,
   isServiceCustomerVisible,
+  catalogPartnerBrief,
+  evaluatePublishApproval,
+  publishGateResults,
+  scheduledActivationDecision,
   validateForActivation,
 } from "../lib/service-domain";
 
@@ -52,6 +56,52 @@ describe("coming soon is visible but not bookable", () => {
   test("coming soon is not indexable", () => {
     expect(customerIndexable(core(), cfg)).toBe(false);
     expect(customerIndexable(core(), null)).toBe(true);
+  });
+});
+
+describe("publish approval and schedule", () => {
+  test("a missing price is a critical failure", () => {
+    const gates = publishGateResults(core({ basePrice: 0, isActive: false }), null);
+    expect(gates.some((g) => g.code === "PRICING_MISSING" && g.status === "FAIL" && g.severity === "critical")).toBe(true);
+  });
+  test("an already active service stays bookable when advisory policies are missing", () => {
+    expect(validateForActivation(core({ isActive: true }), null, { grandfathered: true }).ok).toBe(true);
+    const gates = publishGateResults(core({ isActive: true }), null, { grandfathered: true });
+    expect(gates.some((g) => g.code === "MATERIALS_POLICY" && g.status === "WARNING")).toBe(true);
+    expect(gates.some((g) => g.code === "MATERIALS_POLICY" && g.status === "FAIL")).toBe(false);
+  });
+  test("the last editor cannot approve their own change", () => {
+    expect(
+      evaluatePublishApproval({ approverId: "editor", editorId: "editor", approvedEditorId: "editor", approverHasApprove: true }),
+    ).toEqual({ ok: false, code: "APPROVER_IS_EDITOR" });
+  });
+  test("a second approver can approve the current editor", () => {
+    expect(
+      evaluatePublishApproval({ approverId: "approver", editorId: "editor", approvedEditorId: "editor", approverHasApprove: true }),
+    ).toEqual({ ok: true });
+  });
+  test("a future scheduled time does not activate", () => {
+    const decision = scheduledActivationDecision({
+      scheduledLiveAt: "2099-01-01T00:00:00+05:30",
+      now: new Date("2026-10-05T12:00:00+05:30"),
+      gateOk: true,
+      approvalOk: true,
+    });
+    expect(decision).toEqual({ action: "wait" });
+  });
+  test("a due schedule with a failed gate does not activate", () => {
+    const decision = scheduledActivationDecision({
+      scheduledLiveAt: "2020-01-01T00:00:00+05:30",
+      now: new Date("2026-10-05T12:00:00+05:30"),
+      gateOk: false,
+      approvalOk: true,
+    });
+    expect(decision).toEqual({ action: "fail" });
+  });
+  test("the partner brief does not carry internal fields", () => {
+    const brief = catalogPartnerBrief(core(), null);
+    expect(brief).toEqual({ objective: "Clean bathrooms", stepTitles: [] });
+    expect(JSON.stringify(brief)).not.toMatch(/matching|riskScore|operationsNotes|price/i);
   });
 });
 

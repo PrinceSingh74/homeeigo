@@ -37,32 +37,46 @@ export function ServiceVariantSelector({
             aria-checked={on}
             onClick={() => onChange(o.id)}
             className={cn(
-              "relative flex min-h-24 flex-col items-start justify-between gap-3 rounded-2xl border p-4 text-left",
-              "motion-safe:transition-[border-color,box-shadow] motion-safe:duration-200",
+              "flex min-h-28 flex-col justify-between gap-4 rounded-2xl border-2 p-4 text-left",
+              "motion-safe:transition-[border-color,background-color] motion-safe:duration-200",
               focusRing,
               on
-                ? "border-emerald-500 bg-emerald-50/60 shadow-e2 ring-1 ring-emerald-500 dark:bg-emerald-500/10"
-                : "border-line bg-surface hover:border-emerald-300",
+                ? "border-emerald-700 bg-emerald-50 dark:border-emerald-400 dark:bg-emerald-500/10"
+                : "border-line bg-surface hover:border-emerald-600/50",
             )}
           >
-            <span className="pr-6">
-              <span className="block font-semibold text-content">{o.name}</span>
-              {o.tag && <span className="block text-xs text-muted">{o.tag}</span>}
+            <span className="flex w-full items-start gap-3">
+              {/* A real radio mark: empty ring when off, filled with a tick when on. */}
+              <span
+                aria-hidden
+                className={cn(
+                  "mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border-2",
+                  on ? "border-emerald-700 bg-emerald-700 text-white dark:border-emerald-400 dark:bg-emerald-400 dark:text-emerald-950" : "border-muted/60",
+                )}
+              >
+                {on && <Check className="size-3.5" strokeWidth={3.5} />}
+              </span>
+              <span className="min-w-0">
+                <span className="block font-semibold text-content">{o.name}</span>
+                {o.tag && <span className="block text-sm text-muted">{o.tag}</span>}
+              </span>
             </span>
-            <span className="font-display text-lg font-bold tabular-nums text-content">
-              <span aria-hidden>
-                {formatInr(o.price)}
-                {o.priceSuffix && <span className="text-sm font-medium text-muted"> {o.priceSuffix}</span>}
+            <span className="flex w-full items-baseline justify-between gap-3">
+              <span className="font-display text-2xl font-bold tabular-nums tracking-tight text-content">
+                <span aria-hidden>
+                  {formatInr(o.price)}
+                  {o.priceSuffix && <span className="font-sans text-sm font-medium tracking-normal text-muted"> {o.priceSuffix}</span>}
+                </span>
+                <span className="sr-only">
+                  {spokenInr(o.price)} {o.priceSuffix ?? ""}
+                </span>
               </span>
-              <span className="sr-only">
-                {spokenInr(o.price)} {o.priceSuffix ?? ""}
-              </span>
+              {on && (
+                <span aria-hidden className="text-sm font-semibold text-brand">
+                  Selected
+                </span>
+              )}
             </span>
-            {on && (
-              <span aria-hidden className="absolute right-3 top-3 grid size-5 place-items-center rounded-full bg-emerald-600 text-white">
-                <Check className="size-3" strokeWidth={3} />
-              </span>
-            )}
           </button>
         );
       })}
@@ -87,25 +101,29 @@ export function QuantitySelector({
   onChange: (n: number) => void;
 }) {
   const btn = cn(
-    "grid size-11 place-items-center rounded-full border border-line bg-surface text-content",
-    "disabled:cursor-not-allowed disabled:opacity-40 hover:border-emerald-300",
+    "grid size-11 place-items-center rounded-full bg-surface text-content shadow-e1",
+    "disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none hover:text-brand",
     focusRing,
   );
   const word = unitWord(rule, value);
   return (
-    <div className="flex flex-wrap items-center gap-4">
-      <div className="inline-flex items-center gap-3" role="group" aria-label={`Number of ${rule.unitLabelPlural ?? rule.unitLabel}`}>
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+      <div
+        className="inline-flex items-center gap-2 rounded-full border-2 border-line bg-canvas p-1.5"
+        role="group"
+        aria-label={`Number of ${rule.unitLabelPlural ?? rule.unitLabel}`}
+      >
         <button type="button" className={btn} onClick={() => onChange(value - step)} disabled={value - step < min} aria-label={`Fewer ${rule.unitLabelPlural ?? rule.unitLabel}`}>
           <Minus className="size-4" aria-hidden />
         </button>
-        <output className="min-w-24 text-center font-display text-lg font-bold tabular-nums text-content" aria-live="polite">
-          {value} <span className="text-sm font-medium text-muted">{word}</span>
+        <output className="min-w-28 text-center font-display text-2xl font-bold tabular-nums tracking-tight text-content" aria-live="polite">
+          {value} <span className="font-sans text-sm font-medium tracking-normal text-muted">{word}</span>
         </output>
         <button type="button" className={btn} onClick={() => onChange(value + step)} disabled={value + step > max} aria-label={`More ${rule.unitLabelPlural ?? rule.unitLabel}`}>
           <Plus className="size-4" aria-hidden />
         </button>
       </div>
-      <p className="text-xs text-muted">
+      <p className="text-sm text-muted">
         {min}–{max} {rule.unitLabelPlural ?? rule.unitLabel}
         {step > 1 ? `, in steps of ${step}` : ""}
       </p>
@@ -153,34 +171,42 @@ export function ServiceAddons({
               aria-describedby={reason ? `addon-reason-${a.id}` : undefined}
               onClick={() => onToggle(a.id)}
               className={cn(
-                "flex w-full items-center gap-4 rounded-2xl border p-4 text-left",
+                "flex min-h-16 w-full items-center gap-4 rounded-2xl border-2 px-4 py-3 text-left",
                 "motion-safe:transition-[border-color,background-color] motion-safe:duration-200",
                 focusRing,
-                on ? "border-emerald-500 bg-emerald-50/60 dark:bg-emerald-500/10" : "border-line bg-surface hover:border-emerald-300",
+                on
+                  ? "border-emerald-700 bg-emerald-50 dark:border-emerald-400 dark:bg-emerald-500/10"
+                  : "border-line bg-surface hover:border-emerald-600/50",
                 unavailable && !on && "cursor-not-allowed opacity-50 hover:border-line",
-                unavailable && on && "border-amber-500",
+                unavailable && on && "border-amber-500 dark:border-amber-500",
               )}
             >
+              {/* A checkbox mark (square), so it reads differently from the single-choice radios. */}
               <span
                 aria-hidden
                 className={cn(
-                  "grid size-8 shrink-0 place-items-center rounded-full border",
-                  on ? "border-transparent bg-emerald-600 text-white" : "border-line text-muted",
+                  "grid size-6 shrink-0 place-items-center rounded-xs border-2",
+                  on ? "border-emerald-700 bg-emerald-700 text-white dark:border-emerald-400 dark:bg-emerald-400 dark:text-emerald-950" : "border-muted/60",
                 )}
               >
-                {on ? <Check className="size-4" strokeWidth={2.5} /> : <Plus className="size-4" />}
+                {on && <Check className="size-3.5" strokeWidth={3.5} />}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold text-content">{a.name}</span>
-                {a.desc && <span className="block text-xs text-muted">{a.desc}</span>}
+                {a.desc && <span className="block text-sm text-muted">{a.desc}</span>}
+                {on && !reason && (
+                  <span aria-hidden className="block text-sm font-semibold text-brand">
+                    Added
+                  </span>
+                )}
                 {reason && (
-                  <span id={`addon-reason-${a.id}`} className="mt-0.5 block text-xs font-medium text-amber-700 dark:text-amber-400">
+                  <span id={`addon-reason-${a.id}`} className="mt-0.5 block text-sm font-medium text-amber-700 dark:text-amber-400">
                     {reason}
                     {on ? " — remove it to continue" : ""}
                   </span>
                 )}
               </span>
-              <span className="font-semibold tabular-nums text-content">
+              <span className="font-display text-lg font-bold tabular-nums text-content">
                 <span aria-hidden>+{formatInr(a.price)}</span>
                 <span className="sr-only">adds {spokenInr(a.price)}</span>
               </span>

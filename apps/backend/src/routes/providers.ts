@@ -935,8 +935,21 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
         audience: body.audience,
         professionalPreference: body.professionalPreference,
         addonIds: body.addonIds,
+        addonQuantities: body.addonQuantities,
         paymentMethod: body.paymentMethod,
+        // The same rule as POST /api/bookings: the customer books the price they were quoted.
+        quoteToken: body.quoteToken,
       });
+      // Without a valid quote the answer carries the current one, so the caller can show it and retry.
+      if (result.error === "QUOTE_REQUIRED" || result.error === "QUOTE_EXPIRED" || result.error === "QUOTE_MISMATCH" || result.error === "QUOTE_INVALID" || result.error === "PRICE_CHANGED") {
+        set.status = result.error === "QUOTE_EXPIRED" || result.error === "PRICE_CHANGED" ? 409 : 400;
+        return {
+          success: false,
+          error: result.error === "QUOTE_REQUIRED" ? "Review the current price before booking" : "The price for this booking needs to be reviewed again",
+          code: result.error,
+          quote: "quote" in result ? result.quote : undefined,
+        };
+      }
       if (result.error === "PROVIDER_UNAVAILABLE") {
         set.status = 400;
         return { success: false, error: "Provider is not available", code: "PROVIDER_UNAVAILABLE" };
@@ -965,7 +978,9 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
         audience: t.Optional(t.String()),
         professionalPreference: t.Optional(t.String()),
         addonIds: t.Optional(t.Array(t.String())),
+        addonQuantities: t.Optional(t.Record(t.String(), t.Number())),
         paymentMethod: t.Optional(t.String()),
+        quoteToken: t.Optional(t.String({ maxLength: 2048 })),
         addressId: t.String(),
         description: t.Optional(t.String()),
       }),

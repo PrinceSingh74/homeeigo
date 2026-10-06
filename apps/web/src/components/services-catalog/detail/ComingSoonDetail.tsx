@@ -1,9 +1,8 @@
-import { Check, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { CATEGORY_BY_ID, type Catalog, type ServiceView } from "@/lib/catalog";
 import { ServiceCard } from "@/components/services-catalog/ServiceCard";
 import { HomeHelpTaskList } from "@/components/services-catalog/home-help/HomeHelpTaskList";
 import { NotifyMeForm } from "@/components/services-catalog/NotifyMe";
-import { cardSurface } from "@/components/services-catalog/primitives";
 import { DetailSection } from "@/components/services-catalog/detail/sections";
 import { cn } from "@/lib/utils";
 
@@ -21,29 +20,34 @@ export function ComingSoonDetail({ service, catalog }: { service: ServiceView; c
     .slice(0, 3);
 
   return (
-    <div className="grid gap-10 lg:grid-cols-[1fr_380px] lg:gap-14">
-      <div className="space-y-12">
-        <DetailSection id="overview" title="What to expect">
-          <p className="text-base leading-relaxed text-muted">{service.description}</p>
-          {cat.notice && (
-            <p className={cn("mt-5 flex gap-3 p-4 text-sm text-content", cardSurface)}>
-              <ShieldCheck className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />
+    <div className="grid gap-10 lg:grid-cols-[1fr_400px] lg:gap-14">
+      <div className="min-w-0 space-y-10 sm:space-y-12">
+        {/* The description is the hero's lead line, directly above; it is not printed a second time. */}
+        {cat.notice && (
+          <DetailSection id="overview" title="What to expect" className="border-t-0 pt-0 sm:pt-0">
+            <p className="flex max-w-2xl gap-3 text-lg leading-relaxed text-content">
+              <ShieldCheck className="mt-1 size-6 shrink-0 text-brand" aria-hidden />
               {cat.notice}
             </p>
-          )}
-        </DetailSection>
+          </DetailSection>
+        )}
 
         {planned.length > 0 && (
-          <DetailSection id="planned" title="Planned booking options">
-            <ul className="grid gap-3 sm:grid-cols-2">
+          <DetailSection
+            id="planned"
+            title="Planned booking options"
+            lead="Final options and pricing are confirmed at launch."
+            className={cn(!cat.notice && "border-t-0 pt-0 sm:pt-0")}
+          >
+            <ul className="grid gap-x-12 sm:grid-cols-2">
               {planned.map((p) => (
-                <li key={p} className={cn("flex gap-3 p-4 text-sm text-content", cardSurface)}>
-                  <Check className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden />
+                <li key={p} className="flex gap-3 border-b border-line py-3.5 text-base leading-relaxed text-content">
+                  {/* A hollow ring, not a tick: these are planned, not available. */}
+                  <span aria-hidden className="mt-1.5 size-3 shrink-0 rounded-full border-2 border-emerald-700 dark:border-emerald-400" />
                   {p}
                 </li>
               ))}
             </ul>
-            <p className="mt-3 text-xs text-muted">Final options and pricing are confirmed at launch.</p>
           </DetailSection>
         )}
 
@@ -64,11 +68,17 @@ export function ComingSoonDetail({ service, catalog }: { service: ServiceView; c
         )}
       </div>
 
-      <aside aria-label="Get notified" className="lg:sticky lg:top-[calc(var(--navbar-offset,3.5rem)+1.5rem)] lg:self-start">
-        <div className={cn("p-6", cardSurface, "shadow-e3")}>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">Coming soon</p>
-          <h2 className="mt-2 font-display text-xl font-bold text-content">Be the first to know</h2>
-          <div className="mt-5">
+      {/* The one thing you can do here, so it comes first on small screens. */}
+      <aside aria-label="Get notified" className="order-first lg:order-last lg:sticky lg:top-[calc(var(--navbar-offset,3.5rem)+5rem)] lg:self-start">
+        <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-e3 dark:border-emerald-400/30">
+          <div className="bg-emerald-900 px-6 py-5 text-white dark:bg-emerald-950">
+            <p className="flex items-center gap-2 text-sm text-emerald-100">
+              <span aria-hidden className="size-2 rounded-full border border-emerald-100" />
+              Not bookable yet
+            </p>
+            <h2 className="mt-1 font-display text-xl font-bold leading-snug tracking-tight">Be the first to know</h2>
+          </div>
+          <div className="p-6">
             <NotifyMeForm sourceKey={service.slug} serviceName={service.name} />
           </div>
         </div>

@@ -332,8 +332,8 @@ export function useUpdateServiceMutation() {
 export function useSetServiceStatusMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { id: string; isActive: boolean }) =>
-      adminApi.services.setStatus(vars.id, vars.isActive),
+    mutationFn: (vars: { id: string; isActive: boolean; reason?: string }) =>
+      adminApi.services.setStatus(vars.id, vars.isActive, vars.reason),
     onSuccess: () => void qc.invalidateQueries({ queryKey: adminKeys.servicesAll }),
   });
 }
@@ -390,8 +390,89 @@ export function useServiceVersionsQuery(id: string | null) {
 export function useServiceTransitionMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { id: string; to: RequestableLifecycle; expectedVersion?: number }) =>
-      adminApi.services.transition(vars.id, vars.to, vars.expectedVersion),
+    mutationFn: (vars: { id: string; to: RequestableLifecycle; expectedVersion?: number; reason?: string }) =>
+      adminApi.services.transition(vars.id, vars.to, vars.expectedVersion, vars.reason),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: adminKeys.servicesAll }),
+  });
+}
+
+export function useServiceRestoreMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; version: number; reason: string }) => adminApi.services.restoreVersion(vars.id, vars.version, vars.reason),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: adminKeys.servicesAll }),
+  });
+}
+
+export function useServiceUnscheduleMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminApi.services.unschedule(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: adminKeys.servicesAll }),
+  });
+}
+
+export function useServiceApproveMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; scheduledLiveAt?: string; expectedVersion?: number; expectedContentHash?: string }) =>
+      adminApi.services.approve(vars.id, {
+        scheduledLiveAt: vars.scheduledLiveAt,
+        expectedVersion: vars.expectedVersion,
+        expectedContentHash: vars.expectedContentHash,
+      }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: adminKeys.servicesAll }),
+  });
+}
+
+/** One service with what the list row does not carry: the pending revision and the live-edit policy. */
+export function useServiceDetailQuery(id: string | null) {
+  return useQuery({
+    queryKey: [...adminKeys.servicesAll, "detail", id] as const,
+    queryFn: () => adminApi.services.get(id!),
+    enabled: Boolean(id),
+    staleTime: 10_000,
+  });
+}
+
+export function useServiceVersionDiffQuery(id: string | null, from: number | null, to: number | null) {
+  return useQuery({
+    queryKey: [...adminKeys.servicesAll, "diff", id, from, to] as const,
+    queryFn: () => adminApi.services.versionDiff(id!, from!, to!),
+    enabled: Boolean(id) && from != null && to != null,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Loaded only when the admin opens the trail. */
+export function useServiceAuditQuery(id: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: [...adminKeys.servicesAll, "audit", id] as const,
+    queryFn: () => adminApi.services.audit(id!),
+    enabled: Boolean(id) && enabled,
+    staleTime: 15_000,
+  });
+}
+
+export function useServiceCategoryMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      vars:
+        | { kind: "create"; body: { name: string; slug: string; parentId?: string | null; sortOrder?: number } }
+        | { kind: "update"; id: string; body: { name?: string; sortOrder?: number; isActive?: boolean } },
+    ) => (vars.kind === "create" ? adminApi.services.createCategory(vars.body) : adminApi.services.updateCategory(vars.id, vars.body)),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: adminKeys.servicesAll }),
+  });
+}
+
+export function useServiceRevisionMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; action: "approve" | "reject"; expectedContentHash?: string; reason?: string; scheduledLiveAt?: string }) =>
+      vars.action === "approve"
+        ? adminApi.services.approveRevision(vars.id, vars.expectedContentHash, vars.scheduledLiveAt)
+        : adminApi.services.rejectRevision(vars.id, vars.reason),
     onSuccess: () => void qc.invalidateQueries({ queryKey: adminKeys.servicesAll }),
   });
 }

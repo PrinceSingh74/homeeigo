@@ -10,6 +10,7 @@ import {
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { membershipCouponService } from "../services/membership-coupon.service";
+import { quoteTokenForUser } from "./helpers/quote-token";
 
 /**
  * Booking creation runs at READ COMMITTED, not SERIALIZABLE (booking.service.ts `create()`).
@@ -68,12 +69,16 @@ describe("booking create at READ COMMITTED keeps the guarantees SSI used to prov
     // Same user, same instant, eight ways at once: the user slot exclusion constraint is the only
     // thing standing between this and a double booking once SSI is gone.
     const { bookingService } = await import("../services/booking.service");
+    // Booking create requires a price quote: ONE token, fetched before the race (it is bound to the
+    // user and the selection, not the slot) and sent by all eight, so the race itself is unchanged.
+    const quoteToken = await quoteTokenForUser(ctx.customerA.id, { serviceId: ctx.serviceId, addressId: ctx.addressAId });
     const results = await Promise.all(
       Array.from({ length: 8 }, () =>
         bookingService.create(ctx.customerA.id, {
           serviceId: ctx.serviceId,
           scheduledDate: slot.toISOString(),
           addressId: ctx.addressAId,
+          quoteToken,
         }),
       ),
     );

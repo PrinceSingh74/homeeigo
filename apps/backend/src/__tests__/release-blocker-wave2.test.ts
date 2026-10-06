@@ -22,6 +22,7 @@ import {
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import {
   walletService,
   MAX_PENDING_WALLET_TOPUPS,
@@ -74,7 +75,7 @@ async function seedPendingBooking(slotOffset = 200) {
   await prisma.booking.deleteMany({
     where: { providerId: ctx.providerId, scheduledDate: slot },
   });
-  const created = await bookingService.create(ctx.customerA.id, {
+  const created = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
     scheduledDate: slot.toISOString(),

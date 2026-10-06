@@ -8,6 +8,7 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { logger } from "../lib/logger";
+import { partnerHoldView } from "../lib/privacy-policy.engine";
 import { incCounter } from "../lib/metrics";
 import { getEventContext } from "../events/core/event-context";
 import { setBookingAuditContext } from "../lib/booking-audit-context";
@@ -120,7 +121,10 @@ class BookingSafetyService {
       canReport: audience.role === "PARTNER" && WORKABLE.has(b.status) ? snap?.prohibitedConditions ?? [] : [],
       // A partner sees its own note on a hold it raised; an admin-placed hold's note is safety operations'
       // internal reason (X-55) and stays with admins.
-      holds: holds.map((h) => ({ id: h.id, condition: h.condition, source: h.source, state: h.state, incidentId: h.incidentId, note: audience.role === "ADMIN" || h.raw.raised_by_role === "PARTNER" ? h.raw.note : null, raisedByRole: h.raw.raised_by_role, raisedAt: h.raw.raised_at.toISOString(), releasedAt: h.raw.released_at?.toISOString() ?? null, releaseReason: h.raw.release_reason })),
+      // A partner does not read the admin's release reason or the incident id (partnerHoldView).
+      holds: holds
+        .map((h) => ({ id: h.id, condition: h.condition, source: h.source, state: h.state, incidentId: h.incidentId, note: audience.role === "ADMIN" || h.raw.raised_by_role === "PARTNER" ? h.raw.note : null, raisedByRole: h.raw.raised_by_role, raisedAt: h.raw.raised_at.toISOString(), releasedAt: h.raw.released_at?.toISOString() ?? null, releaseReason: h.raw.release_reason }))
+        .map((h) => (audience.role === "PARTNER" ? partnerHoldView(h) : h)),
       incidents: audience.role === "ADMIN" ? incidents : incidents.length,
     };
   }

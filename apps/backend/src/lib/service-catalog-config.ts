@@ -221,6 +221,20 @@ export const serviceCatalogConfigSchema = z
     customRequestAvailable: z.boolean().optional(),
     inspectionRequired: z.boolean().optional(),
     comingSoon: z.boolean().optional(),
+    /** ISO timestamp. No offset is interpreted as Asia/Kolkata. Set only after a publish approval. */
+    scheduledLiveAt: z.string().trim().min(1).max(40).optional(),
+    /** Written by the approve action. Editors must not invent this; a later content save drops it. */
+    publishApproval: z
+      .object({
+        actorId: z.string().trim().min(1).max(80),
+        editorId: z.string().trim().min(1).max(80),
+        approvedAt: z.string().trim().min(1).max(40),
+        version: z.number().int().min(1),
+        /** sha256 of the approved content (`approvalContentHash`). An approval without it is stale. */
+        contentHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+      })
+      .strict()
+      .optional(),
     sameDayAvailable: z.boolean().optional(),
     video: mediaUrl.optional(),
     quantity: quantityRuleSchema.optional(),
@@ -849,13 +863,6 @@ export function catalogConfigGaps(service: ServiceCore, cfg: ServiceCatalogConfi
 /* Legacy pricing (kept byte-compatible with existing clients)         */
 /* ------------------------------------------------------------------ */
 
-/** Server-authoritative add-on catalogue used by services without their own add-ons. */
-export const BOOKING_ADDONS = [
-  { id: "fridge", name: "Fridge Cleaning", price: 99 },
-  { id: "sofa", name: "Sofa Cleaning", price: 149 },
-  { id: "microwave", name: "Microwave Cleaning", price: 79 },
-] as const;
-
 export function resolvePackagePrice(
   service: { basePrice: number; minPrice: number | null; maxPrice: number | null },
   requested?: number,
@@ -1109,9 +1116,9 @@ type AddonCatalogueItem = {
   sortOrder?: number;
 };
 
-/** The add-ons a service offers: its own catalogue when it has one, else the shared catalogue. */
+/** The add-ons a service offers. A service with no add-ons offers none. */
 export function effectiveAddonCatalogue(cfg: ServiceCatalogConfig | null): AddonCatalogueItem[] {
-  return cfg?.addons ? cfg.addons.filter((a) => a.active) : BOOKING_ADDONS.map((a) => ({ ...a }));
+  return (cfg?.addons ?? []).filter((a) => a.active);
 }
 
 /**

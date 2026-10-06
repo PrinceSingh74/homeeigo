@@ -1,44 +1,49 @@
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import { categoryHref, type CategoryView } from "@/lib/catalog";
-import { IconTile, cardSurface, focusRing } from "@/components/services-catalog/primitives";
+import { SectionActionLink } from "@/components/layout/SectionActionLink";
+import { IconTile } from "@/components/services-catalog/primitives";
 import { NotifyMeButton } from "@/components/services-catalog/NotifyMe";
 import { cn } from "@/lib/utils";
 
-/** A whole category that is not bookable yet: what's planned + Notify me. */
+/**
+ * A whole category that is not bookable yet: what's planned + Notify me.
+ * A ruled row, not a card — nothing here can be booked, so nothing here looks like a product.
+ */
 export function ComingSoonCard({ category, className }: { category: CategoryView; className?: string }) {
   const { def, services } = category;
   const shown = services.slice(0, 5);
   const more = services.length - shown.length;
   return (
-    <article className={cn("flex h-full flex-col p-6", cardSurface, className)}>
-      <div className="flex items-start justify-between gap-3">
-        <IconTile icon={def.icon} tone={def.tone} className="size-12 rounded-2xl" iconClassName="size-6" />
-        <span className="rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-muted">Coming soon</span>
+    <article
+      className={cn(
+        "grid gap-x-12 gap-y-5 border-t border-line py-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_auto] lg:items-start",
+        className,
+      )}
+    >
+      <div className="flex items-start gap-4">
+        <IconTile icon={def.icon} tone={def.tone} className="mt-0.5 size-10" />
+        <div className="min-w-0">
+          <h3 className="font-display text-xl font-semibold leading-tight tracking-tight text-content sm:text-2xl">
+            {def.name}
+          </h3>
+          <p className="mt-1.5 text-sm leading-relaxed text-muted">{def.tagline}</p>
+        </div>
       </div>
-      <h3 className="mt-5 font-display text-xl font-semibold text-content">{def.name}</h3>
-      <p className="mt-1.5 text-sm leading-relaxed text-muted">{def.tagline}</p>
-      <p className="mt-2 text-sm leading-relaxed text-muted">{def.description}</p>
-      <p className="mt-5 text-xs font-semibold uppercase tracking-[0.14em] text-muted">Planned services</p>
-      <ul className="mt-2.5 flex flex-wrap gap-1.5">
-        {shown.map((s) => (
-          <li key={s.slug} className="rounded-full bg-canvas px-2.5 py-1 text-xs text-content">
-            {s.name}
-          </li>
-        ))}
-        {more > 0 && <li className="rounded-full px-2.5 py-1 text-xs text-muted">+{more} more</li>}
-      </ul>
-      <div className="mt-auto flex flex-wrap items-center gap-3 pt-6">
+      <div className="min-w-0">
+        <p className="text-sm leading-relaxed text-muted">{def.description}</p>
+        {shown.length > 0 && (
+          <p className="mt-2 text-sm leading-relaxed text-content">
+            <span className="font-semibold">Planned services: </span>
+            {shown.map((s) => s.name).join(", ")}
+            {more > 0 && ` and ${more} more`}.
+          </p>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-3 lg:flex-col lg:items-end">
         <NotifyMeButton sourceKey={`category:${def.id}`} serviceName={def.name} />
-        <Link
-          href={categoryHref(def.id)}
-          prefetch={false}
-          className={cn("inline-flex items-center gap-1 rounded-md text-sm font-semibold text-brand hover:underline", focusRing)}
-        >
+        <SectionActionLink href={categoryHref(def.id)} className="sm:text-sm">
           Explore
           <span className="sr-only"> {def.name}</span>
-          <ArrowRight className="size-4" aria-hidden />
-        </Link>
+        </SectionActionLink>
       </div>
     </article>
   );

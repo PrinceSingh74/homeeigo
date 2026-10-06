@@ -1,4 +1,5 @@
 import { bookingService } from "../../../services/booking.service";
+import { bookingPricingService } from "../../../services/booking-pricing.service";
 import { ToolDomainRejection } from "../errors";
 import { walletService } from "../../../services/wallet.service";
 import { subscriptionService } from "../../../services/subscription.service";
@@ -232,14 +233,47 @@ function handlerMap(): Record<string, ToolHandler> {
     },
 
     // Writes
-    "write.booking.createBooking": async ({ actor, arguments: args }) =>
-      bookingService.create(actor.actorId, {
-        serviceId: String(args.serviceId),
+    "write.booking.createBooking": async ({ actor, arguments: args }) => {
+      const serviceId = String(args.serviceId);
+      const addressId = String(args.addressId);
+      const couponCode = args.couponCode ? String(args.couponCode) : undefined;
+      // A booking commits the customer to a price, so the tool works in two calls. The first books
+      // nothing and returns the server's total for the assistant to show the customer. The second
+      // carries the total the customer agreed to (`confirmedTotalPaise`) and books only if the
+      // server's total is still exactly that. The price is always the server's; the confirmed
+      // figure is only ever compared with it.
+      const quoted = await bookingPricingService.quote({ userId: actor.actorId, serviceId, addressId, couponCode });
+      if (!quoted.ok) return { error: typeof quoted.error === "string" ? quoted.error : "INVALID_SELECTION" };
+      const totalPaise = quoted.breakdown.finalAmountPaise;
+      const quote = { total: quoted.breakdown.finalAmount, totalPaise, expiresAt: quoted.breakdown.expiresAt };
+      if (args.confirmedTotalPaise === undefined || args.confirmedTotalPaise === null) {
+        return {
+          status: "CONFIRMATION_REQUIRED" as const,
+          booked: false,
+          message: "Nothing is booked yet. Tell the customer this total and ask them to confirm. Call again with confirmedTotalPaise only after they agree.",
+          quote,
+          confirmedTotalPaise: totalPaise,
+        };
+      }
+      const confirmed = typeof args.confirmedTotalPaise === "number" ? args.confirmedTotalPaise : Number.NaN;
+      if (!Number.isInteger(confirmed) || confirmed !== totalPaise) {
+        return {
+          status: "PRICE_CHANGED" as const,
+          booked: false,
+          message: "Nothing is booked. The total is not the one that was confirmed. Tell the customer the current total and ask again.",
+          quote,
+          confirmedTotalPaise: totalPaise,
+        };
+      }
+      return bookingService.create(actor.actorId, {
+        serviceId,
         scheduledDate: String(args.scheduledDate),
-        addressId: String(args.addressId),
+        addressId,
         description: args.description ? String(args.description) : undefined,
-        couponCode: args.couponCode ? String(args.couponCode) : undefined,
-      }),
+        couponCode,
+        quoteToken: quoted.breakdown.quoteToken,
+      });
+    },
     "write.booking.updateBooking": async ({ actor, arguments: args }) => {
       const bookingId = String(args.bookingId);
       if (!(await verifyBookingOwnership(actor.actorId, bookingId))) throw new Error("BOOKING_ACCESS_DENIED");

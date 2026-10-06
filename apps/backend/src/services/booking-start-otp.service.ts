@@ -261,12 +261,11 @@ class BookingStartOtpService {
       );
     }
 
-    const masked = userPiiService.maskUserPii({ email, phoneNumber });
     return {
       ok: true,
       alreadyVerified: false,
       channels,
-      sentTo: { email: masked.email, phone: masked.phoneNumber },
+      sentTo: { email: null, phone: null },
       expiresInSec: OTP_TTL_MS / 1000,
       resendInSec: RESEND_COOLDOWN_MS / 1000,
     };

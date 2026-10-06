@@ -38,6 +38,10 @@ beforeAll(async () => {
       catalogConfig: {
         bookingMode: "HOURLY",
         quantity: { type: "HOUR", unitLabel: "hour", unitLabelPlural: "hours", min: 1, max: 4, step: 1, unitPrice: 200 },
+        addons: [
+          { id: "fridge", name: "Fridge Cleaning", price: 99 },
+          { id: "sofa", name: "Sofa Cleaning", price: 149 },
+        ],
       },
     },
   });
@@ -110,6 +114,8 @@ describe.serial("service selection → server price → persisted booking", () =
       serviceId: ctx.serviceId,
       quantity: 4,
       addonIds: ["fridge", "sofa"],
+      // The quote token is bound to the booking's address (selection fingerprint); without it the create answers QUOTE_MISMATCH.
+      addressId: ctx.addressAId,
       lat: addr.latitude,
       lng: addr.longitude,
     });
@@ -133,6 +139,7 @@ describe.serial("service selection → server price → persisted booking", () =
       unitPrice: 1,
       basePrice: 1,
       addons: [{ id: "fridge", name: "Fridge Cleaning", price: 0 }],
+      quoteToken: expected.breakdown.quoteToken,
     });
     expect(status).toBe(201);
     const id = json.data.booking?.id ?? json.data.id;

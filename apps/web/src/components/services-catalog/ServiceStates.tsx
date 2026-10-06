@@ -2,21 +2,19 @@ import type { ReactNode } from "react";
 import { SearchX, WifiOff } from "lucide-react";
 import { StaticSkeleton } from "@/components/ui/StaticSkeleton";
 import { Button } from "@/components/buttons/Button";
-import { cardSurface } from "@/components/services-catalog/primitives";
 import { cn } from "@/lib/utils";
 
 export function ServiceCardSkeleton() {
   return (
-    <div className={cn("overflow-hidden", cardSurface)} aria-hidden>
+    <div className="overflow-hidden rounded-2xl border border-line bg-surface" aria-hidden>
       <StaticSkeleton shimmer className="aspect-[4/3] w-full" />
-      <div className="space-y-2.5 p-5">
+      <div className="space-y-2.5 p-4">
         <StaticSkeleton className="h-3 w-16 rounded-full" />
         <StaticSkeleton className="h-5 w-3/4 rounded-md" />
         <StaticSkeleton className="h-3.5 w-full rounded-md" />
-        <StaticSkeleton className="h-3.5 w-2/3 rounded-md" />
-        <div className="flex items-end justify-between pt-3">
-          <StaticSkeleton className="h-5 w-20 rounded-md" />
-          <StaticSkeleton className="size-10 rounded-full" />
+        <div className="flex items-center justify-between pt-3">
+          <StaticSkeleton className="h-4 w-16 rounded-md" />
+          <StaticSkeleton className="h-4 w-20 rounded-md" />
         </div>
       </div>
     </div>

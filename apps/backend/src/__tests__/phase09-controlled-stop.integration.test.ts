@@ -24,6 +24,7 @@ import {
 } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 
 const RUN = `p09stop-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
@@ -39,7 +40,7 @@ function istSlot(daysAhead: number, hhmm = "10:00"): Date {
 
 async function paidBooking(status: BookingStatus) {
   await keepPresenceFresh(ctx);
-  const result = await bookingService.create(ctx.customerA.id, {
+  const result = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
     addressId: ctx.addressAId,

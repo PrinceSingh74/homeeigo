@@ -280,8 +280,8 @@ describe("pricing honesty", () => {
     expect(serverQuantityPrice(withTable, 2)).toBeNull();
   });
 
-  test("shared add-ons only where the taxonomy allows; config add-ons replace them", () => {
-    expect(addonsFor(catalog.bySlug.get("bathroom-cleaning")!).map((a) => a.id)).toEqual(["fridge", "sofa", "microwave"]);
+  test("add-ons come only from the service catalogue", () => {
+    expect(addonsFor(catalog.bySlug.get("bathroom-cleaning")!)).toEqual([]);
     expect(addonsFor(catalog.bySlug.get("salon-at-home")!)).toEqual([]);
     const own = buildCatalog([
       svc({ slug: "salon-at-home", name: "Salon at Home", category: "beauty", catalogConfig: { addons: [{ id: "wash", name: "Hair wash", price: 99, active: true }] } }),

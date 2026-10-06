@@ -17,7 +17,7 @@ export function HomeHelpPhoto({
   position?: string;
 }) {
   return (
-    <span className={cn("relative isolate block overflow-hidden bg-[#eef3ef]", className)}>
+    <span className={cn("relative isolate block overflow-hidden bg-canvas", className)}>
       <Image
         src={src}
         alt={alt}

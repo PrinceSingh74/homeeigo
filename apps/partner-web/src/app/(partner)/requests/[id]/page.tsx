@@ -11,7 +11,7 @@ import { BriefEmpty, BriefSection, BriefSectionNav, type BriefSectionDef } from 
 import { ChecklistPreview, CompletionCriteria, ProfessionalConfirmation, ProofRequirements } from "@/components/requests/QualityBrief";
 import { EscalationGuide } from "@/components/requests/EscalationGuide";
 import { followUpLine } from "@/lib/follow-up";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -39,17 +39,12 @@ import { CallCustomerButton } from "@/components/requests/CallCustomerButton";
 import { JobChatPanel } from "@/components/requests/JobChatPanel";
 import { JobEvidencePanel } from "@/components/requests/JobEvidencePanel";
 import { PartnerCard } from "@/components/ui/PartnerCard";
-import {
-  ACTIVE_BOOKINGS_PARAMS,
-  partnerKeys,
-  useBookingRequirementsQuery,
-  usePartnerBookingsQuery,
-} from "@/hooks/use-partner-data";
+import { useBookingRequirementsQuery } from "@/hooks/use-partner-data";
+import { bookingDetailKey } from "@/lib/booking-cache";
 import { getAvailableJobActions, primaryActionToLocalCta } from "@/lib/job-action-policy";
 import { partnerLayout } from "@/lib/partner-layout";
 import { formatDate, formatTime } from "@/lib/format";
 import { partnerApi } from "@/services/partner-api";
-import type { PartnerBooking } from "@/types/partner";
 
 /**
  * The execution brief, in the order a professional reads a job: what it is, what must be in place,
@@ -69,40 +64,14 @@ const BRIEF = {
 } as const satisfies Record<string, BriefSectionDef>;
 const BRIEF_ORDER: readonly BriefSectionDef[] = Object.values(BRIEF);
 
-function findInCaches(
-  caches: Array<{ bookings?: PartnerBooking[] } | undefined>,
-  id: string,
-): PartnerBooking | undefined {
-  for (const cache of caches) {
-    const hit = cache?.bookings?.find((b) => b.id === id);
-    if (hit) return hit;
-  }
-  return undefined;
-}
-
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const pending = usePartnerBookingsQuery({ status: "pending", limit: 20, sortBy: "recent" });
-  const active = usePartnerBookingsQuery(ACTIVE_BOOKINGS_PARAMS);
-  const completed = usePartnerBookingsQuery({
-    status: "completed",
-    limit: 20,
-    sortBy: "recent",
+  const detail = useQuery({
+    queryKey: bookingDetailKey(id),
+    queryFn: () => partnerApi.getBooking(id),
+    enabled: !!id,
   });
-
-  const bookingFromList = useMemo(
-    () => findInCaches([pending.data, active.data, completed.data], id),
-    [pending.data, active.data, completed.data, id],
-  );
-
-  const refetchList = useQuery({
-    queryKey: [...partnerKeys.bookingsAll, "detail-lookup", id],
-    queryFn: () => partnerApi.listBookings({ limit: 50, sortBy: "recent" }),
-    enabled: !bookingFromList && !!id,
-  });
-
-  const booking =
-    bookingFromList ?? refetchList.data?.bookings?.find((b) => b.id === id) ?? null;
+  const booking = detail.data ?? null;
 
   const actionsQuery = useQuery({
     queryKey: ["partner", "job-actions", id],
@@ -178,7 +147,7 @@ export default function JobDetailPage() {
     });
   }, []);
 
-  if (pending.isLoading || active.isLoading || (refetchList.isFetching && !booking)) {
+  if (detail.isLoading) {
     return (
       <div className={partnerLayout.pageStack}>
         <p className="text-sm text-partner-muted">Loading job…</p>

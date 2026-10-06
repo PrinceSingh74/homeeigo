@@ -656,7 +656,9 @@ export class ProviderService {
           const rawPhone =
             b.user.phoneNumber ||
             (b.user.phoneEncrypted ? await encryptionService.decrypt(b.user.phoneEncrypted, "PHONE") : null);
-          const { toPartnerSafeAddress, toPartnerSafeCustomer } = await import("../lib/privacy-policy.engine");
+          const { toPartnerSafeAddress, toPartnerSafeCustomer, partnerCustomerStage, partnerJobNote, stripForbiddenPartnerKeys } = await import("../lib/privacy-policy.engine");
+          // offer (not this partner's job) · owner (fulfilling it) · history (their job, now over).
+          const stage = partnerCustomerStage({ isAssignee: b.providerId === providerId, status: String(b.status) });
           const privacyCtx = {
             audience: "partner" as const,
             purpose: (["ACCEPTED", "ASSIGNED", "EN_ROUTE", "IN_PROGRESS"] as string[]).includes(String(b.status))
@@ -666,7 +668,9 @@ export class ProviderService {
             bookingStatus: String(b.status),
             authorizedPartnerId: providerId,
           };
-          return {
+          // The same last-line strip the job detail applies: a forbidden key never leaves, even if a
+          // projection above is widened by mistake.
+          return stripForbiddenPartnerKeys({
             id: b.id,
             bookingNumber: b.bookingNumber,
             status: bookingStatusApi(b.status),
@@ -681,7 +685,8 @@ export class ProviderService {
             paymentStatus: paymentStatusApi(b.paymentStatus),
             /** Audited override or a fee-waived rework / revisit — the same exemption the job gates apply. */
             paymentExempt: exempt.has(b.id),
-            description: b.description,
+            // The customer's free text can hold anything; only the partner holding the job reads it.
+            description: partnerJobNote(b.description, stage),
             eta: b.eta,
             customer: toPartnerSafeCustomer(
               {
@@ -690,7 +695,7 @@ export class ProviderService {
                 profileImage: b.user.profileImage,
                 phone: rawPhone,
               },
-              b.providerId === providerId ? "owner" : "offer",
+              stage,
             ),
             // Explicit whitelist — never pass the selected row through, so widening the select
             // cannot leak catalogue internals (codes, config, notes) to partners.
@@ -716,7 +721,7 @@ export class ProviderService {
                   expiresAt: offerByBookingId.get(b.id)!.expiresAt,
                 }
               : null,
-          };
+          });
         }),
       ),
       total,

@@ -34,6 +34,7 @@ import {
 } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { freshLoopClock } from "./helpers/fresh-loop-clock";
+import { BOOKING_CREATE_PATH, withQuoteToken } from "./helpers/quote-token";
 import { razorpayService } from "../services/razorpay.service";
 import { refundLedgerSyncService } from "../services/refund-ledger-sync.service";
 import { bookingRefundService } from "../services/booking-refund.service";
@@ -56,6 +57,8 @@ function istSlot(daysAhead: number, hhmm = "11:00"): Date {
 }
 
 async function call(user: User, method: string, path: string, body?: unknown): Promise<Res> {
+  // Booking create requires a price quote (QUOTE_REQUIRED otherwise) — quote first, as a client does.
+  if (method === "POST" && path === BOOKING_CREATE_PATH) body = await withQuoteToken(app, bearer(user), body);
   const res = await app.handle(
     new Request(`http://localhost${path}`, {
       method,

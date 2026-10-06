@@ -18,6 +18,7 @@ import {
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote, quoteTokenForUser } from "./helpers/quote-token";
 import { sumCounterWhere } from "../lib/metrics";
 import { walletService } from "../services/wallet.service";
 import { financialLedgerService } from "../services/financial-ledger.service";
@@ -40,7 +41,7 @@ beforeAll(async () => {
    * not cold-start latency, so steady state is the right thing to measure.
    */
   await heartbeatFresh(ctx);
-  const warm = await bookingService.create(ctx.customerA.id, {
+  const warm = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
     scheduledDate: futureSlot(40).toISOString(),
@@ -125,6 +126,12 @@ async function runConcurrentCreates(concurrency: number, slotOffset: number) {
   const slot = futureSlot(slotOffset);
   await cleanProviderSlot(ctx.providerId, slot);
   const customers = await seedCustomers(concurrency, `c${concurrency}-${slotOffset}`);
+  // Booking create requires a price quote. Each customer's token is fetched BEFORE the race (it is
+  // bound to user + selection, not to the slot), so the race itself is the same N creates at once.
+  const quoteTokens: Array<string | undefined> = [];
+  for (const c of customers) {
+    quoteTokens.push(await quoteTokenForUser(c.userId, { serviceId: ctx.serviceId, addressId: c.addressId }));
+  }
   // Seeding N users can outlast PRESENCE_FRESH_SEC; refresh presence right before the race.
   await heartbeatFresh(ctx);
   // …and keep it live DURING the race, as the partner's app would (it heartbeats every ~25 s).
@@ -141,12 +148,13 @@ async function runConcurrentCreates(concurrency: number, slotOffset: number) {
   let results: Awaited<ReturnType<typeof bookingService.create>>[];
   try {
     results = await Promise.all(
-      customers.map((c) =>
+      customers.map((c, i) =>
         bookingService.create(c.userId, {
           serviceId: ctx.serviceId,
           providerId: ctx.providerId,
           scheduledDate: slot.toISOString(),
           addressId: c.addressId,
+          quoteToken: quoteTokens[i],
         }),
       ),
     );
@@ -207,7 +215,7 @@ describe.serial("Release blocker elimination", () => {
     await heartbeatFresh(ctx);
 
     const baseSlot = futureSlot(140);
-    const bookingA = await bookingService.create(ctx.customerA.id, {
+    const bookingA = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       scheduledDate: baseSlot.toISOString(),
@@ -216,7 +224,7 @@ describe.serial("Release blocker elimination", () => {
     expect("booking" in bookingA).toBe(true);
 
     const slotB = new Date(baseSlot.getTime() + 3 * 3_600_000);
-    const bookingB = await bookingService.create(ctx.customerB.id, {
+    const bookingB = await createBookingWithQuote(ctx.customerB.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       scheduledDate: slotB.toISOString(),
@@ -258,7 +266,7 @@ describe.serial("Release blocker elimination", () => {
       for (let i = 0; i < customers.length; i++) {
         // 50 sequential creates after seeding 50 customers can outlast PRESENCE_FRESH_SEC.
         await keepPresenceFresh(ctx);
-        const created = await bookingService.create(customers[i]!.userId, {
+        const created = await createBookingWithQuote(customers[i]!.userId, {
           serviceId: ctx.serviceId,
           providerId: ctx.providerId,
           scheduledDate: farSlots[i]!.toISOString(),
@@ -304,7 +312,7 @@ describe.serial("Release blocker elimination", () => {
 
     try {
       const farSlot = new Date(slot.getTime() + 6 * 3_600_000);
-      const createdB = await bookingService.create(ctx.customerB.id, {
+      const createdB = await createBookingWithQuote(ctx.customerB.id, {
         serviceId: ctx.serviceId,
         providerId: ctx.providerId,
         scheduledDate: farSlot.toISOString(),
@@ -313,12 +321,15 @@ describe.serial("Release blocker elimination", () => {
       expect("booking" in createdB).toBe(true);
       const bookingBId = createdB.booking!.id;
 
+      // Quote before the race (token is bound to user + selection, not the slot): the race stays create-vs-update.
+      const raceQuoteToken = await quoteTokenForUser(ctx.customerA.id, { serviceId: ctx.serviceId, addressId: ctx.addressAId });
       const [createRace, updateRace] = await Promise.all([
         bookingService.create(ctx.customerA.id, {
           serviceId: ctx.serviceId,
           providerId: ctx.providerId,
           scheduledDate: slot.toISOString(),
           addressId: ctx.addressAId,
+          quoteToken: raceQuoteToken,
         }),
         bookingService.update(ctx.customerB.id, bookingBId, {
           scheduledDate: slot.toISOString(),

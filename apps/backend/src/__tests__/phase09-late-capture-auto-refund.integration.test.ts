@@ -21,7 +21,7 @@ import {
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
-import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { paymentService } from "../services/payment.service";
 import { razorpayService } from "../services/razorpay.service";
 import {
@@ -58,7 +58,7 @@ function stubGatewayRefund(outcome: "SUCCESS" | "INDETERMINATE" = "SUCCESS") {
 
 /** An expired booking with one unsettled gateway payment row. */
 async function expiredBookingWithOrder(suffix: string) {
-  const created = await bookingService.create(ctx.customerA.id, {
+  const created = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
     addressId: ctx.addressAId,

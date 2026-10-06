@@ -12,7 +12,7 @@ import {
   cleanupAdversarialFixtures,
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
-import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { adminBookingOperationsService } from "../services/admin-booking-operations.service";
 import { partnerOperationsService } from "../services/partner-operations.service";
 import { PRESENCE_FRESH_SEC } from "../lib/partner-presence.config";
@@ -109,7 +109,7 @@ describe.serial("Phase 3 — direct booking bypass closure", () => {
       },
     });
 
-    const result = await bookingService.create(ctx.customerA.id, {
+    const result = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       addressId: ctx.addressAId,
@@ -125,7 +125,7 @@ describe.serial("Phase 3 — direct booking bypass closure", () => {
 
     await seedFreshPresence();
 
-    const result = await bookingService.create(ctx.customerA.id, {
+    const result = await createBookingWithQuote(ctx.customerA.id, {
       serviceId: ctx.serviceId,
       providerId: ctx.providerId,
       addressId: ctx.addressAId,

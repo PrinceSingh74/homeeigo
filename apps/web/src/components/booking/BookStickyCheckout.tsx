@@ -10,7 +10,10 @@ export function BookStickyCheckout({
   confirming,
   onConfirm,
   slotChosen = true,
+  unavailable = false,
 }: {
+  /** The chosen address is outside the service area: confirm is off and says why. */
+  unavailable?: boolean;
   /** Server-quoted total; null while calculating or when the quote failed. */
   total: number | null;
   confirming: boolean;
@@ -35,14 +38,14 @@ export function BookStickyCheckout({
           </div>
           <motion.button
             type="button"
-            disabled={confirming}
+            disabled={confirming || unavailable}
             onClick={onConfirm}
-            whileTap={{ scale: confirming ? 1 : 0.98 }}
+            whileTap={{ scale: confirming || unavailable ? 1 : 0.98 }}
             className="inline-flex h-12 min-w-[9.5rem] shrink-0 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#10b981_0%,#0d9488_100%)] px-4 text-sm font-bold text-white shadow-[0_12px_32px_-8px_rgb(16_185_129/0.55)] disabled:opacity-70 sm:h-14 sm:min-w-[11rem] sm:rounded-2xl sm:px-5"
           >
             <Lock size={16} className="shrink-0" />
             <span className="truncate">
-              {confirming ? "Securing…" : slotChosen ? "Confirm" : "Choose a time"}
+              {confirming ? "Securing…" : unavailable ? "Not available" : slotChosen ? "Confirm" : "Choose a time"}
             </span>
             {!confirming && <ArrowRight size={16} className="shrink-0" />}
           </motion.button>

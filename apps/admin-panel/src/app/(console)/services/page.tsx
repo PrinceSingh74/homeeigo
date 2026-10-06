@@ -27,6 +27,10 @@ import { Icon3D, type Icon3DTone } from "@/components/hq/Icon3D";
 import { GlassRing3D } from "@/components/hq/GlassRing3D";
 import {
   useServiceTaxonomyQuery,
+  useServiceApproveMutation,
+  useServiceDetailQuery,
+  useServiceRevisionMutation,
+  useServiceUnscheduleMutation,
   useServiceTransitionMutation,
   useServiceVersionsQuery,
   useRequirementItemsQuery,
@@ -41,7 +45,7 @@ import {
 } from "@/hooks/use-admin-data";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useAfterFirstPaint } from "@/hooks/use-after-first-paint";
-import type { AdminServiceRow, RequestableLifecycle, ServiceCatalogConfig, ServiceInput } from "@/services/admin-api";
+import type { AdminServiceRow, PendingRevisionView, RequestableLifecycle, ServiceCatalogConfig, ServiceInput } from "@/services/admin-api";
 import {
   ServiceConfigEditor,
   configIssues,
@@ -51,6 +55,7 @@ import {
 } from "@/components/services/ServiceConfigEditor";
 import { formatNumber, inr } from "@/lib/format";
 import { getErrorMessage } from "@/lib/api-error";
+import { CategoryManager, ChangeTable, PublishGateTable, ServiceAuditTrail, VersionHistory } from "@/components/services/ServiceGovernancePanels";
 import { cn } from "@/lib/cn";
 
 const PAGE_SIZE = 20;
@@ -92,7 +97,7 @@ function toForm(s?: AdminServiceRow): FormState {
     subcategory: s?.subcategory ?? "",
     icon: s?.icon ?? "",
     isFeatured: s?.isFeatured ?? false,
-    isActive: s?.isActive ?? true,
+    isActive: s?.isActive ?? false,
     premiumOnly: s?.premiumOnly ?? false,
     extras: extrasFromRow(s),
   };
@@ -260,6 +265,94 @@ function FilterGroup({ label, children }: { label: string; children: ReactNode }
   );
 }
 
+function PublishRail({ service }: { service: AdminServiceRow }) {
+  const gates = service.publishGates ?? service.configSections?.flatMap((s) => s.gates ?? []) ?? [];
+  // Same rule the server enforces (isBlockingGate): only a critical FAIL / BLOCKED stops a publish.
+  const blocking = gates.filter((g) => g.severity === "critical" && (g.status === "FAIL" || g.status === "BLOCKED"));
+  const warnings = gates.filter((g) => g.status === "WARNING");
+  return (
+    <div className="mt-3 space-y-2" data-testid="publish-rail">
+      <p className="text-xs font-semibold">
+        Validation {blocking.length ? `· ${blocking.length} blocking · PUBLISH BLOCKED` : "· no blocking gates"}
+        {warnings.length ? ` · ${warnings.length} warnings` : ""}
+      </p>
+      <PublishGateTable gates={gates} />
+      {service.configSections?.length ? (
+        <ul className="space-y-1 text-xs">
+          {service.configSections
+            .filter((s) => s.status !== "ok" || (s.gates ?? []).some((g) => g.status === "WARNING" || g.status === "FAIL" || g.status === "BLOCKED"))
+            .map((s) => (
+              <li key={s.id}>
+                <span className="font-medium">{s.label}</span> · {s.status}
+                {(s.gates ?? [])
+                  .filter((g) => g.status !== "PASS" && g.status !== "NOT_APPLICABLE")
+                  .map((g) => (
+                    <span key={g.code} className="block text-[var(--color-biz-muted)]">
+                      {g.status} {g.message} {g.remediation}
+                    </span>
+                  ))}
+              </li>
+            ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** A proposed change to a live service: what changes, who proposed it, and the two decisions. */
+function PendingRevisionPanel({
+  revision,
+  proposedBy,
+  busy,
+  onApprove,
+  onReject,
+  approvedBy,
+}: {
+  revision: PendingRevisionView;
+  /** Display name of the proposer. */
+  proposedBy: string;
+  busy: boolean;
+  /** `scheduledLiveAt`: an ISO time to hold the approved revision until; omitted publishes now. */
+  onApprove: (scheduledLiveAt?: string) => void;
+  onReject: () => void;
+  /** Display name of whoever approved it for a later time, when it is scheduled. */
+  approvedBy?: string;
+}) {
+  const [goLive, setGoLive] = useState("");
+  return (
+    <section className="mt-3 rounded-md border border-[var(--color-biz-warning)] p-3 text-xs" data-testid="pending-revision" aria-label="Pending revision">
+      <p className="font-semibold">
+        Pending revision v{revision.version} · not live yet
+        {revision.scheduledLiveAt ? ` · approved, goes live ${new Date(revision.scheduledLiveAt).toLocaleString()}` : ""}
+      </p>
+      {revision.scheduledLiveAt ? (
+        <p className="mt-1 text-[var(--color-biz-muted)]" role="status">
+          Approved by {approvedBy ?? "another admin"}. It is applied at that time if the live service has not changed in between.
+        </p>
+      ) : null}
+      <p className="mt-1 text-[var(--color-biz-muted)]">
+        Proposed by {proposedBy}
+        {revision.proposedAt ? ` on ${new Date(revision.proposedAt).toLocaleString()}` : ""}
+        {revision.changeReason ? ` · reason: ${revision.changeReason}` : " · no reason given"}
+      </p>
+      <ChangeTable changes={revision.changes} beforeLabel="Live now" afterLabel="Proposed" />
+      <div className="mt-2 flex flex-wrap items-end gap-1.5">
+        <label className="text-[var(--color-biz-muted)]">
+          Go-live time (optional)
+          <input className="sv-input mt-1" type="datetime-local" value={goLive} onChange={(e) => setGoLive(e.target.value)} />
+        </label>
+        <button type="button" className="biz-btn text-xs" disabled={busy} onClick={() => onApprove(goLive ? new Date(goLive).toISOString() : undefined)}>
+          {goLive ? "Approve and schedule" : "Approve and publish"}
+        </button>
+        <button type="button" className="biz-btn text-xs" disabled={busy} onClick={onReject}>
+          Discard revision
+        </button>
+      </div>
+      <p className="mt-1 text-[var(--color-biz-muted)]">The admin who proposed a revision cannot approve it.</p>
+    </section>
+  );
+}
+
 export default function ServicesPage() {
   const secondary = useAfterFirstPaint();
   const searchRef = useRef<HTMLInputElement>(null);
@@ -284,6 +377,7 @@ export default function ServicesPage() {
    */
   const [editSnapshot, setEditSnapshot] = useState<{ version?: number; config: AdminServiceRow["catalogConfig"] } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [scheduleLive, setScheduleLive] = useState("");
   const [confirm, setConfirm] = useState<{ kind: ConfirmKind; service: AdminServiceRow } | null>(null);
 
   const params = useMemo(
@@ -319,6 +413,14 @@ export default function ServicesPage() {
   );
   const createRequirementItem = useCreateRequirementItemMutation();
   const transitionMut = useServiceTransitionMutation();
+  const approveMut = useServiceApproveMutation();
+  const revisionMut = useServiceRevisionMutation();
+  const unscheduleMut = useServiceUnscheduleMutation();
+  const detail = useServiceDetailQuery(selected && !editing ? selected.id : null);
+  const pendingRevision = detail.data?.service.pendingRevision ?? null;
+  /** An admin's name when the server sent one; the id otherwise (a system actor has no user row). */
+  const who = (id: string | null | undefined) => (id ? (detail.data?.actors?.[id] ?? id) : "unknown");
+  const [notice, setNotice] = useState<string | null>(null);
   const filtersOn =
     Boolean(debouncedSearch) || statusFilter !== "all" || categoryFilter !== "all" || sort !== "recent";
 
@@ -428,7 +530,7 @@ export default function ServicesPage() {
     try {
       if (editing && selected) {
         // expectedVersion: a save against a version someone else already replaced is refused (409).
-        await updateMut.mutateAsync({
+        const saved = await updateMut.mutateAsync({
           id: selected.id,
           body: {
             ...toInput(form, editSnapshot?.config ?? selected.catalogConfig),
@@ -436,6 +538,11 @@ export default function ServicesPage() {
             changeReason: changeReason.trim() || undefined,
           },
         });
+        setNotice(
+          saved?.pendingRevision
+            ? "Saved as a pending revision. The live service is unchanged until a different admin approves it."
+            : null,
+        );
         setChangeReason("");
         setEditing(false);
       } else {
@@ -688,6 +795,8 @@ export default function ServicesPage() {
           </div>
 
           {actionError ? <div className="cu-alert">{actionError}</div> : null}
+
+          <CategoryManager />
 
           <div className="cu-ledger__body">
             {isFetching && !isLoading ? <div className="cu-updating">Updating…</div> : null}
@@ -1036,7 +1145,7 @@ export default function ServicesPage() {
                 )}
                 <div className="sv-file__meta">
                   <p className="font-semibold">
-                    Lifecycle: {selected.lifecycleStatus ?? "—"} · version {selected.version ?? 1}
+                    <span data-testid="control-state">State: {selected.controlState ?? selected.lifecycleStatus ?? "—"}</span> · version {selected.version ?? 1}
                     {selected.isBookable ? " · bookable" : " · not bookable"}
                   </p>
                   <p className="mt-1 text-[var(--color-biz-muted)]">
@@ -1051,6 +1160,99 @@ export default function ServicesPage() {
                       {selected.reservedSlotMinutes ?? 60} min ({selected.partnerSlotPolicy === "FIXED" ? "fixed visit" : "appointment + buffers"})
                     </p>
                   ) : null}
+                  <PublishRail service={selected} />
+                  {notice ? (
+                    <p className="mt-2 text-xs font-medium" role="status">
+                      {notice}
+                    </p>
+                  ) : null}
+                  {pendingRevision ? (
+                    <PendingRevisionPanel
+                      revision={pendingRevision}
+                      proposedBy={who(pendingRevision.proposedBy)}
+                      busy={revisionMut.isPending}
+                      approvedBy={pendingRevision.approvedBy ? who(pendingRevision.approvedBy) : undefined}
+                      onApprove={(scheduledLiveAt) => {
+                        setActionError(null);
+                        setNotice(null);
+                        void revisionMut
+                          .mutateAsync({ id: selected.id, action: "approve", expectedContentHash: pendingRevision.contentHash ?? undefined, scheduledLiveAt })
+                          .catch((e) => setActionError(getErrorMessage(e)));
+                      }}
+                      onReject={() => {
+                        const reason = window.prompt("Reason for discarding this revision (recorded in the audit trail)");
+                        if (reason === null) return;
+                        setActionError(null);
+                        setNotice(null);
+                        void revisionMut
+                          .mutateAsync({ id: selected.id, action: "reject", reason: reason.trim() || undefined })
+                          .catch((e) => setActionError(getErrorMessage(e)));
+                      }}
+                    />
+                  ) : null}
+                  {selected.lifecycleStatus === "READY_FOR_REVIEW" || selected.lifecycleStatus === "PAUSED" ? (
+                  <div className="mt-3 flex flex-wrap items-end gap-2">
+                    <label className="text-xs text-[var(--color-biz-muted)]">
+                      Go-live time (optional, Asia/Kolkata if no offset)
+                      <input
+                        className="sv-input mt-1"
+                        type="datetime-local"
+                        value={scheduleLive}
+                        onChange={(e) => setScheduleLive(e.target.value)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="biz-btn text-xs"
+                      disabled={approveMut.isPending || (selected.publishBlocked?.length ?? 0) > 0}
+                      title={(selected.publishBlocked?.length ?? 0) > 0 ? "Fix the blocking gates before this can be approved" : undefined}
+                      onClick={() => {
+                        setActionError(null);
+                        const scheduledLiveAt = scheduleLive ? new Date(scheduleLive).toISOString() : undefined;
+                        // The hash and version on screen: an edit saved meanwhile is refused, not approved unseen.
+                        void approveMut
+                          .mutateAsync({ id: selected.id, scheduledLiveAt, expectedVersion: selected.version, expectedContentHash: selected.contentHash })
+                          .catch((e) => setActionError(getErrorMessage(e)));
+                      }}
+                    >
+                      Approve for publish
+                    </button>
+                  </div>
+                  ) : null}
+                  {/* A live service has used its approval: say how it changes from here, not that the approval is stale. */}
+                  {selected.isActive ? (
+                    <p className="mt-1 text-xs text-[var(--color-biz-muted)]">
+                      {detail.data?.service.liveEditPolicy === "four-eyes"
+                        ? "Live. A change to price, duration, content or configuration is held as a pending revision until a different admin approves it."
+                        : "Live. Edits apply at once and are versioned and audited (live-edit policy: direct)."}
+                    </p>
+                  ) : selected.publishApproval && selected.approvalState === "STALE" ? (
+                    <p className="mt-1 text-xs text-[var(--color-biz-warning)]" role="status">
+                      Approval is stale: this service changed after {who(selected.publishApproval.actorId)} approved it on{" "}
+                      {new Date(selected.publishApproval.approvedAt).toLocaleString()}. It needs a new approval before it can go live.
+                    </p>
+                  ) : selected.publishApproval ? (
+                    <p className="mt-1 text-xs text-[var(--color-biz-muted)]">
+                      Approved by {who(selected.publishApproval.actorId)} for editor {who(selected.publishApproval.editorId)} at{" "}
+                      {new Date(selected.publishApproval.approvedAt).toLocaleString()}
+                      {selected.scheduledLiveAt ? ` · scheduled ${new Date(selected.scheduledLiveAt).toLocaleString()}` : ""}
+                      {selected.scheduledLiveAt ? (
+                        <button
+                          type="button"
+                          className="biz-btn ml-2 text-xs"
+                          disabled={unscheduleMut.isPending}
+                          onClick={() => {
+                            setActionError(null);
+                            void unscheduleMut.mutateAsync(selected.id).catch((e) => setActionError(getErrorMessage(e)));
+                          }}
+                        >
+                          Remove schedule
+                        </button>
+                      ) : null}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs text-[var(--color-biz-muted)]">No publish approval yet. A second admin with APPROVE must record one.</p>
+                  )}
                   {(selected.allowedTransitions ?? []).length > 0 ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {(selected.allowedTransitions ?? []).map((to) => (
@@ -1058,12 +1260,36 @@ export default function ServicesPage() {
                           key={to}
                           type="button"
                           className="biz-btn text-xs"
-                          disabled={transitionMut.isPending}
+                          disabled={
+                            transitionMut.isPending ||
+                            ((to === "ACTIVE" || to === "PUBLISHED") && (selected.publishBlocked?.length ?? 0) > 0)
+                          }
                           onClick={() => {
                             setActionError(null);
+                            setNotice(null);
                             if (to === "ARCHIVED" && !window.confirm("Archiving is permanent. Continue?")) return;
+                            // Taking a service off sale is recorded with its reason.
+                            let reason: string | undefined;
+                            if (to === "PAUSED" || to === "DEPRECATED" || to === "ARCHIVED") {
+                              const typed = window.prompt(`Reason for moving this service to ${to.toLowerCase()} (recorded in the audit trail)`);
+                              if (typed === null) return;
+                              if (!typed.trim()) {
+                                setActionError("A reason is required to take a service off sale.");
+                                return;
+                              }
+                              reason = typed.trim();
+                            }
                             void transitionMut
-                              .mutateAsync({ id: selected.id, to: to as RequestableLifecycle, expectedVersion: selected.version })
+                              .mutateAsync({ id: selected.id, to: to as RequestableLifecycle, expectedVersion: selected.version, reason })
+                              .then((r) => {
+                                if (r?.impact) {
+                                  setNotice(
+                                    r.impact.openBookings > 0
+                                      ? `Off sale. ${r.impact.openBookings} open booking${r.impact.openBookings === 1 ? "" : "s"} on this service will still go ahead.`
+                                      : "Off sale. No open bookings on this service.",
+                                  );
+                                }
+                              })
                               .catch((e) => setActionError(getErrorMessage(e)));
                           }}
                         >
@@ -1074,18 +1300,8 @@ export default function ServicesPage() {
                   ) : (
                     <p className="mt-2 text-[var(--color-biz-muted)]">No further lifecycle moves (archived is final).</p>
                   )}
-                  {versions.data?.versions.length ? (
-                    <details className="mt-2">
-                      <summary className="cursor-pointer">Published versions ({versions.data.versions.length})</summary>
-                      <ul className="mt-1 space-y-0.5">
-                        {versions.data.versions.slice(0, 10).map((v) => (
-                          <li key={v.version} className="font-mono">
-                            v{v.version} · {new Date(v.publishedAt ?? v.createdAt).toLocaleString()}
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  ) : null}
+                  <VersionHistory serviceId={selected.id} versions={versions.data?.versions ?? []} actors={versions.data?.actors} />
+                  <ServiceAuditTrail serviceId={selected.id} />
                 </div>
                 <div className="cu-jump-row">
                   <Link href={`/bookings?q=${encodeURIComponent(selected.name)}`} className="biz-btn text-xs">
@@ -1280,7 +1496,20 @@ export default function ServicesPage() {
           setActionError(null);
           try {
             if (confirm.kind === "delete") await deleteMut.mutateAsync(confirm.service.id);
-            else await statusMut.mutateAsync({ id: confirm.service.id, isActive: false });
+            else {
+              // Taking a service off sale is recorded with its reason, on every route that can do it.
+              const reason = window.prompt("Reason for deactivating this service (recorded in the audit trail)");
+              if (reason === null) {
+                setConfirm(null);
+                return;
+              }
+              if (!reason.trim()) {
+                setActionError("A reason is required to take a service off sale.");
+                setConfirm(null);
+                return;
+              }
+              await statusMut.mutateAsync({ id: confirm.service.id, isActive: false, reason: reason.trim() });
+            }
             setConfirm(null);
             if (selectedId === confirm.service.id && confirm.kind === "delete") setSelectedId(null);
           } catch (e) {

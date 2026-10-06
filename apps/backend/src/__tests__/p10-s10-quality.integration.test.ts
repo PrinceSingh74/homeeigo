@@ -21,6 +21,7 @@ import { bookingCompletionService } from "../services/booking-completion.service
 import { partnerSafetyService } from "../services/partner-safety.service";
 import { bearer, cleanupAdversarialFixtures, dbReachable, futureSlot, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
+import { BOOKING_CREATE_PATH, withQuoteToken } from "./helpers/quote-token";
 
 const RUN = `p10s10-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
@@ -33,6 +34,8 @@ type Res = { status: number; json: any };
 async function call(method: string, path: string, body?: unknown, token?: string | null): Promise<Res> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (token) h.Authorization = `Bearer ${token}`;
+  // Booking create requires a price quote (QUOTE_REQUIRED otherwise) — quote first, as a client does.
+  if (method === "POST" && path === BOOKING_CREATE_PATH) body = await withQuoteToken(app, token, body);
   const res = await app.handle(new Request(`http://localhost${path}`, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) }));
   return { status: res.status, json: await res.json().catch(() => ({})) };
 }

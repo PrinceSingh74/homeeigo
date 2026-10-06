@@ -26,6 +26,7 @@ import {
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
+import { withQuoteToken } from "./helpers/quote-token";
 import { civilDate } from "../lib/service-availability";
 import { adminBookingOperationsService } from "../services/admin-booking-operations.service";
 
@@ -58,17 +59,19 @@ async function setProviderHours(start: string | null, end: string | null, days?:
 }
 
 async function book(at: Date, extra: Record<string, unknown> = {}) {
+  // Booking create requires a price quote (QUOTE_REQUIRED otherwise) — quote first, as a client does.
+  const body = await withQuoteToken(app, bearer(ctx.customerA), {
+    serviceId: ctx.serviceId,
+    addressId: ctx.addressAId,
+    providerId: ctx.providerId,
+    scheduledDate: at.toISOString(),
+    ...extra,
+  });
   const res = await app.handle(
     new Request("http://localhost/api/bookings", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer(ctx.customerA)}` },
-      body: JSON.stringify({
-        serviceId: ctx.serviceId,
-        addressId: ctx.addressAId,
-        providerId: ctx.providerId,
-        scheduledDate: at.toISOString(),
-        ...extra,
-      }),
+      body: JSON.stringify(body),
     }),
   );
   return { status: res.status, json: (await res.json()) as any };

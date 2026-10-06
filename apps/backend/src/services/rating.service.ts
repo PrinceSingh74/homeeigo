@@ -377,6 +377,62 @@ export class RatingService {
   }
 
   /**
+   * Customer-facing reviews of one service. Same public projection as `listPublicRecent`: the
+   * reviewer is a first name and an initial (or anonymous), and nothing identifies the customer,
+   * the booking or the partner. The list holds written reviews; the distribution and the average
+   * count every public, unflagged rating of the service, with or without text.
+   */
+  async listPublicForService(serviceId: string, query: Record<string, string | undefined>) {
+    const limit = Math.min(Math.max(Number(query.limit) || 10, 1), 30);
+    const page = Math.max(Number(query.page) || 1, 1);
+    const visible = { isPublic: true, isFlagged: false, booking: { serviceId } } as const;
+    const written = { ...visible, reviewText: { not: null } } as const;
+    const [rows, total, byStars] = await Promise.all([
+      prisma.rating.findMany({
+        where: written,
+        take: limit,
+        skip: (page - 1) * limit,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          stars: true,
+          reviewText: true,
+          createdAt: true,
+          providerResponse: true,
+          isAnonymous: true,
+          user: { select: { firstName: true, lastName: true } },
+        },
+      }),
+      prisma.rating.count({ where: written }),
+      prisma.rating.groupBy({ by: ["stars"], where: visible, _count: { _all: true } }),
+    ]);
+    const distribution: Record<string, number> = { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 };
+    let ratings = 0;
+    let sum = 0;
+    for (const g of byStars) {
+      if (String(g.stars) in distribution) distribution[String(g.stars)] = g._count._all;
+      ratings += g._count._all;
+      sum += g.stars * g._count._all;
+    }
+    return {
+      reviews: rows.map((r) => ({
+        id: r.id,
+        name: r.isAnonymous ? "HOMEEIGO Customer" : `${r.user.firstName ?? "HOMEEIGO"} ${(r.user.lastName ?? "").charAt(0)}`.trim(),
+        rating: r.stars,
+        reviewText: r.reviewText,
+        createdAt: r.createdAt,
+        providerResponse: r.providerResponse,
+      })),
+      total,
+      page,
+      limit,
+      ratingCount: ratings,
+      averageRating: ratings > 0 ? Math.round((sum / ratings) * 10) / 10 : null,
+      distribution,
+    };
+  }
+
+  /**
    * Recency-weighted average rating.
    *   ≤ 7 days  → 3x weight
    *   ≤ 30 days → 2x weight

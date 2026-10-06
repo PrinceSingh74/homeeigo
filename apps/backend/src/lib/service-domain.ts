@@ -10,6 +10,7 @@
  *   Derived at read time              → ratings, review counts, bookability
  */
 
+import { createHash } from "node:crypto";
 import { validateServiceRequirements } from "./service-requirements";
 import { validateExecutionPlan } from "./service-execution";
 import { buildSafetySnapshot } from "./service-safety";
@@ -24,6 +25,8 @@ import {
   type ServiceCatalogConfig,
 } from "./service-catalog-config";
 import { SUPPORTED_CURRENCIES } from "./pricing-policy";
+import { isKnownLocalEnvironment } from "./deployed-environment";
+import { CANCELLATION_POLICY } from "../services/cancellation-policy.service";
 import { paymentCapabilities, qualitySnapshot } from "./service-runtime-policy";
 import type { Prisma } from "@prisma/client";
 
@@ -116,6 +119,7 @@ export type ConfigSection = {
   label: string;
   status: SectionStatus;
   issues: string[];
+  gates: PublishGateResult[];
 };
 
 const PROFILE_BY_CATEGORY: Record<string, CapabilityProfile> = {
@@ -272,6 +276,15 @@ export function blockingBookabilityIssues(service: ServiceDomainCore, cfg: Servi
   for (const r of validateServiceRequirements(cfg)) push(r.code, r.requirement ? `requirements.${r.requirement}` : "requirements", r.message);
   // Phase 10 §7: an execution plan must be structurally sound (unset plans are fine).
   for (const e of validateExecutionPlan(cfg)) push(e.code, e.step ? `execution.${e.step}` : "execution", e.message);
+  const activeVariants = new Set((cfg?.variants ?? []).filter((v) => v.active !== false).map((v) => v.id));
+  for (const addon of cfg?.addons ?? []) {
+    if (addon.active === false) continue;
+    for (const vid of addon.compatibleVariantIds ?? []) {
+      if (!activeVariants.has(vid)) {
+        push("ADDON_VARIANT_INACTIVE", `addons.${addon.id}`, `Add-on "${addon.id}" requires variant "${vid}", which is not an active variant`);
+      }
+    }
+  }
   return issues;
 }
 
@@ -315,14 +328,19 @@ function profileIssues(profile: CapabilityProfile, service: ServiceDomainCore, c
 export function validateForActivation(
   service: ServiceDomainCore,
   cfg: ServiceCatalogConfig | null,
-  opts: { grandfathered?: boolean } = {},
+  opts: { grandfathered?: boolean; required?: readonly PublishRequiredSection[]; platformPolicy?: PlatformPolicyShape; unavailableTrainingModules?: readonly string[] } = {},
 ): { ok: true } | { ok: false; code: "SERVICE_NOT_BOOKABLE"; issues: PublishIssue[] } {
-  const blocking = [...blockingBookabilityIssues(service, cfg), ...contentIssues(service)];
-  const profile = parseProfile(service.capabilityProfile, service.category);
-  const extra = opts.grandfathered ? [] : [...profileIssues(profile, service, cfg), ...taxonomyIssues(service)];
-  const issues = [...blocking, ...extra];
+  // One gate: whatever the admin's publish rail shows as a critical failure is what refuses activation.
+  const issues = publishGateResults(service, cfg, opts)
+    .filter(isBlockingGate)
+    .map((g) => ({ code: g.code, path: g.path, message: g.message }));
   if (issues.length) return { ok: false, code: "SERVICE_NOT_BOOKABLE", issues };
   return { ok: true };
+}
+
+/** A rail entry that stops publication. Warnings and not-applicable entries never do. */
+export function isBlockingGate(g: Pick<PublishGateResult, "status" | "severity">): boolean {
+  return g.severity === "critical" && (g.status === "FAIL" || g.status === "BLOCKED");
 }
 
 /**
@@ -339,6 +357,519 @@ export function contentIssues(service: Pick<ServiceDomainCore, "name" | "descrip
   return issues;
 }
 
+export type PublishGateStatus = "PASS" | "WARNING" | "FAIL" | "BLOCKED" | "NOT_APPLICABLE";
+
+export type PublishGateResult = {
+  code: string;
+  status: PublishGateStatus;
+  severity: "critical" | "warning" | "info";
+  message: string;
+  remediation: string;
+  path: string;
+  version: number | null;
+  /** Which of the eighteen publish gates this finding belongs to (set by `publishGateResults`). */
+  gate: PublishGate | "OTHER";
+};
+
+const GATE_REMEDIATION: Record<string, string> = {
+  PRICING_MISSING: "Set a positive base price, or use the quote or inspection pricing model.",
+  PRICING_INCOMPLETE: "Complete the price, variant, and quantity configuration the resolver needs.",
+  DURATION_MISSING: "Set a positive duration.",
+  QUANTITY_MISSING: "Add the quantity rule this pricing model requires.",
+  QUANTITY_TYPE: "Set the quantity type this pricing model requires.",
+  CONTENT_TITLE_MISSING: "Enter the customer-facing service name.",
+  CONTENT_DESCRIPTION_MISSING: "Enter the customer-facing description.",
+  TAXONOMY_MISSING: "Place the service in a customer category.",
+  MATERIALS_POLICY: "Choose a materials policy. Do not invent a materials list.",
+  EQUIPMENT_POLICY: "Choose an equipment policy. Do not invent an equipment list.",
+  ADDON_VARIANT_INACTIVE: "Point the add-on at an active variant, or remove the compatibility rule.",
+};
+
+function gateResult(
+  service: Pick<ServiceDomainCore, "version">,
+  code: string,
+  status: PublishGateStatus,
+  severity: PublishGateResult["severity"],
+  path: string,
+  message: string,
+  remediation: string,
+): PublishGateResult {
+  return { code, status, severity, message, remediation, path, version: service.version ?? null, gate: "OTHER" };
+}
+
+/**
+ * Structured publish rail. FAIL/BLOCKED on a critical gate stops the next activation.
+ * Already-active rows keep profile and taxonomy gaps as warnings so they are not unpublished.
+ * Absence of safety, quality, or execution steps is a warning: this function does not invent them.
+ */
+export function publishGateResults(
+  service: ServiceDomainCore,
+  cfg: ServiceCatalogConfig | null,
+  opts: { grandfathered?: boolean; required?: readonly PublishRequiredSection[]; platformPolicy?: PlatformPolicyShape; unavailableTrainingModules?: readonly string[] } = {},
+): PublishGateResult[] {
+  const results: PublishGateResult[] = [];
+  const fail = (code: string, path: string, message: string) =>
+    results.push(gateResult(service, code, "FAIL", "critical", path, message, GATE_REMEDIATION[code] ?? "Fix the configuration this gate names."));
+  const warn = (code: string, path: string, message: string, remediation: string) =>
+    results.push(gateResult(service, code, "WARNING", "warning", path, message, remediation));
+  const pass = (code: string, path: string, message: string) =>
+    results.push(gateResult(service, code, "PASS", "info", path, message, ""));
+  const na = (code: string, path: string, message: string) =>
+    results.push(gateResult(service, code, "NOT_APPLICABLE", "info", path, message, ""));
+
+  for (const issue of [...blockingBookabilityIssues(service, cfg), ...contentIssues(service)]) fail(issue.code, issue.path, issue.message);
+  const profile = parseProfile(service.capabilityProfile, service.category);
+  for (const issue of [...profileIssues(profile, service, cfg), ...taxonomyIssues(service)]) {
+    if (opts.grandfathered) {
+      warn(issue.code, issue.path, issue.message, "This live service stays bookable. Fix this before the next activation.");
+    } else {
+      fail(issue.code, issue.path, issue.message);
+    }
+  }
+
+  const cities = (service.availableCities?.length ?? 0) > 0 || (cfg?.coverage?.cityIds?.length ?? 0) > 0;
+  const pins = (cfg?.coverage?.pincodes?.length ?? 0) > 0;
+  const zones = (cfg?.coverage?.zoneIds?.length ?? 0) > 0 || (cfg?.coverage?.radiusKm ?? 0) > 0;
+  if (cfg?.coverage?.serviceabilityRequired && !(cities || pins || zones)) {
+    results.push(gateResult(service, "COVERAGE_INVALID", "FAIL", "critical", "coverage", "This service requires a serviceability check but names no city, zone, PIN code or radius, so no address can pass it.", "Add the area this service covers, or turn off the serviceability requirement."));
+  } else if (cities || pins || zones) pass("COVERAGE", "coverage", "Coverage is limited to the configured cities, zones or PIN codes.");
+  else warn("COVERAGE_UNSPECIFIED", "coverage", "Coverage is unspecified and is treated as nationwide.", "Set cities or PIN codes if this service is not nationwide.");
+
+  if (cfg?.safety || cfg?.safetyNotes?.length) pass("SAFETY", "safety", "Safety information is configured.");
+  else warn("SAFETY_ABSENT", "safety", "No safety information is configured.", "Add approved safety information, or leave the service unpublished until it exists. Do not invent it.");
+
+  if (cfg?.quality) pass("QUALITY", "quality", "Quality criteria are configured.");
+  else warn("QUALITY_ABSENT", "quality", "No quality criteria are configured.", "Add approved quality criteria, or leave them unset. Do not invent a checklist.");
+
+  if ((cfg?.execution?.steps?.length ?? 0) > 0 && !results.some((g) => g.path.startsWith("execution") && g.status === "FAIL")) {
+    pass("EXECUTION", "execution", "The execution plan is structurally valid.");
+  } else if (!results.some((g) => g.path.startsWith("execution") && g.status === "FAIL")) {
+    warn("EXECUTION_ABSENT", "execution", "No execution steps are configured.", "Add an approved execution plan, or leave steps empty. An empty plan does not invent a method.");
+  }
+
+  const brief = catalogPartnerBrief(service, cfg);
+  // Structural, not textual: a description may say "matching"; a field outside the allow-list may not exist.
+  const leaked = Object.keys(brief).some((k) => !(CATALOG_PARTNER_BRIEF_FIELDS as readonly string[]).includes(k));
+  if (leaked) fail("PARTNER_BRIEF_LEAK", "partnerBrief", "The partner brief includes a field outside its allow-list.");
+  else if (!brief.objective) {
+    // The missing description is already the critical failure; the brief is blocked by it, not a second cause.
+    results.push(gateResult(service, "PARTNER_BRIEF_BLOCKED", "BLOCKED", "info", "partnerBrief", "The partner brief has no objective until the description exists.", "Enter the customer-facing description."));
+  } else if (brief.stepTitles.length === 0) warn("PARTNER_BRIEF_NO_STEPS", "partnerBrief", "The partner brief has an objective and no execution steps.", "Add approved steps when a method exists.");
+  else pass("PARTNER_BRIEF", "partnerBrief", "The partner brief is limited to the objective and step titles.");
+
+  if ((cfg?.addons?.length ?? 0) === 0) {
+    na("ADDONS_NONE", "addons", "This service has no add-ons. Customers are not offered a shared add-on list.");
+  } else if (!results.some((g) => g.code === "ADDON_VARIANT_INACTIVE")) {
+    pass("ADDONS", "addons", "Add-on compatibility references active variants.");
+  }
+
+  const availabilityProblems = availabilityIssues(cfg);
+  if (availabilityProblems.length) {
+    results.push(gateResult(service, "AVAILABILITY_INVALID", "FAIL", "critical", "availability", `These availability rules can never offer a slot: ${availabilityProblems.join("; ")}.`, "Correct the operating window, lead time or booking modes so at least one slot can exist."));
+  } else if (cfg?.availability) pass("AVAILABILITY", "availability", "Availability rules are configured and can offer a slot.");
+  else warn("AVAILABILITY_DEFAULT", "availability", "No availability window is configured. The platform default of 07:00–22:00 applies.", "Set an operating window, all-day, or blackout dates when this service differs from the default.");
+
+  // Booking, cancellation and refund money is one platform policy, frozen onto each booking at
+  // creation. There is no per-service fee table to validate, so the gate validates the policy a
+  // booking of this service would freeze today. If that policy is malformed, nothing may publish.
+  const policy = opts.platformPolicy ?? CANCELLATION_POLICY;
+  const policyProblems = platformPolicyIssues(policy);
+  pass("BOOKING_POLICY", "bookingRules", `A booking of this service freezes platform policy ${policy.version} at creation; later policy changes do not re-price it.`);
+  for (const [code, path, what] of [["CANCELLATION_POLICY", "cancellation", "Cancellation"], ["REFUND_POLICY", "refund", "Refund"]] as const) {
+    if (policyProblems.length) {
+      results.push(gateResult(service, "PLATFORM_POLICY_INVALID", "FAIL", "critical", path, `${what} terms cannot be relied on: platform policy ${policy.version} is inconsistent (${policyProblems.join("; ")}).`, "Fix the platform cancellation policy. No service can be published until it is consistent."));
+    } else {
+      pass(code, path, `${what} terms come from platform policy ${policy.version}: ${policy.tiers.length} tiers, each with a fee and a refund that add up to the amount paid.`);
+    }
+  }
+  na("PROVIDER_EARNINGS", "earnings", "Provider commission stays on the volume commission schedule, not on this service.");
+  na("CAPACITY", "capacity", "Capacity stays on the partner capacity settings, not on this service.");
+
+  // A required training module that is missing or unpublished can be completed by nobody, so the
+  // TRAINING_INCOMPLETE gate would refuse every professional. The caller supplies the fact (a
+  // database read); without it this check is silent rather than guessed.
+  const trainingGaps = (opts.unavailableTrainingModules ?? []).filter((slug) => (cfg?.providerRequirements?.trainingModules ?? []).includes(slug));
+  if (trainingGaps.length > 0) {
+    const message = `Required training ${trainingGaps.length === 1 ? "module" : "modules"} ${trainingGaps.map((s) => `"${s}"`).join(", ")} ${trainingGaps.length === 1 ? "is" : "are"} not published, so no professional can qualify for this service.`;
+    const remediation = "Publish the training module, or remove it from this service's provider requirements.";
+    if (opts.grandfathered) warn("TRAINING_MODULE_UNAVAILABLE", "providerRequirements", `${message} This live service cannot currently be matched to anyone.`, remediation);
+    else results.push(gateResult(service, "TRAINING_MODULE_UNAVAILABLE", "FAIL", "critical", "providerRequirements", message, remediation));
+  } else if (cfg?.providerRequirements?.requiredSkills?.length) pass("PROVIDER_REQUIREMENTS", "providerRequirements", "Provider skill requirements are configured.");
+  else warn("PROVIDER_REQUIREMENTS_EMPTY", "providerRequirements", "No provider skill requirement is configured, so matching does not gate on skill.", "Add skills only when they are real requirements.");
+
+  const weights = MATCHING_WEIGHT_FIELDS.map((k) => cfg?.matching?.[k]).filter((w): w is number => typeof w === "number");
+  if (weights.length > 0 && weights.every((w) => w === 0)) {
+    results.push(gateResult(service, "MATCHING_INVALID", "FAIL", "critical", "matching", "Every matching weight on this service is zero, so eligible professionals cannot be ranked.", "Give at least one ranking signal a weight above zero, or remove the weights to use the platform defaults."));
+  } else if (weights.length > 0) pass("MATCHING", "matching", "Matching weights on this service can rank eligible professionals.");
+  else na("MATCHING_DEFAULT", "matching", "No weights are set on this service; the platform ranking weights apply.");
+
+  na("REVIEWS", "reviews", "Reviews are aggregated from ratings. They are not catalogue configuration.");
+  if (cfg?.faqs?.length) pass("FAQ", "faqs", "FAQs are configured.");
+  else na("FAQ_NONE", "faqs", "FAQs are optional.");
+
+  // Owner policy: a section named as required blocks a first publish while it is absent. A live
+  // service keeps its warning — a new requirement never unpublishes what is already bookable.
+  if (!opts.grandfathered) {
+    for (const section of opts.required ?? publishRequiredSections()) {
+      const absent = results.find((g) => g.code === REQUIRED_SECTION_ABSENT_CODE[section] && g.status === "WARNING");
+      if (!absent) continue;
+      absent.status = "BLOCKED";
+      absent.severity = "critical";
+      absent.message = `${absent.message} This section is required before a service can be published.`;
+    }
+  }
+
+  // Every named gate answers for every service. A gate with no finding above has passed, or does
+  // not apply; saying so is the difference between "checked and fine" and "never looked".
+  for (const r of results) r.gate = gateOf(r.code, r.path);
+  const reported = new Set(results.map((r) => r.gate));
+  const silent = (gate: PublishGate, status: "PASS" | "NOT_APPLICABLE", path: string, message: string) => {
+    if (!reported.has(gate)) results.push({ ...gateResult(service, gate, status, "info", path, message, ""), gate });
+  };
+  silent("PRICING", "PASS", "pricing", "The price, quantity rule and currency resolve to a positive amount.");
+  silent("DURATION", "PASS", "duration", "The duration is set and internally consistent.");
+  if ((cfg?.variants ?? []).some((v) => v.active !== false)) silent("VARIANT", "PASS", "variants", "Every active variant resolves to a price.");
+  else silent("VARIANT", "NOT_APPLICABLE", "variants", "This service has no variants.");
+  if (cfg?.audiences?.length || cfg?.customerPolicy?.age) silent("ELIGIBILITY", "PASS", "audiences", "Audience and age rules are set and consistent.");
+  else silent("ELIGIBILITY", "NOT_APPLICABLE", "audiences", "This service has no audience or age restriction.");
+  silent("MATERIALS", "PASS", "materialPolicy", "The materials policy is set and its requirements are consistent.");
+  silent("EQUIPMENT", "PASS", "equipmentPolicy", "The equipment policy is set.");
+  silent("CUSTOMER_CONTENT", "PASS", "description", "The service has a name, a description and a place in the customer catalogue.");
+
+  return results;
+}
+
+/**
+ * The control-plane vocabulary: DRAFT → VALIDATING → REVIEW → APPROVED → SCHEDULED → LIVE → PAUSED →
+ * DEPRECATED → ARCHIVED. Seven are the stored lifecycle under these names. APPROVED and SCHEDULED
+ * are not stored states: a service in review is APPROVED while a second admin's approval of its
+ * current content stands, and SCHEDULED while that approval carries a go-live time still ahead.
+ * Deriving them means they cannot disagree with the approval they describe.
+ */
+export const CONTROL_PLANE_STATES = ["DRAFT", "VALIDATING", "REVIEW", "APPROVED", "SCHEDULED", "LIVE", "PAUSED", "DEPRECATED", "ARCHIVED"] as const;
+export type ControlPlaneState = (typeof CONTROL_PLANE_STATES)[number];
+
+export function controlPlaneState(input: {
+  lifecycleStatus: string | null | undefined;
+  approvalState: "NONE" | "VALID" | "STALE";
+  scheduledLiveAt: string | null | undefined;
+  now: Date;
+}): ControlPlaneState {
+  const lifecycle = parseLifecycle(input.lifecycleStatus);
+  if (lifecycle === "DRAFT") return "DRAFT";
+  if (lifecycle === "CONFIGURATION_REQUIRED") return "VALIDATING";
+  if (lifecycle === "ACTIVE" || lifecycle === "PUBLISHED") return "LIVE";
+  if (lifecycle === "PAUSED" || lifecycle === "DEPRECATED" || lifecycle === "ARCHIVED") return lifecycle;
+  if (input.approvalState !== "VALID") return "REVIEW";
+  const at = scheduledLiveInstant(input.scheduledLiveAt);
+  return at && at.getTime() > input.now.getTime() ? "SCHEDULED" : "APPROVED";
+}
+
+/** Lifecycle targets that take a service off sale. Each needs a reason on record. */
+export const OFF_SALE_LIFECYCLES: readonly ServiceLifecycleStatus[] = ["PAUSED", "DEPRECATED", "ARCHIVED"];
+
+/** The eighteen gates of the publish rule. Every one reports for every service. */
+export const PUBLISH_GATES = [
+  "PRICING",
+  "VARIANT",
+  "ADDON_COMPATIBILITY",
+  "DURATION",
+  "ELIGIBILITY",
+  "SERVICEABILITY",
+  "AVAILABILITY",
+  "MATERIALS",
+  "EQUIPMENT",
+  "PROVIDER_REQUIREMENTS",
+  "MATCHING",
+  "BOOKING_POLICY",
+  "CANCELLATION",
+  "REFUND",
+  "SAFETY",
+  "QUALITY",
+  "CUSTOMER_CONTENT",
+  "PARTNER_EXECUTION_BRIEF",
+] as const;
+export type PublishGate = (typeof PUBLISH_GATES)[number];
+
+const MATCHING_WEIGHT_FIELDS = ["skillWeight", "distanceWeight", "ratingWeight", "availabilityWeight", "responseWeight", "completionWeight"] as const;
+
+/** Which of the eighteen gates a finding belongs to. OTHER is information outside the publish rule. */
+function gateOf(code: string, path: string): PublishGate | "OTHER" {
+  if (code.startsWith("CANCELLATION") || path === "cancellation") return "CANCELLATION";
+  if (code.startsWith("REFUND") || path === "refund") return "REFUND";
+  if (code.startsWith("PRICING") || code.startsWith("QUANTITY") || path === "basePrice" || path === "pricing" || path.startsWith("quantity")) return "PRICING";
+  if (code === "VARIANT_MISSING" || path.startsWith("variant")) return "VARIANT";
+  if (path.startsWith("addons")) return "ADDON_COMPATIBILITY";
+  if (code.startsWith("DURATION") || path === "estimatedDuration" || path.startsWith("duration")) return "DURATION";
+  if (code.startsWith("AUDIENCE") || path === "audiences") return "ELIGIBILITY";
+  if (path === "coverage") return "SERVICEABILITY";
+  if (path === "availability") return "AVAILABILITY";
+  if (path === "materialPolicy" || path.startsWith("requirements")) return "MATERIALS";
+  if (path === "equipmentPolicy") return "EQUIPMENT";
+  if (path === "providerRequirements") return "PROVIDER_REQUIREMENTS";
+  if (path === "matching") return "MATCHING";
+  if (path === "bookingRules" || path === "bookingModes") return "BOOKING_POLICY";
+  if (path === "safety") return "SAFETY";
+  if (path === "quality") return "QUALITY";
+  if (path === "name" || path === "description" || path === "categoryId") return "CUSTOMER_CONTENT";
+  if (path.startsWith("execution") || path === "partnerBrief") return "PARTNER_EXECUTION_BRIEF";
+  return "OTHER";
+}
+
+/** Availability rules that contradict each other so that no slot can ever be offered. */
+function availabilityIssues(cfg: ServiceCatalogConfig | null): string[] {
+  const a = cfg?.availability;
+  if (!a) return [];
+  const out: string[] = [];
+  if (a.operatingWindow && a.allDay) out.push("it is both all-day and limited to an operating window");
+  else if (a.operatingWindow && a.operatingWindow.start >= a.operatingWindow.end) out.push(`the operating window closes (${a.operatingWindow.end}) at or before it opens (${a.operatingWindow.start})`);
+  const lead = a.minimumLeadTimeMinutes ?? 0;
+  if ((a.sameDay || cfg?.sameDayAvailable) && lead >= 24 * 60) out.push("same-day booking is on but the lead time is a day or more");
+  if (a.maximumAdvanceDays != null && lead >= a.maximumAdvanceDays * 24 * 60) out.push("the lead time is longer than the furthest day that can be booked");
+  if (a.instant === false && a.scheduled === false) out.push("neither instant nor scheduled booking is allowed");
+  return out;
+}
+
+/** What the gate needs to know about the platform money policy a booking freezes. */
+export type PlatformPolicyShape = { version: string; tiers: ReadonlyArray<{ id: string; feePercent: number; refundPercent: number; message: string }> };
+
+/**
+ * Whether the platform cancellation policy is one a customer can be held to: it has a version and
+ * tiers, each tier has a message, and in each the fee and the refund are percentages that add up
+ * to the whole amount. Empty means consistent.
+ */
+export function platformPolicyIssues(policy: PlatformPolicyShape = CANCELLATION_POLICY): string[] {
+  const out: string[] = [];
+  if (!policy.version?.trim()) out.push("the policy has no version");
+  if (!policy.tiers.length) out.push("the policy has no tiers");
+  const seen = new Set<string>();
+  for (const t of policy.tiers) {
+    if (seen.has(t.id)) out.push(`tier "${t.id}" is defined twice`);
+    seen.add(t.id);
+    const inRange = (n: number) => Number.isFinite(n) && n >= 0 && n <= 100;
+    if (!inRange(t.feePercent) || !inRange(t.refundPercent)) out.push(`tier "${t.id}" has a percentage outside 0–100`);
+    else if (t.feePercent + t.refundPercent !== 100) out.push(`tier "${t.id}": fee ${t.feePercent}% and refund ${t.refundPercent}% do not add up to 100%`);
+    if (!t.message?.trim()) out.push(`tier "${t.id}" has no customer message`);
+  }
+  return out;
+}
+
+export type LiveEditPolicy = "direct" | "four-eyes";
+
+/**
+ * Who may change the approved content of a LIVE service.
+ *
+ * "four-eyes": the change is held as a pending revision until a different admin approves it.
+ * "direct": it applies at once, versioned and audited.
+ *
+ * Owner decision (2026-10-06): on a deployed environment four-eyes is the rule as soon as it can
+ * work, which is when at least two admins can approve. With a single approver it would stop every
+ * live edit, so the policy is direct until a second approver exists. SERVICE_LIVE_EDIT_POLICY sets
+ * it explicitly. A developer machine or test runner defaults to direct. A value that is neither
+ * "direct" nor "four-eyes" is ignored, never read as direct.
+ */
+export function liveEditPolicyFor(input: {
+  configured: string | undefined;
+  knownLocal: boolean;
+  approverCount: number;
+}): { policy: LiveEditPolicy; source: "configured" | "auto" | "local-default" } {
+  const configured = (input.configured ?? "").trim().toLowerCase();
+  if (configured === "direct" || configured === "four-eyes") return { policy: configured, source: "configured" };
+  if (input.knownLocal && !configured) return { policy: "direct", source: "local-default" };
+  return { policy: input.approverCount >= 2 ? "four-eyes" : "direct", source: "auto" };
+}
+
+/** Sections the owner may require before a first publish, and the gate that reports each as absent. */
+const REQUIRED_SECTION_ABSENT_CODE = {
+  safety: "SAFETY_ABSENT",
+  quality: "QUALITY_ABSENT",
+  execution: "EXECUTION_ABSENT",
+  providerRequirements: "PROVIDER_REQUIREMENTS_EMPTY",
+  coverage: "COVERAGE_UNSPECIFIED",
+  availability: "AVAILABILITY_DEFAULT",
+} as const;
+export type PublishRequiredSection = keyof typeof REQUIRED_SECTION_ABSENT_CODE;
+
+/** Required before a first publish on a deployed environment when the owner configured nothing. */
+const DEPLOYED_REQUIRED_SECTIONS: readonly PublishRequiredSection[] = ["safety", "quality", "execution"];
+
+/**
+ * Which sections must exist before a service is first published.
+ *
+ * Owner decision (2026-10-06): a service with no approved safety information, quality criteria or
+ * execution plan stays unpublished rather than going live without them, and the platform never
+ * invents them. So a deployed environment requires those three unless SERVICE_PUBLISH_REQUIRES says
+ * otherwise ("none" requires nothing; a list replaces the default). A developer machine or test
+ * runner requires nothing by default, so fixtures can publish minimal services. A live service is
+ * never unpublished by this list (see `publishGateResults`).
+ */
+export function publishRequiredSections(
+  raw: string | undefined = process.env.SERVICE_PUBLISH_REQUIRES,
+  knownLocal: boolean = isKnownLocalEnvironment(),
+): PublishRequiredSection[] {
+  const text = (raw ?? "").trim();
+  if (!text) return knownLocal ? [] : [...DEPLOYED_REQUIRED_SECTIONS];
+  if (text.toLowerCase() === "none") return [];
+  const known = Object.keys(REQUIRED_SECTION_ABSENT_CODE) as PublishRequiredSection[];
+  const out: PublishRequiredSection[] = [];
+  for (const part of text.split(",")) {
+    const match = known.find((k) => k.toLowerCase() === part.trim().toLowerCase());
+    if (match && !out.includes(match)) out.push(match);
+  }
+  return out;
+}
+
+/** Every field `catalogPartnerBrief` may return. The publish gate fails on anything else. */
+export const CATALOG_PARTNER_BRIEF_FIELDS = ["objective", "stepTitles"] as const;
+
+/** What a partner may see from the live catalogue before a booking snapshot exists. No prices or internals. */
+export function catalogPartnerBrief(
+  service: Pick<ServiceDomainCore, "description">,
+  cfg: ServiceCatalogConfig | null,
+): { objective: string | null; stepTitles: string[] } {
+  const steps = cfg?.execution?.steps ?? [];
+  return {
+    objective: service.description?.trim() || null,
+    stepTitles: steps.filter((s) => s.active !== false).map((s) => s.title),
+  };
+}
+
+export type PublishApprovalDecision =
+  | { ok: true }
+  | { ok: false; code: "APPROVAL_REQUIRED" | "APPROVER_IS_EDITOR" | "APPROVAL_STALE" | "APPROVE_PERMISSION_REQUIRED" };
+
+/**
+ * A second admin with APPROVE must have approved the current editor's version. When the caller
+ * passes `currentContentHash`, the approval must also be of exactly that content: an approval
+ * recorded without a hash, or of other content, is stale.
+ */
+export function evaluatePublishApproval(input: {
+  approverId: string | null;
+  editorId: string | null;
+  approvedEditorId: string | null;
+  approverHasApprove: boolean;
+  approvedContentHash?: string | null;
+  currentContentHash?: string;
+}): PublishApprovalDecision {
+  if (!input.approverHasApprove || !input.approverId) return { ok: false, code: "APPROVE_PERMISSION_REQUIRED" };
+  if (!input.editorId || !input.approvedEditorId) return { ok: false, code: "APPROVAL_REQUIRED" };
+  if (input.approverId === input.editorId) return { ok: false, code: "APPROVER_IS_EDITOR" };
+  if (input.approvedEditorId !== input.editorId) return { ok: false, code: "APPROVAL_STALE" };
+  if (input.currentContentHash !== undefined && input.approvedContentHash !== input.currentContentHash) {
+    return { ok: false, code: "APPROVAL_STALE" };
+  }
+  return { ok: true };
+}
+
+/** Row fields that decide what a customer is sold and shown. Workflow and bookkeeping columns are absent on purpose. */
+const APPROVAL_CONTENT_FIELDS = [
+  "name",
+  "displayName",
+  "shortName",
+  "description",
+  "detailedDescription",
+  "category",
+  "subcategory",
+  "categoryId",
+  "subcategoryId",
+  "basePrice",
+  "minPrice",
+  "maxPrice",
+  "currency",
+  "estimatedDuration",
+  "pricingModel",
+  "capabilityProfile",
+  "partnerSlotPolicy",
+  "premiumOnly",
+  "includedServices",
+  "excludedServices",
+  "requirements",
+  "availableCities",
+  "thumbnail",
+  "images",
+] as const;
+
+function canonicalJson(value: unknown): string {
+  if (value === undefined || value === null) return "null";
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value instanceof Date) return JSON.stringify(value.toISOString());
+  if (typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+    const keys = Object.keys(rec).filter((k) => rec[k] !== undefined).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(rec[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/**
+ * Fingerprint of what an approver approves: the selling columns plus the catalogue configuration,
+ * minus the approval record, the schedule and server-attached catalogue facts. Any later change to
+ * price, duration, content or configuration yields another hash, whoever makes it.
+ */
+export function approvalContentHash(service: object, cfg: ServiceCatalogConfig | null): string {
+  const row = service as Record<string, unknown>;
+  const fields: Record<string, unknown> = {};
+  for (const key of APPROVAL_CONTENT_FIELDS) fields[key] = row[key] ?? null;
+  const { publishApproval: _approval, scheduledLiveAt: _when, requirementItems: _facts, ...config } = (cfg ?? {}) as Record<string, unknown>;
+  return createHash("sha256").update(canonicalJson({ fields, config })).digest("hex");
+}
+
+export type ContentChange = { field: string; before: unknown; after: unknown };
+
+/**
+ * What a reviewer is asked to approve: each selling column and each top-level configuration section
+ * that differs, with both values. Covers exactly what `approvalContentHash` covers, so an empty
+ * list and an equal hash are the same statement.
+ */
+export function contentDiff(prev: object, prevCfg: ServiceCatalogConfig | null, next: object, nextCfg: ServiceCatalogConfig | null): ContentChange[] {
+  const changes: ContentChange[] = [];
+  const a = prev as Record<string, unknown>;
+  const b = next as Record<string, unknown>;
+  for (const key of APPROVAL_CONTENT_FIELDS) {
+    if (canonicalJson(a[key]) !== canonicalJson(b[key])) changes.push({ field: key, before: a[key] ?? null, after: b[key] ?? null });
+  }
+  const strip = (cfg: ServiceCatalogConfig | null) => {
+    const { publishApproval: _approval, scheduledLiveAt: _when, requirementItems: _facts, ...config } = (cfg ?? {}) as Record<string, unknown>;
+    return config;
+  };
+  const ca = strip(prevCfg);
+  const cb = strip(nextCfg);
+  for (const key of [...new Set([...Object.keys(ca), ...Object.keys(cb)])].sort()) {
+    if (canonicalJson(ca[key]) !== canonicalJson(cb[key])) changes.push({ field: `config.${key}`, before: ca[key] ?? null, after: cb[key] ?? null });
+  }
+  return changes;
+}
+
+/** No offset is Asia/Kolkata. An unparseable value is null. */
+export function scheduledLiveInstant(raw: string | null | undefined): Date | null {
+  if (!raw?.trim()) return null;
+  const value = raw.trim();
+  const hasZone = /(?:z|[+-]\d{2}:\d{2})$/i.test(value);
+  const date = new Date(hasZone ? value : `${value}+05:30`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * No timestamp means publish may proceed immediately once approval and the gate pass.
+ * A future timestamp waits. A due timestamp with a failed gate or approval does not activate.
+ */
+export function scheduledActivationDecision(input: {
+  scheduledLiveAt: string | null | undefined;
+  now: Date;
+  gateOk: boolean;
+  approvalOk: boolean;
+}): { action: "immediate" | "wait" | "activate" | "fail" } {
+  if (!input.scheduledLiveAt) {
+    if (!input.approvalOk || !input.gateOk) return { action: "fail" };
+    return { action: "immediate" };
+  }
+  const at = scheduledLiveInstant(input.scheduledLiveAt);
+  if (!at) return { action: "fail" };
+  if (at.getTime() > input.now.getTime()) return { action: "wait" };
+  if (!input.gateOk || !input.approvalOk) return { action: "fail" };
+  return { action: "activate" };
+}
+
 /** A newly published service must sit somewhere in the customer taxonomy. */
 export function taxonomyIssues(service: Pick<ServiceDomainCore, "categoryId">): PublishIssue[] {
   if (service.categoryId === undefined) return []; // caller did not load taxonomy; the DB trigger still derives it
@@ -352,18 +883,17 @@ export function taxonomyIssues(service: Pick<ServiceDomainCore, "categoryId">): 
 /* ------------------------------------------------------------------ */
 
 /**
- * Allowed lifecycle moves. Mapping to the requested lifecycle vocabulary:
+ * Allowed lifecycle moves. Mapping to the requested vocabulary:
  *   DRAFT = DRAFT, VALIDATING = CONFIGURATION_REQUIRED, REVIEW = READY_FOR_REVIEW,
  *   LIVE = ACTIVE (bookable) or PUBLISHED (visible, coming soon; derived from comingSoon),
  *   PAUSED, DEPRECATED, ARCHIVED unchanged.
- * APPROVED and SCHEDULED have no workflow in this codebase (no approver role, no scheduled
- * publisher); they are not invented. Publishing from DRAFT/REVIEW is gated by
- * validateForActivation, so skipping a review step can never skip validation.
- * ARCHIVED is terminal: an archived SKU is never silently revived.
+ * APPROVED is an audit row plus SETTINGS/APPROVE, not an enum value.
+ * SCHEDULED is `catalogConfig.scheduledLiveAt`, applied by the retention tick, not an enum value.
+ * DRAFT cannot jump to ACTIVE. ARCHIVED is terminal.
  */
 export const LIFECYCLE_TRANSITIONS: Readonly<Record<ServiceLifecycleStatus, readonly ServiceLifecycleStatus[]>> = {
-  DRAFT: ["CONFIGURATION_REQUIRED", "READY_FOR_REVIEW", "ACTIVE", "PUBLISHED", "ARCHIVED"],
-  CONFIGURATION_REQUIRED: ["DRAFT", "READY_FOR_REVIEW", "ACTIVE", "PUBLISHED", "ARCHIVED"],
+  DRAFT: ["CONFIGURATION_REQUIRED", "ARCHIVED"],
+  CONFIGURATION_REQUIRED: ["DRAFT", "READY_FOR_REVIEW", "ARCHIVED"],
   READY_FOR_REVIEW: ["DRAFT", "CONFIGURATION_REQUIRED", "ACTIVE", "PUBLISHED", "ARCHIVED"],
   PUBLISHED: ["ACTIVE", "PAUSED", "DEPRECATED"],
   ACTIVE: ["PUBLISHED", "PAUSED", "DEPRECATED"],
@@ -373,7 +903,7 @@ export const LIFECYCLE_TRANSITIONS: Readonly<Record<ServiceLifecycleStatus, read
 };
 
 /** Targets an admin may request directly. PUBLISHED is reached by requesting ACTIVE on a coming-soon SKU. */
-export const REQUESTABLE_LIFECYCLES = ["DRAFT", "READY_FOR_REVIEW", "ACTIVE", "PAUSED", "DEPRECATED", "ARCHIVED"] as const;
+export const REQUESTABLE_LIFECYCLES = ["DRAFT", "CONFIGURATION_REQUIRED", "READY_FOR_REVIEW", "PUBLISHED", "ACTIVE", "PAUSED", "DEPRECATED", "ARCHIVED"] as const;
 export type RequestableLifecycle = (typeof REQUESTABLE_LIFECYCLES)[number];
 
 export function canTransition(from: ServiceLifecycleStatus, to: ServiceLifecycleStatus): boolean {
@@ -574,42 +1104,74 @@ export function selectionDurationMinutes(
   return resolveServiceDuration(service, cfg, selection).totalMinutes;
 }
 
+const SECTION_PATHS: Record<string, string[]> = {
+  identity: ["name", "slug"],
+  content: ["description", "name"],
+  audience: ["audiences"],
+  booking: ["comingSoon"],
+  pricing: ["basePrice", "pricing"],
+  quantity: ["quantity"],
+  duration: ["estimatedDuration", "duration"],
+  variants: ["variants"],
+  addons: ["addons"],
+  materials: ["materialPolicy", "requirements"],
+  equipment: ["equipmentPolicy"],
+  provider: ["providerRequirements"],
+  coverage: ["coverage"],
+  availability: ["availability"],
+  bookingRules: ["bookingRules"],
+  safety: ["safety"],
+  quality: ["quality"],
+  matching: ["matching"],
+  payment: ["payment"],
+  partnerBrief: ["partnerBrief"],
+  reviews: ["reviews"],
+  faqs: ["faqs"],
+  earnings: ["earnings"],
+  capacity: ["capacity"],
+};
+
+function sectionStatus(gates: PublishGateResult[], fallback: SectionStatus): SectionStatus {
+  if (gates.some((g) => g.status === "FAIL" || g.status === "BLOCKED")) return "missing";
+  if (gates.some((g) => g.status === "WARNING")) return "warn";
+  return fallback;
+}
+
 export function configSections(service: ServiceDomainCore, cfg: ServiceCatalogConfig | null): ConfigSection[] {
-  const gaps = catalogConfigGaps(service, cfg);
-  const has = (needle: string) => gaps.some((g) => g.toLowerCase().includes(needle));
-  const section = (id: string, label: string, status: SectionStatus, issues: string[] = []): ConfigSection => ({
-    id,
-    label,
-    status,
-    issues,
-  });
+  const gates = publishGateResults(service, cfg, { grandfathered: service.isActive });
+  const forPaths = (paths: string[]) => gates.filter((g) => paths.some((p) => g.path === p || g.path.startsWith(`${p}.`)));
+  const section = (id: string, label: string, fallback: SectionStatus, extra: string[] = []): ConfigSection => {
+    const own = forPaths(SECTION_PATHS[id] ?? [id]);
+    const issues = [...own.filter((g) => g.status !== "PASS").map((g) => g.message), ...extra];
+    return { id, label, status: sectionStatus(own, fallback), issues, gates: own };
+  };
   const identityOk = Boolean(service.name && service.slug && service.category);
   return [
     section("identity", "Identity", identityOk ? "ok" : "missing", identityOk ? [] : ["name, slug or category missing"]),
-    section("content", "Content", service.description ? "ok" : "warn", service.description ? [] : ["short description missing"]),
-    section("audience", "Audience", cfg?.audiences?.length ? "ok" : "ok", []),
+    section("content", "Content", service.description ? "ok" : "warn"),
+    section("audience", "Audience", "ok"),
     section("booking", "Booking", cfg?.comingSoon ? "warn" : "ok", cfg?.comingSoon ? ["Coming soon — not bookable"] : []),
-    section("pricing", "Pricing", service.basePrice > 0 || service.pricingModel === "quote" ? "ok" : "missing", has("base price") ? ["Base price is not set"] : []),
-    section("quantity", "Quantity", has("quantity") ? "missing" : "ok", gaps.filter((g) => g.toLowerCase().includes("quantity"))),
-    section("duration", "Duration", service.estimatedDuration > 0 ? "ok" : "missing", service.estimatedDuration > 0 ? [] : ["duration missing"]),
-    section("variants", "Variants", cfg?.audiences?.length && !cfg.variants?.length ? "warn" : "ok", gaps.filter((g) => g.toLowerCase().includes("variant") || g.toLowerCase().includes("audience"))),
-    section("addons", "Add-ons", "ok", []),
-    section("materials", "Materials", cfg?.materialPolicy ? "ok" : "warn", has("materials") ? ["Materials policy not specified"] : []),
-    section("equipment", "Equipment", cfg?.equipmentPolicy ? "ok" : "warn", has("equipment") ? ["Equipment policy not specified"] : []),
-    section("provider", "Provider requirements", cfg?.providerRequirements?.requiredSkills?.length ? "ok" : "ok", []),
-    section("coverage", "Coverage", (service.availableCities?.length ?? 0) > 0 || (cfg?.coverage?.cityIds?.length ?? 0) > 0 ? "ok" : "warn", []),
-    section("availability", "Availability", cfg?.availability ? "ok" : "ok", []),
-    section("bookingRules", "Booking rules", cfg?.bookingRules ? "ok" : "ok", []),
-    section("safety", "Safety", cfg?.safetyNotes?.length || cfg?.safety ? "ok" : "warn", cfg?.safetyNotes?.length || cfg?.safety ? [] : ["No safety information configured — nothing can be reported as a prohibited condition"]),
-    section("quality", "Quality", cfg?.quality ? "ok" : "warn", cfg?.quality ? [] : ["No quality criteria configured"]),
-    section("matching", "Matching", cfg?.matching ? "ok" : "ok", []),
-    section("payment", "Payment", cfg?.payment ? "ok" : "ok", []),
-    section("media", "Media", "ok", []),
-    section("trust", "Trust", cfg?.trust ? "ok" : "ok", []),
-    section("reviews", "Reviews", "ok", []),
-    section("seo", "SEO", service.seoTitle ? "ok" : "ok", []),
-    section("analytics", "Analytics", "ok", []),
-    section("operations", "Operations", "ok", []),
+    section("pricing", "Pricing", service.basePrice > 0 || service.pricingModel === "quote" ? "ok" : "missing"),
+    section("quantity", "Quantity", "ok"),
+    section("duration", "Duration", service.estimatedDuration > 0 ? "ok" : "missing"),
+    section("variants", "Variants", "ok"),
+    section("addons", "Add-ons", "ok"),
+    section("materials", "Materials", "ok"),
+    section("equipment", "Equipment", "ok"),
+    section("provider", "Provider requirements", "ok"),
+    section("coverage", "Coverage", "ok"),
+    section("availability", "Availability", "ok"),
+    section("bookingRules", "Booking rules", "ok"),
+    section("safety", "Safety", "ok"),
+    section("quality", "Quality", "ok"),
+    section("matching", "Matching", "ok"),
+    section("payment", "Payment", "ok"),
+    section("media", "Media", "ok"),
+    section("trust", "Trust", "ok"),
+    section("reviews", "Reviews", "ok"),
+    section("seo", "SEO", "ok"),
+    section("analytics", "Analytics", "ok"),
+    section("operations", "Operations", "ok"),
   ];
 }
 

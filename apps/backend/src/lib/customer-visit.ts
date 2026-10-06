@@ -15,6 +15,7 @@ import { buildSafetySnapshot, customerSafetyView } from "./service-safety";
 import { buildWarrantySnapshot, type CaseCategory } from "./service-warranty";
 import { followUpFeeDecision, reworkPolicyFrom } from "./booking-case-policy";
 import { qualitySnapshot } from "./service-runtime-policy";
+import { capabilityRequirementsFromConfig } from "./provider-capability";
 
 /** Same predicate as booking-start-otp.service `isRequired`. */
 export function startPinRequired(flag: string | undefined): boolean {
@@ -224,6 +225,30 @@ export function customerQualitySummary(
     beforeAfterPhotos: q?.beforeAfterPhotos === true,
     warrantyDays,
   };
+}
+
+export type CustomerProfessionalView = {
+  statements: { code: "IDENTITY_VERIFIED" | "BACKGROUND_CHECKED" | "EXPERIENCE" | "TRAINED" | "CERTIFIED" | "INSURED"; text: string }[];
+};
+
+/**
+ * What a customer may be told about the professional who will come. Read through
+ * `capabilityRequirementsFromConfig`, the function matching uses, so each statement is a gate that
+ * refuses a professional who does not meet it. A requirement nobody configured says nothing, and
+ * the codes behind a requirement (which certificate, which module) stay internal. Null when there
+ * is nothing enforced to state.
+ */
+export function customerProfessionalView(cfg: ServiceCatalogConfig | null): CustomerProfessionalView | null {
+  const req = capabilityRequirementsFromConfig(cfg);
+  const statements: CustomerProfessionalView["statements"] = [];
+  if (req.profile?.kycRequired) statements.push({ code: "IDENTITY_VERIFIED", text: "Their identity is verified before they can take this job." });
+  if (req.profile?.backgroundCheckRequired) statements.push({ code: "BACKGROUND_CHECKED", text: "They have a cleared background check." });
+  const years = req.profile?.minExperienceYears ?? 0;
+  if (years > 0) statements.push({ code: "EXPERIENCE", text: `They have at least ${years} ${years === 1 ? "year" : "years"} of experience.` });
+  if ((req.profile?.trainingModules.length ?? 0) > 0) statements.push({ code: "TRAINED", text: "They have completed our training for this service." });
+  if (req.requiredCertifications.length > 0) statements.push({ code: "CERTIFIED", text: "They hold the certification this service requires." });
+  if (req.requiredInsurance.length > 0) statements.push({ code: "INSURED", text: "They carry the insurance this service requires." });
+  return statements.length ? { statements } : null;
 }
 
 export function customerVisitPromise(

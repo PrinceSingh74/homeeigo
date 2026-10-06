@@ -175,8 +175,10 @@ describe.serial("Phase 06 — requirements end to end", () => {
     const row = (list.json.data.services as Array<{ id: string; publishBlocked: Array<{ code: string }> }>).find((s) => s.id === ctx.serviceId);
     expect(row).toBeDefined();
     expect(row!.publishBlocked).toEqual([]);
-    const paused = await call("POST", `/api/admin/services/${ctx.serviceId}/lifecycle`, { to: "PAUSED" }, admin());
+    const paused = await call("POST", `/api/admin/services/${ctx.serviceId}/lifecycle`, { to: "PAUSED", reason: "Fixture paused" }, admin());
     expect(paused.status).toBe(200);
+    await prisma.service.update({ where: { id: ctx.serviceId }, data: { updatedBy: ctx.supportAdmin.id } });
+    expect((await call("POST", `/api/admin/services/${ctx.serviceId}/approve`, {}, admin())).status).toBe(200);
     const live = await call("POST", `/api/admin/services/${ctx.serviceId}/lifecycle`, { to: "ACTIVE" }, admin());
     expect(live.status, JSON.stringify(live.json).slice(0, 300)).toBe(200);
     expect(live.json.data.service.publishBlocked).toEqual([]);
@@ -235,7 +237,9 @@ describe.serial("Phase 06 — requirements end to end", () => {
   let bookingId = "";
   test("booking: a REQUIRED_BEFORE_BOOKING requirement is enforced by the backend; confirmation books and the snapshot is written", async () => {
     if (!dbOk) return;
-    const sel = { serviceId: ctx.serviceId, addressId: ctx.addressAId, variantId: "fabric", quantity: 2, addonIds: ["stain-guard"], scheduledDate: futureSlot(150).toISOString() };
+    const selection = { serviceId: ctx.serviceId, addressId: ctx.addressAId, variantId: "fabric", quantity: 2, addonIds: ["stain-guard"] };
+    const quoted = await call("POST", "/api/bookings/price-quote", selection, customer());
+    const sel = { ...selection, scheduledDate: futureSlot(150).toISOString(), quoteToken: quoted.json.data?.quote?.quoteToken };
     const before = await prisma.booking.count({ where: { userId: ctx.customerA.id } });
     const missingBefore = sumCounter("requirement_attestation_missing_total");
     const refused = await call("POST", "/api/bookings", sel, customer());
@@ -334,7 +338,9 @@ describe.serial("Phase 06 — requirements end to end", () => {
     expect((await saveRequirements([])).status).toBe(200);
     const q = await call("POST", "/api/bookings/price-quote", { serviceId: ctx.serviceId, addressId: ctx.addressAId, variantId: "fabric", quantity: 1 }, customer());
     expect(q.json.data.quote.requirements).toMatchObject({ empty: true, weBring: [], beforeBooking: [] });
-    const b = await call("POST", "/api/bookings", { serviceId: ctx.serviceId, addressId: ctx.addressAId, variantId: "fabric", quantity: 1, scheduledDate: futureSlot(170).toISOString() }, customer());
+    const bare = { serviceId: ctx.serviceId, addressId: ctx.addressAId, variantId: "fabric", quantity: 1 };
+    const bareQuote = await call("POST", "/api/bookings/price-quote", bare, customer());
+    const b = await call("POST", "/api/bookings", { ...bare, scheduledDate: futureSlot(170).toISOString(), quoteToken: bareQuote.json.data?.quote?.quoteToken }, customer());
     expect(b.status).toBe(201);
     const row = await prisma.booking.findUniqueOrThrow({ where: { id: b.json.data.booking?.id ?? b.json.data.id } });
     expect((row.serviceConfigSnapshot as any).requirements.items).toEqual([]);

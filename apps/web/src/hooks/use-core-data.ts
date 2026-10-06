@@ -278,6 +278,29 @@ export function useAvailabilityQuery(params: {
   });
 }
 
+/**
+ * Whether the platform serves an address for a service category, asked as soon as the address is
+ * chosen rather than at confirm. An address without a map pin cannot be checked, so the query stays
+ * idle for it. The booking request re-checks on the server; this is the early answer, not the gate.
+ */
+export function useServiceabilityQuery(params: {
+  serviceId: string | null | undefined;
+  addressId: string | null | undefined;
+  /** YYYY-MM-DD. With a date the server can also answer "limited availability for this date". */
+  date?: string | null;
+}) {
+  const isAuthenticated = useAuthStore((s) => s.status === "authenticated");
+  const isAuthReady = useAuthStore((s) => s.status !== "idle" && s.status !== "initializing");
+  return useQuery({
+    queryKey: ["services", "serviceability", params.serviceId ?? null, params.addressId ?? null, params.date ?? null],
+    queryFn: () => coreApi.services.serviceability(params.serviceId!, params.addressId!, params.date ?? undefined),
+    enabled: isAuthReady && isAuthenticated && !!params.serviceId && !!params.addressId,
+    staleTime: 60_000,
+    // No placeholder from the previous key: an answer for another address or date must never be
+    // shown as the answer for this one, even for a moment. The page says it is checking instead.
+  });
+}
+
 export function useBookingPriceQuoteQuery(
   payload: BookingSelectionPayload | null,
 ) {

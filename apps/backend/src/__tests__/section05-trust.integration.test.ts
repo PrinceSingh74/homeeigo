@@ -246,9 +246,13 @@ describe.serial("Section 05 trust integration", () => {
     expect(partnerView).toBeTruthy();
     expect(collectForbiddenPartnerKeys(partnerView)).toEqual([]);
     expect(JSON.stringify(partnerView)).not.toMatch(/bankAccountNumber|riskScore|kycDocumentNumber/);
-    expect((partnerView as { customer?: { phoneMasked?: string | null } }).customer?.phoneMasked ?? null).not.toBe(
-      ctx.customerA.phoneNumber,
-    );
+    // History stage (2026-10-06): once the job is over the partner keeps the first name only. The old
+    // assertion compared the masked phone with `ctx.customerA.phoneNumber`, which is null for an
+    // encrypted fixture, so it could not have caught a leaked number; the contract is stated directly.
+    const historyCustomer = (partnerView as { customer?: { lastName?: string | null; profileImage?: string | null; phoneMasked?: string | null } }).customer;
+    expect(historyCustomer?.phoneMasked ?? null).toBeNull();
+    expect(historyCustomer?.lastName ?? null).toBeNull();
+    expect(historyCustomer?.profileImage ?? null).toBeNull();
     expect((partnerView as { address?: { specialInstructions?: string | null } }).address?.specialInstructions ?? null).toBeNull();
 
     const customerView = await bookingService.getById(booking!.id, ctx.customerA.id);

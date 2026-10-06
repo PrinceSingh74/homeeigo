@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { partnerApi } from "@/services/partner-api";
 import { getErrorMessage, PartnerApiError } from "@/lib/api-error";
+import { BOOKINGS_ALL_KEY, patchBookingsCache, restoreSnapshots } from "@/lib/booking-cache";
 import { usePartnerStore } from "@/stores/partner-store";
 import { useToastStore } from "@/stores/toast-store";
 import type {
@@ -19,7 +20,7 @@ export const partnerKeys = {
   reviews: (params: ReviewListParams) => ["partner", "reviews", params] as const,
   reviewsAll: ["partner", "reviews"] as const,
   bookings: (params: BookingListParams) => ["partner", "bookings", params] as const,
-  bookingsAll: ["partner", "bookings"] as const,
+  bookingsAll: BOOKINGS_ALL_KEY,
   /** The server's per-job actions answer (GET /api/bookings/:id/actions) — refreshed with every booking change (X-82). */
   jobActionsAll: ["partner", "job-actions"] as const,
   walletBalance: ["partner", "wallet", "balance"] as const,
@@ -232,35 +233,6 @@ export function usePartnerEntitlementsQuery() {
 /* ------------------------------------------------------------------ */
 /* Mutations — booking lifecycle (optimistic where safe)               */
 /* ------------------------------------------------------------------ */
-
-function patchBookingsCache(
-  qc: ReturnType<typeof useQueryClient>,
-  bookingId: string,
-  patch: Partial<PartnerBooking>,
-) {
-  const snapshots = qc.getQueriesData<PartnerBookingsResponse>({
-    queryKey: partnerKeys.bookingsAll,
-  });
-  for (const [key, prev] of snapshots) {
-    if (!prev?.bookings) continue;
-    qc.setQueryData<PartnerBookingsResponse>(key, {
-      ...prev,
-      bookings: prev.bookings.map((b) =>
-        b.id === bookingId ? { ...b, ...patch } : b,
-      ),
-    });
-  }
-  return snapshots;
-}
-
-function restoreSnapshots(
-  qc: ReturnType<typeof useQueryClient>,
-  snapshots: ReturnType<typeof qc.getQueriesData>,
-) {
-  for (const [key, prev] of snapshots) {
-    if (prev) qc.setQueryData(key, prev);
-  }
-}
 
 function removeBookingFromCache(
   qc: ReturnType<typeof useQueryClient>,
@@ -580,6 +552,11 @@ export function useStartBookingMutation() {
       void qc.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
       void qc.invalidateQueries({ queryKey: partnerKeys.jobActionsAll });
       void qc.invalidateQueries({ queryKey: partnerKeys.dashboard });
+      // The step list, the START gate and the safety state follow this action. A realtime frame
+      // refreshes them too, but a frame is a signal that may never arrive.
+      void qc.invalidateQueries({ queryKey: ["partner", "execution"] });
+      void qc.invalidateQueries({ queryKey: ["partner", "requirements"] });
+      void qc.invalidateQueries({ queryKey: ["partner", "safety"] });
     },
   });
 }
@@ -633,6 +610,11 @@ export function useCompleteBookingMutation() {
       void qc.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
       void qc.invalidateQueries({ queryKey: partnerKeys.jobActionsAll });
       void qc.invalidateQueries({ queryKey: partnerKeys.dashboard });
+      // The step list, the START gate and the safety state follow this action. A realtime frame
+      // refreshes them too, but a frame is a signal that may never arrive.
+      void qc.invalidateQueries({ queryKey: ["partner", "execution"] });
+      void qc.invalidateQueries({ queryKey: ["partner", "requirements"] });
+      void qc.invalidateQueries({ queryKey: ["partner", "safety"] });
       void qc.invalidateQueries({ queryKey: partnerKeys.walletBalance });
       void qc.invalidateQueries({ queryKey: partnerKeys.walletTxAll });
       // §10: a refused complete records a verdict; a successful one opens the confirmation window.

@@ -40,10 +40,22 @@ beforeAll(async () => {
   const [{ db }] = await prisma.$queryRaw<{ db: string }[]>`SELECT current_database() AS db`;
   refuseIfNotIsolatedTestDb(db);
   ctx = await seedAdversarialFixtures(RUN);
+  const quote = await app.handle(new Request("http://localhost/api/bookings/price-quote", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer(ctx.customerA)}` },
+    body: JSON.stringify({ serviceId: ctx.serviceId, addressId: ctx.addressAId, quantity: 1 }),
+  }));
+  const quoted = (await quote.json()) as { data?: { quote?: { quoteToken?: string } } };
   const r = await app.handle(new Request("http://localhost/api/bookings", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer(ctx.customerA)}` },
-    body: JSON.stringify({ serviceId: ctx.serviceId, addressId: ctx.addressAId, quantity: 1, scheduledDate: futureSlot(250).toISOString() }),
+    body: JSON.stringify({
+      serviceId: ctx.serviceId,
+      addressId: ctx.addressAId,
+      quantity: 1,
+      scheduledDate: futureSlot(250).toISOString(),
+      quoteToken: quoted.data?.quote?.quoteToken,
+    }),
   }));
   const j = (await r.json()) as { data: { booking?: { id: string }; id?: string } };
   if (r.status !== 201) throw new Error(`book: ${r.status}`);

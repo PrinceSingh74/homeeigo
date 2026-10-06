@@ -21,7 +21,7 @@ import {
   type AdvCtx,
 } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
-import { bookingService } from "../services/booking.service";
+import { createBookingWithQuote } from "./helpers/quote-token";
 import { bookingNoShowService } from "../services/booking-no-show.service";
 import { NO_SHOW_POLICY } from "../lib/no-show-policy";
 import { roomManager } from "../lib/websocket";
@@ -44,7 +44,7 @@ async function bookingAtDoor(opts: { arrivedMinutesAgo?: number | null; paid?: b
   // `keepPresenceFresh` beats only when the last one is old: beating every time trips the product's
   // own heartbeat rate limit, which is what the first version of this helper did.
   await keepPresenceFresh(ctx);
-  const created = await bookingService.create(ctx.customerA.id, {
+  const created = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
     addressId: ctx.addressAId,

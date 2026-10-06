@@ -2099,6 +2099,26 @@
   }
 }
 
+/* ---- Services catalogue ---- */
+/* Full-bleed band behind a block that lives inside the page container. */
+@utility bleed-band {
+  position: relative;
+  isolation: isolate;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 50%;
+    width: 100vw;
+    transform: translateX(-50%);
+    z-index: -1;
+    background: var(--band, #f0fdf4);
+    border-block: 1px solid color-mix(in srgb, #10b981 14%, transparent);
+  }
+}
+.dark .bleed-band::before {
+  background: var(--band-dark, rgb(16 185 129 / 0.05));
+}
+
 /* White text on a status fill: #10b981 gives 2.5:1 and emerald-600 3.7:1. The fill darkens only
    where it carries white text; tints, dots and borders keep the brand shade. */
 .bg-success.text-white,
