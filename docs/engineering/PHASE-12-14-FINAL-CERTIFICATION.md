@@ -1,6 +1,6 @@
 # Phase 12–14 certification: customer experience, partner experience, admin control plane
 
-**Status, 2026-10-06: closed for backend, customer web, partner web and the admin panel. The two mobile apps are out of scope by the owner's instruction and are NOT certified here.** Nothing is deployed and every change is uncommitted on `cursor/stage-e-step-13-certification`. No test, seed or browser run wrote to the live database; two side effects on the owner's own running development backends are recorded in section 20.
+**Status, 2026-10-06: closed for backend, customer web, partner web and the admin panel. The two mobile apps are out of scope by the owner's instruction and are NOT certified here.** Nothing is deployed and the work is committed locally as `f867001` on `cursor/stage-e-step-13-certification` and has not been pushed. Uncommitted changes under `homigo-mobile` and `homigo-partner-mobile` are not part of it. No test, seed or browser run wrote to the live database; two side effects on the owner's own running development backends are recorded in section 20.
 
 Statuses used: **PASS** (verified, evidence named), **NOT VERIFIED** (built, not exercised end to end), **OUT OF SCOPE** (owner's instruction), **NOT BUILT**.
 
