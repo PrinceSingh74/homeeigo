@@ -12,6 +12,13 @@ export const POSITION_CHECK_WAIVED_ACTION = "ADMIN_BOOKING_POSITION_CHECK_WAIVED
 export const CUSTOMER_CONFIRMED_ARRIVAL_ACTION = "CUSTOMER_CONFIRMED_PROFESSIONAL_ARRIVAL";
 
 /** Confirmed from the server-held fix (`position` is that fix), or vouched for by a recorded exception. */
+/**
+ * Written when an arrival is RECORDED on an exception instead of a confirmed position. This, not
+ * the exception itself, is what "the arrival was vouched for" means afterwards: a customer who taps
+ * "confirm" for an arrival that the partner's position confirmed anyway has changed nothing.
+ */
+export const ARRIVAL_VOUCHED_ACTION = "PARTNER_ARRIVAL_VOUCHED";
+
 export type PartnerPositionResult =
   | (Extract<PositionConfirmation, { ok: true }> & { waived?: undefined; position: { latitude: number; longitude: number } })
   | Extract<PositionConfirmation, { ok: false }>

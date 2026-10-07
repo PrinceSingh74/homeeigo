@@ -58,6 +58,25 @@ const version = async () => (await prisma.service.findUniqueOrThrow({ where: { i
 const saveRequirements = (requirements: unknown[]) =>
   version().then((v) => call("PUT", `/api/admin/services/${ctx.serviceId}`, { catalogConfig: { ...CONFIG, requirements }, expectedVersion: v, changeReason: "§6 test" }, admin()));
 
+/**
+ * A change a live service does not take as a direct edit (it weakens a requirement its bookings are
+ * made under), made the governed way: pause with a reason, edit, a second admin approves the
+ * result, publish again.
+ */
+async function whilePaused(edit: () => Promise<Res>): Promise<Res> {
+  const svc = `/api/admin/services/${ctx.serviceId}`;
+  const ok = (label: string, r: Res) => {
+    if (r.status !== 200) throw new Error(`${label}: ${r.status} ${JSON.stringify(r.json)}`);
+  };
+  ok("pause", await call("POST", `${svc}/lifecycle`, { to: "PAUSED", reason: "Changing what this service requires" }, admin()));
+  const edited = await edit();
+  // The approver may not be the last editor; the governance suite's `liveWith` names the editor the same way.
+  await prisma.service.update({ where: { id: ctx.serviceId }, data: { updatedBy: ctx.supportAdmin.id } });
+  ok("approve", await call("POST", `${svc}/approve`, {}, admin()));
+  ok("publish", await call("POST", `${svc}/lifecycle`, { to: "ACTIVE" }, admin()));
+  return edited;
+}
+
 /** A paid, accepted booking on the fixture partner, OTP already verified — the state a partner starts from. */
 async function readyBooking(): Promise<string> {
   hoursAhead += 24;
@@ -282,12 +301,17 @@ describe.serial("snapshot → state: rows are born with the booking, from its ow
     const changed = REQUIREMENTS.map((r) =>
       r.id === "socket" ? { ...r, enforcement: "INFORMATIONAL", verification: "NONE" } : r.id === "info" ? { ...r, enforcement: "REQUIRED_AT_START", verification: "PARTNER_CHECK" } : r,
     );
-    expect((await saveRequirements(changed)).status).toBe(200);
+    // Weakening the socket rule is not a direct edit to a live service; the catalogue really changes
+    // through pause → edit → approval → publish, which is the edit this booking must be immune to.
+    const direct = await saveRequirements(changed);
+    expect({ status: direct.status, named: JSON.stringify(direct.json).includes("REQUIREMENTS_PROTECTION_REDUCED") }).toEqual({ status: 400, named: true });
+    expect((await whilePaused(() => saveRequirements(changed))).status).toBe(200);
     const after = await prisma.$queryRaw<{ code: string; state: string; version: number }[]>`SELECT code, state, version FROM booking_requirement_states WHERE booking_id = ${id} ORDER BY code`;
     expect(after).toEqual(before);
     const v = await call("GET", `/api/bookings/${id}/requirements`, undefined, customer());
     expect(v.json.data.items.map((i: { code: string }) => i.code)).toEqual(["shutoff", "socket", "water"]);
-    expect((await saveRequirements(REQUIREMENTS)).status).toBe(200);
+    // Putting the original rules back un-gates the pets item, so it goes the same way.
+    expect((await whilePaused(() => saveRequirements(REQUIREMENTS))).status).toBe(200);
   });
 
   test("a finished booking's requirements are read-only", async () => {

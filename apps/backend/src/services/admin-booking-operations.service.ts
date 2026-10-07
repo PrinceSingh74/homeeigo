@@ -336,7 +336,9 @@ export class AdminBookingOperationsService {
 
       await tx.booking.update({
         where: { id: bookingId },
-        data: { scheduledDate: scheduled },
+        // An arrival is for one appointment: it does not stand for the visit this one is moved to
+        // (a customer no-show is judged from it).
+        data: { scheduledDate: scheduled, arrivedAt: null },
       });
 
       // Same event as a customer reschedule, from the same kind of transaction — the actor differs,
@@ -533,7 +535,9 @@ export class AdminBookingOperationsService {
 
       const moved = await tx.booking.updateMany({
         where: { id: bookingId, status: { in: [...REASSIGNABLE_BOOKING_STATUSES] } },
-        data: { providerId, status: BookingStatus.ASSIGNED, assignedAt: new Date() },
+        // The arrival and the start PIN belonged to the partner who held the job: the next one
+        // arrives for themselves and is given the customer's PIN in person.
+        data: { providerId, status: BookingStatus.ASSIGNED, assignedAt: new Date(), arrivedAt: null, startOtpVerifiedAt: null },
       });
       if (moved.count === 0) throw new Error("BOOKING_NOT_REASSIGNABLE");
 

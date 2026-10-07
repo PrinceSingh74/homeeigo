@@ -73,6 +73,26 @@ const version = async () => (await prisma.service.findUniqueOrThrow({ where: { i
 const saveRequirements = (requirements: unknown[], extra: Record<string, unknown> = {}) =>
   version().then((v) => call("PUT", `/api/admin/services/${ctx.serviceId}`, { catalogConfig: { ...CONFIG, requirements }, expectedVersion: v, changeReason: "Phase 06 test", ...extra }, admin()));
 
+/**
+ * A change a live service does not take as a direct edit (it removes a protection its bookings are
+ * made under), made the governed way: pause with a reason, edit, a second admin approves the
+ * result, publish again.
+ */
+async function whilePaused(edit: () => Promise<Res>): Promise<Res> {
+  const svc = `/api/admin/services/${ctx.serviceId}`;
+  const ok = (label: string, r: Res) => {
+    if (r.status !== 200) throw new Error(`${label}: ${r.status} ${JSON.stringify(r.json)}`);
+  };
+  ok("pause", await call("POST", `${svc}/lifecycle`, { to: "PAUSED", reason: "Changing what this service requires" }, admin()));
+  const edited = await edit();
+  // The approver may not be the last editor; the governance suite's `liveWith` names the editor the same way.
+  await prisma.service.update({ where: { id: ctx.serviceId }, data: { updatedBy: ctx.supportAdmin.id } });
+  ok("approve", await call("POST", `${svc}/approve`, {}, admin()));
+  ok("publish", await call("POST", `${svc}/lifecycle`, { to: "ACTIVE" }, admin()));
+  return edited;
+}
+const refusal = (r: Res, code: string) => ({ status: r.status, code: r.json.code, named: JSON.stringify(r.json).includes(code) });
+
 describe.serial("Phase 06 — requirements end to end", () => {
   test("catalogue: admin creates items; codes are validated; duplicates 409; support admin cannot create; customer cannot read", async () => {
     if (!dbOk) return;
@@ -323,7 +343,11 @@ describe.serial("Phase 06 — requirements end to end", () => {
   test("an inactive assignment and an archived item are never exposed; archiving an item in active use is refused", async () => {
     if (!dbOk) return;
     const off = REQUIREMENTS.map((r) => (r.id === "socket" ? { ...r, active: false } : r));
-    expect((await saveRequirements(off)).status).toBe(200);
+    // Switching a requirement off takes a protection off a live service: not as a direct edit…
+    expect(refusal(await saveRequirements(off), "REQUIREMENTS_PROTECTION_REMOVED")).toEqual({ status: 400, code: "SERVICE_NOT_BOOKABLE", named: true });
+    expect(await prisma.serviceRequirement.count({ where: { serviceId: ctx.serviceId, isActive: true } })).toBe(5);
+    // …but paused, edited and published again with a second admin's approval.
+    expect((await whilePaused(() => saveRequirements(off))).status).toBe(200);
     const detail = await call("GET", `/api/services/${ctx.serviceId}`);
     expect(JSON.stringify(detail.json.data.service.preparation)).not.toContain("power socket");
     const inUse = itemIds[0]!; // steam cleaner
@@ -336,7 +360,9 @@ describe.serial("Phase 06 — requirements end to end", () => {
     if (!dbOk) return;
     expect((await call("PUT", `/api/admin/services/${ctx.serviceId}`, { catalogConfig: CONFIG }, partner())).status).toBe(403);
     expect((await call("PUT", `/api/admin/requirement-items/${itemIds[0]}`, { expectedVersion: 1, name: "x" }, partner())).status).toBe(403);
-    expect((await saveRequirements([])).status).toBe(200);
+    // Removing every requirement from a live service is refused as a direct edit; the way through is a publish.
+    expect(refusal(await saveRequirements([]), "REQUIREMENTS_PROTECTION_REMOVED")).toEqual({ status: 400, code: "SERVICE_NOT_BOOKABLE", named: true });
+    expect((await whilePaused(() => saveRequirements([]))).status).toBe(200);
     const q = await call("POST", "/api/bookings/price-quote", { serviceId: ctx.serviceId, addressId: ctx.addressAId, variantId: "fabric", quantity: 1 }, customer());
     expect(q.json.data.quote.requirements).toMatchObject({ empty: true, weBring: [], beforeBooking: [] });
     const bare = { serviceId: ctx.serviceId, addressId: ctx.addressAId, variantId: "fabric", quantity: 1 };

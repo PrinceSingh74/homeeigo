@@ -647,6 +647,247 @@ describe("a live service's protections cannot be reduced by an edit", () => {
   });
 });
 
+/**
+ * Fifth re-audit, 2026-10-07: the rule above read `quality.*` and whole-section emptiness only. The
+ * typed warranty (which wins over `quality.warrantyDays` when a booking freezes), the rework policy,
+ * the confirmation window, requirement rules, execution steps, single safety / quality fields and
+ * the age rule could all be cut on a live service with status 200.
+ */
+describe("a live service's protections cannot be reduced by an edit: every section a booking freezes", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type Raw = Record<string, any>;
+  const live = core({ isActive: true });
+  const base = (): Raw => ({
+    ...policies,
+    variants: [{ id: "standard", name: "Standard", price: 199 }],
+    safety: {
+      prohibitedConditions: ["Gas smell in the room"],
+      incidentProtocol: "Stop work, make the area safe and call support",
+      warnings: ["The floor is wet while the work is done"],
+      ppe: ["Gloves"],
+    },
+    quality: { checklist: ["Work area left clean"], completionCriteria: ["Customer shown the finished work"], proofRequired: true, confirmationWindowHours: 72 },
+    warranty: { enabled: true, durationDays: 30, eligibleIssueTypes: ["QUALITY", "INCOMPLETE", "DAMAGE"], exclusions: ["Damage caused after the visit"], refundAllowed: true },
+    rework: { fee: "WAIVED", windowDays: 14 },
+    requirements: [
+      { id: "power", itemCode: "power-supply", responsibility: "CUSTOMER", enforcement: "REQUIRED_BEFORE_ARRIVAL", verification: "PARTNER_CHECK" },
+      { id: "access", itemCode: "room-access", responsibility: "CUSTOMER", enforcement: "REQUIRED_AT_START", verification: "PARTNER_CHECK" },
+      { id: "gloves", itemCode: "gloves", responsibility: "PROFESSIONAL", charge: "INCLUDED", enforcement: "WARNING" },
+    ],
+    requirementItems: {
+      "power-supply": { code: "power-supply", kind: "CUSTOMER_PRECONDITION", name: "Working power supply", isActive: true },
+      "room-access": { code: "room-access", kind: "CUSTOMER_PRECONDITION", name: "Access to the room", isActive: true },
+      gloves: { code: "gloves", kind: "EQUIPMENT", name: "Gloves", isActive: true },
+      "floor-mat": { code: "floor-mat", kind: "EQUIPMENT", name: "Floor mat", isActive: true },
+    },
+    execution: {
+      steps: [
+        { id: "inspect", title: "Inspect the room", kind: "SAFETY_CHECK", evidence: "NOTE", safetyRequirement: "power", sortOrder: 1 },
+        { id: "work", title: "Do the work", kind: "WORK", evidence: "BEFORE_AFTER_PHOTOS", sortOrder: 2 },
+        { id: "tidy", title: "Tidy up", kind: "CLOSEOUT", mandatory: false, skipPolicy: "SKIP_WITH_REASON", evidence: "PHOTO", sortOrder: 3 },
+      ],
+    },
+    customerPolicy: { age: { mode: "ADULT_ONLY", adultAge: 18 } },
+  });
+  const regressions = (before: Raw, after: Raw, required: readonly ("safety" | "quality" | "execution")[] = []) =>
+    liveEditRegressions({ before: { service: live, cfg: serviceCatalogConfigSchema.parse(before) }, after: { service: live, cfg: serviceCatalogConfigSchema.parse(after) }, required });
+  const found = (before: Raw, after: Raw, required: readonly ("safety" | "quality" | "execution")[] = []) => regressions(before, after, required).map((i) => `${i.code}@${i.path}`).sort();
+  const edited = (change: (c: Raw) => void, from: Raw = base()): Raw => {
+    const c = structuredClone(from);
+    change(c);
+    return c;
+  };
+  const rule = (c: Raw, id: string): Raw => c.requirements.find((r: Raw) => r.id === id);
+  const step = (c: Raw, id: string): Raw => c.execution.steps.find((s: Raw) => s.id === id);
+  const without = (list: Raw[], id: string) => list.filter((x) => x.id !== id);
+
+  test("control: the fixture is clean, and an identical configuration is not a regression", () => {
+    expect(validateForActivation(core(), serviceCatalogConfigSchema.parse(base()), { required: ["safety", "quality", "execution"] })).toEqual({ ok: true });
+    expect(found(base(), base())).toEqual([]);
+    expect(found(base(), base(), ["safety", "quality", "execution"])).toEqual([]);
+  });
+
+  const refused: [string, (c: Raw) => void, string[]][] = [
+    // 1 — the typed warranty
+    ["the warranty is switched off", (c) => { c.warranty.enabled = false; }, ["WARRANTY_PROTECTION_REDUCED@warranty.enabled"]],
+    ["the warranty is shortened", (c) => { c.warranty.durationDays = 7; }, ["WARRANTY_PROTECTION_REDUCED@warranty.durationDays"]],
+    ["the warranty no longer allows a refund", (c) => { c.warranty.refundAllowed = false; }, ["WARRANTY_PROTECTION_REDUCED@warranty.refundAllowed"]],
+    ["the warranty covers fewer kinds of issue", (c) => { c.warranty.eligibleIssueTypes = ["QUALITY"]; }, ["WARRANTY_PROTECTION_REDUCED@warranty.eligibleIssueTypes"]],
+    ["the warranty swaps one covered issue for another", (c) => { c.warranty.eligibleIssueTypes = ["QUALITY", "INCOMPLETE", "BILLING"]; }, ["WARRANTY_PROTECTION_REDUCED@warranty.eligibleIssueTypes"]],
+    ["the warranty's default coverage is narrower than what was listed", (c) => { delete c.warranty.eligibleIssueTypes; }, ["WARRANTY_PROTECTION_REDUCED@warranty.eligibleIssueTypes"]],
+    ["the warranty gains an exclusion", (c) => { c.warranty.exclusions.push("Stains that were there before the visit"); }, ["WARRANTY_PROTECTION_REDUCED@warranty.exclusions"]],
+    ["the warranty block is deleted", (c) => { delete c.warranty; }, ["WARRANTY_PROTECTION_REMOVED@warranty"]],
+    // 2 — rework
+    ["the rework fee is no longer waived", (c) => { c.rework.fee = "QUOTED"; }, ["REWORK_PROTECTION_REDUCED@rework.fee"]],
+    ["the rework fee is left undecided", (c) => { delete c.rework.fee; }, ["REWORK_PROTECTION_REDUCED@rework.fee"]],
+    ["the rework window is shortened", (c) => { c.rework.windowDays = 7; }, ["REWORK_PROTECTION_REDUCED@rework.windowDays"]],
+    ["the rework policy is deleted", (c) => { delete c.rework; }, ["REWORK_PROTECTION_REMOVED@rework"]],
+    // 3 — the confirmation window
+    ["the confirmation window is shortened", (c) => { c.quality.confirmationWindowHours = 24; }, ["QUALITY_PROTECTION_REDUCED@quality.confirmationWindowHours"]],
+    ["the confirmation window falls back to the shorter platform default", (c) => { delete c.quality.confirmationWindowHours; }, ["QUALITY_PROTECTION_REDUCED@quality.confirmationWindowHours"]],
+    // 4 — requirement rules, by id
+    ["a requirement is deleted", (c) => { c.requirements = without(c.requirements, "access"); }, ["REQUIREMENTS_PROTECTION_REMOVED@requirements.access"]],
+    ["a requirement is switched off", (c) => { rule(c, "access").active = false; }, ["REQUIREMENTS_PROTECTION_REMOVED@requirements.access"]],
+    ["a requirement becomes optional", (c) => { rule(c, "access").optional = true; }, ["REQUIREMENTS_PROTECTION_REDUCED@requirements.access.optional"]],
+    ["a requirement is no longer enforced, only warned about", (c) => { rule(c, "access").enforcement = "WARNING"; }, ["REQUIREMENTS_PROTECTION_REDUCED@requirements.access.enforcement"]],
+    ["a warning becomes information", (c) => { rule(c, "gloves").enforcement = "INFORMATIONAL"; }, ["REQUIREMENTS_PROTECTION_REDUCED@requirements.gloves.enforcement"]],
+    ["a requirement is no longer verified", (c) => { rule(c, "access").verification = "NONE"; }, ["REQUIREMENTS_PROTECTION_REDUCED@requirements.access.verification"]],
+    ["a requirement that applied to every booking is made conditional", (c) => { rule(c, "gloves").when = { variantIds: ["standard"] }; }, ["REQUIREMENTS_PROTECTION_REDUCED@requirements.gloves.when"]],
+    // 5 — execution steps, by id
+    ["a mandatory step is deleted", (c) => { c.execution.steps = without(c.execution.steps, "work"); }, ["EXECUTION_PROTECTION_REMOVED@execution.work"]],
+    ["a mandatory step is switched off", (c) => { step(c, "work").active = false; }, ["EXECUTION_PROTECTION_REMOVED@execution.work"]],
+    ["a mandatory step becomes optional", (c) => { step(c, "work").mandatory = false; }, ["EXECUTION_PROTECTION_REDUCED@execution.work.mandatory"]],
+    ["before/after photos become a single photo", (c) => { step(c, "work").evidence = "PHOTO"; }, ["EXECUTION_PROTECTION_REDUCED@execution.work.evidence"]],
+    ["a step's note is no longer asked for", (c) => { step(c, "inspect").evidence = "NONE"; }, ["EXECUTION_PROTECTION_REDUCED@execution.inspect.evidence"]],
+    ["an optional step's photo is no longer asked for", (c) => { step(c, "tidy").evidence = "NONE"; }, ["EXECUTION_PROTECTION_REDUCED@execution.tidy.evidence"]],
+    ["a step loses its safety requirement", (c) => { delete step(c, "inspect").safetyRequirement; }, ["EXECUTION_PROTECTION_REDUCED@execution.inspect.safetyRequirement"]],
+    ["a mandatory step that applied to every booking is made conditional", (c) => { step(c, "work").when = { variantIds: ["standard"] }; }, ["EXECUTION_PROTECTION_REDUCED@execution.work.when"]],
+    ["every step is deleted", (c) => { c.execution.steps = []; }, ["EXECUTION_PROTECTION_REMOVED@execution"]],
+    ["the execution plan is deleted", (c) => { delete c.execution; }, ["EXECUTION_PROTECTION_REMOVED@execution"]],
+    // 6 — one field of safety / quality emptied while the section stays
+    ["the prohibited conditions are emptied", (c) => { c.safety.prohibitedConditions = []; }, ["SAFETY_PROTECTION_REDUCED@safety.prohibitedConditions"]],
+    ["the safety warnings are emptied", (c) => { c.safety.warnings = []; }, ["SAFETY_PROTECTION_REDUCED@safety.warnings"]],
+    ["the protective equipment list is deleted", (c) => { delete c.safety.ppe; }, ["SAFETY_PROTECTION_REDUCED@safety.ppe"]],
+    ["the incident protocol is deleted", (c) => { delete c.safety.incidentProtocol; }, ["SAFETY_PROTECTION_REDUCED@safety.incidentProtocol"]],
+    ["a safety list is replaced by a dash", (c) => { c.safety.warnings = ["-"]; }, ["SAFETY_PROTECTION_REDUCED@safety.warnings"]],
+    ["the quality checklist is emptied", (c) => { c.quality.checklist = []; }, ["QUALITY_PROTECTION_REDUCED@quality.checklist"]],
+    ["the completion criteria are deleted", (c) => { delete c.quality.completionCriteria; }, ["QUALITY_PROTECTION_REDUCED@quality.completionCriteria"]],
+    // 7 — the age rule
+    ["the customer policy is deleted", (c) => { delete c.customerPolicy; }, ["CUSTOMER_POLICY_PROTECTION_REMOVED@customerPolicy.age"]],
+    ["the age rule is set to none", (c) => { c.customerPolicy.age = { mode: "NONE" }; }, ["CUSTOMER_POLICY_PROTECTION_REMOVED@customerPolicy.age"]],
+    ["the adult age is lowered", (c) => { c.customerPolicy.age.adultAge = 16; }, ["CUSTOMER_POLICY_PROTECTION_REDUCED@customerPolicy.age"]],
+    ["a hard age limit becomes 'with a guardian'", (c) => { c.customerPolicy.age = { mode: "GUARDIAN_REQUIRED", guardianMinimumAge: 18 }; }, ["CUSTOMER_POLICY_PROTECTION_REDUCED@customerPolicy.age"]],
+  ];
+  for (const [label, change, expected] of refused) {
+    test(`refused: ${label}`, () => {
+      const issues = regressions(base(), edited(change));
+      expect(issues.map((i) => `${i.code}@${i.path}`).sort()).toEqual(expected);
+      for (const i of issues) {
+        expect(i.message).toContain("on this live service");
+        expect(i.message).toContain("pause the service, make the change, and publish it again so a second admin approves it");
+      }
+    });
+  }
+
+  const allowed: ([string, (c: Raw) => void] | [string, (c: Raw) => void, Raw])[] = [
+    ["the warranty is lengthened", (c) => { c.warranty.durationDays = 90; }],
+    ["the warranty covers more kinds of issue", (c) => { c.warranty.eligibleIssueTypes.push("BEHAVIOUR"); }],
+    ["a warranty exclusion is reworded", (c) => { c.warranty.exclusions = ["Damage that happened after the visit ended"]; }],
+    ["a warranty exclusion is dropped", (c) => { c.warranty.exclusions = []; }],
+    ["the guarantee and damage wording change", (c) => { c.warranty.guarantee = "We put it right"; c.warranty.damagePolicy = "Report damage within a day"; }],
+    ["the rework window is lengthened", (c) => { c.rework.windowDays = 30; }],
+    ["the rework window limit is lifted", (c) => { delete c.rework.windowDays; }],
+    ["the confirmation window is lengthened", (c) => { c.quality.confirmationWindowHours = 96; }],
+    ["a requirement is added", (c) => { c.requirements.push({ id: "mat", itemCode: "floor-mat", responsibility: "PROFESSIONAL", charge: "INCLUDED" }); }],
+    ["a requirement is made mandatory, enforced and verified", (c) => { Object.assign(rule(c, "gloves"), { enforcement: "REQUIRED_AT_START", verification: "PARTNER_CHECK" }); }],
+    ["a requirement's notes are reworded", (c) => { Object.assign(rule(c, "access"), { customerNote: "Please keep the room unlocked", partnerInstructions: "Ask before moving furniture" }); }],
+    ["a conditional requirement is made unconditional", (c) => { delete rule(c, "gloves").when; }, edited((c) => { rule(c, "gloves").when = { variantIds: ["standard"] }; })],
+    ["a step is added", (c) => { c.execution.steps.push({ id: "handover", title: "Show the customer", kind: "QUALITY_CHECK", evidence: "NOTE", sortOrder: 4 }); }],
+    ["an optional step is deleted", (c) => { c.execution.steps = without(c.execution.steps, "tidy"); }],
+    ["an optional step becomes mandatory", (c) => { Object.assign(step(c, "tidy"), { mandatory: true, skipPolicy: "NOT_SKIPPABLE" }); }],
+    ["a step asks for stronger evidence", (c) => { step(c, "inspect").evidence = "PHOTO"; }],
+    ["a step is retitled and re-ordered", (c) => { Object.assign(step(c, "work"), { title: "Carry out the work", description: "As agreed with the customer", sortOrder: 5 }); }],
+    ["a safety list is shortened to one entry and reworded", (c) => { c.safety.prohibitedConditions = ["A smell of gas anywhere in the home"]; }],
+    ["a safety list is added", (c) => { c.safety.chemicalRestrictions = ["No bleach on marble"]; }],
+    ["the incident protocol is reworded", (c) => { c.safety.incidentProtocol = "Stop, secure the area, then call support"; }],
+    ["the checklist is reworded and extended", (c) => { c.quality.checklist = ["Work area left clean and dry", "Tools removed"]; }],
+    ["the adult age is raised", (c) => { c.customerPolicy.age.adultAge = 21; }],
+    ["the age rule is restated as an equal minimum age", (c) => { c.customerPolicy.age = { mode: "MINIMUM_AGE", minimumAge: 18 }; }],
+    ["the customer policy version is bumped", (c) => { c.customerPolicy.version = 2; }],
+    ["an edit elsewhere", (c) => { c.faqs = [{ q: "How long does it take?", a: "About forty minutes." }]; }],
+  ];
+  for (const [label, change, from = base()] of allowed) {
+    test(`allowed: ${label}`, () => {
+      const after = edited(change, from);
+      // A row that changes nothing would pass whatever the rule said.
+      expect(after).not.toEqual(from);
+      expect(found(from, after)).toEqual([]);
+    });
+  }
+
+  test("adding any of these protections to a live service that had none is accepted", () => {
+    expect(found({ ...policies }, base())).toEqual([]);
+  });
+
+  test("the typed warranty is judged as the booking freezes it: a block that switches off the legacy warranty is a reduction", () => {
+    const legacy = edited((c) => { delete c.warranty; c.quality.warrantyDays = 7; });
+    expect(buildWarrantySnapshot(serviceCatalogConfigSchema.parse(legacy))).toMatchObject({ enabled: true, durationDays: 7 });
+    expect(found(legacy, edited((c) => { c.warranty = { enabled: false }; }, legacy))).toEqual(["WARRANTY_PROTECTION_REDUCED@warranty.enabled"]);
+    expect(found(legacy, edited((c) => { c.warranty = { guarantee: "We put it right" }; }, legacy))).toEqual(["WARRANTY_PROTECTION_REDUCED@warranty.enabled"]);
+    expect(found(legacy, edited((c) => { c.warranty = { enabled: true, durationDays: 3 }; }, legacy))).toEqual(["WARRANTY_PROTECTION_REDUCED@warranty.durationDays"]);
+    // Moving the same promise into the typed block, or a longer one, takes nothing away.
+    expect(found(legacy, edited((c) => { c.warranty = { enabled: true, durationDays: 7 }; }, legacy))).toEqual([]);
+    expect(found(legacy, edited((c) => { c.warranty = { enabled: true, durationDays: 30, eligibleIssueTypes: ["QUALITY", "INCOMPLETE", "DAMAGE"] }; }, legacy))).toEqual([]);
+    // Deleting the typed block where a shorter legacy warranty then takes over is a shortening, not a removal.
+    const both = edited((c) => { c.quality.warrantyDays = 7; });
+    expect(found(both, edited((c) => { delete c.warranty; }, both))).toEqual(["WARRANTY_PROTECTION_REDUCED@warranty.durationDays", "WARRANTY_PROTECTION_REDUCED@warranty.eligibleIssueTypes"]);
+    // A warranty that was never on has nothing to reduce.
+    const off = edited((c) => { c.warranty = { enabled: false, durationDays: 30, exclusions: [] }; });
+    expect(found(off, edited((c) => { c.warranty = { enabled: false, durationDays: 5, exclusions: ["Anything at all"], refundAllowed: false }; }, off))).toEqual([]);
+  });
+
+  test("only steps in force are counted: switching every step off is a removal, and deleting a plan nobody runs is not", () => {
+    const allOff = edited((c) => { for (const s of c.execution.steps) { s.active = false; delete s.safetyRequirement; } });
+    expect(found(base(), allOff)).toEqual(["EXECUTION_PROTECTION_REMOVED@execution"]);
+    expect(found(allOff, edited((c) => { delete c.execution; }, allOff))).toEqual([]);
+    expect(found(allOff, base())).toEqual([]);
+  });
+
+  test("a rework window is 'no limit' when unset, exactly as the case engine reads it", () => {
+    const unlimited = edited((c) => { delete c.rework.windowDays; });
+    expect(found(unlimited, base())).toEqual(["REWORK_PROTECTION_REDUCED@rework.windowDays"]);
+    // A policy that never waived the fee promised nothing: its window and its fee are free to change.
+    const quoted = edited((c) => { c.rework = { fee: "QUOTED", windowDays: 14 }; });
+    expect(found(quoted, edited((c) => { c.rework = { fee: "QUOTED", windowDays: 3 }; }, quoted))).toEqual([]);
+    expect(found(quoted, edited((c) => { delete c.rework; }, quoted))).toEqual([]);
+    expect(found(quoted, base())).toEqual([]);
+  });
+
+  test("the age rule is compared by who may book alone and who may book at all", () => {
+    const guardian = edited((c) => { c.customerPolicy.age = { mode: "GUARDIAN_REQUIRED", guardianMinimumAge: 16 }; });
+    const to = (age: Raw) => found(guardian, edited((c) => { c.customerPolicy.age = age; }, guardian));
+    expect(to({ mode: "GUARDIAN_REQUIRED", guardianMinimumAge: 14 })).toEqual(["CUSTOMER_POLICY_PROTECTION_REDUCED@customerPolicy.age"]);
+    expect(to({ mode: "MINIMUM_AGE", minimumAge: 12 })).toEqual(["CUSTOMER_POLICY_PROTECTION_REDUCED@customerPolicy.age"]);
+    expect(to({ mode: "GUARDIAN_REQUIRED", guardianMinimumAge: 18 })).toEqual([]);
+    expect(to({ mode: "MINIMUM_AGE", minimumAge: 16 })).toEqual([]);
+    expect(to({ mode: "NONE" })).toEqual(["CUSTOMER_POLICY_PROTECTION_REMOVED@customerPolicy.age"]);
+  });
+
+  test("each reduction is reported, not only the first one found in its section", () => {
+    expect(found(base(), edited((c) => { c.quality.proofRequired = false; c.quality.confirmationWindowHours = 24; c.quality.checklist = []; }))).toEqual([
+      "QUALITY_PROTECTION_REDUCED@quality.checklist",
+      "QUALITY_PROTECTION_REDUCED@quality.confirmationWindowHours",
+      "QUALITY_PROTECTION_REDUCED@quality.proofRequired",
+    ]);
+    expect(found(base(), edited((c) => { rule(c, "access").optional = true; rule(c, "gloves").enforcement = "INFORMATIONAL"; c.warranty.enabled = false; }))).toEqual([
+      "REQUIREMENTS_PROTECTION_REDUCED@requirements.access.optional",
+      "REQUIREMENTS_PROTECTION_REDUCED@requirements.gloves.enforcement",
+      "WARRANTY_PROTECTION_REDUCED@warranty.enabled",
+    ]);
+  });
+
+  test("a reduction is not hidden by an unrelated finding elsewhere in the same section", () => {
+    // A new rule pointing at an item that does not exist is its own finding, at its own path.
+    const after = edited((c) => { c.requirements.push({ id: "ladder", itemCode: "no-such-item", responsibility: "PROFESSIONAL", charge: "INCLUDED" }); rule(c, "access").optional = true; });
+    expect(found(base(), after)).toEqual(["REQUIREMENTS_PROTECTION_REDUCED@requirements.access.optional", "REQUIREMENT_ITEM_UNKNOWN@requirements.ladder"]);
+    // The same for steps: a broken dependency on one step does not hide evidence dropped from another.
+    const steps = edited((c) => { step(c, "tidy").dependsOn = ["no-such-step"]; step(c, "work").evidence = "NONE"; });
+    expect(found(base(), steps)).toEqual(["EXECUTION_DEPENDENCY_UNKNOWN@execution.tidy", "EXECUTION_PROTECTION_REDUCED@execution.work.evidence"]);
+    // A gap the service already had (an incomplete safety section, where safety is required) is not a
+    // finding of this edit, and does not excuse emptying what the section did have.
+    const partial = edited((c) => { delete c.safety.incidentProtocol; });
+    expect(found(partial, edited((c) => { c.safety.warnings = []; }, partial), ["safety", "quality", "execution"])).toEqual(["SAFETY_PROTECTION_REDUCED@safety.warnings"]);
+  });
+
+  test("a section reported as a whole is still reported once: absent, declared, or emptied", () => {
+    const required = ["safety", "quality", "execution"] as const;
+    expect(found(base(), edited((c) => { delete c.execution; }), required)).toEqual(["EXECUTION_ABSENT@execution"]);
+    expect(found(base(), edited((c) => { c.safety = {}; }))).toEqual(["SAFETY_PROTECTION_REMOVED@safety"]);
+    expect(found(base(), edited((c) => { c.safety = { warnings: c.safety.warnings }; c.notApplicableReasons = { safety: "Remote video consultation: nobody is on site" }; }))).toEqual(["SAFETY_DECLARED_NOT_APPLICABLE@safety"]);
+    expect(found(base(), edited((c) => { c.quality = { notApplicable: true }; c.notApplicableReasons = { quality: REAL_REASON }; }))).toEqual(["QUALITY_DECLARED_NOT_APPLICABLE@quality"]);
+  });
+});
+
 describe("audit 2: a live service's content cannot be swapped for a 'not applicable' declaration", () => {
   const parse = (extra: Record<string, unknown>) => serviceCatalogConfigSchema.parse({ ...policies, ...extra });
   const live = core({ isActive: true });

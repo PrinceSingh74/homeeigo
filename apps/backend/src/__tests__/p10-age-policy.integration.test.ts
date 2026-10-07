@@ -47,6 +47,24 @@ async function configure(customerPolicy: unknown) {
   if (r.status !== 200) throw new Error(`service: ${r.status} ${JSON.stringify(r.json)}`);
 }
 
+/**
+ * An age rule that lets younger customers book is not a direct edit to a live service. The route is
+ * only setup here, so the service is configured off sale and published again the governed way:
+ * pause with a reason, edit, a second admin approves the result, publish.
+ */
+async function configureWhilePaused(customerPolicy: unknown) {
+  const svc = `/api/admin/services/${ctx.serviceId}`;
+  const ok = (label: string, r: Res) => {
+    if (r.status !== 200) throw new Error(`${label}: ${r.status} ${JSON.stringify(r.json)}`);
+  };
+  ok("pause", await call("POST", `${svc}/lifecycle`, { to: "PAUSED", reason: "Changing who may book this service" }, admin()));
+  await configure(customerPolicy);
+  // The approver may not be the last editor; the governance suite's `liveWith` names the editor the same way.
+  await prisma.service.update({ where: { id: ctx.serviceId }, data: { updatedBy: ctx.supportAdmin.id } });
+  ok("approve", await call("POST", `${svc}/approve`, {}, admin()));
+  ok("publish", await call("POST", `${svc}/lifecycle`, { to: "ACTIVE" }, admin()));
+}
+
 function bookBody(extra: Record<string, unknown> = {}) {
   hoursAhead += 24;
   return { serviceId: ctx.serviceId, addressId: ctx.addressAId, variantId: "fabric", quantity: 2, scheduledDate: futureSlot(hoursAhead).toISOString(), ...extra };
@@ -194,7 +212,8 @@ describe.serial("Phase D — customer age policy through the real routes", () =>
 
   test("GUARDIAN_REQUIRED: a minor is refused without an attestation and books with one (recorded as an attestation)", async () => {
     if (!dbOk) return;
-    await configure({ age: { mode: "GUARDIAN_REQUIRED", guardianMinimumAge: 18 }, version: 3 });
+    // From "nobody under 16" to "anyone, with a guardian": under-16s gain a way in, so it is a publish.
+    await configureWhilePaused({ age: { mode: "GUARDIAN_REQUIRED", guardianMinimumAge: 18 }, version: 3 });
     await setDobDirect(DOB_16());
     const refused = await call("POST", "/api/bookings", bookBody(), customer());
     expect(refused.status).toBe(422);

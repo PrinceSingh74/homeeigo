@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { partnerApi } from "@/services/partner-api";
 import { getErrorMessage, PartnerApiError } from "@/lib/api-error";
-import { BOOKINGS_ALL_KEY, patchBookingsCache, restoreSnapshots } from "@/lib/booking-cache";
+import { BOOKINGS_ALL_KEY, bookingDetailKey, patchBookingsCache, restoreSnapshots } from "@/lib/booking-cache";
 import { usePartnerStore } from "@/stores/partner-store";
 import { useToastStore } from "@/stores/toast-store";
 import type {
@@ -494,6 +494,25 @@ export function useMarkArrivedMutation() {
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
+      void qc.invalidateQueries({ queryKey: partnerKeys.jobActionsAll });
+      void qc.invalidateQueries({ queryKey: partnerKeys.dashboard });
+    },
+  });
+}
+
+/**
+ * §52 — reports the customer as not available. No optimistic patch and no toast: whether a fee
+ * applies is the server's answer, and the section that sent the report shows that answer (or the
+ * server's refusal sentence) in place. Every outcome refreshes the job — a refusal too, because it
+ * means the page's picture of the wait or the status was out of date.
+ */
+export function useReportNoShowMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bookingId }: { bookingId: string }) => partnerApi.reportCustomerNoShow(bookingId),
+    onSettled: (_data, _error, vars) => {
+      void qc.invalidateQueries({ queryKey: partnerKeys.bookingsAll });
+      void qc.invalidateQueries({ queryKey: bookingDetailKey(vars.bookingId) });
       void qc.invalidateQueries({ queryKey: partnerKeys.jobActionsAll });
       void qc.invalidateQueries({ queryKey: partnerKeys.dashboard });
     },

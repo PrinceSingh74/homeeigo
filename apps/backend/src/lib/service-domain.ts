@@ -11,8 +11,8 @@
  */
 
 import { createHash } from "node:crypto";
-import { validateServiceRequirements } from "./service-requirements";
-import { validateExecutionPlan } from "./service-execution";
+import { validateServiceRequirements, type Enforcement } from "./service-requirements";
+import { validateExecutionPlan, type ExecutionStep } from "./service-execution";
 import { buildSafetySnapshot } from "./service-safety";
 import { buildWarrantySnapshot } from "./service-warranty";
 import {
@@ -533,10 +533,13 @@ export function liveEditRegressions(input: {
   for (const swap of notApplicableSwaps(input.before.cfg, input.after.cfg)) out.set(key(swap), swap);
   // The same protections can be taken away with no declaration at all (proof no longer asked for,
   // a warranty cut to nothing, a section emptied where nothing is listed as required).
+  const reported = [...out.values()];
   for (const cut of protectionReductions(input.before.cfg, input.after.cfg)) {
-    // A section already reported above (absent, or swapped for a declaration) is reported once.
+    // Said once: a finding about the whole section (absent, or swapped for a declaration) covers
+    // every cut inside it, and so does one at the cut's own path. A finding about a different rule,
+    // step or field of the same section does not, and neither does another cut — each is reported.
     const section = cut.path.split(".")[0]!;
-    if ([...out.values()].some((i) => i.path === section || i.path.startsWith(`${section}.`))) continue;
+    if (reported.some((i) => i.path === section || i.path === cut.path)) continue;
     out.set(key(cut), cut);
   }
   return [...out.values()];
@@ -544,38 +547,251 @@ export function liveEditRegressions(input: {
 
 const LIVE_REDUCTION_HOW = "It is not accepted as an edit to a live service: pause the service, make the change, and publish it again so a second admin approves it.";
 
+type ProtectedSection = "SAFETY" | "QUALITY" | "WARRANTY" | "REWORK" | "REQUIREMENTS" | "EXECUTION" | "CUSTOMER_POLICY";
+
+/** One reduction. `change` is the sentence that says what would happen on the live service. */
+const reduction = (section: ProtectedSection, kind: "REDUCED" | "REMOVED", path: string, change: string): PublishIssue => ({
+  code: `${section}_PROTECTION_${kind}`,
+  path,
+  message: `${change}. ${LIVE_REDUCTION_HOW}`,
+});
+
 /**
  * Protections an edit takes off a service that bookings are being made under, without declaring
- * anything: a quality rule switched off, a warranty or complaint window shortened, or the safety /
- * quality section emptied. Rewording or adding to content is not a reduction, and how many lines
- * a checklist has is not judged here.
+ * anything. Each reader below compares what a booking would freeze before and after the edit:
+ * safety and quality content, the warranty, the rework policy, requirement rules, execution steps
+ * and the age rule. Rewording or adding to content is never a reduction, and a list that is
+ * shortened but still has an entry is not judged here.
  */
 function protectionReductions(before: ServiceCatalogConfig | null, after: ServiceCatalogConfig | null): PublishIssue[] {
+  return [
+    ...contentReductions(before, after),
+    ...qualityRuleReductions(before, after),
+    ...warrantyReductions(before, after),
+    ...reworkReductions(before, after),
+    ...requirementReductions(before, after),
+    ...executionReductions(before, after),
+    ...customerPolicyReductions(before, after),
+  ];
+}
+
+/** Every safety field is content a job runs under. A field added to the schema must be named here. */
+const SAFETY_FIELDS: Record<keyof NonNullable<ServiceCatalogConfig["safety"]>, string> = {
+  information: "The safety information",
+  warnings: "The safety warnings",
+  prohibitedConditions: "The prohibited conditions",
+  customerRequirements: "The customer's safety requirements",
+  providerRequirements: "The professional's safety requirements",
+  medicalDisclaimer: "The medical disclaimer",
+  emergencyProtocol: "The emergency protocol",
+  ppe: "The protective equipment list",
+  chemicalRestrictions: "The chemical restrictions",
+  incidentProtocol: "The incident protocol",
+};
+const QUALITY_LISTS = { checklist: "The quality checklist", completionCriteria: "The completion criteria" } as const;
+
+/**
+ * Safety and quality content: the whole section emptied, or one field that said something left
+ * saying nothing (deleted, emptied, or replaced by a dash) while the rest of the section stays.
+ */
+function contentReductions(before: ServiceCatalogConfig | null, after: ServiceCatalogConfig | null): PublishIssue[] {
   const out: PublishIssue[] = [];
   for (const section of ["safety", "quality"] as const) {
-    if (!sectionProtects(before, section) || sectionProtects(after, section) || declaredNotApplicable(after, section)) continue;
-    const what = section === "safety" ? "Safety information" : "Quality checks";
-    out.push({ code: `${section.toUpperCase()}_PROTECTION_REMOVED`, path: section, message: `${what} would be removed from this live service. ${LIVE_REDUCTION_HOW}` });
+    // A declaration in place of content is the swap, reported by `notApplicableSwaps`.
+    if (!sectionProtects(before, section) || declaredNotApplicable(after, section)) continue;
+    const SECTION = section === "safety" ? "SAFETY" : "QUALITY";
+    if (!sectionProtects(after, section)) {
+      out.push(reduction(SECTION, "REMOVED", section, `${section === "safety" ? "Safety information" : "Quality checks"} would be removed from this live service`));
+      continue;
+    }
+    const was = (before?.[section] ?? {}) as Record<string, unknown>;
+    const now = (after?.[section] ?? {}) as Record<string, unknown>;
+    for (const [field, label] of Object.entries(section === "safety" ? SAFETY_FIELDS : QUALITY_LISTS)) {
+      if (filled(was[field]) && !filled(now[field])) out.push(reduction(SECTION, "REDUCED", `${section}.${field}`, `${label} would be emptied on this live service`));
+    }
   }
+  return out;
+}
+
+/** The window a customer has to confirm or report when the service sets none (customer-visit, booking-completion). */
+const DEFAULT_CONFIRMATION_WINDOW_HOURS = 48;
+
+/** Quality rules that are switches and windows rather than content. */
+function qualityRuleReductions(before: ServiceCatalogConfig | null, after: ServiceCatalogConfig | null): PublishIssue[] {
+  // Quality declared off, or emptied, is reported as the whole section.
+  if (declaredNotApplicable(after, "quality") || (sectionProtects(before, "quality") && !sectionProtects(after, "quality"))) return [];
+  const out: PublishIssue[] = [];
   const was = before?.quality;
   const now = after?.quality;
-  if (was && !declaredNotApplicable(after, "quality") && !out.some((i) => i.path === "quality")) {
+  if (was) {
     const switches = { proofRequired: "Photo proof", beforeAfterPhotos: "Before and after photos", professionalConfirmation: "The professional's confirmation", customerConfirmation: "The customer's confirmation" } as const;
     for (const [field, label] of Object.entries(switches) as [keyof typeof switches, string][]) {
-      if (was[field] === true && now?.[field] !== true) {
-        out.push({ code: "QUALITY_PROTECTION_REDUCED", path: `quality.${field}`, message: `${label} would no longer be required on this live service. ${LIVE_REDUCTION_HOW}` });
-      }
+      if (was[field] === true && now?.[field] !== true) out.push(reduction("QUALITY", "REDUCED", `quality.${field}`, `${label} would no longer be required on this live service`));
     }
     const windows = { warrantyDays: "The warranty", complaintWindowDays: "The complaint window" } as const;
     for (const [field, label] of Object.entries(windows) as [keyof typeof windows, string][]) {
       const from = was[field] ?? 0;
       const to = now?.[field] ?? 0;
-      if (from > 0 && to < from) {
-        out.push({ code: "QUALITY_PROTECTION_REDUCED", path: `quality.${field}`, message: `${label} would be shortened from ${from} to ${to} days on this live service. ${LIVE_REDUCTION_HOW}` });
-      }
+      if (from > 0 && to < from) out.push(reduction("QUALITY", "REDUCED", `quality.${field}`, `${label} would be shortened from ${from} to ${to} days on this live service`));
+    }
+  }
+  // Read as the booking freezes it: unset is the platform default, not zero.
+  const hours = (cfg: ServiceCatalogConfig | null) => qualitySnapshot(cfg)?.confirmationWindowHours ?? DEFAULT_CONFIRMATION_WINDOW_HOURS;
+  if (hours(after) < hours(before)) {
+    out.push(reduction("QUALITY", "REDUCED", "quality.confirmationWindowHours", `The customer's confirmation window would be shortened from ${hours(before)} to ${hours(after)} hours on this live service`));
+  }
+  return out;
+}
+
+/**
+ * The warranty, compared as `buildWarrantySnapshot` freezes it onto a booking: the typed block wins
+ * over `quality.warrantyDays`, so a block that is present and not enabled switches a legacy warranty
+ * off. With no typed block on either side the legacy days are the whole warranty, and those are
+ * judged with the quality rules above.
+ */
+function warrantyReductions(before: ServiceCatalogConfig | null, after: ServiceCatalogConfig | null): PublishIssue[] {
+  if (!before?.warranty && !after?.warranty) return [];
+  const was = buildWarrantySnapshot(before);
+  const now = buildWarrantySnapshot(after);
+  if (!was.enabled) return [];
+  if (!now.enabled) {
+    return after?.warranty
+      ? [reduction("WARRANTY", "REDUCED", "warranty.enabled", "The warranty would be switched off on this live service")]
+      : [reduction("WARRANTY", "REMOVED", "warranty", "The warranty would no longer be offered on this live service")];
+  }
+  const out: PublishIssue[] = [];
+  if (now.durationDays < was.durationDays) {
+    out.push(reduction("WARRANTY", "REDUCED", "warranty.durationDays", `The warranty would be shortened from ${was.durationDays} to ${now.durationDays} days on this live service`));
+  }
+  if (was.refundAllowed && !now.refundAllowed) {
+    out.push(reduction("WARRANTY", "REDUCED", "warranty.refundAllowed", "A refund under the warranty would no longer be allowed on this live service"));
+  }
+  const dropped = was.eligibleIssueTypes.filter((t) => !now.eligibleIssueTypes.includes(t));
+  if (dropped.length) {
+    out.push(reduction("WARRANTY", "REDUCED", "warranty.eligibleIssueTypes", `The warranty would no longer cover ${dropped.join(", ")} issues on this live service`));
+  }
+  // Exclusions are free text, so a reworded one cannot be told from a replaced one: only more of them is judged.
+  if (now.exclusions.length > was.exclusions.length) {
+    out.push(reduction("WARRANTY", "REDUCED", "warranty.exclusions", `The warranty would have ${now.exclusions.length} exclusions instead of ${was.exclusions.length} on this live service`));
+  }
+  return out;
+}
+
+/**
+ * Rework. Only a waived fee is a promise (`followUpFeeDecision` refuses to create a follow-up visit
+ * for anything else), and its window is "no limit" when unset or zero, exactly as that reader has it.
+ */
+function reworkReductions(before: ServiceCatalogConfig | null, after: ServiceCatalogConfig | null): PublishIssue[] {
+  const was = before?.rework;
+  const now = after?.rework;
+  if (was?.fee !== "WAIVED") return [];
+  if (!now) return [reduction("REWORK", "REMOVED", "rework", "The free follow-up visit would no longer be offered on this live service")];
+  if (now.fee !== "WAIVED") {
+    return [reduction("REWORK", "REDUCED", "rework.fee", `The follow-up visit fee would change from waived to ${now.fee === "QUOTED" ? "quoted" : "not decided"} on this live service`)];
+  }
+  const limit = (days: number | undefined) => (days && days > 0 ? days : null);
+  const from = limit(was.windowDays);
+  const to = limit(now.windowDays);
+  if (to !== null && (from === null || to < from)) {
+    return [reduction("REWORK", "REDUCED", "rework.windowDays", `The window to report a problem for a free follow-up visit would be shortened from ${from === null ? "no limit" : `${from} days`} to ${to} days on this live service`)];
+  }
+  return [];
+}
+
+type Condition = { variantIds?: string[]; addonIds?: string[]; minQuantity?: number } | undefined;
+/** Does this rule or step apply to some bookings only? */
+const conditional = (when: Condition): boolean => Boolean(when?.variantIds?.length || when?.addonIds?.length || when?.minQuantity != null);
+
+/** The three "required" points are different moments, not a ladder: moving between them is not judged. */
+const ENFORCEMENT_STRENGTH: Record<Enforcement, number> = { INFORMATIONAL: 0, WARNING: 1, REQUIRED_BEFORE_BOOKING: 2, REQUIRED_BEFORE_ARRIVAL: 2, REQUIRED_AT_START: 2 };
+
+/** Requirement rules, matched by their id: one removed or switched off, or one that asks for less. */
+function requirementReductions(before: ServiceCatalogConfig | null, after: ServiceCatalogConfig | null): PublishIssue[] {
+  const out: PublishIssue[] = [];
+  const kept = new Map((after?.requirements ?? []).filter((r) => r.active).map((r) => [r.id, r]));
+  for (const was of (before?.requirements ?? []).filter((r) => r.active)) {
+    const path = `requirements.${was.id}`;
+    const name = `Requirement "${was.id}"`;
+    const now = kept.get(was.id);
+    if (!now) {
+      out.push(reduction("REQUIREMENTS", "REMOVED", path, `${name} would no longer apply on this live service`));
+      continue;
+    }
+    if (!was.optional && now.optional) out.push(reduction("REQUIREMENTS", "REDUCED", `${path}.optional`, `${name} would become optional on this live service`));
+    if (ENFORCEMENT_STRENGTH[now.enforcement] < ENFORCEMENT_STRENGTH[was.enforcement]) {
+      out.push(reduction("REQUIREMENTS", "REDUCED", `${path}.enforcement`, `${name} would be enforced as ${now.enforcement} instead of ${was.enforcement} on this live service`));
+    }
+    if (was.verification !== "NONE" && now.verification === "NONE") {
+      out.push(reduction("REQUIREMENTS", "REDUCED", `${path}.verification`, `${name} would no longer be verified on this live service`));
+    }
+    if (!conditional(was.when) && conditional(now.when)) {
+      out.push(reduction("REQUIREMENTS", "REDUCED", `${path}.when`, `${name} would apply to some bookings only, instead of every booking, on this live service`));
     }
   }
   return out;
+}
+
+/** What a step asks the professional to record, weakest first. */
+const EVIDENCE_STRENGTH: Record<ExecutionStep["evidence"], number> = { NONE: 0, NOTE: 1, PHOTO: 2, BEFORE_AFTER_PHOTOS: 3 };
+
+/**
+ * Execution steps, matched by their id. A mandatory step is what completion waits for, so removing
+ * it, switching it off, making it optional or conditional is a reduction; so is any step asking for
+ * less evidence or no longer waiting for its safety requirement. An optional step may be removed.
+ */
+function executionReductions(before: ServiceCatalogConfig | null, after: ServiceCatalogConfig | null): PublishIssue[] {
+  const active = (cfg: ServiceCatalogConfig | null) => (cfg?.execution?.steps ?? []).filter((s) => s.active);
+  const steps = active(before);
+  const kept = new Map(active(after).map((s) => [s.id, s]));
+  if (!steps.length) return [];
+  if (!kept.size) return [reduction("EXECUTION", "REMOVED", "execution", "Every execution step would be removed on this live service")];
+  const out: PublishIssue[] = [];
+  for (const was of steps) {
+    const path = `execution.${was.id}`;
+    const name = `Step "${was.id}"`;
+    const now = kept.get(was.id);
+    if (!now) {
+      if (was.mandatory) out.push(reduction("EXECUTION", "REMOVED", path, `Mandatory step "${was.id}" would no longer be part of the job on this live service`));
+      continue;
+    }
+    if (was.mandatory && !now.mandatory) out.push(reduction("EXECUTION", "REDUCED", `${path}.mandatory`, `${name} would become optional on this live service`));
+    if (EVIDENCE_STRENGTH[now.evidence] < EVIDENCE_STRENGTH[was.evidence]) {
+      out.push(reduction("EXECUTION", "REDUCED", `${path}.evidence`, `${name} would ask for ${now.evidence} instead of ${was.evidence} as evidence on this live service`));
+    }
+    if (was.safetyRequirement && !now.safetyRequirement) {
+      out.push(reduction("EXECUTION", "REDUCED", `${path}.safetyRequirement`, `${name} would no longer wait for safety requirement "${was.safetyRequirement}" on this live service`));
+    }
+    if (was.mandatory && !conditional(was.when) && conditional(now.when)) {
+      out.push(reduction("EXECUTION", "REDUCED", `${path}.when`, `${name} would be part of some bookings only, instead of every booking, on this live service`));
+    }
+  }
+  return out;
+}
+
+/**
+ * The age rule as `evaluateAgePolicy` applies it, reduced to two ages: the youngest customer who may
+ * book alone, and the youngest who may book at all. MINIMUM_AGE and ADULT_ONLY refuse below their
+ * age; GUARDIAN_REQUIRED lets anyone below its age book with a guardian's attestation. A mode with
+ * no age configured refuses everyone.
+ */
+function ageGate(cfg: ServiceCatalogConfig | null): { alone: number; atAll: number } {
+  const age = cfg?.customerPolicy?.age;
+  if (!age || age.mode === "NONE") return { alone: 0, atAll: 0 };
+  if (age.mode === "GUARDIAN_REQUIRED") return { alone: age.guardianMinimumAge ?? Infinity, atAll: 0 };
+  const threshold = (age.mode === "MINIMUM_AGE" ? age.minimumAge : age.adultAge) ?? Infinity;
+  return { alone: threshold, atAll: threshold };
+}
+
+/** The age rule removed, or changed so that someone younger may book (alone, or at all). */
+function customerPolicyReductions(before: ServiceCatalogConfig | null, after: ServiceCatalogConfig | null): PublishIssue[] {
+  const was = ageGate(before);
+  const now = ageGate(after);
+  if (was.alone === 0) return [];
+  if (now.alone === 0) return [reduction("CUSTOMER_POLICY", "REMOVED", "customerPolicy.age", "The age rule would no longer apply on this live service")];
+  if (now.alone < was.alone || now.atAll < was.atAll) {
+    return [reduction("CUSTOMER_POLICY", "REDUCED", "customerPolicy.age", "The age rule would let younger customers book on this live service")];
+  }
+  return [];
 }
 
 const NOT_APPLICABLE_SWAP: Record<NotApplicableSection, { code: string; path: string; what: string }> = {

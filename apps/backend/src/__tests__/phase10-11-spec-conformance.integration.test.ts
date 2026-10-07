@@ -118,8 +118,20 @@ afterAll(async () => {
 describe.serial("Phase 10–11 spec conformance — one booking through the whole process", () => {
   test("ADMIN: every specified field is accepted by the real service editor write", async () => {
     if (!dbOk) return;
-    const r = await call("PUT", `/api/admin/services/${ctx.serviceId}`, { pricingModel: "per-unit", basePrice: 250, minPrice: 250, maxPrice: 250, catalogConfig: CONFIG }, admin());
+    // The fixture service is seeded live with no configuration, and this configuration gives the
+    // customer 12 hours to confirm instead of the platform's 48 — a live service does not take that
+    // as a direct edit. So the service is configured off sale, through the same editor write, and
+    // published the governed way: pause with a reason, edit, a second admin approves, publish.
+    const svc = `/api/admin/services/${ctx.serviceId}`;
+    expect((await call("POST", `${svc}/lifecycle`, { to: "PAUSED", reason: "Configuring the service before it is sold" }, admin())).status).toBe(200);
+    const r = await call("PUT", svc, { pricingModel: "per-unit", basePrice: 250, minPrice: 250, maxPrice: 250, catalogConfig: CONFIG }, admin());
     expect(r.status).toBe(200);
+    // The approver may not be the last editor; the governance suite's `liveWith` names the editor the same way.
+    await prisma.service.update({ where: { id: ctx.serviceId }, data: { updatedBy: ctx.supportAdmin.id } });
+    const approved = await call("POST", `${svc}/approve`, {}, admin());
+    expect({ status: approved.status, body: approved.status === 200 ? null : approved.json }).toEqual({ status: 200, body: null });
+    const published = await call("POST", `${svc}/lifecycle`, { to: "ACTIVE" }, admin());
+    expect({ status: published.status, body: published.status === 200 ? null : published.json }).toEqual({ status: 200, body: null });
     const stored = (await prisma.service.findUniqueOrThrow({ where: { id: ctx.serviceId }, select: { catalogConfig: true } })).catalogConfig as any;
     expect(stored.execution.steps.map((s: any) => s.id)).toEqual(["scope", "shampoo", "walkthrough", "closeout"]);
     expect(stored.execution.steps[1]).toMatchObject({ estimatedMinutes: 45, materials: ["Upholstery shampoo"], equipment: ["Extraction machine"], ppe: ["Gloves"] });

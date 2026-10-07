@@ -385,8 +385,8 @@ class BookingRequirementService {
     const b = await this.loadBooking(prisma, input.bookingId);
     if (!b || b.providerId !== input.providerId) return { ok: false as const, error: REQUIREMENT_ERRORS.NOT_FOUND };
     const { confirmPartnerPosition, positionException } = await import("./arrival-position.service");
-    // As at arrival: a recorded exception excuses a device with no position; coordinates that are sent are checked.
-    const vouchedWithoutPosition = (input.latitude == null || input.longitude == null) && (await positionException(input.bookingId, input.providerId)) != null;
+    // As at arrival: under a recorded exception the request's coordinates are not judged.
+    const vouchedWithoutPosition = (await positionException(input.bookingId, input.providerId)) != null;
     if (!vouchedWithoutPosition) {
       const proximity = assertJobProximity({ latitude: input.latitude, longitude: input.longitude, jobLatitude: b.address?.latitude, jobLongitude: b.address?.longitude, enforceRadius: true });
       if (!proximity.ok) {
@@ -406,7 +406,8 @@ class BookingRequirementService {
       actor: { role: "PARTNER", isAssignedPartner: true, userId: input.userId, providerId: input.providerId },
       to: input.outcome, action: "PARTNER_CHECK",
       reason: input.outcome === "SATISFIED" ? "partner verified on site" : `partner found missing on site${input.note ? `: ${input.note.slice(0, 200)}` : ""}`,
-      evidence: { kind: "PARTNER_CHECK", ref: `partner-check:${ctx.requestId ?? "no-request"}`, lat: input.latitude, lng: input.longitude },
+      // Where the check was made: the position the server held, or none when the partner was vouched for.
+      evidence: { kind: "PARTNER_CHECK", ref: `partner-check:${ctx.requestId ?? "no-request"}`, lat: held.waived ? null : held.position.latitude, lng: held.waived ? null : held.position.longitude },
       note: input.note ?? null, idempotencyKey: input.idempotencyKey ?? null,
     });
     if (!r.ok) return r;

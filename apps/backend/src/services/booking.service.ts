@@ -1968,12 +1968,13 @@ export class BookingService {
     const { assertJobProximity } = await import("../lib/job-proximity");
     const { confirmPartnerPosition, positionException } = await import("./arrival-position.service");
     /**
-     * A recorded exception (the customer's confirmation, an admin's waiver) is for a device that has
-     * no position to send, so it is looked up BEFORE the request's coordinates are asked for. It
-     * excuses their absence only: coordinates that are sent are still checked, and a device that
-     * says it is somewhere else is refused whoever vouched for it.
+     * A recorded exception (the customer's confirmation, an admin's waiver) is for a device that
+     * cannot say where it is, so it is looked up BEFORE the request's coordinates are asked for.
+     * Under it the coordinates are not judged at all: a phone that reports a wrong position is the
+     * same broken device as one that reports none, and refusing it protected nothing (the same
+     * request without coordinates was accepted) while stranding an honest partner.
      */
-    const vouchedWithoutPosition = (lat == null || lng == null) && (await positionException(id, providerId)) != null;
+    const vouchedWithoutPosition = (await positionException(id, providerId)) != null;
     const proximity = vouchedWithoutPosition
       ? ({ ok: true } as const)
       : assertJobProximity({
@@ -2033,6 +2034,20 @@ export class BookingService {
       applied ? "applied" : "duplicate",
     );
 
+    if (applied && held.waived) {
+      // The arrival stands on somebody's word, not on a position: say so on the booking's record.
+      const { ARRIVAL_VOUCHED_ACTION } = await import("./arrival-position.service");
+      await prisma.activityLog
+        .create({
+          data: {
+            bookingId: id,
+            providerId,
+            action: ARRIVAL_VOUCHED_ACTION,
+            description: held.by === "admin" ? "Arrival recorded on an admin's waiver: no position was confirmed" : "Arrival recorded on the customer's confirmation: no position was confirmed",
+          },
+        })
+        .catch((err: unknown) => logger.error("arrival_vouched_log_failed", { bookingId: id, providerId, error: err instanceof Error ? err.message : String(err) }));
+    }
     if (applied) {
       try {
         const { jobEvidenceService } = await import("./job-evidence.service");
@@ -2081,8 +2096,8 @@ export class BookingService {
         throw new Error("FORBIDDEN");
       }
       const { confirmPartnerPosition, positionException } = await import("./arrival-position.service");
-      // As at arrival: an exception excuses a device with no position; coordinates that are sent are checked.
-      const vouchedWithoutPosition = (lat == null || lng == null) && (await positionException(id, providerId)) != null;
+      // As at arrival: under a recorded exception the request's coordinates are not judged.
+      const vouchedWithoutPosition = (await positionException(id, providerId)) != null;
       if (!vouchedWithoutPosition) {
         const proximity = assertJobProximity({
           latitude: lat,
@@ -2415,7 +2430,10 @@ export class BookingService {
         latitude: heldAtCompletion?.latitude,
         longitude: heldAtCompletion?.longitude,
         images: photos.images,
-        clientUploadId: `complete:${id}`,
+        // Named for the photos it carries: a second attempt with the same photos is the same upload,
+        // one with different photos is a new one. (Under a fixed id, the photos of a retry after a
+        // refused completion were answered with the first attempt's row and silently dropped.)
+        clientUploadId: `complete-photos:${id}:${photos.images.map((i) => i.sha256).sort().join("").slice(0, 24)}`,
       });
     }
 
@@ -2707,8 +2725,9 @@ export class BookingService {
         bookingId: id,
         providerId,
         stage: "COMPLETION",
-        latitude: lat,
-        longitude: lng,
+        // The position the server held, as on every other stamp — never the request's coordinates.
+        latitude: heldAtCompletion?.latitude,
+        longitude: heldAtCompletion?.longitude,
         clientUploadId: `complete:${id}`,
       });
     } catch {

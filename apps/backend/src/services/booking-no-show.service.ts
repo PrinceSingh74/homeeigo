@@ -18,7 +18,16 @@ import { isServerStoredEvidence } from "../lib/job-evidence-media";
 import { knownCoords } from "../lib/geo-unknown";
 import { distanceKm } from "../lib/geo";
 import { eventPlatformConfig } from "../events/core/config";
-import { CUSTOMER_CONFIRMED_ARRIVAL_ACTION, POSITION_CHECK_WAIVED_ACTION } from "./arrival-position.service";
+import { ARRIVAL_VOUCHED_ACTION, heldPartnerPosition } from "./arrival-position.service";
+
+/**
+ * When the wait for the customer begins: at the arrival, or at the booked time if the partner came
+ * early. A customer is not late for an appointment that has not started.
+ */
+function waitStartsAt(booking: { arrivedAt: Date | null; scheduledDate: Date }): Date | null {
+  if (!booking.arrivedAt) return null;
+  return booking.arrivedAt.getTime() >= booking.scheduledDate.getTime() ? booking.arrivedAt : booking.scheduledDate;
+}
 
 /**
  * §52 / §53 — recording a no-show.
@@ -40,9 +49,56 @@ import { CUSTOMER_CONFIRMED_ARRIVAL_ACTION, POSITION_CHECK_WAIVED_ACTION } from 
  * itself goes through the existing refund authority, which owns idempotency and the gateway.
  */
 
+/** Why the partner's own report takes no fee. */
+export type NoShowFeeWithheld = "NO_DOOR_PHOTO" | "ARRIVAL_VOUCHED" | "NOT_AT_ADDRESS" | "CUSTOMER_PRESENT";
+
+/**
+ * What the partner's own report WOULD do, read before reporting (`GET /api/bookings/:id/actions`).
+ *
+ * It says whether the fee applies and why not — never an amount, and nothing about the customer's
+ * refund (X-29: the partner hears the fee recorded, not the customer's money). `message` is the one
+ * sentence a client shows; clients do not write their own.
+ */
+export type NoShowPreview = {
+  /** The wait has been served: a report sent now would be accepted. */
+  canReport: boolean;
+  /** Whole minutes since the recorded arrival; null when the arrival time cannot be measured against. */
+  waitedMinutes: number | null;
+  graceMinutes: number;
+  /** Whole minutes until a report is accepted (0 once it can be); null with `waitedMinutes`. */
+  minutesLeft: number | null;
+  /** Whether the partner's own report would charge the customer the no-show fee. */
+  feeWillApply: boolean;
+  /** The policy's percentage — what "the fee" is, whether or not it would apply here. */
+  feePercent: number;
+  /** Why the partner's report would take no fee; NOT_PREPAID = nothing was paid in advance to take it from. */
+  reason: NoShowFeeWithheld | "NOT_PREPAID" | null;
+  hasDoorPhoto: boolean;
+  message: string;
+};
+
+/** Why no fee was taken, for the booking's audit trail. */
+const WITHHELD_AUDIT: Record<NoShowFeeWithheld, string> = {
+  NO_DOOR_PHOTO: "no door photo on record",
+  ARRIVAL_VOUCHED: "arrival vouched for, not confirmed by position",
+  NOT_AT_ADDRESS: "reported while the server did not hold the partner at the address",
+  CUSTOMER_PRESENT: "the customer's start PIN had been verified",
+};
+
+const PREVIEW_MESSAGES = {
+  FEE_APPLIES: `A photo at the door is on record. If the customer does not come within ${NO_SHOW_POLICY.graceMinutes} minutes of your arrival you can report a no-show; the ${NO_SHOW_POLICY.customerNoShowFeePercent}% no-show fee applies.`,
+  NO_DOOR_PHOTO: "Add a photo at the door, with location on, before you report. Without it the no-show is still recorded but no fee is charged.",
+  ARRIVAL_VOUCHED: "Your arrival was confirmed by the customer or by support, not by your phone's location, so a no-show you report is recorded without a fee.",
+  NOT_AT_ADDRESS: "A no-show is reported from the door. Stay at the address with location on and report from there; reported from elsewhere, it is recorded without a fee.",
+  CUSTOMER_PRESENT: "The customer has given their start PIN, so they were there. If the job cannot start, contact support; a no-show you report now is recorded without a fee.",
+  BEFORE_APPOINTMENT: `The booked time has not come yet. If the customer does not come, you can report a no-show ${NO_SHOW_POLICY.graceMinutes} minutes after the booked time.`,
+  NOT_PREPAID: "This booking was not paid in advance, so there is no fee to take. If the customer does not come you can still report a no-show and it is recorded.",
+  PHOTO_NOT_AT_JOB: "Your photo was received, but your phone's location was not at the address when it arrived. Turn location on, wait a moment at the door, and add another photo. Without it the no-show is still recorded but no fee is charged.",
+} as const;
+
 export type NoShowResult =
-  | { ok: true; status: BookingStatus; feeAmount: number; refundAmount: number; refundStatus: string; feeWithheld?: "NO_DOOR_PHOTO" | "ARRIVAL_VOUCHED" }
-  | { error: "NOT_FOUND" | "FORBIDDEN" | "INVALID_STATUS" | "NOT_ELIGIBLE"; reason?: CustomerNoShowRefusal; waitedMinutes?: number | null };
+  | { ok: true; status: BookingStatus; feeAmount: number; refundAmount: number; refundStatus: string; feeWithheld?: NoShowFeeWithheld }
+  | { error: "NOT_FOUND" | "FORBIDDEN" | "INVALID_STATUS" | "NOT_ELIGIBLE"; reason?: CustomerNoShowRefusal | "BEFORE_APPOINTMENT"; waitedMinutes?: number | null };
 
 /** `reason` is what an admin typed; it is recorded alongside the system's own description. */
 type Actor = { userId: string; providerId?: string | null; isAdmin?: boolean; reason?: string };
@@ -60,6 +116,7 @@ class BookingNoShowService {
       where: { id: bookingId },
       select: {
         id: true, userId: true, providerId: true, status: true, arrivedAt: true,
+        scheduledDate: true, startOtpVerifiedAt: true,
         finalAmount: true, baseAmount: true,
         provider: { select: { userId: true } },
       },
@@ -70,7 +127,12 @@ class BookingNoShowService {
     const isAssignedPartner = Boolean(actor.providerId && booking.providerId === actor.providerId);
     if (!isAssignedPartner && !actor.isAdmin) return { error: "FORBIDDEN" };
 
-    const verdict = evaluateCustomerNoShow({ status: booking.status, arrivedAt: booking.arrivedAt });
+    // Nobody is a no-show for an appointment that has not begun.
+    if (booking.arrivedAt && booking.scheduledDate.getTime() > Date.now()) {
+      incCounter("no_show_report_total", { outcome: "refused", kind: "customer", reason: "BEFORE_APPOINTMENT" });
+      return { error: "NOT_ELIGIBLE", reason: "BEFORE_APPOINTMENT", waitedMinutes: null };
+    }
+    const verdict = evaluateCustomerNoShow({ status: booking.status, arrivedAt: waitStartsAt(booking) });
     if (!verdict.eligible) {
       incCounter("no_show_report_total", { outcome: "refused", kind: "customer", reason: verdict.reason });
       return {
@@ -98,13 +160,10 @@ class BookingNoShowService {
      *
      * This is corroboration a person can check, not proof: the position is still what the
      * partner's device reported, and the photo is whatever was in front of the camera.
+     *
+     * The decision itself is `corroboration` — the same one the preview reads.
      */
-    let withheld: "NO_DOOR_PHOTO" | "ARRIVAL_VOUCHED" | null = null;
-    if (!actor.isAdmin) {
-      const vouched = booking.providerId != null && (await this.arrivalWasVouched(bookingId, booking.providerId));
-      if (vouched) withheld = "ARRIVAL_VOUCHED";
-      else if (!(booking.providerId != null && booking.arrivedAt != null && (await this.hasDoorPhoto(bookingId, booking.providerId, booking.arrivedAt)))) withheld = "NO_DOOR_PHOTO";
-    }
+    const withheld = actor.isAdmin ? null : (await this.corroboration(booking)).withheld;
     const corroborated = withheld === null;
     const settlement = corroborated
       ? customerNoShowSettlement({
@@ -121,7 +180,7 @@ class BookingNoShowService {
       actor,
       corroborated
         ? `customer did not appear after ${verdict.waitedMinutes} minutes`
-        : `customer did not appear after ${verdict.waitedMinutes} minutes (partner's report, no door photo on record: no fee taken, open to admin review)`,
+        : `customer did not appear after ${verdict.waitedMinutes} minutes (partner's report, ${WITHHELD_AUDIT[withheld ?? "NO_DOOR_PHOTO"]}: no fee taken)`,
     );
     if (!closed) return { error: "INVALID_STATUS" };
 
@@ -137,7 +196,10 @@ class BookingNoShowService {
       "Appointment recorded as missed",
       settlement.feeAmount > 0
         ? `Your professional waited ${verdict.waitedMinutes} minutes and could not reach you. A ${NO_SHOW_POLICY.customerNoShowFeePercent}% fee of ₹${settlement.feeAmount} applies; ₹${settlement.refundAmount} is being returned.`
-        : `Your professional waited ${verdict.waitedMinutes} minutes and could not reach you. Nothing has been charged.`,
+        : settlement.refundAmount > 0
+          // Paid, and all of it is going back: "nothing has been charged" would be untrue here.
+          ? `Your professional waited ${verdict.waitedMinutes} minutes and could not reach you. ₹${settlement.refundAmount} is being returned in full — no fee has been applied.`
+          : `Your professional waited ${verdict.waitedMinutes} minutes and could not reach you. Nothing has been charged.`,
     );
     incCounter("no_show_report_total", { outcome: "recorded", kind: "customer" });
     logger.warn("customer_no_show_recorded", {
@@ -219,6 +281,104 @@ class BookingNoShowService {
   }
 
   /**
+   * What the partner's own report would do, without doing any of it.
+   *
+   * Offered exactly where the report is — the partner is at the door and the job has not started —
+   * and only to the partner holding the job (or an admin, who sees what the partner sees: this is
+   * always the outcome of the PARTNER's report; an admin's own report decides for itself). Anyone
+   * else, and any other state, gets null. Reads only: no status, no money, no notification.
+   */
+  async previewCustomerNoShow(bookingId: string, actor: Actor): Promise<NoShowPreview | null> {
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { id: true, providerId: true, status: true, arrivedAt: true, userId: true, scheduledDate: true, startOtpVerifiedAt: true },
+    });
+    if (!booking) return null;
+    const isAssignedPartner = Boolean(actor.providerId && booking.providerId === actor.providerId);
+    if (!isAssignedPartner && !actor.isAdmin) return null;
+
+    const beforeAppointment = booking.arrivedAt != null && booking.scheduledDate.getTime() > Date.now();
+    const verdict = evaluateCustomerNoShow({ status: booking.status, arrivedAt: beforeAppointment ? booking.arrivedAt : waitStartsAt(booking) });
+    // Not at the door, or past the point of a no-show: there is nothing to preview.
+    if (!verdict.eligible && (verdict.reason === "BOOKING_NOT_AWAITING_CUSTOMER" || verdict.reason === "NO_ARRIVAL_EVIDENCE")) return null;
+
+    const { withheld, hasDoorPhoto, photoElsewhere } = await this.corroboration(booking);
+    // The fee is capped at what is still refundable: with nothing paid in advance there is none to
+    // take, and saying "the fee applies" would promise the partner nothing. (No amount is disclosed.)
+    const notPrepaid = (await this.refundableFor(booking.id, booking.userId)) <= 0;
+    if (beforeAppointment) {
+      // The wait has not begun: it runs from the booked time.
+      const untilSlot = Math.ceil((booking.scheduledDate.getTime() - Date.now()) / 60_000);
+      return {
+        canReport: false,
+        waitedMinutes: 0,
+        graceMinutes: NO_SHOW_POLICY.graceMinutes,
+        minutesLeft: untilSlot + NO_SHOW_POLICY.graceMinutes,
+        feeWillApply: withheld === null && !notPrepaid,
+        feePercent: NO_SHOW_POLICY.customerNoShowFeePercent,
+        reason: notPrepaid ? "NOT_PREPAID" : withheld,
+        hasDoorPhoto,
+        message: PREVIEW_MESSAGES.BEFORE_APPOINTMENT,
+      };
+    }
+    const waitedMinutes = verdict.waitedMinutes;
+    return {
+      canReport: verdict.eligible,
+      waitedMinutes,
+      graceMinutes: NO_SHOW_POLICY.graceMinutes,
+      minutesLeft: waitedMinutes === null ? null : Math.max(0, NO_SHOW_POLICY.graceMinutes - waitedMinutes),
+      feeWillApply: withheld === null && !notPrepaid,
+      feePercent: NO_SHOW_POLICY.customerNoShowFeePercent,
+      reason: notPrepaid ? "NOT_PREPAID" : withheld,
+      hasDoorPhoto,
+      message: PREVIEW_MESSAGES[notPrepaid ? "NOT_PREPAID" : withheld === "NO_DOOR_PHOTO" && photoElsewhere ? "PHOTO_NOT_AT_JOB" : (withheld ?? "FEE_APPLIES")],
+    };
+  }
+
+  /**
+   * The one corroboration rule, read by both the report and the preview: does the partner's own
+   * word carry a fee? Not when the arrival was vouched for rather than confirmed by a position, and
+   * not without a photo at the door. A vouched arrival wins over a photo — the photo is reported
+   * for what it is, but it does not change the answer.
+   *
+   * In order: a customer who gave the start PIN was there, whatever else is true; an arrival
+   * recorded on somebody's word has no position behind it; then the door photo; and last, the
+   * report itself is made from the door — the server must hold the partner at the address now.
+   */
+  private async corroboration(booking: { id: string; providerId: string | null; arrivedAt: Date | null; startOtpVerifiedAt: Date | null }): Promise<{ withheld: NoShowFeeWithheld | null; hasDoorPhoto: boolean; photoElsewhere: boolean }> {
+    if (booking.providerId == null) return { withheld: "NO_DOOR_PHOTO", hasDoorPhoto: false, photoElsewhere: false };
+    const [vouched, photo, atAddress] = await Promise.all([
+      this.arrivalWasVouched(booking.id, booking.providerId),
+      booking.arrivedAt != null ? this.doorPhoto(booking.id, booking.providerId, booking.arrivedAt) : Promise.resolve("NONE" as const),
+      this.partnerIsAtAddress(booking.id, booking.providerId),
+    ]);
+    const hasDoorPhoto = photo === "AT_JOB";
+    const withheld: NoShowFeeWithheld | null = booking.startOtpVerifiedAt
+      ? "CUSTOMER_PRESENT"
+      : vouched
+        ? "ARRIVAL_VOUCHED"
+        : !hasDoorPhoto
+          ? "NO_DOOR_PHOTO"
+          : !atAddress
+            ? "NOT_AT_ADDRESS"
+            : null;
+    // `photoElsewhere`: a photo did arrive after the arrival, but not while the server held the partner at the job.
+    return { withheld, hasDoorPhoto, photoElsewhere: photo === "NOT_AT_JOB" };
+  }
+
+  /** Does the server hold this partner at the job's address right now? (The fresh presence fix, as at arrival.) */
+  private async partnerIsAtAddress(bookingId: string, providerId: string): Promise<boolean> {
+    const [held, booking] = await Promise.all([
+      heldPartnerPosition(providerId),
+      prisma.booking.findUnique({ where: { id: bookingId }, select: { address: { select: { latitude: true, longitude: true } } } }),
+    ]);
+    if (!held) return false;
+    const job = knownCoords(booking?.address?.latitude, booking?.address?.longitude);
+    // A job address with no known coordinates cannot be measured against: a live device reporting stands.
+    return !job || distanceKm(held.latitude, held.longitude, job.latitude, job.longitude) * 1000 <= eventPlatformConfig.arrivalRadiusM;
+  }
+
+  /**
    * What is still refundable for this booking, across EVERY tender.
    *
    * Delegates to `refundableRemaining`, the same authority the cancellation path uses. Reading the
@@ -231,7 +391,7 @@ class BookingNoShowService {
    * arrival, whose position — written by the server from the fix it held for the partner when the
    * photo came in, never from the upload — is at the job.
    */
-  private async hasDoorPhoto(bookingId: string, providerId: string, arrivedAt: Date): Promise<boolean> {
+  private async doorPhoto(bookingId: string, providerId: string, arrivedAt: Date): Promise<"AT_JOB" | "NOT_AT_JOB" | "NONE"> {
     const [rows, booking] = await Promise.all([
       prisma.jobEvidence.findMany({
         where: { bookingId, providerId, stage: "ARRIVAL", isCurrent: true, mediaStorageKey: { not: null }, capturedAt: { gte: arrivedAt } },
@@ -240,19 +400,22 @@ class BookingNoShowService {
       prisma.booking.findUnique({ where: { id: bookingId }, select: { address: { select: { latitude: true, longitude: true } } } }),
     ]);
     const job = knownCoords(booking?.address?.latitude, booking?.address?.longitude);
-    return rows.some((r) => {
-      if (!isServerStoredEvidence(r)) return false;
+    const stored = rows.filter((r) => isServerStoredEvidence(r));
+    const atJob = stored.some((r) => {
       const at = knownCoords(r.latitude, r.longitude);
       if (!at) return false;
       // A job address with no known coordinates cannot be measured against: the held position stands.
       return !job || distanceKm(at.latitude, at.longitude, job.latitude, job.longitude) * 1000 <= eventPlatformConfig.arrivalRadiusM;
     });
+    return atJob ? "AT_JOB" : stored.length > 0 ? "NOT_AT_JOB" : "NONE";
   }
 
   /** Was this partner's arrival on this booking covered by a recorded exception rather than a confirmed position? */
   private async arrivalWasVouched(bookingId: string, providerId: string): Promise<boolean> {
     const row = await prisma.activityLog.findFirst({
-      where: { bookingId, providerId, action: { in: [POSITION_CHECK_WAIVED_ACTION, CUSTOMER_CONFIRMED_ARRIVAL_ACTION] } },
+      // The row the arrival itself wrote when it was recorded on an exception — not the exception:
+      // a confirmation that exists beside an arrival the partner's position confirmed changed nothing.
+      where: { bookingId, providerId, action: ARRIVAL_VOUCHED_ACTION },
       select: { id: true },
     });
     return row != null;

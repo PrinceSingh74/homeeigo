@@ -39,6 +39,7 @@ import { BookingRequestCard } from "@/components/requests/BookingRequestCard";
 import { CallCustomerButton } from "@/components/requests/CallCustomerButton";
 import { JobChatPanel } from "@/components/requests/JobChatPanel";
 import { JobEvidencePanel } from "@/components/requests/JobEvidencePanel";
+import { NoShowSection } from "@/components/requests/NoShowSection";
 import { PartnerCard } from "@/components/ui/PartnerCard";
 import { useBookingRequirementsQuery } from "@/hooks/use-partner-data";
 import { bookingDetailKey } from "@/lib/booking-cache";
@@ -92,6 +93,9 @@ export default function JobDetailPage() {
     enabled: !!id && reads.actions,
     staleTime: 15_000,
   });
+
+  const refetchActions = actionsQuery.refetch;
+  const refreshActions = useCallback(() => void refetchActions(), [refetchActions]);
 
   const localActions = booking ? getAvailableJobActions(booking) : null;
   const actions = actionsQuery.data ?? localActions;
@@ -440,6 +444,17 @@ export default function JobDetailPage() {
                 : undefined
             }
           />
+
+          {/* §52: secondary to Start, collapsed by default; drawn only from the server's `noShow` answer. */}
+          {isOffer ? null : (
+            <NoShowSection
+              bookingId={booking.id}
+              preview={actionsQuery.data?.noShow ?? null}
+              fetchedAt={actionsQuery.dataUpdatedAt}
+              refreshing={actionsQuery.isFetching}
+              onRefresh={refreshActions}
+            />
+          )}
 
           <PartnerCard hover={false}>
             <p className="mb-3 text-sm font-semibold text-partner-text">Lifecycle</p>

@@ -29,6 +29,7 @@ import { createBookingWithQuote } from "./helpers/quote-token";
 import { NO_SHOW_POLICY } from "../lib/no-show-policy";
 import { storedEvidenceKey } from "./helpers/evidence-photo";
 import { bookingNoShowService } from "../services/booking-no-show.service";
+import { placeAtDoor } from "./helpers/no-show-fixture";
 
 const RUN = `p09nsapi-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
@@ -60,13 +61,18 @@ const jobPosition = async () => {
   const a = await prisma.address.findUniqueOrThrow({ where: { id: ctx.addressAId }, select: { latitude: true, longitude: true } });
   return { latitude: a.latitude, longitude: a.longitude };
 };
-async function bookingAtDoor(opts: { arrivedMinutesAgo?: number | null; paid?: boolean; doorPhoto?: boolean } = {}) {
+async function bookingAtDoor(opts: { arrivedMinutesAgo?: number | null; paid?: boolean; doorPhoto?: boolean; appointmentStarted?: boolean; partnerAtAddress?: boolean } = {}) {
   await keepPresenceFresh(ctx);
   const result = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
     providerId: ctx.providerId,
     addressId: ctx.addressAId,
-    scheduledDate: istSlot((day += 1)).toISOString(),
+    // One slot per booking inside the 30-day horizon: 22 days, then the same days at a second
+    // and a third hour (the suite makes more bookings than there are days to put them on).
+    scheduledDate: (() => {
+      const n = (day += 1) - 5;
+      return istSlot(5 + (n % 22), ["10:00", "13:00", "16:00"][Math.floor(n / 22) % 3]);
+    })().toISOString(),
   });
   if (!("booking" in result) || !result.booking) throw new Error(`create failed: ${JSON.stringify(result)}`);
   const id = result.booking.id;
@@ -87,8 +93,16 @@ async function bookingAtDoor(opts: { arrivedMinutesAgo?: number | null; paid?: b
     });
   }
 
+  // The appointment has begun and the server holds the partner at the address (see the helper).
+  await placeAtDoor(id, ctx.providerId, { appointmentStarted: opts.appointmentStarted, partnerAtAddress: opts.partnerAtAddress });
   created.push(id);
   return { id, amount: result.booking.finalAmount };
+}
+
+/** GET /:id/actions — carries the partner's no-show preview (`data.noShow`). */
+async function actionsFor(id: string, token: string) {
+  const res = await app.handle(new Request(`http://localhost/api/bookings/${id}/actions`, { headers: { Authorization: `Bearer ${token}` } }));
+  return { status: res.status, json: (await res.json().catch(() => ({}))) as any };
 }
 
 const statusOf = async (id: string) =>
@@ -200,10 +214,68 @@ describe.serial("POST /:id/no-show — the partner's door", () => {
   test("an arrival nobody's position confirmed (the customer or an admin vouched for it) does not charge on the partner's word", async () => {
     if (!dbOk) return;
     const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40 });
-    await prisma.activityLog.create({ data: { bookingId: id, userId: ctx.customerA.id, providerId: ctx.providerId, action: "CUSTOMER_CONFIRMED_PROFESSIONAL_ARRIVAL", description: "Customer confirmed the professional is at the service address" } });
+    await prisma.activityLog.create({ data: { bookingId: id, userId: ctx.customerA.id, providerId: ctx.providerId, action: "PARTNER_ARRIVAL_VOUCHED", description: "Arrival recorded on the customer's confirmation: no position was confirmed" } });
     const r = await post(`${id}/no-show`, partnerToken);
     expect(r.status).toBe(200);
     expect({ fee: r.json.data.feeAmount, withheld: r.json.data.feeWithheld }).toEqual({ fee: 0, withheld: "ARRIVAL_VOUCHED" });
+  });
+
+  /**
+   * Fifth re-audit, 2026-10-07. Each of these took (or voided) the fee around the door-photo rule.
+   */
+  test("a customer cannot void the fee by tapping 'confirm arrival' when the arrival was confirmed from a position", async () => {
+    if (!dbOk) return;
+    const { id, amount } = await bookingAtDoor({ arrivedMinutesAgo: 40 });
+    // The customer's confirmation exists, but the arrival did not use it.
+    await prisma.activityLog.create({ data: { bookingId: id, userId: ctx.customerA.id, providerId: ctx.providerId, action: "CUSTOMER_CONFIRMED_PROFESSIONAL_ARRIVAL", description: "Customer confirmed the professional is at the service address" } });
+    const r = await post(`${id}/no-show`, partnerToken);
+    expect({ fee: r.json.data.feeAmount, withheld: r.json.data.feeWithheld ?? null }).toEqual({ fee: Math.round(amount * 0.5 * 100) / 100, withheld: null });
+  });
+
+  test("a no-show cannot be reported before the appointment has begun, however long ago the partner arrived", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40, appointmentStarted: false });
+    const r = await post(`${id}/no-show`, partnerToken);
+    expect({ status: r.status, code: r.json.code }).toEqual({ status: 400, code: "BEFORE_APPOINTMENT" });
+    expect(String(r.json.error).toLowerCase()).toContain("booked time");
+    expect(await statusOf(id)).toBe("EN_ROUTE");
+    // The preview says the same thing, and does not offer the report.
+    const preview = (await actionsFor(id, partnerToken)).json.data.noShow;
+    expect(preview?.canReport ?? false).toBe(false);
+  });
+
+  test("the wait is counted from the booked time when the partner came early", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40 });
+    // The appointment began five minutes ago: fifteen have not passed since, though forty have since the arrival.
+    await prisma.booking.update({ where: { id }, data: { scheduledDate: new Date(Date.now() - 5 * 60_000) } });
+    const r = await post(`${id}/no-show`, partnerToken);
+    expect({ status: r.status, code: r.json.code }).toEqual({ status: 400, code: "GRACE_NOT_ELAPSED" });
+  });
+
+  test("a report made when the server does not hold the partner at the address is recorded without a fee", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40, partnerAtAddress: false });
+    const preview = (await actionsFor(id, partnerToken)).json.data.noShow;
+    expect({ feeWillApply: preview.feeWillApply, reason: preview.reason }).toEqual({ feeWillApply: false, reason: "NOT_AT_ADDRESS" });
+    const r = await post(`${id}/no-show`, partnerToken);
+    expect({ fee: r.json.data.feeAmount, withheld: r.json.data.feeWithheld }).toEqual({ fee: 0, withheld: "NOT_AT_ADDRESS" });
+  });
+
+  test("a customer who gave the start PIN was there: no fee on the partner's word", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40 });
+    await prisma.booking.update({ where: { id }, data: { startOtpVerifiedAt: new Date(Date.now() - 10 * 60_000) } });
+    const r = await post(`${id}/no-show`, partnerToken);
+    expect({ fee: r.json.data.feeAmount, withheld: r.json.data.feeWithheld }).toEqual({ fee: 0, withheld: "CUSTOMER_PRESENT" });
+  });
+
+  test("when no fee is taken the partner is told why, and is not promised a review that cannot happen", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40, doorPhoto: false });
+    const r = await post(`${id}/no-show`, partnerToken);
+    expect(String(r.json.data.feeNote)).toContain("No fee was taken");
+    expect(String(r.json.data.feeNote).toLowerCase()).not.toContain("review");
   });
 
   test("an admin who records the no-show decides the fee: it applies without the photo", async () => {
@@ -242,6 +314,151 @@ describe.serial("POST /:id/no-show — the partner's door", () => {
     const res = await app.handle(new Request(`http://localhost/api/bookings/${id}/no-show`, { method: "POST", body: "{}", headers: { "Content-Type": "application/json" } }));
     expect(res.status).toBe(401);
     expect(await statusOf(id)).toBe("EN_ROUTE");
+  });
+});
+
+/**
+ * The partner is told BEFORE reporting what the report will do. The preview rides on the job-actions
+ * answer the job page already asks for, and it is the same decision the report makes — one rule,
+ * read twice — so the two cannot disagree.
+ */
+describe.serial("GET /:id/actions — the no-show preview", () => {
+  async function actionsFor(id: string, token: string) {
+    const res = await app.handle(new Request(`http://localhost/api/bookings/${id}/actions`, { headers: { Authorization: `Bearer ${token}` } }));
+    return { status: res.status, json: (await res.json().catch(() => ({}))) as any };
+  }
+  const doorPhotoRow = async (id: string) =>
+    prisma.jobEvidence.create({ data: { bookingId: id, providerId: ctx.providerId, stage: "ARRIVAL", mediaStorageKey: storedEvidenceKey(id, ctx.providerId, "ARRIVAL"), mediaMimeType: "image/png", ...(await jobPosition()) } });
+  const vouch = (id: string) =>
+    prisma.activityLog.create({ data: { bookingId: id, userId: ctx.customerA.id, providerId: ctx.providerId, action: "PARTNER_ARRIVAL_VOUCHED", description: "Arrival recorded on the customer's confirmation: no position was confirmed" } });
+
+  test("without a door photo it says so; once an ARRIVAL photo at the job is on record the fee will apply", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40, doorPhoto: false });
+    const before = await actionsFor(id, partnerToken);
+    expect(before.status).toBe(200);
+    expect(before.json.data.availableActions).toContain("REPORT_NO_SHOW");
+    expect(before.json.data.noShow).toEqual({
+      canReport: true,
+      waitedMinutes: 40,
+      graceMinutes: NO_SHOW_POLICY.graceMinutes,
+      minutesLeft: 0,
+      feeWillApply: false,
+      feePercent: NO_SHOW_POLICY.customerNoShowFeePercent,
+      reason: "NO_DOOR_PHOTO",
+      hasDoorPhoto: false,
+      message: expect.any(String),
+    });
+    expect(String(before.json.data.noShow.message).toLowerCase()).toContain("photo at the door");
+    expect(String(before.json.data.noShow.message).toLowerCase()).toContain("no fee");
+
+    await doorPhotoRow(id);
+    const after = await actionsFor(id, partnerToken);
+    expect(after.json.data.noShow).toMatchObject({ canReport: true, feeWillApply: true, reason: null, hasDoorPhoto: true });
+    expect(String(after.json.data.noShow.message)).toContain(`${NO_SHOW_POLICY.customerNoShowFeePercent}%`);
+    // Reading the preview decides nothing.
+    expect(await statusOf(id)).toBe("EN_ROUTE");
+  });
+
+  test("inside the wait it cannot be reported yet, and says how many minutes are left", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: NO_SHOW_POLICY.graceMinutes - 5 });
+    const r = await actionsFor(id, partnerToken);
+    expect(r.json.data.noShow).toMatchObject({ canReport: false, waitedMinutes: NO_SHOW_POLICY.graceMinutes - 5, graceMinutes: NO_SHOW_POLICY.graceMinutes, minutesLeft: 5, feeWillApply: true, hasDoorPhoto: true });
+  });
+
+  test("an arrival vouched for by the customer is previewed as recorded without a fee, photo or not", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40 });
+    await vouch(id);
+    const r = await actionsFor(id, partnerToken);
+    expect(r.json.data.noShow).toMatchObject({ canReport: true, feeWillApply: false, reason: "ARRIVAL_VOUCHED", hasDoorPhoto: true });
+    expect(String(r.json.data.noShow.message).toLowerCase()).toContain("without a fee");
+  });
+
+  /** X-29: the partner hears whether the fee applies, never the customer's money. */
+  /**
+   * A photo that arrived while the server did not hold the partner at the address is not a door
+   * photo — and the partner has to be told that, or they see "uploaded" and a request for a photo
+   * side by side and cannot know what to do.
+   */
+  test("a photo received while the phone's location was not at the address is named for what it is, with what to do", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40, doorPhoto: false });
+    await prisma.jobEvidence.create({ data: { bookingId: id, providerId: ctx.providerId, stage: "ARRIVAL", mediaStorageKey: storedEvidenceKey(id, ctx.providerId, "ARRIVAL") } });
+    const preview = (await actionsFor(id, partnerToken)).json.data.noShow;
+    expect({ reason: preview.reason, hasDoorPhoto: preview.hasDoorPhoto, feeWillApply: preview.feeWillApply }).toEqual({ reason: "NO_DOOR_PHOTO", hasDoorPhoto: false, feeWillApply: false });
+    expect(preview.message).toContain("photo was received");
+    expect(preview.message.toLowerCase()).toContain("location");
+  });
+
+  /** The fee is capped at what was paid in advance. Where nothing was, "the fee applies" would be a promise of ₹0. */
+  test("a booking not paid in advance is previewed as recorded with no fee to take, and the report takes none", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40, paid: false });
+    const preview = (await actionsFor(id, partnerToken)).json.data.noShow;
+    expect({ feeWillApply: preview.feeWillApply, reason: preview.reason }).toEqual({ feeWillApply: false, reason: "NOT_PREPAID" });
+    expect(preview.message).toContain("not paid in advance");
+    const r = await post(`${id}/no-show`, partnerToken);
+    expect({ status: r.status, fee: r.json.data.feeAmount }).toEqual({ status: 200, fee: 0 });
+  });
+
+  test("the preview carries no rupee amount and nothing about the customer's refund", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40 });
+    const r = await actionsFor(id, partnerToken);
+    expect(Object.keys(r.json.data.noShow).sort()).toEqual(["canReport", "feePercent", "feeWillApply", "graceMinutes", "hasDoorPhoto", "message", "minutesLeft", "reason", "waitedMinutes"]);
+    expect(JSON.stringify(r.json.data.noShow)).not.toMatch(/₹|refund|amount/i);
+  });
+
+  for (const c of [
+    { name: "a door photo at the job", doorPhoto: true, vouched: false },
+    { name: "no door photo", doorPhoto: false, vouched: false },
+    { name: "a vouched arrival", doorPhoto: true, vouched: true },
+  ]) {
+    test(`the preview and the report agree: ${c.name}`, async () => {
+      if (!dbOk) return;
+      const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40, doorPhoto: c.doorPhoto });
+      if (c.vouched) await vouch(id);
+      const preview = (await actionsFor(id, partnerToken)).json.data.noShow;
+      expect(preview).toBeDefined();
+      const report = await post(`${id}/no-show`, partnerToken);
+      expect(report.status).toBe(200);
+      expect({ feeWillApply: preview.feeWillApply, reason: preview.reason }).toEqual({
+        feeWillApply: report.json.data.feeAmount > 0,
+        reason: report.json.data.feeWithheld ?? null,
+      });
+    });
+  }
+
+  test("before arrival, and once the report is in, there is no preview", async () => {
+    if (!dbOk) return;
+    const notArrived = await bookingAtDoor({ arrivedMinutesAgo: null });
+    const r1 = await actionsFor(notArrived.id, partnerToken);
+    expect(r1.status).toBe(200);
+    expect("noShow" in r1.json.data).toBe(false);
+
+    const reported = await bookingAtDoor({ arrivedMinutesAgo: 40 });
+    expect((await post(`${reported.id}/no-show`, partnerToken)).status).toBe(200);
+    const r2 = await actionsFor(reported.id, partnerToken);
+    expect("noShow" in (r2.json.data ?? {})).toBe(false);
+  });
+
+  test("the customer, another customer and another partner read nothing of it", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40 });
+    // The booking's own customer may read the job actions, but not the partner's fee preview.
+    const owner = await actionsFor(id, bearer(ctx.customerA));
+    expect(owner.status).toBe(200);
+    expect("noShow" in owner.json.data).toBe(false);
+    const stranger = await actionsFor(id, bearer(ctx.customerB));
+    expect(stranger.status).toBe(404);
+    expect(JSON.stringify(stranger.json)).not.toContain("feeWillApply");
+    // The service itself answers only the partner holding the job (or an admin).
+    expect(await bookingNoShowService.previewCustomerNoShow(id, { userId: ctx.customerA.id })).toBeNull();
+    expect(await bookingNoShowService.previewCustomerNoShow(id, { userId: ctx.customerB.id, providerId: `${RUN}-other-partner` })).toBeNull();
+    expect(await bookingNoShowService.previewCustomerNoShow(id, { userId: ctx.vendorUserId, providerId: ctx.providerId })).not.toBeNull();
+    expect(await bookingNoShowService.previewCustomerNoShow(id, { userId: ctx.superAdmin.id, isAdmin: true })).not.toBeNull();
   });
 });
 

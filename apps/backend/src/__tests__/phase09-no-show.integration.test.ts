@@ -26,6 +26,7 @@ import { bookingNoShowService } from "../services/booking-no-show.service";
 import { NO_SHOW_POLICY } from "../lib/no-show-policy";
 import { roomManager } from "../lib/websocket";
 import { storedEvidenceKey } from "./helpers/evidence-photo";
+import { placeAtDoor } from "./helpers/no-show-fixture";
 
 const RUN = `p09ns-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
@@ -44,7 +45,7 @@ const jobPosition = async () => {
   const a = await prisma.address.findUniqueOrThrow({ where: { id: ctx.addressAId }, select: { latitude: true, longitude: true } });
   return { latitude: a.latitude, longitude: a.longitude };
 };
-async function bookingAtDoor(opts: { arrivedMinutesAgo?: number | null; paid?: boolean; status?: BookingStatus; doorPhoto?: boolean } = {}) {
+async function bookingAtDoor(opts: { arrivedMinutesAgo?: number | null; paid?: boolean; status?: BookingStatus; doorPhoto?: boolean; appointmentStarted?: boolean; partnerAtAddress?: boolean } = {}) {
   // Wallet payments are slow enough that the fixture partner's presence goes stale between tests,
   // and a stale partner is refused with PROVIDER_UNAVAILABLE — a real rule, but not this subject.
   // `keepPresenceFresh` beats only when the last one is old: beating every time trips the product's
@@ -76,6 +77,8 @@ async function bookingAtDoor(opts: { arrivedMinutesAgo?: number | null; paid?: b
     });
   }
 
+  // The appointment has begun and the server holds the partner at the address (see the helper).
+  await placeAtDoor(id, ctx.providerId, { appointmentStarted: opts.appointmentStarted, partnerAtAddress: opts.partnerAtAddress });
   created_ids.push(id);
   return { id, amount };
 }
@@ -334,6 +337,35 @@ describe.serial("the customer is told WHY, not just that money moved", () => {
     // and it never calls it a cancellation, which it is not
     expect(n!.title.toLowerCase()).not.toContain("cancel");
     expect(n!.message.toLowerCase()).not.toContain("cancel");
+  });
+
+  /**
+   * A paid booking closed without a fee used to tell the customer "Nothing has been charged" — but
+   * they HAD paid, and the whole amount was on its way back. Say that, and that no fee was applied.
+   */
+  test("a customer no-show recorded without a fee says the full amount is returned and no fee applied", async () => {
+    if (!dbOk) return;
+    const { id, amount } = await bookingAtDoor({ arrivedMinutesAgo: 40, doorPhoto: false });
+    const r = await bookingNoShowService.reportCustomerNoShow(id, partner());
+    expect(r).toMatchObject({ ok: true, feeAmount: 0, feeWithheld: "NO_DOOR_PHOTO" });
+    const n = await awaitNotification(ctx.customerA.id, id);
+    expect(n).not.toBeNull();
+    expect(n!.message).toContain(`₹${amount}`);
+    expect(n!.message.toLowerCase()).toContain("returned in full");
+    expect(n!.message.toLowerCase()).toContain("no fee");
+    expect(n!.message).not.toContain("Nothing has been charged");
+  });
+
+  test("a customer no-show with a fee says how much is kept, how much comes back, and why", async () => {
+    if (!dbOk) return;
+    const { id, amount } = await bookingAtDoor({ arrivedMinutesAgo: 40 });
+    const r = await bookingNoShowService.reportCustomerNoShow(id, partner());
+    const fee = Math.round(amount * 0.5 * 100) / 100;
+    expect(r).toMatchObject({ ok: true, feeAmount: fee });
+    const n = await awaitNotification(ctx.customerA.id, id);
+    expect(n!.message).toContain(`${NO_SHOW_POLICY.customerNoShowFeePercent}% fee of ₹${fee}`);
+    expect(n!.message).toContain("is being returned");
+    expect(n!.message).toContain("could not reach you");
   });
 
   test("a provider no-show says plainly that nothing was charged", async () => {

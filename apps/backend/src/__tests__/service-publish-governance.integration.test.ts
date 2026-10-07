@@ -476,6 +476,27 @@ describe.serial("an edit to a live service may not remove what a first publish r
     expect((await configOf(id)).quality).toEqual(FULL.quality);
   });
 
+  // Fifth re-audit, 2026-10-07: the typed warranty is what a booking freezes, and it could be
+  // switched off on a live service with status 200 — nothing read it.
+  test("switching off a live service's typed warranty is refused, and the stored warranty is unchanged", async () => {
+    expect(dbOk).toBe(true);
+    expect(process.env.SERVICE_LIVE_EDIT_POLICY).not.toBe("four-eyes");
+    process.env.SERVICE_PUBLISH_REQUIRES = "none";
+    const warranty = { enabled: true, durationDays: 30, refundAllowed: true };
+    const id = await liveWith({ ...FULL, warranty });
+    const live = await row(id);
+    const r = await call("PUT", `/api/admin/services/${id}`, { catalogConfig: { ...FULL, warranty: { ...warranty, enabled: false } } });
+    expect({ status: r.status, code: r.json.code }).toEqual({ status: 400, code: "SERVICE_NOT_BOOKABLE" });
+    expect(JSON.stringify(r.json)).toContain("WARRANTY_PROTECTION_REDUCED");
+    const after = await row(id);
+    expect({ version: after.version, lifecycle: after.lifecycleStatus }).toEqual({ version: live.version, lifecycle: "ACTIVE" });
+    expect((await configOf(id)).warranty).toEqual(warranty);
+    // Control: lengthening the same warranty on the same live service is an ordinary edit.
+    const longer = await call("PUT", `/api/admin/services/${id}`, { catalogConfig: { ...FULL, warranty: { ...warranty, durationDays: 60 } } });
+    expect(longer.status).toBe(200);
+    expect((await configOf(id)).warranty).toEqual({ ...warranty, durationDays: 60 });
+  });
+
   test("the way through is a publish: paused, the change is accepted, and going live again needs a second admin's approval of it", async () => {
     expect(dbOk).toBe(true);
     process.env.SERVICE_PUBLISH_REQUIRES = "safety,quality,execution";
@@ -528,9 +549,12 @@ describe.serial("a revision, its approval and its scheduled apply answer to the 
   const policyBefore = process.env.SERVICE_LIVE_EDIT_POLICY;
   const requiresBefore = process.env.SERVICE_PUBLISH_REQUIRES;
   const { safety: _s, ...WITHOUT_SAFETY } = FULL;
-  // Removing safety from a live service is refused whatever is required (a protection removed), so a
-  // revision that is acceptable when queued and not when approved is one that drops the execution plan.
+  // Removing safety from a live service is refused whatever is required (a protection removed), and
+  // so is removing a plan with a step in force. A revision that is acceptable when queued and not
+  // when approved is one that drops a plan whose only step is switched off: no job runs that step,
+  // so nothing is taken away, and yet the plan is what the "execution" requirement was counting.
   const { execution: _e, ...WITHOUT_EXECUTION } = FULL;
+  const DORMANT_PLAN = { ...FULL, execution: { steps: [{ ...FULL.execution.steps[0], active: false }] } };
   beforeAll(() => {
     process.env.SERVICE_LIVE_EDIT_POLICY = "four-eyes";
   });
@@ -555,10 +579,10 @@ describe.serial("a revision, its approval and its scheduled apply answer to the 
   test("a revision queued while it was allowed is refused at approval once it would break the gate", async () => {
     expect(dbOk).toBe(true);
     process.env.SERVICE_PUBLISH_REQUIRES = "none";
-    const id = await liveWith(FULL);
+    const id = await liveWith(DORMANT_PLAN);
     const live = await row(id);
     // Safety cannot be dropped from a live service even while no section is required.
-    const dropSafety = await call("PUT", `/api/admin/services/${id}`, { catalogConfig: WITHOUT_SAFETY, changeReason: "Trim the configuration" });
+    const dropSafety = await call("PUT", `/api/admin/services/${id}`, { catalogConfig: { ...WITHOUT_SAFETY, execution: DORMANT_PLAN.execution }, changeReason: "Trim the configuration" });
     expect({ code: dropSafety.json.code, named: JSON.stringify(dropSafety.json).includes("SAFETY_PROTECTION_REMOVED"), drafts: await drafts(id) }).toEqual({ code: "SERVICE_NOT_BOOKABLE", named: true, drafts: 0 });
     expect((await call("PUT", `/api/admin/services/${id}`, { catalogConfig: WITHOUT_EXECUTION, changeReason: "Trim the configuration" })).status).toBe(200);
     expect(await drafts(id)).toBe(1);
@@ -573,7 +597,7 @@ describe.serial("a revision, its approval and its scheduled apply answer to the 
   test("the same revision approved for a later time is not applied by the scheduler either, and is reported as failed", async () => {
     expect(dbOk).toBe(true);
     process.env.SERVICE_PUBLISH_REQUIRES = "none";
-    const id = await liveWith(FULL);
+    const id = await liveWith(DORMANT_PLAN);
     expect((await call("PUT", `/api/admin/services/${id}`, { catalogConfig: WITHOUT_EXECUTION, changeReason: "Trim the configuration" })).status).toBe(200);
     const scheduled = await catalogService.approveRevision(id, ctx.financeAdmin.id, { scheduledLiveAt: new Date(Date.now() + 2_000).toISOString() });
     expect("error" in scheduled ? scheduled.error : null).toBeNull();

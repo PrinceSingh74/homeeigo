@@ -291,10 +291,21 @@ describe.serial("the customer can confirm the professional is there: the recorde
     expect((await post(`/api/bookings/${id}/arrived`, partner(), JOB)).status).toBe(200);
     const log = await prisma.activityLog.findFirst({ where: { bookingId: id, action: "CUSTOMER_CONFIRMED_PROFESSIONAL_ARRIVAL" } });
     expect({ by: log?.userId, forPartner: log?.providerId }).toEqual({ by: ctx.customerA.id, forPartner: ctx.providerId });
-    // The request's own coordinates are still checked: the confirmation vouches for presence, not for a claim made from elsewhere.
+    /**
+     * A phone that reports a WRONG position is the same broken device as one that reports none.
+     * Refusing it after the customer vouched protected nothing (the same request with no
+     * coordinates was accepted) and stranded the honest partner whose GPS had drifted. The
+     * customer's word decides; the wrong reading is not written down, and no fake-arrival signal
+     * is raised against a partner the customer says is there.
+     */
     const other = await acceptedBooking();
     await post(`/api/bookings/${other}/confirm-arrival`, bearer(ctx.customerA), {});
-    expect((await post(`/api/bookings/${other}/arrived`, partner(), FAR)).json.code).toBe("OUTSIDE_SERVICE_AREA");
+    expect((await post(`/api/bookings/${other}/arrived`, partner(), FAR)).status).toBe(200);
+    const stamp = await prisma.jobEvidence.findFirst({ where: { bookingId: other, stage: "ARRIVAL" }, select: { latitude: true, longitude: true } });
+    expect(stamp).toEqual({ latitude: null, longitude: null });
+    // Without anyone vouching, the same claim is refused as before.
+    const alone = await acceptedBooking();
+    expect((await post(`/api/bookings/${alone}/arrived`, partner(), FAR)).json.code).toBe("OUTSIDE_SERVICE_AREA");
   });
 });
 
@@ -359,6 +370,38 @@ describe.serial("an admin can waive the position check for one booking, with a r
       expect(r.json.code).toBe("LOCATION_UNCONFIRMED");
     } finally {
       await cleanupAdversarialFixtures(`${RUN}-b`);
+    }
+  }, 120_000);
+});
+
+/**
+ * An arrival belongs to one partner and one appointment. It used to survive both a reassignment and
+ * a reschedule: the next partner inherited the first one's arrival (and its elapsed wait, and the
+ * customer's verified start PIN), and an arrival on Monday stood for the visit moved to Friday.
+ */
+describe.serial("an arrival does not outlive the partner or the appointment it was for", () => {
+  test("moving the appointment clears the recorded arrival", async () => {
+    expect(dbOk).toBe(true);
+    const { adminBookingOperationsService } = await import("../services/admin-booking-operations.service");
+    const id = await acceptedBooking();
+    await prisma.booking.update({ where: { id }, data: { status: "EN_ROUTE", arrivedAt: new Date() } });
+    hours += 4;
+    await adminBookingOperationsService.rescheduleBooking(id, ctx.superAdmin.id, futureSlot(hours).toISOString(), "Customer asked for a later day");
+    expect(await arrivedAt(id)).toBeNull();
+  });
+
+  test("handing the job to another partner clears the first partner's arrival and the PIN given to them", async () => {
+    expect(dbOk).toBe(true);
+    const { adminBookingOperationsService } = await import("../services/admin-booking-operations.service");
+    const next = await seedAdversarialFixtures(`${RUN}-c`);
+    try {
+      const id = await acceptedBooking();
+      await prisma.booking.update({ where: { id }, data: { status: "EN_ROUTE", arrivedAt: new Date(), startOtpVerifiedAt: new Date() } });
+      await adminBookingOperationsService.reassignProvider(id, ctx.superAdmin.id, next.providerId, "First partner's vehicle broke down", undefined, false, { reason: "Test: emergency reassignment to the only other partner", acknowledgeGate: true } as never);
+      const row = await prisma.booking.findUniqueOrThrow({ where: { id }, select: { providerId: true, arrivedAt: true, startOtpVerifiedAt: true } });
+      expect(row).toEqual({ providerId: next.providerId, arrivedAt: null, startOtpVerifiedAt: null });
+    } finally {
+      await cleanupAdversarialFixtures(`${RUN}-c`);
     }
   }, 120_000);
 });

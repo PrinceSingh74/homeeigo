@@ -14,7 +14,7 @@ import "../src/load-env";
 import { writeFileSync } from "node:fs";
 import prisma from "../src/lib/prisma";
 import { catalogService } from "../src/services/catalog.service";
-import { cleanupAdversarialFixtures, futureSlot, seedAdversarialFixtures } from "../src/__tests__/helpers/adversarial-fixtures";
+import { cleanupAdversarialFixtures, futureSlot, payWithRealWallet, seedAdversarialFixtures } from "../src/__tests__/helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "../src/__tests__/helpers/isolated-test-db";
 import { createBookingWithQuote } from "../src/__tests__/helpers/quote-token";
 
@@ -90,7 +90,10 @@ const booked = await createBookingWithQuote(ctx.customerA.id, {
   description: "Gate code 4421, dog at home",
 });
 if (!("booking" in booked) || !booked.booking) throw new Error(`booking: ${JSON.stringify(booked)}`);
-await prisma.booking.update({ where: { id: booked.booking.id }, data: { providerId: ctx.providerId, status: "ACCEPTED", paymentStatus: "SUCCESS" } });
+// Paid for real through the wallet (a hand-set paymentStatus leaves nothing captured, and anything
+// that depends on what was paid — a no-show fee, a refund — would then read ₹0).
+await payWithRealWallet(booked.booking.id, ctx.customerA.id);
+await prisma.booking.update({ where: { id: booked.booking.id }, data: { providerId: ctx.providerId, status: "ACCEPTED" } });
 
 // Give the audit writes (fire-and-forget) a moment to land before the process exits.
 await new Promise((resolve) => setTimeout(resolve, 1500));

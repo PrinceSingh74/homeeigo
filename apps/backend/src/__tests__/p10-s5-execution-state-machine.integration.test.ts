@@ -17,6 +17,7 @@ import { trackingService } from "../services/tracking.service";
 import { PAYMENT_GATE_OVERRIDE_ACTION, PAYMENT_GATE_REASON } from "../services/booking-payment-gate";
 import { cleanupAdversarialFixtures, dbReachable, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
+import { placeAtDoor } from "./helpers/no-show-fixture";
 
 const RUN = `p10s5-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
@@ -227,6 +228,8 @@ describe.serial("concurrent transitions are deterministic", () => {
   test("ten simultaneous no-show reports from both sides: exactly one wins, once", async () => {
     if (!dbOk) return;
     const id = await seedBooking({ status: BookingStatus.EN_ROUTE, arrivedMinutesAgo: 30 });
+    // A no-show is counted from the booked time: the appointment has begun.
+    await placeAtDoor(id, ctx.providerId);
     const partner = { userId: ctx.vendorUserId, providerId: ctx.providerId };
     const customer = { userId: ctx.customerA.id };
     const results = await Promise.all([

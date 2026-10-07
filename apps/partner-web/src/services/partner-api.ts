@@ -18,6 +18,7 @@ import type {
   ProviderSkillRow,
   ServiceReadiness,
   JobActionResult,
+  NoShowReportResult,
   RequirementGateResult,
   JobChatList,
   JobEvidenceItem,
@@ -750,6 +751,17 @@ export const partnerApi = {
     apiRequest<ApiResponse<JobActionResult>>(`/api/bookings/${bookingId}/actions`, {
       auth: true,
     }).then((r) => r.data!),
+
+  /**
+   * §52 — the partner waited at the door and nobody came. The server decides whether the fee applies
+   * (see `noShow` on the actions answer); `message` and `feeNote` are its words.
+   */
+  reportCustomerNoShow: (bookingId: string) =>
+    apiRequest<ApiResponse<Omit<NoShowReportResult, "message">>>(`/api/bookings/${bookingId}/no-show`, {
+      method: "POST",
+      auth: true,
+      body: {},
+    }).then((r): NoShowReportResult => ({ ...r.data!, message: r.message ?? "" })),
 
   listEvidence: (bookingId: string) =>
     apiRequest<ApiResponse<{ evidence: JobEvidenceItem[] }>>(

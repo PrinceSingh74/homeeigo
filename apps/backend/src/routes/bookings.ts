@@ -8,6 +8,13 @@ import { jobEvidenceService } from "../services/job-evidence.service";
 import { evidenceRefusal, evidenceRefusalFromError, parseEvidencePhotos, type EvidenceRefusalResponse } from "../lib/job-evidence-media";
 
 /** What a partner is told when the server cannot place them at the job (arrival and start). */
+/** Why no fee was taken on a partner's no-show report: what happened, and what makes the next one chargeable. */
+const NO_SHOW_FEE_NOTES = {
+  NO_DOOR_PHOTO: "No fee was taken: there was no photo at the door on record. Next time, after you arrive and with location on, add a photo at the door before you report.",
+  ARRIVAL_VOUCHED: "No fee was taken: your arrival was confirmed by the customer or by support, not by your phone's location.",
+  NOT_AT_ADDRESS: "No fee was taken: the report was not made from the address. A no-show is reported from the door, with location on.",
+  CUSTOMER_PRESENT: "No fee was taken: the customer had given their start PIN, so they were there.",
+} as const;
 const POSITION_MESSAGES = {
   LOCATION_REQUIRED: "Your phone did not give a location. Turn location on and try again. If it cannot get one, ask the customer to confirm in their app that you are at the door, or contact support.",
   LOCATION_UNCONFIRMED: "We could not confirm your position. Keep the app open with location on for a moment and try again. If your phone cannot get a location, ask the customer to confirm your arrival in their app, or contact support.",
@@ -788,6 +795,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         NO_ARRIVAL_EVIDENCE: "Mark your arrival first — a no-show can only be reported from the door",
         GRACE_NOT_ELAPSED: `Wait ${NO_SHOW_POLICY.graceMinutes} minutes from arrival before reporting a no-show`,
         ARRIVAL_IN_FUTURE: "The recorded arrival time is in the future — contact support",
+        BEFORE_APPOINTMENT: `The booked time has not come yet. A no-show can be reported ${NO_SHOW_POLICY.graceMinutes} minutes after the booked time`,
       };
       return {
         success: false,
@@ -804,9 +812,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         status: "customer_no_show",
         feeAmount: result.feeAmount,
         // Why no fee was taken, when none was: the report had no photo at the door behind it.
-        ...(result.feeWithheld ? { feeWithheld: result.feeWithheld, feeNote: result.feeWithheld === "ARRIVAL_VOUCHED"
-          ? "No fee was taken: your arrival was confirmed by the customer or by support, not by your phone's location. Support can review this one."
-          : "No fee was taken: after you arrive, with location on, add a photo at the door so a no-show can be charged. Support can review this one." } : {}),
+        ...(result.feeWithheld ? { feeWithheld: result.feeWithheld, feeNote: NO_SHOW_FEE_NOTES[result.feeWithheld] } : {}),
       },
     };
   })
@@ -1132,6 +1138,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         ],
       },
       select: {
+        providerId: true,
         status: true,
         enRouteAt: true,
         arrivedAt: true,
@@ -1145,6 +1152,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
       set.status = 404;
       return { success: false, error: "Booking not found", code: "NOT_FOUND" };
     }
+    const { providerId: assignedProviderId, ...jobFields } = booking;
     // §6/§9: the START requirement gate and the safety gate are the server's to know; the client policy
     // mirror cannot compute them. The payment exemption is the same one start/accept apply.
     const [requirementGate, safetyGate, paymentExempt] = await Promise.all([
@@ -1154,8 +1162,18 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         ? Promise.resolve(false)
         : Promise.all([hasAuditedPaymentGateOverride(params.id), isNoPaymentFollowUp(params.id)]).then(([o, f]) => o || f),
     ]);
-    const actions = getAvailableJobActions({ ...booking, requirementGate, safetyGate, paymentExempt });
-    return { success: true, data: { axis: "JOB" as const, jobState: actions.stage, ...actions, requirementGate, safetyGate, paymentExempt } };
+    const actions = getAvailableJobActions({ ...jobFields, requirementGate, safetyGate, paymentExempt });
+    /**
+     * §52 — what a no-show report would do, told BEFORE it is sent: whether the fee applies and what
+     * is missing if it does not. Only while the report is on offer (at the door, not started), and
+     * only to the partner holding the job — this route also answers the booking's customer, who is
+     * not told what the partner's report would cost them. The decision is the report's own.
+     */
+    const noShow =
+      actions.availableActions.includes("REPORT_NO_SHOW") && auth.providerId && assignedProviderId === auth.providerId
+        ? await bookingNoShowService.previewCustomerNoShow(params.id, { userId: auth.userId, providerId: auth.providerId })
+        : null;
+    return { success: true, data: { axis: "JOB" as const, jobState: actions.stage, ...actions, requirementGate, safetyGate, paymentExempt, ...(noShow ? { noShow } : {}) } };
   })
   /* ------------------------------------------------------------------ */
   /* Phase 10 §10 — quality verdict + customer confirmation             */

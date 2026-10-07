@@ -63,6 +63,25 @@ const version = async () => (await prisma.service.findUniqueOrThrow({ where: { i
 const save = (steps: unknown[]) =>
   version().then((v) => call("PUT", `/api/admin/services/${ctx.serviceId}`, { catalogConfig: { ...CONFIG, requirements: REQUIREMENTS(), execution: { steps } }, expectedVersion: v, changeReason: "§7 test" }, admin()));
 
+/**
+ * A change a live service does not take as a direct edit (it removes a mandatory step its bookings
+ * are made under), made the governed way: pause with a reason, edit, a second admin approves the
+ * result, publish again.
+ */
+async function whilePaused(edit: () => Promise<Res>): Promise<Res> {
+  const svc = `/api/admin/services/${ctx.serviceId}`;
+  const ok = (label: string, r: Res) => {
+    if (r.status !== 200) throw new Error(`${label}: ${r.status} ${JSON.stringify(r.json)}`);
+  };
+  ok("pause", await call("POST", `${svc}/lifecycle`, { to: "PAUSED", reason: "Changing how this service is carried out" }, admin()));
+  const edited = await edit();
+  // The approver may not be the last editor; the governance suite's `liveWith` names the editor the same way.
+  await prisma.service.update({ where: { id: ctx.serviceId }, data: { updatedBy: ctx.supportAdmin.id } });
+  ok("approve", await call("POST", `${svc}/approve`, {}, admin()));
+  ok("publish", await call("POST", `${svc}/lifecycle`, { to: "ACTIVE" }, admin()));
+  return edited;
+}
+
 async function book(variantId = "fabric"): Promise<string> {
   hoursAhead += 24;
   const r = await call("POST", "/api/bookings", { serviceId: ctx.serviceId, addressId: ctx.addressAId, variantId, quantity: 2, scheduledDate: futureSlot(hoursAhead).toISOString(), requirementAttestations: ["water"] }, customer());
@@ -263,7 +282,12 @@ describe.serial("exceptions, admin, immutability, concurrency", () => {
     if (!dbOk) return;
     const id = await book("fabric");
     const before = await prisma.$queryRaw<{ code: string; is_mandatory: boolean }[]>`SELECT code, is_mandatory FROM booking_execution_steps WHERE booking_id = ${id} ORDER BY step_number`;
-    expect((await save(PLAN.filter((s) => s.id !== "prep").map((s) => ({ ...s, dependsOn: undefined })))).status).toBe(200);
+    const withoutPrep = PLAN.filter((s) => s.id !== "prep").map((s) => ({ ...s, dependsOn: undefined }));
+    // Removing a mandatory step is not a direct edit to a live service; the plan really changes
+    // through pause → edit → approval → publish, which is the edit this booking must be immune to.
+    const direct = await save(withoutPrep);
+    expect({ status: direct.status, named: JSON.stringify(direct.json).includes("EXECUTION_PROTECTION_REMOVED") }).toEqual({ status: 400, named: true });
+    expect((await whilePaused(() => save(withoutPrep))).status).toBe(200);
     const after = await prisma.$queryRaw<{ code: string; is_mandatory: boolean }[]>`SELECT code, is_mandatory FROM booking_execution_steps WHERE booking_id = ${id} ORDER BY step_number`;
     expect(after).toEqual(before);
     const v = await call("GET", `/api/bookings/${id}/execution`, undefined, partner());

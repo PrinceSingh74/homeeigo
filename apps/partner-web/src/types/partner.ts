@@ -313,6 +313,38 @@ export type JobActionResult = {
   safetyGate?: { ok: boolean; blocking: number; message: string } | null;
   /** The server's payment exemption for this booking. */
   paymentExempt?: boolean;
+  /**
+   * §52: what a no-show report would do. Sent only while REPORT_NO_SHOW is on offer (at the door,
+   * not started) and only to the partner holding the job; absent otherwise.
+   */
+  noShow?: NoShowPreview;
+};
+
+/**
+ * Mirror of the backend's `NoShowPreview` (services/booking-no-show.service.ts), field for field —
+ * `tests/no-show.test.ts` compares the two. It never carries an amount; `message` is the server's
+ * sentence and the only one the page shows about fees.
+ */
+export type NoShowPreview = {
+  canReport: boolean;
+  waitedMinutes: number | null;
+  graceMinutes: number;
+  minutesLeft: number | null;
+  feeWillApply: boolean;
+  feePercent: number;
+  /** NOT_PREPAID: nothing was paid in advance, so there is no fee to take (no photo is asked for). */
+  reason: "NO_DOOR_PHOTO" | "ARRIVAL_VOUCHED" | "NOT_AT_ADDRESS" | "CUSTOMER_PRESENT" | "NOT_PREPAID" | null;
+  hasDoorPhoto: boolean;
+  message: string;
+};
+
+/** `POST /api/bookings/:id/no-show` → the response's `message` plus its `data` block. */
+export type NoShowReportResult = {
+  message: string;
+  status: string;
+  feeAmount: number;
+  feeWithheld?: "NO_DOOR_PHOTO" | "ARRIVAL_VOUCHED" | "NOT_AT_ADDRESS" | "CUSTOMER_PRESENT";
+  feeNote?: string;
 };
 
 /* ---- Phase 10 §6 — booking requirement state (mirror of backend BookingRequirementsView) ---- */

@@ -21,6 +21,7 @@ import { bookingService } from "../services/booking.service";
 import { bookingNoShowService } from "../services/booking-no-show.service";
 import { cleanupAdversarialFixtures, dbReachable, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
+import { placeAtDoor } from "./helpers/no-show-fixture";
 
 type Tx = Prisma.TransactionClient;
 const RUN = `races-${Date.now().toString(36)}`;
@@ -155,6 +156,8 @@ describe.serial("R-l — two opposing no-show reports, forced to interleave on t
   test("both reports pass their checks, both block on the row, exactly one closes the booking and settles; the other gets INVALID_STATUS", async () => {
     if (!dbOk) return;
     const { id } = await seedBooking({ status: BookingStatus.EN_ROUTE, arrivedAt: new Date(Date.now() - 30 * 60_000) });
+    // A no-show is counted from the booked time: the appointment has begun.
+    await placeAtDoor(id, ctx.providerId);
     const holder = holdLock((tx) => tx.$queryRaw`SELECT id FROM bookings WHERE id = ${id} FOR UPDATE`);
     await holder.acquired;
     const customerReport = bookingNoShowService.reportCustomerNoShow(id, { userId: ctx.vendorUserId, providerId: ctx.providerId });
