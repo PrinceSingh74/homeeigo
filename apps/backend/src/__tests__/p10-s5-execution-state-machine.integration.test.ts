@@ -230,6 +230,9 @@ describe.serial("concurrent transitions are deterministic", () => {
     const id = await seedBooking({ status: BookingStatus.EN_ROUTE, arrivedMinutesAgo: 30 });
     // A no-show is counted from the booked time: the appointment has begun.
     await placeAtDoor(id, ctx.providerId);
+    // The arrival was vouched for (not confirmed from a position), so the customer's own report is
+    // still open to them — against a position-confirmed arrival it would go to support instead.
+    await prisma.activityLog.create({ data: { bookingId: id, providerId: ctx.providerId, action: "PARTNER_ARRIVAL_VOUCHED", description: "Arrival recorded on the customer's confirmation: no position was confirmed" } });
     const partner = { userId: ctx.vendorUserId, providerId: ctx.providerId };
     const customer = { userId: ctx.customerA.id };
     const results = await Promise.all([

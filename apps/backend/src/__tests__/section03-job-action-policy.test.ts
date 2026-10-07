@@ -124,6 +124,17 @@ describe("§52 — the partner is offered the no-show only where the evidence ca
     expect(r.primaryAction).toBe("START_SERVICE");
   });
 
+  /** The wait is counted from the later of the arrival and the booked time: a customer is not late for an appointment that has not begun. */
+  test("a partner who came early waits from the booked time, and before it the label says so", () => {
+    const early = getAvailableJobActions({ status: "EN_ROUTE", arrivedAt: arrivedMinutesAgo(40), scheduledDate: arrivedMinutesAgo(5), paymentStatus: "SUCCESS", now: NOW });
+    expect(early.availableActions).toContain("REPORT_NO_SHOW");
+    expect(early.disabledReasons.REPORT_NO_SHOW).toBe(`Available in ${NO_SHOW_POLICY.graceMinutes - 5} min`);
+    const notYet = getAvailableJobActions({ status: "EN_ROUTE", arrivedAt: arrivedMinutesAgo(40), scheduledDate: new Date(NOW.getTime() + 30 * 60_000), paymentStatus: "SUCCESS", now: NOW });
+    expect(notYet.disabledReasons.REPORT_NO_SHOW).toBe("Available after the booked time");
+    const late = getAvailableJobActions({ status: "EN_ROUTE", arrivedAt: arrivedMinutesAgo(NO_SHOW_POLICY.graceMinutes), scheduledDate: arrivedMinutesAgo(120), paymentStatus: "SUCCESS", now: NOW });
+    expect(late.disabledReasons.REPORT_NO_SHOW).toBeUndefined();
+  });
+
   test("enabled once the grace period has actually been served", () => {
     const r = getAvailableJobActions({ status: "EN_ROUTE", arrivedAt: arrivedMinutesAgo(NO_SHOW_POLICY.graceMinutes), paymentStatus: "SUCCESS", now: NOW });
     expect(r.availableActions).toContain("REPORT_NO_SHOW");

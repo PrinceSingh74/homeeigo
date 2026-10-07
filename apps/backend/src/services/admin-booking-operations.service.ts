@@ -1,4 +1,5 @@
 import { evictProviderFromBooking } from "../lib/ws-eviction";
+import { isRealReason } from "../lib/service-domain";
 import { PaymentStatus, BookingStatus } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { ACTIVE_FULFILMENT_STATUSES } from "../lib/privacy-policy.engine";
@@ -338,7 +339,7 @@ export class AdminBookingOperationsService {
         where: { id: bookingId },
         // An arrival is for one appointment: it does not stand for the visit this one is moved to
         // (a customer no-show is judged from it).
-        data: { scheduledDate: scheduled, arrivedAt: null },
+        data: { scheduledDate: scheduled, arrivedAt: null, startOtpVerifiedAt: null },
       });
 
       // Same event as a customer reschedule, from the same kind of transaction — the actor differs,
@@ -537,7 +538,7 @@ export class AdminBookingOperationsService {
         where: { id: bookingId, status: { in: [...REASSIGNABLE_BOOKING_STATUSES] } },
         // The arrival and the start PIN belonged to the partner who held the job: the next one
         // arrives for themselves and is given the customer's PIN in person.
-        data: { providerId, status: BookingStatus.ASSIGNED, assignedAt: new Date(), arrivedAt: null, startOtpVerifiedAt: null },
+        data: { providerId, status: BookingStatus.ASSIGNED, assignedAt: new Date(), enRouteAt: null, arrivedAt: null, startOtpVerifiedAt: null },
       });
       if (moved.count === 0) throw new Error("BOOKING_NOT_REASSIGNABLE");
 
@@ -635,8 +636,9 @@ export class AdminBookingOperationsService {
     if (!booking) throw new Error("BOOKING_NOT_FOUND");
     if (!booking.providerId) throw new Error("NO_ASSIGNED_PROVIDER");
     if (!ACTIVE_FULFILMENT_STATUSES.has(String(booking.status))) throw new Error("INVALID_STATUS");
+    // The same test a declared reason passes on a service: real words that say how, not a length.
     const why = reason.trim();
-    if (why.length < 10) throw new Error("REASON_REQUIRED");
+    if (!isRealReason(why)) throw new Error("REASON_REQUIRED");
     // Written with the partner it vouches for, so it does not pass to whoever holds the job next.
     await prisma.activityLog.create({
       data: { bookingId, userId: adminId, providerId: booking.providerId, action: "ADMIN_BOOKING_POSITION_CHECK_WAIVED", description: why, ipAddress },

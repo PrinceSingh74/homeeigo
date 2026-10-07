@@ -349,11 +349,13 @@ describe.serial("an admin can waive the position check for one booking, with a r
     expect((await post(`/api/bookings/${other}/arrived`, partner(), JOB)).json.code).toBe("LOCATION_UNCONFIRMED");
   });
 
-  test("a reason of spaces is no reason", async () => {
+  test("a reason of spaces, repeated letters or a bare label is no reason", async () => {
     expect(dbOk).toBe(true);
     const id = await acceptedBooking();
-    const r = await post(`/api/admin/bookings/${id}/position-waiver`, bearer(ctx.superAdmin), { reason: "            " });
-    expect(r.status).toBeGreaterThanOrEqual(400);
+    for (const reason of ["            ", "aaaaaaaaaaaa", "1234567890", "not applicable"]) {
+      const r = await post(`/api/admin/bookings/${id}/position-waiver`, bearer(ctx.superAdmin), { reason });
+      expect({ reason, status: r.status }).toEqual({ reason, status: 400 });
+    }
     expect(await prisma.activityLog.count({ where: { bookingId: id, action: "ADMIN_BOOKING_POSITION_CHECK_WAIVED" } })).toBe(0);
   });
 
@@ -390,16 +392,79 @@ describe.serial("an arrival does not outlive the partner or the appointment it w
     expect(await arrivedAt(id)).toBeNull();
   });
 
+  test("the customer moving the appointment clears the arrival and the PIN given at the old one", async () => {
+    expect(dbOk).toBe(true);
+    const id = await acceptedBooking();
+    await prisma.booking.update({ where: { id }, data: { arrivedAt: new Date(), startOtpVerifiedAt: new Date() } });
+    hours += 4;
+    const res = await app.handle(
+      new Request(`http://localhost/api/bookings/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer(ctx.customerA)}` },
+        body: JSON.stringify({ scheduledDate: futureSlot(hours).toISOString() }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const row = await prisma.booking.findUniqueOrThrow({ where: { id }, select: { arrivedAt: true, startOtpVerifiedAt: true } });
+    expect(row).toEqual({ arrivedAt: null, startOtpVerifiedAt: null });
+  });
+
+  test("re-sending the same booked time is not a move: the arrival stands", async () => {
+    expect(dbOk).toBe(true);
+    const id = await acceptedBooking();
+    const at = new Date();
+    await prisma.booking.update({ where: { id }, data: { arrivedAt: at } });
+    const same = (await prisma.booking.findUniqueOrThrow({ where: { id }, select: { scheduledDate: true } })).scheduledDate;
+    await app.handle(
+      new Request(`http://localhost/api/bookings/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer(ctx.customerA)}` },
+        body: JSON.stringify({ scheduledDate: same.toISOString() }),
+      }),
+    );
+    expect((await arrivedAt(id))?.getTime()).toBe(at.getTime());
+  });
+
+  test("an admin moving the appointment clears the PIN given at the old one too", async () => {
+    expect(dbOk).toBe(true);
+    const { adminBookingOperationsService } = await import("../services/admin-booking-operations.service");
+    const id = await acceptedBooking();
+    await prisma.booking.update({ where: { id }, data: { arrivedAt: new Date(), startOtpVerifiedAt: new Date() } });
+    hours += 4;
+    await adminBookingOperationsService.rescheduleBooking(id, ctx.superAdmin.id, futureSlot(hours).toISOString(), "Customer asked for a later day");
+    const row = await prisma.booking.findUniqueOrThrow({ where: { id }, select: { arrivedAt: true, startOtpVerifiedAt: true } });
+    expect(row).toEqual({ arrivedAt: null, startOtpVerifiedAt: null });
+  });
+
+  test("a position the server confirms is not overridden by an exception: the arrival is confirmed, not vouched", async () => {
+    expect(dbOk).toBe(true);
+    const id = await acceptedBooking();
+    await serverFix(JOB);
+    await post(`/api/bookings/${id}/confirm-arrival`, bearer(ctx.customerA), {});
+    expect((await post(`/api/bookings/${id}/arrived`, partner(), JOB)).status).toBe(200);
+    expect(await prisma.activityLog.count({ where: { bookingId: id, action: "PARTNER_ARRIVAL_VOUCHED" } })).toBe(0);
+    const stamp = await prisma.jobEvidence.findFirst({ where: { bookingId: id, stage: "ARRIVAL" }, select: { latitude: true } });
+    expect(stamp?.latitude).toBeCloseTo(JOB.latitude, 6);
+    // With no position to confirm, the same exception is what the arrival stands on, and says so.
+    const blind = await acceptedBooking();
+    await serverFix(null);
+    await post(`/api/bookings/${blind}/confirm-arrival`, bearer(ctx.customerA), {});
+    expect((await post(`/api/bookings/${blind}/arrived`, partner(), { latitude: null, longitude: null })).status).toBe(200);
+    expect(await prisma.activityLog.count({ where: { bookingId: blind, action: "PARTNER_ARRIVAL_VOUCHED" } })).toBe(1);
+  });
+
   test("handing the job to another partner clears the first partner's arrival and the PIN given to them", async () => {
     expect(dbOk).toBe(true);
     const { adminBookingOperationsService } = await import("../services/admin-booking-operations.service");
     const next = await seedAdversarialFixtures(`${RUN}-c`);
     try {
       const id = await acceptedBooking();
-      await prisma.booking.update({ where: { id }, data: { status: "EN_ROUTE", arrivedAt: new Date(), startOtpVerifiedAt: new Date() } });
+      await prisma.booking.update({ where: { id }, data: { status: "EN_ROUTE", enRouteAt: new Date(), arrivedAt: new Date(), startOtpVerifiedAt: new Date() } });
       await adminBookingOperationsService.reassignProvider(id, ctx.superAdmin.id, next.providerId, "First partner's vehicle broke down", undefined, false, { reason: "Test: emergency reassignment to the only other partner", acknowledgeGate: true } as never);
       const row = await prisma.booking.findUniqueOrThrow({ where: { id }, select: { providerId: true, arrivedAt: true, startOtpVerifiedAt: true } });
       expect(row).toEqual({ providerId: next.providerId, arrivedAt: null, startOtpVerifiedAt: null });
+      // The first partner's departure is not the next one's either.
+      expect((await prisma.booking.findUniqueOrThrow({ where: { id }, select: { enRouteAt: true } })).enRouteAt).toBeNull();
     } finally {
       await cleanupAdversarialFixtures(`${RUN}-c`);
     }

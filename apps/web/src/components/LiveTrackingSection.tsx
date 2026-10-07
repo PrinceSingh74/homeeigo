@@ -22,6 +22,7 @@ import { LiveTrackingMapView } from "@/components/LiveTrackingMapView";
 import type { LiveTelemetry, RouteInfo } from "@/components/tracking/LiveTrackingMap";
 import { toJourneyStage, type JourneyStage } from "@/components/tracking/BookingJourney";
 import { ServiceStartPin } from "@/components/tracking/ServiceStartPin";
+import { ArrivalConfirmation } from "@/components/booking/ArrivalConfirmation";
 import { PartnerControlledCallButton } from "@/components/booking/PartnerControlledCallButton";
 import { ButtonLink } from "@/components/buttons/ButtonLink";
 import { HOMIGO_RIDER_IMAGE } from "@/lib/demo-tracking-booking";
@@ -328,6 +329,16 @@ export function LiveTrackingSection() {
                       showWaiting={stage === "ARRIVED"}
                     />
                   )}
+
+                  {/* The arrival exception, where the customer is watching the visit: the same quiet,
+                      explained control as in the booking detail, deciding for itself whether to appear. */}
+                  <ArrivalConfirmation
+                    bookingId={activeBooking!.id}
+                    backendStatus={detail.data?.status?.toLowerCase()}
+                    hasProfessional={Boolean(detail.data?.provider)}
+                    professionalId={detail.data?.provider?.id ?? null}
+                    arrivedAt={detail.data?.arrivedAt}
+                  />
 
                   {/* Partner card — real name + real service */}
                   <div className="flex min-w-0 items-center gap-2.5 rounded-2xl bg-canvas/70 p-2.5 ring-1 ring-line sm:gap-3 sm:p-3 dark:bg-white/[0.04]">

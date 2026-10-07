@@ -525,16 +525,16 @@ export const adminApiRoutes = new Elysia({ prefix: "/api/admin" })
       return { success: true, data: result };
     } catch (err) {
       const code = err instanceof Error ? err.message : "POSITION_WAIVER_FAILED";
-      set.status = code === "BOOKING_NOT_FOUND" ? 404 : 409;
+      set.status = code === "BOOKING_NOT_FOUND" ? 404 : code === "REASON_REQUIRED" ? 400 : 409;
       const messages: Record<string, string> = {
         BOOKING_NOT_FOUND: "Booking not found",
         NO_ASSIGNED_PROVIDER: "No professional holds this booking",
         INVALID_STATUS: "The position check applies only while a professional holds an active job",
-        REASON_REQUIRED: "Say how the visit was confirmed (at least 10 characters).",
+        REASON_REQUIRED: "Say how the visit was confirmed, in at least three words (for example: customer confirmed by phone).",
       };
       return { success: false, error: messages[code] ?? "The position check could not be waived", code };
     }
-  }, { body: t.Object({ reason: t.String({ minLength: 10, maxLength: 500 }) }) })
+  }, { body: t.Object({ reason: t.String({ maxLength: 500 }) }) })
   .post("/bookings/:id/repair", async ({ params, body, requireAuth, request, set }) => {
     try {
       const auth = requireAuth();

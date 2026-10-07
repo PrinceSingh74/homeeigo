@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { PaymentStatus, GiftCardStatus } from "@prisma/client";
-import { CREDITED_EARNING_WHERE } from "../lib/earning-settlement";
+import { CREDITED_EARNING_WHERE, earningInvoiceNumber, partnerEarningLines, partnerJobEarningView, type PartnerJobEarning } from "../lib/earning-settlement";
 
 /**
  * Partner-side ESTIMATE shown on the partner tax report (applied to net earnings). It is NOT the
@@ -121,7 +121,7 @@ export class InvoiceReportService {
     return {
       earnings: earnings.map((e) => ({
         id: e.id,
-        invoiceNumber: `ERN-${e.id.slice(-8).toUpperCase()}`,
+        invoiceNumber: earningInvoiceNumber(e.id),
         service: (e.bookingId && svcByBooking.get(e.bookingId)) || "Service",
         gross: e.grossAmount,
         commission: e.commission,
@@ -164,6 +164,20 @@ export class InvoiceReportService {
     };
   }
 
+  /**
+   * Phase 13 P2 — what THIS job paid the partner, for the job page. The row exists only once the
+   * job is completed and paid out (`booking.service.ts` writes it in the completion transaction);
+   * before that there is nothing to show and nothing is estimated. `null` = no earning recorded for
+   * this booking and partner (not completed, a waived rework / revisit, or not this partner's job).
+   */
+  async partnerBookingEarning(providerId: string, bookingId: string): Promise<PartnerJobEarning | null> {
+    const e = await prisma.earning.findFirst({
+      where: { bookingId, providerId },
+      select: { id: true, bookingId: true, grossAmount: true, commission: true, netEarning: true, paymentStatus: true, createdAt: true },
+    });
+    return e ? partnerJobEarningView(e) : null;
+  }
+
   /** Printable HTML invoice for a partner earning. */
   async partnerEarningHtml(providerId: string, earningId: string): Promise<string | null> {
     const e = await prisma.earning.findFirst({
@@ -182,26 +196,23 @@ export class InvoiceReportService {
      * persisted on this row — `bonus`/`deduction` themselves are not columns on `Earning` and go
      * only to the financial ledger. Gross minus commission has therefore never equalled the shown
      * net whenever either was non-zero, with nothing on the invoice explaining the gap — exactly
-     * the "why doesn't this add up" a partner (or anyone checking the math) would hit. Recomputing
-     * the adjustment from the three values that *are* stored, rather than adding new columns,
-     * keeps this correct for every historical row without a migration or backfill: it is derived
-     * from numbers already guaranteed consistent with each other by construction.
+     * the "why doesn't this add up" a partner (or anyone checking the math) would hit. The
+     * adjustment is derived from the three values that *are* stored (`partnerEarningLines`, which
+     * the job page's earnings line reads too), so it is correct for every historical row without a
+     * migration or backfill.
      */
-    const adjustment = Math.round((e.netEarning - (e.grossAmount - e.commission)) * 100) / 100;
-    const adjustmentRow =
-      adjustment !== 0
-        ? `<div class="row"><span>${adjustment > 0 ? "Performance bonus" : "Adjustment"}</span><span>${adjustment > 0 ? "+ " : "− "}${inr(Math.abs(adjustment))}</span></div>`
-        : "";
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Earning ERN-${e.id.slice(-8).toUpperCase()}</title>
+    const rows = partnerEarningLines(e)
+      .filter((l) => l.key !== "net")
+      .map((l) => `<div class="row"><span>${l.label}</span><span>${l.kind === "debit" ? "− " : l.kind === "credit" ? "+ " : ""}${inr(l.amount)}</span></div>`)
+      .join("\n");
+    return `<!doctype html><html><head><meta charset="utf-8"><title>Earning ${earningInvoiceNumber(e.id)}</title>
 <style>body{font-family:system-ui,sans-serif;max-width:640px;margin:24px auto;color:#1f2937;padding:0 16px}
 .h{display:flex;justify-content:space-between;border-bottom:2px solid #7C3AED;padding-bottom:12px}
 .brand{font-size:24px;font-weight:800;color:#7C3AED}.row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee}
 .total{font-weight:800;font-size:18px;border-top:2px solid #1f2937;margin-top:8px}@media print{.noprint{display:none}}</style></head>
-<body><div class="h"><div class="brand">HOMEEIGO</div><div><b>Earning invoice</b><br>ERN-${e.id.slice(-8).toUpperCase()}<br>${new Date(e.createdAt).toLocaleDateString("en-IN")}</div></div>
+<body><div class="h"><div class="brand">HOMEEIGO</div><div><b>Earning invoice</b><br>${earningInvoiceNumber(e.id)}<br>${new Date(e.createdAt).toLocaleDateString("en-IN")}</div></div>
 <p>Partner: <b>${name}</b></p><p>Service: <b>${serviceName}</b></p>
-<div class="row"><span>Gross amount</span><span>${inr(e.grossAmount)}</span></div>
-<div class="row"><span>Platform commission</span><span>− ${inr(e.commission)}</span></div>
-${adjustmentRow}
+${rows}
 <div class="row total"><span>Net earning</span><span>${inr(e.netEarning)}</span></div>
 <p class="noprint" style="text-align:center;margin-top:24px"><button onclick="print()" style="background:#7C3AED;color:#fff;border:0;padding:10px 20px;border-radius:8px;cursor:pointer">Download / Print PDF</button></p>
 </body></html>`;

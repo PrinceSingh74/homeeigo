@@ -492,6 +492,61 @@ describe.serial("POST /:id/provider-no-show — the customer's side", () => {
     expect(await statusOf(id)).toBe("PROVIDER_NO_SHOW");
   });
 
+  /**
+   * Sixth re-audit: this call had no gate but the status, so a customer could take a full refund
+   * days before the appointment, or after giving the professional their start PIN.
+   */
+  test("the professional is not a no-show before the appointment, nor until the wait after it has passed", async () => {
+    if (!dbOk) return;
+    const early = await bookingAtDoor({ arrivedMinutesAgo: null, appointmentStarted: false });
+    const before = await post(`${early.id}/provider-no-show`, bearer(ctx.customerA));
+    expect({ status: before.status, code: before.json.code }).toEqual({ status: 400, code: "BEFORE_APPOINTMENT" });
+    expect(String(before.json.error).toLowerCase()).toContain("booked time");
+    const just = await bookingAtDoor({ arrivedMinutesAgo: null });
+    await prisma.booking.update({ where: { id: just.id }, data: { scheduledDate: new Date(Date.now() - 5 * 60_000) } });
+    const soon = await post(`${just.id}/provider-no-show`, bearer(ctx.customerA));
+    expect({ status: soon.status, code: soon.json.code }).toEqual({ status: 400, code: "GRACE_NOT_ELAPSED" });
+    expect(await statusOf(just.id)).toBe("EN_ROUTE");
+  });
+
+  /**
+   * Seventh re-audit: with the professional's arrival on record (confirmed from a position, not
+   * vouched for), "nobody came" is a disagreement between two parties, not a fact. It is not settled
+   * with a full refund on the customer's tap any more than a fee is taken on the partner's: it goes
+   * to a person. With no arrival on record the customer is believed, as before.
+   */
+  test("with the professional's arrival on record, the customer's report is not an automatic refund: it goes to support", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40 });
+    const r = await post(`${id}/provider-no-show`, bearer(ctx.customerA));
+    expect({ status: r.status, code: r.json.code }).toEqual({ status: 409, code: "ARRIVAL_ON_RECORD" });
+    expect(String(r.json.error).toLowerCase()).toContain("support");
+    expect(await statusOf(id)).toBe("EN_ROUTE");
+    // An admin who has looked into it can still record it.
+    const admin = await bookingNoShowService.reportProviderNoShow(id, { userId: ctx.superAdmin.id, isAdmin: true, reason: "Checked the call log: the professional left before the customer came down" });
+    expect("ok" in admin && admin.ok).toBe(true);
+  });
+
+  test("a door photo from before the appointment (an arrival re-stamped after the visit was moved) is not a door photo", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40, doorPhoto: false });
+    // The arrival and its photo are from two days before the booked time; the appointment began an hour ago.
+    const longAgo = new Date(Date.now() - 2 * 86_400_000);
+    await prisma.booking.update({ where: { id }, data: { arrivedAt: longAgo, scheduledDate: new Date(Date.now() - 60 * 60_000) } });
+    await prisma.jobEvidence.create({ data: { bookingId: id, providerId: ctx.providerId, stage: "ARRIVAL", mediaStorageKey: storedEvidenceKey(id, ctx.providerId, "ARRIVAL"), capturedAt: new Date(longAgo.getTime() + 60_000), ...(await jobPosition()) } });
+    const r = await post(`${id}/no-show`, partnerToken);
+    expect({ status: r.status, fee: r.json.data?.feeAmount, withheld: r.json.data?.feeWithheld }).toEqual({ status: 200, fee: 0, withheld: "NO_DOOR_PHOTO" });
+  });
+
+  test("a customer who gave the start PIN cannot then say nobody came", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40 });
+    await prisma.booking.update({ where: { id }, data: { startOtpVerifiedAt: new Date() } });
+    const r = await post(`${id}/provider-no-show`, bearer(ctx.customerA));
+    expect({ status: r.status, code: r.json.code }).toEqual({ status: 400, code: "PROFESSIONAL_PRESENT" });
+    expect(await statusOf(id)).toBe("EN_ROUTE");
+  });
+
   test("a booking that is already a provider no-show cannot be re-reported", async () => {
     if (!dbOk) return;
     const { id } = await bookingAtDoor({ arrivedMinutesAgo: null });
@@ -504,7 +559,8 @@ describe.serial("POST /:id/provider-no-show — the customer's side", () => {
 
   test("and the partner still cannot convert it into the customer's fault afterwards", async () => {
     if (!dbOk) return;
-    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40 });
+    // Nobody arrived: the customer's report stands on its own.
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: null });
     expect((await post(`${id}/provider-no-show`, bearer(ctx.customerA))).status).toBe(200);
     const flip = await post(`${id}/no-show`, partnerToken);
     expect(flip.status).toBe(400);

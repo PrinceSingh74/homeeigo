@@ -1,5 +1,6 @@
 import { Clock, Layers, ListChecks } from "lucide-react";
-import type { PartnerJobBrief } from "@/types/partner";
+import { jobSelectionRows } from "@/lib/job-selection";
+import type { PartnerBooking, PartnerJobBrief } from "@/types/partner";
 
 function minutes(n: number): string {
   if (n < 60) return `${n} min`;
@@ -12,13 +13,37 @@ function minutes(n: number): string {
  * What the customer booked, from the booking's immutable selection snapshot (backend
  * partnerJobBrief). Only execution facts — no prices, no catalogue configuration.
  */
-export function JobBrief({ job, compact = false }: { job: PartnerJobBrief | undefined; compact?: boolean }) {
+export function JobBrief({
+  job,
+  compact = false,
+  booking,
+}: {
+  job: PartnerJobBrief | undefined;
+  compact?: boolean;
+  /** With the booking, the full selection summary (service, option, quantity, add-ons, slot) is listed row by row. */
+  booking?: Pick<PartnerBooking, "service" | "scheduledDate" | "job">;
+}) {
+  // One reader of the frozen selection for both layouts (lib/job-selection).
+  const rows = jobSelectionRows(booking ?? { scheduledDate: "", job });
+  if (booking && !compact) {
+    if (!rows.length) return null;
+    return (
+      <dl className="grid gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[auto_1fr]" data-testid="job-brief">
+        {rows.map((r) => (
+          <div key={r.key} className="contents">
+            <dt className="text-partner-muted">{r.label}</dt>
+            <dd className="font-medium text-partner-text" data-testid={`job-brief-${r.key}`}>
+              {r.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    );
+  }
   if (!job) return null;
-  const selection = [
-    job.variant,
-    job.unit ? `${job.quantity} ${job.unit}` : job.quantity > 1 ? `× ${job.quantity}` : null,
-    job.audience ? `for ${job.audience}` : null,
-  ].filter(Boolean);
+  const selection = rows
+    .filter((r) => r.key === "option" || r.key === "quantity" || r.key === "audience")
+    .map((r) => (r.key === "audience" ? `for ${r.value}` : r.value));
   const d = job.duration;
   const hasBreakdown = Boolean(d && (d.preparationMinutes > 0 || d.cleanupMinutes > 0 || d.addonMinutes > 0));
   if (!selection.length && !job.addons.length && !job.durationMinutes) return null;

@@ -20,6 +20,8 @@ type ConfirmDialogProps = {
   children?: React.ReactNode;
   /** Caller-side validation gate for the confirm button (e.g. amount out of range). */
   confirmDisabled?: boolean;
+  /** The server's refusal of the last attempt, in its own words. The dialog stays open on it. */
+  error?: string | null;
   onConfirm: (reason?: string) => void | Promise<void>;
   onClose: () => void;
 };
@@ -37,6 +39,7 @@ export function ConfirmDialog({
   isLoading = false,
   children,
   confirmDisabled = false,
+  error = null,
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
@@ -114,6 +117,11 @@ export function ConfirmDialog({
                   className="mt-1 w-full resize-none rounded-lg border border-[var(--color-biz-line)] bg-[var(--color-biz-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--color-biz-accent)] disabled:opacity-60"
                 />
               </div>
+            ) : null}
+            {error ? (
+              <p role="alert" data-testid="confirm-dialog-error" className="mt-2 text-sm text-red-400">
+                {error}
+              </p>
             ) : null}
           </div>
         </div>

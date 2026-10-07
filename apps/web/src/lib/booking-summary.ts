@@ -1,4 +1,18 @@
-import type { ServiceSelectionSnapshot } from "@/types/backend";
+import type { BookedSelection, ServiceSelectionSnapshot } from "@/types/backend";
+
+/**
+ * The line that names what a booking IS, from the server's own record of it (`selection` on
+ * GET /api/bookings/:id): the option, the quantity with its unit, and who it is for, in the words
+ * the server used. Null when there is nothing to add to the service name — one unit of a service
+ * with no options — or while the server has not answered.
+ */
+export function bookedSelectionLabel(selection: BookedSelection | null | undefined): string | null {
+  if (!selection) return null;
+  const quantity =
+    selection.unit ? `${selection.quantity} ${selection.unit}` : selection.quantity > 1 ? String(selection.quantity) : null;
+  const parts = [selection.variant, quantity, selection.audience].filter((p): p is string => Boolean(p && p.trim()));
+  return parts.length ? parts.join(" · ") : null;
+}
 
 export type BookingSummaryLine = {
   /**

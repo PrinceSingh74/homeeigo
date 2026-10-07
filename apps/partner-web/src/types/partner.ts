@@ -412,6 +412,30 @@ export type JobChatList = {
 
 export type PartnerBookingsResponse = Paginated<{ bookings: PartnerBooking[] }>;
 
+/* ---- Phase 13 P2 — the partner's earning for ONE job (mirror of backend lib/earning-settlement.ts) ----
+ * `GET /api/providers/me/bookings/:bookingId/earning`. The row exists only once the job completed and
+ * paid out; before that the server answers 404 `EARNING_NOT_FOUND` and nothing is estimated here.
+ * `lines` are the server's own labels and numbers (gross, commission, a derived "Performance bonus" /
+ * "Adjustment" when net ≠ gross − commission, net) — rendered verbatim, never recomputed.
+ */
+export type PartnerEarningLine = {
+  key: "gross" | "commission" | "adjustment" | "net";
+  label: string;
+  /** Always positive; `kind` says which way it moves. */
+  amount: number;
+  kind: "base" | "debit" | "credit" | "total";
+};
+export type PartnerJobEarning = {
+  earningId: string;
+  /** The same `ERN-…` number the invoices page lists. */
+  invoiceNumber: string;
+  bookingId: string;
+  settlement: "CREDITED" | "REVERSED";
+  earnedAt: string;
+  lines: PartnerEarningLine[];
+  net: number;
+};
+
 export type PartnerEarningsSummary = {
   period: string;
   totalJobs: number;

@@ -402,13 +402,36 @@ export type BackendBooking = {
   addons?: BookingAddon[];
   paymentStatus?: string;
   description?: string | null;
+  /**
+   * What was booked, from the booking's own frozen selection (GET /api/bookings/:id, customer
+   * payload). Absent on list payloads and on responses from older backends.
+   */
+  selection?: BookedSelection;
 };
 
 /** Catalog snapshot of a purchased add-on, stored on the booking at create time. */
 export type BookingAddon = {
   id: string;
   name: string;
+  /** The line total: unit price × quantity when more than one unit was taken. */
   price: number;
+  /** Present only when more than one unit was taken (older rows carry one unit and no field). */
+  quantity?: number;
+  unitPrice?: number;
+};
+
+/** Mirror of backend `customerSelectionSummary` (lib/customer-selection-summary.ts). */
+export type BookedSelection = {
+  /** The option's name as it was when booked, or null when the service has no options. */
+  variant: string | null;
+  /** Who the service is for, already worded by the server ("Women"), or null. */
+  audience: string | null;
+  quantity: number;
+  /** The quantity's unit as the service words it ("unit", "hour"), or null when not sold by quantity. */
+  unit: string | null;
+  addons: { name: string; quantity: number }[];
+  durationMinutes: number | null;
+  duration: { preparationMinutes: number; serviceMinutes: number; addonMinutes: number; cleanupMinutes: number; totalMinutes: number } | null;
 };
 
 export type BackendWalletTransaction = {

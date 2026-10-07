@@ -221,7 +221,8 @@ describe.serial("a partner's absence is never the customer's fault", () => {
 
   test("a provider no-show cannot then be turned into a customer no-show", async () => {
     if (!dbOk) return;
-    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40 });
+    // Nobody arrived: the customer's report stands on its own.
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: null });
     await bookingNoShowService.reportProviderNoShow(id, { userId: ctx.customerA.id });
     const r = await bookingNoShowService.reportCustomerNoShow(id, partner());
     expect("error" in r && r.error).toBe("INVALID_STATUS");
@@ -311,6 +312,41 @@ describe.serial("both parties are told, over the socket", () => {
 /**
  * Being charged half the price and told only "Refund processed" is not being told.
  */
+/**
+ * Fifth re-audit: the booking was closed, THEN the refund was started. A process that died between
+ * the two left a terminal booking with no refund and nothing to retry it. The close now commits the
+ * refund intent (refundStatus "pending", refundAmount) in the same transaction, as a cancellation
+ * does, and the stranded-refund sweep finishes it.
+ */
+describe.serial("a no-show's refund survives a crash between closing and paying", () => {
+  const walletOf = async () => Number((await prisma.user.findUniqueOrThrow({ where: { id: ctx.customerA.id }, select: { walletBalance: true } })).walletBalance);
+
+  test("a settled no-show leaves the refund recorded on the booking, not pending", async () => {
+    if (!dbOk) return;
+    const { id, amount } = await bookingAtDoor({ arrivedMinutesAgo: 40, doorPhoto: false });
+    const r = await bookingNoShowService.reportCustomerNoShow(id, { userId: ctx.vendorUserId, providerId: ctx.providerId });
+    expect("ok" in r && r.ok).toBe(true);
+    const row = await prisma.booking.findUniqueOrThrow({ where: { id }, select: { refundStatus: true, refundAmount: true } });
+    expect({ status: row.refundStatus, amount: Number(row.refundAmount) }).toEqual({ status: "processed", amount });
+  });
+
+  test("the state a crash leaves (closed, intent recorded, nothing paid) is finished by the sweep", async () => {
+    if (!dbOk) return;
+    const { bookingRefundService } = await import("../services/booking-refund.service");
+    for (const status of [BookingStatus.CUSTOMER_NO_SHOW, BookingStatus.PROVIDER_NO_SHOW]) {
+      const { id, amount } = await bookingAtDoor({ arrivedMinutesAgo: 40 });
+      // What `close()` commits before the refund starts — and then the process died.
+      await prisma.booking.update({ where: { id }, data: { status, cancelledAt: new Date(Date.now() - 10 * 60_000), refundStatus: "pending", refundAmount: amount } });
+      const before = await walletOf();
+      const swept = await bookingRefundService.recoverStrandedCancellationRefunds(50);
+      expect(swept.recovered).toBeGreaterThanOrEqual(1);
+      expect((await walletOf()) - before).toBeCloseTo(amount, 2);
+      const row = await prisma.booking.findUniqueOrThrow({ where: { id }, select: { refundStatus: true } });
+      expect(row.refundStatus).toBe("processed");
+    }
+  });
+});
+
 describe.serial("the customer is told WHY, not just that money moved", () => {
   async function awaitNotification(userId: string, bookingId: string, timeoutMs = 5_000) {
     const deadline = Date.now() + timeoutMs;

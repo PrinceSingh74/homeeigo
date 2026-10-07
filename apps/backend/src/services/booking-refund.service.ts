@@ -1008,7 +1008,7 @@ export class BookingRefundService {
       FROM bookings b
       WHERE b.refund_status = 'pending'
         AND b.payment_status::text = 'SUCCESS'
-        AND b.status::text IN ('CANCELLED_BY_USER', 'CANCELLED_BY_PROVIDER', 'REJECTED')
+        AND b.status::text IN ('CANCELLED_BY_USER', 'CANCELLED_BY_PROVIDER', 'REJECTED', 'CUSTOMER_NO_SHOW', 'PROVIDER_NO_SHOW')
         AND b.refund_amount > 0
         AND COALESCE(b.cancelled_at, b.updated_at) < ${cutoff}
         AND NOT EXISTS (SELECT 1 FROM refund_requests r WHERE r.idempotency_key = 'cancel-refund:' || b.id)

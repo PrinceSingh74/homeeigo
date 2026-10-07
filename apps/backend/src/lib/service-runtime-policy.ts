@@ -255,7 +255,7 @@ export function bookingFlowForProfile(profile: CapabilityProfile): string[] {
 export function customerMaterialsCopy(policy: ServiceCatalogConfig["materialPolicy"] | undefined): string | null {
   switch (policy) {
     case "CUSTOMER_PROVIDED":
-      return "You provide the materials listed for this service.";
+      return "You provide the materials for this service.";
     case "PROFESSIONAL_PROVIDED":
       return "The professional brings the materials.";
     case "PACKAGE_INCLUDED":
@@ -274,11 +274,11 @@ export function partnerMaterialsCopy(policy: ServiceCatalogConfig["materialPolic
     case "CUSTOMER_PROVIDED":
       return "Customer provides materials. Do not assume stock is on site.";
     case "PROFESSIONAL_PROVIDED":
-      return "Bring the materials listed for this job.";
+      return "Bring the materials this job needs.";
     case "PACKAGE_INCLUDED":
       return "Materials are included in the package — bring the standard kit.";
     case "MIXED":
-      return "Split responsibility: check the job notes before you leave.";
+      return "Some materials are the customer's. Bring the rest.";
     case "NOT_REQUIRED":
       return null;
     default:
@@ -289,7 +289,7 @@ export function partnerMaterialsCopy(policy: ServiceCatalogConfig["materialPolic
 export function customerEquipmentCopy(policy: ServiceCatalogConfig["equipmentPolicy"] | undefined): string | null {
   switch (policy) {
     case "CUSTOMER_PROVIDED":
-      return "Please have the listed equipment available at the address.";
+      return "Please have the equipment for this service available at the address.";
     case "PROFESSIONAL_PROVIDED":
       return "The professional brings the equipment.";
     case "PACKAGE_INCLUDED":
@@ -308,11 +308,11 @@ export function partnerEquipmentCopy(policy: ServiceCatalogConfig["equipmentPoli
     case "CUSTOMER_PROVIDED":
       return "Customer provides equipment. Confirm it is on site before you start.";
     case "PROFESSIONAL_PROVIDED":
-      return "Bring the equipment listed for this job.";
+      return "Bring the equipment this job needs.";
     case "PACKAGE_INCLUDED":
       return "Equipment is included — bring the standard kit.";
     case "MIXED":
-      return "Split equipment responsibility: check the job notes.";
+      return "Some equipment is the customer's. Bring the rest.";
     case "NOT_REQUIRED":
       return null;
     default:

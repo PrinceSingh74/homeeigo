@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { partnerJobBrief } from "../lib/service-domain";
+import { partnerJobEarningView } from "../lib/earning-settlement";
 
 const repo = join(import.meta.dir, "../../../..");
 const read = (rel: string) => readFileSync(join(repo, rel), "utf8");
@@ -39,6 +40,16 @@ describe("frontend mirrors of the service contract", () => {
       expect(web).toContain(`${k}:`);
       expect(mobile).toContain(`${k}:`);
     }
+  });
+
+  test("partner web declares every field of the per-job earning (Phase 13 P2)", () => {
+    const view = partnerJobEarningView({
+      id: "e1", bookingId: "b1", grossAmount: 100, commission: 20, netEarning: 80, paymentStatus: "CREDITED", createdAt: new Date(0),
+    });
+    const web = typeBlock(read("apps/partner-web/src/types/partner.ts"), "PartnerJobEarning");
+    for (const k of Object.keys(view)) expect(web).toContain(`${k}:`);
+    const line = typeBlock(read("apps/partner-web/src/types/partner.ts"), "PartnerEarningLine");
+    for (const k of Object.keys(view.lines[0]!)) expect(line).toContain(`${k}:`);
   });
 
   test("web resolve-selection mirror declares the fields the page reads", () => {

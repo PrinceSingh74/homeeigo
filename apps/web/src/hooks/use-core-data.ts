@@ -8,6 +8,7 @@ import {
 import { useEffect } from "react";
 import { coreApi, type BookingSelectionPayload } from "@/services/core/api";
 import { AuthApiError, getErrorMessage } from "@/lib/auth/errors";
+import { bookedSelectionLabel } from "@/lib/booking-summary";
 import { useAppStore } from "@/stores/app-store";
 import { useAuthStore } from "@/stores/auth-store";
 import type {
@@ -54,9 +55,9 @@ export function mapBackendBookingToSaved(b: BackendBooking): SavedBooking {
     serviceId: b.serviceId ?? "service",
     serviceTitle: b.serviceName ?? b.service?.name ?? "Service",
     serviceName: b.serviceName ?? b.service?.name ?? "Service",
-    // The customer booking payload carries no selection summary, so none is shown (never a tier
-    // nobody chose). A booking made on /book fills this from the server-priced selection.
-    packageName: "",
+    // The booking's own frozen selection (GET /api/bookings/:id carries `selection`), worded by the
+    // server; list payloads carry none, so nothing is shown for them (never a tier nobody chose).
+    packageName: bookedSelectionLabel(b.selection) ?? "",
     dateLabel: date.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
     timeLabel: date.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
     address: b.address?.fullAddress ?? "Selected address",
@@ -582,7 +583,8 @@ export function useReportProviderNoShowMutation() {
         "success",
       );
     },
-    onError: () => showToast("Could not report this. Please try again.", "error"),
+    // The server says why (too early, the PIN was given, an arrival is on record) and what to do instead.
+    onError: (error) => showToast(getErrorMessage(error), "error"),
   });
 }
 

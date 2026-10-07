@@ -43,6 +43,7 @@ import {
   updateBookingCustomerSchema,
 } from "../schemas/booking.schema";
 import { bookingPricingService } from "../services/booking-pricing.service";
+import { bookingSelectionSummaryService } from "../services/booking-selection-summary.service";
 import { customerPolicyService } from "../services/customer-policy.service";
 import { AGE_POLICY_MESSAGES, type AgeReasonCode } from "../lib/customer-policy";
 import { serviceAvailabilityService } from "../services/service-availability.service";
@@ -561,7 +562,10 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
       set.status = 404;
       return { success: false, error: "Booking not found", code: "NOT_FOUND" };
     }
-    return { success: true, data: { booking } };
+    // The customer reads back what they booked (option, quantity, add-on units) from the booking's
+    // frozen selection. The partner payload carries the same projection as `job`.
+    const selection = providerId ? null : await bookingSelectionSummaryService.forCustomer(params.id, userId);
+    return { success: true, data: { booking: selection ? { ...booking, selection } : booking } };
   })
   .put(
     "/:id",
@@ -793,7 +797,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         FORBIDDEN: "This booking is not assigned to you",
         INVALID_STATUS: "This booking is past the point where a no-show can be recorded",
         NO_ARRIVAL_EVIDENCE: "Mark your arrival first — a no-show can only be reported from the door",
-        GRACE_NOT_ELAPSED: `Wait ${NO_SHOW_POLICY.graceMinutes} minutes from arrival before reporting a no-show`,
+        GRACE_NOT_ELAPSED: `Wait ${NO_SHOW_POLICY.graceMinutes} minutes from your arrival (or from the booked time, if you came early) before reporting a no-show`,
         ARRIVAL_IN_FUTURE: "The recorded arrival time is in the future — contact support",
         BEFORE_APPOINTMENT: `The booked time has not come yet. A no-show can be reported ${NO_SHOW_POLICY.graceMinutes} minutes after the booked time`,
       };
@@ -828,13 +832,19 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
     const params = validate(idParamSchema, rawParams);
     const result = await bookingNoShowService.reportProviderNoShow(params.id, { userId });
     if ("error" in result) {
-      set.status = result.error === "NOT_FOUND" ? 404 : result.error === "FORBIDDEN" ? 403 : 400;
+      const disputed = "reason" in result && result.reason === "ARRIVAL_ON_RECORD";
+      set.status = result.error === "NOT_FOUND" ? 404 : result.error === "FORBIDDEN" ? 403 : disputed ? 409 : 400;
       const messages: Record<string, string> = {
         NOT_FOUND: "Booking not found",
         FORBIDDEN: "This is not your booking",
+        ARRIVAL_ON_RECORD: "Our records show the professional checked in at your address. If nobody came, please contact support and we will look into it and put it right.",
         INVALID_STATUS: "This booking is past the point where a no-show can be reported",
+        BEFORE_APPOINTMENT: "The booked time has not come yet. If you no longer need the visit, you can cancel the booking instead.",
+        GRACE_NOT_ELAPSED: `Please allow ${NO_SHOW_POLICY.graceMinutes} minutes after the booked time before reporting that nobody came.`,
+        PROFESSIONAL_PRESENT: "You have already given your start PIN to the professional. If something went wrong with the visit, please contact support.",
       };
-      return { success: false, error: messages[result.error] ?? "Unable to report a no-show", code: result.error };
+      const code = ("reason" in result && result.reason) || result.error;
+      return { success: false, error: messages[code] ?? "Unable to report a no-show", code };
     }
     return {
       success: true,
@@ -1142,6 +1152,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         status: true,
         enRouteAt: true,
         arrivedAt: true,
+        scheduledDate: true,
         startedAt: true,
         completedAt: true,
         paymentStatus: true,

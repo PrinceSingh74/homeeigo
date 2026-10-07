@@ -79,6 +79,8 @@ import {
   toYmdLocal,
 } from "@/lib/booking-datetime";
 import type { BackendService, ServiceSelectionSnapshot } from "@/types/backend";
+import { bookQuantityBounds, bookQuantityRule, bookVariants, clampQuantity, urlServiceState } from "@/lib/book-selection";
+import { useQuery } from "@tanstack/react-query";
 import { getErrorMessage } from "@/lib/auth/errors";
 import { coreApi } from "@/services/core/api";
 import { attemptFingerprint, attemptKeyFor, keepAttemptAfter, releaseAttempt, sessionAttemptStore } from "@/lib/booking-attempt";
@@ -203,14 +205,39 @@ function BookPageContent() {
   const retryUnseenCreate = useRef(false);
   const { data: addressesData, isLoading: addressesLoading } = useAddressesQuery();
   const { payForBooking } = useBookingPayment();
+  /**
+   * The service the link names. When it is not in the list this page loaded (a long catalogue, or a
+   * service that is not offered), the server is asked for it by id; the page then books THAT
+   * service or says it is not available — it never falls back to another one.
+   */
+  const urlServiceId = parseBookParams(searchParams).serviceId;
+  const listedServices = useMemo(() => servicesData?.services ?? [], [servicesData]);
+  const listReady = !servicesLoading && !servicesError && listedServices.length > 0;
+  const urlInList = !urlServiceId || listedServices.some((s) => s.id === urlServiceId || s.slug === urlServiceId);
+  const urlServiceQuery = useQuery({
+    queryKey: ["book", "service-by-id", urlServiceId],
+    queryFn: () => coreApi.services.details(urlServiceId!),
+    enabled: Boolean(urlServiceId) && listReady && !urlInList,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const urlService = urlServiceState({
+    urlId: urlServiceId,
+    listed: listedServices,
+    lookup: urlServiceQuery.data?.service ? "found" : urlServiceQuery.isError ? "failed" : urlServiceQuery.isFetching ? "loading" : "idle",
+  });
+  const allServices = useMemo(
+    () => (urlServiceQuery.data?.service && !urlInList ? [urlServiceQuery.data.service, ...listedServices] : listedServices),
+    [urlServiceQuery.data, urlInList, listedServices],
+  );
   const services: Service[] = useMemo(() => {
-    const incoming = servicesData?.services ?? [];
+    const incoming = allServices;
     // Never the built-in list: its prices, ratings and package contents are not the server's.
     if (!incoming.length) return [PLACEHOLDER_SERVICE];
     return incoming.map((service, index) => toUiService(service, presentationFor(index)));
-  }, [servicesData]);
-  /** The catalogue answered with services. Until then nothing about any service is shown. */
-  const catalogueReady = !servicesLoading && !servicesError && (servicesData?.services?.length ?? 0) > 0;
+  }, [allServices]);
+  /** The catalogue answered with services (and the link's own service is resolved). Until then nothing about any service is shown. */
+  const catalogueReady = listReady && urlService !== "loading";
 
   const parsed = parseBookParams(searchParams);
   const initialService = parsed.serviceId
@@ -283,7 +310,7 @@ function BookPageContent() {
     }
     if (parsed.query) setSearchQuery(parsed.query);
     if (parsed.addons.length) {
-      const raw = servicesData?.services?.find((s) => s.id === sid || s.slug === sid);
+      const raw = allServices.find((s) => s.id === sid || s.slug === sid);
       const known = new Set<string>(addonCatalogFor(raw).map((a) => a.id));
       setAddons(new Set(parsed.addons.filter((id) => known.has(id))));
     }
@@ -375,7 +402,7 @@ function BookPageContent() {
   // Null when the API gave the service no price: there is then no tier to show or to send.
   const selected = svc.packages[pkg] ?? svc.packages[0] ?? null;
   const addonIds = Array.from(addons);
-  const rawService = servicesData?.services?.find((s) => s.id === svc.id);
+  const rawService = allServices.find((s) => s.id === svc.id);
   const addonList = addonCatalogFor(rawService);
   const rule = rawService?.catalogConfig?.quantity;
   // Quantity-priced services never use package tiers: without a carried selection
@@ -407,6 +434,10 @@ function BookPageContent() {
   const serviceResolved =
     svc.id !== "service-unavailable" &&
     !servicesLoading &&
+    // The link's service is still being looked up, or is not available: the first service in the
+    // list is not the customer's choice, so the server is not asked about it.
+    urlService !== "loading" &&
+    (urlService !== "missing" || pickedHere) &&
     (!requestedKnown || pickedHere || svc.id === parsed.serviceId || svc.slug === parsed.serviceId);
 
   // Asked when the address is chosen, so a customer outside the service area learns it before
@@ -469,6 +500,11 @@ function BookPageContent() {
 
   async function confirmBooking() {
     if (confirming) return;
+    // The link named a service that is not available: nothing is booked until the customer picks one.
+    if (urlService === "missing" && !pickedHere) {
+      showToast("The service in this link is not available. Choose a service to continue.", "error");
+      return;
+    }
     if (!quote) {
       showToast(quoteError ?? "Price is still being calculated", "error");
       return;
@@ -783,6 +819,12 @@ function BookPageContent() {
                 : "No services are available to book right now."}
           </p>
         ) : (
+        <>
+        {urlService === "missing" && !pickedHere ? (
+          <p role="alert" data-testid="book-service-unavailable" className="mt-6 rounded-2xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
+            The service in this link is not available to book. Choose a service below.
+          </p>
+        ) : null}
         <div className={bookSplitGrid}>
           {/* ================= LEFT ================= */}
           <div className="flex min-w-0 flex-col gap-6 sm:gap-8">
@@ -912,6 +954,13 @@ function BookPageContent() {
                   loading={priceQuoteQuery.isFetching && !sel}
                   error={quoteError}
                   onChange={() => router.back()}
+                  controls={
+                    <SelectionControls
+                      config={rawService?.catalogConfig}
+                      current={effectiveSelection}
+                      onSelect={(next) => setSelection((prev) => ({ ...(prev ?? {}), ...next }))}
+                    />
+                  }
                 />
               ) : (
               <div className={bookPackageGrid}>
@@ -1345,6 +1394,7 @@ function BookPageContent() {
             </SectionCard>
           </div>
         </div>
+        </>
         )}
 
         {/* ---------- Trust bar ---------- */}
@@ -1418,17 +1468,99 @@ function addonCatalogFor(raw: BackendService | undefined): { id: string; name: s
   return own.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name, desc: "", price: a.price }));
 }
 
+/**
+ * The option and the quantity, changeable here: the options the server lists, in its order, and a
+ * quantity stepper inside the server's rule. Each change is sent to the server, which prices it or
+ * refuses it in its own words; nothing here decides a price or a bound.
+ */
+function SelectionControls({
+  config,
+  current,
+  onSelect,
+}: {
+  config: BackendService["catalogConfig"] | null | undefined;
+  current: { variantId?: string; quantity?: number } | null;
+  onSelect: (next: { variantId?: string; quantity?: number }) => void;
+}) {
+  const variants = bookVariants(config);
+  const rule = bookQuantityRule(config);
+  if (!variants.length && !rule) return null;
+  const variant = variants.find((v) => v.id === current?.variantId) ?? null;
+  const bounds = rule ? bookQuantityBounds(rule, variant) : null;
+  const quantity = rule && bounds ? clampQuantity(current?.quantity ?? rule.default ?? rule.min, bounds) : null;
+  const unit = rule ? (quantity === 1 ? rule.unitLabel : rule.unitLabelPlural ?? rule.unitLabel) : null;
+  const step = (dir: -1 | 1) => {
+    if (!bounds || quantity == null) return;
+    const next = clampQuantity(quantity + dir * (bounds.step > 0 ? bounds.step : 1), bounds);
+    if (next !== quantity) onSelect({ quantity: next });
+  };
+  return (
+    <div className="mt-4 grid gap-3 sm:grid-cols-2" data-testid="selection-controls">
+      {variants.length ? (
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-muted">Option</span>
+          <select
+            aria-label="Option"
+            data-testid="selection-option"
+            value={current?.variantId ?? ""}
+            onChange={(e) => onSelect({ variantId: e.target.value || undefined })}
+            className="min-h-11 rounded-xl border border-line bg-surface px-3 text-content outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          >
+            <option value="">Choose an option</option>
+            {variants.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      {rule && bounds && quantity != null ? (
+        <div className="flex flex-col gap-1 text-sm">
+          <span className="text-muted">Quantity</span>
+          <div className="flex items-center gap-2" role="group" aria-label="Quantity">
+            <button
+              type="button"
+              aria-label="Fewer"
+              onClick={() => step(-1)}
+              disabled={quantity <= bounds.min}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-line text-lg text-content disabled:opacity-40"
+            >
+              −
+            </button>
+            <span className="min-w-16 text-center font-medium text-content" data-testid="selection-quantity" aria-live="polite">
+              {quantity} {unit}
+            </span>
+            <button
+              type="button"
+              aria-label="More"
+              onClick={() => step(1)}
+              disabled={quantity >= bounds.max}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-line text-lg text-content disabled:opacity-40"
+            >
+              +
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** The server-priced selection carried from the service page (variant, quantity, audience). */
 function SelectionSummary({
   selection,
   loading,
   error,
   onChange,
+  controls,
 }: {
   selection: ServiceSelectionSnapshot | undefined;
   loading: boolean;
   error: string | null;
   onChange: () => void;
+  /** The option / quantity controls, when the service has any. */
+  controls?: React.ReactNode;
 }) {
   const audience = selection?.audience ? AUDIENCE_LABEL[selection.audience] : null;
   return (
@@ -1452,8 +1584,9 @@ function SelectionSummary({
           <Row label="Estimated time" value={`${selection.durationMinutes} min`} />
         </dl>
       )}
+      {controls}
       <button type="button" onClick={onChange} className="mt-4 text-sm font-semibold text-emerald-700 underline-offset-4 hover:underline dark:text-emerald-300">
-        Change selection
+        Back to the service page
       </button>
     </div>
   );

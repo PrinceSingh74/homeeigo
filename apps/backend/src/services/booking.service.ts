@@ -1250,6 +1250,9 @@ export class BookingService {
                   where: { id },
                   data: {
                     scheduledDate: scheduled,
+                    // As in an admin's reschedule: the arrival and the start PIN were for the old
+                    // appointment. Re-sending the same time is not a move and clears nothing.
+                    ...(scheduled.getTime() !== b.scheduledDate.getTime() ? { arrivedAt: null, startOtpVerifiedAt: null } : {}),
                     description:
                       patch.description !== undefined
                         ? sanitizeUserInput(patch.description, 1000)
@@ -2016,6 +2019,20 @@ export class BookingService {
       ? distanceBetweenKm(arriveLat, arriveLng, booking.address.latitude, booking.address.longitude)
       : null;
 
+    if (held.waived) {
+      // The arrival stands on somebody's word, not on a position. That is written to the booking's
+      // record BEFORE the arrival, and a failure to write it refuses the arrival: an arrival that
+      // was vouched for must never read afterwards as one a position confirmed.
+      const { ARRIVAL_VOUCHED_ACTION } = await import("./arrival-position.service");
+      await prisma.activityLog.create({
+        data: {
+          bookingId: id,
+          providerId,
+          action: ARRIVAL_VOUCHED_ACTION,
+          description: held.by === "admin" ? "Arrival recorded on an admin's waiver: no position was confirmed" : "Arrival recorded on the customer's confirmation: no position was confirmed",
+        },
+      });
+    }
     const applied = await trackingService.recordArrival({
       bookingId: id,
       providerId,
@@ -2034,20 +2051,6 @@ export class BookingService {
       applied ? "applied" : "duplicate",
     );
 
-    if (applied && held.waived) {
-      // The arrival stands on somebody's word, not on a position: say so on the booking's record.
-      const { ARRIVAL_VOUCHED_ACTION } = await import("./arrival-position.service");
-      await prisma.activityLog
-        .create({
-          data: {
-            bookingId: id,
-            providerId,
-            action: ARRIVAL_VOUCHED_ACTION,
-            description: held.by === "admin" ? "Arrival recorded on an admin's waiver: no position was confirmed" : "Arrival recorded on the customer's confirmation: no position was confirmed",
-          },
-        })
-        .catch((err: unknown) => logger.error("arrival_vouched_log_failed", { bookingId: id, providerId, error: err instanceof Error ? err.message : String(err) }));
-    }
     if (applied) {
       try {
         const { jobEvidenceService } = await import("./job-evidence.service");

@@ -843,12 +843,13 @@ export default function BookingDetailPage() {
       <ConfirmDialog
         open={action === "positionWaiver"}
         title="Waive position check"
-        description="Arrival and start are confirmed against the location the professional's device reports. Waive this only when the device cannot give a location and the visit is confirmed another way — say how in the reason (at least 10 characters). It applies to this booking only and is recorded with your name."
+        description="Arrival and start are confirmed against the location the professional's device reports. Waive this only when the device cannot give a location and the visit is confirmed another way — say how in the reason, in a few real words. It applies to this booking only and is recorded with your name."
         reasonLabel="How the visit was confirmed"
         reasonRequired
         confirmLabel="Waive check"
         isLoading={isMutating}
-        onClose={() => setAction(null)}
+        error={positionWaiverMut.error instanceof Error ? positionWaiverMut.error.message : null}
+        onClose={() => { positionWaiverMut.reset(); setAction(null); }}
         onConfirm={(reason) => { if (reason) positionWaiverMut.mutate(reason); }}
       />
 

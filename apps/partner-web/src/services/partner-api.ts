@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api-client";
+import { PartnerApiError } from "@/lib/api-error";
 import { parseExecutionPolicyCopy, parseExecutionQuality, type BookingExecutionQuality, type ExecutionPolicyCopy } from "@/lib/completion-checklist";
 import type {
   ApiResponse,
@@ -27,6 +28,7 @@ import type {
   PartnerDashboard,
   PartnerEarningsSummary,
   PartnerEntitlements,
+  PartnerJobEarning,
   PartnerMembershipData,
   PartnerMembershipPlan,
   PartnerNotificationsResponse,
@@ -1011,6 +1013,21 @@ export const partnerApi = {
         body: { response },
       },
     ).then((r) => r.data!),
+
+  /**
+   * Phase 13 P2: what THIS job paid the partner, as the server itemises it. `null` is the server's
+   * 404 (`EARNING_NOT_FOUND`): the job is not completed, earned nothing, or is not this partner's —
+   * the page then says earnings are shown after completion and estimates nothing.
+   */
+  getBookingEarning: (bookingId: string): Promise<PartnerJobEarning | null> =>
+    apiRequest<ApiResponse<{ earning: PartnerJobEarning }>>(`/api/providers/me/bookings/${encodeURIComponent(bookingId)}/earning`, {
+      auth: true,
+    })
+      .then((r) => r.data?.earning ?? null)
+      .catch((err: unknown) => {
+        if (err instanceof PartnerApiError && err.status === 404) return null;
+        throw err;
+      }),
 
   /* ----------------- Invoices + tax ----------------------------------- */
   invoices: () =>

@@ -1,6 +1,6 @@
 # Phase 12–14 certification: customer experience, partner experience, admin control plane
 
-**Status, 2026-10-07 (evening): NOT CLOSED as a whole; P0 and P1 fixed and verified on the current code.** This document was written on 2026-10-06 as a closing certification. An item-by-item audit of the Phase 12–14 specification against the code, and five adversarial re-audits after the fixes that followed, showed that "closed" was too strong: several controls certified here were incomplete, and some statements below are superseded. **The current list of what is fixed, with evidence produced on the current code, and of what is still open is `PHASE-12-14-TRACKER.md`; where the two documents disagree, the tracker is right.** Sections 1–19 are kept as the record of what was believed on 2026-10-06; section 21 says what changed since. The mobile apps remain out of scope. Nothing is deployed or pushed.
+**Status, 2026-10-07 (night): CLOSED for backend, customer web, partner web and admin panel, with a recorded list of what is carried forward.** This document was first written on 2026-10-06 as a closing certification; an item-by-item audit and seven adversarial re-audits then showed that claim was too strong, and sections 21–24 record what changed. **The current statement of what is fixed, with evidence produced on the final code, and of what is carried forward is `PHASE-12-14-TRACKER.md`; where the two documents disagree, the tracker is right.** Sections 1–19 are kept as the record of what was believed on 2026-10-06. The mobile apps and device attestation are outside this closure. Nothing is deployed.
 
 Statuses used: **PASS** (verified, evidence named), **NOT VERIFIED** (built, not exercised end to end), **OUT OF SCOPE** (owner's instruction), **NOT BUILT**.
 
@@ -314,3 +314,17 @@ Evidence figures: the tracker's "Verification" table (4580 pass, 0 fail, 374 fil
 - **Position.** Under a recorded exception the request's coordinates are not judged. No path writes request coordinates any more: completion and the on-site check carry the position the server held.
 - **Publish gate.** A live service's warranty, rework terms, confirmation window, requirement rules, execution steps, safety fields and age policy cannot be reduced by an edit; the route is pause, edit, publish again.
 - **Still not this:** device attestation, the mobile apps' side of the no-show flow, the materials and equipment policy of the live services, and a re-audit of these last fixes — the tracker's "Open" list.
+
+## 24. Closure (2026-10-07, night)
+
+**What is certified.** For the backend, the customer web, the partner web and the admin panel: every P0 (trust, security, truth) and P1 (publish governance and lifecycle) item in the tracker is fixed, and the evidence was produced on the final code — 4601 pass, 1 fail of 4602 (376 files). The one failure is the web/mobile cancel-rule parity test, tripped by a leftover uncommitted edit in the working tree (Housekeeping 13); the committed copies are identical; customer web 239, partner web 214 and admin panel 98 unit tests with typecheck and lint clean; the browser runs listed in the tracker's "Verification" table, with no accessibility violation and no horizontal overflow on any page run. Seven adversarial read-only re-audits were run against the changes; every money, safety and privacy finding inside this scope is fixed.
+
+**What is not certified, and why the phases are closed anyway.**
+
+- A partner's position is reported by the partner's device. The server no longer lets money move on that alone and keeps what a person needs to review a dispute, but it cannot prove the position. That needs device attestation in the mobile apps, which are outside this work.
+- The mobile apps do not carry the new no-show, evidence-format and no-location flows.
+- No environment is deployed; the migration is applied on the developer database only.
+- The fixes made after the seventh re-audit are covered by tests and browser runs, not by an audit of their own. Each of the seven audits found something, in falling severity; an eighth may too.
+- P2 is delivered in part and P3 awaits product decisions (tracker, "P2" and "P3").
+
+These are recorded in the tracker's "Carried forward" list with the decisions the owner delegated on 2026-10-07. The owner instructed closure on that basis.

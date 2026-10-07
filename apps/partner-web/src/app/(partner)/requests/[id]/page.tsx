@@ -40,6 +40,7 @@ import { CallCustomerButton } from "@/components/requests/CallCustomerButton";
 import { JobChatPanel } from "@/components/requests/JobChatPanel";
 import { JobEvidencePanel } from "@/components/requests/JobEvidencePanel";
 import { NoShowSection } from "@/components/requests/NoShowSection";
+import { JobEarningsLine } from "@/components/requests/JobEarningsLine";
 import { PartnerCard } from "@/components/ui/PartnerCard";
 import { useBookingRequirementsQuery } from "@/hooks/use-partner-data";
 import { bookingDetailKey } from "@/lib/booking-cache";
@@ -92,6 +93,14 @@ export default function JobDetailPage() {
     queryFn: () => partnerApi.getJobActions(id),
     enabled: !!id && reads.actions,
     staleTime: 15_000,
+  });
+
+  // Phase 13 P2: what this job paid — the server's own lines, asked for only once the job is completed.
+  const earningQuery = useQuery({
+    queryKey: ["partner", "job-earning", id],
+    queryFn: () => partnerApi.getBookingEarning(id),
+    enabled: !!id && booking?.status === "completed",
+    staleTime: 60_000,
   });
 
   const refetchActions = actionsQuery.refetch;
@@ -266,7 +275,7 @@ export default function JobDetailPage() {
               <Clock className="h-3.5 w-3.5" aria-hidden="true" />
               Scheduled {formatDate(booking.scheduledDate)} · {formatTime(booking.scheduledDate)}
             </p>
-            <JobBrief job={booking.job} />
+            <JobBrief job={booking.job} booking={booking} />
             {isOffer ? (
               <p role="status" data-testid="job-offer-notice" className="rounded-xl border border-partner-warning/40 bg-partner-warning/10 px-3 py-2.5 text-sm text-partner-text">
                 This job is offered to you and is not accepted yet. Arrival, service steps, the checklist and proof open once the job is accepted.
@@ -444,6 +453,10 @@ export default function JobDetailPage() {
                 : undefined
             }
           />
+
+          {isOffer ? null : (
+            <JobEarningsLine status={booking.status} query={{ data: earningQuery.data, isLoading: earningQuery.isLoading, isError: earningQuery.isError }} />
+          )}
 
           {/* §52: secondary to Start, collapsed by default; drawn only from the server's `noShow` answer. */}
           {isOffer ? null : (

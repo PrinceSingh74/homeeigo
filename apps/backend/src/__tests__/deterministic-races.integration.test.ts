@@ -158,6 +158,9 @@ describe.serial("R-l — two opposing no-show reports, forced to interleave on t
     const { id } = await seedBooking({ status: BookingStatus.EN_ROUTE, arrivedAt: new Date(Date.now() - 30 * 60_000) });
     // A no-show is counted from the booked time: the appointment has begun.
     await placeAtDoor(id, ctx.providerId);
+    // The arrival was vouched for (not confirmed from a position), so the customer's own report is
+    // still open to them — against a position-confirmed arrival it would go to support instead.
+    await prisma.activityLog.create({ data: { bookingId: id, providerId: ctx.providerId, action: "PARTNER_ARRIVAL_VOUCHED", description: "Arrival recorded on the customer's confirmation: no position was confirmed" } });
     const holder = holdLock((tx) => tx.$queryRaw`SELECT id FROM bookings WHERE id = ${id} FOR UPDATE`);
     await holder.acquired;
     const customerReport = bookingNoShowService.reportCustomerNoShow(id, { userId: ctx.vendorUserId, providerId: ctx.providerId });

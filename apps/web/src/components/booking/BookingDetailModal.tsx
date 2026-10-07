@@ -33,7 +33,8 @@ import {
 } from "@/hooks/use-core-data";
 import { RatingModal } from "@/components/ratings/RatingModal";
 import { statusConfigFor } from "@/lib/booking-status";
-import { canCancelBooking, cancelBlockedReason, canReportProviderNoShow } from "@/lib/booking-cancel-rules";
+import { canCancelBooking, cancelBlockedReason } from "@/lib/booking-cancel-rules";
+import { canReportProviderNoShow } from "@/lib/provider-no-show-offer";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 import { BookingProgressRail } from "./BookingProgressRail";
 import { bookUrl } from "@/lib/booking-url";
@@ -121,7 +122,7 @@ export function BookingDetailModal({
   const canCancel = canCancelBooking(liveStatus);
   const cancelBlocked = cancelBlockedReason(liveStatus);
   // §53: only while the booking is still waiting on the professional.
-  const canReportNoShow = canReportProviderNoShow(liveStatus);
+  const canReportNoShow = canReportProviderNoShow(liveStatus, detailQuery.data?.scheduledDate);
   const canReschedule = resolvedStatus === "confirmed";
   const canChat = resolvedStatus === "confirmed" || resolvedStatus === "in_progress";
   const scheduledAt = detailQuery.data?.scheduledDate
@@ -345,7 +346,7 @@ export function BookingDetailModal({
                 <button
                   type="button"
                   disabled={reportNoShow.isPending}
-                  onClick={() => void reportNoShow.mutateAsync(booking.id).then(() => onClose())}
+                  onClick={() => reportNoShow.mutate(booking.id, { onSuccess: () => onClose() })}
                   className="flex h-12 items-center justify-center gap-2 rounded-2xl text-sm font-bold text-warning transition hover:bg-warning/10 disabled:opacity-50"
                 >
                   <UserRoundX size={18} />

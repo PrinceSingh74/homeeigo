@@ -66,14 +66,8 @@ export async function confirmPartnerPosition(input: {
   // The two exceptions, each a row in the booking's activity log naming who vouched and for which
   // partner: a partner who takes the job over is checked again. The geofence never uses them — an
   // exception lets a person declare arrival, it does not make the tracker declare it for them.
-  if (input.action !== "geofence") {
-    const by = await positionException(input.bookingId, input.providerId);
-    if (by) {
-      incCounter("partner_position_check_total", { action: input.action, outcome: by === "admin" ? "waived" : "customer_confirmed" });
-      return { ok: true, waived: true, by };
-    }
-  }
-
+  // They are the fallback, looked at only when the position does not confirm: a partner whose
+  // device does place them at the job has arrived on that, whoever also vouched for them.
   const presence = await prisma.partnerPresence.findUnique({
     where: { providerId: input.providerId },
     select: { lastLocationLat: true, lastLocationLng: true, lastLocationAt: true, lastLocationReceivedAt: true },
@@ -102,8 +96,29 @@ export async function confirmPartnerPosition(input: {
     jobLongitude: input.jobLongitude,
     radiusM: eventPlatformConfig.arrivalRadiusM,
   });
-  incCounter("partner_position_check_total", { action: input.action, outcome: result.ok ? "confirmed" : result.error });
-  if (result.ok) return { ...result, position: { latitude: fix!.latitude, longitude: fix!.longitude } };
+  if (result.ok) {
+    incCounter("partner_position_check_total", { action: input.action, outcome: "confirmed" });
+    return { ...result, position: { latitude: fix!.latitude, longitude: fix!.longitude } };
+  }
+  if (input.action !== "geofence") {
+    const by = await positionException(input.bookingId, input.providerId);
+    if (by) {
+      // Vouched for: not refused, and no fake-arrival signal against a partner the customer or an
+      // admin says is there. What the device said is still kept, for whoever reviews the exception.
+      logger.info("partner_position_vouched_over_device", {
+        bookingId: input.bookingId,
+        providerId: input.providerId,
+        action: input.action,
+        by,
+        deviceSaid: result.error,
+        fixAgeSec: result.fixAgeSec,
+        fixDistanceM: result.fixDistanceM,
+      });
+      incCounter("partner_position_check_total", { action: input.action, outcome: by === "admin" ? "waived" : "customer_confirmed" });
+      return { ok: true, waived: true, by };
+    }
+  }
+  incCounter("partner_position_check_total", { action: input.action, outcome: result.error });
 
   logger.warn("partner_position_not_confirmed", {
     bookingId: input.bookingId,

@@ -336,6 +336,22 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
     set.headers["content-type"] = "text/html; charset=utf-8";
     return html;
   })
+  /**
+   * Phase 13 P2: what THIS job paid the partner — gross, commission, the derived bonus / adjustment
+   * and net, exactly as the earning invoice itemises them (`lib/earning-settlement.ts`). The row is
+   * written when the job completes; until then (and for a job that earned nothing, or one this
+   * partner does not hold) the answer is 404 and the client says earnings are shown after completion
+   * — nothing is estimated.
+   */
+  .get("/me/bookings/:bookingId/earning", async ({ requireProvider, params, set }) => {
+    const { providerId } = requireProvider();
+    const earning = await invoiceReportService.partnerBookingEarning(providerId, params.bookingId);
+    if (!earning) {
+      set.status = 404;
+      return { success: false, error: "No earning is recorded for this job yet", code: "EARNING_NOT_FOUND" };
+    }
+    return { success: true, data: { earning } };
+  })
   .get("/me/reviews", async ({ requireProvider, query }) => {
     const { providerId } = requireProvider();
     const data = await providerService.reviews(providerId, query as Record<string, string>);

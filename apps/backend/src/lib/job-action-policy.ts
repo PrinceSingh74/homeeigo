@@ -21,6 +21,8 @@ export type JobActionInput = {
   status: BookingStatus | string;
   enRouteAt?: Date | string | null;
   arrivedAt?: Date | string | null;
+  /** The booked time: the no-show wait runs from the later of this and the arrival. */
+  scheduledDate?: Date | string | null;
   startedAt?: Date | string | null;
   completedAt?: Date | string | null;
   paymentStatus?: PaymentStatus | string | null;
@@ -62,14 +64,21 @@ function hasTs(v: Date | string | null | undefined): boolean {
   return v != null && String(v).length > 0;
 }
 
-/** Whole minutes since arrival, or null when arrival is unknown or recorded in the future. */
-function waitedMinutesSinceArrival(job: JobActionInput): number | null {
+/**
+ * Whole minutes the customer has been waited for: since the arrival, or since the booked time when
+ * the partner came early (a customer is not late for an appointment that has not begun). Null when
+ * arrival is unknown or in the future; "BEFORE_APPOINTMENT" while the booked time is still ahead.
+ */
+function waitedMinutesSinceArrival(job: JobActionInput): number | null | "BEFORE_APPOINTMENT" {
   if (!hasTs(job.arrivedAt)) return null;
   const arrived = new Date(job.arrivedAt as Date | string).getTime();
   if (!Number.isFinite(arrived)) return null;
-  const ms = (job.now ?? new Date()).getTime() - arrived;
-  if (ms < 0) return null;
-  return Math.floor(ms / 60_000);
+  const now = (job.now ?? new Date()).getTime();
+  if (now < arrived) return null;
+  const booked = hasTs(job.scheduledDate) ? new Date(job.scheduledDate as Date | string).getTime() : Number.NaN;
+  if (Number.isFinite(booked) && booked > now) return "BEFORE_APPOINTMENT";
+  const from = Number.isFinite(booked) ? Math.max(arrived, booked) : arrived;
+  return Math.floor((now - from) / 60_000);
 }
 /**
  * Pure partner/customer job-action policy from the job axis.
@@ -139,7 +148,9 @@ export function getAvailableJobActions(job: JobActionInput): JobActionResult {
   // rather than tapping into a 400.
   if (availableActions.includes("REPORT_NO_SHOW")) {
     const waited = waitedMinutesSinceArrival(job);
-    if (waited === null || waited < NO_SHOW_POLICY.graceMinutes) {
+    if (waited === "BEFORE_APPOINTMENT") {
+      disabledReasons.REPORT_NO_SHOW = "Available after the booked time";
+    } else if (waited === null || waited < NO_SHOW_POLICY.graceMinutes) {
       const remaining = waited === null ? NO_SHOW_POLICY.graceMinutes : NO_SHOW_POLICY.graceMinutes - waited;
       disabledReasons.REPORT_NO_SHOW = `Available in ${remaining} min`;
     }

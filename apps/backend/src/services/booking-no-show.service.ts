@@ -77,6 +77,9 @@ export type NoShowPreview = {
   message: string;
 };
 
+/** How long before the booked time a door photo still belongs to that appointment. */
+const DOOR_PHOTO_EARLY_MS = 60 * 60_000;
+
 /** Why no fee was taken, for the booking's audit trail. */
 const WITHHELD_AUDIT: Record<NoShowFeeWithheld, string> = {
   NO_DOOR_PHOTO: "no door photo on record",
@@ -98,7 +101,7 @@ const PREVIEW_MESSAGES = {
 
 export type NoShowResult =
   | { ok: true; status: BookingStatus; feeAmount: number; refundAmount: number; refundStatus: string; feeWithheld?: NoShowFeeWithheld }
-  | { error: "NOT_FOUND" | "FORBIDDEN" | "INVALID_STATUS" | "NOT_ELIGIBLE"; reason?: CustomerNoShowRefusal | "BEFORE_APPOINTMENT"; waitedMinutes?: number | null };
+  | { error: "NOT_FOUND" | "FORBIDDEN" | "INVALID_STATUS" | "NOT_ELIGIBLE"; reason?: CustomerNoShowRefusal | "BEFORE_APPOINTMENT" | "PROFESSIONAL_PRESENT" | "ARRIVAL_ON_RECORD"; waitedMinutes?: number | null };
 
 /** `reason` is what an admin typed; it is recorded alongside the system's own description. */
 type Actor = { userId: string; providerId?: string | null; isAdmin?: boolean; reason?: string };
@@ -178,6 +181,7 @@ class BookingNoShowService {
       { id: bookingId, status: booking.status, providerId: booking.providerId, requireArrival: true },
       BookingStatus.CUSTOMER_NO_SHOW,
       actor,
+      settlement.refundAmount,
       corroborated
         ? `customer did not appear after ${verdict.waitedMinutes} minutes`
         : `customer did not appear after ${verdict.waitedMinutes} minutes (partner's report, ${WITHHELD_AUDIT[withheld ?? "NO_DOOR_PHOTO"]}: no fee taken)`,
@@ -226,6 +230,7 @@ class BookingNoShowService {
       where: { id: bookingId },
       select: {
         id: true, userId: true, providerId: true, status: true, finalAmount: true,
+        scheduledDate: true, startOtpVerifiedAt: true, arrivedAt: true,
         provider: { select: { userId: true } },
       },
     });
@@ -237,6 +242,30 @@ class BookingNoShowService {
     if (!isBookingTransitionAllowed(booking.status as BookingStatus, BookingStatus.PROVIDER_NO_SHOW)) {
       return { error: "INVALID_STATUS" };
     }
+    /**
+     * The customer is not asked to prove an absence, and no position is consulted. Two things the
+     * server itself knows are: nobody is late for an appointment that has not begun (the same wait
+     * the professional is held to), and a customer who gave the professional their start PIN met
+     * them. Before either, this would have been a full refund on demand in place of the
+     * cancellation terms. An admin who has looked into it decides for themselves.
+     */
+    if (!actor.isAdmin) {
+      const sinceBooked = Date.now() - booking.scheduledDate.getTime();
+      if (sinceBooked < 0) return { error: "NOT_ELIGIBLE", reason: "BEFORE_APPOINTMENT", waitedMinutes: null };
+      const waited = Math.floor(sinceBooked / 60_000);
+      if (waited < NO_SHOW_POLICY.graceMinutes) return { error: "NOT_ELIGIBLE", reason: "GRACE_NOT_ELAPSED", waitedMinutes: waited };
+      if (booking.startOtpVerifiedAt) return { error: "NOT_ELIGIBLE", reason: "PROFESSIONAL_PRESENT", waitedMinutes: waited };
+      /**
+       * The professional's arrival is on record, confirmed from a position (not vouched for). The
+       * customer says nobody came. Neither is proof of the other, so neither side's tap settles
+       * it: the professional's own report takes no fee without corroboration, and the customer's
+       * takes no automatic full refund against a recorded arrival. A person decides.
+       */
+      if (booking.arrivedAt && booking.providerId && !(await this.arrivalWasVouched(bookingId, booking.providerId, booking.arrivedAt))) {
+        incCounter("no_show_report_total", { outcome: "refused", kind: "provider", reason: "ARRIVAL_ON_RECORD" });
+        return { error: "NOT_ELIGIBLE", reason: "ARRIVAL_ON_RECORD", waitedMinutes: waited };
+      }
+    }
 
     const refundable = await this.refundableFor(bookingId, booking.userId);
     const settlement = providerNoShowSettlement({ capturedAmount: refundable });
@@ -245,6 +274,7 @@ class BookingNoShowService {
       { id: bookingId, status: booking.status, providerId: booking.providerId },
       BookingStatus.PROVIDER_NO_SHOW,
       actor,
+      settlement.refundAmount,
       "professional did not appear",
     );
     if (!closed) return { error: "INVALID_STATUS" };
@@ -345,11 +375,11 @@ class BookingNoShowService {
    * recorded on somebody's word has no position behind it; then the door photo; and last, the
    * report itself is made from the door — the server must hold the partner at the address now.
    */
-  private async corroboration(booking: { id: string; providerId: string | null; arrivedAt: Date | null; startOtpVerifiedAt: Date | null }): Promise<{ withheld: NoShowFeeWithheld | null; hasDoorPhoto: boolean; photoElsewhere: boolean }> {
+  private async corroboration(booking: { id: string; providerId: string | null; arrivedAt: Date | null; startOtpVerifiedAt: Date | null; scheduledDate: Date }): Promise<{ withheld: NoShowFeeWithheld | null; hasDoorPhoto: boolean; photoElsewhere: boolean }> {
     if (booking.providerId == null) return { withheld: "NO_DOOR_PHOTO", hasDoorPhoto: false, photoElsewhere: false };
     const [vouched, photo, atAddress] = await Promise.all([
-      this.arrivalWasVouched(booking.id, booking.providerId),
-      booking.arrivedAt != null ? this.doorPhoto(booking.id, booking.providerId, booking.arrivedAt) : Promise.resolve("NONE" as const),
+      this.arrivalWasVouched(booking.id, booking.providerId, booking.arrivedAt),
+      booking.arrivedAt != null ? this.doorPhoto(booking.id, booking.providerId, booking.arrivedAt, booking.scheduledDate) : Promise.resolve("NONE" as const),
       this.partnerIsAtAddress(booking.id, booking.providerId),
     ]);
     const hasDoorPhoto = photo === "AT_JOB";
@@ -391,10 +421,14 @@ class BookingNoShowService {
    * arrival, whose position — written by the server from the fix it held for the partner when the
    * photo came in, never from the upload — is at the job.
    */
-  private async doorPhoto(bookingId: string, providerId: string, arrivedAt: Date): Promise<"AT_JOB" | "NOT_AT_JOB" | "NONE"> {
+  private async doorPhoto(bookingId: string, providerId: string, arrivedAt: Date, scheduledDate: Date): Promise<"AT_JOB" | "NOT_AT_JOB" | "NONE"> {
+    // After the arrival, and for THIS appointment: a photo from a visit that was later moved (the
+    // arrival can be recorded again at once) is from another day. An hour before the booked time
+    // allows for a professional who comes early.
+    const since = new Date(Math.max(arrivedAt.getTime(), scheduledDate.getTime() - DOOR_PHOTO_EARLY_MS));
     const [rows, booking] = await Promise.all([
       prisma.jobEvidence.findMany({
-        where: { bookingId, providerId, stage: "ARRIVAL", isCurrent: true, mediaStorageKey: { not: null }, capturedAt: { gte: arrivedAt } },
+        where: { bookingId, providerId, stage: "ARRIVAL", isCurrent: true, mediaStorageKey: { not: null }, capturedAt: { gte: since } },
         select: { mediaStorageKey: true, bookingId: true, providerId: true, stage: true, latitude: true, longitude: true },
       }),
       prisma.booking.findUnique({ where: { id: bookingId }, select: { address: { select: { latitude: true, longitude: true } } } }),
@@ -411,11 +445,14 @@ class BookingNoShowService {
   }
 
   /** Was this partner's arrival on this booking covered by a recorded exception rather than a confirmed position? */
-  private async arrivalWasVouched(bookingId: string, providerId: string): Promise<boolean> {
+  private async arrivalWasVouched(bookingId: string, providerId: string, arrivedAt: Date | null): Promise<boolean> {
+    if (!arrivedAt) return false;
     const row = await prisma.activityLog.findFirst({
       // The row the arrival itself wrote when it was recorded on an exception — not the exception:
       // a confirmation that exists beside an arrival the partner's position confirmed changed nothing.
-      where: { bookingId, providerId, action: ARRIVAL_VOUCHED_ACTION },
+      // …for THIS arrival: the row is written just before the arrival it describes, so one left
+      // by an earlier appointment (the visit was moved and the partner arrived again) does not count.
+      where: { bookingId, providerId, action: ARRIVAL_VOUCHED_ACTION, createdAt: { gte: new Date(arrivedAt.getTime() - 5 * 60_000) } },
       select: { id: true },
     });
     return row != null;
@@ -468,6 +505,8 @@ class BookingNoShowService {
     seen: { id: string; status: BookingStatus; providerId: string | null; requireArrival?: boolean },
     status: BookingStatus,
     actor: Actor,
+    /** What is owed back: committed here as the refund intent, so a crash before the refund starts leaves something the sweep can finish. */
+    refundAmount: number,
     reason: string,
   ): Promise<boolean> {
     return prisma.$transaction(async (tx) => {
@@ -483,7 +522,7 @@ class BookingNoShowService {
           providerId: seen.providerId,
           ...(seen.requireArrival ? { arrivedAt: { not: null } } : {}),
         },
-        data: { status, cancelledAt: new Date() },
+        data: { status, cancelledAt: new Date(), ...(refundAmount > 0 ? { refundStatus: "pending", refundAmount } : {}) },
       });
       return res.count === 1;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 20_000 });
@@ -500,6 +539,13 @@ class BookingNoShowService {
       cancelledBy: actor.isAdmin ? "admin" : actor.providerId ? "provider" : "user",
       refundAmount: amount,
     });
+    // The intent committed with the close becomes the outcome; a refusal stays "pending" for the sweep to
+    // retry, and one that cannot change on a retry is marked so it leaves the sweep and stays visible.
+    const settled = result.status === "processed" || result.status === "processing";
+    const hopeless = ["AMOUNT_EXCEEDS_REFUNDABLE", "NOT_WALLET_FUNDED", "USER_NOT_FOUND", "NOTHING_PAID"].includes(String((result as { failureReason?: string }).failureReason ?? ""));
+    if (settled || hopeless) {
+      await prisma.booking.updateMany({ where: { id: bookingId, refundStatus: "pending" }, data: settled ? { refundStatus: result.status, refundAmount: result.amount } : { refundStatus: "failed" } });
+    }
     return result.status;
   }
 }
