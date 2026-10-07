@@ -1,15 +1,21 @@
+import { color } from "@/theme/tokens";
+
+/**
+ * The names screens used before the design tokens existed, now aliases of them — so every older
+ * screen takes the same palette. New code reads `@/theme/tokens` directly.
+ */
 export const partnerColors = {
-  cream: "#f6f1d6",
-  sage: "#d8ead7",
-  primary: "#3d6b4f",
-  primaryDark: "#2d5240",
-  text: "#1a2e1f",
-  textMuted: "#5c6b5f",
-  textSecondary: "#5c6b5f",
-  danger: "#dc2626",
-  warning: "#d97706",
-  success: "#16a34a",
-  surface: "#ffffff",
-  surfaceDark: "#0f172a",
-  line: "rgba(61, 107, 79, 0.15)",
+  cream: color.paper,
+  sage: color.paper,
+  primary: color.leaf,
+  primaryDark: color.leafPressed,
+  text: color.ink,
+  textMuted: color.slate,
+  textSecondary: color.slate,
+  danger: color.danger,
+  warning: color.marigold,
+  success: color.success,
+  surface: color.surface,
+  surfaceDark: color.ink,
+  line: color.line,
 } as const;

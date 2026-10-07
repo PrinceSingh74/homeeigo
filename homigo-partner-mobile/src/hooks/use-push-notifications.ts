@@ -32,6 +32,9 @@ Notifications.setNotificationHandler({
   }),
 });
 
+/** Notification taps already routed in this app launch (see the tap-routing effect). */
+const routedTaps = new Set<string>();
+
 function pushReady(): boolean {
   return canRegisterExpoPushToken();
 }
@@ -130,15 +133,24 @@ export function usePushNotifications(): void {
   useEffect(() => {
     if (!pushReady() || !isAuthenticated) return;
 
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+    /**
+     * A tapped notification that carries a booking opens that job (`/job/<id>`); the rest go where
+     * `resolveNotificationHref` says. Each tap is routed ONCE: the warm listener and the cold-start
+     * "last response" can both deliver the same tap, and the last response is also returned again on
+     * every later sign-in until the app is killed.
+     */
+    const open = (response: Notifications.NotificationResponse) => {
+      const key = `${response.notification.request.identifier}:${response.notification.date}`;
+      if (routedTaps.has(key)) return;
+      routedTaps.add(key);
       const data = response.notification.request.content.data as Record<string, unknown> | undefined;
       router.push(resolveNotificationHref(data) as never);
-    });
+    };
+
+    const sub = Notifications.addNotificationResponseReceivedListener(open);
 
     void Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (!response) return;
-      const data = response.notification.request.content.data as Record<string, unknown> | undefined;
-      router.push(resolveNotificationHref(data) as never);
+      if (response) open(response);
     });
 
     return () => sub.remove();

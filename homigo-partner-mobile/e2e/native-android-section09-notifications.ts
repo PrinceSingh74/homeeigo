@@ -84,7 +84,7 @@ function tapBy(pattern: string | RegExp): boolean {
     const tag = m[0];
     const text = decodeXml(
       (tag.match(/\btext="([^"]*)"/i)?.[1] || "") + " " + (tag.match(/\bcontent-desc="([^"]*)"/i)?.[1] || ""),
-    );
+    ).trim();
     const rid = tag.match(/\bresource-id="([^"]*)"/i)?.[1] ?? "";
     const bounds = tag.match(/\bbounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/i);
     if (!bounds) continue;
@@ -170,7 +170,7 @@ function swipeUp() {
   sleep(500);
 }
 function openHqItem(label: string | RegExp, maxSwipes = 24): boolean {
-  tapBy(/^HQ$/) || tapBy("HQ") || tapBy("Explore");
+  tapBy(/^HQ$/) || tapBy("HQ");
   sleep(1400);
   for (let i = 0; i < maxSwipes; i++) {
     if (tapBy(label)) {
@@ -222,7 +222,7 @@ function driveLogin(): boolean {
   sleep(200);
   typePassword(PARTNER.password);
   sleep(300);
-  tapBy("partner-login-submit") || tapBy("Continue to Partner OS") || tapBy(/^Sign in$/i);
+  tapBy("partner-login-submit") || tapBy("Continue to Partner OS");
   sleep(8000);
   dismissDialogs();
   dumpNamed("00-after-login");
@@ -406,7 +406,7 @@ async function main() {
   gate("native.login", loggedIn ? "PASS" : "FAIL");
   if (loggedIn) {
     sleep(4000);
-    waitFor(/Hello,|Wallet|HQ|Explore|Allow HOMEEIGO Partner/i, 20_000);
+    waitFor(/Hello,|Wallet|HQ|Allow HOMEEIGO Partner/i, 20_000);
     tapBy(/^Don't allow$/i) || tapBy("Don't allow");
     dumpNamed("00-after-login");
     const opened = openNotificationsScreen();
@@ -419,21 +419,41 @@ async function main() {
       opened && /Optional alerts|always delivered/i.test(text) ? "PASS" : "FAIL",
       /Reloading/i.test(text) ? "metro reload" : opened ? "" : "did not open",
     );
+    // What the preferences card says when it has no switch to show (account/notifications.tsx
+    // PreferencesCard): an empty OPTIONAL matrix is "There are no optional alerts to choose right
+    // now."; a failed read is "Could not load preferences. <reason>". The old "Preference controls
+    // unavailable" sentence is gone, so an empty matrix could not be seen.
+    const matrixEmpty = /There are no optional alerts to choose right now/i.test(text);
+    const prefsFailed = /Could not load preferences/i.test(text);
+    // A channel's switch is a row whose accessibility label is the channel name (SwitchRow:
+    // accessibilityLabel={label}; labels "In-app" / "Push" / "Email" / "SMS").
+    const switchLabels = /content-desc="(?:In-app|Push|Email|SMS)"/.test(xml);
     gate(
       "native.preferences_ui",
-      /In-app|Push|Email|SMS/i.test(text) && /always delivered/i.test(text) && !/Preference controls unavailable/i.test(text)
+      /In-app|Push|Email|SMS/i.test(text) && /always delivered/i.test(text) && !matrixEmpty && !prefsFailed
         ? "PASS"
         : "FAIL",
-      /Preference controls unavailable/i.test(text) ? "matrix empty" : "",
+      matrixEmpty ? "matrix empty" : prefsFailed ? "preferences did not load" : "",
+    );
+    // The line under a switch the server marks unavailable is the server's `unavailableReason`,
+    // or "Not available for your account." when it sends none ("Not available on this device
+    // yet" is gone). When the canonical matrix says an OPTIONAL channel is unavailable, that line
+    // must be on screen; otherwise the standing "always delivered" sentence is the capability copy.
+    const unavailable = matrix.filter((c) => c.category === "OPTIONAL" && c.available === false);
+    const unavailableShown = unavailable.every((c) =>
+      c.unavailableReason ? text.includes(c.unavailableReason.slice(0, 24)) : /Not available for your account/i.test(text),
     );
     gate(
       "native.capability_copy",
-      /Not available on this device yet|always delivered/i.test(text) ? "PASS" : "FAIL",
+      (unavailable.length > 0 ? unavailableShown : true) && /always delivered/i.test(text) ? "PASS" : "FAIL",
+      unavailable.length > 0
+        ? `unavailable=${unavailable.map((c) => c.channel).join(",")} copy shown=${unavailableShown}`
+        : "no unavailable optional channel",
     );
     gate(
       "native.a11y_labels",
-      /content-desc="[^"]*optional alerts/i.test(xml) ? "PASS" : "WARN",
-      /content-desc="[^"]*optional alerts/i.test(xml) ? "switch labels present" : "heading only",
+      switchLabels ? "PASS" : "WARN",
+      switchLabels ? "switch labels present" : "heading only",
     );
     if (listATitles[0]) {
       gate("native.inbox_matches_api", text.includes(listATitles[0].slice(0, 24)) ? "PASS" : "WARN", listATitles[0].slice(0, 40));

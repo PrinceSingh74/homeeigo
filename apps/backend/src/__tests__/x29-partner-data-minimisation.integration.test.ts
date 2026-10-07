@@ -145,4 +145,20 @@ describe("X-29: partner payloads carry no customer-money or storage internals", 
     const src = readFileSync(join(import.meta.dir, "..", "services", "assignment-engine.service.ts"), "utf8");
     expect(src).not.toMatch(/assignmentJobId:\s*jobId/);
   });
+
+  // Last in the file: it cancels the shared booking.
+  test("a partner who cancels the job is told it is cancelled, not what the customer gets back", async () => {
+    if (!dbOk) return;
+    const res = await app.handle(
+      new Request(`http://localhost/api/bookings/${id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${partner()}` },
+        body: JSON.stringify({ reason: "Vehicle broke down on the way" }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { booking: Record<string, unknown> } };
+    expect(body.data.booking.status).toBeDefined();
+    for (const key of ["refundAmount", "refundStatus", "cancellationFee", "refundMessage"]) expect(key in body.data.booking).toBe(false);
+  });
 });

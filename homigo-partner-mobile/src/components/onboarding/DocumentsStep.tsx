@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import { checkDocumentFile } from "@/lib/account-rules";
 import { partnerRegistrationApi } from "@/services/partner-registration-api";
 import { partnerColors } from "@/theme/colors";
 
@@ -31,38 +32,46 @@ export function DocumentsStep({
 
   async function pick(type: string, camera: boolean) {
     setMessage(null);
-    const permission = camera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setMessage(
-        camera
-          ? "Camera permission denied. Use Gallery, or enable Camera in system settings."
-          : "Photo library permission denied. Use Camera, or enable Photos in system settings.",
-      );
-      return;
+    // Only the camera needs a permission. The gallery is the system picker (Android photo picker,
+    // iOS PHPicker), which hands over just the chosen photo and asks for nothing.
+    if (camera) {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        setMessage("Camera permission denied. Use Gallery, or enable Camera in system settings.");
+        return;
+      }
     }
     const pickerOptions: ImagePicker.ImagePickerOptions = {
       mediaTypes: ["images"],
       quality: 0.7,
       base64: true,
       exif: false,
+      // iOS library picks: ask for the compatible representation (JPEG rather than HEIC).
+      preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
     };
     const result = camera
       ? await ImagePicker.launchCameraAsync(pickerOptions)
       : await ImagePicker.launchImageLibraryAsync(pickerOptions);
-    if (result.canceled || !result.assets[0]?.base64) return;
+    if (result.canceled) return;
     const asset = result.assets[0];
+    // The data URL is labelled by what the bytes ARE, never by `asset.mimeType`: on Android the
+    // bytes are re-encoded JPEG while the claimed type stays the source's (HEIC, PNG). The rule is the
+    // endpoint's own (document-upload.service: JPEG / PNG / WebP by signature, 5 MB) — a photo it
+    // would refuse is refused here, in words, before the upload.
+    const check = checkDocumentFile({ base64: asset?.base64 }, type);
+    if (!check.ok) {
+      setMessage(check.message);
+      return;
+    }
     setBusy(type);
     try {
-      const mime = asset.mimeType ?? "image/jpeg";
       await partnerRegistrationApi.uploadDocument({
-        file: `data:${mime};base64,${asset.base64}`,
+        file: check.file,
         documentType: type,
-        fileName: asset.fileName ?? `${type}.jpg`,
+        fileName: check.fileName,
       });
       setUploaded((prev) => new Set(prev).add(type));
-      if (asset.uri) setPreviews((prev) => ({ ...prev, [type]: asset.uri }));
+      if (asset?.uri) setPreviews((prev) => ({ ...prev, [type]: asset.uri }));
       setMessage(`${type.replace(/_/g, " ")} uploaded`);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Document upload failed. Try JPG or PNG.");

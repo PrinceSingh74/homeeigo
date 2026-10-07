@@ -1,28 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { StyleSheet, TextInput, View } from "react-native";
+import { KeyboardSpacer } from "@/components/job/parts";
+import { Banner, Button, Sheet, T } from "@/components/ui";
+import { attemptsLeftText, failureSentence, pinResendWait, pinSendLabel, refusalCode, startPinFailure, type StartPinFailure } from "@/lib/job-screen";
 import { partnerApi } from "@/services/partner-api";
-import { partnerColors } from "@/theme/colors";
+import { color, radius, space, tabular, touch, type } from "@/theme/tokens";
 
-const OTP_LENGTH = 6;
-
-type SentInfo = {
-  alreadyVerified: boolean;
-  channels: string[];
-  sentTo: { email: string | null; phone: string | null };
-  resendInSec: number;
-  expiresInSec: number;
-};
+const PIN_LENGTH = 6;
 
 /**
- * Proof-of-presence gate for Start job — mirrors partner-web StartJobOtpDialog.
+ * The start PIN — the customer's proof that the partner is at the door.
+ *
+ * Opening the sheet sends the PIN to the CUSTOMER (the partner is never told where it went). The
+ * partner types the six digits the customer reads out; the sixth digit submits. Everything about
+ * timing and attempts is the server's: "Resend in N s" counts down `resendInSec` from a send, or
+ * `data.retryAfterSec` from a refused one; "N attempts left" is `data.attemptsLeft`; and the
+ * sentences for a wrong, expired or locked PIN are the server's own.
+ *
+ * A start that fails for a reason that is not the PIN (position, a safety hold, a requirement) shows
+ * the server's sentence here as well; position refusals also stay on the job screen behind it.
  */
 export function StartJobOtpSheet({
   bookingId,
@@ -35,225 +31,220 @@ export function StartJobOtpSheet({
   customerName: string;
   visible: boolean;
   onClose: () => void;
+  /** Sends the start. Rejects with the API error so the sheet can read its code and data. */
   onStart: (otp?: string) => Promise<void>;
 }) {
   const [digits, setDigits] = useState("");
-  const [sent, setSent] = useState<SentInfo | null>(null);
-  const [sendError, setSendError] = useState<string | null>(null);
-  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [sentOnce, setSentOnce] = useState(false);
+  const [alreadyVerified, setAlreadyVerified] = useState(false);
   const [sending, setSending] = useState(false);
+  /** The server's sentence about a send that was refused for timing (cooldown / rate limit). */
+  const [sendNote, setSendNote] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
-  const [resendIn, setResendIn] = useState(0);
-  const startedRef = useRef(false);
-  const dispatchedRef = useRef(false);
+  const [failure, setFailure] = useState<StartPinFailure | null>(null);
+  /** When another PIN may be sent, on this device's clock; counted down once a second. */
+  const [resendAt, setResendAt] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const openedFor = useRef<string | null>(null);
+  const autoStarted = useRef(false);
 
-  const dispatchPin = useCallback(async () => {
+  const waitSeconds = Math.max(0, Math.ceil((resendAt - now) / 1000));
+
+  const sendPin = useCallback(async () => {
     setSending(true);
     setSendError(null);
+    setSendNote(null);
     try {
       const data = await partnerApi.startOtp(bookingId);
-      setSent({
-        alreadyVerified: data.alreadyVerified,
-        channels: data.channels ?? [],
-        sentTo: data.sentTo ?? { email: null, phone: null },
-        resendInSec: data.resendInSec ?? 30,
-        expiresInSec: data.expiresInSec ?? 600,
-      });
-      setResendIn(data.alreadyVerified ? 0 : data.resendInSec ?? 30);
+      setSentOnce(true);
+      setAlreadyVerified(data.alreadyVerified);
       setDigits("");
-      setVerifyError(null);
+      setFailure(null);
+      setNow(Date.now());
+      setResendAt(data.alreadyVerified ? 0 : Date.now() + Math.max(0, data.resendInSec) * 1000);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Could not send PIN";
-      if (/cooldown|resend/i.test(msg)) {
-        setSent(
-          (prev) =>
-            prev ?? {
-              alreadyVerified: false,
-              channels: [],
-              sentTo: { email: null, phone: null },
-              resendInSec: 30,
-              expiresInSec: 600,
-            },
-        );
-        setResendIn(30);
+      const code = refusalCode(err);
+      const wait = pinResendWait(err);
+      if (code === "RESEND_COOLDOWN" || code === "RATE_LIMITED") {
+        // The server's own wait; a cooldown also means a PIN is already with the customer.
+        if (code === "RESEND_COOLDOWN") setSentOnce(true);
+        setSendNote(failureSentence(err));
+        setNow(Date.now());
+        if (wait !== null) setResendAt(Date.now() + wait * 1000);
       } else {
-        setSendError(msg);
+        setSendError(failureSentence(err, "The PIN could not be sent. Please try again."));
       }
     } finally {
       setSending(false);
     }
   }, [bookingId]);
 
+  // Opening sends the PIN once; closing forgets everything typed.
   useEffect(() => {
     if (!visible) {
-      dispatchedRef.current = false;
-      startedRef.current = false;
+      openedFor.current = null;
+      autoStarted.current = false;
       setDigits("");
-      setSent(null);
+      setSentOnce(false);
+      setAlreadyVerified(false);
+      setSendNote(null);
       setSendError(null);
-      setVerifyError(null);
+      setFailure(null);
+      setResendAt(0);
       return;
     }
-    if (dispatchedRef.current) return;
-    dispatchedRef.current = true;
-    void dispatchPin();
-  }, [visible, dispatchPin]);
+    if (openedFor.current === bookingId) return;
+    openedFor.current = bookingId;
+    void sendPin();
+  }, [visible, bookingId, sendPin]);
 
   useEffect(() => {
-    if (!visible || resendIn <= 0) return;
-    const t = setInterval(() => setResendIn((v) => (v > 0 ? v - 1 : 0)), 1000);
-    return () => clearInterval(t);
-  }, [visible, resendIn > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!visible || waitSeconds <= 0) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [visible, waitSeconds > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A ref, not the state: the sixth digit, a paste or an autofill and a tap on Verify can land in the
+  // same frame, before `verifying` has rendered. Two requests burned two of the customer's attempts.
+  const submitting = useRef(false);
+  const submit = useCallback(
+    async (otp: string | undefined) => {
+      if (submitting.current) return;
+      submitting.current = true;
+      setVerifying(true);
+      setFailure(null);
+      try {
+        await onStart(otp);
+        onClose();
+      } catch (err) {
+        setFailure(startPinFailure(err));
+        setDigits("");
+      } finally {
+        submitting.current = false;
+        setVerifying(false);
+      }
+    },
+    [onClose, onStart],
+  );
+
+  // The customer already gave the PIN (the server says so): start without asking for it again.
   useEffect(() => {
-    if (!visible || !sent?.alreadyVerified || startedRef.current) return;
-    startedRef.current = true;
-    void onStart(undefined)
-      .then(onClose)
-      .catch((err) => {
-        startedRef.current = false;
-        setVerifyError(err instanceof Error ? err.message : "Start failed");
-      });
-  }, [sent?.alreadyVerified, visible, onClose, onStart]);
+    if (!visible || !alreadyVerified || autoStarted.current) return;
+    autoStarted.current = true;
+    void submit(undefined);
+  }, [visible, alreadyVerified, submit]);
 
-  async function submit(code?: string) {
-    if (verifying || startedRef.current) return;
-    const otp = code ?? digits;
-    if (otp.length !== OTP_LENGTH) return;
-    setVerifying(true);
-    setVerifyError(null);
-    try {
-      await onStart(otp);
-      startedRef.current = true;
-      onClose();
-    } catch (err) {
-      setVerifyError(err instanceof Error ? err.message : "Invalid PIN");
-      setDigits("");
-    } finally {
-      setVerifying(false);
-    }
-  }
+  const attempts = attemptsLeftText(failure?.attemptsLeft ?? null);
+  const locked = failure?.kind === "LOCKED";
+  const canVerify = digits.length === PIN_LENGTH && !verifying && !locked;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <Text style={styles.title}>Customer verification</Text>
-          <Text style={styles.sub}>Start PIN required to begin</Text>
-
-          {sending && !sent ? (
-            <View style={styles.center}>
-              <ActivityIndicator color={partnerColors.primary} />
-              <Text style={styles.muted}>Sending PIN to {customerName}…</Text>
-            </View>
-          ) : sendError ? (
-            <View style={styles.center}>
-              <Text style={styles.error}>{sendError}</Text>
-              <Pressable onPress={() => void dispatchPin()} style={styles.primaryBtn}>
-                <Text style={styles.primaryText}>Try again</Text>
-              </Pressable>
-            </View>
-          ) : sent?.alreadyVerified ? (
-            <View style={styles.center}>
-              <ActivityIndicator color={partnerColors.success} />
-              <Text style={styles.muted}>Already verified — starting…</Text>
-              {verifyError ? <Text style={styles.error}>{verifyError}</Text> : null}
-            </View>
-          ) : (
-            <>
-              <Text style={styles.body}>
-                Ask {customerName} for the 6-digit PIN we just sent them
-                {sent?.sentTo.phone || sent?.sentTo.email
-                  ? ` at ${[sent.sentTo.phone, sent.sentTo.email].filter(Boolean).join(" · ")}`
-                  : ""}
-                .
-              </Text>
-              <TextInput
-                value={digits}
-                onChangeText={(v) => {
-                  const next = v.replace(/\D/g, "").slice(0, OTP_LENGTH);
-                  setDigits(next);
-                  if (next.length === OTP_LENGTH) void submit(next);
-                }}
-                keyboardType="number-pad"
-                maxLength={OTP_LENGTH}
-                placeholder="••••••"
-                style={styles.pinInput}
-                editable={!verifying}
-                autoFocus
-              />
-              {verifyError ? <Text style={styles.error}>{verifyError}</Text> : null}
-              <Pressable
-                disabled={verifying || digits.length !== OTP_LENGTH}
-                onPress={() => void submit()}
-                style={[styles.primaryBtn, (verifying || digits.length !== OTP_LENGTH) && styles.disabled]}
-              >
-                {verifying ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.primaryText}>Verify & start job</Text>
-                )}
-              </Pressable>
-              <Pressable
-                disabled={resendIn > 0 || sending}
-                onPress={() => void dispatchPin()}
-                style={styles.resend}
-              >
-                <Text style={styles.resendText}>
-                  {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend PIN"}
-                </Text>
-              </Pressable>
-            </>
-          )}
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      title="Start PIN"
+      dismissable={!verifying}
+      testID="start-pin-sheet"
+      footer={
+        alreadyVerified ? (
+          failure ? <Button label="Try again" onPress={() => void submit(undefined)} loading={verifying} testID="start-pin-retry" /> : null
+        ) : (
+          <>
+            <Button label="Verify and start job" onPress={() => void submit(digits)} loading={verifying} disabled={!canVerify} testID="start-pin-verify" />
+            <Button
+              label={sending ? "Sending PIN" : pinSendLabel(sentOnce, waitSeconds)}
+              variant="quiet"
+              onPress={() => void sendPin()}
+              loading={sending}
+              disabled={sending || verifying || waitSeconds > 0}
+              testID="start-pin-send"
+            />
+            <KeyboardSpacer />
+          </>
+        )
+      }
+    >
+      {alreadyVerified ? (
+        <T kind="body" tone="slate" accessibilityLiveRegion="polite">
+          {verifying ? "The customer has already confirmed the PIN. Starting the job." : "The customer has already confirmed the PIN."}
+        </T>
+      ) : (
+        <>
+          <T kind="body" tone="slate">
+            {sending && !sentOnce
+              ? `Sending the PIN to ${customerName}.`
+              : `Ask ${customerName} for the 6-digit PIN. It was sent to the customer, not to you.`}
+          </T>
+          {sendNote ? <Banner tone="info" message={sendNote} testID="start-pin-send-note" /> : null}
+          {sendError ? (
+            <Banner
+              tone="danger"
+              message={sendError}
+              testID="start-pin-send-error"
+              action={<Button label="Try again" variant="secondary" onPress={() => void sendPin()} loading={sending} />}
+            />
+          ) : null}
+          <View style={styles.field}>
+            <T kind="smallStrong" tone="slate">
+              Start PIN
+            </T>
+            <TextInput
+              testID="start-pin-input"
+              value={digits}
+              onChangeText={(v) => {
+                const next = v.replace(/\D/g, "").slice(0, PIN_LENGTH);
+                setDigits(next);
+                if (next.length === PIN_LENGTH && !locked) void submit(next);
+              }}
+              keyboardType="number-pad"
+              inputMode="numeric"
+              textContentType="oneTimeCode"
+              autoComplete="one-time-code"
+              importantForAutofill="yes"
+              maxLength={PIN_LENGTH}
+              editable={!verifying && !locked}
+              autoFocus
+              accessibilityLabel="Start PIN, 6 digits"
+              accessibilityHint={failure?.message}
+              placeholder="000000"
+              placeholderTextColor={color.line}
+              style={[styles.pin, failure ? styles.pinError : null]}
+            />
+          </View>
+        </>
+      )}
+      {failure ? (
+        <View accessible accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.failure} testID="start-pin-error">
+          <T kind="body" tone="danger">
+            {failure.message}
+          </T>
+          {attempts ? (
+            <T kind="smallStrong" numeric testID="start-pin-attempts">
+              {attempts}
+            </T>
+          ) : null}
+          {failure.needsNewPin && !alreadyVerified ? <T kind="small">Send a new PIN and ask the customer again.</T> : null}
+        </View>
+      ) : null}
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.45)",
-  },
-  sheet: {
-    backgroundColor: partnerColors.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: 32,
-    gap: 10,
-  },
-  title: { fontSize: 17, fontWeight: "700", color: partnerColors.text },
-  sub: { fontSize: 12, color: partnerColors.textMuted, marginBottom: 4 },
-  body: { fontSize: 14, lineHeight: 20, color: partnerColors.textSecondary },
-  muted: { fontSize: 13, color: partnerColors.textMuted, marginTop: 8 },
-  error: { fontSize: 13, color: partnerColors.danger, marginTop: 4 },
-  center: { alignItems: "center", paddingVertical: 24, gap: 8 },
-  pinInput: {
-    marginTop: 8,
+  field: { gap: space.xs + 2 },
+  pin: {
+    ...type.title,
+    ...tabular,
+    minHeight: touch.min + 12,
     borderWidth: 1,
-    borderColor: partnerColors.line,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 22,
-    letterSpacing: 8,
+    borderColor: color.line,
+    borderRadius: radius.control,
+    backgroundColor: color.well,
+    paddingHorizontal: space.lg,
     textAlign: "center",
-    fontWeight: "700",
-    color: partnerColors.text,
-    backgroundColor: partnerColors.cream,
+    letterSpacing: 10,
   },
-  primaryBtn: {
-    marginTop: 8,
-    backgroundColor: partnerColors.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  primaryText: { color: "#fff", fontWeight: "700" },
-  disabled: { opacity: 0.5 },
-  resend: { alignItems: "center", paddingVertical: 8 },
-  resendText: { fontSize: 13, fontWeight: "600", color: partnerColors.primary },
+  pinError: { borderColor: color.danger },
+  failure: { gap: space.xs },
 });

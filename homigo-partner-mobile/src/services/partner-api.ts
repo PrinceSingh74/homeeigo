@@ -1,76 +1,118 @@
+/**
+ * The partner app's API client.
+ *
+ * Every method here was checked against the backend route that answers it (method, path, body
+ * schema, response builder) on 2026-10-07; the types live in `@/types/partner` and mirror the
+ * backend. Conventions:
+ *   - a method returns the envelope's `data`; where the screen needs the server's own sentence the
+ *     result also carries `message` (the envelope's top-level `message`, null when none was sent);
+ *   - every failure throws `PartnerApiError` (`@/lib/api-error`): `status`, `code`, the server's
+ *     sentence as `message`, the refusal's `data` block, `retryAfter`. No HTTP answer at all is
+ *     `status: 0`, `code: "NETWORK_ERROR"`;
+ *   - nothing is synthesised: there is no derived ledger, no estimate, no fallback row.
+ */
 import { getApiBaseUrl } from "@/lib/api-config";
-import type {
-  BookingExecutionView,
-  BookingRequirementsView,
-  BookingSafetyView,
-  CapabilityWriteRow,
-  DeclareCertificationBody,
-  DeclareEquipmentBody,
-  DeclareInsuranceBody,
-  DeclareLanguageBody,
-  DeclareSkillBody,
-  EditCapabilityBody,
-  PartnerCapabilityProfile,
-  PartnerCaseView,
-  PartnerServiceSkillBoard,
-  RequirementGateResult,
-} from "@/types/partner";
+import { apiErrorFromResponse, networkError, PartnerApiError } from "@/lib/api-error";
 import {
   classifyRefreshResponse,
   createRefreshCoordinator,
   sendWithAuthRetry,
   type RefreshOutcome,
 } from "@/lib/auth-refresh";
+import { evidenceImageSourceFor, type EvidenceImageSource } from "@/lib/evidence-photo";
 import { recordServerDate } from "@/lib/server-clock";
 import type {
+  ApiEnvelope,
+  AuthSessionsResponse,
+  BookingExecutionView,
+  BookingRequirementsView,
+  BookingSafetyView,
+  CapabilityWriteRow,
+  CreatedSupportTicket,
+  CreateSupportTicketBody,
+  DeclareCertificationBody,
+  DeclareEquipmentBody,
+  DeclareInsuranceBody,
+  DeclareLanguageBody,
+  DeclareSkillBody,
   DemandForecast,
+  DemandForecastResult,
   DensityZone,
+  EditCapabilityBody,
+  EmergencyContact,
+  ExecutionStepAction,
+  ExecutionStepActionBody,
+  ExecutionStepActionResult,
+  GeoEta,
+  GeoIntel,
+  JobActionResult,
+  JobChatList,
+  JobChatMessage,
+  JobEvidenceItem,
+  JobEvidenceStage,
+  JobEvidenceUploadResult,
+  NoShowReportResult,
   PartnerAcademy,
   PartnerAttendance,
   PartnerBooking,
   PartnerBookingsResponse,
+  PartnerCancelResult,
+  PartnerCapabilityProfile,
+  PartnerCareer,
+  PartnerCareerHistoryPage,
+  PartnerCaseView,
   PartnerCompliance,
   PartnerDashboard,
   PartnerDocument,
+  PartnerEarningsCoach,
   PartnerEarningsSummary,
   PartnerEntitlements,
   PartnerForecast,
   PartnerIncentives,
   PartnerIntelligence,
   PartnerInvoices,
+  PartnerJobEarning,
+  PartnerLifecycle,
   PartnerMembershipData,
   PartnerMembershipPlan,
+  PartnerNetworkDashboard,
+  PartnerNetworkInviteResult,
   PartnerNotificationsResponse,
+  PartnerNudges,
+  PartnerOperations,
   PartnerPayoutsData,
   PartnerRankings,
-  PartnerReview,
-  PartnerRewards,
-  PartnerScorecard,
-  PartnerCareer,
-  PartnerLifecycle,
   PartnerReviewsResponse,
+  PartnerRewards,
+  PartnerSafetyIncident,
+  PartnerScoreHistoryPage,
+  PartnerScorecard,
   PartnerServiceHistory,
+  PartnerServiceSkillBoard,
+  PartnerShiftPlan,
   PartnerSupportTicket,
   PartnerSupportTicketDetail,
   PartnerTaxSummary,
   PartnerUser,
+  PartnerUserProfile,
   PartnerWellbeing,
-  PartnerOperations,
+  PartnerWithdrawal,
+  PartnerZoneRecommendations,
   ProviderProfile,
+  RatingResponseResult,
+  RequirementGateResult,
   RouteOptimizeResult,
+  SafetyReportType,
+  ServiceAreaResult,
+  ServiceAreaZone,
+  SetOnlineResult,
   SurgeZone,
-  WalletBalance,
-  WalletTransactionsResponse,
-  ZoneScoring,
+  UploadDocumentBody,
+  WithdrawRequest,
+  WithdrawResult,
 } from "@/types/partner";
 
-type ApiResponse<T> = {
-  success: boolean;
-  data?: T;
-  error?: string;
-  code?: string;
-  retryAfter?: unknown;
-};
+export { PartnerApiError };
 
 let accessToken: string | null = null;
 
@@ -158,42 +200,16 @@ const NO_REFRESH_PATHS = ["/api/auth/login", "/api/auth/refresh", "/api/auth/log
 const PRESENCE_SESSION_CODES = new Set(["INVALID_SESSION", "STALE_SESSION", "DEVICE_MISMATCH"]);
 const presenceSessionRejects = new WeakSet<Response>();
 
-export class PartnerApiError extends Error {
-  readonly status: number;
-  readonly code: string | null;
-  readonly retryAfter: number | null;
-
-  constructor(
-    message: string,
-    opts: { status: number; code?: string | null; retryAfter?: number | null },
-  ) {
-    super(message);
-    this.name = "PartnerApiError";
-    this.status = opts.status;
-    this.code = opts.code ?? null;
-    this.retryAfter = opts.retryAfter ?? null;
-  }
-}
-
 type RequestOpts = {
   method?: string;
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined>;
+  /** Sent as the `Idempotency-Key` header. Only for routes that read it — see `newIdempotencyKey`. */
+  idempotencyKey?: string;
 };
 
-function parseRetryAfter(res: Response, json: { retryAfter?: unknown }): number | null {
-  if (typeof json.retryAfter === "number" && Number.isFinite(json.retryAfter) && json.retryAfter > 0) {
-    return json.retryAfter;
-  }
-  const header = res.headers.get("Retry-After");
-  if (header && /^\d+$/.test(header)) {
-    const n = Number(header);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  }
-  return null;
-}
-
-async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
+/** Sends the request (with the single 401 → refresh → retry). Throws only for "no HTTP answer". */
+async function sendRequest(path: string, opts: RequestOpts): Promise<Response> {
   const url = new URL(`${getApiBaseUrl()}${path}`);
   if (opts.query) {
     for (const [k, v] of Object.entries(opts.query)) {
@@ -204,12 +220,19 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
   const send = async (token: string | null): Promise<Response> => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
+    if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
     const startedAt = Date.now();
-    const response = await fetch(target, {
-      method: opts.method ?? "GET",
-      headers,
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
-    });
+    let response: Response;
+    try {
+      response = await fetch(target, {
+        method: opts.method ?? "GET",
+        headers,
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+      });
+    } catch (cause) {
+      // Offline, DNS, TLS, timeout: the server said nothing. Distinguishable from any refusal.
+      throw networkError(cause);
+    }
     recordServerDate(response.headers.get("Date"), startedAt, Date.now());
     if (response.status === 401) {
       const code = await response
@@ -222,7 +245,7 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
     return response;
   };
 
-  const res = await sendWithAuthRetry<Response>({
+  return sendWithAuthRetry<Response>({
     send,
     isUnauthorized: (r) => r.status === 401 && !presenceSessionRejects.has(r),
     getAccessToken: () => accessToken,
@@ -232,23 +255,73 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
     },
     allowRefresh: !NO_REFRESH_PATHS.includes(path),
   });
-  let json: ApiResponse<T> = { success: false };
+}
+
+/** The whole parsed success body. Throws `PartnerApiError` on a refusal or an unreadable body. */
+async function requestBody(path: string, opts: RequestOpts = {}): Promise<Record<string, unknown>> {
+  const res = await sendRequest(path, opts);
+  let json: unknown = null;
   try {
-    json = (await res.json()) as ApiResponse<T>;
+    json = await res.json();
   } catch {
-    throw new PartnerApiError(res.statusText || "Request failed", {
-      status: res.status,
-      retryAfter: parseRetryAfter(res, {}),
-    });
+    json = null;
   }
-  if (!res.ok || !json.success) {
-    throw new PartnerApiError(json.error ?? res.statusText ?? "Request failed", {
-      status: res.status,
-      code: typeof json.code === "string" ? json.code : null,
-      retryAfter: parseRetryAfter(res, json),
-    });
+  const ok = res.ok && typeof json === "object" && json !== null && (json as { success?: unknown }).success === true;
+  if (!ok) throw apiErrorFromResponse(res.status, res.statusText, json, res.headers.get("Retry-After"));
+  return json as Record<string, unknown>;
+}
+
+/**
+ * `data` plus the server's success sentence. Use where the screen should show what the server said
+ * ("Arrival already recorded", "No-show recorded", "Recorded as missing — the customer has been told").
+ */
+export async function requestEnvelope<T>(path: string, opts: RequestOpts = {}): Promise<ApiEnvelope<T>> {
+  const json = await requestBody(path, opts);
+  return { data: json.data as T, message: typeof json.message === "string" && json.message ? json.message : null };
+}
+
+async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
+  return (await requestEnvelope<T>(path, opts)).data;
+}
+
+/** A route that answers with a document instead of the JSON envelope (the earning invoice). */
+async function requestText(path: string): Promise<string> {
+  const res = await sendRequest(path, {});
+  if (!res.ok) {
+    let json: unknown = null;
+    try {
+      json = await res.json();
+    } catch {
+      json = null;
+    }
+    throw apiErrorFromResponse(res.status, res.statusText, json, res.headers.get("Retry-After"));
   }
-  return json.data as T;
+  return res.text();
+}
+
+const withMessage = <T extends object>(e: ApiEnvelope<T>): T & { message: string | null } => ({ ...e.data, message: e.message });
+
+/** A coordinate to send: the finite number, else null (the server then decides without a position). */
+const coord = (v: number | null | undefined): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/** `null` for the server's 404 with this code; every other failure is rethrown. */
+async function nullOn404<T>(promise: Promise<T>, code: string): Promise<T | null> {
+  try {
+    return await promise;
+  } catch (err) {
+    if (err instanceof PartnerApiError && err.status === 404 && err.code === code) return null;
+    throw err;
+  }
+}
+
+/**
+ * A fresh `Idempotency-Key`. Two booking routes read the header themselves — execution step actions
+ * and requirement checks — and stamp it into the audit trail (replay safety there comes from the
+ * step / requirement state: a repeat answers `changed: false`). Generate one per user action and
+ * pass the SAME key when retrying that action.
+ */
+export function newIdempotencyKey(scope: string): string {
+  return `m-${scope}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export type PresenceFreshness = "FRESH" | "STALE" | "EXPIRED";
@@ -321,6 +394,12 @@ export type DispatchEligibilityChecks = {
   conflict: boolean;
 };
 
+/**
+ * `GET /api/providers/me/dispatch-eligibility`. `reasons` / `blockedBy` codes: NOT_FOUND, NOT_ACTIVE,
+ * NOT_AVAILABLE, STALE_PRESENCE, STALE_LOCATION, LOCATION_INVALID, NO_CAPACITY, SCHEDULE_BLOCKED,
+ * OUTSIDE_SERVICE_AREA, SKILL_MISMATCH, RISK_BLOCKED, PAYMENT_NOT_READY, CONFLICT,
+ * ACCOUNT_RESTRICTED, APPROVAL_PENDING.
+ */
 export type DispatchEligibility = {
   providerId: string;
   eligible: boolean;
@@ -330,13 +409,66 @@ export type DispatchEligibility = {
   evaluatedAt: string;
 };
 
-export type LoginPayload = {
-  accessToken: string;
-  refreshToken: string;
-  user: PartnerUser;
+/** `POST /api/auth/login` → `data.user`. No `role`, no `isEmailVerified` here — read `partnerApi.me()`. */
+export type LoginUser = {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  profileImage: string | null;
+  /** The CUSTOMER wallet of this login — not partner money. */
+  walletBalance: number;
+  isPhoneVerified: boolean;
 };
 
+/** `POST /api/auth/login` → `data`. Refusals: 401 INVALID_CREDENTIALS; 403 ACCOUNT_BANNED / FORBIDDEN / PARTNER_NOT_APPROVED (its `message` is the reason). */
+export type LoginPayload = {
+  userId: string;
+  accessToken: string;
+  refreshToken: string;
+  sessionId?: string | null;
+  /** Seconds. */
+  expiresIn: number;
+  user: LoginUser;
+};
+
+/** `POST /api/bookings/:id/arrived` result. A blocked requirement gate does NOT refuse arrival: it rides here with `ok: false`. */
+export type ArrivedResult = {
+  newlyTransitioned: boolean;
+  booking: { arrivedAt: string | null };
+  /** The ARRIVAL requirement gate; null when the gate tables are not deployed. */
+  requirementGate: RequirementGateResult | null;
+  /** "Arrival recorded" | "Arrival already recorded". */
+  message: string | null;
+};
+
+export type StartOtpResult = {
+  alreadyVerified: boolean;
+  /** "app" | "email" | "sms" */
+  channels: string[];
+  /** Always nulls: the partner is never told the customer's address or number. */
+  sentTo: { email: string | null; phone: string | null };
+  expiresInSec: number;
+  resendInSec: number;
+};
+
+/** `GET /api/bookings/:id/contact`. Calling is not available: `canCall` is false and there is no number to dial. */
+export type BookingContact = {
+  phoneMasked: string | null;
+  canCall: boolean;
+  callUnavailableReason?: "CALL_RELAY_UNAVAILABLE";
+  alternative?: "CHAT";
+};
+
+export type NotificationChannelName = "IN_APP" | "PUSH" | "EMAIL" | "SMS";
+export type NotificationCategoryName = "TRANSACTIONAL" | "SECURITY" | "OPTIONAL";
+
 export const partnerApi = {
+  /* ------------------------------------------------------------------ */
+  /* Session and account                                                  */
+  /* ------------------------------------------------------------------ */
+
+  /** POST /api/auth/login */
   login: async (email: string, password: string) => {
     const { getDeviceId, getDeviceName } = await import("@/lib/device");
     const deviceId = await getDeviceId();
@@ -346,25 +478,108 @@ export const partnerApi = {
     });
   },
 
+  /** POST /api/auth/logout */
   logout: (refreshToken: string) =>
     request<unknown>("/api/auth/logout", { method: "POST", body: { refreshToken, clearAuthCookies: false } }),
 
+  /** GET /api/user/me — the only read that carries `role`. `email` may be null (raw column); see `userProfile`. */
   me: () => request<{ user: PartnerUser }>("/api/user/me"),
 
+  /** GET /api/users/me — decrypted email / phone, `isEmailVerified`, preference flags. */
+  userProfile: () => request<{ user: PartnerUserProfile }>("/api/users/me").then((r) => r.user),
+
+  /** PUT /api/users/me — `bio` max 500; `profileImage` must be a URL. */
+  updateProfile: (body: { firstName?: string; lastName?: string; bio?: string; profileImage?: string }) =>
+    request<{ user: PartnerUserProfile }>("/api/users/me", { method: "PUT", body }).then((r) => r.user),
+
+  /** PUT /api/users/preferences */
+  updatePreferences: (body: {
+    darkMode?: boolean;
+    notificationsEnabled?: boolean;
+    emailNotifications?: boolean;
+    pushNotifications?: boolean;
+    smsNotifications?: boolean;
+    /** Max 10 characters. */
+    preferredLanguage?: string;
+  }) => request<{ optedOutChannels: unknown; resetChannels: unknown }>("/api/users/preferences", { method: "PUT", body }),
+
+  security: {
+    /**
+     * POST /api/auth/change-password. `newPassword`: 8–128 characters with upper, lower, digit and
+     * special, different from the last 5. SUCCESS REVOKES EVERY SESSION, THIS ONE INCLUDED — sign
+     * the partner out and ask them to log in again. Refusals: 401 INVALID_CREDENTIALS (wrong
+     * current password); 400 INVALID_INPUT (weak or reused; `details` lists why).
+     */
+    changePassword: (body: { currentPassword: string; newPassword: string }) =>
+      request<undefined>("/api/auth/change-password", { method: "POST", body }).then(() => undefined),
+
+    /**
+     * POST /api/auth/forgot-password (public). Always succeeds, whether or not the account exists;
+     * the email carries a LINK token (not an OTP), valid `expiresIn` seconds. 429
+     * RATE_LIMIT_EXCEEDED carries `retryAfter`.
+     */
+    forgotPassword: (email: string) =>
+      requestEnvelope<{ expiresIn: number }>("/api/auth/forgot-password", { method: "POST", body: { email } }).then(withMessage),
+
+    /** POST /api/auth/reset-password (public) with the token from the emailed link. Revokes all sessions. 400 INVALID_INPUT on a bad / expired token or a weak password. */
+    resetPassword: (body: { token: string; newPassword: string }) =>
+      request<undefined>("/api/auth/reset-password", { method: "POST", body }).then(() => undefined),
+
+    /**
+     * POST /api/auth/send-verification-email. The email carries a link token valid until
+     * `expiresAt`. Refusals: 400 EMAIL_ALREADY_VERIFIED; 429 RATE_LIMIT_EXCEEDED (`retryAfter`).
+     * A verified email is required to withdraw (403 EMAIL_NOT_VERIFIED on `withdraw`).
+     */
+    sendVerificationEmail: () =>
+      request<{ message: string; email: string | null; sentAt: string; expiresAt: string }>("/api/auth/send-verification-email", { method: "POST" }),
+
+    /** POST /api/auth/verify-email (public) with the token from the emailed link (min 10 chars) — not an OTP. 400 INVALID_VERIFICATION_TOKEN / EMAIL_ALREADY_VERIFIED. */
+    verifyEmail: (token: string) =>
+      request<{ emailVerified: true; emailVerifiedAt: string; email: string | null }>("/api/auth/verify-email", { method: "POST", body: { token } }),
+
+    /** GET /api/auth/sessions?deviceId= — `isCurrent` marks this device's session. */
+    sessions: async () => {
+      const { getDeviceId } = await import("@/lib/device");
+      return request<AuthSessionsResponse>("/api/auth/sessions", { query: { deviceId: await getDeviceId() } });
+    },
+
+    /** DELETE /api/auth/sessions/:id. 403 CANNOT_DELETE_CURRENT for this device's own session (use logout). An unknown id still succeeds. */
+    revokeSession: async (sessionId: string) => {
+      const { getDeviceId } = await import("@/lib/device");
+      await request<undefined>(`/api/auth/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE", query: { deviceId: await getDeviceId() } });
+    },
+
+    /**
+     * DELETE /api/auth/sessions/others?deviceId= — signs out every OTHER device. The device id is
+     * always sent: without one the server cannot tell which session is this one and revokes all.
+     */
+    revokeOtherSessions: async () => {
+      const { getDeviceId } = await import("@/lib/device");
+      return request<{ revoked: number }>("/api/auth/sessions/others", { method: "DELETE", query: { deviceId: await getDeviceId() } });
+    },
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Provider profile, availability, presence                             */
+  /* ------------------------------------------------------------------ */
+
+  /** GET /api/providers/me */
   provider: () => request<{ provider: ProviderProfile }>("/api/providers/me").then((r) => r.provider),
 
+  /** PUT /api/providers/me/online. `message` is "You are online" / "You are offline". 403 ACCOUNT_RESTRICTED; 409 with a readiness blocker's code. */
   setOnline: (online: boolean) =>
-    request<{ id: string; isOnline: boolean; onlineSince: string | null }>("/api/providers/me/online", {
-      method: "PUT",
-      body: { online },
-    }),
+    requestEnvelope<SetOnlineResult>("/api/providers/me/online", { method: "PUT", body: { online } }).then(withMessage),
 
+  /** GET /api/providers/me/operations */
   operations: () => request<PartnerOperations>("/api/providers/me/operations"),
 
-  pause: (reason?: string) =>
-    request<PartnerOperations>("/api/providers/me/pause", { method: "POST", body: { reason } }),
+  /** POST /api/providers/me/pause */
+  pause: (reason?: "break" | "personal" | "travel" | "other") =>
+    request<PartnerOperations>("/api/providers/me/pause", { method: "POST", body: reason ? { reason } : {} }),
 
-  resume: () => request<PartnerOperations>("/api/providers/me/resume", { method: "POST" }),
+  /** POST /api/providers/me/resume. `operations` is the fresh snapshot; `message` is the server's sentence ("You are available for jobs again"). */
+  resume: () =>
+    requestEnvelope<PartnerOperations>("/api/providers/me/resume", { method: "POST" }).then((e) => ({ operations: e.data, message: e.message })),
 
   /** Phase 1 presence — liveness evidence (server derives partner id from JWT). */
   presenceSnapshot: () => request<PresenceSnapshot>("/api/providers/me/presence"),
@@ -396,133 +611,195 @@ export const partnerApi = {
     speed?: number;
   }) => request<unknown>("/api/tracking/location", { method: "POST", body }),
 
+  /** GET /api/providers/me/dispatch-eligibility — would the dispatcher offer this partner a job right now, and if not, why. */
   dispatchEligibility: () => request<DispatchEligibility>("/api/providers/me/dispatch-eligibility"),
 
+  /**
+   * PUT /api/providers/me/service-area. `city` 1–80; `serviceRegions` ≤ 20 entries; `serviceRadiusKm`
+   * 1–50; latitude and longitude must be sent together. Refusals: 400 INVALID_RADIUS /
+   * VALIDATION_ERROR / OUTSIDE_SERVICE_AREA.
+   */
   updateServiceArea: (body: {
     city?: string;
     serviceRegions?: string[];
     serviceRadiusKm?: number;
     baseLatitude?: number;
     baseLongitude?: number;
-  }) => request<Record<string, unknown>>("/api/providers/me/service-area", { method: "PUT", body }),
+  }) => request<ServiceAreaResult>("/api/providers/me/service-area", { method: "PUT", body }),
 
+  /**
+   * GET /api/providers/me/service-area/zones — up to 16 service zones near a point. Without
+   * coordinates the server uses the partner's saved base; 400 VALIDATION_ERROR when there is
+   * neither, 400 OUTSIDE_SERVICE_AREA outside the served country.
+   */
+  serviceAreaZones: (lat?: number | null, lng?: number | null) =>
+    request<{ zones: ServiceAreaZone[] }>("/api/providers/me/service-area/zones", {
+      query: typeof lat === "number" && typeof lng === "number" ? { lat, lng } : {},
+    }).then((r) => r.zones),
+
+  /** PUT /api/providers/me/settings — `bio` max 2000. */
+  updateSettings: (body: {
+    workingHoursStart?: string;
+    workingHoursEnd?: string;
+    workingDays?: string[];
+    breakWindows?: Array<{ start: string; end: string }>;
+    maxJobsPerDay?: number | null;
+    maxConcurrentJobs?: number;
+    paymentMethodPreference?: string;
+    upiId?: string;
+    bio?: string;
+  }) =>
+    request<{
+      settings: {
+        id: string;
+        workingHoursStart: string | null;
+        workingHoursEnd: string | null;
+        workingDays: string[];
+        breakWindows: unknown;
+        maxJobsPerDay: number | null;
+        maxConcurrentJobs: number;
+        paymentMethodPreference: string;
+        upiId: string | null;
+        bio: string | null;
+      };
+    }>("/api/providers/me/settings", { method: "PUT", body }).then((r) => r.settings),
+
+  /* ------------------------------------------------------------------ */
+  /* Dashboard, earnings, reviews                                         */
+  /* ------------------------------------------------------------------ */
+
+  /** GET /api/providers/me/dashboard */
   dashboard: () => request<PartnerDashboard>("/api/providers/me/dashboard"),
 
+  /** GET /api/providers/me/earnings?days= (1..365) */
   earnings: (days = 30) => request<PartnerEarningsSummary>("/api/providers/me/earnings", { query: { days } }),
 
-  listBookings: (query: { status?: string; page?: number; limit?: number; sortBy?: string } = {}) =>
+  /** GET /api/providers/me/reviews — `rating` filters to exactly that many stars. */
+  reviews: (query: { page?: number; limit?: number; rating?: number } = {}) =>
+    request<PartnerReviewsResponse>("/api/providers/me/reviews", { query }),
+
+  /** POST /api/ratings/:id/respond — `response` 3–1000 characters; a second reply overwrites the first. 404 NOT_FOUND if the rating is not this partner's. */
+  respondToRating: (ratingId: string, response: string) =>
+    request<{ rating: RatingResponseResult }>(`/api/ratings/${encodeURIComponent(ratingId)}/respond`, {
+      method: "POST",
+      body: { response },
+    }).then((r) => r.rating),
+
+  /* ------------------------------------------------------------------ */
+  /* Bookings                                                             */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * GET /api/providers/me/bookings. `status`: pending (live offers only) | accepted | in_progress |
+   * completed | cancelled | active | all — or a raw lowercase status (customer_no_show, expired, …).
+   * See `BOOKING_LIST_FILTER`. `sortBy`: "upcoming" (scheduledDate asc) | "recent" (createdAt desc).
+   */
+  listBookings: (query: { status?: string; page?: number; limit?: number; sortBy?: "upcoming" | "recent" } = {}) =>
     request<PartnerBookingsResponse>("/api/providers/me/bookings", { query }),
 
-  getBooking: async (bookingId: string) => {
-    const data = await request<{ booking: PartnerBooking }>(`/api/bookings/${bookingId}`);
-    const b = data.booking;
-    const addr = b.address;
-    return {
-      ...b,
-      amount: b.amount ?? b.finalAmount,
-      completedAt: b.completedAt ?? null,
-      enRouteAt: b.enRouteAt ?? null,
-      arrivedAt: b.arrivedAt ?? null,
-      startedAt: b.startedAt ?? null,
-      service: {
-        id: b.service?.id ?? "",
-        name: b.service?.name ?? "Service",
-        icon: b.service?.icon ?? null,
-        basePrice: b.service?.basePrice ?? null,
-      },
-      address: {
-        fullAddress: addr?.fullAddress ?? "",
-        latitude: addr?.latitude ?? null,
-        longitude: addr?.longitude ?? null,
-      },
-    } satisfies PartnerBooking;
-  },
+  /**
+   * GET /api/bookings/:id — the booking exactly as the server sends it (nothing stripped, nothing
+   * filled in). 404 NOT_FOUND when the job is not this partner's (any more): a reassigned partner
+   * gets 404, not 403. The fresh answer is authoritative — see `lib/job-stage.ts`.
+   */
+  getBooking: (bookingId: string) =>
+    request<{ booking: PartnerBooking }>(`/api/bookings/${encodeURIComponent(bookingId)}`).then((r) => r.booking),
 
+  /**
+   * POST /api/bookings/:id/accept. `eta` is whole minutes 1–480, omitted otherwise. `message`:
+   * "Booking accepted" | "Booking already accepted". Refusals (400): PROVIDER_UNAVAILABLE,
+   * ALREADY_CLAIMED, INVALID_STATUS, PAYMENT_NOT_SETTLED, CAPACITY_LIMIT, ACCOUNT_RESTRICTED,
+   * STALE_LOCATION, STALE_PRESENCE, or a matching rejection code; 404 NOT_FOUND.
+   */
   acceptBooking: (bookingId: string, eta?: number) =>
-    request<{ newlyAccepted?: boolean; booking: { id: string; status: string } }>(
+    requestEnvelope<{ newlyAccepted: boolean; booking: { id: string; status: "accepted"; provider: { name?: string } } }>(
       `/api/bookings/${bookingId}/accept`,
       {
         method: "POST",
-        body:
-          typeof eta === "number" && Number.isFinite(eta) && eta >= 1
-            ? { eta: Math.round(eta) }
-            : {},
+        body: typeof eta === "number" && Number.isFinite(eta) && Math.round(eta) >= 1 && Math.round(eta) <= 480 ? { eta: Math.round(eta) } : {},
       },
-    ),
+    ).then(withMessage),
 
+  /** POST /api/bookings/:id/reject — `reason` 3–500 characters. Returns the server's sentence. */
   rejectBooking: (bookingId: string, reason: string) =>
-    request<unknown>(`/api/bookings/${bookingId}/reject`, { method: "POST", body: { reason } }),
+    requestEnvelope<undefined>(`/api/bookings/${bookingId}/reject`, { method: "POST", body: { reason } }).then((e) => ({ message: e.message })),
 
   /**
-   * Partner AI assistant, via the backend AI Gateway (`/api/ai/partner`).
-   *
-   * The gateway owns auth, RBAC, prompt-injection screening, rate limiting, audit and
-   * cost accounting. The app never holds a model-provider key and never calls a provider
-   * directly — that is the single-entry rule this platform is built on.
+   * POST /api/bookings/:id/cancel as the partner. Body is `{ reason }` only (3–500 characters) — the
+   * server works out who is cancelling. A partner may cancel up to and including IN_PROGRESS.
+   * Refusals: 404 NOT_FOUND; 400 INVALID_STATUS.
    */
-  aiChat: (message: string) =>
-    request<{
-      content: string;
-      provider: string;
-      model: string;
-      fallbackUsed: boolean;
-      mode?: "llm" | "deterministic_fallback";
-      intent?: string;
-      basis?: string[];
-      recommendation?: string | null;
-    }>(
-      "/api/ai/partner",
-      { method: "POST", body: { message } },
-    ),
+  cancelBooking: (bookingId: string, reason: string) =>
+    requestEnvelope<PartnerCancelResult>(`/api/bookings/${bookingId}/cancel`, { method: "POST", body: { reason } }).then(withMessage),
 
   /**
-   * Declares departure — the authoritative producer of `enRouteAt`, which the ETA
-   * training label's duration is measured from. Idempotent: a repeat call returns
-   * `newlyTransitioned: false` and leaves the timestamp untouched.
+   * POST /api/bookings/:id/en-route. Declares departure — the authoritative producer of `enRouteAt`.
+   * Idempotent: a repeat returns `newlyTransitioned: false`. Coordinates are optional.
    */
   markEnRoute: (bookingId: string, latitude: number | null, longitude: number | null) =>
-    request<{ newlyTransitioned: boolean; booking: { status: string; enRouteAt: string | null } }>(
+    requestEnvelope<{ newlyTransitioned: boolean; booking: { status: "en_route"; enRouteAt: string | null } }>(
       `/api/bookings/${bookingId}/en-route`,
       {
         method: "POST",
         body: {
-          ...(typeof latitude === "number" && Number.isFinite(latitude) ? { latitude } : {}),
-          ...(typeof longitude === "number" && Number.isFinite(longitude) ? { longitude } : {}),
+          ...(coord(latitude) !== null ? { latitude: coord(latitude) } : {}),
+          ...(coord(longitude) !== null ? { longitude: coord(longitude) } : {}),
         },
       },
-    ),
-
-  /** Declares arrival. Races safely with the GPS geofence and the job-start fallback. */
-  markArrived: (bookingId: string, latitude: number, longitude: number) =>
-    request<{ newlyTransitioned: boolean; booking: { arrivedAt: string | null } }>(
-      `/api/bookings/${bookingId}/arrived`,
-      { method: "POST", body: { latitude, longitude } },
-    ),
-
-  startOtp: (bookingId: string) =>
-    request<{
-      alreadyVerified: boolean;
-      channels: string[];
-      sentTo: { email: string | null; phone: string | null };
-      expiresInSec: number;
-      resendInSec: number;
-    }>(`/api/bookings/${bookingId}/start-otp`, { method: "POST" }),
-
-  startBooking: (bookingId: string, latitude: number, longitude: number, otp?: string) =>
-    request<{ booking: { status: string } }>(`/api/bookings/${bookingId}/start`, {
-      method: "POST",
-      body: { latitude, longitude, ...(otp ? { otp } : {}) },
-    }),
+    ).then(withMessage),
 
   /**
-   * W2-D1: `completedChecklist` is the partner's actual submission — only the items they ticked, as
-   * the exact frozen strings — matched item by item server-side. Pass `undefined` (key omitted) when
-   * the service has no checklist. The server answers `QUALITY_CHECKLIST_REQUIRED` (409) while any
-   * frozen item is missing; the missing items are then readable from `getQuality(...).history`.
+   * POST /api/bookings/:id/arrived. Always sends `{ latitude, longitude }`; `null` means the device
+   * has no position — the server then refuses unless the customer or an admin has vouched for this
+   * partner on this booking. Refusals: 400 INVALID_STATUS / OUTSIDE_SERVICE_AREA / LOCATION_INVALID /
+   * LOCATION_REQUIRED; 409 LOCATION_UNCONFIRMED / LOCATION_MISMATCH; 404 NOT_FOUND (no `data`).
+   */
+  markArrived: (bookingId: string, latitude: number | null, longitude: number | null): Promise<ArrivedResult> =>
+    requestEnvelope<Omit<ArrivedResult, "message">>(`/api/bookings/${bookingId}/arrived`, {
+      method: "POST",
+      body: { latitude: coord(latitude), longitude: coord(longitude) },
+    }).then(withMessage),
+
+  /**
+   * POST /api/bookings/:id/start-otp — sends the start PIN to the CUSTOMER. Refusals: 429
+   * RESEND_COOLDOWN / RATE_LIMITED with `error.data.retryAfterSec`; 400 INVALID_STATUS; 404.
+   */
+  startOtp: (bookingId: string) => requestEnvelope<StartOtpResult>(`/api/bookings/${bookingId}/start-otp`, { method: "POST" }).then(withMessage),
+
+  /**
+   * POST /api/bookings/:id/start. Always sends `{ latitude, longitude }` (null when absent) and the
+   * 6-digit `otp` when given. Refusals, in the server's order:
+   *   409 SAFETY_HOLD_ACTIVE            data.blocking: SafetyBlocking[]
+   *   400 OTP_REQUIRED | OTP_NOT_REQUESTED | OTP_EXPIRED | OTP_LOCKED | OTP_INVALID
+   *                                     data.attemptsLeft (a number only on OTP_INVALID)
+   *   400 OUTSIDE_SERVICE_AREA | LOCATION_INVALID | LOCATION_REQUIRED
+   *   409 LOCATION_UNCONFIRMED | LOCATION_MISMATCH
+   *   403 PAYMENT_NOT_SETTLED
+   *   409 REQUIREMENT_GATE_BLOCKED      data.blocking: BlockingRequirement[]
+   *   403 FORBIDDEN                     (catch-all, including a wrong status)
+   */
+  startBooking: (bookingId: string, latitude: number | null, longitude: number | null, otp?: string) =>
+    requestEnvelope<{ booking: { status: "in_progress"; startedAt: string | null } }>(`/api/bookings/${bookingId}/start`, {
+      method: "POST",
+      body: { latitude: coord(latitude), longitude: coord(longitude), ...(otp ? { otp } : {}) },
+    }).then(withMessage),
+
+  /**
+   * POST /api/bookings/:id/complete.
    *
-   * `professionalConfirmation` is sent only as `true`, and only when the partner ticked the
-   * confirmation row (`lib/professional-confirmation.ts`); where the frozen policy requires it and it
-   * is absent the server answers `QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED` (409).
+   * `completedChecklist` is the partner's actual submission — only the items they ticked, as the
+   * exact frozen strings — matched item by item server-side; pass `undefined` (key omitted) when the
+   * service has no checklist. `professionalConfirmation` is sent only as `true`, and only when the
+   * partner ticked the confirmation row. `photos` are data-URL images under the evidence rules
+   * (`lib/evidence-photo.ts`: at most 4, 8 MB each).
+   *
+   * Refusals (409 unless noted), each with `error.data`:
+   *   QUALITY_PROOF_REQUIRED | QUALITY_CHECKLIST_REQUIRED | QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED
+   *                              { verdictId, verdict }
+   *   SAFETY_HOLD_ACTIVE         { blocking: SafetyBlocking[], … }
+   *   EXECUTION_GATE_BLOCKED     { blocking: [{ code, stepNumber, state, reason }], … }
+   *   QUALITY_VERDICT_BLOCKED    { verdict, reasonCodes, blocking }
+   *   400 INVALID_STATUS; the evidence refusals (EVIDENCE_REFUSALS); 403 FORBIDDEN; 500 COMPLETE_FAILED.
    */
   completeBooking: (
     bookingId: string,
@@ -533,26 +810,71 @@ export const partnerApi = {
     completedChecklist?: string[],
     professionalConfirmation?: true,
   ) =>
-    request<{ booking: { status: string } }>(`/api/bookings/${bookingId}/complete`, {
+    requestEnvelope<{ booking: { status: "completed"; completedAt: string | null; totalDuration: number } }>(`/api/bookings/${bookingId}/complete`, {
       method: "POST",
       body: {
-        ...(typeof latitude === "number" && Number.isFinite(latitude) ? { latitude } : {}),
-        ...(typeof longitude === "number" && Number.isFinite(longitude) ? { longitude } : {}),
+        ...(coord(latitude) !== null ? { latitude: coord(latitude) } : {}),
+        ...(coord(longitude) !== null ? { longitude: coord(longitude) } : {}),
         ...(notes ? { notes } : {}),
         ...(photos?.length ? { photos } : {}),
         ...(completedChecklist ? { completedChecklist } : {}),
         ...(professionalConfirmation === true ? { professionalConfirmation: true } : {}),
       },
-    }),
+    }).then(withMessage),
+
+  /** GET /api/bookings/:id/actions — the authority for the job's CTAs, gates and no-show preview. 404 for a partner who is only offered the job. */
+  getJobActions: (bookingId: string) => request<JobActionResult>(`/api/bookings/${bookingId}/actions`),
+
+  /**
+   * POST /api/bookings/:id/no-show — "the customer is not available". The server decides whether a
+   * fee applies; `message` and `feeNote` are its words. Refusals carry
+   * `error.data: { waitedMinutes, graceMinutes }`: 400 GRACE_NOT_ELAPSED / BEFORE_APPOINTMENT /
+   * NO_ARRIVAL_EVIDENCE / ARRIVAL_IN_FUTURE / BOOKING_NOT_AWAITING_CUSTOMER / INVALID_STATUS;
+   * 403 FORBIDDEN; 404 NOT_FOUND.
+   */
+  reportCustomerNoShow: (bookingId: string): Promise<NoShowReportResult> =>
+    requestEnvelope<Omit<NoShowReportResult, "message">>(`/api/bookings/${bookingId}/no-show`, { method: "POST", body: {} }).then(
+      (e) => ({ ...e.data, message: e.message ?? "" }),
+    ),
+
+  /**
+   * GET /api/providers/me/bookings/:bookingId/earning — what THIS job paid the partner, itemised by
+   * the server. `null` is the server's 404 `EARNING_NOT_FOUND`: not completed yet, or nothing was
+   * earned. Nothing is estimated in its place.
+   */
+  getBookingEarning: (bookingId: string): Promise<PartnerJobEarning | null> =>
+    nullOn404(
+      request<{ earning: PartnerJobEarning }>(`/api/providers/me/bookings/${encodeURIComponent(bookingId)}/earning`).then((r) => r.earning),
+      "EARNING_NOT_FOUND",
+    ),
 
   /* ---- Phase 10 §6 — requirement state ---- */
   getRequirements: (bookingId: string) => request<BookingRequirementsView>(`/api/bookings/${bookingId}/requirements`),
-  /** What the partner FOUND on site; the server decides the gate. Proximity enforced like arrival. */
-  checkRequirement: (bookingId: string, code: string, outcome: "SATISFIED" | "FAILED", latitude: number, longitude: number, note?: string) =>
-    request<{ code: string; state: string; changed: boolean; gate: RequirementGateResult }>(
+
+  /**
+   * POST /api/bookings/:id/requirements/:code/check — what the partner FOUND on site; the server
+   * decides the gate. Always sends `{ latitude, longitude }` (null when absent); proximity is
+   * enforced like arrival. Sends an `Idempotency-Key` (the route reads it) — pass the same key when
+   * retrying one action. `message`: "Check recorded" | "Recorded as missing — the customer has been
+   * told". Refusals: 404 NOT_FOUND / REQUIREMENT_NOT_FOUND; 409 INVALID_STATUS /
+   * REQUIREMENT_STATE_CONFLICT / LOCATION_UNCONFIRMED / LOCATION_MISMATCH; 403
+   * REQUIREMENT_TRANSITION_FORBIDDEN; 400 REQUIREMENT_NOT_GATED / OUTSIDE_SERVICE_AREA /
+   * LOCATION_INVALID / LOCATION_REQUIRED; 503 REQUIREMENT_GATE_UNAVAILABLE.
+   */
+  checkRequirement: (
+    bookingId: string,
+    code: string,
+    outcome: "SATISFIED" | "FAILED",
+    latitude: number | null,
+    longitude: number | null,
+    /** Max 500 characters. */
+    note?: string,
+    idempotencyKey: string = newIdempotencyKey(`req-${code}`),
+  ) =>
+    requestEnvelope<{ code: string; state: "UNRESOLVED" | "SATISFIED" | "FAILED"; changed: boolean; gate: RequirementGateResult }>(
       `/api/bookings/${bookingId}/requirements/${encodeURIComponent(code)}/check`,
-      { method: "POST", body: { outcome, latitude, longitude, ...(note ? { note } : {}) } },
-    ),
+      { method: "POST", body: { outcome, latitude: coord(latitude), longitude: coord(longitude), ...(note ? { note } : {}) }, idempotencyKey },
+    ).then(withMessage),
 
   /* ---- Phase 10 §9 — safety ---- */
   getSafety: (bookingId: string) => request<BookingSafetyView>(`/api/bookings/${bookingId}/safety`),
@@ -567,7 +889,7 @@ export const partnerApi = {
       latest: { verdict: string; reasonCodes: string[]; at: string } | null;
       history: Array<{ sequence: number; verdict: string; reasonCodes: string[]; byAdmin: boolean; at: string; missingChecklistItems: string[] }>;
     }>(`/api/bookings/${bookingId}/quality`),
-  /** The customer-confirmation axis: state, confirm-by, verdict summary and warranty window. */
+  /** The customer-confirmation axis: state, confirm-by, verdict summary and warranty window. `bookingStatus` is the UPPERCASE enum here. */
   getCompletion: (bookingId: string) =>
     request<{
       enforced: boolean;
@@ -597,60 +919,71 @@ export const partnerApi = {
 
   /* ---- Phase 10 §8 — execution steps ---- */
   getExecution: (bookingId: string) => request<BookingExecutionView>(`/api/bookings/${bookingId}/execution`),
-  executionAction: (bookingId: string, code: string, action: string, body?: Record<string, string>) =>
-    request<{ state: string; changed: boolean }>(`/api/bookings/${bookingId}/execution/${encodeURIComponent(code)}/${action}`, { method: "POST", body: body ?? {} }),
 
-  getJobActions: (bookingId: string) =>
-    request<{
-      stage: string;
-      availableActions: string[];
-      primaryAction: string | null;
-      requiredGates: string[];
-      disabledReasons: Record<string, string>;
-      requirementGate?: { ok: boolean; blocking: number; message: string } | null;
-      safetyGate?: { ok: boolean; blocking: number; message: string } | null;
-      paymentExempt?: boolean;
-    }>(`/api/bookings/${bookingId}/actions`),
+  /**
+   * POST /api/bookings/:id/execution/:code/:action. Sends an `Idempotency-Key` (the route reads it);
+   * pass the same key when retrying one action — a repeat by the same partner answers
+   * `changed: false`. See `ExecutionStepActionBody` for what each action needs. Refusals: 404
+   * NOT_FOUND / STEP_NOT_FOUND; 409 BOOKING_NOT_IN_PROGRESS / DEPENDENCY_INCOMPLETE /
+   * SAFETY_REQUIREMENT_UNMET / STEP_STATE_CONFLICT / STEP_NOT_STARTABLE / STEP_NOT_IN_PROGRESS /
+   * SAFETY_HOLD_ACTIVE (`data.blocking`); 400 EVIDENCE_REQUIRED (`data.detail`:
+   * ["NOTE"|"PHOTO"|"BEFORE"|"AFTER"]) / REASON_REQUIRED; 403 STEP_NOT_SKIPPABLE /
+   * STEP_TRANSITION_FORBIDDEN; 503 EXECUTION_UNAVAILABLE.
+   */
+  executionAction: (
+    bookingId: string,
+    code: string,
+    action: ExecutionStepAction | Lowercase<ExecutionStepAction>,
+    body?: ExecutionStepActionBody,
+    idempotencyKey: string = newIdempotencyKey(`step-${code}-${action}`),
+  ) =>
+    request<ExecutionStepActionResult>(`/api/bookings/${bookingId}/execution/${encodeURIComponent(code)}/${action}`, {
+      method: "POST",
+      body: body ?? {},
+      idempotencyKey,
+    }),
 
-  listEvidence: (bookingId: string) =>
-    request<{
-      evidence: Array<{
-        id: string;
-        stage: string;
-        mediaUrl?: string | null;
-        mediaAccessUrl?: string | null;
-        capturedAt: string;
-        isCurrent: boolean;
-      }>;
-    }>(`/api/bookings/${bookingId}/evidence`),
+  /* ---- Evidence ---- */
 
+  /** GET /api/bookings/:id/evidence — this partner's own rows (stage asc, newest first within a stage); `[]` for an offer. */
+  listEvidence: (bookingId: string) => request<{ evidence: JobEvidenceItem[] }>(`/api/bookings/${bookingId}/evidence`).then((r) => r.evidence),
+
+  /**
+   * POST /api/bookings/:id/evidence. `mediaUrl` and each `photos[]` entry is a
+   * `data:image/…;base64,…` built by `checkEvidencePhoto` (`lib/evidence-photo.ts`) — a link is
+   * refused. The server is idempotent on (booking, stage, clientUploadId): reuse the id when
+   * retrying the same pick (`evidenceUploadId`). `replace: true` retires the stage's current photos.
+   * The position on the row is the server's own; the app sends none. Refusals: `EVIDENCE_REFUSALS`.
+   */
   uploadEvidence: (
     bookingId: string,
     body: {
-      stage: "ARRIVAL" | "START" | "COMPLETION";
+      stage: JobEvidenceStage;
+      clientUploadId: string;
       mediaUrl?: string;
       photos?: string[];
-      latitude?: number;
-      longitude?: number;
-      clientUploadId?: string;
       replace?: boolean;
     },
-  ) => request<{ evidence: { id: string } }>(`/api/bookings/${bookingId}/evidence`, { method: "POST", body }),
+  ) => request<{ evidence: JobEvidenceUploadResult }>(`/api/bookings/${bookingId}/evidence`, { method: "POST", body }).then((r) => r.evidence),
 
+  /**
+   * The `Image` source for an evidence row: its `mediaAccessUrl` on this app's API base, with the
+   * bearer header (the media route answers only the signed-in partner). `null` when the row has no
+   * stored photo or there is no token. Like `caseEvidenceImageSource`, pass the store's current
+   * token so the source is rebuilt after a refresh.
+   */
+  evidenceImageSource: (evidence: Pick<JobEvidenceItem, "mediaAccessUrl">, token: string | null = accessToken): EvidenceImageSource | null =>
+    evidenceImageSourceFor(evidence.mediaAccessUrl, getApiBaseUrl(), token),
+
+  /* ---- Chat and contact ---- */
+
+  /** GET /api/bookings/:id/chat — oldest first; `limit` 1–100 (default 50). 403 CHAT_CLOSED once the job is not active. */
   listChat: (bookingId: string, query: { cursor?: string; limit?: number } = {}) =>
-    request<{
-      conversationId: string;
-      messages: Array<{
-        id: string;
-        senderUserId: string;
-        body: string;
-        createdAt: string;
-      }>;
-      nextCursor: string | null;
-    }>(`/api/bookings/${bookingId}/chat`, { query }),
+    request<JobChatList>(`/api/bookings/${bookingId}/chat`, { query }),
 
+  /** POST /api/bookings/:id/chat. Refusals: 403 CHAT_CLOSED / FORBIDDEN; 429 RATE_LIMITED; 400 VALIDATION_ERROR. */
   sendChat: (bookingId: string, body: string, clientMessageId?: string) =>
-    request<{ message: { id: string; body: string }; created: boolean }>(
+    request<{ message: JobChatMessage; created: boolean }>(
       `/api/bookings/${bookingId}/chat`,
       { method: "POST", body: { body, ...(clientMessageId ? { clientMessageId } : {}) } },
     ),
@@ -658,98 +991,101 @@ export const partnerApi = {
   markChatRead: (bookingId: string) =>
     request<{ marked: number }>(`/api/bookings/${bookingId}/chat/read`, { method: "POST" }),
 
-  getContact: (bookingId: string) =>
-    request<{ phoneMasked: string | null; canCall: boolean }>(`/api/bookings/${bookingId}/contact`),
+  /** GET /api/bookings/:id/contact — the masked number only. There is no call route a partner can use: message the customer in chat. */
+  getContact: (bookingId: string) => request<BookingContact>(`/api/bookings/${bookingId}/contact`),
 
-  initiateCall: (bookingId: string) =>
-    request<{ dialUri: string; phoneMasked: string; expiresInSec: number }>(
-      `/api/bookings/${bookingId}/call`,
-      { method: "POST" },
-    ),
+  /* ------------------------------------------------------------------ */
+  /* Money — real endpoints only. A partner has no ledger endpoint.       */
+  /* ------------------------------------------------------------------ */
 
-  cancelBooking: (bookingId: string, reason: string) =>
-    request<unknown>(`/api/bookings/${bookingId}/cancel`, {
-      method: "POST",
-      body: { reason, cancelledBy: "provider" },
-    }),
+  /** GET /api/providers/me/payouts — balances, withdrawals (display labels) and earnings-by-period aggregates. */
+  getPayouts: () => request<PartnerPayoutsData>("/api/providers/me/payouts"),
 
-  walletBalance: () => request<WalletBalance>("/api/wallet/balance"),
+  /** GET /api/providers/me/withdrawals — the latest 20 withdrawals with raw statuses, failure reasons and payout attempts. */
+  getWithdrawals: () => request<{ withdrawals: PartnerWithdrawal[] }>("/api/providers/me/withdrawals").then((r) => r.withdrawals),
 
-  walletTransactions: (query: { page?: number; limit?: number } = {}) =>
-    request<WalletTransactionsResponse>("/api/wallet/transactions", { query }),
+  /** GET /api/providers/me/invoices — up to 100 earnings (one per paid job) and 50 settlements. */
+  getInvoices: () => request<PartnerInvoices>("/api/providers/me/invoices"),
 
-  withdraw: (payload: {
-    amount: number;
-    bankAccountNumber: string;
-    ifscCode: string;
-    accountHolder: string;
-    idempotencyKey?: string;
-  }) =>
-    request<{ withdrawal: { id: string; withdrawalNumber: string; amount: number; status: string } }>(
-      "/api/wallet/withdraw",
-      { method: "POST", body: payload },
-    ),
+  /**
+   * GET /api/providers/me/earnings/:id/invoice — `:id` is the EARNING id (`PartnerEarningInvoice.id`
+   * / `PartnerJobEarning.earningId`). The answer is a complete printable HTML DOCUMENT (text/html,
+   * no JSON envelope, no PDF): render it in a WebView or hand it to a print / share sheet. It needs
+   * the bearer token, so its URL cannot simply be opened in a browser. 404 NOT_FOUND "Invoice not found".
+   */
+  getEarningInvoice: (earningId: string) => requestText(`/api/providers/me/earnings/${encodeURIComponent(earningId)}/invoice`),
 
-  payouts: () => request<PartnerPayoutsData>("/api/providers/me/payouts"),
+  /** GET /api/providers/me/tax-summary — read the caveats on `PartnerTaxSummary` before showing it. */
+  getTaxSummary: () => request<PartnerTaxSummary>("/api/providers/me/tax-summary"),
 
-  reviews: (query: { page?: number; limit?: number } = {}) =>
-    request<PartnerReviewsResponse>("/api/providers/me/reviews", { query }),
+  /**
+   * POST /api/wallet/withdraw (HTTP 201) — the one `/api/wallet` route that is partner money. Send
+   * an `idempotencyKey` and reuse it on a retry: the same key returns the same withdrawal.
+   * Refusals: 403 EMAIL_NOT_VERIFIED (verify with `security.sendVerificationEmail`); 400
+   * VALIDATION_ERROR (`details`); 400 INSUFFICIENT_BALANCE — the route reports EVERY other failure
+   * under this code too, so its sentence may not be the real cause.
+   */
+  withdraw: (payload: WithdrawRequest) =>
+    requestEnvelope<{ withdrawal: WithdrawResult }>("/api/wallet/withdraw", { method: "POST", body: payload }).then((e) => ({
+      withdrawal: e.data.withdrawal,
+      message: e.message,
+    })),
 
-  respondToRating: (ratingId: string, response: string) =>
-    request<{ rating: PartnerReview }>(`/api/ratings/${ratingId}/respond`, {
-      method: "POST",
-      body: { response },
-    }),
-
-  invoices: () => request<PartnerInvoices>("/api/providers/me/invoices"),
-
-  taxSummary: () => request<PartnerTaxSummary>("/api/providers/me/tax-summary"),
-
+  /** GET /api/providers/me/route/optimize — 409 NO_LOCATION without a live location. */
   routeOptimize: () => request<RouteOptimizeResult>("/api/providers/me/route/optimize"),
 
-  updateProfile: (body: { firstName?: string; lastName?: string; bio?: string }) =>
-    request<{ user: Record<string, unknown> }>("/api/users/me", { method: "PUT", body }),
+  /* ------------------------------------------------------------------ */
+  /* AI assistant                                                         */
+  /* ------------------------------------------------------------------ */
 
-  updateSettings: (body: Record<string, unknown>) =>
-    request<{ settings: Record<string, unknown> }>("/api/providers/me/settings", { method: "PUT", body }),
-
-  updatePreferences: (body: Record<string, boolean>) =>
-    request<unknown>("/api/users/preferences", { method: "PUT", body }),
-
-  changePassword: (body: { currentPassword: string; newPassword: string }) =>
-    request<unknown>("/api/auth/change-password", { method: "POST", body }),
-
-  sessions: () =>
+  /**
+   * Partner AI assistant, via the backend AI Gateway (`/api/ai/partner`).
+   *
+   * The gateway owns auth, RBAC, prompt-injection screening, rate limiting, audit and
+   * cost accounting. The app never holds a model-provider key and never calls a provider
+   * directly — that is the single-entry rule this platform is built on.
+   */
+  aiChat: (message: string) =>
     request<{
-      sessions: Array<{
-        id: string;
-        deviceName: string | null;
-        platform: string | null;
-        lastActiveAt: string;
-        isCurrent: boolean;
-      }>;
-    }>("/api/auth/sessions"),
+      content: string;
+      provider: string;
+      model: string;
+      fallbackUsed: boolean;
+      mode?: "llm" | "deterministic_fallback";
+      intent?: string;
+      basis?: string[];
+      recommendation?: string | null;
+    }>(
+      "/api/ai/partner",
+      { method: "POST", body: { message } },
+    ),
 
-  logoutOtherSessions: () =>
-    request<{ revoked: number }>("/api/auth/sessions/others", { method: "DELETE" }),
+  /* ------------------------------------------------------------------ */
+  /* Notifications                                                        */
+  /* ------------------------------------------------------------------ */
 
   notifications: {
-    list: (query: { page?: number; limit?: number; unreadOnly?: boolean } = {}) =>
+    /** GET /api/notifications — `type` is a substring match; `unreadOnly` sends `isRead=false`. */
+    list: (query: { page?: number; limit?: number; type?: string; unreadOnly?: boolean } = {}) =>
       request<PartnerNotificationsResponse>("/api/notifications", {
-        query: { ...query, ...(query.unreadOnly ? { isRead: "false" } : {}) },
+        query: { page: query.page, limit: query.limit, type: query.type, ...(query.unreadOnly ? { isRead: "false" } : {}) },
       }),
-    markRead: (id: string) => request<unknown>(`/api/notifications/${id}/read`, { method: "PUT" }),
-    remove: (id: string) => request<unknown>(`/api/notifications/${id}`, { method: "DELETE" }),
+    /** PUT /api/notifications/:id/read */
+    markRead: (id: string) => request<undefined>(`/api/notifications/${encodeURIComponent(id)}/read`, { method: "PUT" }).then(() => undefined),
+    /** PUT /api/notifications/read-all → how many were marked. */
+    markAllRead: () => request<{ count: number }>("/api/notifications/read-all", { method: "PUT" }),
+    /** DELETE /api/notifications/:id */
+    remove: (id: string) => request<undefined>(`/api/notifications/${encodeURIComponent(id)}`, { method: "DELETE" }).then(() => undefined),
     preferences: () =>
       request<{
         channels: Array<{
-          channel: "IN_APP" | "PUSH" | "EMAIL" | "SMS";
+          channel: NotificationChannelName;
           available: boolean;
           reason?: string;
         }>;
         matrix: Array<{
-          category: "TRANSACTIONAL" | "SECURITY" | "OPTIONAL";
-          channel: "IN_APP" | "PUSH" | "EMAIL" | "SMS";
+          category: NotificationCategoryName;
+          channel: NotificationChannelName;
           enabled: boolean;
           editable: boolean;
           mandatory: boolean;
@@ -757,11 +1093,8 @@ export const partnerApi = {
           unavailableReason?: string;
         }>;
       }>("/api/notifications/preferences"),
-    setPreference: (body: {
-      channel: "IN_APP" | "PUSH" | "EMAIL" | "SMS";
-      category: "TRANSACTIONAL" | "SECURITY" | "OPTIONAL";
-      enabled: boolean;
-    }) => request<unknown>("/api/notifications/preferences", { method: "PUT", body }),
+    setPreference: (body: { channel: NotificationChannelName; category: NotificationCategoryName; enabled: boolean }) =>
+      request<unknown>("/api/notifications/preferences", { method: "PUT", body }),
   },
 
   /**
@@ -785,6 +1118,11 @@ export const partnerApi = {
       request<unknown>(`/api/users/me/devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" }),
   },
 
+  /* ------------------------------------------------------------------ */
+  /* Membership, referrals, network                                       */
+  /* ------------------------------------------------------------------ */
+
+  /** The CUSTOMER membership programme (a partner login may call it; nothing in it is partner-specific). */
   subscriptions: {
     plans: () => request<{ plans: PartnerMembershipPlan[] }>("/api/subscriptions/plans").then((r) => r.plans),
     mine: () => request<PartnerMembershipData>("/api/subscriptions/me"),
@@ -804,101 +1142,169 @@ export const partnerApi = {
   },
 
   referrals: {
+    /** GET /api/referrals/me — the CUSTOMER referral programme of this login. The partner programme is `network`. */
     summary: () =>
       request<{
         code: string | null;
         referralCount: number;
+        pending: number;
+        qualified: number;
+        commissionPerReferral: number;
+        frozenBalance: number;
+        riskScore: number;
+        riskLevel: string;
         totalEarned: number;
+        withdrawn: number;
         balance: number;
+        frozen: number;
       }>("/api/referrals/me"),
   },
 
   network: {
-    dashboard: () =>
-      request<{
-        code: string;
-        shareUrl: string;
-        rewardPerQualified: number;
-        jobTarget: number;
-        counts: Record<string, number>;
-        totalRewarded: number;
-        referrals: Array<{
-          id: string;
-          name: string;
-          status: string;
-          jobs: number;
-          jobTarget: number;
-          qualificationLabel: string;
-          nextMilestone: string;
-          rewardAmount: number | null;
-        }>;
-      }>("/api/providers/me/network"),
-    invite: (body: { name: string; phone: string }) =>
-      request<{ inviteUrl: string; shareUrl: string }>("/api/providers/me/network/invite", { method: "POST", body }),
+    /** GET /api/providers/me/network */
+    dashboard: () => request<PartnerNetworkDashboard>("/api/providers/me/network"),
+    /** POST /api/providers/me/network/invite — `name` 2–120, `phone` 10–20 characters. */
+    invite: (body: { name: string; phone: string; email?: string; city?: string; skillInterest?: string }) =>
+      request<PartnerNetworkInviteResult>("/api/providers/me/network/invite", { method: "POST", body }),
   },
+
+  /* ------------------------------------------------------------------ */
+  /* Support                                                              */
+  /* ------------------------------------------------------------------ */
 
   support: {
-    tickets: () => request<{ tickets: PartnerSupportTicket[]; total: number }>("/api/support/tickets"),
-    ticketById: (id: string) => request<{ ticket: PartnerSupportTicketDetail }>(`/api/support/tickets/${id}`),
-    createTicket: (payload: { subject: string; description: string; category: string; priorityLevel?: string }) =>
-      request<{ ticket: PartnerSupportTicket }>("/api/support/tickets", { method: "POST", body: payload }),
+    /** GET /api/support/tickets. `status`: open | in_progress | resolved | closed; `closed` applies only without `status`. */
+    tickets: (query: { page?: number; limit?: number; status?: string; closed?: boolean; category?: string; search?: string } = {}) =>
+      request<{ tickets: PartnerSupportTicket[]; total: number; page: number }>("/api/support/tickets", { query }),
+    /** GET /api/support/tickets/:id — 404 NOT_FOUND. */
+    ticketById: (id: string) =>
+      request<{ ticket: PartnerSupportTicketDetail }>(`/api/support/tickets/${encodeURIComponent(id)}`).then((r) => r.ticket),
+    /** POST /api/support/tickets → a SHORT row (id, number, priority, SLA, status); read `ticketById` for the rest. */
+    createTicket: (payload: CreateSupportTicketBody) =>
+      request<{ ticket: CreatedSupportTicket }>("/api/support/tickets", { method: "POST", body: payload }).then((r) => r.ticket),
+    /** POST /api/support/tickets/:id/reply — `body` 1–5000 characters. Replying to a resolved ticket reopens it; 400 CLOSED on a closed one. */
     reply: (id: string, body: string) =>
-      request<unknown>(`/api/support/tickets/${id}/reply`, { method: "POST", body: { body } }),
+      request<{ message: { id: string; ticketId: string; authorRole: string; body: string; createdAt: string } }>(
+        `/api/support/tickets/${encodeURIComponent(id)}/reply`,
+        { method: "POST", body: { body } },
+      ).then((r) => r.message),
   },
 
+  /* ------------------------------------------------------------------ */
+  /* Geo-intelligence and weather                                         */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * `/api/geo-intel/*` — each answer carries its own `confidence`, `freshness`, `source`, `cached`
+   * and `generatedAt` next to `data`. There is NO `zoneScoring` here: `/api/geo-intel/zone-scoring`
+   * is admin-only (403 for a partner). The partner's zone read is `partnerOs.intel.zones()`.
+   */
   geoIntel: {
-    surge: () => request<SurgeZone[]>("/api/geo-intel/surge"),
-    density: () => request<DensityZone[]>("/api/geo-intel/provider-density"),
-    zoneScoring: () => request<ZoneScoring>("/api/geo-intel/zone-scoring"),
-    demandForecast: (horizon = 24) => request<DemandForecast>("/api/geo-intel/demand-forecast", { query: { horizon } }),
+    surge: () => requestBody("/api/geo-intel/surge").then((b) => b as unknown as GeoIntel<SurgeZone[]>),
+    density: () => requestBody("/api/geo-intel/provider-density").then((b) => b as unknown as GeoIntel<DensityZone[]>),
+    /** Either the forecast or `{ available: false, … }` — a state, not an error. Check `data.stale` before calling it a forecast of the coming hours. */
+    demandForecast: (horizon = 24): Promise<DemandForecastResult> =>
+      requestBody("/api/geo-intel/demand-forecast", { query: { horizon } }).then((b) =>
+        b.available === false
+          ? { available: false, reasonCode: "FORECAST_SOURCE_UNAVAILABLE", cause: String(b.cause ?? ""), reason: String(b.reason ?? ""), data: null, generatedAt: String(b.generatedAt ?? "") }
+          : ({ ...(b as unknown as GeoIntel<DemandForecast>), available: true } as DemandForecastResult),
+      ),
+    eta: (fromLat: number, fromLng: number, toLat: number, toLng: number) =>
+      requestBody("/api/geo-intel/eta", { query: { fromLat, fromLng, toLat, toLng } }).then((b) => b as unknown as GeoIntel<GeoEta>),
   },
 
+  /** GET /api/weather/alerts. `{ available: false }` when the weather source is not configured or did not answer — never invented weather. */
   weatherAlerts: (lat: number, lng: number) =>
     request<{
       available: boolean;
-      severity?: string;
+      reason?: string;
       alerts?: Array<{ type: string; level: string; message: string }>;
-    }>(`/api/weather/alerts?lat=${lat}&lng=${lng}`),
+    }>("/api/weather/alerts", { query: { lat, lng } }),
+
+  /* ------------------------------------------------------------------ */
+  /* Partner OS                                                           */
+  /* ------------------------------------------------------------------ */
 
   partnerOs: {
     attendance: () => request<PartnerAttendance>("/api/providers/me/attendance"),
-    checkIn: () => request<unknown>("/api/providers/me/attendance/check-in", { method: "POST" }),
-    checkOut: () => request<unknown>("/api/providers/me/attendance/check-out", { method: "POST" }),
+    /** POST …/attendance/check-in — also sets the partner online. */
+    checkIn: () => request<{ session: unknown; alreadyCheckedIn: boolean }>("/api/providers/me/attendance/check-in", { method: "POST" }),
+    /** POST …/attendance/check-out — throws `NO_OPEN_SESSION` when there is none. */
+    checkOut: () => request<{ session: unknown }>("/api/providers/me/attendance/check-out", { method: "POST" }),
     incentives: () => request<PartnerIncentives>("/api/providers/me/incentives"),
     forecast: () => request<PartnerForecast>("/api/providers/me/forecast"),
+    /** GET /api/providers/me/intelligence?days= (7..365, default 90) — repeat-customer statistics only. */
     intelligence: (days = 90) => request<PartnerIntelligence>("/api/providers/me/intelligence", { query: { days } }),
-    rankings: () => request<PartnerRankings>("/api/providers/me/rankings"),
+    /**
+     * `/api/providers/me/intel/*` — four feature-flagged reads. Each returns `null` when its flag is
+     * off (the server's 404 NOT_FOUND; all four are off unless enabled): show "not available", not
+     * an empty result. Every answer is a state first — read the types before rendering a number.
+     */
+    intel: {
+      nudges: () => nullOn404(request<PartnerNudges>("/api/providers/me/intel/nudges"), "NOT_FOUND"),
+      /** `target` is a non-negative rupee amount (400 VALIDATION_ERROR otherwise). */
+      shiftPlan: (target?: number) => nullOn404(request<PartnerShiftPlan>("/api/providers/me/intel/shift-plan", { query: { target } }), "NOT_FOUND"),
+      earningsCoach: (target?: number) => nullOn404(request<PartnerEarningsCoach>("/api/providers/me/intel/earnings-coach", { query: { target } }), "NOT_FOUND"),
+      /** `limit` 1–50 (default 10). */
+      zones: (limit?: number) => nullOn404(request<PartnerZoneRecommendations>("/api/providers/me/intel/zones", { query: { limit } }), "NOT_FOUND"),
+    },
+    /** `null` when the server has no ranking for this partner. */
+    rankings: () => request<PartnerRankings | null>("/api/providers/me/rankings").then((r) => r ?? null),
     score: () => request<PartnerScorecard>("/api/providers/me/score"),
-    scoreHistory: () =>
-      request<{ items: Array<{ previousScore: number | null; newScore: number | null; delta: number | null; reasons: Array<{ detail: string }>; calculatedAt: string }> }>(
-        "/api/providers/me/score/history",
-      ),
+    scoreHistory: (page = 1, limit = 20) => request<PartnerScoreHistoryPage>("/api/providers/me/score/history", { query: { page, limit } }),
     career: () => request<PartnerCareer>("/api/providers/me/career"),
+    careerHistory: (page = 1, limit = 20) => request<PartnerCareerHistoryPage>("/api/providers/me/career/history", { query: { page, limit } }),
     lifecycle: () => request<PartnerLifecycle>("/api/providers/me/lifecycle"),
     academy: () => request<PartnerAcademy>("/api/providers/me/academy"),
-    completeAcademyModule: (moduleId: string) =>
-      request<unknown>(`/api/providers/me/academy/${moduleId}/complete`, { method: "POST" }),
+    completeAcademyModule: (moduleId: string, score?: number) =>
+      request<{ progress: unknown }>(`/api/providers/me/academy/${encodeURIComponent(moduleId)}/complete`, {
+        method: "POST",
+        body: typeof score === "number" ? { score } : {},
+      }),
     compliance: () => request<PartnerCompliance>("/api/providers/me/compliance"),
     wellbeing: () => request<PartnerWellbeing>("/api/providers/me/wellbeing"),
-    updateEmergencyContact: (body: { emergencyContactName?: string; emergencyContactPhone?: string }) =>
-      request<{ emergencyContactName: string | null; emergencyContactPhone: string | null }>(
-        "/api/providers/me/safety/emergency-contact",
-        { method: "PATCH", body },
-      ),
-    triggerSos: (body?: { bookingId?: string; latitude?: number; longitude?: number }) =>
-      request<{ incidentId: string; status: string; created: boolean; hasLocation: boolean }>(
-        "/api/providers/me/safety/sos",
-        { method: "POST", body: body ?? {} },
-      ),
-    reportSafety: (body: { type: string; notes?: string }) =>
-      request<{ incidentId: string; status: string }>("/api/providers/me/safety/report", { method: "POST", body }),
-    safetyIncidents: () =>
-      request<{ incidents: Array<{ id: string; type: string; status: string; createdAt: string }> }>(
-        "/api/providers/me/safety/incidents",
-      ),
     rewards: () => request<PartnerRewards>("/api/providers/me/rewards"),
+    /** Four counts only (completed, cancelled, rescheduled, upcoming) — there are no rows behind it. */
     serviceHistory: () => request<PartnerServiceHistory>("/api/providers/me/service-history"),
-    documents: () => request<{ documents: PartnerDocument[] }>("/api/providers/me/documents"),
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Safety                                                               */
+  /* ------------------------------------------------------------------ */
+
+  safety: {
+    /** PATCH /api/providers/me/safety/emergency-contact — the server keeps at most 100 / 20 characters. */
+    updateEmergencyContact: (body: { emergencyContactName?: string; emergencyContactPhone?: string }) =>
+      request<EmergencyContact>("/api/providers/me/safety/emergency-contact", { method: "PATCH", body }),
+    /** POST /api/providers/me/safety/sos — one incident per partner + booking: a repeat returns `created: false`. */
+    triggerSos: (body: { bookingId?: string; latitude?: number; longitude?: number; accuracy?: number } = {}) =>
+      request<{ incidentId: string; status: string; created: boolean; hasLocation: boolean }>("/api/providers/me/safety/sos", { method: "POST", body }),
+    /** POST /api/providers/me/safety/report — `notes` are cut to 500 characters; a `bookingId` that is not the partner's is dropped silently. */
+    report: (body: { type: SafetyReportType; bookingId?: string; notes?: string }) =>
+      request<{ incidentId: string; status: string }>("/api/providers/me/safety/report", { method: "POST", body }),
+    /** GET /api/providers/me/safety/incidents — the latest 20. */
+    incidents: () => request<{ incidents: PartnerSafetyIncident[] }>("/api/providers/me/safety/incidents").then((r) => r.incidents),
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Documents                                                            */
+  /* ------------------------------------------------------------------ */
+
+  documents: {
+    /** GET /api/providers/me/documents — metadata only; the file itself is not listed. */
+    list: () => request<{ documents: PartnerDocument[] }>("/api/providers/me/documents").then((r) => r.documents),
+    /**
+     * POST /api/providers/me/documents. There is no "renew" route: a renewal is a NEW upload of the
+     * same `documentType` (a verified document cannot be edited — 409 DOCUMENT_LOCKED). Every
+     * failure answers `UPLOAD_FAILED` (400, or 403); its sentence says why (size, type).
+     */
+    upload: (body: UploadDocumentBody) => request<{ documentId: string }>("/api/providers/me/documents", { method: "POST", body }),
+    /** PATCH /api/providers/me/documents/:id — expiry / issuer / issue date of an UNVERIFIED document. 409 DOCUMENT_LOCKED once verified; 404 NOT_FOUND. */
+    updateMeta: (documentId: string, body: { expiryDate?: string | null; issuer?: string; issueDate?: string | null }) =>
+      request<{ document: PartnerDocument & Record<string, unknown> }>(`/api/providers/me/documents/${encodeURIComponent(documentId)}`, {
+        method: "PATCH",
+        body,
+      }).then((r) => r.document),
   },
 
   /**
@@ -946,11 +1352,6 @@ export const partnerApi = {
   /** Withdraw an own request that is still awaiting approval (409 CAPABILITY_LOCKED otherwise). */
   withdrawServiceSkill: (capabilityId: number) =>
     request<{ deleted: true }>(`/api/providers/me/capabilities/services/${capabilityId}`, { method: "DELETE" }),
-
-  attendance: () => request<PartnerAttendance>("/api/providers/me/attendance"),
-  checkIn: () => request<unknown>("/api/providers/me/attendance/check-in", { method: "POST" }),
-  checkOut: () => request<unknown>("/api/providers/me/attendance/check-out", { method: "POST" }),
-  incentives: () => request<PartnerIncentives>("/api/providers/me/incentives"),
 };
 
 export type { PartnerUser };

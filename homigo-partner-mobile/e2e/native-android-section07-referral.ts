@@ -87,7 +87,7 @@ function tapBy(pattern: string | RegExp): boolean {
     const tag = m[0];
     const text = decodeXml(
       (tag.match(/\btext="([^"]*)"/i)?.[1] || "") + " " + (tag.match(/\bcontent-desc="([^"]*)"/i)?.[1] || ""),
-    );
+    ).trim();
     const rid = tag.match(/\bresource-id="([^"]*)"/i)?.[1] ?? "";
     const bounds = tag.match(/\bbounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/i);
     if (!bounds) continue;
@@ -227,7 +227,7 @@ function swipeUp() {
   sleep(500);
 }
 function openHqItem(label: string | RegExp, maxSwipes = 12): boolean {
-  tapBy(/^HQ$/) || tapBy("HQ") || tapBy("Explore");
+  tapBy(/^HQ$/) || tapBy("HQ");
   sleep(1200);
   for (let i = 0; i < maxSwipes; i++) {
     if (tapBy(label)) {
@@ -309,6 +309,21 @@ function ensurePartnerForeground(timeoutMs = 20_000): boolean {
   }
   return currentPackage() === PKG;
 }
+/**
+ * Words only the referrals screen shows (src/screens/account/rewards.tsx: title "Partner Network",
+ * "Share link", "Your referrals", the "Send invite" button). "Invite partners" is NOT one of them:
+ * it is the subtitle of the HQ menu's Referrals row (src/lib/hq-menu.ts), so with it the HQ menu
+ * itself counted as the referrals screen and `native.referral_nav` could not fail there.
+ */
+const REFERRALS_SCREEN = /Partner Network|Share link|Send invite|Your referrals/i;
+/** The screen with its read settled: the loaded sections, or its error card. The title alone is also there while loading. */
+const REFERRALS_SETTLED = /Share link|Your referrals|Send invite|No referrals yet|Your partner network could not be loaded/i;
+
+/** The retry BUTTON (whole label "Try again", or the crash screen's testID) — not a sentence that contains the words. */
+function tapErrorRetry(): boolean {
+  return tapBy("error-boundary-retry") || tapBy(/^Try again$/i);
+}
+
 function captureReferralsScreen(name: string): string {
   for (let attempt = 0; attempt < 6; attempt++) {
     dismissAllAnr();
@@ -317,7 +332,7 @@ function captureReferralsScreen(name: string): string {
     sleep(2500);
     const xml = dumpUi();
     const text = decodeXml(xml);
-    if (xml.includes(`package="${PKG}"`) && /Partner Network|Share link|Your referrals|Send invite|Invite partners/i.test(text)) {
+    if (xml.includes(`package="${PKG}"`) && REFERRALS_SETTLED.test(text)) {
       writeFileSync(join(ART, `${name}.xml`), xml);
       shot(name);
       return xml;
@@ -335,14 +350,14 @@ function navigateToReferrals(): boolean {
   openHq("hq/rewards-referrals");
   sleep(5000);
   dismissAllAnr();
-  if (waitFor(/Partner Network|Share link|Send invite|Your referrals|Invite partners/i, 18_000)) return true;
+  if (waitFor(REFERRALS_SCREEN, 18_000)) return true;
   launchPartnerFromLauncher();
-  tapBy(/^HQ$/) || tapBy("HQ") || tapBy("Explore");
+  tapBy(/^HQ$/) || tapBy("HQ");
   sleep(1500);
   for (let i = 0; i < 8; i++) {
     if (tapBy(/^Referrals$/) || tapBy("Referrals")) {
       sleep(3000);
-      if (waitFor(/Partner Network|Share link|Send invite|Your referrals|Invite partners/i, 12_000)) return true;
+      if (waitFor(REFERRALS_SCREEN, 12_000)) return true;
     }
     swipeUp();
   }
@@ -350,7 +365,7 @@ function navigateToReferrals(): boolean {
   sleep(4000);
   dismissAllAnr();
   launchPartnerFromLauncher();
-  return waitFor(/Partner Network|Share link|Send invite|Your referrals|Invite partners/i, 15_000);
+  return waitFor(REFERRALS_SCREEN, 15_000);
 }
 function openHq(path: string) {
   ensurePartnerForeground();
@@ -423,7 +438,7 @@ function driveLogin(): boolean {
   sleep(400);
   adb(["shell", "input", "keyevent", "4"]);
   sleep(400);
-  tapBy("Continue to Partner OS") || tapTestId("partner-login-submit") || tapBy(/^Sign in$/i);
+  tapBy("Continue to Partner OS") || tapTestId("partner-login-submit");
   sleep(12000);
   dismissAllAnr();
   if (uiHas(/Save password|Google Password Manager|Not now/i)) {
@@ -497,7 +512,7 @@ async function main() {
   gate("native.react_mismatch", uiHas(/Incompatible React|react-native-renderer/i) ? "FAIL" : "PASS");
   const bootOk =
     booted ||
-    waitFor(/Partner sign in|Continue to Partner OS|Hello,|Wallet|HQ|Explore|Unable to load script/i, 90_000);
+    waitFor(/Partner sign in|Continue to Partner OS|Hello,|Wallet|HQ|Unable to load script/i, 90_000);
   gate(
     "native.query_client",
     uiHas(/No QueryClient set/i) ? "FAIL" : bootOk ? "PASS" : "WARN",
@@ -572,7 +587,7 @@ async function main() {
   sleep(3000);
   dismissAllAnr();
   tapBy(/Not now/i);
-  waitFor(/Hello,|Wallet|HQ|Explore|Referrals|Partner Network/i, 30_000);
+  waitFor(/Hello,|Wallet|HQ|Referrals|Partner Network/i, 30_000);
 
   const navOk = navigateToReferrals();
   dismissAllAnr();
@@ -584,8 +599,10 @@ async function main() {
   );
   gate("native.referral_nav", navOk ? "PASS" : "FAIL", navOk ? "HQ → Referrals" : "could not open referrals");
   dismissAllAnr();
-  if (uiHas(/Something went wrong|Could not load/i)) {
-    tapBy(/Try again/i);
+  // The screen's error card is titled "Your partner network could not be loaded" (rewards.tsx);
+  // "Could not load" no longer appears on it, so this branch could not be entered.
+  if (uiHas(/Something went wrong|could not be loaded|Could not load/i)) {
+    tapErrorRetry();
     sleep(2000);
     navigateToReferrals();
   }
@@ -593,10 +610,16 @@ async function main() {
   const refText = decodeXml(refXml);
   gate(
     "native.referral_dashboard",
-    /Partner Network/i.test(refText) && !/Unable to load script|No QueryClient|Invalid or expired token/i.test(refText)
+    // "Partner Network" is also the title of the loading and the error state; the error card says so.
+    /Partner Network/i.test(refText) &&
+      !/Unable to load script|No QueryClient|Invalid or expired token|Your partner network could not be loaded/i.test(refText)
       ? "PASS"
       : "FAIL",
-    /Partner Network/i.test(refText) ? "loaded" : refText.slice(0, 180),
+    /Your partner network could not be loaded/i.test(refText)
+      ? "error card"
+      : /Partner Network/i.test(refText)
+        ? "loaded"
+        : refText.slice(0, 180),
   );
   gate(
     "native.referral_code",
@@ -612,7 +635,10 @@ async function main() {
   );
   gate(
     "native.qualified_rewarded",
-    /REWARD RELEASED|Rewarded|Qualified/i.test(refText) && (/₹\s*500|500/.test(refText) || rewarded?.rewardAmount === 500)
+    // The rewarded row reads "Reward released · 3/3 jobs · ₹500 paid" with the server's pill
+    // ("Rewarded"). A bare "Qualified" is not accepted: it is the label of a counter that is on the
+    // loaded screen whatever the rows say (rewards.tsx "Qualified" KeyValue).
+    /REWARD RELEASED|Rewarded/i.test(refText) && (/₹\s*500|500/.test(refText) || rewarded?.rewardAmount === 500)
       ? "PASS"
       : "FAIL",
   );
@@ -642,10 +668,17 @@ async function main() {
     sleep(4000);
     dumpNamed("03-after-invite");
     const afterInvite = decodeXml(dumpUi());
+    // The outcome of the tap is the `referral-invite-result` banner: "<name> is invited. The invite
+    // is open until <date>." or a refusal — the server's sentence, else "The invite could not be
+    // sent." (rewards.tsx). A bare "Invited" is the label of a counter that is always on the
+    // loaded screen, so it proved nothing about the tap.
     gate(
       "native.invite_submit",
-      /INVITED|Invited|Sending|Could not send|yourself/i.test(afterInvite) ? "PASS" : "WARN",
-      afterInvite.match(/INVITED|Invited|yourself|Could not/)?.[0] ?? "no toast",
+      /is invited\. The invite is open until|The invite could not be sent|yourself|resource-id="referral-invite-result"/i.test(afterInvite)
+        ? "PASS"
+        : "WARN",
+      afterInvite.match(/is invited|could not be sent|yourself/i)?.[0] ??
+        (/resource-id="referral-invite-result"/.test(afterInvite) ? "refusal banner" : "no result banner"),
     );
   } else {
     gate("native.invite_submit", "WARN", "could not focus Full name field");
@@ -662,9 +695,11 @@ async function main() {
     sleep(3000);
     dumpNamed("04-self-referral");
     const selfUi = decodeXml(dumpUi());
-    const uiBlocked = /yourself|cannot refer|Could not send|already/i.test(selfUi);
+    // The server's refusal is "You cannot refer yourself" (partner-referral.service); the app's own
+    // fallback when the server sends no sentence is "The invite could not be sent." (rewards.tsx).
+    const uiBlocked = /yourself|cannot refer|The invite could not be sent|already/i.test(selfUi);
     if (uiBlocked) {
-      gate("native.self_referral_blocked", "PASS", selfUi.match(/yourself|cannot refer|Could not send|already/)?.[0] ?? "ui");
+      gate("native.self_referral_blocked", "PASS", selfUi.match(/yourself|cannot refer|could not be sent|already/i)?.[0] ?? "ui");
     } else {
       const denied = await api("POST", "/api/providers/me/network/invite", auth.token, {
         name: "Self",

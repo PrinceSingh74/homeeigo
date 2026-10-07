@@ -13,4 +13,4 @@ export function nativeMapAvailable(platform: string, expoConfig: ExpoConfigLike)
 }
 
 export const MAP_UNAVAILABLE_NOTE =
-  "The map isn't available in this app build. Your jobs are listed below — tap Navigate to open directions.";
+  "The map isn't available in this app build. Your jobs are listed below; Open in Maps gives directions in your maps app.";

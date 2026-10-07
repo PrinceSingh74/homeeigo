@@ -1,30 +1,35 @@
 import { useQuery } from "@tanstack/react-query";
+import { ImageOff } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
-import { useAuthStore } from "@/stores/auth-store";
-import { HqCard } from "@/components/HqUi";
+import { Image, StyleSheet, View } from "react-native";
+import { BulletList, PanelError, SubHeading } from "@/components/job/parts";
+import { Banner, T } from "@/components/ui";
 import { warrantyLine } from "@/lib/warranty";
 import { partnerApi } from "@/services/partner-api";
-import { partnerColors } from "@/theme/colors";
+import { useAuthStore } from "@/stores/auth-store";
+import { color, radius, space } from "@/theme/tokens";
 
 /**
- * Phase 10 §10/§11 — quality for this job (compact mirror of partner-web QualityPanel): the
- * server's recorded verdict with reason codes as human labels (after a refused complete, this IS
- * the refusal), the customer-confirmation state, and the customer's reported issues (read-only:
- * description + outcome only — the server sends no money or admin detail, and none is invented).
+ * Phase 10 §10/§11 — the quality result of this job (compact mirror of partner web's QualityPanel):
+ * the server's recorded verdict with its reason codes in words (after a refused completion, this IS
+ * the refusal), the customer-confirmation state, the warranty window, and the customer's reported
+ * issues (read-only: description and outcome only — the server sends no money or admin detail, and
+ * none is invented).
+ *
+ * Draws nothing when the server has recorded nothing; a failed load says so with a retry.
  */
 
 const VERDICT_LABEL: Record<string, string> = {
   PASS: "Passed quality checks",
-  PASS_WITH_EXCEPTION: "Passed — an optional step was skipped with a reason",
+  PASS_WITH_EXCEPTION: "Passed. An optional step was skipped with a reason",
   REWORK_REQUIRED: "Rework required before this job can be completed",
-  ESCALATED: "Under review — completion is blocked",
+  ESCALATED: "Under review. Completion is blocked",
   FAILED: "Did not meet the standard",
 };
 const BLOCKING = new Set(["REWORK_REQUIRED", "ESCALATED", "FAILED"]);
 
 const REASON_LABEL: Record<string, string> = {
-  SAFETY_HOLD_ACTIVE: "A safety hold is active — only the safety team can clear it",
+  SAFETY_HOLD_ACTIVE: "A safety hold is active. Only the safety team can clear it",
   SAFETY_INCIDENT_OPEN: "A safety incident is open on this job",
   EXECUTION_STEP_ESCALATED: "A work step is with the support team for review",
   EXECUTION_STEP_FAILED: "A work step failed and needs to be redone",
@@ -54,7 +59,7 @@ const CASE_STATE_LABEL: Record<string, string> = {
   INVESTIGATION: "Being investigated",
   ACTION: "Being resolved",
   RESOLVED: "Resolved",
-  REJECTED: "Closed — not upheld",
+  REJECTED: "Closed, not upheld",
   ESCALATED: "With the senior team",
 };
 
@@ -62,88 +67,104 @@ const CASE_ACTION_LABEL: Record<string, string> = {
   REWORK: "A follow-up visit was arranged",
   REFUND: "Resolved by the support team",
   INSPECTION: "An inspection visit was arranged",
-  REJECT: "Closed — no action",
-  NONE: "Closed — no further action",
+  REJECT: "Closed, no action",
+  NONE: "Closed, no further action",
 };
 
-const dt = (iso: string) =>
-  new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+const dt = (iso: string) => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
-export function QualityPanel({ bookingId }: { bookingId: string }) {
-  const quality = useQuery({ queryKey: ["partner", "quality", bookingId], queryFn: () => partnerApi.getQuality(bookingId), staleTime: 10_000 });
-  const completion = useQuery({ queryKey: ["partner", "completion", bookingId], queryFn: () => partnerApi.getCompletion(bookingId), staleTime: 10_000 });
-  const cases = useQuery({ queryKey: ["partner", "cases", bookingId], queryFn: () => partnerApi.getCases(bookingId), staleTime: 10_000 });
+export function QualityPanel({ bookingId, enabled = true }: { bookingId: string; enabled?: boolean }) {
+  const on = !!bookingId && enabled;
+  const quality = useQuery({ queryKey: ["partner", "quality", bookingId], queryFn: () => partnerApi.getQuality(bookingId), enabled: on, staleTime: 10_000 });
+  const completion = useQuery({ queryKey: ["partner", "completion", bookingId], queryFn: () => partnerApi.getCompletion(bookingId), enabled: on, staleTime: 10_000 });
+  const cases = useQuery({ queryKey: ["partner", "cases", bookingId], queryFn: () => partnerApi.getCases(bookingId), enabled: on, staleTime: 10_000 });
 
   const latest = quality.data?.latest ?? null;
   const history = quality.data?.history ?? [];
-  const missing = history.length ? history[history.length - 1]!.missingChecklistItems : [];
+  const lastEntry = history.length ? history[history.length - 1] : undefined;
+  const missing = lastEntry ? lastEntry.missingChecklistItems : [];
   const comp = completion.data?.completion ?? null;
   const warranty = warrantyLine(completion.data?.warranty, new Date(), dt);
   const caseList = cases.data?.available ? cases.data.cases : [];
-  if (!latest && !comp && caseList.length === 0) return null;
+  const failed = [quality, completion, cases].find((q) => q.isError && !q.data);
+
+  if (!latest && !comp && caseList.length === 0 && !warranty) {
+    // A failed read must not look like "nothing recorded".
+    if (!failed) return null;
+    return (
+      <View style={styles.block}>
+        <PanelError
+          error={failed.error}
+          retrying={quality.isFetching || completion.isFetching || cases.isFetching}
+          onRetry={() => {
+            void quality.refetch();
+            void completion.refetch();
+            void cases.refetch();
+          }}
+          testID="quality-load-error"
+        />
+      </View>
+    );
+  }
   const blocking = !!latest && BLOCKING.has(latest.verdict);
 
   return (
-    <View testID="quality-panel">
-      <HqCard>
-        <Text style={styles.title} accessibilityRole="header">Quality result</Text>
-        {latest ? (
-          <View testID="quality-verdict">
-            <Text style={blocking ? styles.blockingHead : styles.head} accessibilityRole={blocking ? "alert" : undefined}>
-              {blocking ? "⚠ " : ""}
-              {VERDICT_LABEL[latest.verdict] ?? latest.verdict} · {dt(latest.at)}
-            </Text>
-            {latest.reasonCodes.map((c) => (
-              <Text key={c} style={blocking ? styles.blockingMeta : styles.meta}>
-                • {REASON_LABEL[c] ?? c}
-              </Text>
-            ))}
-            {blocking && missing.length ? <Text style={styles.blockingMeta}>Checklist still open: {missing.join(", ")}</Text> : null}
-          </View>
-        ) : null}
+    <View testID="quality-panel" style={styles.block}>
+      <SubHeading>Quality result</SubHeading>
+      {latest ? (
+        <View testID="quality-verdict" style={styles.group}>
+          {blocking ? (
+            <Banner tone="warning" message={`${VERDICT_LABEL[latest.verdict] ?? latest.verdict} · ${dt(latest.at)}`} />
+          ) : (
+            <T kind="bodyStrong">{`${VERDICT_LABEL[latest.verdict] ?? latest.verdict} · ${dt(latest.at)}`}</T>
+          )}
+          <BulletList items={latest.reasonCodes.map((c) => REASON_LABEL[c] ?? c)} tone={blocking ? "warning" : undefined} />
+          {blocking && missing.length ? <T kind="small" tone="warning">{`Checklist still open: ${missing.join(", ")}`}</T> : null}
+        </View>
+      ) : null}
 
-        {comp ? (
-          <Text style={styles.meta} testID="quality-completion">
-            {comp.state === "PENDING_CUSTOMER"
-              ? `Waiting for the customer to confirm — auto-confirms by ${dt(comp.confirmBy)}.`
-              : comp.state === "CONFIRMED"
-                ? `The customer confirmed this job${comp.resolvedAt ? ` on ${dt(comp.resolvedAt)}` : ""}.`
-                : comp.state === "AUTO_CONFIRMED"
-                  ? `This job was confirmed automatically${comp.resolvedAt ? ` on ${dt(comp.resolvedAt)}` : ""}.`
-                  : comp.state === "ISSUE_REPORTED"
-                    ? "The customer reported an issue — see below."
-                    : comp.state}
-          </Text>
-        ) : null}
+      {comp ? (
+        <T kind="body" tone="slate" testID="quality-completion">
+          {comp.state === "PENDING_CUSTOMER"
+            ? `Waiting for the customer to confirm. It confirms automatically by ${dt(comp.confirmBy)}.`
+            : comp.state === "CONFIRMED"
+              ? `The customer confirmed this job${comp.resolvedAt ? ` on ${dt(comp.resolvedAt)}` : ""}.`
+              : comp.state === "AUTO_CONFIRMED"
+                ? `This job was confirmed automatically${comp.resolvedAt ? ` on ${dt(comp.resolvedAt)}` : ""}.`
+                : comp.state === "ISSUE_REPORTED"
+                  ? "The customer reported an issue. See below."
+                  : comp.state}
+        </T>
+      ) : null}
 
-        {warranty ? (
-          <Text style={styles.meta} testID="quality-warranty">
-            {warranty}
-          </Text>
-        ) : null}
+      {warranty ? (
+        <T kind="body" tone="slate" testID="quality-warranty">
+          {warranty}
+        </T>
+      ) : null}
 
-        {caseList.length ? (
-          <View style={styles.casesBox} testID="quality-cases">
-            <Text style={styles.label}>Reported issues</Text>
-            {caseList.map((k) => (
-              <View key={k.id} style={styles.caseItem} testID={`quality-case-${k.caseNumber}`}>
-                <Text style={styles.head}>
-                  {CATEGORY_LABEL[k.category] ?? k.category} · {k.caseNumber} · {CASE_STATE_LABEL[k.state] ?? k.state}
-                </Text>
-                {k.description ? <Text style={styles.meta}>{k.description}</Text> : null}
-                {(k.evidence ?? []).some((e) => e.hasStoredMedia) ? (
+      {caseList.length ? (
+        <View style={styles.group} testID="quality-cases">
+          <SubHeading>Reported issues</SubHeading>
+          {caseList.map((k) => {
+            const stored = (k.evidence ?? []).filter((e) => e.hasStoredMedia);
+            return (
+              <View key={k.id} style={styles.group} testID={`quality-case-${k.caseNumber}`}>
+                <T kind="bodyStrong">{`${CATEGORY_LABEL[k.category] ?? k.category} · ${k.caseNumber} · ${CASE_STATE_LABEL[k.state] ?? k.state}`}</T>
+                {k.description ? <T kind="body" tone="slate">{k.description}</T> : null}
+                {stored.length ? (
                   <View style={styles.photos} testID={`quality-case-photos-${k.caseNumber}`}>
-                    {(k.evidence ?? []).filter((e) => e.hasStoredMedia).map((e, i) => (
+                    {stored.map((e, i) => (
                       <CasePhoto key={e.id} bookingId={bookingId} caseId={k.id} evidenceId={e.id} label={`Customer photo ${i + 1} for ${k.caseNumber}`} />
                     ))}
                   </View>
                 ) : null}
-                {k.resolution?.action ?<Text style={styles.meta}>{CASE_ACTION_LABEL[String(k.resolution.action)] ?? "Resolved"}.</Text> : null}
+                {k.resolution?.action ? <T kind="small">{`${CASE_ACTION_LABEL[String(k.resolution.action)] ?? "Resolved"}.`}</T> : null}
               </View>
-            ))}
-          </View>
-        ) : null}
-      </HqCard>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -161,8 +182,11 @@ function CasePhoto({ bookingId, caseId, evidenceId, label }: { bookingId: string
   const source = partnerApi.caseEvidenceImageSource(bookingId, caseId, evidenceId, token);
   if (!source || failed) {
     return (
-      <View style={styles.photoFallback} accessible accessibilityLabel={`${label}: attached, could not be shown`}>
-        <Text style={styles.meta}>▣ Photo attached — could not be shown here</Text>
+      <View style={[styles.photo, styles.photoFallback]} accessible accessibilityLabel={`${label}: attached, could not be shown`}>
+        <ImageOff color={color.slate} size={20} />
+        <T kind="caption" style={styles.center}>
+          Attached, not shown
+        </T>
       </View>
     );
   }
@@ -170,15 +194,10 @@ function CasePhoto({ bookingId, caseId, evidenceId, label }: { bookingId: string
 }
 
 const styles = StyleSheet.create({
-  photos: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 },
-  photo: { width: 88, height: 88, borderRadius: 10, borderWidth: 1, borderColor: partnerColors.line, backgroundColor: partnerColors.sage },
-  photoFallback: { minHeight: 44, justifyContent: "center", paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: partnerColors.line },
-  title: { fontSize: 15, fontWeight: "700", color: partnerColors.text, marginBottom: 6 },
-  head: { fontSize: 13, fontWeight: "600", color: partnerColors.text, marginTop: 2 },
-  blockingHead: { fontSize: 13, fontWeight: "700", color: "#92400e", marginTop: 2 },
-  meta: { fontSize: 12, color: partnerColors.textSecondary, marginTop: 2 },
-  blockingMeta: { fontSize: 12, color: "#92400e", marginTop: 2 },
-  label: { fontSize: 13, fontWeight: "600", color: partnerColors.text },
-  casesBox: { gap: 4, marginTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: partnerColors.line, paddingTop: 10 },
-  caseItem: { marginBottom: 4 },
+  block: { gap: space.sm, paddingTop: space.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
+  group: { gap: space.xs },
+  center: { textAlign: "center" },
+  photos: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginTop: space.xs },
+  photo: { width: 88, height: 88, borderRadius: radius.control, borderWidth: 1, borderColor: color.line, backgroundColor: color.well },
+  photoFallback: { alignItems: "center", justifyContent: "center", gap: space.xs, padding: space.xs },
 });

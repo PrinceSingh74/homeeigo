@@ -77,7 +77,7 @@ export function MyCredentialsScreen() {
   const enabled = useAuthStore((s) => s.hydrated && Boolean(s.accessToken));
   const profile = useQuery({ queryKey: CAPABILITIES_KEY, queryFn: () => partnerApi.capabilities.profile(), enabled });
   // The partner's uploaded documents: a certification or insurance claim can point at one as proof.
-  const documents = useQuery({ queryKey: ["partner", "documents"], queryFn: () => partnerApi.partnerOs.documents(), enabled });
+  const documents = useQuery({ queryKey: ["partner", "documents"], queryFn: () => partnerApi.documents.list(), enabled });
 
   const subtitle = "Verified credentials make a professional eligible for jobs that require them.";
 
@@ -108,7 +108,7 @@ export function MyCredentialsScreen() {
   }
 
   const p = profile.data;
-  const docs = documents.data?.documents ?? [];
+  const docs = documents.data ?? [];
 
   return (
     <PartnerScreen title="My credentials" subtitle={subtitle} showBack>

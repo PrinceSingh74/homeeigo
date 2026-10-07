@@ -3,6 +3,7 @@ import { AppState } from "react-native";
 import { getApiBaseUrl } from "@/lib/api-config";
 import { rememberJobFix } from "@/lib/job-fix-cache";
 import { createTrackingPublisherRegistry, type TrackingSocket } from "@/lib/tracking-publisher-registry";
+import { quietSubscription } from "@/lib/safe-subscription";
 
 /**
  * The app's one tracking-publisher registry (X-76), wired to the real platform: a WebSocket per
@@ -42,7 +43,8 @@ export const trackingPublisherRegistry = createTrackingPublisherRegistry({
       // Started by opening a job, not by a tap: never raise the location-settings dialog (X-62).
       { accuracy: Location.Accuracy.Highest, timeInterval: intervalMs, distanceInterval: 5, mayShowUserSettingsDialog: false },
       (pos) => onFix(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy ?? undefined, pos.coords.altitude ?? undefined),
-    ),
+      // The registry stops this watch when a job leaves its active stage; a stop that throws must not take the job screen down.
+    ).then(quietSubscription),
   onFix: rememberJobFix,
   now: () => Date.now(),
   setTimer: (fn, ms) => setTimeout(fn, ms),

@@ -1,140 +1,220 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import * as ImagePicker from "expo-image-picker";
-import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { HqCard } from "@/components/HqUi";
-import { partnerApi } from "@/services/partner-api";
-import { partnerColors } from "@/theme/colors";
-import { completeBody, completePlan, stepMetaLabel, stepStateLabel, type CompletePlan, type EvidenceStage } from "@/lib/step-evidence";
+import { AlertTriangle } from "lucide-react-native";
+import { useRef, useState } from "react";
+import { StyleSheet, View } from "react-native";
+import { NoteField, PanelEmpty, PanelError, PanelLoading } from "@/components/job/parts";
+import type { PickedEvidence } from "@/components/job/PhotoPicker";
+import { Banner, Button, Pill, T } from "@/components/ui";
+import { evidenceUploadId } from "@/lib/evidence-photo";
 import { formatMinutes } from "@/lib/job-brief";
+import { failureSentence } from "@/lib/job-screen";
+import { completeBody, completePlan, stepMetaLabel, stepStateLabel, type CompletePlan } from "@/lib/step-evidence";
+import { newIdempotencyKey, partnerApi } from "@/services/partner-api";
+import { color, space, type Tone } from "@/theme/tokens";
+import type { ExecutionStepAction, ExecutionStepView } from "@/types/partner";
 
 /**
- * Phase 10 §8 — the partner's work plan (mirror of partner-web ExecutionSteps). Server truth; buttons
- * ask, the server decides. State = glyph + word, never colour alone.
+ * Phase 10 §8 — the job's work plan (mirror of partner web's ExecutionSteps). Server truth: buttons
+ * ask, the server decides. State is a word in a pill, never colour alone.
+ *
+ * What a step needs to be marked done is its evidence kind (`completePlan`):
+ *  - a note            → asked for in a labelled field, sent in the body;
+ *  - a photo           → picked now (camera first), uploaded as job evidence, its id sent with the step;
+ *  - before and after  → a before photo (START stage) and an after photo (COMPLETION stage), in turn.
+ * Nothing is attached that the partner did not choose, and a photo the picker refuses (HEIC, too
+ * large) is refused before any request.
+ *
+ * Loading, "This service has no steps" and a failed load are three different things on screen.
  */
-const GLYPH: Record<string, string> = { COMPLETED: "✓", IN_PROGRESS: "▶", BLOCKED: "🔒", FAILED: "✕", ESCALATED: "!", SKIPPED_WITH_REASON: "–" };
 
-/**
- * PHOTO and BEFORE_AFTER_PHOTOS steps complete against job_evidence rows: the server refuses COMPLETE
- * without them (EVIDENCE_REQUIRED). The partner picks each photo now — a before photo is recorded at the
- * START stage, an after photo at the COMPLETION stage (the server's before/after rule) — and the last
- * id is sent with the step. Nothing is ever attached that the partner did not choose.
- */
-async function captureStepPhoto(bookingId: string, code: string, stage: EvidenceStage, prompt: string): Promise<string> {
-  const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7, base64: true });
-  const asset = picked.canceled ? undefined : picked.assets?.[0];
-  if (!asset?.base64) throw new Error(prompt);
-  const mediaUrl = `data:${asset.mimeType ?? "image/jpeg"};base64,${asset.base64}`;
-  const res = await partnerApi.uploadEvidence(bookingId, { stage, mediaUrl, clientUploadId: `m-step-${code}-${stage}-${Date.now()}` });
-  return res.evidence.id;
-}
+const STATE_TONE: Record<string, Tone> = { COMPLETED: "success", IN_PROGRESS: "leaf", READY: "info", BLOCKED: "warning", FAILED: "danger", ESCALATED: "warning", SKIPPED_WITH_REASON: "neutral", PENDING: "neutral" };
+const SECONDARY: Array<{ action: "SKIP" | "FAIL" | "ESCALATE"; label: string }> = [
+  { action: "SKIP", label: "Skip" },
+  { action: "FAIL", label: "Couldn't do it" },
+  { action: "ESCALATE", label: "Escalate" },
+];
+const REASON_MAX = 500;
+const NOTE_MAX = 1000;
 
-export function ExecutionSteps({ bookingId }: { bookingId: string }) {
+type ActVars = { step: ExecutionStepView; action: Lowercase<ExecutionStepAction>; body?: Record<string, string>; plan?: CompletePlan };
+
+class StepPhotoMissing extends Error {}
+
+export function ExecutionSteps({
+  bookingId,
+  pickPhoto,
+  enabled = true,
+}: {
+  bookingId: string;
+  pickPhoto: (ask: { title: string; note?: string }) => Promise<PickedEvidence | null>;
+  enabled?: boolean;
+}) {
   const qc = useQueryClient();
-  const [reasonFor, setReasonFor] = useState<{ code: string; action: string } | null>(null);
+  const [entry, setEntry] = useState<{ code: string; action: Lowercase<ExecutionStepAction> } | null>(null);
   const [text, setText] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const query = useQuery({ queryKey: ["partner", "execution", bookingId], queryFn: () => partnerApi.getExecution(bookingId), staleTime: 10_000 });
+  const [error, setError] = useState<{ code: string; message: string } | null>(null);
+  const query = useQuery({ queryKey: ["partner", "execution", bookingId], queryFn: () => partnerApi.getExecution(bookingId), enabled: !!bookingId && enabled, staleTime: 10_000 });
+
+  // What one step action has already sent, kept until that action SUCCEEDS: a retry after a failed
+  // request re-uses the photos already uploaded and the same idempotency key, instead of asking for
+  // new photos and adding more evidence rows under a new key.
+  const sent = useRef(new Map<string, { ids: string[]; key: string }>());
+
   const act = useMutation({
-    mutationFn: async (v: { code: string; action: string; body?: Record<string, string>; plan?: CompletePlan }) => {
-      setError(null);
+    mutationFn: async (v: ActVars) => {
+      const slot = `${v.step.code}:${v.action}`;
+      const kept = sent.current.get(slot) ?? { ids: [], key: newIdempotencyKey(`step-${v.step.code}-${v.action}`) };
+      sent.current.set(slot, kept);
       let body = v.body;
       if (v.plan?.photos.length) {
-        const ids: string[] = [];
-        for (const p of v.plan.photos) ids.push(await captureStepPhoto(bookingId, v.code, p.stage, p.prompt));
+        const ids = kept.ids;
+        for (const wanted of v.plan.photos.slice(ids.length)) {
+          const title = v.plan.photos.length > 1 ? (wanted.stage === "START" ? "Add before photo" : "Add after photo") : "Add step photo";
+          const photo = await pickPhoto({ title, note: `Step ${v.step.stepNumber}: ${v.step.title}` });
+          if (!photo) throw new StepPhotoMissing(wanted.prompt);
+          const row = await partnerApi.uploadEvidence(bookingId, {
+            stage: wanted.stage,
+            mediaUrl: photo.dataUrl,
+            clientUploadId: evidenceUploadId(wanted.stage, photo.pickedAtMs, `step-${v.step.code}`),
+          });
+          ids.push(row.id);
+        }
         body = { ...(v.body ?? {}), ...completeBody(v.plan, ids) };
       }
-      return partnerApi.executionAction(bookingId, v.code, v.action, body);
+      return partnerApi.executionAction(bookingId, v.step.code, v.action, body, kept.key);
     },
-    onSuccess: () => { setReasonFor(null); setText(""); },
-    onError: (e) => setError(e instanceof Error ? e.message : "Could not update this step"),
-    onSettled: () => void qc.invalidateQueries({ queryKey: ["partner", "execution", bookingId] }),
+    onMutate: () => setError(null),
+    onSuccess: (_data, v) => {
+      sent.current.delete(`${v.step.code}:${v.action}`);
+      setEntry(null);
+      setText("");
+    },
+    onError: (e, v) => setError({ code: v.step.code, message: e instanceof StepPhotoMissing ? e.message : failureSentence(e, "This step could not be updated.") }),
+    onSettled: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: ["partner", "execution", bookingId] }),
+        qc.invalidateQueries({ queryKey: ["partner", "job-evidence", bookingId] }),
+      ]),
   });
+
+  if (query.isLoading) return <PanelLoading label="Loading service steps" lines={4} />;
+  if (query.isError && !query.data) return <PanelError error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} testID="execution-load-error" />;
   const view = query.data;
-  if (!view || !view.enforced || view.steps.length === 0) return null;
+  if (!view || !view.enforced || view.steps.length === 0) return <PanelEmpty testID="execution-empty">This service has no steps.</PanelEmpty>;
+
   return (
-    <View testID="execution-steps">
-      <HqCard>
-        <Text style={styles.title} accessibilityRole="header">Service steps</Text>
-        <Text style={[styles.gate, view.gate.ok ? styles.ok : styles.blocked]}>
-          {view.gate.ok ? "All required steps are done." : "The job can be completed once every required step is done."}
-        </Text>
-        {view.steps.map((s) => {
-          const busy = act.isPending && act.variables?.code === s.code;
-          const plan = completePlan(s.evidence);
-          return (
-            <View key={s.code} style={styles.item} testID={`step-${s.code}`} accessibilityLabel={`Step ${s.stepNumber}, ${s.title}: ${stepStateLabel(s.state)}`}>
-              <Text style={styles.label}>{GLYPH[s.state] ?? "○"} {s.stepNumber}. {s.title}{s.mandatory ? "" : " (optional)"}</Text>
-              <Text style={styles.meta}>
+    <View testID="execution-steps" style={styles.stack}>
+      <Banner tone={view.gate.ok ? "success" : "info"} testID="execution-gate" message={view.gate.ok ? "All required steps are done." : "The job can be completed once every required step is done."} />
+      {view.steps.map((s) => {
+        const busy = act.isPending && act.variables?.step.code === s.code;
+        const plan = completePlan(s.evidence);
+        const open = entry?.code === s.code ? entry : null;
+        const isNote = open?.action === "complete";
+        const trimmed = text.trim();
+        return (
+          <View key={s.code} style={styles.item} testID={`step-${s.code}`}>
+            <View accessible accessibilityLabel={`Step ${s.stepNumber}, ${s.title}${s.mandatory ? "" : ", optional"}: ${stepMetaLabel(s.state, s.evidence)}`} style={styles.head}>
+              <T kind="bodyStrong">{`${s.stepNumber}. ${s.title}${s.mandatory ? "" : " (optional)"}`}</T>
+              <Pill label={stepStateLabel(s.state)} tone={STATE_TONE[s.state] ?? "neutral"} />
+              <T kind="small">
                 {stepMetaLabel(s.state, s.evidence)}
                 {typeof s.estimatedMinutes === "number" && s.estimatedMinutes > 0 ? ` · about ${formatMinutes(s.estimatedMinutes)}` : ""}
-              </Text>
-              {s.description ? <Text style={styles.description}>{s.description}</Text> : null}
-              {/* Absent on an older server build: none. */}
-              {s.materials?.length ? <Text style={styles.meta}>Materials: {s.materials.join(", ")}</Text> : null}
-              {s.equipment?.length ? <Text style={styles.meta}>Equipment: {s.equipment.join(", ")}</Text> : null}
-              {s.ppe.length ? <Text style={styles.meta}>Wear: {s.ppe.join(", ")}</Text> : null}
-              {s.warnings.map((w) => <Text key={w} style={styles.warn}>⚠ {w}</Text>)}
+              </T>
+            </View>
+            {s.description ? <T kind="body">{s.description}</T> : null}
+            {/* Absent on an older server build: none. */}
+            {s.materials?.length ? <T kind="small">{`Materials: ${s.materials.join(", ")}`}</T> : null}
+            {s.equipment?.length ? <T kind="small">{`Equipment: ${s.equipment.join(", ")}`}</T> : null}
+            {s.ppe?.length ? <T kind="small">{`Wear: ${s.ppe.join(", ")}`}</T> : null}
+            {s.blockedBy?.detail?.length ? <T kind="small" tone="warning">{`Waiting on: ${s.blockedBy.detail.join(", ")}`}</T> : null}
+            {(s.warnings ?? []).map((w) => (
+              <View key={w} style={styles.warning} accessible accessibilityLabel={`Warning: ${w}`}>
+                <AlertTriangle color={color.marigold} size={16} />
+                <T kind="small" tone="warning" style={styles.flex}>
+                  {w}
+                </T>
+              </View>
+            ))}
+            {s.note ? <T kind="small">{`Your note: ${s.note}`}</T> : null}
+            {s.reason ? <T kind="small">{`Reason given: ${s.reason}`}</T> : null}
+
+            {open ? (
               <View style={styles.actions}>
-                {s.actions.includes("START") ? <Btn label="Start" primary disabled={busy} onPress={() => act.mutate({ code: s.code, action: "start" })} a11y={`Start step ${s.stepNumber}`} /> : null}
+                <NoteField
+                  label={isNote ? "Note for this step" : "Reason"}
+                  value={text}
+                  onChangeText={setText}
+                  maxLength={isNote ? NOTE_MAX : REASON_MAX}
+                  help="At least 3 characters."
+                  testID={`step-${s.code}-text`}
+                />
+                <Button
+                  label="Confirm"
+                  variant="secondary"
+                  loading={busy}
+                  disabled={act.isPending || trimmed.length < 3}
+                  onPress={() => act.mutate({ step: s, action: open.action, body: isNote ? { note: trimmed } : { reason: trimmed } })}
+                  testID={`step-${s.code}-confirm`}
+                />
+                <Button
+                  label="Go back"
+                  variant="quiet"
+                  disabled={act.isPending}
+                  onPress={() => {
+                    setEntry(null);
+                    setText("");
+                  }}
+                />
+              </View>
+            ) : (
+              <View style={styles.actions}>
+                {s.actions.includes("START") ? (
+                  <Button label="Start step" variant="secondary" accessibilityLabel={`Start step ${s.stepNumber}`} loading={busy && act.variables?.action === "start"} disabled={act.isPending} onPress={() => act.mutate({ step: s, action: "start" })} />
+                ) : null}
                 {s.actions.includes("COMPLETE") ? (
-                  <Btn
+                  <Button
                     label={plan.buttonLabel}
-                    primary
-                    disabled={busy}
+                    variant="secondary"
+                    accessibilityLabel={plan.photos.length || plan.note ? `${plan.buttonLabel.replace(" · Done", "")} and mark step ${s.stepNumber} done` : `Mark step ${s.stepNumber} done`}
+                    loading={busy && act.variables?.action === "complete"}
+                    disabled={act.isPending}
                     onPress={() => {
-                      // NOTE steps need the note in the body; photo steps pick their photos first (see captureStepPhoto).
-                      if (plan.note) { setReasonFor({ code: s.code, action: "complete" }); setText(""); }
-                      else act.mutate({ code: s.code, action: "complete", plan });
+                      // A note step asks for the note first; a photo step picks its photos (see the mutation).
+                      if (plan.note) {
+                        setEntry({ code: s.code, action: "complete" });
+                        setText("");
+                      } else act.mutate({ step: s, action: "complete", plan });
                     }}
-                    a11y={plan.photos.length || plan.note ? `${plan.buttonLabel.replace(" · Done", "")} and mark step ${s.stepNumber} done` : `Mark step ${s.stepNumber} done`}
                   />
                 ) : null}
-                {(["SKIP", "FAIL", "ESCALATE"] as const).filter((a) => s.actions.includes(a)).map((a) => (
-                  <Btn key={a} label={a === "SKIP" ? "Skip" : a === "FAIL" ? "Couldn't do it" : "Escalate"} disabled={busy} onPress={() => { setReasonFor({ code: s.code, action: a.toLowerCase() }); setText(""); }} a11y={`${a} step ${s.stepNumber}`} />
+                {SECONDARY.filter((a) => s.actions.includes(a.action)).map((a) => (
+                  <Button
+                    key={a.action}
+                    label={a.label}
+                    variant="quiet"
+                    accessibilityLabel={`${a.label}: step ${s.stepNumber}`}
+                    disabled={act.isPending}
+                    onPress={() => {
+                      setEntry({ code: s.code, action: a.action.toLowerCase() as Lowercase<ExecutionStepAction> });
+                      setText("");
+                    }}
+                  />
                 ))}
               </View>
-              {reasonFor?.code === s.code ? (
-                <View style={styles.reasonBox}>
-                  <TextInput value={text} onChangeText={setText} maxLength={500} placeholder={reasonFor.action === "complete" ? "Note (required)" : "Reason (required)"} accessibilityLabel={reasonFor.action === "complete" ? "Note" : "Reason"} style={styles.input} />
-                  <Btn label="Confirm" disabled={busy || text.trim().length < 3} onPress={() => act.mutate({ code: s.code, action: reasonFor.action, body: reasonFor.action === "complete" ? { note: text.trim() } : { reason: text.trim() } })} a11y="Confirm" />
-                </View>
-              ) : null}
-            </View>
-          );
-        })}
-        {error ? <Text style={styles.error} accessibilityRole="alert">{error}</Text> : null}
-      </HqCard>
+            )}
+            {error?.code === s.code ? <Banner tone="danger" message={error.message} testID={`step-${s.code}-error`} /> : null}
+          </View>
+        );
+      })}
     </View>
   );
 }
 
-function Btn({ label, onPress, disabled, primary, a11y }: { label: string; onPress: () => void; disabled?: boolean; primary?: boolean; a11y: string }) {
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={a11y} disabled={disabled} onPress={onPress} style={[styles.btn, primary ? styles.btnPrimary : styles.btnGhost, disabled && styles.btnDisabled]}>
-      <Text style={primary ? styles.btnPrimaryText : styles.btnGhostText}>{label}</Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
-  title: { fontSize: 15, fontWeight: "700", color: partnerColors.text, marginBottom: 6 },
-  gate: { fontSize: 13, fontWeight: "600", marginBottom: 8 },
-  ok: { color: "#15803d" },
-  blocked: { color: "#92400e" },
-  item: { paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: partnerColors.line },
-  label: { fontSize: 14, fontWeight: "600", color: partnerColors.text },
-  meta: { fontSize: 12, color: partnerColors.textSecondary, marginTop: 2 },
-  description: { fontSize: 13, lineHeight: 19, color: partnerColors.text, marginTop: 4 },
-  warn: { fontSize: 12, color: "#92400e", marginTop: 2 },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
-  reasonBox: { gap: 8, marginTop: 8 },
-  input: { minHeight: 44, borderWidth: 1, borderColor: partnerColors.line, borderRadius: 12, paddingHorizontal: 12, color: partnerColors.text },
-  btn: { minHeight: 44, paddingHorizontal: 14, justifyContent: "center", borderRadius: 12 },
-  btnPrimary: { backgroundColor: partnerColors.primary },
-  btnPrimaryText: { color: "#fff", fontWeight: "700", fontSize: 13 },
-  btnGhost: { borderWidth: 1, borderColor: partnerColors.line },
-  btnGhostText: { color: partnerColors.text, fontWeight: "700", fontSize: 13 },
-  btnDisabled: { opacity: 0.5 },
-  error: { color: "#b91c1c", fontSize: 12, marginTop: 8 },
+  flex: { flex: 1 },
+  stack: { gap: space.md },
+  item: { gap: space.sm, paddingTop: space.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
+  head: { gap: space.xs },
+  warning: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
+  actions: { gap: space.sm },
 });

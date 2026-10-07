@@ -24,7 +24,8 @@ type AuthState = {
 class NotAPartnerError extends Error {}
 
 function ensurePartnerRole(user: PartnerUser) {
-  if (user.role === "VENDOR" || user.role === "PROVIDER") return;
+  // Partners are VENDOR — the backend's UserRole enum has no PROVIDER value.
+  if (user.role === "VENDOR") return;
   if (user.role === "ADMIN") {
     throw new NotAPartnerError("Admins can't sign into the partner app. Use the admin panel.");
   }

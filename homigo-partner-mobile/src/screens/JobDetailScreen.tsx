@@ -1,132 +1,120 @@
-import { useQuery } from "@tanstack/react-query";
-import * as Linking from "expo-linking";
-import { useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { router, useLocalSearchParams } from "expo-router";
+import { Hammer, LifeBuoy, ListChecks, ShieldAlert, ShieldCheck } from "lucide-react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { StyleSheet, View } from "react-native";
+import { EscalationCard } from "@/components/EscalationCard";
+import { ExecutionSteps } from "@/components/ExecutionSteps";
 import { JobChatModal } from "@/components/JobChatModal";
 import { JobLifecycleActions } from "@/components/JobLifecycleActions";
-import { RequirementChecklist } from "@/components/RequirementChecklist";
-import { ExecutionSteps } from "@/components/ExecutionSteps";
-import { SafetyPanel } from "@/components/SafetyPanel";
-import { QualityPanel } from "@/components/QualityPanel";
-import { EscalationCard } from "@/components/EscalationCard";
-import { EmptyState, ErrorBlock, HqCard, LoadingBlock, StatRow } from "@/components/HqUi";
 import { PartnerScreen } from "@/components/PartnerScreen";
+import { QualityPanel } from "@/components/QualityPanel";
+import { RequirementChecklist } from "@/components/RequirementChecklist";
+import { SafetyPanel } from "@/components/SafetyPanel";
+import { StartJobOtpSheet } from "@/components/StartJobOtpSheet";
+import { Collapsible } from "@/components/job/Collapsible";
+import { JobBrief } from "@/components/job/JobBrief";
+import { JobEarnings } from "@/components/job/JobEarnings";
+import { JobNoShow } from "@/components/job/JobNoShow";
+import { JobPhotos } from "@/components/job/JobPhotos";
+import { bringCount, hasBringList, JobBringList, RequirementLines } from "@/components/job/JobPreparation";
+import { JobQuality } from "@/components/job/JobQuality";
+import { JobStageRail } from "@/components/job/JobStageRail";
+import { JobGone, JobLoadError, JobLoading, JobLocationBanner } from "@/components/job/JobStates";
+import { usePhotoPicker } from "@/components/job/PhotoPicker";
+import { ReasonSheet } from "@/components/job/ReasonSheet";
+import { Banner, Button, Pill, T } from "@/components/ui";
+import { jobActionsKey, refreshJob, useJobLifecycle } from "@/hooks/job/use-job-lifecycle";
 import { useRealtimeFallbackInterval } from "@/hooks/use-partner-realtime";
 import { usePartnerTrackingPublisher } from "@/hooks/use-partner-tracking-publisher";
+import { BOOKING_LIST_FILTER, BOOKING_STATUS, bookingStatusLabel, isActiveWorkStatus, isClosedWithoutWorkStatus, isPendingStatus, normalizeBookingStatus } from "@/lib/booking-status";
+import { CUSTOMER_CALL_UNAVAILABLE_NOTE } from "@/lib/customer-call";
 import { setE2eGeoOverride } from "@/lib/e2e-geo";
-import {
-  BOOKING_LIST_FILTER,
-  BOOKING_STATUS,
-  bookingStatusLabel,
-  bookingStatusRank,
-  isActiveWorkStatus,
-  isPendingStatus,
-  normalizeBookingStatus,
-} from "@/lib/booking-status";
-import { customerName, formatCurrency, formatDateTime } from "@/lib/format";
-import { getAvailableJobActions, primaryActionLabel } from "@/lib/job-action-policy";
-import { toggleChecklistItem } from "@/lib/quality-checklist";
-import { confirmationRequired, PROFESSIONAL_CONFIRMATION_LABEL } from "@/lib/professional-confirmation";
-import { formatMinutes, stepItemsNotListed, uniqueStepItems } from "@/lib/job-brief";
+import { EVIDENCE_MAX_PHOTOS_PER_UPLOAD, stagedPhotosFit } from "@/lib/evidence-photo";
 import { followUpLine } from "@/lib/follow-up";
-import { CUSTOMER_CALL_AVAILABLE, CUSTOMER_CALL_UNAVAILABLE_NOTE, customerCallLabel } from "@/lib/customer-call";
+import { customerName } from "@/lib/format";
+import { getAvailableJobActions, primaryActionLabel, primaryControlState } from "@/lib/job-action-policy";
+import { canPartnerCancel, completionProof, failureSentence, isOfflineError, jobTerminalSummary, locationRefusal, OFFLINE_SENTENCE, photoStagesOpen, pickJobPolicy } from "@/lib/job-screen";
+import { detailReadOf, isChatOpen, isJobGoneError, jobSubResourcesEnabled, resolveJobBooking, type StagePatch } from "@/lib/job-stage";
+import { canCompleteConfirmation, confirmationRequired } from "@/lib/professional-confirmation";
+import { canCompleteChecklist, toggleChecklistItem } from "@/lib/quality-checklist";
 import { partnerApi } from "@/services/partner-api";
-import type { PartnerBooking, PartnerRequirementLine } from "@/types/partner";
-import { partnerColors } from "@/theme/colors";
+import { space, type Tone } from "@/theme/tokens";
+import type { PartnerBooking } from "@/types/partner";
+import type { PickedEvidence } from "@/components/job/PhotoPicker";
 
-const TIMELINE: Array<{
-  key: "enRouteAt" | "arrivedAt" | "startedAt" | "completedAt";
-  label: string;
-}> = [
-  { key: "enRouteAt", label: "On the way" },
-  { key: "arrivedAt", label: "Arrived" },
-  { key: "startedAt", label: "Started" },
-  { key: "completedAt", label: "Completed" },
-];
+const JOBS_LIST = "/(tabs)/requests";
 
-function StatusChip({ status, arrivedAt }: { status: string; arrivedAt?: string | null }) {
-  return (
-    <View style={styles.chip}>
-      <Text style={styles.chipText}>{bookingStatusLabel(status, arrivedAt)}</Text>
-    </View>
-  );
-}
-
-const statusRank = bookingStatusRank;
-
-/** Prefer the most advanced lifecycle copy when the same id appears in multiple list caches. */
-function findBooking(
-  caches: Array<{ bookings?: PartnerBooking[] } | undefined>,
-  id: string,
-): PartnerBooking | undefined {
-  const hits: PartnerBooking[] = [];
+/** The same booking from a list cache the Requests tab keeps: a first-paint placeholder, nothing more. */
+function listRowOf(caches: Array<{ bookings?: PartnerBooking[] } | undefined>, id: string): PartnerBooking | null {
   for (const cache of caches) {
     const hit = cache?.bookings?.find((b) => b.id === id);
-    if (hit) hits.push(hit);
+    if (hit) return hit;
   }
-  if (hits.length === 0) return undefined;
-  return hits.sort((a, b) => {
-    const byStatus = statusRank(b.status) - statusRank(a.status);
-    if (byStatus !== 0) return byStatus;
-    const aTs = a.enRouteAt || a.arrivedAt || a.startedAt || a.completedAt || "";
-    const bTs = b.enRouteAt || b.arrivedAt || b.startedAt || b.completedAt || "";
-    return String(bTs).localeCompare(String(aTs));
-  })[0];
+  return null;
 }
 
-/** Stale pending list rows must not rewind Accept → On my way after a successful mutation. */
-const stageHold = new Map<string, PartnerBooking>();
-
-function holdAdvance(id: string, candidate: PartnerBooking | null | undefined): PartnerBooking | null {
-  if (!id) return candidate ?? null;
-  const prev = stageHold.get(id);
-  if (!candidate) return prev ?? null;
-  if (!prev || statusRank(candidate.status) >= statusRank(prev.status)) {
-    const merged: PartnerBooking = prev
-      ? {
-          ...candidate,
-          enRouteAt: candidate.enRouteAt || prev.enRouteAt,
-          arrivedAt: candidate.arrivedAt || prev.arrivedAt,
-          startedAt: candidate.startedAt || prev.startedAt,
-          completedAt: candidate.completedAt || prev.completedAt,
-        }
-      : candidate;
-    stageHold.set(id, merged);
-    return merged;
-  }
-  return prev;
+function statusTone(status: string): Tone {
+  if (isPendingStatus(status)) return "warning";
+  if (isActiveWorkStatus(status)) return "leaf";
+  if (normalizeBookingStatus(status) === BOOKING_STATUS.COMPLETED) return "success";
+  return "neutral";
 }
 
+/**
+ * One job, from offer to earning.
+ *
+ * STATE. The fresh `GET /api/bookings/:id` answer is authoritative (`lib/job-stage.ts`): it is shown
+ * exactly as sent — an arrival the server took back reads "not arrived" again — and a 404 means the
+ * job is no longer this partner's ("This job is no longer yours", no live button). A list row is
+ * only a first paint. After a lifecycle request the fields of the server's own answer are shown
+ * while the detail is read again, and the request stays pending until it has been, so the stage
+ * never flickers back.
+ *
+ * BUTTONS follow the server's `GET /api/bookings/:id/actions` (`availableActions`,
+ * `disabledReasons`); the local mirror is the instant first paint and the fallback while the two
+ * answers disagree (`pickJobPolicy`). The ONE action of the current stage is docked in the footer;
+ * decline, cancel and "Customer not available?" are secondary.
+ */
 export function JobDetailScreen() {
-  const { id, e2eLat, e2eLng } = useLocalSearchParams<{
-    id: string;
-    e2eLat?: string;
-    e2eLng?: string;
-  }>();
-  const bookingId = Array.isArray(id) ? id[0] : id ?? "";
+  const { id, e2eLat, e2eLng } = useLocalSearchParams<{ id: string; e2eLat?: string; e2eLng?: string }>();
+  const bookingId = Array.isArray(id) ? (id[0] ?? "") : (id ?? "");
+  const qc = useQueryClient();
+  const picker = usePhotoPicker();
+
   const [chatOpen, setChatOpen] = useState(false);
+  const [otpOpen, setOtpOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   /**
-   * W2-D1: the partner's ticks on the FROZEN service checklist, lifted here so the Complete CTA in
-   * the footer (JobLifecycleActions) sends exactly what was ticked. `stillNeeded` is what the server
-   * named after a `QUALITY_CHECKLIST_REQUIRED` refusal — those rows are unticked and flagged.
+   * The partner's ticks on the FROZEN service checklist, kept here so the Complete action sends
+   * exactly what was ticked. `stillNeeded` is what the server named after a
+   * `QUALITY_CHECKLIST_REQUIRED` refusal — those rows are unticked and flagged.
    */
   const [ticked, setTicked] = useState<string[]>([]);
   const [stillNeeded, setStillNeeded] = useState<string[]>([]);
-  /**
-   * The professional's confirmation that the completion criteria were met — ticked by the partner,
-   * never for them. `confirmationDemanded` is set when the server refused with
-   * `QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED`: the row is then required (and flagged) even if the
-   * booking copy on screen did not carry the policy flag.
-   */
+  /** The professional's confirmation — ticked by the partner, never for them. */
   const [confirmed, setConfirmed] = useState(false);
   const [confirmationDemanded, setConfirmationDemanded] = useState(false);
+  /** Completion photos picked and not yet sent: they travel once, with `/complete`. */
+  const [stagedPhotos, setStagedPhotos] = useState<PickedEvidence[]>([]);
+  /** Why the last completion photo was not staged (together they would not fit one request). */
+  const [stagedProblem, setStagedProblem] = useState<string | null>(null);
+  /** A tap already being handled: two taps in one frame both pass a state check, a ref stops the second. */
+  const firing = useRef(false);
+  /** The booking with the fields of a lifecycle answer applied, shown only while that request is in flight. */
+  const [held, setHeld] = useState<PartnerBooking | null>(null);
+  const shown = useRef<PartnerBooking | null>(null);
 
   useEffect(() => {
     setTicked([]);
     setStillNeeded([]);
     setConfirmed(false);
     setConfirmationDemanded(false);
+    setStagedPhotos([]);
+    setStagedProblem(null);
+    setHeld(null);
   }, [bookingId]);
 
   useEffect(() => {
@@ -134,21 +122,20 @@ export function JobDetailScreen() {
     const lngRaw = Array.isArray(e2eLng) ? e2eLng[0] : e2eLng;
     const lat = latRaw != null ? Number(latRaw) : NaN;
     const lng = lngRaw != null ? Number(lngRaw) : NaN;
-    if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      setE2eGeoOverride(lat, lng);
-    }
+    if (Number.isFinite(lat) && Number.isFinite(lng)) setE2eGeoOverride(lat, lng);
   }, [e2eLat, e2eLng]);
 
   // X-56: GET /api/bookings/:id is the source of truth for every stage this screen shows (the
   // partner's access rule includes a SENT offer), and the only booking request it makes. The list
-  // queries below READ the caches the Requests tab keeps (first paint, most-advanced merge) and never
-  // fetch from here — they used to fetch four lists per open and refetch all of them on every
-  // booking invalidation (~13 list requests in one second).
+  // queries below READ the caches the Requests tab keeps (first paint) and never fetch from here.
   const detail = useQuery({
     queryKey: ["partner", "bookings", "by-id", bookingId],
     queryFn: () => partnerApi.getBooking(bookingId),
     enabled: !!bookingId,
+    // A 404 is an answer ("not yours"), not a failure to retry.
+    retry: (count, error) => !isJobGoneError(error) && count < 2,
   });
+  const read = detailReadOf({ data: detail.data, error: detail.error });
 
   const pendingPollMs = useRealtimeFallbackInterval(10_000, 60_000);
   // The offer feed is the only source of the live offer window: fetched (and polled) only while this
@@ -157,607 +144,484 @@ export function JobDetailScreen() {
   const pending = useQuery({
     queryKey: ["partner", "bookings", "pending"],
     queryFn: () => partnerApi.listBookings({ status: BOOKING_LIST_FILTER.OFFERS, limit: 20, sortBy: "recent" }),
-    enabled: offerFeedNeeded,
+    enabled: offerFeedNeeded && read.kind !== "gone",
     // Safety net for the offer window; realtime events invalidate it immediately when connected.
-    refetchInterval: offerFeedNeeded ? pendingPollMs : false,
+    refetchInterval: offerFeedNeeded && read.kind !== "gone" ? pendingPollMs : false,
     refetchIntervalInBackground: false,
   });
-  const active = useQuery({
+  const activeList = useQuery({
     queryKey: ["partner", "bookings", "active"],
     queryFn: () => partnerApi.listBookings({ status: BOOKING_LIST_FILTER.ACTIVE_WORK, limit: 20, sortBy: "upcoming" }),
     enabled: false,
   });
-  const completed = useQuery({
+  const completedList = useQuery({
     queryKey: ["partner", "bookings", "completed"],
     queryFn: () => partnerApi.listBookings({ status: BOOKING_LIST_FILTER.COMPLETED, limit: 20, sortBy: "recent" }),
     enabled: false,
   });
 
-  const fromList = findBooking([pending.data, active.data, completed.data], bookingId);
-
-  const candidate =
-    findBooking(
-      [
-        detail.data ? { bookings: [detail.data] } : undefined,
-        active.data,
-        completed.data,
-        pending.data,
-      ],
-      bookingId,
-    ) ??
-    fromList ??
-    detail.data ??
-    null;
-
-  const booking = holdAdvance(bookingId, candidate);
-
-  // Same query and cache as JobLifecycleActions: the server's safety / requirement gates and payment
-  // exemption, so the hint in the body agrees with the footer button.
-  const serverActions = useQuery({
-    queryKey: ["partner", "job-actions", bookingId],
-    queryFn: () => partnerApi.getJobActions(bookingId),
-    enabled: !!bookingId && booking != null && isActiveWorkStatus(booking.status),
-    staleTime: 15_000,
+  const lifecycle = useJobLifecycle(bookingId, {
+    onServerPatch: (patch: StagePatch) => setHeld(shown.current ? ({ ...shown.current, ...patch } as PartnerBooking) : null),
+    onChecklistRefused: (needed) => {
+      // Server truth wins: the items it says are missing go back to unticked, and are flagged.
+      setTicked((prev) => prev.filter((i) => !needed.includes(i)));
+      setStillNeeded(needed);
+    },
+    onConfirmationRefused: () => {
+      setConfirmed(false);
+      setConfirmationDemanded(true);
+    },
+    onCompleted: () => setStagedPhotos([]),
   });
 
+  // After every render: the tap guard is released once no lifecycle request is in flight.
+  const lifecycleBusy = lifecycle.busy;
+  useEffect(() => {
+    if (!lifecycleBusy) firing.current = false;
+  });
+
+  const resolved = resolveJobBooking({
+    detail: read,
+    listRow: listRowOf([activeList.data, completedList.data, pending.data], bookingId),
+    hold: { booking: held, inFlight: lifecycle.busy },
+  });
+  const booking = resolved.booking;
+  shown.current = booking;
+  const clearHold = resolved.clearHold;
+  useEffect(() => {
+    if (clearHold) setHeld(null);
+  }, [clearHold]);
+
+  const status = booking?.status ?? null;
+  const reads = jobSubResourcesEnabled(status);
+  const active = booking != null && isActiveWorkStatus(status);
+  const isOffer = booking != null && isPendingStatus(status);
+
+  // The authority for the buttons, the gates and the no-show preview. 404 for an offer, so not asked then.
+  const serverActions = useQuery({
+    queryKey: jobActionsKey(bookingId),
+    queryFn: () => partnerApi.getJobActions(bookingId),
+    enabled: !!bookingId && active,
+    staleTime: 15_000,
+  });
   const evidence = useQuery({
     queryKey: ["partner", "job-evidence", bookingId],
     queryFn: () => partnerApi.listEvidence(bookingId),
-    enabled: !!bookingId && !!booking,
+    enabled: !!bookingId && booking != null && reads.evidence,
   });
-
-  // Same query and cache as ExecutionSteps: the Materials / Equipment cards also list what the
-  // individual service steps name, so nothing a step needs is missing from the brief.
+  // Same query and cache as ExecutionSteps: the "What to bring" section also lists what the steps name.
   const execution = useQuery({
     queryKey: ["partner", "execution", bookingId],
     queryFn: () => partnerApi.getExecution(bookingId),
-    enabled: !!bookingId && !!booking,
+    enabled: !!bookingId && booking != null && reads.execution,
     staleTime: 10_000,
+  });
+  // What this job paid — the server's own lines, asked for only once the job is completed.
+  const earning = useQuery({
+    queryKey: ["partner", "job-earning", bookingId],
+    queryFn: () => partnerApi.getBookingEarning(bookingId),
+    enabled: !!bookingId && normalizeBookingStatus(status) === BOOKING_STATUS.COMPLETED,
+    staleTime: 60_000,
+  });
+  // The masked number and whether a call is possible (it is not: there is no call relay for a partner).
+  const contact = useQuery({
+    queryKey: ["partner", "job-contact", bookingId],
+    queryFn: () => partnerApi.getContact(bookingId),
+    enabled: !!bookingId && active,
+    staleTime: 60_000,
+    retry: false,
   });
 
   // GPS publishing: committed, unfinished work only (IN_PROGRESS included, COMPLETED excluded).
-  const isLive = booking != null && isActiveWorkStatus(booking.status);
-  // Call/chat keep their previous visibility (accepted onward, including completed).
-  const showComms = booking != null && statusRank(booking.status) >= 30;
-  usePartnerTrackingPublisher({ bookingId: isLive ? bookingId : null, enabled: isLive });
+  usePartnerTrackingPublisher({ bookingId: active ? bookingId : null, enabled: active });
 
-  const loading =
-    (detail.isLoading && !booking) ||
-    (pending.isLoading && !booking) ||
-    (detail.isFetching && booking != null && statusRank(booking.status) < 30 && !detail.data);
+  const mirror = getAvailableJobActions({
+    status: status ?? "",
+    scheduledDate: booking?.scheduledDate,
+    enRouteAt: booking?.enRouteAt,
+    arrivedAt: booking?.arrivedAt,
+    startedAt: booking?.startedAt,
+    completedAt: booking?.completedAt,
+    paymentStatus: booking?.paymentStatus,
+    // What only the server knows, from its last answer, so the mirror is as informed as it can be.
+    requirementGate: serverActions.data?.requirementGate ?? null,
+    safetyGate: serverActions.data?.safetyGate ?? null,
+    paymentExempt: serverActions.data?.paymentExempt ?? booking?.paymentExempt === true,
+    startOtpVerified: serverActions.data ? !serverActions.data.requiredGates.includes("START_OTP_VERIFIED") : undefined,
+  });
+  const picked = pickJobPolicy(active ? serverActions.data : null, mirror);
+  const policy = picked.policy;
+  /** The server's answer, only while it is for the booking on screen: gates, no-show preview, stage. */
+  const serverAnswer = picked.source === "server" && active ? serverActions.data : undefined;
+  // The cached `/actions` answer is for an older stage than the booking on screen: ask again — once
+  // per detail answer (an answer newer than the detail is never asked for again, so a disagreement
+  // that persists cannot become a refetch loop).
+  const actionsStale = picked.stale && !serverActions.isFetching && serverActions.dataUpdatedAt < detail.dataUpdatedAt;
+  const refetchActions = serverActions.refetch;
+  useEffect(() => {
+    if (actionsStale) void refetchActions();
+  }, [actionsStale, refetchActions]);
+  const refreshActions = useCallback(() => void refetchActions(), [refetchActions]);
 
-  if (loading) {
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshJob(qc, bookingId);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [qc, bookingId]);
+
+  if (resolved.gone) {
     return (
-      <PartnerScreen title="Job" subtitle="Loading…" showBack>
-        <LoadingBlock />
+      <PartnerScreen title="Job" showBack onBack={() => router.replace(JOBS_LIST)} refreshing={refreshing} onRefresh={() => void onRefresh()}>
+        <JobGone />
       </PartnerScreen>
     );
   }
 
   if (!booking) {
     return (
-      <PartnerScreen title="Job" subtitle="Not found" showBack>
-        <EmptyState message="This job is not in your bookings." />
+      <PartnerScreen title="Job" showBack refreshing={refreshing} onRefresh={() => void onRefresh()}>
+        {detail.isError ? <JobLoadError error={detail.error} onRetry={() => void detail.refetch()} retrying={detail.isFetching} /> : <JobLoading />}
       </PartnerScreen>
     );
   }
 
   const name = customerName(booking.customer);
+  const jobStatus = normalizeBookingStatus(booking.status);
+  const inProgress = jobStatus === BOOKING_STATUS.IN_PROGRESS;
+  const notStartedYet = isOffer || (active && !inProgress);
+  const closed = isClosedWithoutWorkStatus(booking.status);
+  const terminal = jobTerminalSummary(booking.status, booking.cancellationReason);
+
   // The pending feed is the only source of the live offer window; it lists ONLY open offers.
   const pendingRow = pending.data?.bookings.find((b) => b.id === bookingId);
   // "Not in the feed" means "not an open offer" only if the feed was complete (not paginated away).
-  const offerKnown =
-    pending.isSuccess && (pending.data?.total ?? 0) <= (pending.data?.bookings.length ?? 0);
-  const policy = getAvailableJobActions({
-    ...booking,
-    requirementGate: serverActions.data?.requirementGate ?? null,
-    safetyGate: serverActions.data?.safetyGate ?? null,
-    paymentExempt: serverActions.data?.paymentExempt ?? booking.paymentExempt === true,
-  });
-  const nextLabel = primaryActionLabel(policy.primaryAction);
-  const disabledHint =
-    (policy.primaryAction && policy.disabledReasons[policy.primaryAction]) || null;
-  // The frozen checklist from GET /api/bookings/:id → execution.quality.checklist. Tickable only
-  // while the work is in progress; read-only before and after.
-  const checklist: readonly string[] = booking.execution?.quality?.checklist ?? [];
-  const checklistTickable =
-    checklist.length > 0 && normalizeBookingStatus(booking.status) === BOOKING_STATUS.IN_PROGRESS;
+  const offerKnown = pending.isSuccess && (pending.data?.total ?? 0) <= (pending.data?.bookings.length ?? 0);
 
-  function tickItem(item: string) {
-    setTicked((prev) => toggleChecklistItem(checklist, prev, item));
-    setStillNeeded((prev) => prev.filter((i) => i !== item));
-  }
-
-  function onChecklistRefused(needed: string[]) {
-    // Server truth wins: the items it says are missing go back to unticked, and are flagged.
-    setTicked((prev) => prev.filter((i) => !needed.includes(i)));
-    setStillNeeded(needed);
-  }
-
+  // The frozen quality policy from GET /api/bookings/:id → execution.quality.
   const quality = booking.execution?.quality ?? null;
-  const completionCriteria: readonly string[] = quality?.completionCriteria ?? [];
+  const checklist: readonly string[] = quality?.checklist ?? [];
   const needsConfirmation = confirmationRequired(quality, confirmationDemanded);
-  const jobStatus = normalizeBookingStatus(booking.status);
-  const inProgress = jobStatus === BOOKING_STATUS.IN_PROGRESS;
-  const notStartedYet = statusRank(booking.status) < statusRank(BOOKING_STATUS.IN_PROGRESS);
+  const proof = completionProof(quality, evidence.isSuccess ? evidence.data : null, stagedPhotos.length);
 
-  function onConfirmationRefused() {
-    // Server truth wins: the confirmation did not reach it, so the row goes back to unticked.
-    setConfirmed(false);
-    setConfirmationDemanded(true);
+  // The primary action: the server's (or the mirror's) control state, then the three things the
+  // server will check on a completion and the screen can see first — proof, checklist, confirmation.
+  const primary = primaryControlState(policy);
+  const completing = primary.action === "COMPLETE_SERVICE";
+  const checklistGate = completing ? canCompleteChecklist(checklist, ticked) : null;
+  const confirmationGate = completing ? canCompleteConfirmation(needsConfirmation, confirmed) : null;
+  const completeHint = completing ? (!proof.ready ? proof.hint : checklistGate && !checklistGate.allowed ? checklistGate.hint : confirmationGate && !confirmationGate.allowed ? confirmationGate.hint : null) : null;
+  const pinHint = primary.action === "START_SERVICE" && !primary.disabled && policy.requiredGates.includes("START_OTP_VERIFIED") ? "Ask the customer for the start PIN." : null;
+  const primaryDisabled = primary.disabled || completeHint !== null;
+  const primaryHint = primary.reason ?? completeHint ?? pinHint;
+
+  function runPrimary() {
+    if (lifecycle.busy || primaryDisabled || !booking) return;
+    if (firing.current) return;
+    // Held from this tap until the request it starts is no longer in flight (released below); the
+    // PIN sheet starts no request here and has its own guard.
+    firing.current = primary.action !== "START_SERVICE";
+    switch (primary.action) {
+      case "ACCEPT":
+        // The booking's own server-computed ETA, or none. Never a number made up here.
+        lifecycle.accept.mutate(booking.eta);
+        break;
+      case "START_NAVIGATION":
+        lifecycle.enRoute.mutate();
+        break;
+      case "MARK_ARRIVED":
+        lifecycle.arrived.mutate();
+        break;
+      case "START_SERVICE":
+        setOtpOpen(true);
+        break;
+      case "COMPLETE_SERVICE":
+        lifecycle.complete.mutate({ checklist, ticked, confirmationRequired: needsConfirmation, confirmed, photos: stagedPhotos.map((p) => p.dataUrl) });
+        break;
+      default:
+        break;
+    }
   }
 
-  // Materials / equipment: the preparation lines frozen at booking, the service's own note, and
-  // anything a service step names that the lines above do not already list.
-  const bringMaterials = booking.requirements?.bringMaterials ?? [];
-  const bringEquipment = booking.requirements?.bringEquipment ?? [];
+  async function addCompletionPhoto() {
+    const photo = await picker.pick({ title: "Add completion photo", note: proof.ask });
+    if (!photo) return;
+    if (stagedPhotos.length >= EVIDENCE_MAX_PHOTOS_PER_UPLOAD || stagedPhotos.some((p) => p.dataUrl === photo.dataUrl)) return;
+    // They travel in one request: refuse here what the server would drop without an answer.
+    const fit = stagedPhotosFit(stagedPhotos.map((p) => p.dataUrl), photo.dataUrl);
+    if (!fit.ok) {
+      setStagedProblem(fit.message);
+      return;
+    }
+    setStagedProblem(null);
+    setStagedPhotos((prev) => [...prev, photo]);
+  }
+
+  const chatAvailable = isChatOpen(booking.status);
+  const phoneMasked = contact.data?.phoneMasked ?? booking.customer.phoneMasked ?? null;
+  // No call button anywhere: the note says why, and points to chat (the server's `alternative`).
+  const callNote = active && (contact.data ? !contact.data.canCall : true) ? CUSTOMER_CALL_UNAVAILABLE_NOTE : null;
+
+  const safetyGate = serverAnswer?.safetyGate ?? null;
+  const liveGateOk = serverAnswer?.requirementGate?.ok === true;
+  const arrival = policy.stage === "ARRIVED" ? lifecycle.arrival : null;
+  const followUp = followUpLine(booking.followUp);
+  const cancellable = canPartnerCancel({ status: booking.status, serverStage: serverAnswer?.stage ?? null });
   const customerProvides = booking.requirements?.customerProvides ?? [];
   const preconditions = booking.requirements?.preconditions ?? [];
-  const stepMaterials = stepItemsNotListed(uniqueStepItems(execution.data?.steps, "materials"), bringMaterials.map((r) => r.label));
-  const stepEquipment = stepItemsNotListed(uniqueStepItems(execution.data?.steps, "equipment"), bringEquipment.map((r) => r.label));
-  const materialsNote = booking.execution?.materials ?? null;
-  const equipmentNote = booking.execution?.equipment ?? null;
-  const evidenceRows = evidence.data?.evidence ?? [];
+  const toBring = bringCount(booking);
+  const showFooter = isOffer || (primary.action !== null && !closed);
+  const stageKey = policy.stage;
 
-  async function openMaps() {
-    const lat = booking!.address.latitude;
-    const lng = booking!.address.longitude;
-    const addr = encodeURIComponent(booking!.address.fullAddress || "Job location");
-    const url =
-      lat != null && lng != null
-        ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
-        : `https://www.google.com/maps/search/?api=1&query=${addr}`;
-    await Linking.openURL(url);
-  }
-
-  const footer = (
+  const footer = showFooter ? (
     <JobLifecycleActions
-      bookingId={booking.id}
-      status={booking.status}
-      enRouteAt={booking.enRouteAt}
-      arrivedAt={booking.arrivedAt}
-      startedAt={booking.startedAt}
-      completedAt={booking.completedAt}
-      paymentStatus={booking.paymentStatus}
-      paymentExempt={booking.paymentExempt === true}
-      customerLabel={name}
-      phoneMasked={booking.customer.phoneMasked}
-      bookingNumber={booking.bookingNumber}
-      sticky
-      hideComms
-      showReject
+      action={primary.action}
+      label={primaryActionLabel(primary.action)}
+      disabled={primaryDisabled}
+      hint={primaryHint}
+      pendingAction={lifecycle.pendingAction}
+      onPrimary={runPrimary}
+      isOffer={isOffer}
       offer={pendingRow?.offer ?? null}
       offerKnown={offerKnown}
-      eta={booking.eta}
-      checklist={checklist}
-      completedChecklist={ticked}
-      onChecklistRefused={onChecklistRefused}
-      professionalConfirmationRequired={needsConfirmation}
-      professionalConfirmed={confirmed}
-      onConfirmationRefused={onConfirmationRefused}
+      onDecline={() => setDeclineOpen(true)}
     />
-  );
+  ) : undefined;
 
   return (
     <PartnerScreen
       title={booking.service.name}
       subtitle={booking.bookingNumber}
       showBack
+      headerAction={<Pill testID="job-status" label={bookingStatusLabel(booking.status, booking.arrivedAt)} tone={statusTone(booking.status)} />}
+      refreshing={refreshing}
+      onRefresh={() => void onRefresh()}
       footer={footer}
     >
-      <View testID="job-detail-screen" style={styles.root}>
-        <View style={styles.headerRow}>
-          <StatusChip status={booking.status} arrivedAt={booking.arrivedAt} />
-          <Text style={styles.amount}>
-            {formatCurrency(booking.finalAmount || booking.amount)}
-          </Text>
-        </View>
-
-        {followUpLine(booking.followUp) ? (
-          <View testID="job-follow-up">
-            <HqCard>
-              <Text style={styles.sectionTitle}>{followUpLine(booking.followUp)}</Text>
-              <Text style={styles.address}>
-                The customer reported an issue with the earlier visit; this visit follows up on it.
-              </Text>
-            </HqCard>
-          </View>
+      {/* Keyed by booking: nothing typed, ticked or reported on one job carries over to another. */}
+      <View key={booking.id} testID="job-detail-screen" style={styles.root}>
+        {detail.isError ? (
+          <Banner
+            tone="warning"
+            testID="job-stale"
+            title={isOfflineError(detail.error) ? "You're offline" : "This job could not be refreshed"}
+            message={isOfflineError(detail.error) ? `${OFFLINE_SENTENCE} What you see may be out of date.` : failureSentence(detail.error)}
+            action={<Button label="Try again" variant="secondary" onPress={() => void detail.refetch()} loading={detail.isFetching} />}
+          />
         ) : null}
 
-        <HqCard>
-          <Text style={styles.sectionTitle}>Customer</Text>
-          <StatRow label="Name" value={name} />
-          {booking.customer.phoneMasked ? (
-            <StatRow label="Phone" value={booking.customer.phoneMasked} />
+        {terminal ? <Banner tone={terminal.tone} title={terminal.title} message={terminal.message} testID="job-terminal" /> : null}
+        {lifecycle.resultMessage ? <Banner tone="info" message={lifecycle.resultMessage} testID="job-result-message" /> : null}
+
+        {followUp ? (
+          <Banner tone="info" testID="job-follow-up" title={followUp} message="The customer reported an issue with the earlier visit; this visit follows up on it." />
+        ) : null}
+
+        {isOffer ? (
+          <Banner tone="info" testID="job-offer-notice" message="This job is offered to you and is not accepted yet. Steps, on-site checks and photos open once you accept." />
+        ) : null}
+
+        {safetyGate && !safetyGate.ok ? <Banner tone="danger" testID="job-safety-hold" title="Stop. Safety hold" message={safetyGate.message} /> : null}
+
+        {/* Position refusals stay on screen until the partner acts: the server's sentence, never a toast. */}
+        {lifecycle.locationIssue ? <JobLocationBanner issue={lifecycle.locationIssue} /> : null}
+        {lifecycle.actionError ? <Banner tone="danger" message={lifecycle.actionError} testID="job-action-error" /> : null}
+        {lifecycle.note ? <Banner tone="info" message={lifecycle.note} testID="job-location-note" /> : null}
+        {stagedProblem ? <Banner tone="warning" message={stagedProblem} testID="job-photo-staged-problem" /> : null}
+        {picker.recovered ? (
+          <Banner tone="info" testID="job-photo-recovered" message="The app restarted while the camera was open. The photo you took was kept: tap the photo control again to use it." />
+        ) : null}
+
+        {/* What the arrival answer carried: the server's message, and the requirement gate to clear before starting. */}
+        {arrival?.message ? <Banner tone="success" message={arrival.message} testID="job-arrival-recorded" /> : null}
+        {arrival && arrival.gateLines.length > 0 && !liveGateOk ? (
+          <Banner tone="warning" testID="job-arrival-gate" title="Before you can start" message={arrival.gateLines.join("\n")} />
+        ) : null}
+
+        <JobStageRail booking={booking} />
+
+        <JobBrief booking={booking} phoneMasked={phoneMasked} callNote={callNote} chatAvailable={chatAvailable} onOpenChat={() => setChatOpen(true)} />
+
+        <Collapsible
+          key={`requirements-${stageKey}`}
+          title="Requirements"
+          icon={ShieldCheck}
+          summary={serverAnswer?.requirementGate && !serverAnswer.requirementGate.ok ? serverAnswer.requirementGate.message : null}
+          summaryTone="warning"
+          defaultOpen={stageKey === "ARRIVED"}
+          testID="job-preparation"
+        >
+          <RequirementLines title="Customer provides" items={customerProvides} />
+          <RequirementLines title="Customer preconditions" items={preconditions} />
+          {/* §6: the booking's own requirement state and the START gate belong to the partner who holds the job. */}
+          {reads.requirements ? (
+            <RequirementChecklist bookingId={booking.id} active={active} />
+          ) : customerProvides.length === 0 && preconditions.length === 0 ? (
+            <T kind="small">This offer records nothing the customer must provide or prepare.</T>
           ) : null}
-          <StatRow label="When" value={formatDateTime(booking.scheduledDate)} />
-        </HqCard>
+        </Collapsible>
 
-        <HqCard>
-          <Text style={styles.sectionTitle} accessibilityRole="header">Location</Text>
-          <Text style={styles.address}>{booking.address.fullAddress}</Text>
-          <Pressable onPress={() => void openMaps()} accessibilityRole="link" accessibilityLabel="Open in Maps" style={styles.mapsBtn}>
-            <Text style={styles.mapsText}>Open in Maps</Text>
-          </Pressable>
-        </HqCard>
-
-        {showComms ? (
-          <View style={styles.comms}>
-            {/* X-28: no masked-call relay — the customer's number is never given to a partner; use Chat. */}
-            <Pressable testID="job-call-btn" disabled accessibilityState={{ disabled: true }} accessibilityHint={CUSTOMER_CALL_UNAVAILABLE_NOTE} style={[styles.commBtn, { opacity: 0.5 }]}>
-              <Text style={styles.commText}>{customerCallLabel(booking.customer.phoneMasked)}</Text>
-            </Pressable>
-            <Pressable
-              testID="job-chat-btn"
-              onPress={() => setChatOpen(true)}
-              style={styles.commBtn}
-            >
-              <Text style={styles.commText}>Chat</Text>
-            </Pressable>
-          </View>
-        ) : null}
-        {showComms && !CUSTOMER_CALL_AVAILABLE ? <Text style={styles.warn}>{CUSTOMER_CALL_UNAVAILABLE_NOTE}</Text> : null}
-
-        {/*
-          The execution brief, in the order the work happens: 1 Job summary · 2 Requirements ·
-          3 Materials · 4 Equipment · 5 Safety · 6 Service steps · 7 Quality checklist · 8 Proof ·
-          9 Escalation. Every card is server truth; a card with nothing to say is not rendered.
-        */}
-        {booking.job && (booking.job.variant || booking.job.unit || booking.job.addons.length || booking.job.durationMinutes) ? (
-          <View testID="job-brief">
-          <HqCard>
-            <Text style={styles.sectionTitle} accessibilityRole="header">Job summary</Text>
-            {booking.job.variant ? <StatRow label="Variant" value={booking.job.variant} /> : null}
-            {booking.job.unit ? <StatRow label="Quantity" value={`${booking.job.quantity} ${booking.job.unit}`} /> : null}
-            {booking.job.audience ? <StatRow label="For" value={booking.job.audience} /> : null}
-            {booking.job.addons.length ? (
-              <StatRow
-                label="Add-ons"
-                value={booking.job.addons.map((a) => (a.quantity > 1 ? `${a.name} × ${a.quantity}` : a.name)).join(", ")}
-              />
-            ) : null}
-            {booking.job.durationMinutes ? <StatRow label="Expected time" value={formatMinutes(booking.job.durationMinutes)} /> : null}
-            {booking.job.duration && (booking.job.duration.preparationMinutes || booking.job.duration.cleanupMinutes) ? (
-              <Text style={styles.address}>
-                Prep {formatMinutes(booking.job.duration.preparationMinutes)} · service {formatMinutes(booking.job.duration.serviceMinutes)} ·
-                clean-up {formatMinutes(booking.job.duration.cleanupMinutes)}
-              </Text>
-            ) : null}
-          </HqCard>
-          </View>
+        {/* Materials and equipment in the server's words; the section is left out when it names none. */}
+        {hasBringList(booking, execution.data?.steps) ? (
+          <Collapsible
+            key={`bring-${stageKey}`}
+            title="What to bring"
+            icon={Hammer}
+            summary={toBring > 0 ? `${toBring} ${toBring === 1 ? "item" : "items"} listed` : null}
+            defaultOpen={stageKey === "OFFERED" || stageKey === "ACCEPTED"}
+            testID="job-bring"
+          >
+            <JobBringList booking={booking} steps={execution.data?.steps} />
+          </Collapsible>
         ) : null}
 
-        {/* 2 Requirements — what the customer provides and the preconditions recorded at booking… */}
-        {customerProvides.length || preconditions.length ? (
-          <View testID="job-preparation">
-          <HqCard>
-            <Text style={styles.sectionTitle} accessibilityRole="header">Requirements</Text>
-            <RequirementLines title="Customer provides" items={customerProvides} />
-            <RequirementLines title="Customer preconditions" items={preconditions} />
-          </HqCard>
-          </View>
-        ) : null}
-        {/* …and §6: the booking's own requirement state and the START gate — server truth. */}
-        <RequirementChecklist bookingId={booking.id} active={isActiveWorkStatus(booking.status)} />
-
-        {/* 3 Materials */}
-        {bringMaterials.length || materialsNote || stepMaterials.length ? (
-          <View testID="job-materials">
-          <HqCard>
-            <Text style={styles.sectionTitle} accessibilityRole="header">Materials</Text>
-            <RequirementLines title="Bring" items={bringMaterials} />
-            {materialsNote ? <Text style={styles.address}>{materialsNote}</Text> : null}
-            <PlainList title="Named in the service steps" items={stepMaterials} />
-          </HqCard>
-          </View>
+        {reads.safety ? (
+          <Collapsible
+            key={`safety-${safetyGate?.ok === false ? "hold" : "clear"}`}
+            title="Safety"
+            icon={ShieldAlert}
+            summary={safetyGate && !safetyGate.ok ? "Safety hold" : null}
+            summaryTone="danger"
+            defaultOpen={safetyGate?.ok === false}
+            testID="job-safety"
+          >
+            <SafetyPanel bookingId={booking.id} />
+          </Collapsible>
         ) : null}
 
-        {/* 4 Equipment */}
-        {bringEquipment.length || equipmentNote || stepEquipment.length ? (
-          <View testID="job-equipment">
-          <HqCard>
-            <Text style={styles.sectionTitle} accessibilityRole="header">Equipment</Text>
-            <RequirementLines title="Bring" items={bringEquipment} />
-            {equipmentNote ? <Text style={styles.address}>{equipmentNote}</Text> : null}
-            <PlainList title="Named in the service steps" items={stepEquipment} />
-          </HqCard>
-          </View>
+        {reads.execution ? (
+          <Collapsible key={`steps-${stageKey}`} title="Service steps" icon={ListChecks} defaultOpen={inProgress} testID="job-steps">
+            <ExecutionSteps bookingId={booking.id} pickPhoto={picker.pick} />
+          </Collapsible>
         ) : null}
 
-        {/* 5 Safety — §9: holds, what to wear, what not to use, prohibited conditions. */}
-        <SafetyPanel bookingId={booking.id} />
-        {/* 6 Service steps — §8: the booking's work plan, server truth. */}
-        <ExecutionSteps bookingId={booking.id} />
+        <JobQuality
+          key={`quality-${inProgress ? "live" : "read"}`}
+          quality={quality}
+          inProgress={inProgress}
+          notStartedYet={notStartedYet}
+          ticked={ticked}
+          stillNeeded={stillNeeded}
+          onTick={(item) => {
+            setTicked((prev) => toggleChecklistItem(checklist, prev, item));
+            setStillNeeded((prev) => prev.filter((i) => i !== item));
+          }}
+          needsConfirmation={needsConfirmation}
+          confirmed={confirmed}
+          confirmationDemanded={confirmationDemanded}
+          onToggleConfirmed={() => setConfirmed((prev) => !prev)}
+          proof={proof}
+          stagedPhotos={stagedPhotos.length}
+          onAddCompletionPhoto={stagedPhotos.length < EVIDENCE_MAX_PHOTOS_PER_UPLOAD ? () => void addCompletionPhoto() : null}
+        >
+          {/* §10: the recorded verdict (and why a completion was refused); §11: reported issues. */}
+          {reads.quality ? <QualityPanel bookingId={booking.id} /> : null}
+        </JobQuality>
 
-        {/* 7 Quality checklist — what done means, the frozen checklist, the professional's confirmation. */}
-        {checklist.length || completionCriteria.length || needsConfirmation ? (
-          <View testID="job-execution">
-          <HqCard>
-            <Text style={styles.sectionTitle} accessibilityRole="header">Quality checklist</Text>
-            {completionCriteria.length ? (
-              <View testID="job-completion-criteria" style={styles.block}>
-                <Text style={styles.subLabel}>What done means</Text>
-                {completionCriteria.map((item) => (
-                  <Text key={item} style={styles.address}>
-                    • {item}
-                  </Text>
-                ))}
-              </View>
-            ) : null}
-            {checklist.length ? <Text style={styles.subLabel}>Checklist</Text> : null}
-            {checklistTickable ? (
-              <View testID="job-quality-checklist">
-                <Text style={styles.muted}>Tick each item as you finish it — all are needed to complete the job.</Text>
-                {checklist.map((item) => {
-                  const checked = ticked.includes(item);
-                  const flagged = stillNeeded.includes(item);
-                  return (
-                    <Pressable
-                      key={item}
-                      testID="job-checklist-item"
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked }}
-                      accessibilityLabel={item}
-                      onPress={() => tickItem(item)}
-                      style={styles.checkRow}
-                    >
-                      <View style={[styles.checkBox, checked ? styles.checkBoxOn : null]}>
-                        {checked ? <Text style={styles.checkMark}>✓</Text> : null}
-                      </View>
-                      <View style={styles.checkBody}>
-                        <Text style={[styles.checkLabel, checked ? styles.checkLabelDone : null]}>{item}</Text>
-                        {flagged && !checked ? (
-                          <Text style={styles.warn} accessibilityRole="alert">
-                            Still needed — the server did not receive this item
-                          </Text>
-                        ) : null}
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ) : (
-              checklist.map((item) => (
-                <Text key={item} style={styles.address}>
-                  • {item}
-                </Text>
-              ))
-            )}
-            {needsConfirmation && inProgress ? (
-              <View testID="job-professional-confirmation-block" style={styles.confirmBlock}>
-                <Text style={styles.subLabel}>Your confirmation · required</Text>
-                <Pressable
-                  testID="job-professional-confirmation"
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: confirmed }}
-                  accessibilityLabel={`${PROFESSIONAL_CONFIRMATION_LABEL}. Required to complete this job.`}
-                  onPress={() => setConfirmed((prev) => !prev)}
-                  style={styles.checkRow}
-                >
-                  <View style={[styles.checkBox, confirmed ? styles.checkBoxOn : null]}>
-                    {confirmed ? <Text style={styles.checkMark}>✓</Text> : null}
-                  </View>
-                  <View style={styles.checkBody}>
-                    <Text style={styles.confirmLabel}>{PROFESSIONAL_CONFIRMATION_LABEL}</Text>
-                    {confirmationDemanded && !confirmed ? (
-                      <Text style={styles.warn} accessibilityRole="alert">
-                        Still needed — the server did not receive your confirmation
-                      </Text>
-                    ) : null}
-                  </View>
-                </Pressable>
-                <Text style={styles.muted}>
-                  Tick this only when the work meets {completionCriteria.length ? "every point under “What done means”" : "the completion criteria for this service"}. The job cannot be completed without it.
-                </Text>
-              </View>
-            ) : needsConfirmation && notStartedYet ? (
-              <Text testID="job-professional-confirmation-note" style={styles.address}>
-                When you complete this job you will be asked to confirm: “{PROFESSIONAL_CONFIRMATION_LABEL}”.
-              </Text>
-            ) : null}
-          </HqCard>
-          </View>
+        {reads.evidence ? (
+          <JobPhotos
+            key={`photos-${inProgress ? "live" : "read"}`}
+            bookingId={booking.id}
+            evidence={evidence}
+            openStages={active ? photoStagesOpen(policy.stage) : []}
+            pickPhoto={picker.pick}
+            staged={stagedPhotos}
+            onAddCompletionPhoto={() => void addCompletionPhoto()}
+            onRemoveStaged={(index) => {
+              setStagedProblem(null);
+              setStagedPhotos((prev) => prev.filter((_, i) => i !== index));
+            }}
+            proof={proof}
+            defaultOpen={inProgress}
+          />
         ) : null}
-        {/* §10: the recorded quality verdict (and why a complete was refused); §11: reported issues. */}
-        <QualityPanel bookingId={booking.id} />
 
-        {/* 8 Proof — what the frozen policy asks for, and what has been captured so far. */}
-        <View testID="job-proof">
-        <HqCard>
-          <Text style={styles.sectionTitle} accessibilityRole="header">Proof</Text>
-          {quality?.proofRequired ? <Text style={styles.address}>Photo proof required at completion.</Text> : null}
-          {quality?.beforeAfterPhotos ? (
-            <Text testID="job-before-after-required" style={styles.address}>
-              Before and after photos are required for this job.
-            </Text>
-          ) : null}
-          <Text style={styles.subLabel}>Captured so far</Text>
-          {evidence.isLoading ? (
-            <ActivityIndicator color={partnerColors.primary} accessibilityLabel="Loading evidence" />
-          ) : evidence.isError ? (
-            <ErrorBlock message="Could not load evidence." />
-          ) : evidenceRows.length === 0 ? (
-            <Text style={styles.muted}>No photos yet — capture on arrive or complete.</Text>
-          ) : (
-            evidenceRows.map((e) => (
-              <StatRow
-                key={e.id}
-                label={e.stage}
-                value={formatDateTime(e.capturedAt) + (e.isCurrent ? " · current" : "")}
-              />
-            ))
-          )}
-        </HqCard>
-        </View>
+        {/* §52: secondary to Start, collapsed by default; drawn only from the server's `noShow` answer. */}
+        {reads.actions || jobStatus === BOOKING_STATUS.CUSTOMER_NO_SHOW ? (
+          <JobNoShow
+            bookingId={booking.id}
+            preview={serverAnswer?.noShow ?? null}
+            fetchedAt={serverActions.dataUpdatedAt}
+            refreshing={serverActions.isFetching}
+            onRefresh={refreshActions}
+            pickPhoto={picker.pick}
+          />
+        ) : null}
 
-        {/* 9 Escalation — protocols and the in-app ways to raise a problem. */}
-        <EscalationCard bookingId={booking.id} />
+        {isOffer ? null : <JobEarnings status={booking.status} query={earning} />}
 
-        <HqCard>
-          <Text style={styles.sectionTitle} accessibilityRole="header">Lifecycle</Text>
-          {disabledHint ? <Text style={styles.warn}>{disabledHint}</Text> : null}
-          {nextLabel ? <Text style={styles.next}>Next action: {nextLabel}</Text> : null}
-          {TIMELINE.map((step, i) => {
-            const at = booking[step.key];
-            return (
-              <View key={step.key} style={styles.timelineRow}>
-                <View style={styles.timelineRail}>
-                  <View style={[styles.dot, at ? styles.dotDone : null]} />
-                  {i < TIMELINE.length - 1 ? <View style={styles.rail} /> : null}
-                </View>
-                <View style={styles.timelineBody}>
-                  <Text style={styles.timelineLabel}>{step.label}</Text>
-                  <Text style={styles.timelineAt}>
-                    {at ? formatDateTime(at) : "Pending"}
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
-        </HqCard>
+        <Collapsible title="Help and escalation" icon={LifeBuoy} testID="job-help">
+          <EscalationCard bookingId={booking.id} enabled={reads.safety} />
+        </Collapsible>
 
-        <JobChatModal
-          bookingId={booking.id}
-          customerName={name}
-          bookingNumber={booking.bookingNumber}
-          phoneMasked={booking.customer.phoneMasked}
-          visible={chatOpen}
-          onClose={() => setChatOpen(false)}
-        />
+        {cancellable ? (
+          <Button label="Cancel this job" variant="danger" onPress={() => setCancelOpen(true)} disabled={lifecycle.busy} testID="job-cancel" />
+        ) : null}
       </View>
+
+      {picker.sheet}
+
+      <StartJobOtpSheet
+        bookingId={booking.id}
+        customerName={name}
+        visible={otpOpen}
+        onClose={() => setOtpOpen(false)}
+        onStart={async (otp) => {
+          try {
+            await lifecycle.start.mutateAsync(otp);
+          } catch (error) {
+            // A position refusal is not about the PIN: close the sheet so the banner and
+            // "Turn on location" on the job screen are in front of the partner.
+            if (locationRefusal(error, false)) {
+              setOtpOpen(false);
+              return;
+            }
+            throw error;
+          }
+        }}
+      />
+
+      <JobChatModal
+        bookingId={booking.id}
+        status={booking.status}
+        customerName={name}
+        bookingNumber={booking.bookingNumber}
+        phoneMasked={phoneMasked}
+        visible={chatOpen}
+        onClose={() => setChatOpen(false)}
+      />
+
+      <ReasonSheet
+        visible={cancelOpen}
+        title="Cancel this job?"
+        body="The customer is told and the job is taken off your list. Say why you cannot do it."
+        confirmLabel="Cancel this job"
+        keepLabel="Keep this job"
+        onSubmit={(reason) => lifecycle.cancel.mutateAsync(reason)}
+        onClose={() => setCancelOpen(false)}
+        testID="job-cancel-sheet"
+      />
+
+      <ReasonSheet
+        visible={declineOpen}
+        title="Decline this job?"
+        body="The job is offered to another partner. Say why you are declining it."
+        confirmLabel="Decline job"
+        keepLabel="Go back"
+        onSubmit={async (reason) => {
+          await lifecycle.decline.mutateAsync(reason);
+          // Declined: there is nothing left to show here, and the job is no longer this partner's.
+          router.replace(JOBS_LIST);
+        }}
+        onClose={() => setDeclineOpen(false)}
+        testID="job-decline-sheet"
+      />
     </PartnerScreen>
   );
 }
 
-type BriefLine = PartnerRequirementLine & { check?: "CONFIRMED_BY_CUSTOMER" | "VERIFY_ON_ARRIVAL" | "VERIFY_AT_START" | "INFORMATIONAL" };
-
-const CHECK_LABEL: Record<NonNullable<BriefLine["check"]>, string> = {
-  CONFIRMED_BY_CUSTOMER: "confirmed by the customer",
-  VERIFY_ON_ARRIVAL: "verify on arrival",
-  VERIFY_AT_START: "verify before you start",
-  INFORMATIONAL: "for your information",
-};
-
-/** One titled group of the booking's preparation lines; renders nothing when the group is empty. */
-function RequirementLines({ title, items }: { title: string; items: readonly BriefLine[] }) {
-  if (items.length === 0) return null;
-  return (
-    <View style={styles.block}>
-      <Text style={styles.subLabel}>{title}</Text>
-      {items.map((r) => (
-        <Text key={r.label} style={styles.address}>
-          • {r.label}
-          {r.quantity ? ` · ${r.quantity}` : ""}
-          {r.optional ? " (optional)" : ""}
-          {r.chargeable ? " (chargeable add-on)" : ""}
-          {r.check ? ` — ${CHECK_LABEL[r.check] ?? "for your information"}` : ""}
-          {r.instructions ? `\n  ${r.instructions}` : ""}
-        </Text>
-      ))}
-    </View>
-  );
-}
-
-function PlainList({ title, items }: { title: string; items: readonly string[] }) {
-  if (items.length === 0) return null;
-  return (
-    <View style={styles.block}>
-      <Text style={styles.subLabel}>{title}</Text>
-      {items.map((item) => (
-        <Text key={item} style={styles.address}>
-          • {item}
-        </Text>
-      ))}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  root: { gap: 12, paddingBottom: 24 },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  chip: {
-    backgroundColor: "rgba(61,107,79,0.15)",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  chipText: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    color: partnerColors.primary,
-  },
-  amount: { fontSize: 18, fontWeight: "800", color: partnerColors.success },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: partnerColors.text,
-    marginBottom: 6,
-  },
-  address: { fontSize: 13, lineHeight: 18, color: partnerColors.textSecondary, marginBottom: 8 },
-  mapsBtn: {
-    alignSelf: "flex-start",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: partnerColors.surface,
-  },
-  mapsText: { fontSize: 12, fontWeight: "700", color: partnerColors.primary },
-  comms: { flexDirection: "row", gap: 8 },
-  commBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-    backgroundColor: partnerColors.surface,
-  },
-  commText: { color: partnerColors.primary, fontWeight: "700", fontSize: 13 },
-  timelineRow: { flexDirection: "row", gap: 10, minHeight: 44 },
-  timelineRail: { width: 16, alignItems: "center" },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: partnerColors.line,
-    marginTop: 4,
-  },
-  dotDone: { backgroundColor: partnerColors.success },
-  rail: { flex: 1, width: 2, backgroundColor: partnerColors.line, marginVertical: 2 },
-  timelineBody: { flex: 1, paddingBottom: 10 },
-  timelineLabel: { fontSize: 13, fontWeight: "600", color: partnerColors.text },
-  timelineAt: { fontSize: 11, color: partnerColors.textMuted, marginTop: 2 },
-  next: { fontSize: 12, fontWeight: "600", color: partnerColors.primary, marginBottom: 8 },
-  muted: { fontSize: 12, color: partnerColors.textMuted },
-  warn: { fontSize: 11, color: partnerColors.warning, marginBottom: 6 },
-  // W2-D1 tickable checklist: 44pt rows, existing tokens only.
-  checkRow: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44, paddingVertical: 4 },
-  checkBox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    backgroundColor: partnerColors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkBoxOn: { backgroundColor: partnerColors.success, borderColor: partnerColors.success },
-  checkMark: { color: partnerColors.surface, fontSize: 14, fontWeight: "800", lineHeight: 18 },
-  checkBody: { flex: 1 },
-  checkLabel: { fontSize: 13, lineHeight: 18, color: partnerColors.text },
-  checkLabelDone: { color: partnerColors.textSecondary },
-  // Execution brief: a titled group inside a card, and the required confirmation row.
-  block: { marginBottom: 4 },
-  subLabel: { fontSize: 13, fontWeight: "600", color: partnerColors.text, marginBottom: 4 },
-  confirmBlock: { marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: partnerColors.line },
-  confirmLabel: { fontSize: 14, lineHeight: 20, fontWeight: "600", color: partnerColors.text },
+  root: { gap: space.lg, paddingBottom: space.xxl },
 });

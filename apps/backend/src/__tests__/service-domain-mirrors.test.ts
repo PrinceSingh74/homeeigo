@@ -34,8 +34,9 @@ describe("frontend mirrors of the service contract", () => {
   test("partner web and partner mobile declare every field of the job brief", () => {
     const keys = Object.keys(partnerJobBrief(null, null, 1));
     const web = typeBlock(read("apps/partner-web/src/types/partner.ts"), "PartnerJobBrief");
-    const mobileSrc = read("homigo-partner-mobile/src/types/partner.ts");
-    const mobile = mobileSrc.slice(mobileSrc.indexOf("job?: {"), mobileSrc.indexOf("execution?: {"));
+    // The mobile mirror is a named type now, like partner web's (it was an inline `job?: {` block).
+    const mobile = typeBlock(read("homigo-partner-mobile/src/types/partner.ts"), "PartnerJobBrief");
+    expect(mobile.length).toBeGreaterThan(0);
     for (const k of keys) {
       expect(web).toContain(`${k}:`);
       expect(mobile).toContain(`${k}:`);

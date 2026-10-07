@@ -1,540 +1,88 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import * as ImagePicker from "expo-image-picker";
-import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { JobChatModal } from "@/components/JobChatModal";
-import { StartJobOtpSheet } from "@/components/StartJobOtpSheet";
+import { StyleSheet, View } from "react-native";
+import { Banner, Button, T } from "@/components/ui";
 import { useOfferCountdown } from "@/hooks/use-offer-countdown";
-import { isActiveWorkStatus, isPendingStatus } from "@/lib/booking-status";
-import { getAvailableJobActions, primaryActionLabel } from "@/lib/job-action-policy";
-import { describeAcceptFailure, formatCountdown, type OfferWindow } from "@/lib/offer";
-import { getJobCoords, LOCATION_REQUIRED_MESSAGE, LOCATION_UNAVAILABLE_NOTE } from "@/lib/job-coords";
-import { canCompleteChecklist, completedChecklistFor, describeChecklistRefusal } from "@/lib/quality-checklist";
-import { canCompleteConfirmation, describeConfirmationRefusal, professionalConfirmationFor } from "@/lib/professional-confirmation";
-import { PartnerApiError, partnerApi } from "@/services/partner-api";
-import type { PartnerBooking, PartnerBookingsResponse } from "@/types/partner";
-import { partnerColors } from "@/theme/colors";
-import { CUSTOMER_CALL_UNAVAILABLE_NOTE, customerCallLabel } from "@/lib/customer-call";
+import type { LifecycleAction } from "@/hooks/job/use-job-lifecycle";
+import type { JobAction } from "@/lib/job-action-policy";
+import { formatCountdown, type OfferWindow } from "@/lib/offer";
+import { space } from "@/theme/tokens";
 
 type Props = {
-  bookingId: string;
-  status: string;
-  enRouteAt: string | null;
-  arrivedAt: string | null;
-  startedAt?: string | null;
-  completedAt?: string | null;
-  paymentStatus?: string | null;
-  /** The list's copy of the server payment exemption, used until /actions answers. */
-  paymentExempt?: boolean;
-  customerLabel: string;
-  phoneMasked?: string | null;
-  bookingNumber: string;
-  /** Sticky primary CTA style for job detail footer */
-  sticky?: boolean;
-  /** Hide Call/Chat (detail screen hosts them separately) */
-  hideComms?: boolean;
-  /** Hide Accept/Reject pair — detail handles reject separately if needed */
-  showReject?: boolean;
-  /**
-   * The live offer window from the pending list (`offer` on the row). Only meaningful while PENDING.
-   * `null` with `offerKnown` = the pending feed no longer lists this job → it is not an open offer.
-   */
-  offer?: OfferWindow | null;
-  /** True once the pending feed has loaded, so "no offer" can be trusted as "offer closed". */
-  offerKnown?: boolean;
-  /** Server-computed ETA on the booking (minutes). Never invented client-side. */
-  eta?: number | null;
-  /**
-   * W2-D1: the booking's FROZEN service quality checklist (`execution.quality.checklist`) and the
-   * items the partner has ticked on the detail screen. Complete stays disabled until every item is
-   * ticked, and only the ticked items are sent — never a list the partner did not tick.
-   */
-  checklist?: readonly string[];
-  completedChecklist?: readonly string[];
-  /** The server refused with `QUALITY_CHECKLIST_REQUIRED`: these frozen items are still needed. */
-  onChecklistRefused?: (stillNeeded: string[]) => void;
-  /**
-   * The frozen quality policy asks the professional to confirm the completion criteria were met
-   * (`execution.quality.professionalConfirmation`). Complete stays disabled until the row on the
-   * detail screen is ticked, and `professionalConfirmation: true` is sent only when it is.
-   */
-  professionalConfirmationRequired?: boolean;
-  professionalConfirmed?: boolean;
-  /** The server refused with `QUALITY_PROFESSIONAL_CONFIRMATION_REQUIRED`: the row must be ticked. */
-  onConfirmationRefused?: () => void;
+  /** The one action for the current stage, from the server's `/actions` answer (the mirror until it arrives). */
+  action: JobAction | null;
+  /** Its label ("Accept", "On my way", "I've arrived", "Start job", "Complete job"). */
+  label: string | null;
+  /** True when the server (or a gate the server enforces) says the action cannot be taken now. */
+  disabled: boolean;
+  /** Why, in the server's words where it wrote them; shown under the button. */
+  hint: string | null;
+  /** Which request is in flight (including its awaited detail refetch). */
+  pendingAction: LifecycleAction | null;
+  onPrimary: () => void;
+  /** Offers only. */
+  isOffer: boolean;
+  /** The live window from the offer feed; `null` with `offerKnown` = the feed no longer lists this job. */
+  offer: OfferWindow | null;
+  offerKnown: boolean;
+  onDecline: () => void;
 };
 
-async function pickEvidenceDataUrl(): Promise<string | undefined> {
-  try {
-    const picked = await Promise.race([
-      ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        quality: 0.7,
-        base64: true,
-      }),
-      new Promise<{ canceled: true }>((resolve) => {
-        setTimeout(() => resolve({ canceled: true }), 12_000);
-      }),
-    ]);
-    if (!picked.canceled && "assets" in picked && picked.assets?.[0]?.base64) {
-      const mime = picked.assets[0].mimeType ?? "image/jpeg";
-      return `data:${mime};base64,${picked.assets[0].base64}`;
-    }
-  } catch {
-    /* optional */
-  }
-  return undefined;
-}
-
 /**
- * Shared accept → en-route → arrive → start OTP → complete CTAs.
- * Reused by RequestsScreen (if needed) and JobDetailScreen — one lifecycle, no second FSM.
+ * The docked footer of the job screen: ONE primary action for the current stage, in reach of the
+ * thumb, with the reason under it when it cannot be taken. An offer also shows its countdown and a
+ * quiet "Decline" that never competes with "Accept". An offer that can no longer be won shows why
+ * and no button at all.
+ *
+ * It asks for nothing and decides nothing: the screen passes the server's answer in. Calling the
+ * customer is not here or anywhere on the job screen — the server has no call relay for a partner
+ * (see `lib/customer-call.ts`); the brief shows the masked number and points to chat.
  */
-export function JobLifecycleActions({
-  bookingId,
-  status,
-  enRouteAt,
-  arrivedAt,
-  startedAt,
-  completedAt,
-  paymentStatus,
-  paymentExempt = false,
-  customerLabel,
-  phoneMasked,
-  bookingNumber,
-  sticky = false,
-  hideComms = false,
-  showReject = true,
-  offer = null,
-  offerKnown = false,
-  eta = null,
-  checklist = [],
-  completedChecklist = [],
-  onChecklistRefused,
-  professionalConfirmationRequired = false,
-  professionalConfirmed = false,
-  onConfirmationRefused,
-}: Props) {
-  const qc = useQueryClient();
-  const insets = useSafeAreaInsets();
-  const invalidate = () => {
-    void qc.invalidateQueries({ queryKey: ["partner", "bookings"] });
-    void qc.invalidateQueries({ queryKey: ["partner", "bookings", "by-id", bookingId] });
-    void qc.invalidateQueries({ queryKey: ["partner", "job-evidence", bookingId] });
-    // Phase 10 panels on the detail screen read state a lifecycle transition changes (work steps
-    // unblock on start; verdict and completion appear on complete). Without this they kept showing
-    // the pre-transition answer — "Blocked", no step buttons — until the screen was left.
-    for (const panel of ["execution", "requirements", "safety", "quality", "completion", "cases", "job-actions"]) {
-      void qc.invalidateQueries({ queryKey: ["partner", panel, bookingId] });
-    }
-  };
-  const [otpOpen, setOtpOpen] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [coordsWarning, setCoordsWarning] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  // §6: the START requirement gate is the server's to know — the local policy mirror cannot compute it.
-  const actionsQuery = useQuery({
-    queryKey: ["partner", "job-actions", bookingId],
-    queryFn: () => partnerApi.getJobActions(bookingId),
-    enabled: isActiveWorkStatus(status),
-    staleTime: 15_000,
-  });
+export function JobLifecycleActions({ action, label, disabled, hint, pendingAction, onPrimary, isOffer, offer, offerKnown, onDecline }: Props) {
+  const countdown = useOfferCountdown(isOffer ? offer : null);
+  // Past its deadline (server-time estimate), or absent from a complete offer feed.
+  const offerClosed = isOffer && ((countdown?.expired ?? false) || (offerKnown && !offer));
+  const busy = pendingAction !== null;
 
-  const policy = getAvailableJobActions({
-    status,
-    enRouteAt,
-    arrivedAt,
-    startedAt,
-    completedAt,
-    paymentStatus,
-    requirementGate: actionsQuery.data?.requirementGate ?? null,
-    safetyGate: actionsQuery.data?.safetyGate ?? null,
-    paymentExempt: actionsQuery.data?.paymentExempt ?? paymentExempt,
-  });
-  const primaryLabel = primaryActionLabel(policy.primaryAction);
-  // W2-D1: the client gate mirrors the server's item-by-item match; the server stays the authority.
-  const checklistGate =
-    policy.primaryAction === "COMPLETE_SERVICE"
-      ? canCompleteChecklist(checklist, completedChecklist)
-      : null;
-  // Same shape for the professional confirmation: the row must be ticked before Complete is offered.
-  const confirmationGate =
-    policy.primaryAction === "COMPLETE_SERVICE"
-      ? canCompleteConfirmation(professionalConfirmationRequired, professionalConfirmed)
-      : null;
-  const disabledHint =
-    (policy.primaryAction && policy.disabledReasons[policy.primaryAction]) ||
-    (policy.requiredGates.includes("PAYMENT_SETTLED")
-      ? "Payment confirmation pending"
-      : null) ||
-    (checklistGate && !checklistGate.allowed ? checklistGate.hint : null) ||
-    (confirmationGate && !confirmationGate.allowed ? confirmationGate.hint : null);
-
-  const countdown = useOfferCountdown(isPendingStatus(status) ? offer : null);
-  /**
-   * An offer the partner can no longer win must not look like one they can: past its deadline
-   * (server-time estimate), or absent from the live pending feed.
-   */
-  const offerClosed =
-    isPendingStatus(status) && ((countdown?.expired ?? false) || (offerKnown && !offer));
-
-  const removeFromPending = () => {
-    qc.setQueriesData<PartnerBookingsResponse>({ queryKey: ["partner", "bookings"] }, (old) => {
-      if (!old?.bookings) return old;
-      const next = old.bookings.filter((b) => !(b.id === bookingId && isPendingStatus(b.status)));
-      return next.length === old.bookings.length ? old : { ...old, bookings: next };
-    });
-  };
-
-  const accept = useMutation({
-    // ETA: the booking's own server-computed value, or none (the server then derives it from the
-    // partner's live location). A hard-coded client number would be an invented ETA.
-    mutationFn: () =>
-      partnerApi.acceptBooking(bookingId, typeof eta === "number" && eta >= 1 ? eta : undefined),
-    onMutate: () => setActionError(null),
-    onSuccess: (data) => {
-      const st = data.booking.status;
-      qc.setQueryData(["partner", "bookings", "by-id", bookingId], (prev: PartnerBooking | undefined) =>
-        prev ? { ...prev, status: st } : prev,
-      );
-      removeFromPending();
-      invalidate();
-      void qc.invalidateQueries({ queryKey: ["partner", "operations"] });
-      void qc.invalidateQueries({ queryKey: ["partner", "dashboard"] });
-    },
-    onError: (err) => {
-      const failure =
-        err instanceof PartnerApiError
-          ? describeAcceptFailure(err.code, err.message)
-          : describeAcceptFailure("NETWORK_ERROR");
-      setActionError(failure.message);
-      if (failure.offerGone) removeFromPending();
-      // Always resync with the server: its answer is the truth about this offer.
-      invalidate();
-      void qc.invalidateQueries({ queryKey: ["partner", "operations"] });
-    },
-  });
-  const reject = useMutation({
-    mutationFn: () => partnerApi.rejectBooking(bookingId, "Not available"),
-    onSuccess: invalidate,
-    onError: (err) => setActionError(err instanceof Error ? err.message : "Reject failed"),
-  });
-  const enRoute = useMutation({
-    mutationFn: async () => {
-      setActionError(null);
-      const c = await getJobCoords("soft");
-      setCoordsWarning(c ? null : LOCATION_UNAVAILABLE_NOTE);
-      return partnerApi.markEnRoute(bookingId, c?.latitude ?? null, c?.longitude ?? null);
-    },
-    onSuccess: invalidate,
-    onError: (err) => setActionError(err instanceof Error ? err.message : "Could not mark en route"),
-  });
-  const arrived = useMutation({
-    mutationFn: async () => {
-      setActionError(null);
-      setCoordsWarning(null);
-      const c = await getJobCoords("strict");
-      if (!c) throw new Error(LOCATION_REQUIRED_MESSAGE);
-      return partnerApi.markArrived(bookingId, c.latitude, c.longitude);
-    },
-    onSuccess: invalidate,
-    onError: (err) =>
-      setActionError(
-        err instanceof Error
-          ? err.message
-          : "Move closer to the service location and try again",
-      ),
-  });
-  const start = useMutation({
-    mutationFn: async (otp?: string) => {
-      setActionError(null);
-      setCoordsWarning(null);
-      const c = await getJobCoords("strict");
-      if (!c) throw new Error(LOCATION_REQUIRED_MESSAGE);
-      return partnerApi.startBooking(bookingId, c.latitude, c.longitude, otp);
-    },
-    onSuccess: invalidate,
-    onError: (err) =>
-      setActionError(
-        err instanceof Error
-          ? err.message
-          : "Move closer to the service location and try again",
-      ),
-  });
-  const complete = useMutation({
-    mutationFn: async () => {
-      setActionError(null);
-      const c = await getJobCoords("soft");
-      setCoordsWarning(c ? null : LOCATION_UNAVAILABLE_NOTE);
-      const mediaUrl = await pickEvidenceDataUrl();
-      const photos = mediaUrl ? [mediaUrl] : undefined;
-      // Only the items the partner ticked, as exact frozen strings; key omitted when there is no checklist.
-      const result = await partnerApi.completeBooking(
-        bookingId,
-        c?.latitude ?? null,
-        c?.longitude ?? null,
-        undefined,
-        photos,
-        completedChecklistFor(checklist, completedChecklist),
-        // `true` only when the row is required and the partner ticked it; otherwise the key is omitted.
-        professionalConfirmationFor(professionalConfirmationRequired, professionalConfirmed),
-      );
-      if (mediaUrl) {
-        await partnerApi
-          .uploadEvidence(bookingId, {
-            stage: "COMPLETION",
-            mediaUrl,
-            clientUploadId: `m-cmp-${Date.now()}`,
-            replace: true,
-            ...(c ? { latitude: c.latitude, longitude: c.longitude } : {}),
-          })
-          .catch(() => undefined);
-      }
-      return result;
-    },
-    onSuccess: invalidate,
-    onError: async (err) => {
-      const code = err instanceof PartnerApiError ? err.code : null;
-      const message = err instanceof Error ? err.message : "Complete failed";
-      const confirmation = describeConfirmationRefusal(code, message);
-      if (confirmation.confirmationRefused) {
-        // Server truth wins: the row goes back to unticked and is flagged; the booking is re-read so
-        // a copy that did not carry the policy flag picks it up.
-        setActionError(confirmation.message);
-        onConfirmationRefused?.();
-        void qc.invalidateQueries({ queryKey: ["partner", "quality", bookingId] });
-        void qc.invalidateQueries({ queryKey: ["partner", "bookings", "by-id", bookingId] });
-        return;
-      }
-      if (code !== "QUALITY_CHECKLIST_REQUIRED") {
-        setActionError(message);
-        return;
-      }
-      // The refusal names what is missing in the quality history's last entry, not in the 409 body.
-      let serverMissing: string[] | null = null;
-      try {
-        const quality = await partnerApi.getQuality(bookingId);
-        const last = quality.history[quality.history.length - 1];
-        serverMissing = last ? last.missingChecklistItems : null;
-      } catch {
-        /* fall back to "every item" below */
-      }
-      const refusal = describeChecklistRefusal(code, message, checklist, serverMissing);
-      setActionError(refusal.message);
-      onChecklistRefused?.(refusal.stillNeeded);
-      void qc.invalidateQueries({ queryKey: ["partner", "quality", bookingId] });
-    },
-  });
-
-  const pending = isPendingStatus(status);
-  const busy =
-    accept.isPending ||
-    reject.isPending ||
-    enRoute.isPending ||
-    arrived.isPending ||
-    start.isPending ||
-    complete.isPending;
-
-  const isActive = isActiveWorkStatus(status);
-
-  function runPrimary() {
-    const action = policy.primaryAction;
-    if (!action || busy) return;
-    if (action === "ACCEPT") {
-      if (!offerClosed) accept.mutate();
-    } else if (action === "START_NAVIGATION") enRoute.mutate();
-    else if (action === "MARK_ARRIVED") arrived.mutate();
-    else if (action === "START_SERVICE") setOtpOpen(true);
-    else if (action === "COMPLETE_SERVICE") complete.mutate();
+  if (isOffer && offerClosed) {
+    return (
+      <Banner
+        tone="info"
+        testID="job-offer-closed"
+        message={
+          countdown?.expired
+            ? "This request timed out before it was answered and has gone to another partner."
+            : "This request is no longer open for you. It was taken, withdrawn or has expired."
+        }
+      />
+    );
   }
 
-  const primaryPending =
-    (policy.primaryAction === "ACCEPT" && accept.isPending) ||
-    (policy.primaryAction === "START_NAVIGATION" && enRoute.isPending) ||
-    (policy.primaryAction === "MARK_ARRIVED" && arrived.isPending) ||
-    (policy.primaryAction === "COMPLETE_SERVICE" && complete.isPending);
+  if (!action || !label) return null;
+  const loading = pendingAction === action;
 
   return (
-    <View
-      style={[
-        styles.wrap,
-        sticky && styles.stickyWrap,
-        sticky && { paddingBottom: Math.max(16, insets.bottom + 8) },
-      ]}
-    >
-      {coordsWarning ? <Text style={styles.warn}>{coordsWarning}</Text> : null}
-      {actionError ? <Text style={styles.warn}>{actionError}</Text> : null}
-      {disabledHint ? <Text style={styles.hint}>{disabledHint}</Text> : null}
-      {policy.primaryAction === "START_SERVICE" &&
-      policy.requiredGates.includes("START_OTP_VERIFIED") &&
-      !disabledHint ? (
-        <Text style={styles.hint}>Customer OTP required — tap Start job to enter PIN</Text>
-      ) : null}
-      {policy.primaryAction && !disabledHint && !offerClosed ? (
-        <Text style={styles.next}>Next: {primaryLabel}</Text>
-      ) : null}
-
-      {!hideComms && isActive ? (
-        <View style={styles.actions}>
-          {/* X-28: no masked-call relay — the customer's number is never given to a partner; use Chat. */}
-          <Pressable
-            testID="job-call-btn"
-            disabled
-            accessibilityState={{ disabled: true }}
-            accessibilityHint={CUSTOMER_CALL_UNAVAILABLE_NOTE}
-            style={[styles.secondaryBtn, { opacity: 0.5 }]}
-          >
-            <Text style={styles.secondaryText}>{customerCallLabel(phoneMasked)}</Text>
-          </Pressable>
-          <Pressable
-            testID="job-chat-btn"
-            onPress={() => setChatOpen(true)}
-            style={styles.secondaryBtn}
-          >
-            <Text style={styles.secondaryText}>Chat</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      {pending && offerClosed ? (
-        <Text testID="job-offer-closed" style={styles.closed}>
-          {countdown?.expired
-            ? "This request timed out before it was answered and has gone to another partner."
-            : "This request is no longer open for you — it was taken, withdrawn or has expired."}
-        </Text>
-      ) : pending && showReject ? (
-        <>
-          {countdown ? (
-            <Text
-              testID="job-offer-countdown"
-              style={[
-                styles.countdown,
-                countdown.urgency === "critical"
-                  ? styles.countdownCritical
-                  : countdown.urgency === "warning"
-                    ? styles.countdownWarning
-                    : null,
-              ]}
-            >
-              Respond within {formatCountdown(countdown.secondsLeft)}
-            </Text>
-          ) : null}
-          <View style={styles.actions}>
-            <Pressable
-              testID="job-primary-cta"
-              disabled={busy || offerClosed}
-              onPress={() => {
-                if (!offerClosed) accept.mutate();
-              }}
-              style={[styles.acceptBtn, (busy || offerClosed) && styles.acceptDisabled]}
-            >
-              {accept.isPending ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.acceptText}>Accept</Text>
-              )}
-            </Pressable>
-            <Pressable disabled={busy} onPress={() => reject.mutate()} style={styles.rejectBtn}>
-              <Text style={styles.rejectText}>Reject</Text>
-            </Pressable>
-          </View>
-        </>
-      ) : primaryLabel && !pending ? (
-        <Pressable
-          testID="job-primary-cta"
-          disabled={busy || !!disabledHint}
-          onPress={runPrimary}
-          style={[styles.acceptBtn, styles.soloBtn, (busy || disabledHint) && styles.acceptDisabled]}
+    <View style={styles.wrap}>
+      {isOffer && countdown ? (
+        <T
+          kind="smallStrong"
+          numeric
+          testID="job-offer-countdown"
+          tone={countdown.urgency === "critical" ? "danger" : countdown.urgency === "warning" ? "warning" : "success"}
+          accessibilityLiveRegion="none"
+          style={styles.countdown}
         >
-          {primaryPending ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.acceptText}>{primaryLabel}</Text>
-          )}
-        </Pressable>
+          {`Respond within ${formatCountdown(countdown.secondsLeft)}`}
+        </T>
       ) : null}
-
-      <StartJobOtpSheet
-        bookingId={bookingId}
-        customerName={customerLabel}
-        visible={otpOpen}
-        onClose={() => setOtpOpen(false)}
-        onStart={async (otp) => {
-          await start.mutateAsync(otp);
-        }}
-      />
-      {!hideComms ? (
-        <JobChatModal
-          bookingId={bookingId}
-          customerName={customerLabel}
-          bookingNumber={bookingNumber}
-          phoneMasked={phoneMasked}
-          visible={chatOpen}
-          onClose={() => setChatOpen(false)}
-        />
-      ) : null}
+      <View testID="job-primary-action">
+        {/* `job-primary-cta` is the id the device scripts tap; keep it on the button itself. */}
+        <Button testID="job-primary-cta" label={label} onPress={onPrimary} loading={loading} disabled={disabled || busy} hint={loading ? null : hint} />
+      </View>
+      {isOffer ? <Button testID="job-decline" label="Decline" variant="quiet" onPress={onDecline} disabled={busy} loading={pendingAction === "DECLINE"} /> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: 8, marginTop: 8 },
-  stickyWrap: {
-    marginTop: 0,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: partnerColors.line,
-    backgroundColor: "rgba(246,241,214,0.96)",
-  },
-  actions: { flexDirection: "row", gap: 8 },
-  acceptBtn: {
-    flex: 1,
-    backgroundColor: partnerColors.primary,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  // The lone primary CTA sits in the column wrap, where acceptBtn's `flex: 1` (meant for the
-  // Accept/Reject row) means flexBasis 0: the button collapsed to its padding and Android clipped
-  // the label. Size it by its content instead, at least 44pt tall.
-  soloBtn: { flex: 0, minHeight: 44, justifyContent: "center" },
-  acceptDisabled: { opacity: 0.5 },
-  acceptText: { color: "#fff", fontWeight: "700" },
-  rejectBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  rejectText: { color: partnerColors.textMuted, fontWeight: "700" },
-  secondaryBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: "center",
-    backgroundColor: partnerColors.surface,
-  },
-  secondaryText: { color: partnerColors.primary, fontWeight: "700", fontSize: 12 },
-  warn: { fontSize: 11, color: partnerColors.warning, marginBottom: 2 },
-  hint: { fontSize: 11, color: partnerColors.textMuted },
-  next: { fontSize: 11, fontWeight: "600", color: partnerColors.primary },
-  countdown: { fontSize: 13, fontWeight: "700", color: partnerColors.success },
-  countdownWarning: { color: partnerColors.warning },
-  countdownCritical: { color: partnerColors.danger },
-  closed: {
-    fontSize: 12,
-    color: partnerColors.textMuted,
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    borderRadius: 10,
-    padding: 10,
-    textAlign: "center",
-  },
+  wrap: { gap: space.sm },
+  countdown: { textAlign: "center" },
 });

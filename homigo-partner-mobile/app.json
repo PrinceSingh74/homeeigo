@@ -4,7 +4,7 @@
     "slug": "homigo-partner-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "scheme": "homeeigo-partner",
     "newArchEnabled": true,
     "icon": "./assets/icon.png",
@@ -18,8 +18,8 @@
       "bundleIdentifier": "com.homeeigo.partner",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "HOMEEIGO Partner uses your location for job navigation, attendance check-in, and territory insights.",
-        "NSCameraUsageDescription": "HOMEEIGO Partner uses the camera to photograph PAN, Aadhaar, and cancelled cheque during onboarding.",
-        "NSPhotoLibraryUsageDescription": "HOMEEIGO Partner uses your photo library to upload onboarding documents.",
+        "NSCameraUsageDescription": "HOMEEIGO Partner uses the camera for photos of your work on a job, a photo at the customer's door, and your onboarding documents.",
+        "NSPhotoLibraryUsageDescription": "HOMEEIGO Partner uses your photo library when you choose a job photo or an onboarding document to upload.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "While you are online or on an active job, HOMEEIGO Partner shares your location in the background so nearby jobs can reach you and customers can see you arriving. Location sharing stops when you go offline and have no active job."
       }
     },
@@ -63,8 +63,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow HOMEEIGO Partner to upload PAN, Aadhaar, and cheque photos from your library.",
-          "cameraPermission": "Allow HOMEEIGO Partner to photograph onboarding documents."
+          "photosPermission": "Allow HOMEEIGO Partner to upload job photos and onboarding documents you choose from your library.",
+          "cameraPermission": "Allow HOMEEIGO Partner to take photos of your work on a job, at the customer's door, and of your onboarding documents."
         }
       ]
     ]

@@ -239,7 +239,7 @@ function driveLogin(): boolean {
   sleep(200);
   typePassword(PARTNER.password);
   sleep(300);
-  tapBy("partner-login-submit") || tapBy("Continue to Partner OS") || tapBy(/^Sign in$/i);
+  tapBy("partner-login-submit") || tapBy("Continue to Partner OS");
   sleep(15000);
   dismissSystemAnr();
   tapBy(/Not now/i);
@@ -284,13 +284,31 @@ async function main() {
     process.exit(1);
   }
 
+  // `expect` is what the SCREEN ITSELF shows and the HQ menu does not. The HQ menu lists every one
+  // of these screens by label and subtitle ("AI Assistant", "Growth Advisor", "Surge zones and
+  // recommendations", "Territory Analytics", "Demand and supply by zone", "Demand Forecast",
+  // "Route AI", "A suggested stop order for your active jobs", "Earnings outlook", "Today, weekly,
+  // monthly projections" — src/lib/hq-menu.ts), so the old patterns (/Route|stop|job/, /zone/,
+  // /Today|Weekly|Monthly/, a screen's own menu label) were all satisfied by the menu when the
+  // screen never opened. Each pattern below is a subtitle, section title or state the screen
+  // renders in src/screens/hq-performance-ai-territory.tsx, src/screens/hq-work-earnings.tsx or
+  // src/components/money/Intel.tsx.
   const screens: Array<{ id: string; path: string; label: string; expect: RegExp }> = [
-    { id: "ai-assistant", path: "hq/ai-assistant", label: "AI Assistant", expect: /AI Assistant|Partner Copilot|Ask about earnings|Ask the assistant|verified/i },
-    { id: "ai-intelligence", path: "hq/ai-intelligence", label: "Growth Advisor", expect: /Growth Advisor|Top surge|Best opportunity|surge zones/i },
-    { id: "territory-analytics", path: "hq/territory-analytics", label: "Territory Analytics", expect: /Territory|demand|supply|gap|opportunity|zone/i },
-    { id: "ai-demand-forecast", path: "hq/ai-demand-forecast", label: "Demand Forecast", expect: /Demand Forecast|forecast|heuristic|zone/i },
-    { id: "ai-route", path: "hq/ai-route", label: "Route AI", expect: /Route|stop|job|sequence|GPS|optimize/i },
-    { id: "earnings-forecast", path: "hq/earnings-forecast", label: "Today, weekly, monthly", expect: /Earnings Forecast|Forecast inputs|Today|Weekly|Monthly|heuristic/i },
+    // "Partner Copilot" / "Ask about earnings" are gone; the composer is "Your question" with the
+    // placeholder "Ask the assistant…", over the empty state "Ask a question".
+    { id: "ai-assistant", path: "hq/ai-assistant", label: "AI Assistant", expect: /Ask the assistant|Your question|Ask about your jobs, earnings or schedule/i },
+    // "Best opportunity" is gone; the sections are "Top surge zones" and "Recommended zones for you".
+    { id: "ai-intelligence", path: "hq/ai-intelligence", label: "Growth Advisor", expect: /Where demand is building|Top surge zones|Recommended zones for you/i },
+    // The server has no zone scores for a partner account: the screen is a stated "Coming soon"
+    // ("Zone scores are not available to partner accounts yet"). Demand / supply / gap /
+    // opportunity figures are no longer expected, because the app no longer shows any.
+    { id: "territory-analytics", path: "hq/territory-analytics", label: "Territory Analytics", expect: /Zone scores for your territory|Zone scores are not available to partner accounts yet/i },
+    // No "heuristic" wording any more: the forecast rows, or one of its two stated non-answers.
+    { id: "ai-demand-forecast", path: "hq/ai-demand-forecast", label: "Demand Forecast", expect: /Expected bookings by zone and hour|By zone and hour|No forecast right now|The forecast is out of date/i },
+    { id: "ai-route", path: "hq/ai-route", label: "Route AI", expect: /The order to visit the jobs you hold/i },
+    // "Earnings Forecast" / "Forecast inputs" are now the "Earnings outlook" screen: its subtitle,
+    // and the "Estimate for today" row once the forecast has loaded.
+    { id: "earnings-forecast", path: "hq/earnings-forecast", label: "Today, weekly, monthly", expect: /An estimate for today, and what you actually earned recently|Estimate for today/i },
   ];
 
   for (const s of screens) {
@@ -303,6 +321,11 @@ async function main() {
     reloadIfRedbox();
     ensureLoggedIn();
     waitFor(s.expect, 35_000);
+    // A screen's subtitle is up before its data. Let the loading placeholder (labelled "Loading…",
+    // "Working out your route…" — money/DataScreen.tsx LoadingCards) go, so a crash or an error
+    // that arrives with the data is in the dump the gate reads.
+    const settleStart = Date.now();
+    while (Date.now() - settleStart < 20_000 && uiHas(/content-desc="(?:Loading|Working out)[^"]*"/)) sleep(1200);
     const xml = dumpNamed(s.id);
     const text = decodeXml(xml);
     const fg = foregroundPackage();

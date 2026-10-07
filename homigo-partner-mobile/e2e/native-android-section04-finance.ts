@@ -33,7 +33,12 @@ mkdirSync(ART, { recursive: true });
 
 const VALID_AMOUNT_MSG = "Enter a valid amount";
 const EXCEED_MSG = /cannot exceed available/i;
-const SUCCESS_MSG = "Withdrawal requested. Processing typically takes 1–3 business days.";
+// The success banner is titled "Withdrawal requested" and its message is the server's own
+// (`POST /api/wallet/withdraw` answers "Withdrawal request submitted"; the app's fallback when the
+// server sends none is "The server accepted your request." — src/components/WithdrawSheet.tsx).
+// The old "Processing typically takes 1–3 business days" sentence exists nowhere any more.
+const SUCCESS_MSG = "Withdrawal request submitted";
+const SUCCESS_FALLBACK = /The server accepted your request/i;
 
 const results: Array<{ gate: string; status: "PASS" | "FAIL" | "WARN" | "BLOCKED"; detail: string }> = [];
 
@@ -94,9 +99,11 @@ function tapBy(pattern: string | RegExp): boolean {
   let best: { y: number; x1: number; y1: number; x2: number; y2: number } | null = null;
   for (const m of nodes) {
     const tag = m[0];
+    // Trimmed: a node carries EITHER text or content-desc, so the joined label was "Done " or
+    // " Done" and an anchored pattern (/^Done$/, /^Wallet$/) could never match.
     const text = decodeXml(
       (tag.match(/\btext="([^"]*)"/i)?.[1] || "") + " " + (tag.match(/\bcontent-desc="([^"]*)"/i)?.[1] || ""),
-    );
+    ).trim();
     const rid = tag.match(/\bresource-id="([^"]*)"/i)?.[1] ?? "";
     const bounds = tag.match(/\bbounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/i);
     if (!bounds) continue;
@@ -185,8 +192,19 @@ function clearFocusedField() {
   sleep(80);
 }
 
+/**
+ * The amount as the wallet prints it — a mirror of `rupees()` in src/lib/money-format.ts: Indian
+ * grouping, paise only when there are any ("₹1,234", "₹1,234.5"). The old whole-rupee rounding
+ * printed "₹1,235" for 1234.5, which the screen never shows.
+ */
 function inrRound(n: number) {
-  return `₹${Math.round(n).toLocaleString("en-IN")}`;
+  const fixed = (Math.round(Math.abs(n) * 100) / 100).toFixed(2);
+  const [whole = "0", fraction = ""] = fixed.split(".");
+  const last3 = whole.slice(-3);
+  const rest = whole.slice(0, -3);
+  const grouped = rest ? `${rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",")},${last3}` : last3;
+  const paise = fraction.replace(/0+$/, "");
+  return `₹${grouped}${paise ? `.${paise}` : ""}`;
 }
 
 async function metroHealthy(): Promise<{ ok: boolean; detail: string }> {
@@ -442,7 +460,8 @@ function driveLogin(): boolean {
   typePassword(PARTNER.password);
   sleep(400);
   dismissKeyboard();
-  tapBy("partner-login-submit") || tapBy("Continue to Partner OS") || tapBy(/^Sign in$/i);
+  // The one submit control is "Continue to Partner OS" (app/login.tsx); there is no "Sign in" button.
+  tapBy("partner-login-submit") || tapBy("Continue to Partner OS");
   sleep(8_000);
   if (uiHas(/Save password|Google Password Manager|Not now/i)) {
     tapBy("Not now") || tapBy(/Not now/i);
@@ -751,7 +770,9 @@ async function main() {
   sleep(1500);
   const sheetXml = dumpNamed("03-withdraw-sheet");
   shot("03-withdraw-sheet");
-  const sheetOpen = uiHas(/Withdraw to bank|Account holder|IFSC|withdraw-sheet-heading/i, sheetXml);
+  // "Withdraw to bank" is no longer evidence of the sheet: it is also the wallet's own footer
+  // button (hq-work-earnings.tsx WithdrawFooter), so it was true with the sheet closed.
+  const sheetOpen = uiHas(/Account holder|IFSC|withdraw-sheet-heading/i, sheetXml);
   gate("native.withdraw_sheet", openedSheet && sheetOpen ? "PASS" : sheetOpen ? "PASS" : "FAIL");
 
   if (sheetOpen) {
@@ -799,7 +820,7 @@ async function main() {
     gate("native.semantic_submit_invoked", doubleTapped ? "PASS" : "FAIL", "uiautomator2/maestro ACTION_CLICK");
     sleep(250);
     const successVisible = proveVisible("05-withdraw-success", /Withdrawal requested/i, 18_000);
-    const successCopyExact = uiHas(SUCCESS_MSG) || uiHas(/Processing typically takes 1–3 business days/i);
+    const successCopyExact = uiHas(SUCCESS_MSG) || uiHas(SUCCESS_FALLBACK);
     gate(
       "native.success_copy",
       successVisible && successCopyExact ? "PASS" : successVisible ? "PASS" : "FAIL",
@@ -846,15 +867,31 @@ async function main() {
       fatal ? "fatal/RSOD in logcat" : leakedSecret ? "secret material in logcat" : "no fatal/PII tokens in sampled logcat",
     );
 
-    tapBy(/^Done$/) || tapBy(/Cancel/i);
+    // The success sheet has one control, "Done" (testID withdraw-done); the form's is "Cancel".
+    tapBy("withdraw-done") || tapBy(/^Done$/) || tapBy(/Cancel/i);
     sleep(1200);
-    waitFor(/Recent transactions|Available|Wallet/i, 10_000);
-    dumpNamed("05b-transaction-history");
+    // The wallet has no transaction ledger (the server has none: money/Withdrawals.tsx); what
+    // follows a withdrawal is its row under "Recent withdrawals". The wait is on the list, not on
+    // the heading: the success sheet's own text also says "Recent withdrawals".
+    waitFor(/withdrawals-list|withdrawal-row-0/i, 10_000);
+    const historyXml = dumpNamed("05b-transaction-history");
     shot("05b-transaction-history");
+    const sheetClosed = !/resource-id="withdraw-(?:sheet|success|sheet-heading)"/.test(historyXml);
+    // The row is titled with the withdrawal's number; when the payouts read carries it, it must be the new one.
+    const latestNumber = (after.data?.withdrawals[0] as { withdrawalNumber?: string } | undefined)?.withdrawalNumber;
+    const historyShown =
+      sheetClosed &&
+      uiHas(/Recent withdrawals/i, historyXml) &&
+      /resource-id="withdrawal-row-0"/.test(historyXml) &&
+      (!latestNumber || decodeXml(historyXml).includes(latestNumber));
     gate(
       "native.transaction_row",
-      uiHas(/Recent transactions|Withdrawal|Payout|₹1/i) ? "PASS" : "WARN",
-      "history after success",
+      historyShown ? "PASS" : "WARN",
+      historyShown
+        ? "withdrawal row under Recent withdrawals after success"
+        : sheetClosed
+          ? "no withdrawal row under Recent withdrawals"
+          : "withdraw sheet still open",
     );
 
     adb(["shell", "am", "force-stop", PKG]);
@@ -880,10 +917,27 @@ async function main() {
     );
   }
 
-  tapBy(/Incentives/) || tapBy(/Bonus progress/);
-  sleep(2000);
+  // The Incentives row sits in the wallet's "More" block, below the fold: scroll to it.
+  const INCENTIVES_SCREEN = /Streak days|Bonus rules|No bonus rules right now|Bonuses paid|Could not load incentives/i;
+  for (let i = 0; i < 5 && !uiHas(INCENTIVES_SCREEN); i++) {
+    if (tapBy(/^Incentives$/) || tapBy(/Bonus progress/)) {
+      sleep(2000);
+      waitFor(INCENTIVES_SCREEN, 8_000);
+      break;
+    }
+    adb(["shell", "input", "swipe", "540", "1700", "540", "700", "350"]);
+    sleep(600);
+  }
   shot("07-incentives");
-  gate("native.incentives_ui", uiHas(/Incentive|Bonus|Paid|Qualified|In progress|Streak/i) ? "PASS" : "WARN", "incentives screen");
+  // Words the Incentives screen alone shows (hq-work-earnings.tsx EarningsIncentivesScreen). The
+  // old list ("Incentive", "Bonus", "In progress", …) is all on the wallet itself — the
+  // "Incentives" row, its "Bonus progress…" line, "Withdrawals in progress" — so it passed
+  // without the screen ever opening.
+  gate(
+    "native.incentives_ui",
+    uiHas(/Streak days|Bonus rules|No bonus rules right now|Bonuses paid/i) ? "PASS" : "WARN",
+    "incentives screen",
+  );
 
   writeReport();
   const failed = results.some((r) => r.status === "FAIL");

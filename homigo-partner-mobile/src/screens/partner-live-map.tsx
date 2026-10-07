@@ -1,275 +1,164 @@
-import { useMemo, useState } from "react";
-import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
-import { useQuery } from "@tanstack/react-query";
 import { useIsFocused } from "@react-navigation/native";
+import { useQuery } from "@tanstack/react-query";
 import Constants from "expo-constants";
-import { partnerApi } from "@/services/partner-api";
-import { partnerColors } from "@/theme/colors";
+import { router } from "expo-router";
+import { ChevronLeft, ExternalLink, LocateFixed, MapPinOff } from "lucide-react-native";
+import { useMemo, useState } from "react";
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { ErrorState, ListSkeleton } from "@/components/account/states";
+import { openJob } from "@/components/home/JobCard";
+import { Banner, Button, EmptyState, ListRow, T } from "@/components/ui";
+import { useAuthed } from "@/hooks/account/queries";
 import { usePartnerMapLocation } from "@/hooks/use-partner-map-location";
+import { BOOKING_LIST_FILTER, bookingStatusLabel } from "@/lib/booking-status";
+import { MAP_UNAVAILABLE_NOTE, nativeMapAvailable } from "@/lib/maps-availability";
 import { buildMapJobs, fitRegion, formatEta, type MapJob } from "@/lib/partner-map";
 import { decodePolyline } from "@/lib/polyline";
-import { MAP_UNAVAILABLE_NOTE, nativeMapAvailable } from "@/lib/maps-availability";
+import { partnerApi } from "@/services/partner-api";
+import { color, elevation, radius, space, touch } from "@/theme/tokens";
 
-/**
- * Work the partner is actually committed to right now. Must be the server's own `active` key —
- * `provider.service.ts`'s STATUS_MAP maps it to exactly ACCEPTED/ASSIGNED/EN_ROUTE/IN_PROGRESS.
- * A comma-separated list is NOT supported: the lookup misses, falls back to
- * `[status.toUpperCase()]`, and Prisma rejects that invalid enum value with a 500 (observed).
- */
-const ACTIVE_STATUSES = "active";
-
-function Banner({ tone, text }: { tone: "warn" | "info" | "danger"; text: string }) {
-  const bg = tone === "danger" ? "#fee2e2" : tone === "warn" ? "#fef3c7" : "#e0f2fe";
-  const fg = tone === "danger" ? partnerColors.danger : tone === "warn" ? partnerColors.warning : "#0369a1";
-  return (
-    <View style={[styles.banner, { backgroundColor: bg }]}>
-      <Text style={[styles.bannerText, { color: fg }]}>{text}</Text>
-    </View>
-  );
+function openInMaps(job: MapJob) {
+  void Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${job.coords.latitude},${job.coords.longitude}`);
 }
 
+/**
+ * The partner's active jobs on a map. Directions are NOT in the app: "Open in Maps" hands the
+ * destination to the phone's maps app. A job's row opens the job.
+ */
 export function PartnerLiveMapScreen() {
-  // Only read GPS while this screen is actually on-screen — no background GPS drain.
+  const authed = useAuthed();
+  // GPS is read only while this screen is on screen.
   const isFocused = useIsFocused();
   const { state: locationState, refresh } = usePartnerMapLocation(isFocused);
   const [selected, setSelected] = useState<MapJob | null>(null);
-  // X-74: a build without a Google Maps key crashes the moment a MapView mounts — list the jobs instead.
+  // A build without a Google Maps key crashes the moment a MapView mounts (X-74): list the jobs instead.
   const mapAvailable = nativeMapAvailable(Platform.OS, Constants.expoConfig);
 
   const bookings = useQuery({
     queryKey: ["partner", "map", "active-bookings"],
-    queryFn: () => partnerApi.listBookings({ status: ACTIVE_STATUSES, limit: 25 }),
-    // Only refetch while the screen is visible; no background polling.
-    enabled: isFocused,
+    // The server's own `active` key (ACCEPTED / ASSIGNED / EN_ROUTE / IN_PROGRESS); a comma list answers 500.
+    queryFn: () => partnerApi.listBookings({ status: BOOKING_LIST_FILTER.ACTIVE_WORK, limit: 25 }),
+    enabled: authed && isFocused,
     staleTime: 30_000,
   });
-
-  /**
-   * Route is best-effort enrichment, never a precondition for showing the map. It legitimately
-   * 409s with NO_LOCATION before the server has a live fix for this provider, so a failure must
-   * degrade to "markers without a route line", not an error screen.
-   */
+  // The route is enrichment: it answers 409 NO_LOCATION before the server has a fix. Its failure
+  // means "pins without a route line", never an error screen.
   const route = useQuery({
     queryKey: ["partner", "map", "route"],
     queryFn: () => partnerApi.routeOptimize(),
-    enabled: isFocused && (bookings.data?.bookings.length ?? 0) > 0,
+    enabled: authed && isFocused && (bookings.data?.bookings.length ?? 0) > 0,
     retry: false,
     staleTime: 60_000,
   });
 
-  const jobs = useMemo(
-    () => buildMapJobs(bookings.data?.bookings, route.data?.sequence),
-    [bookings.data?.bookings, route.data?.sequence],
-  );
-
-  const partnerCoords =
-    locationState.kind === "live" || locationState.kind === "stale" ? locationState.coords : null;
-
+  const jobs = useMemo(() => buildMapJobs(bookings.data?.bookings, route.data?.sequence), [bookings.data?.bookings, route.data?.sequence]);
+  const partnerCoords = locationState.kind === "live" || locationState.kind === "stale" ? locationState.coords : null;
   const region = useMemo(() => fitRegion(partnerCoords, jobs), [partnerCoords, jobs]);
   const routeLine = useMemo(() => decodePolyline(route.data?.polyline), [route.data?.polyline]);
-
-  const droppedForNoCoords = (bookings.data?.bookings.length ?? 0) - jobs.length;
-
-  if (bookings.isLoading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={partnerColors.primary} />
-        <Text style={styles.mutedText}>Loading your jobs…</Text>
-      </View>
-    );
-  }
-
-  if (bookings.isError) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.errorTitle}>Couldn&apos;t load your jobs</Text>
-        <Text style={styles.mutedText}>Check your connection and try again.</Text>
-        <Pressable style={styles.button} onPress={() => void bookings.refetch()}>
-          <Text style={styles.buttonText}>Retry</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  const withoutPin = (bookings.data?.bookings ?? []).filter((b) => !jobs.some((j) => j.bookingId === b.id));
 
   return (
-    <View style={styles.root}>
-      {locationState.kind === "permission_denied" ? (
-        <Banner tone="warn" text="Location permission is off — your position isn't shown. Jobs still appear below." />
-      ) : null}
-      {locationState.kind === "unavailable" ? (
-        <Banner tone="warn" text="GPS unavailable right now — your position isn't shown." />
-      ) : null}
-      {locationState.kind === "stale" ? (
-        <Banner
-          tone="warn"
-          text={`Last known position from ${new Date(locationState.at).toLocaleTimeString()} — not live.`}
-        />
-      ) : null}
-      {route.isError && jobs.length > 0 ? (
-        <Banner tone="info" text="Route unavailable — showing job locations without a route line." />
-      ) : null}
-      {droppedForNoCoords > 0 ? (
-        <Banner
-          tone="info"
-          text={`${droppedForNoCoords} job${droppedForNoCoords > 1 ? "s" : ""} have no map location and aren't shown.`}
-        />
-      ) : null}
+    <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back" style={({ pressed }) => [styles.back, pressed ? styles.pressed : null]}>
+          <ChevronLeft color={color.leaf} size={22} />
+          <T kind="bodyStrong" tone="leaf">
+            Back
+          </T>
+        </Pressable>
+        <T kind="title" accessibilityRole="header" style={styles.flex}>
+          Live map
+        </T>
+        <Pressable onPress={refresh} accessibilityRole="button" accessibilityLabel="Update my location" style={({ pressed }) => [styles.iconBtn, pressed ? styles.pressed : null]} testID="live-map-locate">
+          <LocateFixed color={color.leaf} size={22} />
+        </Pressable>
+      </View>
 
-      {jobs.length === 0 && !partnerCoords ? (
-        <View style={styles.centered}>
-          <Text style={styles.errorTitle}>Nothing to map yet</Text>
-          <Text style={styles.mutedText}>
-            Accepted jobs appear here with their locations and your route.
-          </Text>
-          <Pressable style={styles.button} onPress={refresh}>
-            <Text style={styles.buttonText}>Retry location</Text>
-          </Pressable>
+      {bookings.isLoading ? (
+        <View style={styles.pad}>
+          <ListSkeleton cards={2} label="Loading your jobs" />
         </View>
-      ) : mapAvailable ? (
-        <MapView
-          style={styles.map}
-          provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
-          initialRegion={region ?? undefined}
-          showsUserLocation={locationState.kind === "live"}
-          showsMyLocationButton={false}
-          toolbarEnabled={false}
-        >
-          {/* A stale fix gets its own explicit marker rather than the live blue dot, so an old
-              position can never read as the partner's current one. */}
-          {locationState.kind === "stale" ? (
-            <Marker
-              coordinate={locationState.coords}
-              title="Last known position"
-              description="Not live"
-              pinColor={partnerColors.warning}
-            />
-          ) : null}
-
-          {jobs.map((job) => (
-            <Marker
-              key={job.bookingId}
-              coordinate={job.coords}
-              title={job.order != null ? `${job.order}. ${job.serviceName}` : job.serviceName}
-              description={job.addressLabel.slice(0, 80)}
-              pinColor={partnerColors.primary}
-              onPress={() => setSelected(job)}
-            />
-          ))}
-
-          {routeLine.length > 1 ? (
-            <Polyline coordinates={routeLine} strokeWidth={4} strokeColor={partnerColors.primary} />
-          ) : null}
-        </MapView>
+      ) : bookings.isError && !bookings.data ? (
+        <ErrorState error={bookings.error} title="Your jobs could not be loaded" onRetry={() => void bookings.refetch()} testID="live-map-error" />
       ) : (
-        <View style={styles.centered} testID="live-map-unavailable">
-          <Text style={styles.errorTitle}>Map unavailable</Text>
-          <Text style={styles.mutedText}>{MAP_UNAVAILABLE_NOTE}</Text>
-        </View>
-      )}
-
-      {jobs.length === 0 && partnerCoords ? (
-        <View style={styles.sheet}>
-          <Text style={styles.sheetTitle}>No active jobs</Text>
-          <Text style={styles.mutedText}>Your position is shown. Accepted jobs will appear here.</Text>
-        </View>
-      ) : null}
-
-      {selected ? (
-        <View style={styles.sheet}>
-          <Text style={styles.sheetTitle}>{selected.serviceName}</Text>
-          <Text style={styles.sheetMeta}>
-            {selected.bookingNumber} · {selected.status.replace(/_/g, " ")}
-          </Text>
-          <Text style={styles.sheetAddress}>{selected.addressLabel}</Text>
-          {formatEta(selected.cumulativeEtaMin) ? (
-            <Text style={styles.sheetEta}>ETA on route: {formatEta(selected.cumulativeEtaMin)}</Text>
-          ) : null}
-          <View style={styles.sheetActions}>
-            <Pressable
-              style={styles.button}
-              onPress={() =>
-                void Linking.openURL(
-                  `https://www.google.com/maps/dir/?api=1&destination=${selected.coords.latitude},${selected.coords.longitude}`,
-                )
-              }
-            >
-              <Text style={styles.buttonText}>Navigate</Text>
-            </Pressable>
-            <Pressable style={styles.buttonGhost} onPress={() => setSelected(null)}>
-              <Text style={styles.buttonGhostText}>Close</Text>
-            </Pressable>
+        <>
+          <View style={styles.banners}>
+            {locationState.kind === "permission_denied" ? <Banner tone="warning" message="Location access is off, so your position is not shown. Your jobs are still listed." /> : null}
+            {locationState.kind === "unavailable" ? <Banner tone="warning" message="Your phone has no location right now, so your position is not shown." /> : null}
+            {locationState.kind === "stale" ? <Banner tone="warning" message={`Your position is from ${new Date(locationState.at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })} and may be out of date.`} /> : null}
+            {route.isError && jobs.length > 0 ? <Banner tone="info" message="A route could not be worked out. Job locations are shown without a route line." /> : null}
           </View>
-        </View>
-      ) : null}
 
-      {jobs.length > 0 && !selected ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.strip} contentContainerStyle={styles.stripContent}>
-          {jobs.map((job) => (
-            <Pressable key={job.bookingId} style={styles.chip} onPress={() => setSelected(job)}>
-              <Text style={styles.chipTitle} numberOfLines={1}>
-                {job.order != null ? `${job.order}. ` : ""}
-                {job.serviceName}
-              </Text>
-              <Text style={styles.chipMeta} numberOfLines={1}>
-                {formatEta(job.cumulativeEtaMin) ?? job.status.replace(/_/g, " ")}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      ) : null}
-    </View>
+          {jobs.length === 0 && withoutPin.length === 0 ? (
+            <EmptyState icon={MapPinOff} title="No active jobs to map" message="Jobs you have accepted appear here with their location." testID="live-map-empty" />
+          ) : mapAvailable ? (
+            <MapView style={styles.map} provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined} initialRegion={region ?? undefined} showsUserLocation={locationState.kind === "live"} showsMyLocationButton={false} toolbarEnabled={false}>
+              {/* A stale fix gets its own marker, never the live blue dot. */}
+              {locationState.kind === "stale" ? <Marker coordinate={locationState.coords} title="Last known position" description="Not live" pinColor={color.marigold} /> : null}
+              {jobs.map((job) => (
+                <Marker key={job.bookingId} coordinate={job.coords} title={job.order != null ? `${job.order}. ${job.serviceName}` : job.serviceName} description={job.addressLabel.slice(0, 80)} pinColor={color.leaf} onPress={() => setSelected(job)} />
+              ))}
+              {routeLine.length > 1 ? <Polyline coordinates={routeLine} strokeWidth={4} strokeColor={color.leaf} /> : null}
+            </MapView>
+          ) : (
+            <View style={styles.pad} testID="live-map-unavailable">
+              <Banner tone="info" title="Map unavailable" message={MAP_UNAVAILABLE_NOTE} />
+            </View>
+          )}
+
+          <View style={styles.panel}>
+            {selected ? (
+              <View style={styles.selected} testID="live-map-selected">
+                <T kind="heading">{selected.serviceName}</T>
+                <T kind="small" numeric>
+                  {selected.bookingNumber} · {bookingStatusLabel(selected.status)}
+                  {formatEta(selected.cumulativeEtaMin) ? ` · about ${formatEta(selected.cumulativeEtaMin)} along the route` : ""}
+                </T>
+                <T kind="small" tone="ink">
+                  {selected.addressLabel}
+                </T>
+                <Button label="Open job" onPress={() => openJob(selected.bookingId)} testID="live-map-open-job" />
+                <Button label="Open in Maps" variant="secondary" icon={ExternalLink} onPress={() => openInMaps(selected)} testID="live-map-open-maps" />
+                <Button label="Back to the list" variant="quiet" onPress={() => setSelected(null)} />
+              </View>
+            ) : (
+              <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+                {jobs.map((job, i) => (
+                  <ListRow
+                    key={job.bookingId}
+                    testID={`live-map-job-${job.bookingId}`}
+                    title={job.order != null ? `${job.order}. ${job.serviceName}` : job.serviceName}
+                    subtitle={[bookingStatusLabel(job.status), formatEta(job.cumulativeEtaMin), job.addressLabel].filter(Boolean).join(" · ")}
+                    onPress={() => openJob(job.bookingId)}
+                    last={i === jobs.length - 1 && withoutPin.length === 0}
+                  />
+                ))}
+                {withoutPin.map((b, i) => (
+                  <ListRow key={b.id} testID={`live-map-job-${b.id}`} title={b.service.name} subtitle={`${bookingStatusLabel(b.status, b.arrivedAt)} · no map location sent for this job`} tone="neutral" onPress={() => openJob(b.id)} last={i === withoutPin.length - 1} />
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </>
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: partnerColors.cream },
-  map: { flex: 1 },
-  centered: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 8 },
-  errorTitle: { fontSize: 16, fontWeight: "700", color: partnerColors.text },
-  mutedText: { fontSize: 13, color: partnerColors.textMuted, textAlign: "center" },
-  banner: { paddingHorizontal: 14, paddingVertical: 8 },
-  bannerText: { fontSize: 12, fontWeight: "600" },
-  button: {
-    marginTop: 8,
-    backgroundColor: partnerColors.primary,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  buttonText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  buttonGhost: { marginTop: 8, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
-  buttonGhostText: { color: partnerColors.textMuted, fontSize: 13, fontWeight: "700" },
-  sheet: {
-    position: "absolute",
-    left: 12,
-    right: 12,
-    bottom: 12,
-    backgroundColor: partnerColors.surface,
-    borderRadius: 14,
-    padding: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  sheetTitle: { fontSize: 15, fontWeight: "800", color: partnerColors.text },
-  sheetMeta: { marginTop: 2, fontSize: 11, color: partnerColors.textMuted },
-  sheetAddress: { marginTop: 6, fontSize: 12, color: partnerColors.textMuted, lineHeight: 17 },
-  sheetEta: { marginTop: 6, fontSize: 12, fontWeight: "700", color: partnerColors.primary },
-  sheetActions: { flexDirection: "row", gap: 10, alignItems: "center" },
-  strip: { position: "absolute", left: 0, right: 0, bottom: 12, maxHeight: 74 },
-  stripContent: { paddingHorizontal: 12, gap: 10 },
-  chip: {
-    backgroundColor: partnerColors.surface,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    minWidth: 150,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: partnerColors.line,
-  },
-  chipTitle: { fontSize: 13, fontWeight: "700", color: partnerColors.text },
-  chipMeta: { marginTop: 2, fontSize: 11, color: partnerColors.textMuted },
+  root: { flex: 1, backgroundColor: color.paper },
+  flex: { flex: 1 },
+  pad: { padding: space.xl },
+  header: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.sm },
+  back: { minHeight: touch.min, flexDirection: "row", alignItems: "center", gap: space.xs, paddingRight: space.md, borderRadius: radius.control },
+  iconBtn: { width: touch.min, height: touch.min, borderRadius: radius.control, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: color.line, backgroundColor: color.surface },
+  pressed: { backgroundColor: color.well },
+  banners: { paddingHorizontal: space.lg, gap: space.sm },
+  map: { flex: 1, marginTop: space.sm },
+  panel: { backgroundColor: color.surface, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, borderTopWidth: StyleSheet.hairlineWidth, borderColor: color.line, ...elevation.float },
+  selected: { padding: space.xl, gap: space.sm },
+  list: { maxHeight: 260 },
+  listContent: { paddingHorizontal: space.xl, paddingVertical: space.sm },
 });

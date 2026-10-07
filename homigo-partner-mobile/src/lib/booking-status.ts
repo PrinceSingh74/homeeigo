@@ -2,13 +2,15 @@
  * ONE source of truth for booking statuses on the partner app.
  *
  * Mirrors the backend exactly — do not add values the server cannot send:
- *   - Prisma enum `BookingStatus` (apps/backend/prisma/schema.prisma)
+ *   - Prisma enum `BookingStatus` (apps/backend/prisma/schema.prisma) — the unit test reads it.
  *   - Wire form: `bookingStatusApi()` in apps/backend/src/lib/format.ts, which LOWERCASES the enum
  *     (`IN_PROGRESS` → `"in_progress"`). Every booking payload the app reads carries that form.
  *   - List filters: `STATUS_MAP` in apps/backend/src/services/provider.service.ts (`myBookings`).
  *
  * "Arrived" is NOT a status. Arrival is the `arrivedAt` timestamp on an EN_ROUTE / ACCEPTED booking
- * (ADR-018); reading it as a status would make an arrived job look unknown.
+ * (ADR-018); reading it as a status would make an arrived job look unknown. There is no bare
+ * "cancelled" and no "rescheduled" status either: a reschedule keeps the status and moves
+ * `scheduledDate` (and clears `arrivedAt`).
  *
  * This module is intentionally import-free so it can be unit-tested without React Native.
  */
@@ -23,6 +25,12 @@ export const BOOKING_STATUS = {
   CANCELLED_BY_USER: "CANCELLED_BY_USER",
   CANCELLED_BY_PROVIDER: "CANCELLED_BY_PROVIDER",
   REJECTED: "REJECTED",
+  /** Payment was never completed in time. Nobody cancelled; the slot was released. */
+  EXPIRED: "EXPIRED",
+  /** The partner arrived and waited the grace period; the customer did not appear. */
+  CUSTOMER_NO_SHOW: "CUSTOMER_NO_SHOW",
+  /** The partner did not appear. */
+  PROVIDER_NO_SHOW: "PROVIDER_NO_SHOW",
 } as const;
 
 export type BookingStatus = (typeof BOOKING_STATUS)[keyof typeof BOOKING_STATUS];
@@ -40,6 +48,9 @@ const ALL_STATUSES = new Set<string>(Object.values(BOOKING_STATUS));
  *    Active tab (and stopped GPS publishing for them).
  *  - `OFFERS` ("pending") is special-cased server-side: only LIVE dispatch offers (window open,
  *    job still DISPATCHED, booking still PENDING), each carrying `offer: { dispatchedAt, expiresAt }`.
+ *  - `CANCELLED` ("cancelled") = CANCELLED_BY_USER | CANCELLED_BY_PROVIDER | REJECTED. It does NOT
+ *    include EXPIRED or the no-shows; those are listed under `all`, or by their own lowercase name
+ *    (an unmapped value is upper-cased and used as the raw status).
  * A comma-separated list is NOT supported (the server 500s on it).
  */
 export const BOOKING_LIST_FILTER = {
@@ -49,6 +60,9 @@ export const BOOKING_LIST_FILTER = {
   IN_PROGRESS: "in_progress",
   COMPLETED: "completed",
   CANCELLED: "cancelled",
+  CUSTOMER_NO_SHOW: "customer_no_show",
+  PROVIDER_NO_SHOW: "provider_no_show",
+  EXPIRED: "expired",
   ALL: "all",
 } as const;
 
@@ -66,6 +80,13 @@ export const CANCELLED_STATUSES: readonly BookingStatus[] = [
   BOOKING_STATUS.CANCELLED_BY_USER,
   BOOKING_STATUS.CANCELLED_BY_PROVIDER,
   BOOKING_STATUS.REJECTED,
+];
+
+/** Closed without anybody cancelling. Terminal, and not part of the `cancelled` list filter. */
+export const CLOSED_OUTCOME_STATUSES: readonly BookingStatus[] = [
+  BOOKING_STATUS.EXPIRED,
+  BOOKING_STATUS.CUSTOMER_NO_SHOW,
+  BOOKING_STATUS.PROVIDER_NO_SHOW,
 ];
 
 /**
@@ -87,19 +108,30 @@ export function isPendingStatus(raw: unknown): boolean {
   return normalizeBookingStatus(raw) === BOOKING_STATUS.PENDING;
 }
 
+/** Cancelled by the customer, by the partner, or declined. Not expiry, not a no-show. */
 export function isCancelledStatus(raw: unknown): boolean {
   const s = normalizeBookingStatus(raw);
   return s != null && CANCELLED_STATUSES.includes(s);
 }
 
-export function isTerminalStatus(raw: unknown): boolean {
+/** Ended without the work being done: every cancelled status, plus expired and both no-shows. */
+export function isClosedWithoutWorkStatus(raw: unknown): boolean {
   const s = normalizeBookingStatus(raw);
-  return s === BOOKING_STATUS.COMPLETED || (s != null && CANCELLED_STATUSES.includes(s));
+  return s != null && (CANCELLED_STATUSES.includes(s) || CLOSED_OUTCOME_STATUSES.includes(s));
+}
+
+/** Nothing further can happen to the job: completed, or closed without work. */
+export function isTerminalStatus(raw: unknown): boolean {
+  return normalizeBookingStatus(raw) === BOOKING_STATUS.COMPLETED || isClosedWithoutWorkStatus(raw);
 }
 
 /**
- * Lifecycle progress used to pick the most-advanced copy of a booking across list caches.
- * Unknown statuses rank 0 so they never win over a real one.
+ * Progress along the LIVE path (offer → accepted → en route → in progress → completed), for sorting
+ * rows. Unknown statuses and every closed-without-work status rank 0.
+ *
+ * Do NOT use it to choose between two copies of the same booking: a job goes "back" on the server
+ * (reschedule, cancel, no-show, reassignment), and a rank can only ever prefer the stale copy. The
+ * fresh `GET /api/bookings/:id` answer is authoritative — see `lib/job-stage.ts`.
  */
 export function bookingStatusRank(raw: unknown): number {
   switch (normalizeBookingStatus(raw)) {
@@ -129,11 +161,15 @@ const LABELS: Record<BookingStatus, string> = {
   CANCELLED_BY_USER: "Cancelled by customer",
   CANCELLED_BY_PROVIDER: "Cancelled by you",
   REJECTED: "Declined",
+  EXPIRED: "Expired",
+  CUSTOMER_NO_SHOW: "Customer not available",
+  PROVIDER_NO_SHOW: "Missed visit",
 };
 
 /**
- * Human label. `arrivedAt` refines EN_ROUTE/ACCEPTED to "Arrived" because arrival is a timestamp,
- * not a status. An unrecognised status is shown verbatim rather than mislabelled.
+ * Human label. `arrivedAt` refines EN_ROUTE / ACCEPTED / ASSIGNED to "Arrived" because arrival is a
+ * timestamp, not a status — and only those: a closed job that still carries its arrival is not
+ * "Arrived". An unrecognised status is shown verbatim rather than mislabelled.
  */
 export function bookingStatusLabel(raw: unknown, arrivedAt?: string | null): string {
   const s = normalizeBookingStatus(raw);

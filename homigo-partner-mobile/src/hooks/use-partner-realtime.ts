@@ -14,7 +14,19 @@ import { useAuthStore } from "@/stores/auth-store";
 
 /** Query-key prefixes per realtime target (keys as declared across src/ and app/). */
 const KEYS_BY_TARGET: Record<string, ReadonlyArray<readonly unknown[]>> = {
-  bookings: [["partner", "bookings"], ["partner", "map", "active-bookings"], ["partner", "map", "route"], ["partner", "route"]],
+  // A booking event (reschedule, reassignment, cancel, no-show) changes what the job screen may
+  // offer and show, so its panels are asked again too — otherwise a cached "Start job" could
+  // outlive a job that is no longer arrived, or no longer this partner's.
+  bookings: [
+    ["partner", "bookings"],
+    ["partner", "map", "active-bookings"],
+    ["partner", "map", "route"],
+    ["partner", "route"],
+    ["partner", "job-actions"],
+    ["partner", "job-evidence"],
+    ["partner", "job-earning"],
+    ["partner", "job-contact"],
+  ],
   // The job screen's panels (JobDetailScreen / JobLifecycleActions keys: ["partner", <panel>, bookingId]).
   execution: [
     ["partner", "job-actions"],
@@ -32,6 +44,7 @@ const KEYS_BY_TARGET: Record<string, ReadonlyArray<readonly unknown[]>> = {
     ["partner", "wallet-txns"],
     ["partner", "wallet-txns-all"],
     ["partner", "payouts"],
+    ["partner", "withdrawals"],
     ["partner", "earnings"],
     ["partner", "invoices"],
   ],

@@ -77,7 +77,7 @@ function tapBy(pattern: string | RegExp): boolean {
     const tag = m[0];
     const text = decodeXml(
       (tag.match(/\btext="([^"]*)"/i)?.[1] || "") + " " + (tag.match(/\bcontent-desc="([^"]*)"/i)?.[1] || ""),
-    );
+    ).trim();
     const rid = tag.match(/\bresource-id="([^"]*)"/i)?.[1] ?? "";
     const bounds = tag.match(/\bbounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/i);
     if (!bounds) continue;
@@ -143,8 +143,27 @@ function swipeUp() {
   sleep(500);
 }
 
+/** Dumps of the screen after each of `swipes` scrolls, joined. uiautomator lists only what is on screen. */
+function dumpScrolled(name: string, swipes: number): string {
+  const parts: string[] = [];
+  for (let i = 1; i <= swipes; i++) {
+    swipeUp();
+    parts.push(dumpNamed(`${name}-scroll${i}`));
+  }
+  return parts.join("\n");
+}
+
+/**
+ * The retry BUTTON of the crash screen (testID error-boundary-retry) or of an error card, whose
+ * whole label is "Try again". An unanchored /Try again/ hit a sentence first ("…Try again; if it
+ * keeps happening…", "Something went wrong. Please try again."), which is not tappable.
+ */
+function tapErrorRetry(): boolean {
+  return tapBy("error-boundary-retry") || tapBy(/^Try again$/i);
+}
+
 function openHqItem(label: string | RegExp, maxSwipes = 10): boolean {
-  tapBy(/^HQ$/) || tapBy("HQ") || tapBy("Explore");
+  tapBy(/^HQ$/) || tapBy("HQ");
   sleep(1200);
   for (let i = 0; i < maxSwipes; i++) {
     if (tapBy(label)) {
@@ -222,7 +241,7 @@ function driveLogin(): boolean {
   sleep(200);
   typePassword(PARTNER.password);
   sleep(300);
-  tapBy("partner-login-submit") || tapBy("Continue to Partner OS") || tapBy(/^Sign in$/i);
+  tapBy("partner-login-submit") || tapBy("Continue to Partner OS");
   sleep(12000);
   dismissSystemAnr();
   tapBy(/Not now/i);
@@ -386,16 +405,19 @@ async function main() {
     return;
   }
   sleep(3000);
-  waitFor(/Hello,|Wallet|HQ|Explore|Scorecard|Career/i, 20_000);
+  waitFor(/Hello,|Wallet|HQ|Scorecard|Career/i, 20_000);
 
   openHq("hq/performance-scorecard");
   dismissSystemAnr();
   if (uiHas(/Something went wrong|Could not load/i)) {
-    tapBy(/Try again/i);
+    tapErrorRetry();
     sleep(2000);
     openHq("hq/performance-scorecard");
   }
-  waitFor(/Quality|Reliability|Why did my score change|Could not load/i, 25_000);
+  // Waited on: the score's own rows (they exist only once the score has loaded) or its error card.
+  // The section titles "Lifecycle" and "Why did my score change?" are static — they are on screen
+  // while everything is still loading (hq-performance-ai-territory.tsx PerformanceScorecardScreen).
+  waitFor(/Quality|Reliability|Could not load/i, 25_000);
   if (!uiHas(/Quality|Why did my score change/i)) openHqItem("Scorecard");
   dismissSystemAnr();
   const scoreXml = dumpNamed("02-scorecard");
@@ -403,23 +425,33 @@ async function main() {
   const shownScore = scoreData.overallScore == null ? null : String(Math.round(scoreData.overallScore));
   gate(
     "native.score",
-    /Quality|Reliability|Completion|Why did my score change/i.test(scoreText) &&
+    /Quality|Reliability|Completion/i.test(scoreText) &&
       !/Could not load your score|Invalid or expired token/i.test(scoreText) &&
       (shownScore == null || scoreText.includes(shownScore))
       ? "PASS"
       : "FAIL",
     shownScore ? `ui includes live ${shownScore}` : "no live score",
   );
+  // The explanation is the CONTENT under "Why did my score change?": the latest change card
+  // (testID score-latest-change) or the "No score history yet" empty state — not the title, which
+  // is also there when the history failed to load. It sits below the fold, so the screen is scrolled.
+  const scoreAll = `${scoreXml}\n${dumpScrolled("02-scorecard", 3)}`;
+  const scoreAllText = decodeXml(scoreAll);
   gate(
     "native.score.explanation",
-    /Why did my score change|No score history yet/i.test(scoreText) ? "PASS" : "FAIL",
+    /Why did my score change/i.test(scoreAllText) &&
+      /No score history yet|resource-id="score-latest-change"/i.test(scoreAllText) &&
+      !/Could not load your score history/i.test(scoreAllText)
+      ? "PASS"
+      : "FAIL",
   );
 
   adb(["shell", "input", "keyevent", "4"]);
   sleep(800);
   openHq("hq/performance-career");
-  if (uiHas(/Something went wrong/i)) tapBy(/Try again/i);
-  waitFor(/Career|Requirements|Badges|Priority boost|Could not load/i, 20_000);
+  if (uiHas(/Something went wrong/i)) tapErrorRetry();
+  // "Career" is the screen's static title; wait for the loaded sections or the error card.
+  waitFor(/Requirements|Badges|Priority boost|Could not load/i, 20_000);
   if (!uiHas(/Requirements|Badges|Priority boost/i)) openHqItem("Career");
   const careerXml = dumpNamed("03-career");
   const careerText = decodeXml(careerXml);
@@ -441,10 +473,17 @@ async function main() {
   const lifeXml = dumpNamed("04-lifecycle-on-score");
   openHq("hq/performance-scorecard");
   sleep(2500);
-  const lifeOnScore = decodeXml(dumpNamed("05-score-lifecycle"));
+  waitFor(/Quality|Reliability|Could not load/i, 20_000);
+  // The lifecycle card (testID score-lifecycle) exists only once `/me/lifecycle` has answered, and
+  // prints the state through humanise(): "ON_PROBATION" → "On probation". The section title
+  // "Lifecycle" alone proves nothing — it is static, and is there when the read failed too.
+  const lifeOnScore = decodeXml(`${dumpNamed("05-score-lifecycle")}\n${dumpScrolled("05-score-lifecycle", 3)}`);
+  const lifeWords = (lifeData.lifecycleState ?? "ACTIVE").trim().replace(/[_-]+/g, " ");
   gate(
     "native.lifecycle",
-    new RegExp(lifeData.lifecycleState ?? "ACTIVE", "i").test(lifeOnScore) || /Lifecycle/i.test(lifeOnScore)
+    /resource-id="score-lifecycle"/.test(lifeOnScore) &&
+      new RegExp(lifeWords.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(lifeOnScore) &&
+      !/Could not load your account state/i.test(lifeOnScore)
       ? "PASS"
       : "FAIL",
     lifeData.lifecycleState ?? "",

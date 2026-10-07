@@ -1752,6 +1752,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         set.status = 400;
         return { success: false, error: "This booking cannot be cancelled", code: String(result.error) };
       }
+      const cancelledByPartner = "status" in result && String(result.status).toUpperCase() === "CANCELLED_BY_PROVIDER";
       return {
         success: true,
         message: "Booking cancelled successfully",
@@ -1759,10 +1760,16 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
           booking: {
             id: params.id,
             status: "status" in result ? result.status : undefined,
-            refundAmount: "refundAmount" in result ? result.refundAmount : 0,
-            refundStatus: "refundStatus" in result ? result.refundStatus : "none",
-            cancellationFee: "cancellationFee" in result ? result.cancellationFee : 0,
-            refundMessage: "refundMessage" in result ? result.refundMessage : undefined,
+            // X-29: what the customer gets back is the customer's business. A partner cancelling
+            // the job is told it is cancelled; the refund, its status and the fee are not sent.
+            ...(cancelledByPartner
+              ? {}
+              : {
+                  refundAmount: "refundAmount" in result ? result.refundAmount : 0,
+                  refundStatus: "refundStatus" in result ? result.refundStatus : "none",
+                  cancellationFee: "cancellationFee" in result ? result.cancellationFee : 0,
+                  refundMessage: "refundMessage" in result ? result.refundMessage : undefined,
+                }),
           },
         },
       };

@@ -128,6 +128,8 @@ export class NotificationService {
         notificationId: n.id,
         data: {
           referenceId: input.referenceId,
+          // What the id IS (e.g. "booking"): a client must not have to guess it from `type`.
+          referenceType: input.referenceType,
           type: input.type,
         },
       })
@@ -212,6 +214,7 @@ export class NotificationService {
         title: n.title,
         message: n.message,
         referenceId: n.referenceId,
+        referenceType: n.referenceType,
         isRead: n.isRead,
         imageUrl: n.imageUrl,
         createdAt: n.createdAt,
@@ -340,6 +343,7 @@ export class NotificationService {
           preferenceAlreadyApplied: options.preferenceAlreadyApplied,
           data: {
             referenceId: payload.referenceId,
+            referenceType: payload.referenceType,
             type,
             ...(payload.data ?? {}),
           },

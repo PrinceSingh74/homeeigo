@@ -1,70 +1,56 @@
+import { TriangleAlert } from "lucide-react-native";
 import React from "react";
-import { Pressable, Text, View } from "react-native";
-import { partnerColors } from "@/theme/colors";
+import { StyleSheet, View } from "react-native";
+import { Button, T } from "@/components/ui";
 import { reportError } from "@/lib/observability/sentry";
+import { color, radius, space } from "@/theme/tokens";
 
 type Props = { children: React.ReactNode };
-type State = { hasError: boolean; message?: string };
+type State = { hasError: boolean };
 
 /**
- * App-root error boundary, mirroring the customer app's.
+ * The app-root error boundary.
  *
- * Without one, an uncaught render error white-screens the whole partner app with no recovery and
- * no report — for a partner mid-job that means losing access to accept/en-route/arrive actions
- * with no way back except a force-quit. This renders a recoverable fallback and ships the crash
- * to Sentry when configured (a no-op when it isn't).
+ * Without one, an uncaught render error white-screens the whole app with no way back except a
+ * force-quit — for a partner mid-job that means losing the accept / arrive / complete actions. This
+ * shows a screen they can recover from and sends the crash to Sentry when it is configured. The
+ * error's own text is not shown: it is written for developers, not for the partner.
  */
 export class ErrorBoundary extends React.Component<Props, State> {
   state: State = { hasError: false };
 
-  static getDerivedStateFromError(error: unknown): State {
-    return { hasError: true, message: error instanceof Error ? error.message : String(error) };
+  static getDerivedStateFromError(): State {
+    return { hasError: true };
   }
 
-  componentDidCatch(error: unknown, info: { componentStack?: string }): void {
+  componentDidCatch(error: unknown, info: { componentStack?: string | null }): void {
     reportError(error, { componentStack: info?.componentStack ?? "" });
   }
 
-  private reset = (): void => this.setState({ hasError: false, message: undefined });
+  private reset = (): void => this.setState({ hasError: false });
 
   render(): React.ReactNode {
     if (!this.state.hasError) return this.props.children;
     return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 24,
-          backgroundColor: partnerColors.cream,
-        }}
-      >
-        <Text style={{ fontSize: 20, fontWeight: "700", color: partnerColors.text, marginBottom: 8 }}>
+      <View style={styles.root} testID="error-boundary">
+        <View style={styles.icon}>
+          <TriangleAlert color={color.marigold} size={30} />
+        </View>
+        <T kind="title" accessibilityRole="header" style={styles.center}>
           Something went wrong
-        </Text>
-        <Text
-          style={{
-            fontSize: 14,
-            color: partnerColors.textMuted,
-            textAlign: "center",
-            marginBottom: 20,
-            lineHeight: 20,
-          }}
-        >
-          The app hit an unexpected error. You can try again — your session and jobs are safe.
-        </Text>
-        <Pressable
-          onPress={this.reset}
-          style={{
-            backgroundColor: partnerColors.primary,
-            paddingHorizontal: 24,
-            paddingVertical: 12,
-            borderRadius: 12,
-          }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "700" }}>Try again</Text>
-        </Pressable>
+        </T>
+        <T kind="body" tone="slate" style={styles.center} accessibilityRole="alert">
+          The app hit a problem on this screen. Your account and your jobs are safe on the server. Try again; if it keeps happening, close the app and open it again.
+        </T>
+        <Button label="Try again" onPress={this.reset} style={styles.action} testID="error-boundary-retry" />
       </View>
     );
   }
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1, alignItems: "center", justifyContent: "center", padding: space.xxl, gap: space.md, backgroundColor: color.paper },
+  icon: { width: 64, height: 64, borderRadius: radius.pill, backgroundColor: color.marigoldWash, alignItems: "center", justifyContent: "center" },
+  center: { textAlign: "center" },
+  action: { alignSelf: "stretch", marginTop: space.md },
+});

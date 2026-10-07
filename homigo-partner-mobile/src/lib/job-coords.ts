@@ -1,18 +1,67 @@
 import * as Location from "expo-location";
 import { getE2eGeoOverride } from "@/lib/e2e-geo";
 import { readRememberedJobFix, rememberJobFix } from "@/lib/job-fix-cache";
+import { removeQuietly } from "@/lib/safe-subscription";
 
 export type JobCoords = {
   latitude: number;
   longitude: number;
 };
 
-/** Shown when a proximity-gated action (arrive / start) has no usable fix. */
-export const LOCATION_REQUIRED_MESSAGE =
-  "Location is required for this step. Turn on GPS / allow location access and try again.";
+/**
+ * A device with no fix still SENDS arrive / start / the on-site check, with `null` coordinates
+ * (tracker P0-6b): the server lets it through when the customer or an admin has vouched for this
+ * partner, and otherwise answers with its own sentence (`LOCATION_REQUIRED`, …). So there is no
+ * "location is required" refusal on the phone any more — the phone cannot know about the exception.
+ */
 
 /** Shown when a non-gated action (en route / complete) was sent without a fix. */
-export const LOCATION_UNAVAILABLE_NOTE = "Sent without GPS — location unavailable right now.";
+export const LOCATION_UNAVAILABLE_NOTE = "Sent without your location. It was not available just now.";
+
+/** What "Turn on location" did, so the screen can say what to do next. */
+export type LocationAccessResult =
+  /** Permission is granted and location services are on: try the step again. */
+  | "ready"
+  /** The OS settings were opened: the partner has to switch it on there. */
+  | "opened_settings"
+  /** Nothing could be opened. */
+  | "unavailable";
+
+/**
+ * The partner asked to turn location on (the button under a position refusal). Asks for the
+ * permission when the OS will still show its prompt, asks Android to switch location services on,
+ * and otherwise opens the app's settings page. Only ever called from a tap: this is the one place on
+ * the job screen that may raise a system dialog (X-62).
+ */
+export async function requestJobLocationAccess(openSettings: () => Promise<void>): Promise<LocationAccessResult> {
+  try {
+    let permission = await Location.getForegroundPermissionsAsync();
+    if (permission.status !== "granted" && permission.canAskAgain) {
+      permission = await withTimeout(Location.requestForegroundPermissionsAsync(), 30_000, "Location permission");
+    }
+    if (permission.status !== "granted") {
+      await openSettings();
+      return "opened_settings";
+    }
+    if (await Location.hasServicesEnabledAsync().catch(() => true)) return "ready";
+    // Android only: the system "turn on location" dialog. Elsewhere it rejects and settings open.
+    try {
+      await Location.enableNetworkProviderAsync();
+      if (await Location.hasServicesEnabledAsync().catch(() => false)) return "ready";
+    } catch {
+      /* declined, or not Android */
+    }
+    await openSettings();
+    return "opened_settings";
+  } catch {
+    try {
+      await openSettings();
+      return "opened_settings";
+    } catch {
+      return "unavailable";
+    }
+  }
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -54,23 +103,31 @@ export async function getJobCoords(mode: "soft" | "strict" = "soft"): Promise<Jo
   if (cached) return cached;
 
   try {
-    const { status } = await withTimeout(
-      Location.requestForegroundPermissionsAsync(),
-      8_000,
-      "Location permission",
-    );
+    // READ the permission, never ask for it here: a system prompt raised from a lifecycle tap raced
+    // its own timeout and the request went out with no position while the partner was still
+    // answering it. Not granted is "no fix"; the server's refusal then offers "Turn on location"
+    // (`requestJobLocationAccess`), the one place that may raise the prompt.
+    const { status } = await withTimeout(Location.getForegroundPermissionsAsync(), 8_000, "Location permission");
     if (status !== "granted") return null;
 
-    const last = await Location.getLastKnownPositionAsync().catch(() => null);
+    // A last-known fix is used only when it is recent and tight, and is never remembered: an
+    // hours-old point sent as "I've arrived" was refused as too far from the door, and the cache
+    // then resent the same point for two minutes.
+    // Bounded: on some platforms this read waits for a new fix instead of answering from memory,
+    // and a tap on "I've arrived" must not sit behind it.
+    const last = await withTimeout(Location.getLastKnownPositionAsync({ maxAge: 60_000, requiredAccuracy: 100 }), 2_000, "Last known position").catch(() => null);
     if (last && !isNullIsland(last.coords.latitude, last.coords.longitude)) {
-      rememberJobFix(last.coords.latitude, last.coords.longitude);
       return { latitude: last.coords.latitude, longitude: last.coords.longitude };
     }
 
     const watched = await new Promise<Location.LocationObject | null>((resolve) => {
       let sub: Location.LocationSubscription | null = null;
+      // The timer or the first fix can win before `watchPositionAsync` hands the subscription over;
+      // it is then removed the moment it arrives, so no high-accuracy watch is left running.
+      let settled = false;
       const timer = setTimeout(() => {
-        sub?.remove();
+        settled = true;
+        removeQuietly(sub);
         resolve(null);
       }, mode === "strict" ? 14_000 : 6_000);
       void Location.watchPositionAsync(
@@ -83,15 +140,18 @@ export async function getJobCoords(mode: "soft" | "strict" = "soft"): Promise<Jo
         (pos) => {
           if (isNullIsland(pos.coords.latitude, pos.coords.longitude)) return;
           clearTimeout(timer);
-          sub?.remove();
+          settled = true;
+          removeQuietly(sub);
           resolve(pos);
         },
       )
         .then((s) => {
           sub = s;
+          if (settled) removeQuietly(s);
         })
         .catch(() => {
           clearTimeout(timer);
+          settled = true;
           resolve(null);
         });
     });

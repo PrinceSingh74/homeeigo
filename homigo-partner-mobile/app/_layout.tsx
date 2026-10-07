@@ -1,7 +1,7 @@
 // Defines the background-location TaskManager task at module scope. Must load before React renders
 // so an OS-initiated (headless) start finds the task. See src/lib/background-location.ts.
 import "@/lib/background-location";
-import { LogBox } from "react-native";
+import { LogBox, StyleSheet, View } from "react-native";
 import { Stack, router } from "expo-router";
 import { useEffect } from "react";
 import * as Linking from "expo-linking";
@@ -13,7 +13,11 @@ import { usePartnerPresenceHeartbeat } from "@/hooks/use-partner-presence-heartb
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { usePartnerRealtime } from "@/hooks/use-partner-realtime";
 import { useBackgroundLocationController } from "@/hooks/use-background-location-controller";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { OfflineBanner } from "@/components/home/OfflineBanner";
+import { useConnectivityWatcher } from "@/hooks/account/use-connectivity";
+import { color } from "@/theme/tokens";
 import { initSentry, setSentryUser } from "@/lib/observability/sentry";
 
 // Initialised before any component mounts so a crash during the first render is still captured.
@@ -72,16 +76,36 @@ function AuthBootstrap() {
   return null;
 }
 
+/** Reads every settled request to know whether the server can be reached (there is no NetInfo). */
+function ConnectivityWatcher() {
+  useConnectivityWatcher();
+  return null;
+}
+
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={styles.root}>
       <ErrorBoundary>
         <AppProviders>
           <AuthBootstrap />
-          <StatusBar style="dark" />
-          <Stack screenOptions={{ headerShown: false }} />
+          <ConnectivityWatcher />
+          {/* Dark icons on the paper background every screen sits on. */}
+          <StatusBar style="dark" backgroundColor={color.paper} />
+          <SafeAreaProvider style={styles.root}>
+            <OfflineBanner />
+            {/* Its own safe-area frame: under the offline banner a screen must not add the status-bar inset again. */}
+            <SafeAreaProvider style={styles.root}>
+              <View style={styles.root}>
+                <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.paper } }} />
+              </View>
+            </SafeAreaProvider>
+          </SafeAreaProvider>
         </AppProviders>
       </ErrorBoundary>
     </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: color.paper },
+});

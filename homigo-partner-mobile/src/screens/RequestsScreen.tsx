@@ -1,171 +1,112 @@
 import { useQuery } from "@tanstack/react-query";
-import { router } from "expo-router";
+import { CheckCircle2, ClipboardList, Inbox, XCircle } from "lucide-react-native";
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { EmptyState, ErrorBlock, HqCard, LoadingBlock, StatRow } from "@/components/HqUi";
+import { StyleSheet, View } from "react-native";
+import { Chips, Segmented } from "@/components/account/controls";
+import { ErrorState, ListSkeleton } from "@/components/account/states";
+import { JobCard } from "@/components/home/JobCard";
 import { PartnerScreen } from "@/components/PartnerScreen";
-import { useOfferCountdown, useServerNowTick } from "@/hooks/use-offer-countdown";
+import { Banner, Button, EmptyState, T } from "@/components/ui";
+import { useAuthed, usePagedQuery, usePullRefresh } from "@/hooks/account/queries";
+import { useServerNowTick } from "@/hooks/use-offer-countdown";
 import { useRealtimeFallbackInterval } from "@/hooks/use-partner-realtime";
 import { usePartnerTrackingPublisher } from "@/hooks/use-partner-tracking-publisher";
-import {
-  BOOKING_LIST_FILTER,
-  bookingStatusLabel,
-  bookingStatusRank,
-  isActiveWorkStatus,
-  type BookingListFilter,
-} from "@/lib/booking-status";
-import { customerName, formatCurrency, formatDateTime } from "@/lib/format";
-import { formatCountdown, isOfferLive } from "@/lib/offer";
-import { OnlineToggleCard } from "@/screens/hq-work-earnings";
+import { BOOKING_LIST_FILTER } from "@/lib/booking-status";
+import { errorSentence } from "@/lib/error-sentence";
+import { CLOSED_SOURCES, JOBS_PAGE_SIZE, JOB_FILTERS, JOB_SOURCES, pickActiveJob, type ClosedKind, type JobFilterId, type JobListSource } from "@/lib/jobs-list";
+import { isOfferLive } from "@/lib/offer";
 import { partnerApi } from "@/services/partner-api";
-import { partnerColors } from "@/theme/colors";
-import type { PartnerBooking } from "@/types/partner";
+import { space } from "@/theme/tokens";
+import type { PartnerBooking, PartnerBookingsResponse } from "@/types/partner";
 
-type Tab = "pending" | "active" | "completed";
+const EMPTY: Record<Exclude<JobFilterId, "closed">, { icon: typeof Inbox; title: string; message: string }> = {
+  pending: { icon: Inbox, title: "No new requests", message: "A job offered to you appears here with the time you have to respond. Go online on the Home tab to receive offers." },
+  active: { icon: ClipboardList, title: "No active jobs", message: "Jobs you have accepted stay here until they are completed." },
+  completed: { icon: CheckCircle2, title: "No completed jobs yet", message: "Each job you complete is listed here." },
+};
 
 /**
- * Query key + params per tab. Keys and params match JobDetailScreen's list queries exactly, so the
- * two screens share one cache entry instead of fighting over it with different params.
+ * The jobs list. One filter is one server list (`GET /api/providers/me/bookings?status=`), read a
+ * page at a time. Page 1 of New / Active / Completed lives under the same cache keys the job screen
+ * reads, so the two never disagree.
  */
-const TABS: { id: Tab; label: string; filter: BookingListFilter; sortBy: "recent" | "upcoming" }[] = [
-  { id: "pending", label: "New requests", filter: BOOKING_LIST_FILTER.OFFERS, sortBy: "recent" },
-  // ACTIVE_WORK = ACCEPTED | ASSIGNED | EN_ROUTE | IN_PROGRESS. "accepted" would drop started jobs.
-  { id: "active", label: "Active", filter: BOOKING_LIST_FILTER.ACTIVE_WORK, sortBy: "upcoming" },
-  { id: "completed", label: "Completed", filter: BOOKING_LIST_FILTER.COMPLETED, sortBy: "recent" },
-];
+export function RequestsScreen() {
+  const authed = useAuthed();
+  const [filter, setFilter] = useState<JobFilterId>("pending");
+  const [closedKind, setClosedKind] = useState<ClosedKind>("cancelled");
+  const closed = CLOSED_SOURCES.find((s) => s.id === closedKind) ?? CLOSED_SOURCES[0]!;
+  const source: JobListSource = filter === "closed" ? closed : JOB_SOURCES[filter];
+  // The socket pushes offers and transitions; polling is only the safety net (fast when it is down).
+  const pollMs = useRealtimeFallbackInterval(10_000, 60_000);
 
-function OfferDeadline({ booking }: { booking: PartnerBooking }) {
-  const countdown = useOfferCountdown(booking.offer ?? null);
-  if (!countdown) return null;
-  const color =
-    countdown.urgency === "critical"
-      ? partnerColors.danger
-      : countdown.urgency === "warning"
-        ? partnerColors.warning
-        : partnerColors.success;
-  return (
-    <Text style={[styles.deadline, { color }]}>
-      {countdown.expired ? "Offer closed" : `Respond within ${formatCountdown(countdown.secondsLeft)}`}
-    </Text>
-  );
-}
-
-export function RequestsScreen({ embedded }: { embedded?: boolean }) {
-  const [tab, setTab] = useState<Tab>("pending");
-  const current = TABS.find((t) => t.id === tab)!;
-  // The socket pushes offers/transitions; polling is only the safety net (fast when it is down).
-  const pendingPollMs = useRealtimeFallbackInterval(10_000, 60_000);
-
-  const bookings = useQuery({
-    queryKey: ["partner", "bookings", tab],
-    queryFn: () => partnerApi.listBookings({ status: current.filter, limit: 20, sortBy: current.sortBy }),
-    refetchInterval: tab === "pending" ? pendingPollMs : false,
-    refetchIntervalInBackground: false,
+  const list = usePagedQuery<PartnerBookingsResponse, PartnerBooking>({
+    baseKey: ["partner", "bookings", source.key],
+    fetchPage: (page) => partnerApi.listBookings({ status: source.status, page, limit: JOBS_PAGE_SIZE, sortBy: source.sortBy }),
+    items: (p) => p.bookings,
+    total: (p) => p.total,
+    pageSize: JOBS_PAGE_SIZE,
+    refetchInterval: filter === "pending" ? pollMs : false,
   });
 
   /**
-   * GPS publishing must not depend on which tab is visible (it used to stop whenever the partner
-   * looked at "New requests"), and must include IN_PROGRESS jobs.
+   * GPS publishing for the live job must not depend on which filter is showing, and must include
+   * jobs already in progress — so the active list is always read here.
    */
   const active = useQuery({
     queryKey: ["partner", "bookings", "active"],
-    queryFn: () =>
-      partnerApi.listBookings({ status: BOOKING_LIST_FILTER.ACTIVE_WORK, limit: 20, sortBy: "upcoming" }),
+    queryFn: () => partnerApi.listBookings({ status: BOOKING_LIST_FILTER.ACTIVE_WORK, page: 1, limit: JOBS_PAGE_SIZE, sortBy: "upcoming" }),
+    enabled: authed,
   });
-  const liveJob = useMemo(() => {
-    const rows = (active.data?.bookings ?? []).filter((b) => isActiveWorkStatus(b.status));
-    return rows.sort((a, b) => bookingStatusRank(b.status) - bookingStatusRank(a.status))[0] ?? null;
-  }, [active.data]);
+  const liveJob = useMemo(() => pickActiveJob(active.data?.bookings), [active.data]);
   usePartnerTrackingPublisher({ bookingId: liveJob?.id ?? null, enabled: !!liveJob });
 
-  // Offers disappear the moment their window closes (server-time estimate), not on the next poll.
-  const now = useServerNowTick(tab === "pending");
-  const rows = useMemo(() => {
-    const all = bookings.data?.bookings ?? [];
-    return tab === "pending" ? all.filter((b) => isOfferLive(b.offer, now)) : all;
-  }, [bookings.data, tab, now]);
+  // An offer leaves the list the moment its window closes (server-time estimate), not on the next poll.
+  const now = useServerNowTick(filter === "pending");
+  const rows = filter === "pending" ? list.rows.filter((b) => isOfferLive(b.offer, now)) : list.rows;
+  const { refreshing, onRefresh } = usePullRefresh(list, active);
+  const empty = filter === "closed" ? { icon: XCircle, title: `No ${closed.label.toLowerCase()} jobs`, message: closed.empty } : EMPTY[filter];
 
-  const body = (
-    <>
-      <View style={styles.tabs}>
-        {TABS.map((t) => (
-          <Pressable key={t.id} onPress={() => setTab(t.id)} style={[styles.tab, tab === t.id && styles.tabActive]}>
-            <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]}>{t.label}</Text>
-          </Pressable>
-        ))}
-      </View>
-      {!embedded ? <OnlineToggleCard /> : null}
-      {bookings.isLoading ? (
-        <LoadingBlock />
-      ) : bookings.isError ? (
-        <ErrorBlock message="Could not load bookings." />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          message={tab === "pending" ? "No pending requests — you're all caught up!" : `No ${tab} jobs.`}
-        />
-      ) : (
-        rows.map((b) => {
-          const name = customerName(b.customer);
-          return (
-            <Pressable
-              key={b.id}
-              onPress={() => router.push(`/job/${b.id}`)}
-              accessibilityRole="button"
-              accessibilityLabel={`Open job ${b.service.name}`}
-            >
-              <HqCard>
-                <Text style={styles.bookingTitle}>{b.service.name}</Text>
-                {tab === "pending" ? <OfferDeadline booking={b} /> : null}
-                <StatRow label="Customer" value={name} />
-                {b.customer.phoneMasked ? (
-                  <StatRow label="Phone" value={b.customer.phoneMasked} />
-                ) : null}
-                <StatRow label="When" value={formatDateTime(b.scheduledDate)} />
-                <StatRow label="Amount" value={formatCurrency(b.finalAmount || b.amount)} />
-                <StatRow label="Address" value={b.address.fullAddress} />
-                <StatRow label="Status" value={bookingStatusLabel(b.status, b.arrivedAt)} />
-                <View style={styles.openRow}>
-                  <Text style={styles.openText}>
-                    {tab === "pending" ? "Review & accept →" : "Open job workspace →"}
-                  </Text>
-                </View>
-              </HqCard>
-            </Pressable>
-          );
-        })
-      )}
-    </>
-  );
-
-  if (embedded) {
-    return (
-      <PartnerScreen title="Bookings" subtitle="Accept, start, and complete jobs." showBack>
-        {body}
-      </PartnerScreen>
-    );
-  }
   return (
-    <PartnerScreen title="Bookings" subtitle="New requests, active jobs, and completed work.">
-      {body}
+    <PartnerScreen title="Jobs" refreshing={refreshing} onRefresh={onRefresh}>
+      <View style={styles.body}>
+        <Segmented
+          testID="jobs-filter"
+          segments={JOB_FILTERS.map((f) => ({ ...f, count: f.id === "active" ? (active.data?.total ?? null) : null }))}
+          value={filter}
+          onChange={setFilter}
+        />
+        {filter === "closed" ? (
+          <Chips testID="jobs-closed-kind" label="Which closed jobs" options={CLOSED_SOURCES.map((s) => ({ id: s.id, label: s.label }))} value={[closedKind]} onToggle={setClosedKind} />
+        ) : null}
+
+        {list.isLoading ? (
+          <ListSkeleton cards={3} lines={3} label="Loading jobs" />
+        ) : list.error ? (
+          <ErrorState error={list.error} title="Your jobs could not be loaded" onRetry={() => void list.refetch()} testID="jobs-error" />
+        ) : rows.length === 0 ? (
+          <EmptyState icon={empty.icon} title={empty.title} message={empty.message} testID={`jobs-empty-${filter}`} />
+        ) : (
+          <>
+            {rows.map((b) => (
+              <JobCard key={b.id} booking={b} offer={filter === "pending"} />
+            ))}
+            {typeof list.total === "number" && filter !== "pending" ? (
+              <T kind="caption" style={styles.count} numeric>
+                Showing {rows.length} of {list.total}
+              </T>
+            ) : null}
+            {list.moreError ? <Banner tone="warning" message={errorSentence(list.moreError, "More jobs could not be loaded.")} /> : null}
+            {list.hasMore || list.isLoadingMore || list.moreError ? (
+              <Button label={list.moreError ? "Try again" : "Load more"} variant="secondary" onPress={list.loadMore} loading={list.isLoadingMore} testID="jobs-load-more" />
+            ) : null}
+          </>
+        )}
+      </View>
     </PartnerScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  tabs: {
-    flexDirection: "row",
-    gap: 6,
-    marginBottom: 12,
-    backgroundColor: "rgba(255,255,255,0.6)",
-    borderRadius: 12,
-    padding: 4,
-  },
-  tab: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
-  tabActive: { backgroundColor: "rgba(61,107,79,0.15)" },
-  tabText: { fontSize: 11, fontWeight: "600", color: partnerColors.textMuted },
-  tabTextActive: { color: partnerColors.primary },
-  bookingTitle: { fontSize: 15, fontWeight: "700", color: partnerColors.text, marginBottom: 4 },
-  deadline: { fontSize: 13, fontWeight: "700", marginBottom: 6 },
-  openRow: { marginTop: 10, alignItems: "flex-end" },
-  openText: { fontSize: 12, fontWeight: "700", color: partnerColors.primary },
+  body: { gap: space.md },
+  count: { textAlign: "center" },
 });

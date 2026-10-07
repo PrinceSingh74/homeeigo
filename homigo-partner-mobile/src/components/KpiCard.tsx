@@ -1,7 +1,9 @@
 import type { LucideIcon } from "lucide-react-native";
-import { StyleSheet, Text, View } from "react-native";
-import { partnerColors } from "@/theme/colors";
+import { StyleSheet, View } from "react-native";
+import { T } from "@/components/ui";
+import { color, elevation, radius, space } from "@/theme/tokens";
 
+/** One number the partner checks at a glance, with what it counts underneath. */
 export function KpiCard({
   label,
   value,
@@ -12,24 +14,22 @@ export function KpiCard({
   icon?: LucideIcon;
 }) {
   return (
-    <View style={styles.card}>
-      {Icon ? <Icon color={partnerColors.primary} size={20} /> : null}
-      <Text style={styles.value}>{value}</Text>
-      <Text style={styles.label}>{label}</Text>
+    <View style={styles.card} accessible accessibilityLabel={`${label}: ${value}`}>
+      {Icon ? (
+        <View style={styles.icon}>
+          <Icon color={color.leaf} size={18} />
+        </View>
+      ) : null}
+      <T kind="title" numeric style={styles.value}>
+        {value}
+      </T>
+      <T kind="small">{label}</T>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flex: 1,
-    minWidth: "46%",
-    backgroundColor: "rgba(255,255,255,0.82)",
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-  },
-  value: { marginTop: 10, fontSize: 22, fontWeight: "800", color: partnerColors.text },
-  label: { marginTop: 4, fontSize: 12, color: partnerColors.textMuted },
+  card: { flex: 1, minWidth: "46%", backgroundColor: color.surface, borderRadius: radius.card, padding: space.lg, borderWidth: 1, borderColor: color.line, ...elevation.card },
+  icon: { width: 32, height: 32, borderRadius: radius.control, backgroundColor: color.leafWash, alignItems: "center", justifyContent: "center" },
+  value: { marginTop: space.md },
 });

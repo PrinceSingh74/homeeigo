@@ -1,560 +1,499 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import * as Location from "expo-location";
+import { useQuery } from "@tanstack/react-query";
+import { router } from "expo-router";
+import { Award, BarChart3, Calendar, ClipboardList, FileCheck2, Navigation2, Route, Wallet } from "lucide-react-native";
 import { useState } from "react";
-import { Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { KpiCard } from "@/components/KpiCard";
 import { WithdrawSheet } from "@/components/WithdrawSheet";
+import { AttendanceBody, useAttendanceActions } from "@/components/money/Attendance";
+import { BalanceHeader } from "@/components/money/BalanceHeader";
+import { Block, Grid, HqScreen, Loadable } from "@/components/money/DataScreen";
+import { JobEarningsList } from "@/components/money/JobEarnings";
+import { OnlineToggleCard } from "@/components/money/OnlineToggleCard";
+import { PeriodEarnings } from "@/components/money/PeriodEarnings";
+import { WithdrawalList } from "@/components/money/Withdrawals";
+import { ProgressRow } from "@/components/HqUi";
+import { Banner, Button, Card, EmptyState, KeyValue, ListRow, Pill, T } from "@/components/ui";
 import {
-  EmptyState,
-  ErrorBlock,
-  HqCard,
-  HqCardTitle,
-  HqMuted,
-  LoadingBlock,
-  ProgressRow,
-  StatRow,
-} from "@/components/HqUi";
-import { PartnerScreen } from "@/components/PartnerScreen";
-import {
-  partnerPresenceHealthCopy,
-  usePartnerPresenceHealth,
-} from "@/hooks/use-partner-presence-heartbeat";
-import { customerName, formatCurrency, formatDate, formatDateTime, formatPct, onlineHours } from "@/lib/format";
-import { formatPayoutStatus } from "@/lib/finance";
+  K,
+  useAttendanceQuery,
+  useDashboardQuery,
+  useForecastQuery,
+  useIncentivesQuery,
+  useInvoicesQuery,
+  usePayoutsQuery,
+  useProviderQuery,
+  useRouteQuery,
+  useServiceHistoryQuery,
+  useTaxSummaryQuery,
+  useWithdrawalsQuery,
+} from "@/hooks/money/queries";
 import { BOOKING_LIST_FILTER } from "@/lib/booking-status";
-import { BackgroundLocationNotice } from "@/components/BackgroundLocationNotice";
+import { customerName } from "@/lib/format";
+import { confidencePercent, count, formatDay, formatDayTime, humanise, percent, rupees } from "@/lib/money-format";
 import { partnerApi } from "@/services/partner-api";
-import { partnerColors } from "@/theme/colors";
+import type { PartnerBooking, RouteOptimizeResult } from "@/types/partner";
 
-export function useProviderQuery() {
-  return useQuery({ queryKey: ["partner", "provider"], queryFn: () => partnerApi.provider() });
-}
+/**
+ * The Work and Earnings screens. Each one is a thin composition: the reads live in
+ * `hooks/money/queries`, the pieces in `components/money`, the wording rules in `lib/money-*`.
+ * Every figure on these screens is a field the server sent, under a label that says what it is.
+ */
 
-export function useDashboardQuery() {
-  return useQuery({ queryKey: ["partner", "dashboard"], queryFn: () => partnerApi.dashboard() });
-}
+// Other screens import these three from here.
+export { OnlineToggleCard, useDashboardQuery, useProviderQuery };
 
-function HqShell({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <PartnerScreen title={title} subtitle={subtitle} showBack>
-      {children}
-    </PartnerScreen>
-  );
-}
-
-export function OnlineToggleCard() {
-  const qc = useQueryClient();
-  const presence = usePartnerPresenceHealth();
-  const provider = useProviderQuery();
-  const operations = useQuery({ queryKey: ["partner", "operations"], queryFn: () => partnerApi.operations() });
-  const toggle = useMutation({
-    mutationFn: (online: boolean) => partnerApi.setOnline(online),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["partner", "provider"] });
-      void qc.invalidateQueries({ queryKey: ["partner", "dashboard"] });
-      void qc.invalidateQueries({ queryKey: ["partner", "operations"] });
-    },
-  });
-  const ops = operations.data;
-  const online = ops?.uiOnline ?? provider.data?.isOnline ?? false;
-  const paused = ops?.isPaused ?? false;
-  const suspended = ops?.isSuspended ?? false;
-  const presenceLine = partnerPresenceHealthCopy({
-    receiveJobs: online && !paused && !suspended,
-    connected: presence.connected,
-    reconnecting: presence.reconnecting,
-    presenceFreshness: presence.presenceFreshness,
-  });
-  return (
-    <HqCard>
-      <HqCardTitle>{suspended ? "Account restricted" : paused ? "Paused" : online ? "Online" : "Offline"}</HqCardTitle>
-      <HqMuted>
-        {suspended
-          ? ops?.suspendedMessage ?? "Your account is currently unavailable for job assignments."
-          : paused
-            ? "New offers are paused. Current jobs continue."
-            : online
-              ? `Available for jobs${ops ? ` · ${ops.capacity.currentJobs}/${ops.capacity.maxConcurrentJobs} capacity` : ""}`
-              : "You're offline and won't receive new job offers."}
-      </HqMuted>
-      {presenceLine ? (
-        presenceLine.tone === "ok" ? (
-          <HqMuted>{presenceLine.text}</HqMuted>
-        ) : (
-          <Text style={styles.presenceWarn}>{presenceLine.text}</Text>
-        )
-      ) : null}
-      {online && !suspended ? <BackgroundLocationNotice /> : null}
-      {ops && !operations.isLoading ? (
-        <StatRow label="Slots" value={String(ops.capacity.availableSlots)} />
-      ) : null}
-      {ops?.readiness.blockers.map((b) => (
-        <HqMuted key={b.code}>{b.message}</HqMuted>
-      ))}
-      <Pressable
-        onPress={() => toggle.mutate(!online)}
-        disabled={toggle.isPending || suspended}
-        style={[styles.toggleBtn, online ? styles.toggleOn : styles.toggleOff]}
-      >
-        <Text style={styles.toggleText}>{online ? "Go Offline" : "Go Online"}</Text>
-      </Pressable>
-    </HqCard>
-  );
-}
+/* ------------------------------------------------------------------ work */
 
 export function WorkHqScreen() {
   const dashboard = useDashboardQuery();
-  const provider = useProviderQuery();
-  if (dashboard.isLoading || provider.isLoading) return <HqShell title="Work HQ" subtitle="Live status"><LoadingBlock /></HqShell>;
-  if (dashboard.isError) return <HqShell title="Work HQ" subtitle="Live status"><ErrorBlock message="Could not load work HQ data." /></HqShell>;
-  const d = dashboard.data!;
-  const hours = onlineHours(provider.data?.onlineSince ?? d.onlineSince).toFixed(1);
   return (
-    <HqShell title="Work HQ" subtitle="Requests, bookings, attendance, and shift controls.">
-      <View style={styles.grid}>
-        <KpiCard label="Live requests" value={d.counts.pendingRequests} />
-        <KpiCard label="Active jobs" value={d.counts.activeBookings} />
-        <KpiCard label="Completed today" value={d.counts.completedToday} />
-        <KpiCard label="Session hours" value={`${hours}h`} />
-      </View>
+    <HqScreen title="Work HQ" subtitle="Requests, jobs and your online status." refresh={[K.dashboard, K.operations, K.provider]}>
+      <Loadable query={dashboard} errorTitle="Could not load your work summary" loadingLabel="Loading your work summary…" loadingCards={1}>
+        {(d) => (
+          <>
+            <Grid>
+              <KpiCard label="Live requests" value={count(d.counts.pendingRequests)} />
+              <KpiCard label="Active jobs" value={count(d.counts.activeBookings)} />
+              <KpiCard label="Completed today" value={count(d.counts.completedToday)} />
+            </Grid>
+            {d.isOnline && d.onlineSince ? (
+              <Card>
+                <KeyValue label="Online since" value={formatDayTime(d.onlineSince)} />
+              </Card>
+            ) : null}
+          </>
+        )}
+      </Loadable>
       <OnlineToggleCard />
-    </HqShell>
+    </HqScreen>
   );
 }
 
 export function WorkAttendanceScreen() {
-  const qc = useQueryClient();
-  const attendance = useQuery({ queryKey: ["partner", "attendance"], queryFn: () => partnerApi.partnerOs.attendance() });
-  const checkIn = useMutation({
-    mutationFn: () => partnerApi.partnerOs.checkIn(),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["partner", "attendance"] }),
-  });
-  const checkOut = useMutation({
-    mutationFn: () => partnerApi.partnerOs.checkOut(),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["partner", "attendance"] }),
-  });
-  if (attendance.isLoading) return <HqShell title="Attendance" subtitle="Check-in/out trends"><LoadingBlock /></HqShell>;
+  const attendance = useAttendanceQuery();
+  const { checkIn, checkOut, outcome } = useAttendanceActions();
   const data = attendance.data;
+  const busy = checkIn.isPending || checkOut.isPending;
   return (
-    <HqShell title="Attendance Center" subtitle="Check-in/out trends and weekly/monthly attendance.">
-      <View style={styles.grid}>
-        <KpiCard label="Hours today" value={data?.workingHoursToday ?? 0} />
-        <KpiCard label="Days this week" value={data?.weeklyAttendance ?? 0} />
-        <KpiCard label="Days this month" value={data?.monthlyAttendance ?? 0} />
-      </View>
-      <HqCard>
-        <HqCardTitle>Shift control</HqCardTitle>
-        <StatRow label="Status" value={data?.isCheckedIn ? "Checked in" : "Off shift"} />
-        <Pressable disabled={data?.isCheckedIn || checkIn.isPending} onPress={() => checkIn.mutate()} style={[styles.primaryBtn, data?.isCheckedIn && styles.disabled]}>
-          <Text style={styles.primaryBtnText}>Check in</Text>
-        </Pressable>
-        <Pressable disabled={!data?.isCheckedIn || checkOut.isPending} onPress={() => checkOut.mutate()} style={[styles.secondaryBtn, !data?.isCheckedIn && styles.disabled]}>
-          <Text style={styles.secondaryBtnText}>Check out</Text>
-        </Pressable>
-      </HqCard>
-      <HqCard>
-        <HqCardTitle>Recent sessions</HqCardTitle>
-        {(data?.sessions ?? []).length === 0 ? (
-          <EmptyState message="No attendance sessions yet." />
-        ) : (
-          data!.sessions.slice(0, 8).map((s) => (
-            <StatRow key={s.id} label={formatDateTime(s.checkInAt)} value={s.durationHours ? `${s.durationHours.toFixed(1)}h` : "Active"} />
-          ))
-        )}
-      </HqCard>
-    </HqShell>
+    <HqScreen
+      title="Attendance"
+      subtitle="Check in when you start, check out when you finish."
+      refresh={[K.attendance]}
+      footer={
+        data ? (
+          data.isCheckedIn ? (
+            <Button label="Check out" onPress={() => checkOut.mutate()} loading={checkOut.isPending} disabled={busy} testID="attendance-check-out" />
+          ) : (
+            <Button label="Check in" onPress={() => checkIn.mutate()} loading={checkIn.isPending} disabled={busy} testID="attendance-check-in" />
+          )
+        ) : undefined
+      }
+    >
+      <Loadable query={attendance} errorTitle="Could not load attendance" loadingLabel="Loading attendance…">
+        {(a) => <AttendanceBody attendance={a} outcome={outcome} />}
+      </Loadable>
+    </HqScreen>
   );
 }
+
+function JobRows({ bookings, empty }: { bookings: PartnerBooking[]; empty: { title: string; message: string } }) {
+  if (bookings.length === 0) {
+    return (
+      <Card>
+        <EmptyState icon={ClipboardList} title={empty.title} message={empty.message} />
+      </Card>
+    );
+  }
+  return (
+    <Card>
+      {bookings.map((b, i) => (
+        <ListRow
+          key={b.id}
+          icon={Calendar}
+          title={b.service?.name ?? b.bookingNumber}
+          subtitle={`${formatDayTime(b.scheduledDate)} · ${customerName(b.customer)} · ${humanise(b.status)}`}
+          onPress={() => router.push(`/job/${b.id}`)}
+          last={i === bookings.length - 1}
+        />
+      ))}
+    </Card>
+  );
+}
+
+const UPCOMING_LIMIT = 10;
+const COMPLETED_LIMIT = 15;
 
 export function WorkScheduleScreen() {
   const provider = useProviderQuery();
   const bookings = useQuery({
     queryKey: ["partner", "bookings", "upcoming"],
     // ACTIVE_WORK, not "accepted": the latter excludes IN_PROGRESS jobs (backend STATUS_MAP).
-    queryFn: () => partnerApi.listBookings({ status: BOOKING_LIST_FILTER.ACTIVE_WORK, limit: 10, sortBy: "upcoming" }),
+    queryFn: () => partnerApi.listBookings({ status: BOOKING_LIST_FILTER.ACTIVE_WORK, limit: UPCOMING_LIMIT, sortBy: "upcoming" }),
   });
-  if (provider.isLoading) return <HqShell title="Schedule" subtitle="Availability and upcoming jobs"><LoadingBlock /></HqShell>;
-  const p = provider.data!;
   return (
-    <HqShell title="Schedule Center" subtitle="Availability, working days, and upcoming jobs.">
+    <HqScreen title="Schedule" subtitle="Your working window and the jobs you hold." refresh={[K.provider, K.operations, K.bookings]}>
       <OnlineToggleCard />
-      <HqCard>
-        <HqCardTitle>Working window</HqCardTitle>
-        <StatRow label="Hours" value={`${p.workingHoursStart ?? "—"} – ${p.workingHoursEnd ?? "—"}`} />
-        <StatRow label="Days" value={p.workingDays?.join(", ") || "Not set"} />
-        <StatRow label="City" value={p.city ?? "—"} />
-      </HqCard>
-      <HqCard>
-        <HqCardTitle>Upcoming jobs</HqCardTitle>
-        {bookings.isLoading ? (
-          <LoadingBlock />
-        ) : (bookings.data?.bookings ?? []).length === 0 ? (
-          <EmptyState message="No upcoming or in-progress jobs." />
-        ) : (
-          bookings.data!.bookings.map((b) => (
-            <StatRow key={b.id} label={`${b.service.name} · ${formatDateTime(b.scheduledDate)}`} value={formatCurrency(b.finalAmount || b.amount)} />
-          ))
-        )}
-      </HqCard>
-    </HqShell>
+      <Block title="Working window">
+        <Loadable query={provider} errorTitle="Could not load your working window" loadingCards={1}>
+          {(p) => (
+            <Card>
+              <KeyValue label="Hours" value={p.workingHoursStart && p.workingHoursEnd ? `${p.workingHoursStart} – ${p.workingHoursEnd}` : "Not set"} />
+              <KeyValue label="Days" value={p.workingDays?.length ? p.workingDays.map((d) => humanise(d)).join(", ") : "Not set"} />
+              <KeyValue label="City" value={p.city ?? "Not set"} />
+            </Card>
+          )}
+        </Loadable>
+      </Block>
+      <Block title="Jobs you hold">
+        <Loadable query={bookings} errorTitle="Could not load your jobs" loadingCards={1}>
+          {(list) => (
+            <>
+              <JobRows bookings={list.bookings ?? []} empty={{ title: "No jobs right now", message: "Jobs you accept appear here in the order they are scheduled." }} />
+              {(list.bookings ?? []).length > 0 ? <T kind="small">{`Showing the next ${list.bookings.length} of ${list.total}.`}</T> : null}
+            </>
+          )}
+        </Loadable>
+      </Block>
+    </HqScreen>
   );
 }
 
 export function WorkServiceHistoryScreen() {
-  const history = useQuery({ queryKey: ["partner", "service-history"], queryFn: () => partnerApi.partnerOs.serviceHistory() });
+  const history = useServiceHistoryQuery();
   const bookings = useQuery({
     // Own key: ["partner","bookings","completed"] is limit 20 elsewhere; one key must mean one query.
     queryKey: ["partner", "bookings", "completed-history"],
-    queryFn: () => partnerApi.listBookings({ status: BOOKING_LIST_FILTER.COMPLETED, limit: 15, sortBy: "recent" }),
+    queryFn: () => partnerApi.listBookings({ status: BOOKING_LIST_FILTER.COMPLETED, limit: COMPLETED_LIMIT, sortBy: "recent" }),
   });
-  if (history.isLoading) return <HqShell title="Service History" subtitle="Work mix"><LoadingBlock /></HqShell>;
-  const h = history.data!;
   return (
-    <HqShell title="Service History" subtitle="Completed, cancelled, rescheduled, and upcoming work mix.">
-      <View style={styles.grid}>
-        <KpiCard label="Completed" value={h.completed} />
-        <KpiCard label="Cancelled" value={h.cancelled} />
-        <KpiCard label="Rescheduled" value={h.rescheduled} />
-        <KpiCard label="Upcoming" value={h.upcoming} />
-      </View>
-      <HqCard>
-        <HqCardTitle>Recent completed jobs</HqCardTitle>
-        {bookings.isLoading ? (
-          <LoadingBlock />
-        ) : (bookings.data?.bookings ?? []).length === 0 ? (
-          <EmptyState message="No completed jobs yet." />
-        ) : (
-          bookings.data!.bookings.map((b) => (
-            <StatRow key={b.id} label={`${b.service.name} · ${customerName(b.customer)}`} value={formatCurrency(b.finalAmount || b.amount)} />
-          ))
+    <HqScreen title="Service history" subtitle="How your jobs ended." refresh={[K.serviceHistory, K.bookings]}>
+      <Loadable query={history} errorTitle="Could not load your service history" loadingCards={1}>
+        {(h) => (
+          <>
+            <Grid>
+              <KpiCard label="Completed" value={count(h.completed)} />
+              <KpiCard label="Cancelled" value={count(h.cancelled)} />
+              <KpiCard label="Open now" value={count(h.upcoming)} />
+            </Grid>
+            <T kind="small">Counted over your latest 500 jobs.</T>
+          </>
         )}
-      </HqCard>
-    </HqShell>
+      </Loadable>
+      <Block title="Recently completed">
+        <Loadable query={bookings} errorTitle="Could not load completed jobs" loadingCards={1}>
+          {(list) => (
+            <>
+              <JobRows bookings={list.bookings ?? []} empty={{ title: "No completed jobs yet", message: "Jobs you complete appear here." }} />
+              {(list.bookings ?? []).length > 0 ? <T kind="small">{`Showing the latest ${list.bookings.length} of ${list.total}. What each job paid you is in your wallet.`}</T> : null}
+            </>
+          )}
+        </Loadable>
+      </Block>
+    </HqScreen>
+  );
+}
+
+/** The optimised route as the server computed it; shared by Route Center and the AI route screen. */
+export function RouteSummary({ route }: { route: RouteOptimizeResult }) {
+  const sequence = Array.isArray(route.sequence) ? route.sequence : [];
+  if (sequence.length === 0) {
+    return (
+      <Card>
+        <EmptyState icon={Route} title="No stops to route" message="When you hold active jobs, the order to visit them appears here." testID="route-empty" />
+      </Card>
+    );
+  }
+  return (
+    <>
+      <Grid>
+        <KpiCard label="Stops" value={count(route.metrics.stops)} />
+        <KpiCard label="Distance" value={`${route.metrics.optimizedDistanceKm.toFixed(1)} km`} />
+        <KpiCard label="Travel time" value={`${Math.round(route.metrics.optimizedEtaMin)} min`} />
+        <KpiCard label="Saved against the unsorted order" value={`${Math.round(route.metrics.timeSavedMin)} min`} />
+      </Grid>
+      <Block title="Stop sequence" caption={`Estimated by: ${route.metrics.source}`}>
+        <Card>
+          {sequence.map((s, i) => (
+            <ListRow
+              key={`${s.bookingId}-${s.order}`}
+              icon={Navigation2}
+              title={`Stop ${s.order}`}
+              subtitle={`${humanise(s.status)} · ${s.distanceFromPrevKm.toFixed(1)} km from the previous point`}
+              value={`${Math.round(s.cumulativeEtaMin)} min`}
+              onPress={() => router.push(`/job/${s.bookingId}`)}
+              last={i === sequence.length - 1}
+            />
+          ))}
+        </Card>
+      </Block>
+    </>
   );
 }
 
 export function RouteCenterScreen() {
-  const route = useQuery({ queryKey: ["partner", "route"], queryFn: () => partnerApi.routeOptimize() });
-  if (route.isLoading) return <HqShell title="Route Center" subtitle="Optimized route"><LoadingBlock /></HqShell>;
-  if (route.isError) return <HqShell title="Route Center" subtitle="Optimized route"><ErrorBlock message="No active stops to optimize right now." /></HqShell>;
-  const r = route.data!;
+  const route = useRouteQuery();
   return (
-    <HqShell title="Route Center" subtitle="Optimized multi-stop route with ETA and time saved.">
-      <View style={styles.grid}>
-        <KpiCard label="Stops" value={r.metrics.stops} />
-        <KpiCard label="Distance" value={`${r.metrics.optimizedDistanceKm.toFixed(1)} km`} />
-        <KpiCard label="ETA" value={`${Math.round(r.metrics.optimizedEtaMin)} min`} />
-        <KpiCard label="Time saved" value={`${Math.round(r.metrics.timeSavedMin)} min`} />
-      </View>
-      <HqCard>
-        <HqCardTitle>Stop sequence</HqCardTitle>
-        {r.sequence.length === 0 ? (
-          <EmptyState message="No stops in optimized route." />
-        ) : (
-          r.sequence.map((s) => (
-            <StatRow key={`${s.bookingId}-${s.order}`} label={`#${s.order} · ${s.status ?? "pending"}`} value={`${s.cumulativeEtaMin} min`} />
-          ))
-        )}
-      </HqCard>
-    </HqShell>
+    <HqScreen title="Route Center" subtitle="The order to visit the jobs you hold." refresh={[K.route]}>
+      <Loadable query={route} errorTitle="Could not work out a route" loadingLabel="Working out your route…">
+        {(r) => <RouteSummary route={r} />}
+      </Loadable>
+    </HqScreen>
   );
 }
 
+/* --------------------------------------------------------------- earnings */
+
 export function EarningsHqScreen() {
   const dashboard = useDashboardQuery();
-  if (dashboard.isLoading) return <HqShell title="Earnings HQ" subtitle="Overview"><LoadingBlock /></HqShell>;
-  const e = dashboard.data!.earnings;
   return (
-    <HqShell title="Earnings HQ" subtitle="Today, week, month earnings snapshot.">
-      <View style={styles.grid}>
-        <KpiCard label="Today" value={formatCurrency(e.today)} />
-        <KpiCard label="This week" value={formatCurrency(e.thisWeek)} />
-        <KpiCard label="This month" value={formatCurrency(e.thisMonth)} />
-        <KpiCard label="Avg / job" value={formatCurrency(e.thisWeek / Math.max(1, dashboard.data!.counts.completedToday || 1))} />
-      </View>
-      <HqCard>
-        <HqCardTitle>Commission tier</HqCardTitle>
-        <StatRow label="Rate" value={formatPct(e.commissionRate)} />
-        <StatRow label="Weekly gross" value={formatCurrency(e.weeklyGross)} />
-        <StatRow label="Take-home %" value={formatPct(e.weeklyTakeHomePct)} />
-      </HqCard>
-    </HqShell>
+    <HqScreen title="Earnings HQ" subtitle="Your net earnings at a glance." refresh={[K.dashboard]}>
+      <Loadable query={dashboard} errorTitle="Could not load your earnings" loadingLabel="Loading your earnings…">
+        {(d) => (
+          <>
+            <Grid>
+              <KpiCard label="Today (net)" value={rupees(d.earnings.today)} />
+              <KpiCard label="Yesterday (net)" value={rupees(d.earnings.yesterday)} />
+              <KpiCard label="Last 7 days (net)" value={rupees(d.earnings.thisWeek)} />
+              <KpiCard label="Last 30 days (net)" value={rupees(d.earnings.thisMonth)} />
+            </Grid>
+            <Block title="Last 7 days" caption="Days are counted in UTC. Only earnings credited to you are included.">
+              <Card>
+                <KeyValue label="Gross" value={rupees(d.earnings.weeklyGross)} />
+                <KeyValue label="Platform commission" value={rupees(d.earnings.weeklyCommission)} />
+                <KeyValue label="Net" value={rupees(d.earnings.thisWeek)} strong />
+                <KeyValue label="Net as a share of gross" value={percent(d.earnings.weeklyTakeHomePct)} />
+              </Card>
+            </Block>
+            <Block title="Commission" caption="Set by the number of jobs you have completed this calendar month.">
+              <Card>
+                <KeyValue label="Your current commission rate" value={percent(d.earnings.commissionRate)} />
+              </Card>
+            </Block>
+          </>
+        )}
+      </Loadable>
+      <Card>
+        <ListRow icon={BarChart3} title="Earnings by period" subtitle="7, 30 or 90 days, day by day" onPress={() => router.push("/hq/earnings-detail")} />
+        <ListRow icon={Wallet} title="Wallet" subtitle="Balance, withdrawals and job earnings" onPress={() => router.push("/hq/wallet")} last />
+      </Card>
+    </HqScreen>
   );
 }
 
 export function EarningsDetailScreen() {
-  const earnings = useQuery({ queryKey: ["partner", "earnings", 30], queryFn: () => partnerApi.earnings(30) });
-  if (earnings.isLoading) return <HqShell title="Earnings" subtitle="Period analytics"><LoadingBlock /></HqShell>;
-  const e = earnings.data!;
   return (
-    <HqShell title="Earnings" subtitle="Period analytics and breakdowns.">
-      <View style={styles.grid}>
-        <KpiCard label="Period earnings" value={formatCurrency(e.periodEarnings)} />
-        <KpiCard label="Total jobs" value={e.totalJobs} />
-        <KpiCard label="Avg per job" value={formatCurrency(e.avgPerJob)} />
-        <KpiCard label="Lifetime" value={formatCurrency(e.totalEarnings)} />
-      </View>
-      <HqCard>
-        <HqCardTitle>By service</HqCardTitle>
-        {(e.byService ?? []).length === 0 ? (
-          <EmptyState message="No service breakdown yet." />
-        ) : (
-          e.byService.map((s) => <StatRow key={s.serviceName} label={s.serviceName} value={formatCurrency(s.earnings)} />)
-        )}
-      </HqCard>
-    </HqShell>
+    <HqScreen title="Earnings" subtitle="What you earned in a period, day by day." refresh={[K.earnings]}>
+      <PeriodEarnings />
+    </HqScreen>
   );
+}
+
+/**
+ * Opens the withdraw sheet. It waits only for the balance to have loaded once: the figure on this
+ * screen is a cached one, so it never decides "nothing to withdraw" — the sheet reads the balance
+ * again when it opens and says so from the fresh figure.
+ */
+function WithdrawFooter({ available, onPress, testID }: { available: number | undefined; onPress: () => void; testID: string }) {
+  return <Button label="Withdraw to bank" onPress={onPress} disabled={available === undefined} testID={testID} />;
 }
 
 export function WalletScreen({ embedded }: { embedded?: boolean }) {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
-  const payouts = useQuery({ queryKey: ["partner", "payouts"], queryFn: () => partnerApi.payouts() });
-  const txns = useQuery({ queryKey: ["partner", "wallet-txns"], queryFn: () => partnerApi.walletTransactions({ limit: 8 }) });
-
-  const loading = payouts.isLoading;
-  const available = payouts.data?.availableBalance ?? 0;
-  const pending = payouts.data?.pendingBalance ?? 0;
-  const total = payouts.data?.currentBalance ?? 0;
-
-  const body = loading ? (
-    <LoadingBlock label="Loading wallet…" />
-  ) : payouts.isError ? (
-    <ErrorBlock message="Could not load wallet balance." />
-  ) : (
-    <>
-      <View style={styles.grid} accessibilityLabel="Wallet balance summary">
-        <KpiCard label="Available" value={formatCurrency(available)} />
-        <KpiCard label="Pending" value={formatCurrency(pending)} />
-        <KpiCard label="Total" value={formatCurrency(total)} />
-      </View>
-      <Pressable
-        onPress={() => setWithdrawOpen(true)}
-        disabled={available <= 0}
-        style={[styles.primaryBtn, available <= 0 && styles.disabled]}
-        accessibilityRole="button"
-        accessibilityLabel="Withdraw to bank"
-        testID="wallet-withdraw-cta"
-      >
-        <Text style={styles.primaryBtnText}>{available <= 0 ? "No balance to withdraw" : "Withdraw to bank"}</Text>
-      </Pressable>
-      <HqCard>
-        <HqCardTitle>Recent transactions</HqCardTitle>
-        {txns.isLoading ? (
-          <LoadingBlock label="Loading transactions…" />
-        ) : (txns.data?.transactions ?? []).length === 0 ? (
-          <EmptyState message="No transactions yet." />
-        ) : (
-          txns.data!.transactions.map((t) => (
-            <StatRow key={t.id} label={t.description || t.type} value={formatCurrency(t.amount)} />
-          ))
-        )}
-      </HqCard>
-      <WithdrawSheet
-        visible={withdrawOpen}
-        availableBalance={available}
-        onClose={() => setWithdrawOpen(false)}
-      />
-    </>
-  );
-  if (embedded) return <>{body}</>;
-  return <HqShell title="Wallet" subtitle="Balance, withdraw, and recent transactions.">{body}</HqShell>;
-}
-
-export function WalletLedgerScreen() {
-  const txns = useQuery({ queryKey: ["partner", "wallet-txns-all"], queryFn: () => partnerApi.walletTransactions({ limit: 50 }) });
+  const payouts = usePayoutsQuery();
+  const withdrawals = useWithdrawalsQuery();
+  const invoices = useInvoicesQuery();
+  const available = payouts.data?.availableBalance;
   return (
-    <HqShell title="Wallet Ledger" subtitle="Full transaction history.">
-      <HqCard>
-        {txns.isLoading ? (
-          <LoadingBlock />
-        ) : (txns.data?.transactions ?? []).length === 0 ? (
-          <EmptyState message="No ledger entries." />
-        ) : (
-          txns.data!.transactions.map((t) => (
-            <StatRow key={t.id} label={`${t.type} · ${formatDate(t.createdAt)}`} value={formatCurrency(t.amount)} />
-          ))
-        )}
-      </HqCard>
-    </HqShell>
+    <HqScreen
+      title="Wallet"
+      subtitle="What you are owed, and what has been paid out."
+      showBack={!embedded}
+      refresh={[K.payouts, K.withdrawals, K.invoices]}
+      footer={<WithdrawFooter available={available} onPress={() => setWithdrawOpen(true)} testID="wallet-withdraw-cta" />}
+    >
+      <Loadable query={payouts} errorTitle="Could not load wallet" loadingLabel="Loading wallet…" loadingCards={1}>
+        {(p) => <BalanceHeader payouts={p} />}
+      </Loadable>
+
+      <Block title="Recent withdrawals">
+        <Loadable query={withdrawals} errorTitle="Could not load withdrawals" loadingLabel="Loading withdrawals…" loadingCards={1}>
+          {(list) => <WithdrawalList withdrawals={list} initiallyShown={3} onSeeAll={() => router.push("/hq/earnings-payouts")} />}
+        </Loadable>
+      </Block>
+
+      <Block title="Job earnings">
+        <Loadable query={invoices} errorTitle="Could not load job earnings" loadingLabel="Loading job earnings…" loadingCards={1}>
+          {(inv) => <JobEarningsList earnings={inv.earnings ?? []} />}
+        </Loadable>
+      </Block>
+
+      <Block title="More">
+        <Card>
+          <ListRow icon={BarChart3} title="Earnings by period" subtitle="7, 30 or 90 days, day by day" onPress={() => router.push("/hq/earnings-detail")} />
+          <ListRow icon={Award} title="Incentives" subtitle="Bonus progress and paid rewards" onPress={() => router.push("/hq/earnings-incentives")} />
+          <ListRow icon={FileCheck2} title="Tax summary" subtitle="All-time totals and the server's estimate" onPress={() => router.push("/hq/earnings-tax")} last />
+        </Card>
+      </Block>
+
+      <WithdrawSheet visible={withdrawOpen} onClose={() => setWithdrawOpen(false)} />
+    </HqScreen>
   );
 }
 
+/** Every withdrawal the server lists (the latest 20), with balances and the withdraw action. */
 export function EarningsPayoutsScreen() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
-  const payouts = useQuery({ queryKey: ["partner", "payouts"], queryFn: () => partnerApi.payouts() });
-  if (payouts.isLoading) return <HqShell title="Payouts" subtitle="Withdrawals"><LoadingBlock label="Loading payout history…" /></HqShell>;
-  if (payouts.isError) return <HqShell title="Payouts" subtitle="Withdrawals"><ErrorBlock message="Could not load payout data." /></HqShell>;
-  const p = payouts.data!;
+  const payouts = usePayoutsQuery();
+  const withdrawals = useWithdrawalsQuery();
+  const available = payouts.data?.availableBalance;
   return (
-    <HqShell title="Payouts" subtitle="Withdrawal history and settlement status.">
-      <View style={styles.grid}>
-        <KpiCard label="Available" value={formatCurrency(p.availableBalance)} />
-        <KpiCard label="Pending" value={formatCurrency(p.pendingBalance)} />
-        <KpiCard label="Lifetime" value={formatCurrency(p.lifetimeEarnings)} />
-      </View>
-      <Pressable
-        onPress={() => setWithdrawOpen(true)}
-        disabled={p.availableBalance <= 0}
-        style={[styles.primaryBtn, p.availableBalance <= 0 && styles.disabled]}
-        accessibilityRole="button"
-        accessibilityLabel="Request withdrawal"
-        testID="payouts-withdraw-cta"
-      >
-        <Text style={styles.primaryBtnText}>Request withdrawal</Text>
-      </Pressable>
-      <HqCard>
-        <HqCardTitle>Next payout</HqCardTitle>
-        <StatRow label="Date" value={p.nextPayoutDate ? formatDate(p.nextPayoutDate) : "—"} />
-      </HqCard>
-      <HqCard>
-        <HqCardTitle>Withdrawal history</HqCardTitle>
-        {(p.withdrawals ?? []).length === 0 ? (
-          <EmptyState message="No payout history yet." />
-        ) : (
-          p.withdrawals.map((w) => (
-            <View key={w.id} style={styles.payoutRow} accessibilityLabel={`Withdrawal ${w.reference} ${formatPayoutStatus(w.status)}`}>
-              <View style={styles.payoutRowTop}>
-                <Text style={styles.payoutRef}>{w.reference}</Text>
-                <Text style={styles.payoutAmount}>{formatCurrency(w.netAmount ?? w.amount)}</Text>
-              </View>
-              <Text style={styles.payoutMeta}>
-                {formatPayoutStatus(w.status)}
-                {w.bank ? ` · ${w.bank}` : ""}
-                {w.settlementDate ? ` · Settled ${formatDate(w.settlementDate)}` : ""}
-              </Text>
-            </View>
-          ))
+    <HqScreen
+      title="Withdrawals"
+      subtitle="Your withdrawal requests and where each one stands."
+      refresh={[K.payouts, K.withdrawals]}
+      footer={<WithdrawFooter available={available} onPress={() => setWithdrawOpen(true)} testID="payouts-withdraw-cta" />}
+    >
+      <Loadable query={payouts} errorTitle="Could not load your balance" loadingLabel="Loading your balance…" loadingCards={1}>
+        {(p) => (
+          <Card>
+            <KeyValue label="Available to withdraw" value={rupees(p.availableBalance)} strong />
+            <KeyValue label="Withdrawals in progress" value={rupees(p.pendingBalance)} />
+          </Card>
         )}
-      </HqCard>
-      <WithdrawSheet
-        visible={withdrawOpen}
-        availableBalance={p.availableBalance}
-        onClose={() => setWithdrawOpen(false)}
-      />
-    </HqShell>
+      </Loadable>
+      <Block title="Latest withdrawals" caption="The server lists your latest 20 withdrawals. Tap one for its dates, attempts and any failure reason.">
+        <Loadable query={withdrawals} errorTitle="Could not load withdrawals" loadingLabel="Loading withdrawals…">
+          {(list) => <WithdrawalList withdrawals={list} />}
+        </Loadable>
+      </Block>
+      <WithdrawSheet visible={withdrawOpen} onClose={() => setWithdrawOpen(false)} />
+    </HqScreen>
   );
 }
 
 export function EarningsIncentivesScreen() {
-  const incentives = useQuery({ queryKey: ["partner", "incentives"], queryFn: () => partnerApi.partnerOs.incentives() });
-  if (incentives.isLoading) return <HqShell title="Incentives" subtitle="Bonus progress"><LoadingBlock label="Loading incentives…" /></HqShell>;
-  if (incentives.isError) return <HqShell title="Incentives" subtitle="Bonus progress"><ErrorBlock message="Incentive data unavailable." /></HqShell>;
-  const data = incentives.data!;
+  const incentives = useIncentivesQuery();
   return (
-    <HqShell title="Incentives" subtitle="Bonus rules, progress, and paid rewards.">
-      <KpiCard label="Streak days" value={data.streakDays} />
-      <HqCard>
-        <HqCardTitle>Active rules</HqCardTitle>
-        {data.rules.length === 0 ? (
-          <EmptyState message="No incentives available." />
-        ) : (
-          data.rules.map((r) => {
-            const remaining = Math.max(0, r.threshold - r.current);
-            const statusLabel = r.paid ? "Paid" : r.eligible ? "Qualified" : "In progress";
-            return (
-              <View key={r.id} style={styles.incentiveRow} accessibilityLabel={`${r.name} ${statusLabel}`}>
-                <View style={styles.incentiveHeader}>
-                  <Text style={styles.incentiveName}>{r.name}</Text>
-                  <Text style={styles.incentiveBonus}>{formatCurrency(r.paid ? (r.payoutAmount ?? r.bonusAmount) : r.bonusAmount)}</Text>
-                </View>
-                <Text style={styles.incentiveMeta}>
-                  {r.current} / {r.threshold} {r.metric.replace(/_/g, " ")} · {r.period}
-                </Text>
-                {!r.paid && remaining > 0 ? (
-                  <Text style={styles.incentiveRemaining}>{remaining} remaining</Text>
-                ) : null}
-                <ProgressRow label={statusLabel} pct={r.progressPct} />
-              </View>
-            );
-          })
-        )}
-      </HqCard>
-      {(data.payouts ?? []).length > 0 ? (
-        <HqCard>
-          <HqCardTitle>Recent incentive payouts</HqCardTitle>
-          {data.payouts.slice(0, 8).map((p) => (
-            <StatRow
-              key={p.id}
-              label={`${p.rule?.name ?? "Bonus"} · ${formatDate(p.createdAt)}`}
-              value={formatCurrency(p.amount)}
-            />
-          ))}
-        </HqCard>
-      ) : null}
-    </HqShell>
+    <HqScreen title="Incentives" subtitle="Bonus rules, your progress and what has been paid." refresh={[K.incentives]}>
+      <Loadable query={incentives} errorTitle="Could not load incentives" loadingLabel="Loading incentives…">
+        {(data) => {
+          const rules = Array.isArray(data.rules) ? data.rules : [];
+          const paid = Array.isArray(data.payouts) ? data.payouts : [];
+          return (
+            <>
+              <Grid>
+                <KpiCard label="Streak days" value={count(data.streakDays)} />
+              </Grid>
+              <Block title="Bonus rules">
+                {rules.length === 0 ? (
+                  <Card>
+                    <EmptyState icon={Award} title="No bonus rules right now" message="When HOMEEIGO runs a bonus, the rule and your progress appear here." testID="incentives-empty" />
+                  </Card>
+                ) : (
+                  rules.map((r) => {
+                    const status = r.paid ? "Paid" : r.eligible ? "Qualified" : "In progress";
+                    return (
+                      <Card key={r.id}>
+                        <KeyValue label={r.name} value={rupees(r.paid ? (r.payoutAmount ?? r.bonusAmount) : r.bonusAmount)} strong />
+                        <T kind="small" numeric>{`${r.current} of ${r.threshold} ${humanise(r.metric).toLowerCase()} · ${humanise(r.period)}`}</T>
+                        <Pill label={status} tone={r.paid ? "success" : r.eligible ? "leaf" : "neutral"} />
+                        <ProgressRow label="Progress" pct={r.progressPct} />
+                      </Card>
+                    );
+                  })
+                )}
+              </Block>
+              {paid.length > 0 ? (
+                <Block title="Bonuses paid" caption="Bonuses are credited to your wallet balance.">
+                  <Card>
+                    {paid.map((p, i) => (
+                      <ListRow
+                        key={p.id}
+                        icon={Award}
+                        tone="warning"
+                        title={p.rule?.name ?? humanise(p.periodKey)}
+                        subtitle={`${humanise(p.status)} · ${formatDay(p.createdAt)}`}
+                        value={rupees(p.amount)}
+                        last={i === paid.length - 1}
+                      />
+                    ))}
+                  </Card>
+                </Block>
+              ) : null}
+            </>
+          );
+        }}
+      </Loadable>
+    </HqScreen>
   );
 }
 
 export function EarningsTaxScreen() {
-  const tax = useQuery({ queryKey: ["partner", "tax"], queryFn: () => partnerApi.taxSummary() });
-  if (tax.isLoading) return <HqShell title="Tax Center" subtitle="GST and TDS"><LoadingBlock /></HqShell>;
-  const t = tax.data!;
+  const tax = useTaxSummaryQuery();
   return (
-    <HqShell title="Tax Center" subtitle="GST, TDS, gross/net/settled tax summary.">
-      <HqCard>
-        <StatRow label="Financial year" value={t.financialYear} />
-        <StatRow label="Gross earnings" value={formatCurrency(t.grossEarnings)} />
-        <StatRow label="Platform commission" value={formatCurrency(t.platformCommission)} />
-        <StatRow label="Net earnings" value={formatCurrency(t.netEarnings)} />
-        <StatRow label="Settled out" value={formatCurrency(t.settledOut)} />
-        <StatRow label="GST on commission" value={formatCurrency(t.gstOnCommission ?? 0)} />
-        <StatRow label="TDS estimate" value={formatCurrency(t.tdsEstimate ?? 0)} />
-        <StatRow label="Estimated tax" value={formatCurrency(t.estimatedTax)} />
-      </HqCard>
-    </HqShell>
+    <HqScreen title="Tax summary" subtitle="All-time totals from your earnings." refresh={[K.tax]}>
+      <Loadable query={tax} errorTitle="Could not load your tax summary" loadingLabel="Loading your tax summary…">
+        {(t) => (
+          <>
+            <Banner
+              tone="info"
+              title="These are all-time totals"
+              message={`The server adds up every earning credited to you since you joined. It labels the result ${t.financialYear}, but the figures are not limited to that year.`}
+              testID="tax-all-time-notice"
+            />
+            <Card>
+              <KeyValue label="Gross earnings, all time" value={rupees(t.grossEarnings)} />
+              <KeyValue label="Platform commission, all time" value={rupees(t.platformCommission)} />
+              <KeyValue label="Net earnings, all time" value={rupees(t.netEarnings)} strong />
+              <KeyValue label="Paid to your bank (completed withdrawals)" value={rupees(t.settledOut)} />
+            </Card>
+            <Block title="Estimates" caption="These are the server's rough estimates at fixed rates, not a tax computation or a certificate. Check with a tax adviser before you file.">
+              <Card>
+                <KeyValue label="GST on commission (estimate)" value={rupees(t.gstOnCommission)} />
+                <KeyValue label="Tax / TDS on net earnings (estimate)" value={rupees(t.estimatedTax)} />
+              </Card>
+            </Block>
+          </>
+        )}
+      </Loadable>
+    </HqScreen>
   );
 }
 
+/**
+ * `GET /api/providers/me/forecast`. Only the figure for today is an estimate; the "weekly" and
+ * "monthly" fields are what was actually earned in the last 7 and 30 days, and are labelled so.
+ */
 export function EarningsForecastScreen() {
-  const forecast = useQuery({ queryKey: ["partner", "forecast"], queryFn: () => partnerApi.partnerOs.forecast() });
-  if (forecast.isLoading) return <HqShell title="Forecast" subtitle="Projections"><LoadingBlock /></HqShell>;
-  const f = forecast.data!;
+  const forecast = useForecastQuery();
   return (
-    <HqShell title="Earnings Forecast" subtitle="Today, weekly, and monthly projections.">
-      <View style={styles.grid}>
-        <KpiCard label="Today" value={formatCurrency(f.todayProjection)} />
-        <KpiCard label="Weekly" value={formatCurrency(f.weeklyProjection)} />
-        <KpiCard label="Monthly" value={formatCurrency(f.monthlyProjection)} />
-      </View>
-      <HqCard>
-        <HqCardTitle>Forecast inputs</HqCardTitle>
-        {Object.entries(f.inputs).map(([k, v]) => (
-          <StatRow key={k} label={k} value={String(v)} />
-        ))}
-      </HqCard>
-    </HqShell>
+    <HqScreen title="Earnings outlook" subtitle="An estimate for today, and what you actually earned recently." refresh={[K.forecast]}>
+      <Loadable query={forecast} errorTitle="Could not load your earnings outlook" loadingLabel="Loading your earnings outlook…">
+        {(f) => {
+          const today = f.basis?.todayProjection;
+          const week = f.basis?.weeklyProjection;
+          const month = f.basis?.monthlyProjection;
+          const sure = confidencePercent(today?.confidence);
+          return (
+            <>
+              <Block title="Today" caption="The server's estimate is the larger of what you have earned today and expected demand priced at your average net earning per job. It is not a promise.">
+                <Card testID="forecast-today">
+                  <KeyValue label="Estimate for today" value={rupees(f.todayProjection)} strong />
+                  <KeyValue label="Earned so far today" value={rupees(f.inputs?.todayEarnings)} />
+                  <KeyValue label="Average per job (net)" value={rupees(f.inputs?.avgPerJob)} />
+                  <KeyValue label="Confidence" value={sure ?? "Not stated"} />
+                </Card>
+              </Block>
+              <Block title="What you earned" caption="Actual net earnings, not predictions. No growth is assumed.">
+                <Card testID="forecast-actuals">
+                  <KeyValue label="Last 7 days" value={week?.state === "INSUFFICIENT_HISTORY" ? "Not enough history" : rupees(f.weeklyProjection)} />
+                  <KeyValue label="Last 30 days" value={month?.state === "INSUFFICIENT_HISTORY" ? "Not enough history" : rupees(f.monthlyProjection)} />
+                </Card>
+              </Block>
+            </>
+          );
+        }}
+      </Loadable>
+    </HqScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 4 },
-  primaryBtn: { marginTop: 4, marginBottom: 8, backgroundColor: partnerColors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center" },
-  primaryBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  secondaryBtn: { marginTop: 8, borderWidth: 1, borderColor: partnerColors.primary, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
-  secondaryBtnText: { color: partnerColors.primary, fontWeight: "700" },
-  toggleBtn: { marginTop: 12, borderRadius: 12, paddingVertical: 14, alignItems: "center" },
-  toggleOn: { backgroundColor: partnerColors.danger },
-  toggleOff: { backgroundColor: partnerColors.primary },
-  toggleText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  presenceWarn: { marginTop: 8, color: partnerColors.warning, fontSize: 13 },
-  disabled: { opacity: 0.5 },
-  payoutRow: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: partnerColors.line },
-  payoutRowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  payoutRef: { fontSize: 14, fontWeight: "600", color: partnerColors.text, flex: 1 },
-  payoutAmount: { fontSize: 14, fontWeight: "700", color: partnerColors.text },
-  payoutMeta: { marginTop: 4, fontSize: 12, color: partnerColors.textMuted },
-  incentiveRow: { marginBottom: 14 },
-  incentiveHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  incentiveName: { fontSize: 15, fontWeight: "600", color: partnerColors.text, flex: 1 },
-  incentiveBonus: { fontSize: 15, fontWeight: "700", color: partnerColors.text },
-  incentiveMeta: { marginTop: 4, fontSize: 12, color: partnerColors.textMuted },
-  incentiveRemaining: { marginTop: 2, fontSize: 12, color: partnerColors.primary, fontWeight: "600" },
-});

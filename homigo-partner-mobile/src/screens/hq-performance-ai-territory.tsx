@@ -1,512 +1,533 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Award, MapPinned, Navigation2, Trophy } from "lucide-react-native";
 import { useState } from "react";
-import { Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { useAuthStore } from "@/stores/auth-store";
+import { Linking } from "react-native";
 import { KpiCard } from "@/components/KpiCard";
+import { ProgressRow } from "@/components/HqUi";
+import { Block, Grid, HqScreen, Loadable, NotAvailable } from "@/components/money/DataScreen";
+import { AssistantChat, DensityZoneList, IntelMeta, SurgeZoneList } from "@/components/money/Intel";
+import { PeriodEarnings } from "@/components/money/PeriodEarnings";
+import { NoReviews, RatingBreakdown, ReplySheet, ReviewCard } from "@/components/money/Reviews";
+import { Banner, Button, Card, EmptyState, KeyValue, ListRow, Pill, T } from "@/components/ui";
 import {
-  EmptyState,
-  ErrorBlock,
-  HqCard,
-  HqCardTitle,
-  HqMuted,
-  LoadingBlock,
-  ProgressRow,
-  StatRow,
-} from "@/components/HqUi";
-import { PartnerScreen } from "@/components/PartnerScreen";
-import { customerName, formatCurrency, formatDate, formatPct } from "@/lib/format";
-import { partnerApi } from "@/services/partner-api";
-import { useDashboardQuery } from "@/screens/hq-work-earnings";
-import { partnerColors } from "@/theme/colors";
+  K,
+  REVIEWS_PAGE_SIZE,
+  useCareerQuery,
+  useDashboardQuery,
+  useDemandForecastQuery,
+  useDensityQuery,
+  useLifecycleQuery,
+  useNudgesQuery,
+  useRankingsQuery,
+  useReviewsQuery,
+  useRouteQuery,
+  useScoreHistoryQuery,
+  useScoreQuery,
+  useSurgeQuery,
+  useZoneRecommendationsQuery,
+} from "@/hooks/money/queries";
+import { confidencePercent, count, formatDay, formatDayTime, humanise, percent } from "@/lib/money-format";
+import { pageOf } from "@/lib/money-series";
+import { RouteSummary } from "@/screens/hq-work-earnings";
+import type { PartnerReview } from "@/types/partner";
 
-function useAuthedQuery() {
-  return useAuthStore((s) => s.hydrated && Boolean(s.accessToken));
-}
+/**
+ * The Performance, AI and Territory screens. Nothing here is worked out on the phone: no tips from
+ * client-side thresholds, no templated "insights", no averages. A read the server has switched off
+ * (`null`) is shown as "not available yet"; a screen whose only source is admin-only says it is
+ * coming soon and shows no numbers.
+ */
 
-function HqShell({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
-  return (
-    <PartnerScreen title={title} subtitle={subtitle} showBack>
-      {children}
-    </PartnerScreen>
-  );
-}
+/* ------------------------------------------------------------ performance */
 
 export function PerformanceReviewsScreen() {
-  const reviews = useQuery({ queryKey: ["partner", "reviews"], queryFn: () => partnerApi.reviews({ limit: 20 }) });
-  if (reviews.isLoading) return <HqShell title="Reviews" subtitle="Customer feedback"><LoadingBlock /></HqShell>;
-  const r = reviews.data!;
+  const [page, setPage] = useState(1);
+  const [replyTo, setReplyTo] = useState<PartnerReview | null>(null);
+  const reviews = useReviewsQuery(page);
   return (
-    <HqShell title="Reviews" subtitle="Customer ratings and review responses.">
-      <View style={styles.grid}>
-        <KpiCard label="Average" value={r.averageRating?.toFixed(1) ?? "—"} />
-        <KpiCard label="Total" value={r.total} />
-      </View>
-      <HqCard>
-        {r.reviews.length === 0 ? (
-          <EmptyState message="No reviews yet." />
-        ) : (
-          r.reviews.map((rev) => (
-            <View key={rev.id} style={styles.review}>
-              <Text style={styles.reviewTitle}>{customerName(rev.customer)} · {rev.rating}★</Text>
-              <Text style={styles.reviewBody}>{rev.comment || "No comment"}</Text>
-              <Text style={styles.reviewMeta}>{rev.service.name} · {formatDate(rev.createdAt)}</Text>
-            </View>
-          ))
-        )}
-      </HqCard>
-    </HqShell>
+    <HqScreen title="Reviews" subtitle="What customers said, and your replies." refresh={[K.reviews]}>
+      <Loadable query={reviews} errorTitle="Could not load reviews" loadingLabel="Loading reviews…">
+        {(r) => {
+          const list = Array.isArray(r.reviews) ? r.reviews : [];
+          const first = (r.page - 1) * REVIEWS_PAGE_SIZE + 1;
+          const hasNext = r.page * REVIEWS_PAGE_SIZE < r.total;
+          return (
+            <>
+              <RatingBreakdown breakdown={r.ratingBreakdown} total={r.total} />
+              {list.length === 0 ? (
+                <NoReviews />
+              ) : (
+                <>
+                  {list.map((rev, i) => (
+                    <ReviewCard key={rev.id} review={rev} index={i} onReply={setReplyTo} />
+                  ))}
+                  <T kind="small" numeric>{`Showing ${first}–${first + list.length - 1} of ${r.total}, newest first.`}</T>
+                  {r.page > 1 ? <Button label="Newer reviews" variant="secondary" onPress={() => setPage((p) => Math.max(1, p - 1))} testID="reviews-prev" /> : null}
+                  {hasNext ? <Button label="Older reviews" variant="secondary" onPress={() => setPage((p) => p + 1)} testID="reviews-next" /> : null}
+                </>
+              )}
+            </>
+          );
+        }}
+      </Loadable>
+      <ReplySheet review={replyTo} onClose={() => setReplyTo(null)} />
+    </HqScreen>
   );
 }
 
+const SCORE_COMPONENTS: Array<[key: "quality" | "reliability" | "completion" | "onTime" | "customerSatisfaction" | "compliance" | "safety", label: string]> = [
+  ["quality", "Quality"],
+  ["reliability", "Reliability"],
+  ["completion", "Completion"],
+  ["onTime", "On-time"],
+  ["customerSatisfaction", "Customer satisfaction"],
+  ["compliance", "Compliance"],
+  ["safety", "Safety"],
+];
+
 export function PerformanceScorecardScreen() {
-  const ready = useAuthedQuery();
-  const score = useQuery({ queryKey: ["partner", "score"], queryFn: () => partnerApi.partnerOs.score(), enabled: ready });
-  const history = useQuery({ queryKey: ["partner", "score-history"], queryFn: () => partnerApi.partnerOs.scoreHistory(), enabled: ready });
-  const lifecycle = useQuery({ queryKey: ["partner", "lifecycle"], queryFn: () => partnerApi.partnerOs.lifecycle(), enabled: ready });
-  if (!ready || score.isLoading) return <HqShell title="Score" subtitle="Partner score"><LoadingBlock /></HqShell>;
-  if (score.isError || !score.data) {
-    return (
-      <HqShell title="Score" subtitle="Partner score">
-        <ErrorBlock message="Could not load your score." />
-      </HqShell>
-    );
-  }
-  const d = score.data;
-  const latest = history.data?.items[0];
-  const labels: Record<string, string> = {
-    quality: "Quality",
-    reliability: "Reliability",
-    completion: "Completion",
-    onTime: "On-time",
-    customerSatisfaction: "Customer satisfaction",
-    compliance: "Compliance",
-    safety: "Safety",
-  };
+  const score = useScoreQuery();
+  const history = useScoreHistoryQuery();
+  const lifecycle = useLifecycleQuery();
   return (
-    <HqShell title="Score" subtitle="Server-calculated. Not editable on this device.">
-      <View style={styles.grid}>
-        <KpiCard label="Score" value={d.overallScore == null ? "—" : `${Math.round(d.overallScore)}`} />
-        <KpiCard label="Band" value={d.band.replace(/_/g, " ")} />
-      </View>
-      <HqCard>
-        <HqMuted>{`Lifecycle ${lifecycle.data?.lifecycleState ?? "—"} · availability ${lifecycle.data?.availability.currentStatus ?? "—"}`}</HqMuted>
-        {Object.entries(d.components).map(([key, c]) => (
-          <StatRow key={key} label={labels[key] ?? key} value={c.value == null ? "Not enough data" : String(Math.round(c.value))} />
-        ))}
-      </HqCard>
-      <HqCard>
-        <HqCardTitle>Why did my score change?</HqCardTitle>
-        {!latest ? (
-          <EmptyState message="No score history yet." />
-        ) : (
+    <HqScreen title="Score" subtitle="Calculated by HOMEEIGO. It cannot be edited on this device." refresh={[K.score, K.scoreHistory, K.lifecycle]}>
+      <Loadable query={score} errorTitle="Could not load your score" loadingLabel="Loading your score…">
+        {(d) => (
           <>
-            <StatRow label="Change" value={`${latest.previousScore ?? "—"} → ${latest.newScore ?? "—"}`} />
-            {(latest.reasons ?? []).map((r) => (
-              <Text key={r.detail} style={styles.tip}>{r.detail}</Text>
-            ))}
+            <Grid>
+              <KpiCard label="Score" value={d.overallScore == null ? "—" : `${Math.round(d.overallScore)}`} />
+              <KpiCard label="Band" value={humanise(d.band)} />
+            </Grid>
+            {d.overallScore == null ? <Banner tone="info" message="There is not enough data yet for an overall score." /> : null}
+            <Block title="What it is made of" caption={`Calculated ${formatDayTime(d.calculatedAt)} from ${d.sample?.completedJobs ?? 0} completed jobs, ${d.sample?.ratings ?? 0} ratings, ${d.sample?.arrivals ?? 0} arrivals and ${d.sample?.assignments ?? 0} assignments.`}>
+              <Card>
+                {SCORE_COMPONENTS.map(([key, label]) => {
+                  const c = d.components?.[key];
+                  return <KeyValue key={key} label={label} value={c?.value == null ? "Not enough data" : String(Math.round(c.value))} />;
+                })}
+              </Card>
+            </Block>
+            <Block title="Change over time">
+              <Card>
+                {(["7d", "30d", "90d"] as const).map((window) => {
+                  const t = d.trends?.[window];
+                  const text = !t || t.insufficient || t.delta == null ? "Not enough data" : `${t.delta > 0 ? "+" : t.delta < 0 ? "−" : ""}${Math.abs(Math.round(t.delta * 10) / 10)}`;
+                  return <KeyValue key={window} label={`Last ${window.replace("d", " days")}`} value={text} />;
+                })}
+              </Card>
+            </Block>
           </>
         )}
-      </HqCard>
-    </HqShell>
+      </Loadable>
+
+      <Block title="Lifecycle">
+        <Loadable query={lifecycle} errorTitle="Could not load your account state" loadingCards={1}>
+          {(l) => (
+            <Card testID="score-lifecycle">
+              <KeyValue label="Account state" value={humanise(l.lifecycleState)} />
+              <KeyValue label="Availability" value={humanise(l.availability?.currentStatus)} />
+              <KeyValue label="Can be offered jobs" value={l.dispatchEligible ? "Yes" : "No"} />
+            </Card>
+          )}
+        </Loadable>
+      </Block>
+
+      <Block title="Why did my score change?">
+        <Loadable query={history} errorTitle="Could not load your score history" loadingCards={1}>
+          {(h) => {
+            const latest = h.items?.[0];
+            if (!latest) {
+              return (
+                <Card>
+                  <EmptyState icon={Trophy} title="No score history yet" message="When your score is recalculated, the change and the reasons for it appear here." testID="score-history-empty" />
+                </Card>
+              );
+            }
+            const reasons = Array.isArray(latest.reasons) ? latest.reasons : [];
+            return (
+              <Card testID="score-latest-change">
+                <KeyValue label="Change" value={`${latest.previousScore == null ? "—" : Math.round(latest.previousScore)} → ${latest.newScore == null ? "—" : Math.round(latest.newScore)}`} strong />
+                <KeyValue label="When" value={formatDayTime(latest.calculatedAt)} />
+                {reasons.length === 0 ? <T kind="small">The server recorded no reason for this change.</T> : null}
+                {reasons.map((r, i) => (
+                  <T key={`${r.code ?? r.component ?? "reason"}-${i}`} kind="body">
+                    {r.detail}
+                  </T>
+                ))}
+              </Card>
+            );
+          }}
+        </Loadable>
+      </Block>
+    </HqScreen>
   );
 }
 
 export function PerformanceCareerScreen() {
-  const ready = useAuthedQuery();
-  const career = useQuery({ queryKey: ["partner", "career"], queryFn: () => partnerApi.partnerOs.career(), enabled: ready });
-  if (!ready || career.isLoading) return <HqShell title="Career" subtitle="Level and progress"><LoadingBlock /></HqShell>;
-  if (career.isError || !career.data) {
-    return (
-      <HqShell title="Career" subtitle="Level and progress">
-        <ErrorBlock message="Could not load career progress." />
-      </HqShell>
-    );
-  }
-  const d = career.data;
+  const career = useCareerQuery();
   return (
-    <HqShell title="Career" subtitle={`${d.currentLevel}${d.nextLevel ? ` · ${d.progressPct}% toward ${d.nextLevel}` : ""}`}>
-      <View style={styles.grid}>
-        <KpiCard label="Level" value={d.currentLevel} />
-        <KpiCard label="Priority boost" value={d.benefitsActive ? `+${d.careerPriorityBoost}` : "Paused"} />
-      </View>
-      <HqCard>
-        <HqCardTitle>Requirements</HqCardTitle>
-        {d.requirements.map((r) => (
-          <StatRow key={r.id} label={`${r.met ? "Done · " : ""}${r.label}`} value={`${r.current}/${r.target}`} />
-        ))}
-      </HqCard>
-      <HqCard>
-        <HqCardTitle>Badges</HqCardTitle>
-        {d.badges.length === 0 ? (
-          <EmptyState message="No badges awarded yet." />
-        ) : (
-          d.badges.map((b) => <StatRow key={b.code} label={b.label} value={b.code} />)
-        )}
-      </HqCard>
-    </HqShell>
+    <HqScreen title="Career" subtitle="Your level and what the next one needs." refresh={[K.career]}>
+      <Loadable query={career} errorTitle="Could not load career progress" loadingLabel="Loading career progress…">
+        {(d) => {
+          const requirements = Array.isArray(d.requirements) ? d.requirements : [];
+          const badges = Array.isArray(d.badges) ? d.badges : [];
+          return (
+            <>
+              <Grid>
+                {/* The level is shown as the server sends it (the device script looks for that exact value). */}
+                <KpiCard label="Level" value={d.currentLevel} />
+                <KpiCard label="Priority boost" value={d.benefitsActive ? `+${d.careerPriorityBoost}` : "Paused"} />
+              </Grid>
+              <Card>
+                <KeyValue label="Status" value={humanise(d.qualificationState)} />
+                {d.nextLevel ? <ProgressRow label={`Progress to ${d.nextLevel}`} pct={d.progressPct} /> : <T kind="small">You are at the highest level.</T>}
+              </Card>
+              <Block title="Requirements">
+                <Card>
+                  {requirements.length === 0 ? (
+                    <T kind="small">The server lists no requirements for the next level.</T>
+                  ) : (
+                    requirements.map((r) => <KeyValue key={r.id} label={`${r.met ? "Done · " : ""}${r.label}`} value={`${r.current}/${r.target}`} />)
+                  )}
+                </Card>
+              </Block>
+              <Block title="Badges">
+                <Card>
+                  {badges.length === 0 ? (
+                    <EmptyState icon={Award} title="No badges awarded yet" message="Badges HOMEEIGO awards you appear here with the reason." testID="career-badges-empty" />
+                  ) : (
+                    badges.map((b, i) => <ListRow key={b.code} icon={Award} tone="warning" title={b.label} subtitle={`${b.reason} · ${formatDay(b.awardedAt)}`} last={i === badges.length - 1} />)
+                  )}
+                </Card>
+              </Block>
+            </>
+          );
+        }}
+      </Loadable>
+    </HqScreen>
   );
 }
 
 export function PerformanceRankingsScreen() {
-  const rankings = useQuery({ queryKey: ["partner", "rankings"], queryFn: () => partnerApi.partnerOs.rankings() });
-  if (rankings.isLoading) return <HqShell title="Rankings" subtitle="City and area ranks"><LoadingBlock /></HqShell>;
-  const r = rankings.data!;
+  const rankings = useRankingsQuery();
   return (
-    <HqShell title="Rankings" subtitle="City, area, and category rankings.">
-      <View style={styles.grid}>
-        <KpiCard label="City rank" value={`#${r.cityRank}/${r.cityTotal}`} />
-        <KpiCard label="Area rank" value={`#${r.areaRank}/${r.areaTotal}`} />
-        <KpiCard label="Score" value={r.compositeScore.toFixed(1)} />
-      </View>
-      <HqCard>
-        <HqCardTitle>Category ranks</HqCardTitle>
-        {r.categoryRanks.map((c) => (
-          <StatRow key={c.category} label={c.category} value={`#${c.rank}/${c.total}`} />
-        ))}
-      </HqCard>
-    </HqShell>
-  );
-}
-
-export function PerformanceQualityScreen() {
-  const dashboard = useDashboardQuery();
-  if (dashboard.isLoading) return <HqShell title="Quality Insights" subtitle="Recommendations"><LoadingBlock /></HqShell>;
-  const d = dashboard.data!;
-  const tips: string[] = [];
-  if (d.rates.acceptanceRate < 80) tips.push("Improve acceptance rate by responding to pending requests faster.");
-  if (d.rates.cancellationRate > 10) tips.push("Reduce cancellations — confirm schedule before accepting jobs.");
-  if (d.rates.onTimeRate < 85) tips.push("Leave earlier for jobs to improve on-time arrival rate.");
-  if (d.rating < 4.5) tips.push("Follow up with customers after service to improve ratings.");
-  if (tips.length === 0) tips.push("Great work! Your quality metrics are strong. Keep your acceptance and on-time rates high.");
-  return (
-    <HqShell title="Quality Insights" subtitle="Rule-based quality recommendations from your KPIs.">
-      <HqCard>
-        {tips.map((t) => (
-          <Text key={t} style={styles.tip}>• {t}</Text>
-        ))}
-      </HqCard>
-    </HqShell>
-  );
-}
-
-export function PerformanceAnalyticsScreen() {
-  const earnings = useQuery({ queryKey: ["partner", "earnings", 30], queryFn: () => partnerApi.earnings(30) });
-  const dashboard = useDashboardQuery();
-  if (earnings.isLoading || dashboard.isLoading) return <HqShell title="Analytics" subtitle="Charts"><LoadingBlock /></HqShell>;
-  return (
-    <HqShell title="Analytics" subtitle="Performance analytics for earnings and bookings.">
-      <View style={styles.grid}>
-        <KpiCard label="Period earnings" value={formatCurrency(earnings.data!.periodEarnings)} />
-        <KpiCard label="Jobs" value={earnings.data!.totalJobs} />
-        <KpiCard label="Acceptance" value={formatPct(dashboard.data!.rates.acceptanceRate)} />
-        <KpiCard label="Completion" value={formatPct(dashboard.data!.rates.completionRate)} />
-      </View>
-      <HqCard>
-        <HqCardTitle>Daily breakdown (30d)</HqCardTitle>
-        {(earnings.data!.breakdown ?? []).slice(-10).map((b) => (
-          <StatRow key={b.date} label={formatDate(b.date)} value={`${formatCurrency(b.earnings)} · ${b.jobs} jobs`} />
-        ))}
-      </HqCard>
-    </HqShell>
-  );
-}
-
-export function AiAssistantScreen() {
-  const dashboard = useDashboardQuery();
-  if (dashboard.isLoading) return <HqShell title="AI Assistant" subtitle="Insights"><LoadingBlock /></HqShell>;
-  const d = dashboard.data!;
-  const insights = [
-    `You have ${d.counts.pendingRequests} pending requests — respond quickly to protect acceptance rate.`,
-    `Today's earnings: ${formatCurrency(d.earnings.today)} (${d.earnings.todayChange >= 0 ? "+" : ""}${d.earnings.todayChange}% vs yesterday).`,
-    `Commission tier: ${formatPct(d.earnings.commissionRate)} — complete more jobs to unlock better rates.`,
-    d.counts.activeBookings > 0
-      ? `${d.counts.activeBookings} active job(s) in progress — use Route Center to optimize travel.`
-      : "No active jobs — go online in a high-surge zone to maximize earnings.",
-  ];
-  return (
-    <HqShell title="AI Assistant" subtitle="Smart insights from your live dashboard data.">
-      <HqCard>
-        {insights.map((line) => (
-          <Text key={line} style={styles.tip}>• {line}</Text>
-        ))}
-      </HqCard>
-      <AiAssistantChat />
-    </HqShell>
+    <HqScreen title="Rankings" subtitle="Where you stand among active partners in your city." refresh={[K.rankings]}>
+      <Loadable
+        query={rankings}
+        errorTitle="Could not load rankings"
+        loadingLabel="Loading rankings…"
+        whenNull={<NotAvailable icon={Trophy} title="No ranking yet" message="The server has no ranking for your account." testID="rankings-none" />}
+      >
+        {(r) => {
+          const categories = Array.isArray(r.categoryRanks) ? r.categoryRanks : [];
+          return (
+            <>
+              {/* The server has no separate area ranking: its area fields repeat the city values, so they are not shown. */}
+              <Card testID="rankings-city">
+                <KeyValue label={`City rank${r.city ? ` · ${r.city}` : ""}`} value={r.cityRank > 0 ? `#${r.cityRank} of ${r.cityTotal}` : "Not ranked"} strong />
+                <KeyValue label="Ranking score" value={typeof r.compositeScore === "number" ? r.compositeScore.toFixed(1) : "—"} />
+              </Card>
+              {r.cityRank > 0 ? null : <T kind="small">Only approved, active partners are ranked.</T>}
+              <Block title="By category">
+                <Card>
+                  {categories.length === 0 ? (
+                    <T kind="small">The server sent no category rankings.</T>
+                  ) : (
+                    categories.map((c) => <KeyValue key={c.category} label={humanise(c.category)} value={`#${c.rank} of ${c.total}`} />)
+                  )}
+                </Card>
+              </Block>
+            </>
+          );
+        }}
+      </Loadable>
+    </HqScreen>
   );
 }
 
 /**
- * Ask-anything box, routed through the backend AI Gateway (`/api/ai/partner`).
- *
- * The insight list above stays deterministic and always renders; this adds the
- * conversational half. On failure the turn is labelled offline rather than dropped, so a
- * partner is never shown a canned line as though a model wrote it.
+ * The partner's recorded rates, and — only when the server has that feature switched on — the
+ * server's own suggestions. The canned tips this screen used to derive from thresholds on the phone
+ * are gone.
  */
-function AiAssistantChat() {
-  const [input, setInput] = useState("");
-  const [turns, setTurns] = useState<Array<{ q: string; a: string; offline?: boolean; basis?: string[] }>>([]);
-
-  const ask = useMutation({
-    mutationFn: (q: string) => partnerApi.aiChat(q),
-    onSuccess: (res, q) =>
-      setTurns((t) => [
-        ...t,
-        {
-          q,
-          a: res.content,
-          offline: res.mode === "deterministic_fallback",
-          basis: res.basis,
-        },
-      ]),
-    onError: (_e, q) =>
-      setTurns((t) => [
-        ...t,
-        { q, a: "Assistant is unavailable right now. Your dashboard insights above are still current.", offline: true },
-      ]),
-  });
-
-  const send = () => {
-    const q = input.trim();
-    if (!q || ask.isPending) return;
-    setInput("");
-    ask.mutate(q);
-  };
-
+export function PerformanceQualityScreen() {
+  const dashboard = useDashboardQuery();
+  const nudges = useNudgesQuery();
   return (
-    <HqCard>
-      <Text style={styles.tip}>Ask about routes, earnings or scheduling</Text>
-      {turns.map((t, i) => (
-        <View key={i} style={{ marginBottom: 10 }}>
-          <Text style={[styles.tip, { fontWeight: "700" }]}>You: {t.q}</Text>
-          <Text style={styles.tip}>{t.a}</Text>
-          {t.basis?.length ? (
-            <Text style={[styles.tip, { fontSize: 11, color: partnerColors.textMuted }]}>
-              Based on: {t.basis.join("; ")}
-            </Text>
-          ) : null}
-          {t.offline ? (
-            <Text style={[styles.tip, { fontSize: 11, color: partnerColors.textMuted }]}>
-              VERIFIED SUMMARY — live model unavailable
-            </Text>
-          ) : null}
-        </View>
-      ))}
-      {ask.isPending ? <Text style={styles.tip}>Thinking…</Text> : null}
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <TextInput
-          value={input}
-          onChangeText={setInput}
-          onSubmitEditing={send}
-          editable={!ask.isPending}
-          placeholder="Ask the assistant…"
-          accessibilityLabel="Ask the partner copilot"
-          placeholderTextColor={partnerColors.textMuted}
-          style={{
-            flex: 1, borderWidth: 1, borderColor: partnerColors.line, borderRadius: 10,
-            paddingHorizontal: 12, paddingVertical: 8, color: partnerColors.text,
-          }}
-        />
-          <Pressable
-            onPress={send}
-            disabled={ask.isPending}
-            accessibilityRole="button"
-            accessibilityLabel="Send question"
-            style={{
-              backgroundColor: partnerColors.primary, borderRadius: 10,
-              paddingHorizontal: 16, justifyContent: "center", opacity: ask.isPending ? 0.6 : 1,
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "700" }}>Ask</Text>
-          </Pressable>
-      </View>
-    </HqCard>
+    <HqScreen title="Quality" subtitle="Your recorded rates." refresh={[K.dashboard, K.intel]}>
+      <Loadable query={dashboard} errorTitle="Could not load your rates" loadingLabel="Loading your rates…">
+        {(d) => (
+          <Card testID="quality-rates">
+            <KeyValue label="Acceptance rate" value={percent(d.rates?.acceptanceRate)} />
+            <KeyValue label="Completion rate" value={percent(d.rates?.completionRate)} />
+            <KeyValue label="Response rate" value={percent(d.rates?.responseRate)} />
+            <KeyValue label="On-time rate" value={percent(d.rates?.onTimeRate)} />
+            <KeyValue label="Cancellation rate" value={percent(d.rates?.cancellationRate)} />
+            <KeyValue label="Reviews received" value={count(d.counts?.totalReviews)} />
+          </Card>
+        )}
+      </Loadable>
+      <Block title="Suggestions">
+        <Loadable
+          query={nudges}
+          errorTitle="Could not load suggestions"
+          loadingCards={1}
+          whenNull={<NotAvailable title="Not available yet" message="HOMEEIGO has not switched on performance suggestions for partner accounts." testID="quality-nudges-off" />}
+        >
+          {(n) =>
+            n.state !== "OK" ? (
+              <NotAvailable title="Not enough history yet" message="Suggestions appear once there is enough recent work to compare." testID="quality-nudges-insufficient" />
+            ) : n.nudges.length === 0 ? (
+              <NotAvailable title="No suggestions right now" message={`Nothing stood out in your last ${n.windowDays} days.`} testID="quality-nudges-none" />
+            ) : (
+              <>
+                {n.nudges.map((nudge, i) => (
+                  <Banner key={`${nudge.metric}-${i}`} tone={nudge.severity === "WARNING" ? "warning" : "info"} title={humanise(nudge.metric)} message={nudge.message} />
+                ))}
+                <T kind="small">{`Written by the server from your last ${n.windowDays} days.`}</T>
+              </>
+            )
+          }
+        </Loadable>
+      </Block>
+    </HqScreen>
   );
 }
 
-export function AiDemandForecastScreen() {
-  const forecast = useQuery({ queryKey: ["partner", "geo-demand"], queryFn: () => partnerApi.geoIntel.demandForecast(24) });
-  if (forecast.isLoading) return <HqShell title="Demand Forecast" subtitle="24h predictions"><LoadingBlock /></HqShell>;
-  if (forecast.isError || !forecast.data) return <HqShell title="Demand Forecast" subtitle="24h predictions"><ErrorBlock message="Demand forecast unavailable." /></HqShell>;
-  const points = (forecast.data.points ?? []).slice(0, 20);
+export function PerformanceAnalyticsScreen() {
+  const dashboard = useDashboardQuery();
   return (
-    <HqShell title="Demand Forecast" subtitle="24h zone-hour demand predictions.">
-      <KpiCard label="Total predicted" value={Math.round(forecast.data.totalPredicted ?? 0)} />
-      <HqCard>
-        {points.map((p, i) => (
-          <StatRow key={`${p.zone_id}-${p.hour}-${i}`} label={`${p.zone_id} · ${p.hour}`} value={p.predicted.toFixed(1)} />
-        ))}
-      </HqCard>
-    </HqShell>
+    <HqScreen title="Analytics" subtitle="Earnings by period, and your job rates." refresh={[K.earnings, K.dashboard]}>
+      <PeriodEarnings />
+      <Block title="Job rates">
+        <Loadable query={dashboard} errorTitle="Could not load your rates" loadingCards={1}>
+          {(d) => (
+            <Card>
+              <KeyValue label="Acceptance rate" value={percent(d.rates?.acceptanceRate)} />
+              <KeyValue label="Completion rate" value={percent(d.rates?.completionRate)} />
+              <KeyValue label="Jobs completed, all time" value={count(d.counts?.completedLifetime)} />
+            </Card>
+          )}
+        </Loadable>
+      </Block>
+    </HqScreen>
+  );
+}
+
+/* --------------------------------------------------------------------- AI */
+
+export function AiAssistantScreen() {
+  return (
+    <HqScreen title="AI Assistant" subtitle="Ask a question about your work.">
+      <AssistantChat />
+    </HqScreen>
+  );
+}
+
+const FORECAST_PAGE = 12;
+
+export function AiDemandForecastScreen() {
+  const forecast = useDemandForecastQuery();
+  const [shown, setShown] = useState(FORECAST_PAGE);
+  return (
+    <HqScreen title="Demand Forecast" subtitle="Expected bookings by zone and hour." refresh={[K.demand]}>
+      <Loadable query={forecast} errorTitle="Could not load the demand forecast" loadingLabel="Loading the demand forecast…">
+        {(f) => {
+          if (!f.available) {
+            return <NotAvailable title="No forecast right now" message={f.reason || "The forecast source did not answer."} testID="demand-unavailable" />;
+          }
+          const d = f.data;
+          if (d.stale) {
+            return (
+              <Banner
+                tone="warning"
+                title="The forecast is out of date"
+                message={`The latest forecast covers ${d.forecastWindow?.from ? formatDayTime(d.forecastWindow.from) : "—"} to ${d.forecastWindow?.to ? formatDayTime(d.forecastWindow.to) : "—"}${typeof d.expiredByHours === "number" ? `, which ended about ${Math.round(d.expiredByHours)} hours ago` : ""}. It is not shown, because it does not describe the coming hours.`}
+                testID="demand-stale"
+              />
+            );
+          }
+          const points = Array.isArray(d.points) ? d.points : [];
+          const { visible, hidden } = pageOf(points, shown);
+          return (
+            <>
+              <IntelMeta freshness={f.freshness} generatedAt={f.generatedAt} confidence={f.confidence} />
+              <Card>
+                <KeyValue label={`Bookings expected, next ${d.horizonHours} hours, all zones`} value={String(Math.round(d.totalPredicted))} strong />
+              </Card>
+              <Block title="By zone and hour">
+                <Card>
+                  {points.length === 0 ? (
+                    <T kind="small">The forecast has no zone rows.</T>
+                  ) : (
+                    visible.map((p, i) => (
+                      <ListRow
+                        key={`${p.zone_id}-${p.hour}-${i}`}
+                        title={`Zone ${p.zone_id}`}
+                        subtitle={`${formatDayTime(p.hour)} · range ${p.lo.toFixed(1)}–${p.hi.toFixed(1)}`}
+                        value={p.predicted.toFixed(1)}
+                        last={i === visible.length - 1 && hidden === 0}
+                      />
+                    ))
+                  )}
+                  {hidden > 0 ? <Button label={`Show ${Math.min(FORECAST_PAGE, hidden)} more`} variant="quiet" onPress={() => setShown((n) => n + FORECAST_PAGE)} /> : null}
+                </Card>
+              </Block>
+              {(d.limitations ?? []).map((line) => (
+                <T key={line} kind="small">
+                  {line}
+                </T>
+              ))}
+            </>
+          );
+        }}
+      </Loadable>
+    </HqScreen>
   );
 }
 
 export function AiRouteScreen() {
-  return <RouteCenterAlias title="Route AI" subtitle="AI route optimization summary and stop sequence." />;
-}
-
-function RouteCenterAlias({ title, subtitle }: { title: string; subtitle: string }) {
-  const route = useQuery({ queryKey: ["partner", "route"], queryFn: () => partnerApi.routeOptimize() });
-  if (route.isLoading) return <HqShell title={title} subtitle={subtitle}><LoadingBlock /></HqShell>;
-  if (route.isError) return <HqShell title={title} subtitle={subtitle}><ErrorBlock message="No route to optimize." /></HqShell>;
-  const r = route.data!;
+  const route = useRouteQuery();
   return (
-    <HqShell title={title} subtitle={subtitle}>
-      <View style={styles.grid}>
-        <KpiCard label="Stops" value={r.metrics.stops} />
-        <KpiCard label="Time saved" value={`${Math.round(r.metrics.timeSavedMin)} min`} />
-      </View>
-      <HqCard>
-        <StatRow label="Optimized distance" value={`${r.metrics.optimizedDistanceKm.toFixed(1)} km`} />
-        <StatRow label="Optimized ETA" value={`${Math.round(r.metrics.optimizedEtaMin)} min`} />
-        <StatRow label="Source" value={r.metrics.source} />
-      </HqCard>
-    </HqShell>
+    <HqScreen title="Route AI" subtitle="The order to visit the jobs you hold." refresh={[K.route]}>
+      <Loadable query={route} errorTitle="Could not work out a route" loadingLabel="Working out your route…">
+        {(r) => <RouteSummary route={r} />}
+      </Loadable>
+    </HqScreen>
   );
 }
+
+const SURGE_CAPTION = "The multiplier is the server's estimate of demand pressure in a zone. It is not a promise of higher pay.";
 
 export function AiIntelligenceScreen() {
-  const surge = useQuery({ queryKey: ["partner", "surge"], queryFn: () => partnerApi.geoIntel.surge() });
-  const zones = useQuery({ queryKey: ["partner", "zones"], queryFn: () => partnerApi.geoIntel.zoneScoring() });
-  const dashboard = useDashboardQuery();
-  if (surge.isLoading || zones.isLoading) return <HqShell title="Growth Advisor" subtitle="Surge and zones"><LoadingBlock /></HqShell>;
-  if (surge.isError || zones.isError || !zones.data) {
-    return (
-      <HqShell title="Growth Advisor" subtitle="Surge and zones">
-        <ErrorBlock message="Could not load growth intelligence." />
-      </HqShell>
-    );
-  }
-  const surgeZones = Array.isArray(surge.data) ? surge.data : [];
-  const opportunity = zones.data.bestOpportunity ?? zones.data.ranked ?? [];
+  const surge = useSurgeQuery();
+  const zones = useZoneRecommendationsQuery();
   return (
-    <HqShell title="Growth Advisor" subtitle="Surge radar, zone ranking, and live earnings.">
-      {dashboard.data ? (
-        <View style={styles.grid}>
-          <KpiCard label="Today" value={formatCurrency(dashboard.data.earnings.today)} />
-          <KpiCard label="Rating" value={dashboard.data.rating.toFixed(1)} />
-        </View>
-      ) : null}
-      <HqCard>
-        <HqCardTitle>Top surge zones</HqCardTitle>
-        {surgeZones.slice(0, 8).map((z) => (
-          <StatRow key={z.zoneId} label={z.name} value={`${z.predictedSurge.toFixed(2)}x`} />
-        ))}
-      </HqCard>
-      <HqCard>
-        <HqCardTitle>Best opportunity zones</HqCardTitle>
-        {opportunity.slice(0, 8).map((z) => (
-          <StatRow
-            key={z.zoneId}
-            label={z.name}
-            value={`D ${z.demand24h} / S ${z.supply} · gap ${z.gap ?? z.demand24h - z.supply}`}
-          />
-        ))}
-      </HqCard>
-    </HqShell>
+    <HqScreen title="Growth Advisor" subtitle="Where demand is building." refresh={[K.surge, K.intel]}>
+      <Block title="Top surge zones" caption={SURGE_CAPTION}>
+        <Loadable query={surge} errorTitle="Could not load surge zones" loadingLabel="Loading surge zones…" loadingCards={1}>
+          {(s) => (
+            <>
+              <IntelMeta freshness={s.freshness} generatedAt={s.generatedAt} confidence={s.confidence} />
+              <SurgeZoneList zones={Array.isArray(s.data) ? s.data : []} />
+            </>
+          )}
+        </Loadable>
+      </Block>
+      <Block title="Recommended zones for you">
+        <Loadable
+          query={zones}
+          errorTitle="Could not load zone recommendations"
+          loadingCards={1}
+          whenNull={<NotAvailable icon={MapPinned} title="Not available yet" message="HOMEEIGO has not switched on zone recommendations for partner accounts." testID="zones-off" />}
+        >
+          {(z) =>
+            z.state !== "OK" || z.recommendations.length === 0 ? (
+              <NotAvailable icon={MapPinned} title="No recommendations right now" message="The server could not rank zones for you at the moment." testID="zones-none" />
+            ) : (
+              <Card testID="zones-list">
+                {z.recommendations.map((rec, i) => {
+                  const sure = confidencePercent(rec.confidence);
+                  return (
+                    <ListRow
+                      key={rec.zoneId}
+                      icon={MapPinned}
+                      title={`${rec.rank}. ${rec.name}${rec.city ? ` · ${rec.city}` : ""}`}
+                      subtitle={`${rec.coverage > 0 ? `Score ${Math.round(rec.score)} of 100` : "Not enough data to score"}${sure ? ` · confidence ${sure}` : ""}${typeof rec.evidence?.distanceKm === "number" ? ` · ${rec.evidence.distanceKm.toFixed(1)} km away` : ""}`}
+                      last={i === z.recommendations.length - 1}
+                    />
+                  );
+                })}
+              </Card>
+            )
+          }
+        </Loadable>
+      </Block>
+    </HqScreen>
   );
 }
+
+/* --------------------------------------------------------------- territory */
 
 export function TerritoryNavigationScreen() {
-  const route = useQuery({ queryKey: ["partner", "route"], queryFn: () => partnerApi.routeOptimize() });
+  const route = useRouteQuery();
   return (
-    <HqShell title="Navigation" subtitle="Turn-by-turn job navigation.">
-      {route.isLoading ? (
-        <LoadingBlock />
-      ) : route.isError || !route.data?.sequence.length ? (
-        <EmptyState message="No active navigation stops. Accept a job to start navigation." />
-      ) : (
-        <HqCard>
-          {route.data.sequence.map((s) => (
-            <Pressable
-              key={s.bookingId}
-              onPress={() => void Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}`)}
-              style={styles.navRow}
-            >
-              <Text style={styles.navLabel}>Stop #{s.order}</Text>
-              <Text style={styles.navMeta}>Open in Google Maps · ETA {s.cumulativeEtaMin} min</Text>
-            </Pressable>
-          ))}
-        </HqCard>
-      )}
-    </HqShell>
+    <HqScreen title="Navigation" subtitle="Open directions to each job you hold." refresh={[K.route]}>
+      <Loadable query={route} errorTitle="Could not load your stops" loadingLabel="Loading your stops…">
+        {(r) => {
+          const sequence = Array.isArray(r.sequence) ? r.sequence : [];
+          if (sequence.length === 0) {
+            return (
+              <Card>
+                <EmptyState icon={Navigation2} title="No stops right now" message="When you hold an active job, its directions appear here." testID="navigation-empty" />
+              </Card>
+            );
+          }
+          return (
+            <Card>
+              {sequence.map((s, i) => (
+                <ListRow
+                  key={`${s.bookingId}-${s.order}`}
+                  icon={Navigation2}
+                  title={`Stop ${s.order}`}
+                  subtitle={`Open in Google Maps · about ${Math.round(s.cumulativeEtaMin)} min from now`}
+                  onPress={() => void Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}`)}
+                  last={i === sequence.length - 1}
+                />
+              ))}
+            </Card>
+          );
+        }}
+      </Loadable>
+    </HqScreen>
   );
 }
 
+/** The route id says "heatmap"; what the server has is a list of zones with a surge estimate, shown as that. */
 export function TerritoryHeatmapScreen() {
-  const surge = useQuery({ queryKey: ["partner", "surge"], queryFn: () => partnerApi.geoIntel.surge() });
-  if (surge.isLoading) return <HqShell title="Heatmap" subtitle="Surge zones"><LoadingBlock /></HqShell>;
+  const surge = useSurgeQuery();
   return (
-    <HqShell title="Heatmap" subtitle="Interactive surge zones and zone leaderboard.">
-      <HqCard>
-        {(Array.isArray(surge.data) ? surge.data : []).map((z) => (
-          <StatRow
-            key={z.zoneId}
-            label={`${z.name}${z.city ? ` · ${z.city}` : ""}`}
-            value={`Surge ${z.predictedSurge.toFixed(2)}x · ${z.activeBookings} jobs`}
-          />
-        ))}
-      </HqCard>
-    </HqShell>
+    <HqScreen title="Surge zones" subtitle="Demand pressure by zone, highest first." refresh={[K.surge]}>
+      <Loadable query={surge} errorTitle="Could not load surge zones" loadingLabel="Loading surge zones…">
+        {(s) => (
+          <>
+            <IntelMeta freshness={s.freshness} generatedAt={s.generatedAt} confidence={s.confidence} />
+            <SurgeZoneList zones={Array.isArray(s.data) ? s.data : []} />
+            <T kind="small">{SURGE_CAPTION}</T>
+          </>
+        )}
+      </Loadable>
+    </HqScreen>
   );
 }
 
 export function TerritoryCoverageScreen() {
-  const density = useQuery({ queryKey: ["partner", "density"], queryFn: () => partnerApi.geoIntel.density() });
-  if (density.isLoading) return <HqShell title="Coverage Areas" subtitle="Provider density"><LoadingBlock /></HqShell>;
+  const density = useDensityQuery();
   return (
-    <HqShell title="Coverage Areas" subtitle="Provider density per zone.">
-      <HqCard>
-        {(Array.isArray(density.data) ? density.data : []).map((z) => (
-          <StatRow key={z.zoneId} label={z.name} value={`${z.providers} providers · ${z.densityPerKm2.toFixed(2)}/km²`} />
-        ))}
-      </HqCard>
-    </HqShell>
-  );
-}
-
-export function TerritoryAnalyticsScreen() {
-  const zones = useQuery({ queryKey: ["partner", "zones"], queryFn: () => partnerApi.geoIntel.zoneScoring() });
-  if (zones.isLoading) return <HqShell title="Territory Analytics" subtitle="Zone scoring"><LoadingBlock /></HqShell>;
-  if (zones.isError || !zones.data) {
-    return (
-      <HqShell title="Territory Analytics" subtitle="Zone scoring">
-        <ErrorBlock message="Could not load territory analytics." />
-      </HqShell>
-    );
-  }
-  const z = zones.data;
-  return (
-    <HqShell title="Territory Analytics" subtitle="Surge zones, demand index, and top territories.">
-      <HqCard>
-        <HqCardTitle>Top territories</HqCardTitle>
-        {(z.ranked ?? []).slice(0, 10).map((zone) => (
-          <StatRow
-            key={zone.zoneId}
-            label={zone.name}
-            value={`D ${zone.demand24h} / S ${zone.supply} · ${zone.opportunityScore ?? zone.compositeScore}`}
-          />
-        ))}
-      </HqCard>
-      <HqCard>
-        <HqCardTitle>High risk zones</HqCardTitle>
-        {(z.highRisk ?? []).length === 0 ? (
-          <EmptyState message="No high-risk zones flagged." />
-        ) : (
-          (z.highRisk ?? []).map((zone) => <StatRow key={zone.zoneId} label={zone.name} value={zone.riskScore.toFixed(1)} />)
+    <HqScreen title="Coverage areas" subtitle="How many partners are in each zone." refresh={[K.density]}>
+      <Loadable query={density} errorTitle="Could not load coverage areas" loadingLabel="Loading coverage areas…">
+        {(d) => (
+          <>
+            <IntelMeta freshness={d.freshness} generatedAt={d.generatedAt} confidence={d.confidence} />
+            <DensityZoneList zones={Array.isArray(d.data) ? d.data : []} />
+            <T kind="small">The number on the right is partners located in the zone.</T>
+          </>
         )}
-      </HqCard>
-    </HqShell>
+      </Loadable>
+    </HqScreen>
   );
 }
 
-const styles = StyleSheet.create({
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 4 },
-  review: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: partnerColors.line },
-  reviewTitle: { fontSize: 14, fontWeight: "700", color: partnerColors.text },
-  reviewBody: { marginTop: 4, fontSize: 13, color: partnerColors.textMuted, lineHeight: 18 },
-  reviewMeta: { marginTop: 4, fontSize: 11, color: partnerColors.textMuted },
-  tip: { fontSize: 13, lineHeight: 20, color: partnerColors.text, marginBottom: 8 },
-  navRow: { paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: partnerColors.line },
-  navLabel: { fontSize: 14, fontWeight: "700", color: partnerColors.primary },
-  navMeta: { marginTop: 2, fontSize: 12, color: partnerColors.textMuted },
-});
+/**
+ * Zone scoring (`/api/geo-intel/zone-scoring`) is admin-only on the server, so there is nothing a
+ * partner's phone can read for this screen. It is a planned, inert card — no call, no error state.
+ */
+export function TerritoryAnalyticsScreen() {
+  return (
+    <HqScreen title="Territory Analytics" subtitle="Zone scores for your territory.">
+      <Card testID="territory-analytics-coming-soon">
+        <EmptyState icon={MapPinned} title="Coming soon" message="Zone scores are not available to partner accounts yet. Surge zones and coverage areas are available now from the Territory menu." />
+        <Pill label="Planned" />
+      </Card>
+    </HqScreen>
+  );
+}

@@ -3,6 +3,7 @@ import { AppState, type AppStateStatus } from "react-native";
 import * as Location from "expo-location";
 import { classifyLocation, type PartnerLocationState, STALE_LOCATION_MS } from "@/lib/partner-map";
 import { mapPermissionCall, type MapLocationTrigger } from "@/lib/map-location-permission";
+import { removeQuietly } from "@/lib/safe-subscription";
 
 /**
  * Foreground-only partner location for the map screen.
@@ -32,7 +33,7 @@ export function usePartnerMapLocation(active: boolean): {
     let starting = false;
 
     const teardown = () => {
-      watcherRef.current?.remove();
+      removeQuietly(watcherRef.current);
       watcherRef.current = null;
     };
 
@@ -81,7 +82,7 @@ export function usePartnerMapLocation(active: boolean): {
           },
         );
         if (cancelled) {
-          sub.remove();
+          removeQuietly(sub);
           return;
         }
         teardown();

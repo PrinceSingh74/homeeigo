@@ -73,7 +73,7 @@ function tapBy(pattern: string | RegExp): boolean {
     const tag = m[0];
     const text = decodeXml(
       (tag.match(/\btext="([^"]*)"/i)?.[1] || "") + " " + (tag.match(/\bcontent-desc="([^"]*)"/i)?.[1] || ""),
-    );
+    ).trim();
     const rid = tag.match(/\bresource-id="([^"]*)"/i)?.[1] ?? "";
     const bounds = tag.match(/\bbounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/i);
     if (!bounds) continue;
@@ -116,6 +116,15 @@ function typePassword(value: string) {
     typeValue(value);
   }
 }
+/**
+ * The retry button of the crash screen (testID error-boundary-retry) or of an error card — the
+ * BUTTON, whose whole label is "Try again". An unanchored /Try again/ hit the sentence above it
+ * first ("…Try again; if it keeps happening…", "Check your connection and try again."), which is
+ * not tappable (src/components/ErrorBoundary.tsx, src/components/account/states.tsx).
+ */
+function tapErrorRetry(): boolean {
+  return tapBy("error-boundary-retry") || tapBy(/^Try again$/i);
+}
 function openDeepLink(path: string) {
   adb(["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", `homeeigo-partner://${path}`]);
   sleep(3500);
@@ -137,7 +146,7 @@ function longPressBy(pattern: string | RegExp): boolean {
     const tag = m[0];
     const text = decodeXml(
       (tag.match(/\btext="([^"]*)"/i)?.[1] || "") + " " + (tag.match(/\bcontent-desc="([^"]*)"/i)?.[1] || ""),
-    );
+    ).trim();
     const rid = tag.match(/\bresource-id="([^"]*)"/i)?.[1] ?? "";
     const bounds = tag.match(/\bbounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/i);
     if (!bounds) continue;
@@ -159,7 +168,7 @@ function swipeUp() {
 }
 
 function openHqItem(label: string | RegExp, maxSwipes = 10): boolean {
-  tapBy(/^HQ$/) || tapBy("HQ") || tapBy("Explore");
+  tapBy(/^HQ$/) || tapBy("HQ");
   sleep(1200);
   for (let i = 0; i < maxSwipes; i++) {
     if (tapBy(label)) {
@@ -209,7 +218,7 @@ function driveLogin(): boolean {
   sleep(200);
   typePassword(PARTNER.password);
   sleep(300);
-  tapBy("partner-login-submit") || tapBy("Continue to Partner OS") || tapBy(/^Sign in$/i);
+  tapBy("partner-login-submit") || tapBy("Continue to Partner OS");
   sleep(8000);
   tapBy(/Not now/i);
   shot("00-after-login");
@@ -280,7 +289,7 @@ async function main() {
     return;
   }
   sleep(4000);
-  waitFor(/Hello,|Wallet|HQ|Explore|Compliance/i, 20_000);
+  waitFor(/Hello,|Wallet|HQ|Compliance/i, 20_000);
 
   await fetch(`${API}/api/providers/me/safety/emergency-contact`, {
     method: "PATCH",
@@ -300,8 +309,10 @@ async function main() {
     "homeeigo-partner:///hq/trust-compliance",
   ]);
   sleep(4000);
-  if (uiHas(/Something went wrong/i)) tapBy(/Try again/i);
-  waitFor(/Compliance Center|In good standing|Restricted|KYC status|Invalid or expired token/i, 20_000);
+  if (uiHas(/Something went wrong/i)) tapErrorRetry();
+  // The title "Compliance Center" is on screen while the data is still loading, so it is not
+  // waited on: wait for the data rows, or for the error card.
+  waitFor(/In good standing|Restricted|KYC status|Compliance could not be loaded|Invalid or expired token/i, 20_000);
   if (!uiHas(/Compliance Center|Expiring|ACTION REQUIRED|VERIFIED|In good standing|KYC/i)) {
     openHqItem("Compliance");
   }
@@ -333,7 +344,10 @@ async function main() {
   dumpNamed("03-documents");
   gate(
     "native.documents",
-    uiHas(/Document|Verified|Pending|Uploaded|PAN|Aadhaar|License|Insurance/i) && !uiHas(/Invalid or expired token/i)
+    // A list that failed to load is still titled "Documents": its error card reads "Your documents
+    // could not be loaded" (account/trust.tsx), whatever the server's sentence under it says.
+    uiHas(/Document|Verified|Pending|Uploaded|PAN|Aadhaar|License|Insurance/i) &&
+      !uiHas(/Invalid or expired token|Your documents could not be loaded/i)
       ? "PASS"
       : "WARN",
   );
@@ -352,9 +366,13 @@ async function main() {
     "homeeigo-partner:///hq/wellbeing-sos",
   ]);
   sleep(3500);
-  if (uiHas(/Something went wrong/i)) tapBy(/Try again/i);
+  if (uiHas(/Something went wrong/i)) tapErrorRetry();
   waitFor(/Hold to activate SOS|Confirm emergency|Emergency contact|hotline|112|Priya/i, 20_000);
   if (!uiHas(/Hold to activate SOS|Confirm emergency|Emergency contact|hotline|112/i)) openHqItem(/^SOS$/);
+  // The SOS card is static; the "Emergency contact" card arrives with the wellbeing read. Wait for
+  // it (or its error card, which names it too) so the dump below is of the loaded screen.
+  // (As a whole text: the loading skeleton's label is "Loading your emergency contact".)
+  waitFor(/\btext="Emergency contact"|Your emergency contact could not be loaded/, 15_000);
   const sosXml = dumpNamed("04-sos");
   gate(
     "native.sos",
@@ -369,12 +387,12 @@ async function main() {
       tapBy(/While using the app/i);
       sleep(1500);
     }
-    tapBy("sos-confirm") || tapBy(/Confirm emergency/i);
+    tapBy("sos-confirm") || tapBy(/^Confirm emergency$/i);
     sleep(2500);
     if (uiHas(/access this device|While using the app/i)) {
       tapBy(/While using the app/i);
       sleep(1500);
-      tapBy("sos-confirm") || tapBy(/Confirm emergency/i);
+      tapBy("sos-confirm") || tapBy(/^Confirm emergency$/i);
       sleep(2500);
     }
     dumpNamed("05-sos-after");
@@ -382,8 +400,10 @@ async function main() {
     if (uiHas(/While using the app/i)) {
       tapBy(/While using the app/i);
       sleep(2000);
-      tapBy("sos-confirm") || tapBy(/Confirm emergency/i);
-      waitFor(/SOS sent|already active|Could not reach|Invalid/i, 15_000);
+      tapBy("sos-confirm") || tapBy(/^Confirm emergency$/i);
+      // A failed send is the `sos-result` banner: the server's sentence, or the app's own
+      // "The SOS could not be sent. Call your local emergency number." (account/wellbeing.tsx).
+      waitFor(/SOS sent|already active|The SOS could not be sent|sos-result|Invalid/i, 15_000);
     }
     dumpNamed("05-sos-after");
     gate(

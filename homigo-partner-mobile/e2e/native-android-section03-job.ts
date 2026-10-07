@@ -101,7 +101,10 @@ function openSeedJob(seed: Seed) {
     sleep(2000);
     tapText("New requests") || tapText(/New requests/i);
     sleep(2000);
-    if (tapText(seed.bookingNumber) || tapText(/Open job workspace/i)) {
+    // The job card's accessibility label is "Open job <service>. <booking number>. <status>…"
+    // (src/components/home/JobCard.tsx) — match the card that carries THIS booking number.
+    const seedCard = new RegExp(`^Open job .*${seed.bookingNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+    if (tapText(seed.bookingNumber) || tapText(seedCard)) {
       sleep(3500);
       clearBlockingDialogs(8_000);
       if (uiHas(seed.bookingNumber)) return true;
@@ -330,6 +333,11 @@ function clearBlockingDialogs(timeoutMs = 20_000) {
 function dismissOrPickGallery() {
   sleep(1500);
   dismissSystemSheets();
+  // "Complete job" no longer opens a picker (photos are staged from the job's own "Photos"
+  // section). While the job screen is the foreground window there is no picker to dismiss, and
+  // the loose words below ("Photos", "Cancel") would hit the job screen's own controls
+  // ("Photos" section, "Cancel this job").
+  if (uiHas("job-detail-screen")) return;
   if (!uiHas(/Photos|Gallery|Recent|Downloads|Allow access|Select|Media|Screenshot/i)) return;
   // Prefer Cancel/Close over Back — Back can exit the activity stack to the launcher.
   if (tapText("Cancel") || tapText(/Cancel|Close|Don't allow/i)) {
@@ -587,6 +595,30 @@ async function bookingStatus(token: string, bookingId: string): Promise<string> 
   return "";
 }
 
+/**
+ * The online card's state word ("Online" / "Offline" / "Paused") or one of its controls, matched as
+ * a whole visible text / content-desc. The bare words cannot be used with `uiHas`: it searches the
+ * whole dump case-insensitively, the card's testIDs are `online-switch`, `online-state`,
+ * `online-toggle`, and "Go Offline" contains "Offline" — so "Online" and "Offline" were always true.
+ * Source: src/components/home/OnlineSwitch.tsx (stateWord, switchLabel, "Resume").
+ */
+function opsText(...words: string[]): boolean {
+  const alt = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  return uiHas(new RegExp(`\\b(?:text|content-desc)="(?:${alt})"`));
+}
+
+function opsControlsVisible(): boolean {
+  return opsText("Go Online", "Go Offline", "Resume", "Paused", "Online", "Offline");
+}
+
+/** The Availability screen itself: its title plus the online card or its save control (not the HQ row, not Home). */
+function onAvailabilityScreen(): boolean {
+  return (
+    uiHas(/\btext="Availability"/) &&
+    uiHas(/resource-id="(?:online-switch|online-switch-loading|online-switch-error|availability-save)"/)
+  );
+}
+
 /** Native Availability: ONLINE / OFFLINE / PAUSE / RESUME. Seed forces DB online after. */
 function drivePartnerOps() {
   adb([
@@ -600,7 +632,7 @@ function drivePartnerOps() {
   ]);
   sleep(3500);
   clearBlockingDialogs(8_000);
-  let opened = uiHas(/Go Online|Go Offline|Resume|Paused|Availability|Offline|Online/i);
+  let opened = onAvailabilityScreen();
   if (!opened) {
     tapText("HQ") || tapText(/^HQ$/);
     sleep(1800);
@@ -614,13 +646,13 @@ function drivePartnerOps() {
     sleep(2500);
     clearBlockingDialogs(8_000);
   }
-  if (!opened && !uiHas(/Go Online|Go Offline|Resume|Paused|Offline|Online/i)) {
+  if (!opened && !opsControlsVisible()) {
     gate("native.ops.surface", "FAIL", "Availability not found under HQ");
     return;
   }
   sleep(1500);
   shot("04-availability");
-  const onSurface = uiHas(/Go Online|Go Offline|Resume|Paused|Offline|Online/i);
+  const onSurface = opsControlsVisible();
   gate("native.ops.surface", onSurface ? "PASS" : "FAIL", onSurface ? "Availability open" : "no ops CTAs");
   if (uiHas(/Slots|Jobs|Capacity|Service areas|Radius/i)) {
     gate("native.ops.capacity_area", "PASS", "capacity/service area visible");
@@ -632,18 +664,19 @@ function drivePartnerOps() {
     tapLabeledButton("Go Online") || tapText("Go Online");
     sleep(2500);
   }
-  const online = uiHas("Go Offline") || (uiHas("Online") && !uiHas("Go Online") && !uiHas("Offline"));
+  const online = uiHas("Go Offline") || (opsText("Online") && !uiHas("Go Online") && !opsText("Offline"));
   gate("native.ops.online", online ? "PASS" : "WARN", online ? "online" : "not online yet — seed will force DB online");
 
   if (uiHas(/Pause · break/i) || uiHas("Pause · break")) {
     tapText("Pause · break") || tapText(/Pause · break/i);
     sleep(2500);
-    const paused = uiHas("Resume") || uiHas("Paused");
+    // "Paused" as the state word; the pause chips' own sentence ("Pause new offers") is not it.
+    const paused = opsText("Resume") || opsText("Paused");
     gate("native.ops.pause", paused ? "PASS" : "FAIL", paused ? "paused" : "pause CTA did not stick");
     if (paused) {
       tapLabeledButton("Resume") || tapText("Resume");
       sleep(2500);
-      gate("native.ops.resume", uiHas("Go Offline") || uiHas("Online") ? "PASS" : "FAIL", "after resume");
+      gate("native.ops.resume", uiHas("Go Offline") || opsText("Online") ? "PASS" : "FAIL", "after resume");
     }
   } else {
     gate("native.ops.pause", "WARN", "pause chips not on screen");
@@ -653,7 +686,7 @@ function drivePartnerOps() {
   if (uiHas("Go Offline")) {
     tapLabeledButton("Go Offline") || tapText("Go Offline");
     sleep(2500);
-    const off = uiHas("Go Online") || uiHas("Offline");
+    const off = uiHas("Go Online") || opsText("Offline");
     gate("native.ops.offline", off ? "PASS" : "FAIL", off ? "offline" : "Go Offline did not stick");
     if (off) {
       tapLabeledButton("Go Online") || tapText("Go Online");
@@ -841,7 +874,11 @@ async function main() {
   setGeo(seed.insideLat, seed.insideLng);
 
   // If the dashboard cannot reach the API, reverse ports again and cold-start.
-  if (uiHas(/Could not load dashboard|Check backend connection|Network request failed/i)) {
+  // A failed read is now an error card: "<thing> could not be loaded" (account/states.tsx
+  // ErrorState; Home: "Your numbers / Offers / Your schedule / Your status could not be loaded")
+  // or "Could not load <thing>" (money/DataScreen.tsx Loadable). The card keeps its testID when the
+  // cause is no connection, so the ids are matched too rather than the offline sentence.
+  if (uiHas(/could not be loaded|Could not load|home-dashboard-error|online-switch-error/i)) {
     adb(["reverse", "tcp:3000", "tcp:3000"]);
     adb(["reverse", "tcp:8081", "tcp:8081"]);
     adb(["shell", "am", "force-stop", PKG]);
@@ -1057,7 +1094,10 @@ async function main() {
         sleep(120);
       }
       sleep(2000);
-      if (uiHas(/Invalid PIN|Start failed|Move closer|GPS|required/i)) {
+      // A refused start stays on the sheet as `start-pin-error` with the server's sentence
+      // ("Incorrect PIN — please check with the customer", "Move closer to the service location…")
+      // or the app's fallback "The job could not be started. Please try again." (lib/job-screen.ts).
+      if (uiHas(/start-pin-error|Incorrect PIN|could not be started|Move closer|GPS|required/i)) {
         // Retry once with fresh geo + pin
         setGeo(seed.insideLat, seed.insideLng);
         sleep(1000);
@@ -1070,7 +1110,10 @@ async function main() {
         }
         sleep(2000);
       }
-      tapText("Verify") || tapText("Confirm") || tapText(/Verify PIN|Submit/i);
+      // The sheet submits by itself at 6 digits; if it is still open, its one submit control is
+      // "Verify and start job" (StartJobOtpSheet.tsx). "Confirm" is NOT tapped any more: the Start
+      // PIN sheet has no such control, and on the job screen "Confirm" is a service-step button.
+      tapText("Verify and start job") || tapTestId("start-pin-verify");
       sleep(5000);
     }
     let st = "";
@@ -1108,13 +1151,19 @@ async function main() {
   sleep(1000);
   adb(["shell", "monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1"]);
   sleep(4000);
-  adb(["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", `homeeigo://job/${seed.bookingId}`]);
+  // The registered scheme is `homeeigo-partner` (app.json "scheme"); `homeeigo://` resolved to nothing.
+  adb(["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", `homeeigo-partner://job/${seed.bookingId}`]);
   sleep(3000);
+  clearBlockingDialogs(8_000);
+  // The resume is checked on the DEVICE as well as on the server: the reopened app must show this
+  // job (its booking number is the job screen's subtitle). The server status alone could not fail
+  // here — nothing on the device was read.
+  const resumeShown = waitForUi(seed.bookingNumber, 20_000);
   const resumeStatus = await bookingStatus(partnerToken, seed.bookingId);
   gate(
     "native.resume",
-    resumeStatus === finalStatus ? "PASS" : "FAIL",
-    `status=${resumeStatus} (expected ${finalStatus})`,
+    resumeStatus === finalStatus && resumeShown ? "PASS" : "FAIL",
+    `status=${resumeStatus} (expected ${finalStatus}); job on screen=${resumeShown}`,
   );
   shot("11-resume");
 
