@@ -16,8 +16,8 @@ import { validateExecutionPlan } from "./service-execution";
 import { buildSafetySnapshot } from "./service-safety";
 import { buildWarrantySnapshot } from "./service-warranty";
 import {
-  catalogConfigGaps,
   parseCatalogConfig,
+  PROFESSIONAL_PREFERENCE_SUPPORTED,
   publicCatalogConfig,
   resolveServiceDuration,
   resolveServiceSelection,
@@ -265,7 +265,76 @@ function unpricedVariants(
   return out;
 }
 
-const filled = (v: unknown): boolean => (typeof v === "string" ? v.trim().length > 0 : Array.isArray(v) ? v.some(filled) : false);
+/** Words people type to get past a required field. They are not content. */
+const PLACEHOLDER_TEXT = new Set(["na", "n/a", "n.a.", "nil", "none", "null", "tbd", "tba", "todo", "test", "xx", "xxx", "ok", "yes", "no"]);
+
+/**
+ * Does this text say something? Not blank, not punctuation, not a placeholder word, and at least
+ * three letters or digits. It cannot judge whether what is said is right — the second admin's
+ * approval does that — only whether anything was said at all.
+ */
+export function isMeaningfulText(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const text = value.trim().toLowerCase();
+  if (PLACEHOLDER_TEXT.has(text)) return false;
+  const chars = text.match(/[\p{L}\p{N}]/gu) ?? [];
+  if (chars.length < 3) return false;
+  // One key held down ("aaaa") says nothing. A number ("100") can be content, so only letters are judged.
+  return !(/\p{L}/u.test(text) && new Set(chars).size === 1);
+}
+/** A string was entered, and it is a placeholder or says nothing. */
+const isPlaceholderText = (value: unknown): boolean => typeof value === "string" && value.trim().length > 0 && !isMeaningfulText(value);
+
+const filled = (v: unknown): boolean => (typeof v === "string" ? isMeaningfulText(v) : Array.isArray(v) ? v.some(filled) : false);
+const hasPlaceholder = (v: unknown): boolean => (typeof v === "string" ? isPlaceholderText(v) : Array.isArray(v) ? v.some(hasPlaceholder) : false);
+
+/** Fewest letters and digits for a "not applicable" reason to be a reason (the same floor as an admin's waiver reason). */
+const MIN_REASON_CHARS = 10;
+export type NotApplicableSection = "safety" | "quality" | "materials" | "equipment";
+
+/**
+ * Words that only restate "this does not apply" or name the section. A reason made of nothing else
+ * is the label again, not a reason. Kept in step with the admin editor (lib/not-applicable-reasons.ts).
+ */
+const REASON_FILLER_WORDS = new Set([
+  "not", "applicable", "apply", "applies", "na", "none", "nil", "nothing", "no", "null", "tbd", "todo", "test", "ok", "yes",
+  "safety", "quality", "material", "materials", "equipment", "required", "needed", "need", "needs",
+  "is", "are", "does", "do", "the", "this", "it", "to", "for", "of", "an", "here", "service",
+]);
+
+/** The one sentence that says what a reason must be. Shown wherever a reason is refused. */
+export const NOT_APPLICABLE_REASON_RULE =
+  "A reason needs at least three different words (ten letters or more) that say why; “not applicable”, “none”, “not needed” and the section's own name are not a reason.";
+
+/**
+ * Is this text a reason? At least ten letters or digits, at least three different words of two or
+ * more characters, and at least one of them something other than the label words above. It cannot
+ * judge whether the reason is true — the approver does that — only that one was written.
+ */
+export function isRealReason(value: unknown): value is string {
+  if (!isMeaningfulText(value)) return false;
+  const text = (value as string).trim().toLowerCase();
+  if ((text.match(/[\p{L}\p{N}]/gu) ?? []).length < MIN_REASON_CHARS) return false;
+  // Marks are kept inside a word so scripts that write vowels as marks (Devanagari) are not split.
+  const words = new Set(text.split(/[^\p{L}\p{M}\p{N}]+/u).filter((w) => /\p{L}/u.test(w) && new Set(w).size >= 2));
+  if (words.size < 3) return false;
+  return [...words].some((w) => !REASON_FILLER_WORDS.has(w));
+}
+
+/** What the "not applicable" predicates read. Narrow on purpose, so the job-time readers can call them. */
+export type NotApplicableConfig = {
+  notApplicableReasons?: Partial<Record<NotApplicableSection, string>>;
+  safety?: { prohibitedConditions?: string[]; incidentProtocol?: string };
+  quality?: { notApplicable?: boolean; checklist?: string[]; completionCriteria?: string[] };
+  materialPolicy?: string;
+  equipmentPolicy?: string;
+} | null | undefined;
+
+/** The reason written for a section, or null when none was really given. It does not decide whether the section is off: `declaredNotApplicable` does. */
+export function notApplicableReason(cfg: NotApplicableConfig, section: NotApplicableSection): string | null {
+  const reason = cfg?.notApplicableReasons?.[section];
+  return isRealReason(reason) ? reason.trim() : null;
+}
 
 /**
  * What a service's safety section is missing before it can stand behind a job. The minimum is what
@@ -273,7 +342,7 @@ const filled = (v: unknown): boolean => (typeof v === "string" ? v.trim().length
  * hold follows), and the incident protocol is what the professional then does. Notes, warnings and
  * protective equipment are welcome and are not the minimum. Empty = the minimum is met.
  */
-export function safetyGaps(cfg: ServiceCatalogConfig | null): string[] {
+export function safetyGaps(cfg: NotApplicableConfig): string[] {
   const gaps: string[] = [];
   if (!filled(cfg?.safety?.prohibitedConditions)) gaps.push("a prohibited condition");
   if (!filled(cfg?.safety?.incidentProtocol)) gaps.push("an incident protocol");
@@ -285,7 +354,7 @@ export function safetyGaps(cfg: ServiceCatalogConfig | null): string[] {
  * completion criteria are what "done" means. A proof flag, a warranty length, a complaint window or
  * "not applicable" is not a standard. Empty = the minimum is met.
  */
-export function qualityGaps(cfg: ServiceCatalogConfig | null): string[] {
+export function qualityGaps(cfg: NotApplicableConfig): string[] {
   const gaps: string[] = [];
   if (!filled(cfg?.quality?.checklist)) gaps.push("a checklist item");
   if (!filled(cfg?.quality?.completionCriteria)) gaps.push("a completion criterion");
@@ -294,6 +363,31 @@ export function qualityGaps(cfg: ServiceCatalogConfig | null): string[] {
 
 export const hasSafetyContent = (cfg: ServiceCatalogConfig | null): boolean => safetyGaps(cfg).length === 0;
 export const hasQualityContent = (cfg: ServiceCatalogConfig | null): boolean => qualityGaps(cfg).length === 0;
+
+/**
+ * THE question "is this section declared not applicable?", for the publish gate and for the running
+ * job alike. Returns the declared reason, or null. A section is declared not applicable only when a
+ * real reason is written AND the section is actually switched off:
+ *
+ *   quality    the "switch off quality checks" flag is on. Stored checklist and criteria are kept
+ *              and not enforced while it is. The flag without a reason switches nothing off, and a
+ *              reason without the flag declares nothing.
+ *   safety     the minimum (a prohibited condition and an incident protocol) is not there. Safety
+ *              has no switch: content that exists is always frozen onto the booking.
+ *   materials  the policy is NOT_REQUIRED.
+ *   equipment  the policy is NOT_REQUIRED.
+ *
+ * Nothing else may decide this. A reader that looked at `quality.notApplicable` on its own ran jobs
+ * with quality checks off on a service the gate was reporting as incomplete.
+ */
+export function declaredNotApplicable(cfg: NotApplicableConfig, section: NotApplicableSection): string | null {
+  const reason = notApplicableReason(cfg, section);
+  if (!reason) return null;
+  if (section === "quality") return cfg?.quality?.notApplicable === true ? reason : null;
+  if (section === "safety") return safetyGaps(cfg).length > 0 ? reason : null;
+  if (section === "materials") return cfg?.materialPolicy === "NOT_REQUIRED" ? reason : null;
+  return cfg?.equipmentPolicy === "NOT_REQUIRED" ? reason : null;
+}
 
 /** Reasons a customer must not be charged / booked. Empty = bookable from a config standpoint. */
 export function blockingBookabilityIssues(service: ServiceDomainCore, cfg: ServiceCatalogConfig | null): PublishIssue[] {
@@ -369,11 +463,26 @@ function profileIssues(profile: CapabilityProfile, service: ServiceDomainCore, c
       push("QUANTITY_TYPE", "quantity", "CARE_PROFILE needs duration (HOUR) when not a fixed visit");
     }
   }
-  // NOT_SPECIFIED is the absence of a decision, stored. NOT_REQUIRED is a decision.
+  // NOT_SPECIFIED is the absence of a decision, stored. NOT_REQUIRED is a decision, and a decision says why.
   if (!cfg?.materialPolicy || cfg.materialPolicy === "NOT_SPECIFIED") push("MATERIALS_POLICY", "materialPolicy", "Materials policy not specified");
+  else if (cfg.materialPolicy === "NOT_REQUIRED" && !declaredNotApplicable(cfg, "materials")) {
+    push("MATERIALS_NOT_REQUIRED_UNEXPLAINED", "materialPolicy", `Materials are marked not required, ${unexplained(cfg, "materials")}`);
+  }
   if (!cfg?.equipmentPolicy || cfg.equipmentPolicy === "NOT_SPECIFIED") push("EQUIPMENT_POLICY", "equipmentPolicy", "Equipment policy not specified");
+  else if (cfg.equipmentPolicy === "NOT_REQUIRED" && !declaredNotApplicable(cfg, "equipment")) {
+    push("EQUIPMENT_NOT_REQUIRED_UNEXPLAINED", "equipmentPolicy", `Equipment is marked not required, ${unexplained(cfg, "equipment")}`);
+  }
   return issues;
 }
+
+/** Something was typed as the reason for a section, and it is not one. */
+const reasonRefused = (cfg: NotApplicableConfig, section: NotApplicableSection): boolean => {
+  const raw = cfg?.notApplicableReasons?.[section];
+  return typeof raw === "string" && raw.trim().length > 0 && !isRealReason(raw);
+};
+/** How a "not required" policy lacks its reason: none written, or one written that is not a reason (then the rule is stated). */
+const unexplained = (cfg: NotApplicableConfig, section: NotApplicableSection): string =>
+  reasonRefused(cfg, section) ? `and the reason written does not count. ${NOT_APPLICABLE_REASON_RULE}` : "with no reason given";
 
 /**
  * Gate for first-time activation. Advisory profile gaps do not un-publish a
@@ -418,7 +527,97 @@ export function liveEditRegressions(input: {
   for (const g of strict(input.after)) {
     if (!already.has(key(g))) out.set(key(g), { code: g.code, path: g.path, message: `${g.message} This edit would introduce it on a live service.` });
   }
+  // A declaration passes the gate (the approver of a first publish reads the reason with the
+  // version), so the comparison above cannot see content being traded for one. On a live service
+  // that trade removes a protection, and nobody approves a direct edit.
+  for (const swap of notApplicableSwaps(input.before.cfg, input.after.cfg)) out.set(key(swap), swap);
+  // The same protections can be taken away with no declaration at all (proof no longer asked for,
+  // a warranty cut to nothing, a section emptied where nothing is listed as required).
+  for (const cut of protectionReductions(input.before.cfg, input.after.cfg)) {
+    // A section already reported above (absent, or swapped for a declaration) is reported once.
+    const section = cut.path.split(".")[0]!;
+    if ([...out.values()].some((i) => i.path === section || i.path.startsWith(`${section}.`))) continue;
+    out.set(key(cut), cut);
+  }
   return [...out.values()];
+}
+
+const LIVE_REDUCTION_HOW = "It is not accepted as an edit to a live service: pause the service, make the change, and publish it again so a second admin approves it.";
+
+/**
+ * Protections an edit takes off a service that bookings are being made under, without declaring
+ * anything: a quality rule switched off, a warranty or complaint window shortened, or the safety /
+ * quality section emptied. Rewording or adding to content is not a reduction, and how many lines
+ * a checklist has is not judged here.
+ */
+function protectionReductions(before: ServiceCatalogConfig | null, after: ServiceCatalogConfig | null): PublishIssue[] {
+  const out: PublishIssue[] = [];
+  for (const section of ["safety", "quality"] as const) {
+    if (!sectionProtects(before, section) || sectionProtects(after, section) || declaredNotApplicable(after, section)) continue;
+    const what = section === "safety" ? "Safety information" : "Quality checks";
+    out.push({ code: `${section.toUpperCase()}_PROTECTION_REMOVED`, path: section, message: `${what} would be removed from this live service. ${LIVE_REDUCTION_HOW}` });
+  }
+  const was = before?.quality;
+  const now = after?.quality;
+  if (was && !declaredNotApplicable(after, "quality") && !out.some((i) => i.path === "quality")) {
+    const switches = { proofRequired: "Photo proof", beforeAfterPhotos: "Before and after photos", professionalConfirmation: "The professional's confirmation", customerConfirmation: "The customer's confirmation" } as const;
+    for (const [field, label] of Object.entries(switches) as [keyof typeof switches, string][]) {
+      if (was[field] === true && now?.[field] !== true) {
+        out.push({ code: "QUALITY_PROTECTION_REDUCED", path: `quality.${field}`, message: `${label} would no longer be required on this live service. ${LIVE_REDUCTION_HOW}` });
+      }
+    }
+    const windows = { warrantyDays: "The warranty", complaintWindowDays: "The complaint window" } as const;
+    for (const [field, label] of Object.entries(windows) as [keyof typeof windows, string][]) {
+      const from = was[field] ?? 0;
+      const to = now?.[field] ?? 0;
+      if (from > 0 && to < from) {
+        out.push({ code: "QUALITY_PROTECTION_REDUCED", path: `quality.${field}`, message: `${label} would be shortened from ${from} to ${to} days on this live service. ${LIVE_REDUCTION_HOW}` });
+      }
+    }
+  }
+  return out;
+}
+
+const NOT_APPLICABLE_SWAP: Record<NotApplicableSection, { code: string; path: string; what: string }> = {
+  safety: { code: "SAFETY_DECLARED_NOT_APPLICABLE", path: "safety", what: "Safety information" },
+  quality: { code: "QUALITY_DECLARED_NOT_APPLICABLE", path: "quality", what: "Quality checks" },
+  materials: { code: "MATERIALS_DECLARED_NOT_APPLICABLE", path: "materialPolicy", what: "The materials policy" },
+  equipment: { code: "EQUIPMENT_DECLARED_NOT_APPLICABLE", path: "equipmentPolicy", what: "The equipment policy" },
+};
+
+const isRealPolicy = (policy: string | undefined): boolean => Boolean(policy) && policy !== "NOT_SPECIFIED" && policy !== "NOT_REQUIRED";
+
+/** Does this section currently give a job anything to run under? Any of it counts, not only the publish minimum. */
+function sectionProtects(cfg: ServiceCatalogConfig | null, section: NotApplicableSection): boolean {
+  if (section === "safety") return Object.values(cfg?.safety ?? {}).some(filled);
+  if (section === "materials") return isRealPolicy(cfg?.materialPolicy);
+  if (section === "equipment") return isRealPolicy(cfg?.equipmentPolicy);
+  const q = cfg?.quality;
+  if (!q) return false;
+  return (
+    filled(q.checklist) || filled(q.completionCriteria) || q.proofRequired === true || q.beforeAfterPhotos === true ||
+    q.professionalConfirmation === true || q.customerConfirmation === true || (q.warrantyDays ?? 0) > 0 || (q.complaintWindowDays ?? 0) > 0
+  );
+}
+
+/**
+ * Sections an edit moves from "has content" to "declared not applicable". Each is reported as a
+ * regression, so the one mechanism that refuses a live edit that makes a service worse refuses
+ * this as well. A section that was already declared, or that never had content, is not a swap.
+ */
+function notApplicableSwaps(before: ServiceCatalogConfig | null, after: ServiceCatalogConfig | null): PublishIssue[] {
+  const out: PublishIssue[] = [];
+  for (const section of Object.keys(NOT_APPLICABLE_SWAP) as NotApplicableSection[]) {
+    const reason = declaredNotApplicable(after, section);
+    if (!reason || declaredNotApplicable(before, section) || !sectionProtects(before, section)) continue;
+    const { code, path, what } = NOT_APPLICABLE_SWAP[section];
+    out.push({
+      code,
+      path,
+      message: `${what} on this live service would be replaced by a "not applicable" declaration ("${reason}"). That removes a protection its bookings are made under, so it is not accepted as an edit to a live service: pause the service, make the change, and publish it again so that a second admin approves the reason.`,
+    });
+  }
+  return out;
 }
 
 /** A rail entry that stops publication. Warnings and not-applicable entries never do. */
@@ -465,6 +664,8 @@ const GATE_REMEDIATION: Record<string, string> = {
   TAXONOMY_MISSING: "Place the service in a customer category.",
   MATERIALS_POLICY: "Choose a materials policy. Do not invent a materials list.",
   EQUIPMENT_POLICY: "Choose an equipment policy. Do not invent an equipment list.",
+  MATERIALS_NOT_REQUIRED_UNEXPLAINED: "Say why this service needs no materials, or choose who provides them.",
+  EQUIPMENT_NOT_REQUIRED_UNEXPLAINED: "Say why this service needs no equipment, or choose who provides it.",
   ADDON_VARIANT_INACTIVE: "Point the add-on at an active variant, or remove the compatibility rule.",
   VARIANT_UNPRICED: "Give the variant a price, or switch it off.",
 };
@@ -519,13 +720,63 @@ export function publishGateResults(
   } else if (cities || pins || zones) pass("COVERAGE", "coverage", "Coverage is limited to the configured cities, zones or PIN codes.");
   else warn("COVERAGE_UNSPECIFIED", "coverage", "Coverage is unspecified and is treated as nationwide.", "Set cities or PIN codes if this service is not nationwide.");
 
+  // "Not applicable" is asked through `declaredNotApplicable` — the same call the running job makes.
   const safetyMissing = safetyGaps(cfg);
+  const safetyDeclared = declaredNotApplicable(cfg, "safety");
+  const safetyPlaceholder = hasPlaceholder(cfg?.safety?.prohibitedConditions) || hasPlaceholder(cfg?.safety?.incidentProtocol);
+  const safetyReasonRefused = reasonRefused(cfg, "safety");
   if (safetyMissing.length === 0) pass("SAFETY", "safety", "Safety information names what stops the job and what the professional then does.");
-  else warn("SAFETY_ABSENT", "safety", `Safety information is incomplete: it has no ${safetyMissing.join(" and no ").replace(/\b(a|an) /g, "")}.`, "Add the approved prohibited conditions and incident protocol, or leave the service unpublished until they exist. Do not invent them.");
+  else if (safetyDeclared) results.push(gateResult(service, "SAFETY_NOT_APPLICABLE", "NOT_APPLICABLE", "info", "safety", `Safety is declared not applicable to this service: "${safetyDeclared}". The declaration is approved with this version.`, ""));
+  else {
+    const notes = `${safetyPlaceholder ? " A dash or a placeholder word does not count." : ""}${safetyReasonRefused ? ` The reason written for "not applicable" does not count. ${NOT_APPLICABLE_REASON_RULE}` : ""}`;
+    warn(
+      "SAFETY_ABSENT",
+      "safety",
+      `Safety information is incomplete: it has no ${safetyMissing.join(" and no ").replace(/\b(a|an) /g, "")}.${notes}`,
+      notes
+        ? "Write the approved prohibited conditions and incident protocol, or declare with a reason why safety does not apply. Do not invent them."
+        : "Add the approved prohibited conditions and incident protocol, or leave the service unpublished until they exist. Do not invent them.",
+    );
+  }
 
   const qualityMissing = qualityGaps(cfg);
-  if (qualityMissing.length === 0) pass("QUALITY", "quality", "Quality criteria name what completion is checked against and what done means.");
-  else warn("QUALITY_ABSENT", "quality", `Quality criteria are incomplete: there is no ${qualityMissing.join(" and no ").replace(/\b(a|an) /g, "")}.`, "Add the approved checklist and completion criteria, or leave them unset. Do not invent a checklist.");
+  const qualityDeclared = declaredNotApplicable(cfg, "quality");
+  const qualitySwitchOn = cfg?.quality?.notApplicable === true;
+  const qualityPlaceholder = hasPlaceholder(cfg?.quality?.checklist) || hasPlaceholder(cfg?.quality?.completionCriteria);
+  const qualityReasonRefused = reasonRefused(cfg, "quality");
+  // The switch and its reason are one declaration. Half of it declares nothing, and says so here.
+  const qualityHalfDeclared = qualitySwitchOn
+    ? ` The "switch off quality checks" switch is on with no accepted reason, so it switches nothing off.${qualityReasonRefused ? ` ${NOT_APPLICABLE_REASON_RULE}` : ""}`
+    : qualityReasonRefused
+      ? ` The reason written for "not applicable" does not count. ${NOT_APPLICABLE_REASON_RULE}`
+      : notApplicableReason(cfg, "quality")
+        ? ' A reason is written, but the "switch off quality checks" switch is off, so nothing is declared not applicable.'
+        : "";
+  if (qualityDeclared) {
+    // Declared wins over stored content: the job does not enforce it, so "pass" would describe checks that do not run.
+    const kept = qualityMissing.length === 0 ? " The stored checklist and completion criteria are kept and are not enforced while this stands." : "";
+    results.push(gateResult(service, "QUALITY_NOT_APPLICABLE", "NOT_APPLICABLE", "info", "quality", `Quality criteria are declared not applicable to this service: "${qualityDeclared}".${kept} The declaration is approved with this version.`, ""));
+  } else if (qualityMissing.length === 0) {
+    pass("QUALITY", "quality", `Quality criteria name what completion is checked against and what done means.${qualitySwitchOn ? `${qualityHalfDeclared} These checks are enforced.` : ""}`);
+  } else {
+    const notes = `${qualityPlaceholder ? " A dash or a placeholder word does not count." : ""}${qualityHalfDeclared}`;
+    warn(
+      "QUALITY_ABSENT",
+      "quality",
+      `Quality criteria are incomplete: there is no ${qualityMissing.join(" and no ").replace(/\b(a|an) /g, "")}.${notes}`,
+      notes
+        ? "Write the approved checklist and completion criteria, or switch quality checks off and give the reason they do not apply. Do not invent a checklist."
+        : "Add the approved checklist and completion criteria, or leave them unset. Do not invent a checklist.",
+    );
+  }
+
+  // Advisory, and on the rail so that the readiness view can be the gate and lose nothing it used to say.
+  if (cfg?.audiences?.length && !cfg.variants?.length) {
+    warn("AUDIENCE_WITHOUT_VARIANTS", "audiences", "Audiences are set but there are no variants to price them.", "Add a variant for each audience, or remove the audiences.");
+  }
+  if (cfg?.professionalPreferences?.some((p) => p !== "NO_PREFERENCE") && !PROFESSIONAL_PREFERENCE_SUPPORTED) {
+    warn("PROFESSIONAL_PREFERENCE_UNSUPPORTED", "professionalPreferences", "Professional preference is configured but assignment cannot honour it yet — hidden from customers.", "Remove the preference until assignment can honour it.");
+  }
 
   if ((cfg?.execution?.steps?.length ?? 0) > 0 && !results.some((g) => g.path.startsWith("execution") && g.status === "FAIL")) {
     pass("EXECUTION", "execution", "The execution plan is structurally valid.");
@@ -632,8 +883,12 @@ export function publishGateResults(
   else silent("VARIANT", "NOT_APPLICABLE", "variants", "This service has no variants.");
   if (cfg?.audiences?.length || cfg?.customerPolicy?.age) silent("ELIGIBILITY", "PASS", "audiences", "Audience and age rules are set and consistent.");
   else silent("ELIGIBILITY", "NOT_APPLICABLE", "audiences", "This service has no audience or age restriction.");
-  silent("MATERIALS", "PASS", "materialPolicy", "The materials policy is set and its requirements are consistent.");
-  silent("EQUIPMENT", "PASS", "equipmentPolicy", "The equipment policy is set.");
+  const noMaterials = declaredNotApplicable(cfg, "materials");
+  const noEquipment = declaredNotApplicable(cfg, "equipment");
+  if (noMaterials && !reported.has("MATERIALS")) results.push({ ...gateResult(service, "MATERIALS_NOT_APPLICABLE", "NOT_APPLICABLE", "info", "materialPolicy", `No materials are needed for this service: "${noMaterials}". The declaration is approved with this version.`, ""), gate: "MATERIALS" });
+  else silent("MATERIALS", "PASS", "materialPolicy", "The materials policy is set and its requirements are consistent.");
+  if (noEquipment && !reported.has("EQUIPMENT")) results.push({ ...gateResult(service, "EQUIPMENT_NOT_APPLICABLE", "NOT_APPLICABLE", "info", "equipmentPolicy", `No equipment is needed for this service: "${noEquipment}". The declaration is approved with this version.`, ""), gate: "EQUIPMENT" });
+  else silent("EQUIPMENT", "PASS", "equipmentPolicy", "The equipment policy is set.");
   silent("CUSTOMER_CONTENT", "PASS", "description", "The service has a name, a description and a place in the customer catalogue.");
 
   return results;
@@ -1104,12 +1359,28 @@ export function partnerJobBrief(selection: unknown, addons: unknown, estimatedDu
   };
 }
 
-export function deriveConfigStatus(service: ServiceDomainCore, cfg: ServiceCatalogConfig | null): ServiceConfigStatus {
+export type ReadinessOptions = { required?: readonly PublishRequiredSection[]; platformPolicy?: PlatformPolicyShape; unavailableTrainingModules?: readonly string[] };
+
+/**
+ * Why a service is not ready, in the gate's own words. This IS the gate: the findings that would
+ * refuse this service — a first publish for one that is not live, the grandfathered rule for one
+ * that is. It used to be a separate, shorter list (`catalogConfigGaps`), which called a service
+ * READY while the gate refused it for an unexplained "not required" or an absent required section.
+ * Empty = `validateForActivation` with the same options passes.
+ */
+export function readinessGaps(service: ServiceDomainCore, cfg: ServiceCatalogConfig | null, opts: ReadinessOptions = {}): string[] {
+  return publishGateResults(service, cfg, { ...opts, grandfathered: service.isActive === true })
+    .filter(isBlockingGate)
+    .map((g) => g.message);
+}
+
+/** READY exactly when `readinessGaps` is empty. Pass the same options the gate is given (training-module facts especially). */
+export function deriveConfigStatus(service: ServiceDomainCore, cfg: ServiceCatalogConfig | null, opts: ReadinessOptions = {}): ServiceConfigStatus {
   const lifecycle = parseLifecycle(service.lifecycleStatus);
   if (lifecycle === "ARCHIVED") return "ARCHIVED";
   if (lifecycle === "PAUSED" || lifecycle === "DEPRECATED") return "PAUSED";
   if (cfg?.comingSoon) return "COMING_SOON";
-  if (catalogConfigGaps(service, cfg).length > 0) return "CONFIGURATION_REQUIRED";
+  if (readinessGaps(service, cfg, opts).length > 0) return "CONFIGURATION_REQUIRED";
   return "READY";
 }
 

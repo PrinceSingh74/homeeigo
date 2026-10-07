@@ -27,10 +27,10 @@ export function startPinRequired(flag: string | undefined): boolean {
  * The 48-hour default is the published dispute window that service uses when a service sets none.
  */
 export function visitConfirmationHours(cfg: ServiceCatalogConfig | null): number {
-  // A notApplicable quality block is not frozen, so completion falls back to the platform 48 hours.
-  if (cfg?.quality?.notApplicable) return 48;
-  const h = cfg?.quality?.confirmationWindowHours;
-  return typeof h === "number" && Number.isInteger(h) && h >= 1 && h <= 720 ? h : 48;
+  // Read from what the booking will freeze, so this cannot promise a window the completion engine
+  // will not use: a quality section declared not applicable (or with nothing to enforce) is not
+  // frozen, and completion then falls back to the platform 48 hours.
+  return qualitySnapshot(cfg)?.confirmationWindowHours ?? 48;
 }
 
 export type CustomerVisitStep = { code: "ARRIVAL" | "VERIFICATION" | "SERVICE" | "CONFIRMATION"; title: string; detail: string };

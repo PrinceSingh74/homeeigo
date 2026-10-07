@@ -5,7 +5,6 @@ import { formatServiceList } from "../lib/format";
 import { parsePagination } from "../lib/pagination";
 import { isValidRupeeAmount } from "../lib/pricing-policy";
 import {
-  catalogConfigGaps,
   effectiveAddonCatalogue,
   isSafeMediaUrl,
   parseCatalogConfig,
@@ -110,6 +109,7 @@ import {
   configSections,
   CUSTOMER_CATALOG_WHERE,
   deriveConfigStatus,
+  readinessGaps,
   effectiveLifecycleTarget,
   inferCapabilityProfile,
   LIFECYCLE_TRANSITIONS,
@@ -147,6 +147,7 @@ import {
   partnerEquipmentCopy,
   partnerMaterialsCopy,
   paymentCapabilities,
+  qualitySnapshot,
 } from "../lib/service-runtime-policy";
 
 // Catalog data changes rarely (no runtime mutation endpoints) and is read on
@@ -690,7 +691,10 @@ export class CatalogService {
       capabilityProfile: s.capabilityProfile,
       lifecycleStatus: s.lifecycleStatus,
       allowedTransitions: LIFECYCLE_TRANSITIONS[lifecycle].filter((t) => (REQUESTABLE_LIFECYCLES as readonly string[]).includes(t)),
-      configStatus: s.configStatus,
+      // Derived here, with the same facts as `publishGates` below, so the status shown can never be
+      // READY beside a blocked gate (the stored column goes stale when a required-sections setting or
+      // a training module changes). INTERNAL is a stored visibility decision, not a readiness verdict.
+      configStatus: s.configStatus === "INTERNAL" ? s.configStatus : deriveConfigStatus(s, cfg, { unavailableTrainingModules }),
       isCustomerVisible: s.isCustomerVisible,
       isBookable: s.isBookable,
       version: s.version,
@@ -703,7 +707,8 @@ export class CatalogService {
       updatedBy: s.updatedBy,
       catalogConfig: cfg,
       catalogConfigInvalid: s.catalogConfig != null && cfg == null,
-      configGaps: catalogConfigGaps(s, cfg),
+      /** What blocks this service, from the gate itself (`readinessGaps`). Advisory notes are WARNING rows in `publishGates`. */
+      configGaps: readinessGaps(s, cfg, { unavailableTrainingModules }),
       configSections: configSections(s, cfg),
       publishGates: publishGateResults(s, cfg, { grandfathered: s.isActive, unavailableTrainingModules }),
       publishApproval: cfg?.publishApproval ?? null,
@@ -1209,8 +1214,8 @@ export class CatalogService {
     };
     // Visible-but-not-bookable (coming soon) to bookable is a publish, not an edit.
     const becomingBookable = prevLifecycle === "PUBLISHED" && target === "ACTIVE";
+    const unavailableTrainingModules = (await trainingModuleGaps([nextCfg]))[0];
     if (wantActive) {
-      const unavailableTrainingModules = (await trainingModuleGaps([nextCfg]))[0];
       if (exists.isActive && !becomingBookable) {
         // An edit to a live service keeps the gaps it already had, and may not add one.
         const regressions = liveEditRegressions({ before: { service: exists, cfg: prevCfg }, after: { service: next, cfg: nextCfg }, unavailableTrainingModules });
@@ -1257,7 +1262,7 @@ export class CatalogService {
             ...(cfg?.ok ? { catalogConfig: (withoutServerFacts(nextCfg) ?? Prisma.DbNull) as Prisma.InputJsonValue } : {}),
             ...flags,
             lifecycleStatus: target,
-            configStatus: deriveConfigStatus(next, nextCfg),
+            configStatus: deriveConfigStatus(next, nextCfg, { unavailableTrainingModules }),
             updatedBy: actorId,
             ...(bumpVersion ? { version: { increment: 1 } } : {}),
             ...(becameLive ? { publishedAt: new Date(), publishedBy: actorId } : {}),
@@ -1566,7 +1571,7 @@ export class CatalogService {
           data: {
             ...flags,
             lifecycleStatus: to,
-            configStatus: deriveConfigStatus({ ...exists, ...flags, lifecycleStatus: to }, cfg),
+            configStatus: deriveConfigStatus({ ...exists, ...flags, lifecycleStatus: to }, cfg, { unavailableTrainingModules: (await trainingModuleGaps([cfg]))[0] }),
             updatedBy: actorId,
             ...(becameLive ? { publishedAt: new Date(), publishedBy: actorId, version: { increment: 1 } } : {}),
           },
@@ -2070,9 +2075,10 @@ export class CatalogService {
             equipmentPolicy: cfg?.equipmentPolicy ?? null,
             materials: partnerMaterialsCopy(cfg?.materialPolicy),
             equipment: partnerEquipmentCopy(cfg?.equipmentPolicy),
-            qualityChecklist: cfg?.quality?.notApplicable ? [] : (cfg?.quality?.checklist ?? []),
-            proofRequired: cfg?.quality?.proofRequired === true,
-            beforeAfterPhotos: cfg?.quality?.beforeAfterPhotos === true,
+            // What a booking of this service would freeze (one question with the gate: declaredNotApplicable).
+            qualityChecklist: qualitySnapshot(cfg)?.checklist ?? [],
+            proofRequired: qualitySnapshot(cfg)?.proofRequired === true,
+            beforeAfterPhotos: qualitySnapshot(cfg)?.beforeAfterPhotos === true,
             trainingRequired: cfg?.providerRequirements?.trainingRequired === true,
             certifications: cfg?.providerRequirements?.certifications ?? [],
           };

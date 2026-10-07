@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { NOT_APPLICABLE_REASON_RULE, notApplicableReasonIssue, type NotApplicableSection } from "@/lib/not-applicable-reasons";
 
 /**
  * Shared pieces of the service configuration editor: the string ⇄ config converters every section
@@ -74,9 +75,9 @@ export function Section({ title, hint, children }: { title: string; hint?: strin
 }
 
 /** `consumer` names who reads the value (customer, professional, an engine). `error` renders next to the field. */
-export function Field({ label, children, consumer, error, help }: { label: string; children: ReactNode; consumer?: string; error?: string; help?: string }) {
+export function Field({ label, children, consumer, error, help, htmlFor }: { label: string; children: ReactNode; consumer?: string; error?: string; help?: string; htmlFor?: string }) {
   return (
-    <label className="sv-field">
+    <label className="sv-field" htmlFor={htmlFor}>
       <span>
         {label}
         {consumer ? (
@@ -129,6 +130,33 @@ export function LinesField({
   return (
     <Field label={`${label} (one per line)`} consumer={consumer} error={listIssue(value, maxItems, maxLen)}>
       <textarea className="sv-input sv-textarea" rows={rows} value={value} placeholder={placeholder} onChange={(x) => onChange(x.target.value)} />
+    </Field>
+  );
+}
+
+const REASON_LABELS: Record<NotApplicableSection, { label: string; subject: string }> = {
+  safety: { label: "Why safety does not apply", subject: "safety really does not apply to this service" },
+  quality: { label: "Why quality criteria do not apply", subject: "quality criteria really do not apply to this service" },
+  materials: { label: "Why no materials are needed", subject: "this service really needs no materials" },
+  equipment: { label: "Why no equipment is needed", subject: "this service really needs no equipment" },
+};
+
+/**
+ * One "why this does not apply" reason (`catalogConfig.notApplicableReasons.<section>`). The same
+ * field, wording and check on every tab; `note` adds what is specific to where it is shown.
+ */
+export function NotApplicableReasonField({ section, value, onChange, note }: { section: NotApplicableSection; value: string; onChange: (v: string) => void; note?: string }) {
+  const { label, subject } = REASON_LABELS[section];
+  const id = `sv-not-applicable-reason-${section}`;
+  return (
+    <Field
+      label={label}
+      htmlFor={id}
+      consumer="Publish checklist"
+      error={notApplicableReasonIssue(value)}
+      help={`${note ? `${note} ` : ""}Needed only when ${subject} — otherwise leave it empty. The reason is shown on the publish checklist and is approved by the second admin together with the rest of the service. ${NOT_APPLICABLE_REASON_RULE}`}
+    >
+      <textarea id={id} className="sv-input sv-textarea" rows={2} value={value} onChange={(x) => onChange(x.target.value)} />
     </Field>
   );
 }

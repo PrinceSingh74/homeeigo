@@ -41,6 +41,7 @@ import { useBookingPayment } from "@/hooks/use-booking-payment";
 import { RescheduleBookingModal } from "@/components/booking/RescheduleBookingModal";
 import { CustomerTrackingMap } from "@/components/tracking/CustomerTrackingMap";
 import { ServiceStartPin } from "@/components/tracking/ServiceStartPin";
+import { ArrivalConfirmation } from "@/components/booking/ArrivalConfirmation";
 import { BookingRequirements } from "@/components/booking/BookingRequirements";
 import { BookingExecution } from "@/components/booking/BookingExecution";
 import { BookingSafety } from "@/components/booking/BookingSafety";
@@ -244,6 +245,17 @@ export function BookingDetailModal({
             {/* Service-start PIN — the customer shares it in person so the
                 partner can begin. Shown while the job hasn't started yet. */}
             {canTrack && <ServiceStartPin bookingId={bookingId} proName={booking.proName} />}
+
+            {/* The arrival exception: a quiet, explained control for when the professional's phone
+                cannot give a location. It decides for itself whether to appear (lib/arrival-confirmation);
+                before the live detail has loaded there is no status to go on, so it does not. */}
+            <ArrivalConfirmation
+              bookingId={bookingId}
+              backendStatus={liveStatus}
+              hasProfessional={Boolean(detailQuery.data?.provider)}
+              professionalId={detailQuery.data?.provider?.id ?? null}
+              arrivedAt={detailQuery.data?.arrivedAt}
+            />
 
             {/* §6: what must be in place, whether it is, and what to do — server truth, never decided here. */}
             {/* §9: safety information and any safety hold — server truth. */}

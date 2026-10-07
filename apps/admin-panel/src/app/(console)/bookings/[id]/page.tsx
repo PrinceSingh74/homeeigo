@@ -11,6 +11,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { BookingLiveTracking } from "@/components/tracking/BookingLiveTracking";
 import { adminApi, ADMIN_QUALITY_VERDICTS } from "@/services/admin-api";
 import { formatDate, inr } from "@/lib/format";
+import { apiRequestBlob } from "@/lib/api-client";
 import { matchingReasonLabel } from "@/lib/matching-reasons";
 import { FrozenRules, presentRules, type FrozenRule } from "@/components/operations/FrozenRules";
 import type { AdminQualityView } from "@/services/admin-api";
@@ -250,7 +251,26 @@ export default function BookingDetailPage() {
     String(e.stage),
     e.capturedAt ? new Date(e.capturedAt).toLocaleString() : "—",
     e.isCurrent ? "current" : "superseded",
-    e.mediaAccessUrl || e.mediaUrl ? (
+    String(e.mediaAccessUrl || "").startsWith("/api/") ? (
+      // Held by the server and readable only with this session: fetched, not linked.
+      <button
+        key={e.id}
+        type="button"
+        onClick={() => {
+          const tab = window.open("", "_blank");
+          void apiRequestBlob(String(e.mediaAccessUrl), { auth: true })
+            .then((blob) => {
+              const objectUrl = URL.createObjectURL(blob);
+              if (tab) tab.location.href = objectUrl;
+              window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+            })
+            .catch(() => tab?.close());
+        }}
+        className="text-[10px] text-[var(--color-biz-accent)]"
+      >
+        View
+      </button>
+    ) : e.mediaAccessUrl || e.mediaUrl ? (
       <a
         key={e.id}
         href={String(e.mediaAccessUrl || e.mediaUrl)}

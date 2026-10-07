@@ -5,10 +5,12 @@ import { bookingStartOtpService } from "../services/booking-start-otp.service";
 import { bookingRefundService } from "../services/booking-refund.service";
 import { cancellationPolicyService } from "../services/cancellation-policy.service";
 import { jobEvidenceService } from "../services/job-evidence.service";
+import { evidenceRefusal, evidenceRefusalFromError, parseEvidencePhotos, type EvidenceRefusalResponse } from "../lib/job-evidence-media";
 
 /** What a partner is told when the server cannot place them at the job (arrival and start). */
 const POSITION_MESSAGES = {
-  LOCATION_UNCONFIRMED: "We could not confirm your position. Keep the app open with location on for a moment and try again. If your phone cannot get a location, contact support.",
+  LOCATION_REQUIRED: "Your phone did not give a location. Turn location on and try again. If it cannot get one, ask the customer to confirm in their app that you are at the door, or contact support.",
+  LOCATION_UNCONFIRMED: "We could not confirm your position. Keep the app open with location on for a moment and try again. If your phone cannot get a location, ask the customer to confirm your arrival in their app, or contact support.",
   LOCATION_MISMATCH: "Your device's reported position is not at the service location. Go to the address, keep location on and try again.",
 } as const;
 import { bookingChatService } from "../services/booking-chat.service";
@@ -105,7 +107,7 @@ function requirementError(set: { status?: number | string }, code: string) {
     [REQUIREMENT_ERRORS.REQUIREMENT_GATE_UNAVAILABLE]: { status: 503, message: "Requirement checks are not available right now" },
     OUTSIDE_SERVICE_AREA: { status: 400, message: "Move closer to the service location to record this check" },
     LOCATION_INVALID: { status: 400, message: "Valid GPS coordinates are required to record this check" },
-    LOCATION_REQUIRED: { status: 400, message: "Location is required to record this check" },
+    LOCATION_REQUIRED: { status: 400, message: POSITION_MESSAGES.LOCATION_REQUIRED },
     LOCATION_UNCONFIRMED: { status: 409, message: POSITION_MESSAGES.LOCATION_UNCONFIRMED },
     LOCATION_MISMATCH: { status: 409, message: POSITION_MESSAGES.LOCATION_MISMATCH },
   };
@@ -718,12 +720,14 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
     async ({ requireProvider, params: rawParams, body: raw, set }) => {
       const { providerId } = requireProvider();
       const params = validate(idParamSchema, rawParams);
-      const body = parseBody(geoPingSchema, raw);
+      // Coordinates may be absent: a device with no position is refused unless the customer or an
+      // admin has vouched for this partner on this booking (the service decides).
+      const body = parseBody(optionalGeoPingSchema, raw);
       const result = await bookingService.markArrived(
         providerId!,
         params.id,
-        body.latitude,
-        body.longitude,
+        body.latitude ?? null,
+        body.longitude ?? null,
       );
       if (!result.ok) {
         set.status =
@@ -741,7 +745,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
           INVALID_STATUS: "This booking can no longer be marked as arrived",
           OUTSIDE_SERVICE_AREA: "Move closer to the service location and try again",
           LOCATION_INVALID: "Valid GPS coordinates are required to mark arrival",
-          LOCATION_REQUIRED: "Location is required to mark arrival",
+          LOCATION_REQUIRED: POSITION_MESSAGES.LOCATION_REQUIRED,
           LOCATION_UNCONFIRMED: POSITION_MESSAGES.LOCATION_UNCONFIRMED,
           LOCATION_MISMATCH: POSITION_MESSAGES.LOCATION_MISMATCH,
         };
@@ -762,7 +766,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         },
       };
     },
-    { body: t.Object({ latitude: t.Number(), longitude: t.Number() }) },
+    { body: t.Object({ latitude: tNullableNumber, longitude: tNullableNumber }) },
   )
   /**
    * §52 — the partner waited at the door and nobody answered.
@@ -799,6 +803,10 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
       data: {
         status: "customer_no_show",
         feeAmount: result.feeAmount,
+        // Why no fee was taken, when none was: the report had no photo at the door behind it.
+        ...(result.feeWithheld ? { feeWithheld: result.feeWithheld, feeNote: result.feeWithheld === "ARRIVAL_VOUCHED"
+          ? "No fee was taken: your arrival was confirmed by the customer or by support, not by your phone's location. Support can review this one."
+          : "No fee was taken: after you arrive, with location on, add a photo at the door so a no-show can be charged. Support can review this one." } : {}),
       },
     };
   })
@@ -883,7 +891,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
     async ({ requireProvider, params: rawParams, body: raw, set }) => {
       const { providerId } = requireProvider();
       const params = validate(idParamSchema, rawParams);
-      const body = parseBody(geoPingSchema, raw);
+      const body = parseBody(optionalGeoPingSchema, raw);
       const otp = typeof (raw as { otp?: unknown })?.otp === "string"
         ? (raw as { otp: string }).otp
         : undefined;
@@ -932,8 +940,8 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         const booking = await bookingService.start(
           providerId!,
           params.id,
-          body.latitude,
-          body.longitude,
+          body.latitude ?? null,
+          body.longitude ?? null,
         );
         return {
           success: true,
@@ -951,7 +959,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
           const messages: Record<string, string> = {
             OUTSIDE_SERVICE_AREA: "Move closer to the service location and try again",
             LOCATION_INVALID: "Valid GPS coordinates are required to start this job",
-            LOCATION_REQUIRED: "Location is required to start this job",
+            LOCATION_REQUIRED: POSITION_MESSAGES.LOCATION_REQUIRED,
           };
           return { success: false, error: messages[code] ?? code, code };
         }
@@ -991,8 +999,8 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
     },
     {
       body: t.Object({
-        latitude: t.Number(),
-        longitude: t.Number(),
+        latitude: tNullableNumber,
+        longitude: tNullableNumber,
         otp: t.Optional(t.String()),
       }),
     },
@@ -1041,6 +1049,13 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         if (code === "INVALID_STATUS") {
           set.status = 400;
           return { success: false, error: "Job cannot be completed in this status", code };
+        }
+        // A completion photo refused (not an image, too large, the same photo again, one too many):
+        // the status and sentence come from the table the upload route uses, so the two agree.
+        const photoRefusal = evidenceRefusalFromError(err);
+        if (photoRefusal) {
+          set.status = photoRefusal.status;
+          return { success: false, error: photoRefusal.error, code: photoRefusal.code };
         }
         // §10: every refusal below also carries the id of the verdict row it left behind (null when
         // verdicts are not deployed) — the code keeps its precedence meaning, the verdict rides along.
@@ -1175,6 +1190,26 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
    * The customer confirms the completed job. Owner only. Replay by the same customer is 200 with the
    * same state; a completion resolved any other way (auto-confirmed, issue reported) is 409 with it.
    */
+  /**
+   * The customer says the professional is at the door: the recorded exception to the position check
+   * (for a device that cannot give a location), never the normal way an arrival is established.
+   */
+  .post("/:id/confirm-arrival", async ({ requireAuth, params: rawParams, request, set }) => {
+    const auth = requireAuth();
+    const params = validate(idParamSchema, rawParams);
+    const { recordCustomerArrivalConfirmation } = await import("../services/arrival-position.service");
+    const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip");
+    const r = await recordCustomerArrivalConfirmation({ bookingId: params.id, customerId: auth.userId, ipAddress: ip });
+    if (!r.ok) {
+      set.status = r.error === "NOT_FOUND" ? 404 : 409;
+      return {
+        success: false,
+        error: r.error === "NOT_FOUND" ? "Booking not found" : "You can confirm arrival once a professional is on the way to this booking",
+        code: r.error,
+      };
+    }
+    return { success: true, message: "Thanks — your professional can now check in", data: { confirmed: true, changed: r.changed, validUntil: r.validUntil.toISOString() } };
+  })
   .post("/:id/confirm-completion", async ({ requireAuth, params: rawParams, set }) => {
     const auth = requireAuth();
     const params = validate(idParamSchema, rawParams);
@@ -1330,8 +1365,8 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         code,
         outcome: body.outcome,
         note: body.note ?? null,
-        latitude: body.latitude,
-        longitude: body.longitude,
+        latitude: body.latitude ?? null,
+        longitude: body.longitude ?? null,
         idempotencyKey: request.headers.get("idempotency-key"),
       });
       if (!r.ok) return requirementError(set, r.error);
@@ -1345,8 +1380,9 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
       body: t.Object({
         outcome: t.Union([t.Literal("SATISFIED"), t.Literal("FAILED")]),
         note: t.Optional(t.String({ maxLength: 500 })),
-        latitude: t.Number(),
-        longitude: t.Number(),
+        // Absent for a device with no position: the service refuses unless someone has vouched.
+        latitude: tNullableNumber,
+        longitude: tNullableNumber,
       }),
     },
   )
@@ -1398,6 +1434,28 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
       return { success: false, error: code === "NOT_FOUND" ? "Not found" : "Forbidden", code };
     }
   })
+  // One evidence photo, for a reader the list above would show that row to. This is what
+  // `mediaAccessUrl` points at when there is no signed link: ids in the path, never a storage key.
+  .get("/:id/evidence/:evidenceId/media", async ({ requireAuth, params: rawParams, set }) => {
+    const auth = requireAuth();
+    const params = validate(idParamSchema, { id: rawParams.id });
+    try {
+      const media = await jobEvidenceService.evidenceMedia(params.id, String(rawParams.evidenceId), {
+        userId: auth.userId,
+        providerId: auth.providerId,
+        isAdmin: auth.role === "ADMIN",
+      });
+      // A private photo: never cached by a shared cache, never sniffed into another type.
+      return new Response(new Uint8Array(media.body), {
+        headers: { "Content-Type": media.mimeType, "Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff" },
+      });
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "FORBIDDEN";
+      const known = code === "NOT_FOUND" || code === "STORAGE_OBJECT_NOT_FOUND";
+      set.status = known ? 404 : 403;
+      return { success: false, error: known ? "Not found" : "Forbidden", code: known ? "NOT_FOUND" : "FORBIDDEN" };
+    }
+  })
   .post(
     "/:id/evidence",
     async ({ requireProvider, params: rawParams, body: raw, set }) => {
@@ -1419,36 +1477,43 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         set.status = 400;
         return { success: false, error: "Invalid stage", code: "VALIDATION_ERROR" };
       }
-      const mediaUrls = [
-        ...(typeof body.mediaUrl === "string" ? [body.mediaUrl] : []),
-        ...(Array.isArray(body.photos) ? body.photos.filter((p) => typeof p === "string") : []),
+      // Evidence media is the image itself, sent in this request and stored by the server. A link
+      // proves nothing and a storage key is the server's to write, so neither is accepted.
+      // Every refusal below is worded by the one table in lib/job-evidence-media (shared with /complete).
+      const refuse = (r: EvidenceRefusalResponse) => {
+        set.status = r.status;
+        return { success: false, error: r.error, code: r.code };
+      };
+      if (body.mediaStorageKey != null && body.mediaStorageKey !== "") return refuse(evidenceRefusal({ reason: "STORAGE_KEY" }));
+      const submitted = [
+        ...(body.mediaUrl != null && body.mediaUrl !== "" ? [body.mediaUrl] : []),
+        ...(Array.isArray(body.photos) ? body.photos : []),
       ];
-      // A storage key supplied by the client is signed back to it when the evidence is listed, so it
-      // must be a key of THIS booking — never a path into another booking's evidence.
-      if (typeof body.mediaStorageKey === "string" && body.mediaStorageKey.length > 0) {
-        const segments = body.mediaStorageKey.split("/");
-        if (!segments.includes(params.id) || segments.includes("..")) {
-          set.status = 400;
-          return { success: false, error: "The storage key does not belong to this booking", code: "VALIDATION_ERROR" };
-        }
-      }
+      const parsed = parseEvidencePhotos(submitted);
+      if (!parsed.ok) return refuse(evidenceRefusal(parsed.refusal));
+      const images = parsed.images;
       try {
+        // Where the photo was sent from is what the server holds for this partner at this moment,
+        // or nothing. The request's own coordinates are a claim and are not written.
+        const { heldPartnerPosition } = await import("../services/arrival-position.service");
+        const held = await heldPartnerPosition(providerId!);
         const row = await jobEvidenceService.recordStage({
           bookingId: params.id,
           providerId: providerId!,
           stage,
-          latitude: typeof body.latitude === "number" ? body.latitude : undefined,
-          longitude: typeof body.longitude === "number" ? body.longitude : undefined,
+          latitude: held?.latitude,
+          longitude: held?.longitude,
           clientUploadId: body.clientUploadId,
-          mediaUrls: mediaUrls.length ? mediaUrls : undefined,
-          mediaStorageKey: body.mediaStorageKey,
-          mediaMimeType: body.mediaMimeType,
+          images: images.length ? images : undefined,
           replace: Boolean(body.replace),
           requireActiveJob: true,
         });
         return { success: true, data: { evidence: jobEvidenceService.uploadReceipt(row) } };
       } catch (err) {
         const code = err instanceof Error ? err.message : "FORBIDDEN";
+        // The same photo again, or one photo too many: its own status and sentence.
+        const refusal = evidenceRefusalFromError(err);
+        if (refusal) return refuse(refusal);
         if (code === "BOOKING_NOT_ACTIVE") {
           set.status = 409;
           return { success: false, error: "Evidence can be added only while the job is in hand", code };

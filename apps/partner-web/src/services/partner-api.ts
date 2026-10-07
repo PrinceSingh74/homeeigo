@@ -648,8 +648,12 @@ export const partnerApi = {
       body: optionalGeoBody(latitude, longitude),
     }).then((r) => r.data!),
 
-  /** Declares arrival. Races safely with the geofence and the job-start fallback. */
-  markArrived: (bookingId: string, latitude: number, longitude: number) =>
+  /**
+   * Declares arrival. Races safely with the geofence and the job-start fallback.
+   * `null` coordinates mean the device has no position: the server refuses unless the customer or
+   * an admin has vouched for this partner on this booking.
+   */
+  markArrived: (bookingId: string, latitude: number | null, longitude: number | null) =>
     apiRequest<
       ApiResponse<{ newlyTransitioned: boolean; booking: { arrivedAt?: string | null } }>
     >(`/api/bookings/${bookingId}/arrived`, {
@@ -676,7 +680,7 @@ export const partnerApi = {
       auth: true,
     }).then((r) => r.data!),
 
-  startBooking: (bookingId: string, latitude: number, longitude: number, otp?: string) =>
+  startBooking: (bookingId: string, latitude: number | null, longitude: number | null, otp?: string) =>
     apiRequest<
       ApiResponse<{ booking: { status: string; startedAt?: string | null } }>
     >(`/api/bookings/${bookingId}/start`, {
@@ -736,7 +740,7 @@ export const partnerApi = {
    * Records what the partner FOUND on site. The server decides whether the gate passes and answers
    * with the new state and the START gate; GPS proximity is enforced exactly like arrival.
    */
-  checkRequirement: (bookingId: string, code: string, outcome: "SATISFIED" | "FAILED", latitude: number, longitude: number, note?: string) =>
+  checkRequirement: (bookingId: string, code: string, outcome: "SATISFIED" | "FAILED", latitude: number | null, longitude: number | null, note?: string) =>
     apiRequest<ApiResponse<{ code: string; state: string; changed: boolean; gate: RequirementGateResult }>>(
       `/api/bookings/${bookingId}/requirements/${encodeURIComponent(code)}/check`,
       { method: "POST", auth: true, body: { outcome, latitude, longitude, ...(note ? { note } : {}) } },

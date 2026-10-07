@@ -42,12 +42,12 @@ import {
   actionAllowed,
   canTransition,
   CASE_TRIAGE_SLA_HOURS,
+  caseProofCandidate,
   caseTypeFor,
   evidenceShapeError,
   evidenceVisibleTo,
   followUpFeeDecision,
   followUpKindFor,
-  isProof,
   isTerminalCaseState,
   RESOLVABLE_FROM,
   reworkPolicyFrom,
@@ -209,9 +209,42 @@ function policyFor(snapshot: unknown, row: WarrantyRow | null): WarrantySnapshot
   return (row?.policy as WarrantySnapshot | null) ?? warrantyFromLegacyBookingSnapshot(snapshot);
 }
 
-async function proofCount(db: Db, caseId: string): Promise<number> {
-  const rows = await db.$queryRaw<{ n: bigint }[]>`SELECT count(*)::bigint AS n FROM booking_case_evidence WHERE case_id = ${caseId} AND kind IN ('JOB_EVIDENCE', 'CUSTOMER_MEDIA')`;
-  return Number(rows[0]?.n ?? 0);
+type ProofItem = { kind: string; jobEvidenceId?: string | null; mediaStorageKey?: string | null; mediaUrl?: string | null };
+
+/**
+ * Is any of these evidence items proof? Proof is a photo the server stored (lib/booking-case-policy,
+ * `caseProofCandidate`): this booking's job evidence that holds a server-written photo, or a photo
+ * uploaded to this case. A media-less job row, a URL, or a key a client typed is a claim: it is kept
+ * and shown to the case team, and never counted. `caseId` is null while the case is being opened —
+ * no photo can have been uploaded to a case that does not exist yet.
+ */
+async function hasProof(db: Db, bookingId: string, caseId: string | null, items: ProofItem[]): Promise<boolean> {
+  const ids = [...new Set(items.filter((e) => e.kind === "JOB_EVIDENCE" && e.jobEvidenceId).map((e) => e.jobEvidenceId as string))];
+  const jobRows = ids.length
+    ? await db.jobEvidence.findMany({ where: { id: { in: ids }, bookingId }, select: { id: true, bookingId: true, providerId: true, stage: true, mediaStorageKey: true } })
+    : [];
+  const byId = new Map(jobRows.map((r) => [r.id, r]));
+  for (const e of items) {
+    const candidate = caseProofCandidate({
+      kind: e.kind,
+      caseId: caseId ?? "",
+      bookingId,
+      mediaStorageKey: e.mediaStorageKey,
+      mediaUrl: e.mediaUrl,
+      jobEvidence: e.jobEvidenceId ? byId.get(e.jobEvidenceId) ?? null : null,
+    });
+    if (!candidate) continue;
+    if (e.kind !== "CUSTOMER_MEDIA") return true;
+    // A key of the right shape can be typed by a client; only an object the upload stored counts.
+    if (caseId && (await objectStorageService.headObject(CASE_MEDIA_NAMESPACE, e.mediaStorageKey as string).catch(() => false))) return true;
+  }
+  return false;
+}
+
+async function caseHasProof(db: Db, c: { id: string; booking_id: string }): Promise<boolean> {
+  const rows = await db.$queryRaw<{ kind: string; job_evidence_id: string | null; media_storage_key: string | null; media_url: string | null }[]>`
+    SELECT kind, job_evidence_id, media_storage_key, media_url FROM booking_case_evidence WHERE case_id = ${c.id} AND kind IN ('JOB_EVIDENCE', 'CUSTOMER_MEDIA') ORDER BY id`;
+  return hasProof(db, c.booking_id, c.id, rows.map((r) => ({ kind: r.kind, jobEvidenceId: r.job_evidence_id, mediaStorageKey: r.media_storage_key, mediaUrl: r.media_url })));
 }
 
 function iso(d: Date | null | undefined): string | null {
@@ -266,7 +299,8 @@ class BookingCaseService {
       row: row ? { state: row.state, startsAt: row.starts_at, expiresAt: row.expires_at } : null,
       completedAt: b.completedAt,
       category,
-      proofPresent: evidence.some((e) => isProof(e.kind)),
+      // At open only this booking's server-stored job photos can be proof; a URL or a key is a claim.
+      proofPresent: await hasProof(prisma, b.id, null, evidence.map((e) => ({ kind: e.kind, jobEvidenceId: e.kind === "JOB_EVIDENCE" ? e.jobEvidenceId : null }))),
       now,
     });
     if (!eligibility.complaintWindowOpen) {
@@ -525,7 +559,7 @@ class BookingCaseService {
       row: row ? { state: row.state === "EXPIRED" && row.expires_at.getTime() >= c.created_at.getTime() ? "ACTIVE" : row.state, startsAt: row.starts_at, expiresAt: row.expires_at } : null,
       completedAt: b?.completedAt ?? null,
       category: c.category as CaseCategory,
-      proofPresent: (await proofCount(prisma, c.id)) > 0,
+      proofPresent: await caseHasProof(prisma, c),
       now: c.created_at,
     });
   }

@@ -4,11 +4,11 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Camera, Loader2, Upload } from "lucide-react";
 import { PartnerCard } from "@/components/ui/PartnerCard";
-import { PartnerButton } from "@/components/ui/PartnerButton";
 import { partnerApi } from "@/services/partner-api";
 import { getErrorMessage } from "@/lib/api-error";
 import { formatDate, formatTime } from "@/lib/format";
 import { fileToDataUrl } from "@/lib/file-to-data-url";
+import { isApiMediaPath, openEvidenceMedia } from "@/lib/evidence-media";
 import type { JobEvidenceItem } from "@/types/partner";
 
 const STAGES = ["ARRIVAL", "START", "COMPLETION"] as const;
@@ -32,7 +32,6 @@ export function JobEvidencePanel({
   embedded?: boolean;
 }) {
   const qc = useQueryClient();
-  const [urlDraft, setUrlDraft] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const evidenceQuery = useQuery({
@@ -49,7 +48,6 @@ export function JobEvidencePanel({
         replace: true,
       }),
     onSuccess: () => {
-      setUrlDraft("");
       setUploadError(null);
       void qc.invalidateQueries({ queryKey: ["partner", "job-evidence", bookingId] });
     },
@@ -125,7 +123,20 @@ export function JobEvidencePanel({
                             {formatDate(item.capturedAt)} {formatTime(item.capturedAt)}
                             {item.isCurrent ? " · current" : ""}
                           </span>
-                          {url ? (
+                          {url && isApiMediaPath(url) ? (
+                            // Held by the server and readable only with this session: fetched, not linked.
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void openEvidenceMedia(url).then((ok) => {
+                                  if (!ok) setUploadError("This photo could not be opened. Please try again.");
+                                })
+                              }
+                              className="font-semibold text-partner-primary hover:underline"
+                            >
+                              View
+                            </button>
+                          ) : url ? (
                             <a
                               href={url}
                               target="_blank"
@@ -150,27 +161,8 @@ export function JobEvidencePanel({
 
       <div className="space-y-2 border-t border-partner-line pt-3">
         <p className="text-xs font-semibold text-partner-text">Upload completion photo</p>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            value={urlDraft}
-            onChange={(e) => setUrlDraft(e.target.value)}
-            placeholder="https://… or paste data URL"
-            className="flex-1 rounded-xl border border-partner-line bg-partner-bg px-3 py-2 text-sm text-partner-text outline-none focus:border-partner-primary"
-          />
-          <PartnerButton
-            type="button"
-            disabled={!urlDraft.trim() || uploadMutation.isPending}
-            onClick={() => void uploadMutation.mutateAsync(urlDraft.trim())}
-          >
-            {uploadMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4" />
-            )}
-            Upload URL
-          </PartnerButton>
-        </div>
-        <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-partner-primary">
+        <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-partner-line px-3 py-2 text-xs font-semibold text-partner-primary">
+          {uploadMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Upload className="h-4 w-4" aria-hidden="true" />}
           <input
             type="file"
             accept="image/*"
@@ -178,7 +170,7 @@ export function JobEvidencePanel({
             disabled={uploadMutation.isPending}
             onChange={(e) => void onFileChange(e.target.files?.[0] ?? null)}
           />
-          Or choose a photo from device
+          {uploadMutation.isPending ? "Uploading…" : "Take or choose a photo"}
         </label>
         {uploadError ? <p className="text-xs text-partner-danger">{uploadError}</p> : null}
       </div>

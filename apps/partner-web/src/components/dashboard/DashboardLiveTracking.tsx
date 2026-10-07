@@ -22,7 +22,7 @@ import {
   useStartBookingMutation,
 } from "@/hooks/use-partner-data";
 import { localActionsFromBooking, primaryActionToLocalCta } from "@/lib/job-action-policy";
-import { getPartnerCoords, getLocationRequiredMessage } from "@/lib/partner-coords";
+import { getPartnerCoords } from "@/lib/partner-coords";
 import { getErrorMessage, PartnerApiError } from "@/lib/api-error";
 import { describeCompletionRefusal, type CompletionRefusal } from "@/lib/completion-checklist";
 import { formatInr } from "@/lib/format";
@@ -111,12 +111,12 @@ export function DashboardLiveTracking() {
       const mode = nextAction === "arrived" ? "strict" : "soft";
       const coords = await getPartnerCoords(mode);
       if (nextAction === "arrived") {
-        // Arrival is a proof of presence: no fix, no arrival (the server rejects 0,0 anyway).
-        if (!coords) {
-          showToast(getLocationRequiredMessage(), "error");
-          return;
-        }
-        await arrivedMutation.mutateAsync({ bookingId: activeJob.id, latitude: coords.latitude, longitude: coords.longitude });
+        // Arrival is a proof of presence. With no fix from this device the server decides: it
+        // records the arrival only if the customer (or support) has confirmed it, and otherwise
+        // its answer says what to do.
+        await arrivedMutation
+          .mutateAsync({ bookingId: activeJob.id, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null })
+          .catch(() => undefined);
         return;
       }
       const args = {
@@ -309,14 +309,11 @@ export function DashboardLiveTracking() {
             setBusy("start");
             try {
               const coords = await getPartnerCoords("strict");
-              if (!coords) {
-                showToast(getLocationRequiredMessage(), "error");
-                return;
-              }
+              // With no fix from this device the server decides (see arrival above).
               await startMutation.mutateAsync({
                 bookingId: activeJob.id,
-                latitude: coords.latitude,
-                longitude: coords.longitude,
+                latitude: coords?.latitude ?? null,
+                longitude: coords?.longitude ?? null,
                 otp,
               });
             } finally {

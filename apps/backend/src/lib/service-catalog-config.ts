@@ -385,6 +385,20 @@ export const serviceCatalogConfigSchema = z
       .strict()
       .optional(),
     /**
+     * Why a section does not apply to this service. A declaration, not an omission: it is part of
+     * the configuration, so it is what the second admin approves and what the version history keeps.
+     * Without a real reason here, an absent section is simply absent.
+     */
+    notApplicableReasons: z
+      .object({
+        safety: text(500).optional(),
+        quality: text(500).optional(),
+        materials: text(500).optional(),
+        equipment: text(500).optional(),
+      })
+      .strict()
+      .optional(),
+    /**
      * Phase 10 §11 — versioned warranty policy, frozen per booking as `warranty.v1`
      * (src/lib/service-warranty.ts). `quality.warrantyDays` stays as the legacy input.
      */

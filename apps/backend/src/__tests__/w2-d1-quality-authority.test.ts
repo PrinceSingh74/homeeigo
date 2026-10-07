@@ -18,6 +18,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { hasAuthoritativeMedia, resolveQualityEvidence } from "../lib/quality-evidence";
 import { qualityBlocksCompletion, type QualitySnapshot } from "../lib/service-runtime-policy";
+import { storedEvidenceKey } from "./helpers/evidence-photo";
 
 const BACKEND = resolve(import.meta.dir, "../..");
 const read = (rel: string) => readFileSync(resolve(BACKEND, rel), "utf8");
@@ -37,16 +38,19 @@ const row = (stage: string, over: { mediaUrl?: string | null; mediaStorageKey?: 
   mediaUrl: over.mediaUrl ?? null,
   mediaStorageKey: over.mediaStorageKey ?? null,
 });
+/** A key the server stored for this stage (lib/job-evidence-media) — the only media that counts. */
+const stored = (stage: "ARRIVAL" | "START" | "COMPLETION") => storedEvidenceKey("bk1", "pr1", stage);
 
 /* ── media: what the storage layer holds, not what the caller says ──────────────────────────── */
 
 describe("proof is counted from the authoritative storage reference", () => {
-  test("a key-backed row counts — reading only mediaUrl ignored every modern upload", () => {
-    expect(hasAuthoritativeMedia(row("COMPLETION", { mediaStorageKey: "s3/k1" }))).toBe(true);
+  test("a row whose key the server stored counts — reading only mediaUrl ignored every modern upload", () => {
+    expect(hasAuthoritativeMedia(row("COMPLETION", { mediaStorageKey: stored("COMPLETION") }))).toBe(true);
   });
 
-  test("a legacy url-backed row still counts", () => {
-    expect(hasAuthoritativeMedia(row("COMPLETION", { mediaUrl: "https://legacy/1.jpg" }))).toBe(true);
+  test("a url-backed row does not count: a link is a claim, not a photo (2026-10-07)", () => {
+    expect(hasAuthoritativeMedia(row("COMPLETION", { mediaUrl: "https://legacy/1.jpg" }))).toBe(false);
+    expect(hasAuthoritativeMedia(row("COMPLETION", { mediaStorageKey: "s3/k1" }))).toBe(false);
   });
 
   test("a row with neither is metadata, not proof", () => {
@@ -61,18 +65,18 @@ describe("proof is counted from the authoritative storage reference", () => {
       submitted: [],
       evidenceRows: [
         row("ARRIVAL"),
-        row("START", { mediaStorageKey: "s3/a" }),
+        row("START", { mediaStorageKey: stored("START") }),
         row("COMPLETION", { mediaUrl: "https://legacy/b.jpg" }),
       ],
     });
-    expect(e.photos).toBe(2);
+    expect(e.photos).toBe(1);
   });
 
   test("a key-only completion satisfies the AFTER half of before/after", () => {
     const e = resolveQualityEvidence({
       checklist: [],
       submitted: [],
-      evidenceRows: [row("START", { mediaStorageKey: "s3/a" }), row("COMPLETION", { mediaStorageKey: "s3/b" })],
+      evidenceRows: [row("START", { mediaStorageKey: stored("START") }), row("COMPLETION", { mediaStorageKey: stored("COMPLETION") })],
     });
     expect(e.hasBefore).toBe(true);
     expect(e.hasAfter).toBe(true);
@@ -83,7 +87,7 @@ describe("proof is counted from the authoritative storage reference", () => {
     const e = resolveQualityEvidence({
       checklist: [],
       submitted: [],
-      evidenceRows: [row("ARRIVAL", { mediaStorageKey: "s3/a" }), row("START", { mediaStorageKey: "s3/b" })],
+      evidenceRows: [row("ARRIVAL", { mediaStorageKey: stored("ARRIVAL") }), row("START", { mediaStorageKey: stored("START") })],
     });
     expect(e.hasAfter).toBe(false);
     expect(qualityBlocksCompletion(quality({ beforeAfterPhotos: true }), e)).toBe("QUALITY_PROOF_REQUIRED");
@@ -153,7 +157,8 @@ describe("no client claim reaches the gate", () => {
   test("the gate is fed by resolveQualityEvidence over database rows, not by opts", () => {
     const source = read("src/services/booking.service.ts");
     expect(source).toContain("const evidence = resolveQualityEvidence({");
-    expect(source).toContain("select: { stage: true, mediaUrl: true, mediaStorageKey: true },");
+    // The rows carry their booking and partner so a key stored for someone else cannot count.
+    expect(source).toContain("select: { stage: true, mediaUrl: true, mediaStorageKey: true, bookingId: true, providerId: true },");
     expect(source).toContain("const blocked = qualityBlocksCompletion(quality, evidence);");
     // The in-flight photo array must not be added to the count any more.
     expect(source.includes("(opts?.photos?.length ?? 0) +")).toBe(false);

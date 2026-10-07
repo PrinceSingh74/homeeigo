@@ -17,12 +17,14 @@ import { bookingService } from "../services/booking.service";
 import { bearer, cleanupAdversarialFixtures, dbReachable, futureSlot, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { BOOKING_CREATE_PATH, withQuoteToken } from "./helpers/quote-token";
+import { pngDataUrl } from "./helpers/evidence-photo";
 
 const RUN = `stepev-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
 let dbOk = false;
 let addr: { latitude: number; longitude: number };
-const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+// A different photo per upload: the server refuses the same bytes as both the before and the after.
+const PNG = (tag: string) => pngDataUrl(`${RUN}-${tag}`);
 
 type Res = { status: number; json: any };
 async function call(method: string, path: string, body?: unknown, token?: string | null): Promise<Res> {
@@ -38,7 +40,7 @@ const admin = () => bearer(ctx.superAdmin);
 const partner = () => bearer({ id: ctx.vendorUserId, email: `${RUN}@partner.test` });
 const step = (id: string, code: string, action: string, body?: unknown) => call("POST", `/api/bookings/${id}/execution/${code}/${action}`, body ?? {}, partner());
 const upload = (id: string, stage: "START" | "COMPLETION", tag: string) =>
-  call("POST", `/api/bookings/${id}/evidence`, { stage, mediaUrl: PNG, clientUploadId: `${RUN}-${tag}` }, partner());
+  call("POST", `/api/bookings/${id}/evidence`, { stage, mediaUrl: PNG(tag), clientUploadId: `${RUN}-${tag}` }, partner());
 
 const CONFIG = {
   materialPolicy: "PROFESSIONAL_PROVIDED",

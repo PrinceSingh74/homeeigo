@@ -6,6 +6,7 @@
  * the database refuses edits to closed cases and to the event / evidence history.
  */
 import type { WarrantyEligibility } from "./service-warranty";
+import { isServerStoredEvidence } from "./job-evidence-media";
 
 export const CASE_STATES = ["CASE_CREATED", "TRIAGE", "ELIGIBILITY", "INVESTIGATION", "ACTION", "RESOLVED", "REJECTED", "ESCALATED"] as const;
 export type CaseState = (typeof CASE_STATES)[number];
@@ -146,9 +147,50 @@ export function evidenceShapeError(e: EvidenceInput): string | null {
   return "EVIDENCE_INVALID";
 }
 
-/** Proof is something that shows the work: job evidence or the customer's own media. A note is not proof. */
+/**
+ * The KINDS that can be proof: job evidence or the customer's own media. A note never is.
+ * The kind alone decides nothing — see `caseProofCandidate` for whether a given row counts.
+ */
 export function isProof(kind: string): boolean {
   return kind === "JOB_EVIDENCE" || kind === "CUSTOMER_MEDIA";
+}
+
+const CASE_MEDIA_KEY = /^([A-Za-z0-9_-]+)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp)$/;
+
+/** Is this the key the case service writes for a photo uploaded to THIS case (`<caseId>/<uuid>.<ext>`)? */
+export function isCaseMediaKey(caseId: string, key: string | null | undefined): boolean {
+  const m = typeof key === "string" ? CASE_MEDIA_KEY.exec(key) : null;
+  return Boolean(m && m[1] === caseId);
+}
+
+/**
+ * Could this evidence row be proof? (Adversarial audit, 2026-10-07: any JOB_EVIDENCE or CUSTOMER_MEDIA
+ * row counted, so a geotag-only job row or a pasted https link satisfied "proof required".)
+ *
+ * Proof is a photo the server stored:
+ *   - JOB_EVIDENCE: the referenced row belongs to this booking and holds a server-written photo
+ *     (the same rule the completion gate uses);
+ *   - CUSTOMER_MEDIA: the key is the one this case's photo upload writes. A URL is the customer's
+ *     claim — it is kept and shown, and never counted. So is a key that arrived from a client.
+ *
+ * "Candidate" because a client can type a key of the right shape: the service also confirms the
+ * object exists before it counts a CUSTOMER_MEDIA row.
+ */
+export function caseProofCandidate(e: {
+  kind: string;
+  caseId: string;
+  bookingId: string;
+  mediaStorageKey?: string | null;
+  mediaUrl?: string | null;
+  jobEvidence?: { bookingId: string; providerId: string; stage: string; mediaStorageKey: string | null } | null;
+}): boolean {
+  if (e.kind === "JOB_EVIDENCE") {
+    const j = e.jobEvidence;
+    if (!j || j.bookingId !== e.bookingId) return false;
+    return isServerStoredEvidence({ mediaStorageKey: j.mediaStorageKey, bookingId: e.bookingId, providerId: j.providerId, stage: String(j.stage).toUpperCase() });
+  }
+  if (e.kind === "CUSTOMER_MEDIA") return isCaseMediaKey(e.caseId, e.mediaStorageKey);
+  return false;
 }
 
 export type Audience = "CUSTOMER" | "PARTNER" | "ADMIN";

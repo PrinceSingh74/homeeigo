@@ -1,7 +1,7 @@
 "use client";
 
 import type { ServiceCatalogConfig } from "@/services/admin-api";
-import { Field, LinesField, Section, clean, lines, listIssue, listOrUndefined, num, str, textOrUndefined, wholeNumberIssue, type ConfigIssue } from "./config-form";
+import { Field, LinesField, NotApplicableReasonField, Section, clean, lines, listIssue, listOrUndefined, num, str, textOrUndefined, wholeNumberIssue, type ConfigIssue } from "./config-form";
 
 /**
  * Phase 10 §9 — structured safety content (`catalogConfig.safety`) and the customer age policy
@@ -78,7 +78,21 @@ export function safetyIssues(f: SafetyForm): ConfigIssue[] {
   return out;
 }
 
-export function SafetySection({ value: f, onChange }: { value: SafetyForm; onChange: (next: SafetyForm) => void }) {
+/**
+ * `notApplicableReason` is `catalogConfig.notApplicableReasons.safety` — it lives beside the safety
+ * block, not in it, so the parent owns the value and this section only shows the field.
+ */
+export function SafetySection({
+  value: f,
+  onChange,
+  notApplicableReason,
+  onNotApplicableReason,
+}: {
+  value: SafetyForm;
+  onChange: (next: SafetyForm) => void;
+  notApplicableReason: string;
+  onNotApplicableReason: (next: string) => void;
+}) {
   const set = <K extends keyof SafetyForm>(k: K, v: string) => onChange({ ...f, [k]: v });
   const listField = (k: keyof typeof LISTS, label: string, consumer: string, placeholder?: string) => (
     <LinesField label={label} consumer={consumer} value={f[k]} onChange={(v) => set(k, v)} maxItems={LISTS[k][0]} maxLen={LISTS[k][1]} placeholder={placeholder} />
@@ -103,6 +117,9 @@ export function SafetySection({ value: f, onChange }: { value: SafetyForm; onCha
         {listField("ppe", "Protective equipment", "Professional", "Gloves")}
         {listField("prohibitedConditions", "Do not proceed if", "Professional", "Exposed live wiring")}
         {textField("incidentProtocol", "Incident protocol", "Professional")}
+      </Section>
+      <Section title="If safety does not apply" hint="To publish, a service needs at least one “Do not proceed if” condition and an incident protocol. If this service really has no safety content, say why here instead." open>
+        <NotApplicableReasonField section="safety" value={notApplicableReason} onChange={onNotApplicableReason} />
       </Section>
     </>
   );

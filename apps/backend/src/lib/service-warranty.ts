@@ -11,6 +11,9 @@
  * Nothing here invents a guarantee: an unconfigured service has `enabled: false` and no window.
  */
 
+// A cycle with service-domain (it imports this module too). Safe: neither side calls the other while loading.
+import { declaredNotApplicable } from "./service-domain";
+
 export const CASE_CATEGORIES = ["QUALITY", "INCOMPLETE", "DAMAGE", "BEHAVIOUR", "NO_SHOW", "BILLING", "OTHER"] as const;
 export type CaseCategory = (typeof CASE_CATEGORIES)[number];
 
@@ -49,6 +52,8 @@ type WarrantyCfg = {
     refundAllowed?: boolean;
   };
   quality?: { warrantyDays?: number; complaintWindowDays?: number; notApplicable?: boolean };
+  /** Read only through `declaredNotApplicable`: the switch above counts only with its reason. */
+  notApplicableReasons?: { quality?: string };
 } | null;
 
 /** Default issue types a legacy `warrantyDays` covers: workmanship and incompleteness, nothing else. */
@@ -62,8 +67,10 @@ const LEGACY_ELIGIBLE: CaseCategory[] = ["QUALITY", "INCOMPLETE"];
  */
 export function buildWarrantySnapshot(cfg: WarrantyCfg): WarrantySnapshot {
   const w = cfg?.warranty;
-  const legacyDays = cfg?.quality && !cfg.quality.notApplicable ? (cfg.quality.warrantyDays ?? 0) : 0;
-  const complaintWindowDays = cfg?.quality && !cfg.quality.notApplicable ? (cfg.quality.complaintWindowDays ?? 0) : 0;
+  // The publish gate's question, not the bare flag: a switch with no reason takes no cover away.
+  const qualityOff = declaredNotApplicable(cfg, "quality") !== null;
+  const legacyDays = cfg?.quality && !qualityOff ? (cfg.quality.warrantyDays ?? 0) : 0;
+  const complaintWindowDays = cfg?.quality && !qualityOff ? (cfg.quality.complaintWindowDays ?? 0) : 0;
   if (w) {
     const enabled = w.enabled === true && (w.durationDays ?? 0) > 0;
     return {

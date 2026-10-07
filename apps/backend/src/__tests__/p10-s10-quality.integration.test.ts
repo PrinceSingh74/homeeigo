@@ -22,6 +22,7 @@ import { partnerSafetyService } from "../services/partner-safety.service";
 import { bearer, cleanupAdversarialFixtures, dbReachable, futureSlot, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { BOOKING_CREATE_PATH, withQuoteToken } from "./helpers/quote-token";
+import { pngDataUrl } from "./helpers/evidence-photo";
 
 const RUN = `p10s10-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
@@ -68,7 +69,7 @@ async function started(): Promise<string> {
   return id;
 }
 async function proof(id: string, stage: "START" | "COMPLETION") {
-  const r = await call("POST", `/api/bookings/${id}/evidence`, { stage, latitude: null, longitude: null, mediaStorageKey: `s3/evidence/${id}/${stage.toLowerCase()}.jpg`, mediaMimeType: "image/jpeg", clientUploadId: `${RUN}-${id}-${stage}` }, partner());
+  const r = await call("POST", `/api/bookings/${id}/evidence`, { stage, latitude: null, longitude: null, mediaUrl: pngDataUrl(`${RUN}-${id}-${stage}`), clientUploadId: `${RUN}-${id}-${stage}` }, partner());
   if (r.status !== 200 && r.status !== 201) throw new Error(`evidence: ${r.status} ${JSON.stringify(r.json)}`);
 }
 async function doStep(id: string) {

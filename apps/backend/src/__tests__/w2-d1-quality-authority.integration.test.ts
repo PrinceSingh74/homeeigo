@@ -30,6 +30,7 @@ import {
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { bookingService } from "../services/booking.service";
 import { createBookingWithQuote } from "./helpers/quote-token";
+import { pngDataUrl } from "./helpers/evidence-photo";
 
 const RUN = `w2d1-${Date.now().toString(36)}`;
 const CHECKLIST = ["Wipe surfaces", "Mop floor", "Empty bins"];
@@ -91,8 +92,8 @@ async function uploadKeyOnlyProof(bookingId: string, stage: "START" | "COMPLETIO
     stage,
     latitude: null,
     longitude: null,
-    mediaStorageKey: `s3/evidence/${bookingId}/${stage.toLowerCase()}.jpg`,
-    mediaMimeType: "image/jpeg",
+    // A photo of its own per booking and stage: the same bytes are refused for a second stage or job.
+    mediaUrl: pngDataUrl(`${RUN}-${bookingId}-${stage}`),
     clientUploadId: `${RUN}-${bookingId}-${stage}`,
   });
   if (r.status !== 200 && r.status !== 201) throw new Error(`evidence upload failed: ${r.status} ${JSON.stringify(r.json)}`);
@@ -179,9 +180,12 @@ describe.serial("the client boolean no longer completes a job", () => {
     // Now the media is written first and read back; a bare string that is not a real upload still
     // becomes a row, so this asserts the BEFORE half is what blocks — nothing was uploaded for it.
     const id = await startedBooking();
+    // 2026-10-07: a link is no longer stored at all. It is refused as not being a photo, and the job stays open.
     const r = await complete(id, { photos: ["https://client-says-so/after.jpg"], completedChecklist: CHECKLIST });
-    expect(r.status).toBe(409);
-    expect(r.json.code).toBe("QUALITY_PROOF_REQUIRED");
+    expect(r.status).toBe(400);
+    expect(r.json.code).toBe("EVIDENCE_MEDIA_INVALID");
+    expect(await statusOf(id)).toBe("IN_PROGRESS");
+    expect(await prisma.jobEvidence.count({ where: { bookingId: id, stage: "COMPLETION" } })).toBe(0);
   });
 });
 

@@ -144,7 +144,11 @@ describe("§11 allowedActions from the frozen warranty", () => {
     expect(typed).toMatchObject({ schema: "warranty.v1", enabled: true, durationDays: 10, eligibleIssueTypes: ["DAMAGE"], refundAllowed: false, reworkFirst: true, complaintWindowDays: 3 });
     const legacy = buildWarrantySnapshot({ quality: { warrantyDays: 5, complaintWindowDays: 2 } });
     expect(legacy).toMatchObject({ enabled: true, durationDays: 5, eligibleIssueTypes: ["QUALITY", "INCOMPLETE"], complaintWindowDays: 2 });
-    expect(buildWarrantySnapshot({ quality: { warrantyDays: 5, notApplicable: true } })).toMatchObject({ enabled: false, durationDays: 0, complaintWindowDays: 0 });
+    // Quality is off only when DECLARED: the switch plus a real reason (the publish gate's own question,
+    // `declaredNotApplicable`). The bare switch used to take the legacy cover away on its own.
+    expect(buildWarrantySnapshot({ quality: { warrantyDays: 5, complaintWindowDays: 2, notApplicable: true }, notApplicableReasons: { quality: "Advice only: there is no finished work to inspect" } })).toMatchObject({ enabled: false, durationDays: 0, complaintWindowDays: 0 });
+    expect(buildWarrantySnapshot({ quality: { warrantyDays: 5, complaintWindowDays: 2, notApplicable: true } })).toMatchObject({ enabled: true, durationDays: 5, complaintWindowDays: 2 });
+    expect(buildWarrantySnapshot({ quality: { warrantyDays: 5, notApplicable: true }, notApplicableReasons: { quality: "not applicable" } })).toMatchObject({ enabled: true, durationDays: 5 });
     expect(buildWarrantySnapshot({ warranty: { enabled: true, durationDays: 0 } }).enabled).toBe(false);
     expect(warrantyFromLegacyBookingSnapshot({ warranty: typed })).toEqual(typed);
     expect(warrantyFromLegacyBookingSnapshot({ quality: { warrantyDays: 7 } })).toMatchObject({ enabled: true, durationDays: 7 });

@@ -27,6 +27,8 @@ import {
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { createBookingWithQuote } from "./helpers/quote-token";
 import { NO_SHOW_POLICY } from "../lib/no-show-policy";
+import { storedEvidenceKey } from "./helpers/evidence-photo";
+import { bookingNoShowService } from "../services/booking-no-show.service";
 
 const RUN = `p09nsapi-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
@@ -53,7 +55,12 @@ async function post(path: string, token: string) {
   return { status: res.status, json: (await res.json().catch(() => ({}))) as any };
 }
 
-async function bookingAtDoor(opts: { arrivedMinutesAgo?: number | null; paid?: boolean } = {}) {
+/** Where the fixture job is: what a door photo's server-held position has to agree with. */
+const jobPosition = async () => {
+  const a = await prisma.address.findUniqueOrThrow({ where: { id: ctx.addressAId }, select: { latitude: true, longitude: true } });
+  return { latitude: a.latitude, longitude: a.longitude };
+};
+async function bookingAtDoor(opts: { arrivedMinutesAgo?: number | null; paid?: boolean; doorPhoto?: boolean } = {}) {
   await keepPresenceFresh(ctx);
   const result = await createBookingWithQuote(ctx.customerA.id, {
     serviceId: ctx.serviceId,
@@ -71,6 +78,15 @@ async function bookingAtDoor(opts: { arrivedMinutesAgo?: number | null; paid?: b
       arrivedAt: opts.arrivedMinutesAgo == null ? null : new Date(Date.now() - opts.arrivedMinutesAgo * 60_000),
     },
   });
+  // A photo at the door, stored by the server after the arrival: what makes the partner's own report
+  // chargeable. Pass `doorPhoto: false` for a report with nothing but the arrival time behind it.
+  if (opts.arrivedMinutesAgo != null && opts.doorPhoto !== false) {
+    await prisma.jobEvidence.create({
+      // The position on the row is the one the server held for the partner when the photo arrived: at the job.
+      data: { bookingId: id, providerId: ctx.providerId, stage: "ARRIVAL", mediaStorageKey: storedEvidenceKey(id, ctx.providerId, "ARRIVAL"), mediaMimeType: "image/png", capturedAt: new Date(Date.now() - Math.max(0, opts.arrivedMinutesAgo - 1) * 60_000), ...(await jobPosition()) },
+    });
+  }
+
   created.push(id);
   return { id, amount: result.booking.finalAmount };
 }
@@ -128,6 +144,73 @@ describe.serial("POST /:id/no-show — the partner's door", () => {
     expect(r.json.data.graceMinutes).toBe(NO_SHOW_POLICY.graceMinutes);
     expect(r.json.data.waitedMinutes).toBe(NO_SHOW_POLICY.graceMinutes - 5);
     expect(await statusOf(id)).toBe("EN_ROUTE");
+  });
+
+  /**
+   * 2026-10-07: an arrival time is something the partner's device reported. A fee taken from the
+   * customer on the partner's own word needs something a person can look at afterwards: a photo at
+   * the door, received and stored by the server after the arrival. Without one the no-show is still
+   * recorded and the customer is refunded in full; an admin who reviews it can apply the fee.
+   */
+  test("the partner's own report with nothing but an arrival time records the no-show and charges nothing", async () => {
+    if (!dbOk) return;
+    const { id, amount } = await bookingAtDoor({ arrivedMinutesAgo: NO_SHOW_POLICY.graceMinutes + 10, doorPhoto: false });
+    const walletOf = async () => Number((await prisma.user.findUniqueOrThrow({ where: { id: ctx.customerA.id }, select: { walletBalance: true } })).walletBalance);
+    const before = await walletOf();
+    const r = await post(`${id}/no-show`, partnerToken);
+    expect(r.status).toBe(200);
+    expect(r.json.data.status).toBe("customer_no_show");
+    expect(r.json.data.feeAmount).toBe(0);
+    expect(r.json.data.feeWithheld).toBe("NO_DOOR_PHOTO");
+    // The whole price is back in the wallet it was paid from: nothing was kept.
+    expect((await walletOf()) - before).toBeCloseTo(amount, 2);
+    expect(await statusOf(id)).toBe("CUSTOMER_NO_SHOW");
+  });
+
+  test("a photo taken before the arrival, a link, or another stage's photo is not a photo at the door", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40, doorPhoto: false });
+    await prisma.jobEvidence.createMany({
+      data: [
+        { bookingId: id, providerId: ctx.providerId, stage: "ARRIVAL", mediaStorageKey: storedEvidenceKey(id, ctx.providerId, "ARRIVAL"), capturedAt: new Date(Date.now() - 90 * 60_000), clientUploadId: `${RUN}-early` },
+        { bookingId: id, providerId: ctx.providerId, stage: "ARRIVAL", mediaUrl: "https://example.test/door.jpg", clientUploadId: `${RUN}-link` },
+        { bookingId: id, providerId: ctx.providerId, stage: "START", mediaStorageKey: storedEvidenceKey(id, ctx.providerId, "START"), clientUploadId: `${RUN}-start` },
+      ],
+    });
+    const r = await post(`${id}/no-show`, partnerToken);
+    expect({ fee: r.json.data.feeAmount, withheld: r.json.data.feeWithheld }).toEqual({ fee: 0, withheld: "NO_DOOR_PHOTO" });
+  });
+
+  /**
+   * Re-audit, 2026-10-07: "a photo" was any image, sent from anywhere. A door photo now has to have
+   * arrived while the server held the partner's position at the job — the position is the server's,
+   * written on the row by the server, never the upload's own coordinates.
+   */
+  test("a photo the server received while it did not hold the partner at the job is not a door photo", async () => {
+    if (!dbOk) return;
+    const job = await jobPosition();
+    for (const position of [{ latitude: null, longitude: null }, { latitude: job.latitude + 0.08, longitude: job.longitude }]) {
+      const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40, doorPhoto: false });
+      await prisma.jobEvidence.create({ data: { bookingId: id, providerId: ctx.providerId, stage: "ARRIVAL", mediaStorageKey: storedEvidenceKey(id, ctx.providerId, "ARRIVAL"), ...position } });
+      const r = await post(`${id}/no-show`, partnerToken);
+      expect({ fee: r.json.data.feeAmount, withheld: r.json.data.feeWithheld }).toEqual({ fee: 0, withheld: "NO_DOOR_PHOTO" });
+    }
+  });
+
+  test("an arrival nobody's position confirmed (the customer or an admin vouched for it) does not charge on the partner's word", async () => {
+    if (!dbOk) return;
+    const { id } = await bookingAtDoor({ arrivedMinutesAgo: 40 });
+    await prisma.activityLog.create({ data: { bookingId: id, userId: ctx.customerA.id, providerId: ctx.providerId, action: "CUSTOMER_CONFIRMED_PROFESSIONAL_ARRIVAL", description: "Customer confirmed the professional is at the service address" } });
+    const r = await post(`${id}/no-show`, partnerToken);
+    expect(r.status).toBe(200);
+    expect({ fee: r.json.data.feeAmount, withheld: r.json.data.feeWithheld }).toEqual({ fee: 0, withheld: "ARRIVAL_VOUCHED" });
+  });
+
+  test("an admin who records the no-show decides the fee: it applies without the photo", async () => {
+    if (!dbOk) return;
+    const { id, amount } = await bookingAtDoor({ arrivedMinutesAgo: 40, doorPhoto: false });
+    const r = await bookingNoShowService.reportCustomerNoShow(id, { userId: ctx.superAdmin.id, isAdmin: true, reason: "Reviewed the partner's call log" });
+    expect("ok" in r && r.ok ? r.feeAmount : null).toBe(Math.round(amount * 0.5 * 100) / 100);
   });
 
   test("with evidence and the wait served it records the no-show and the settlement", async () => {

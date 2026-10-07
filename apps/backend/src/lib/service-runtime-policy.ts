@@ -1,5 +1,7 @@
 import type { ServiceCatalogConfig } from "./service-catalog-config";
-import type { CapabilityProfile } from "./service-domain";
+// A cycle with service-domain (it imports this module too). Safe: both sides only call the other
+// from inside functions, never while the module is loading.
+import { declaredNotApplicable, type CapabilityProfile } from "./service-domain";
 
 /**
  * Runtime consumption of catalogConfig. Unset flags keep TODAY's behaviour
@@ -144,9 +146,15 @@ function validWindowHours(h: unknown): number | undefined {
   return typeof h === "number" && Number.isInteger(h) && h >= 1 && h <= 720 ? h : undefined;
 }
 
+/**
+ * What a booking freezes as its quality standard. Quality is switched off only when the service
+ * DECLARES it not applicable — asked through `declaredNotApplicable`, the publish gate's own
+ * question. The bare `quality.notApplicable` flag used to switch the checks off here while the gate
+ * reported the same service as incomplete; without its reason the flag now switches nothing off.
+ */
 export function qualitySnapshot(cfg: ServiceCatalogConfig | null): QualitySnapshot | null {
   const q = cfg?.quality;
-  if (!q || q.notApplicable) return null;
+  if (!q || declaredNotApplicable(cfg, "quality")) return null;
   const checklist = q.checklist ?? [];
   const proofRequired = q.proofRequired === true;
   const beforeAfterPhotos = q.beforeAfterPhotos === true;
@@ -169,6 +177,12 @@ export function qualitySnapshot(cfg: ServiceCatalogConfig | null): QualitySnapsh
   };
 }
 
+/**
+ * Reads what a booking FROZE, not the catalogue. `qualitySnapshot` never writes `notApplicable:
+ * true` (a declared section is frozen as null), so the flag below is only ever true on a snapshot
+ * frozen before that rule. That booking's decision was made when it was booked and is honoured as
+ * recorded; there is no reason beside it to re-ask.
+ */
 export function qualityFromSnapshot(snap: unknown): QualitySnapshot | null {
   if (!snap || typeof snap !== "object" || Array.isArray(snap)) return null;
   const q = (snap as { quality?: Partial<QualitySnapshot> | null }).quality;

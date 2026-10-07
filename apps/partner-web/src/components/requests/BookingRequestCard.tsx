@@ -366,8 +366,15 @@ export function BookingRequestCard({
                     void withBusy("arrived", async () => {
                       const coords = await getPartnerCoords("strict");
                       if (!coords) {
-                        pendingGps.current = "arrived";
-                        setGpsMenuOpen(true);
+                        // No position from this device. The server still decides: if the customer
+                        // (or support) has confirmed the arrival it is recorded; otherwise its
+                        // answer says what to do, and the location options open.
+                        try {
+                          await arrivedMutation.mutateAsync({ bookingId: request.id, latitude: null, longitude: null });
+                        } catch {
+                          pendingGps.current = "arrived";
+                          setGpsMenuOpen(true);
+                        }
                         return;
                       }
                       await arrivedMutation.mutateAsync({
@@ -485,9 +492,13 @@ export function BookingRequestCard({
             try {
               const coords = await getPartnerCoords("strict");
               if (!coords) {
-                pendingGps.current = "start";
-                setGpsMenuOpen(true);
-                showToast("Turn on GPS from the dropdown, then enter the PIN again.", "info");
+                // As at arrival: the server decides for a device with no position.
+                try {
+                  await startMutation.mutateAsync({ bookingId: request.id, latitude: null, longitude: null, otp });
+                } catch {
+                  pendingGps.current = "start";
+                  setGpsMenuOpen(true);
+                }
                 return;
               }
               await startMutation.mutateAsync({

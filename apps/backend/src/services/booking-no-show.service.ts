@@ -14,6 +14,11 @@ import {
 import { bookingRefundService } from "./booking-refund.service";
 import { publishBookingStatusBackground } from "../lib/booking-realtime";
 import { notificationService } from "./notification.service";
+import { isServerStoredEvidence } from "../lib/job-evidence-media";
+import { knownCoords } from "../lib/geo-unknown";
+import { distanceKm } from "../lib/geo";
+import { eventPlatformConfig } from "../events/core/config";
+import { CUSTOMER_CONFIRMED_ARRIVAL_ACTION, POSITION_CHECK_WAIVED_ACTION } from "./arrival-position.service";
 
 /**
  * §52 / §53 — recording a no-show.
@@ -36,7 +41,7 @@ import { notificationService } from "./notification.service";
  */
 
 export type NoShowResult =
-  | { ok: true; status: BookingStatus; feeAmount: number; refundAmount: number; refundStatus: string }
+  | { ok: true; status: BookingStatus; feeAmount: number; refundAmount: number; refundStatus: string; feeWithheld?: "NO_DOOR_PHOTO" | "ARRIVAL_VOUCHED" }
   | { error: "NOT_FOUND" | "FORBIDDEN" | "INVALID_STATUS" | "NOT_ELIGIBLE"; reason?: CustomerNoShowRefusal; waitedMinutes?: number | null };
 
 /** `reason` is what an admin typed; it is recorded alongside the system's own description. */
@@ -79,17 +84,44 @@ class BookingNoShowService {
     }
 
     const refundable = await this.refundableFor(bookingId, booking.userId);
-    const settlement = customerNoShowSettlement({
-      // The subtotal the fee is a percentage of, capped by what is actually still refundable.
-      subtotal: booking.finalAmount,
-      capturedAmount: refundable,
-    });
+    /**
+     * The arrival behind this report is a position the partner's own device reported. Money is not
+     * taken from a customer on that alone: the partner's own report charges the fee only when there
+     * is a photo at the door — an image the server received and stored for this booking and this
+     * partner, after the arrival, while the position the server held for the partner was at the
+     * job — which the customer or an admin can look at if it is disputed. An arrival that was
+     * vouched for instead of confirmed (the customer's confirmation, an admin's waiver) has no
+     * position behind it at all, and a customer who confirmed the professional was at the door is
+     * not then charged for being absent on that professional's word. In both cases the no-show is
+     * recorded and the customer is refunded in full. An admin recording the no-show has reviewed
+     * it, and decides.
+     *
+     * This is corroboration a person can check, not proof: the position is still what the
+     * partner's device reported, and the photo is whatever was in front of the camera.
+     */
+    let withheld: "NO_DOOR_PHOTO" | "ARRIVAL_VOUCHED" | null = null;
+    if (!actor.isAdmin) {
+      const vouched = booking.providerId != null && (await this.arrivalWasVouched(bookingId, booking.providerId));
+      if (vouched) withheld = "ARRIVAL_VOUCHED";
+      else if (!(booking.providerId != null && booking.arrivedAt != null && (await this.hasDoorPhoto(bookingId, booking.providerId, booking.arrivedAt)))) withheld = "NO_DOOR_PHOTO";
+    }
+    const corroborated = withheld === null;
+    const settlement = corroborated
+      ? customerNoShowSettlement({
+          // The subtotal the fee is a percentage of, capped by what is actually still refundable.
+          subtotal: booking.finalAmount,
+          capturedAmount: refundable,
+        })
+      : { feeAmount: 0, refundAmount: Math.round(refundable * 100) / 100, feePercent: 0 };
+    if (withheld) incCounter("no_show_fee_withheld_total", { reason: withheld });
 
     const closed = await this.close(
       { id: bookingId, status: booking.status, providerId: booking.providerId, requireArrival: true },
       BookingStatus.CUSTOMER_NO_SHOW,
       actor,
-      `customer did not appear after ${verdict.waitedMinutes} minutes`,
+      corroborated
+        ? `customer did not appear after ${verdict.waitedMinutes} minutes`
+        : `customer did not appear after ${verdict.waitedMinutes} minutes (partner's report, no door photo on record: no fee taken, open to admin review)`,
     );
     if (!closed) return { error: "INVALID_STATUS" };
 
@@ -115,8 +147,9 @@ class BookingNoShowService {
       graceMinutes: NO_SHOW_POLICY.graceMinutes,
       feeAmount: settlement.feeAmount,
       refundAmount: settlement.refundAmount,
+      corroborated,
     });
-    return { ok: true, status: BookingStatus.CUSTOMER_NO_SHOW, feeAmount: settlement.feeAmount, refundAmount: settlement.refundAmount, refundStatus: refund };
+    return { ok: true, status: BookingStatus.CUSTOMER_NO_SHOW, feeAmount: settlement.feeAmount, refundAmount: settlement.refundAmount, refundStatus: refund, ...(withheld ? { feeWithheld: withheld } : {}) };
   }
 
   /**
@@ -193,6 +226,38 @@ class BookingNoShowService {
    * row at all, so a customer no-show computed a fee of zero on a booking that had been paid in
    * full. Gateway, wallet and split all have to be one question, asked in one place.
    */
+  /**
+   * A server-stored ARRIVAL photo by this partner for this booking, received at or after the
+   * arrival, whose position — written by the server from the fix it held for the partner when the
+   * photo came in, never from the upload — is at the job.
+   */
+  private async hasDoorPhoto(bookingId: string, providerId: string, arrivedAt: Date): Promise<boolean> {
+    const [rows, booking] = await Promise.all([
+      prisma.jobEvidence.findMany({
+        where: { bookingId, providerId, stage: "ARRIVAL", isCurrent: true, mediaStorageKey: { not: null }, capturedAt: { gte: arrivedAt } },
+        select: { mediaStorageKey: true, bookingId: true, providerId: true, stage: true, latitude: true, longitude: true },
+      }),
+      prisma.booking.findUnique({ where: { id: bookingId }, select: { address: { select: { latitude: true, longitude: true } } } }),
+    ]);
+    const job = knownCoords(booking?.address?.latitude, booking?.address?.longitude);
+    return rows.some((r) => {
+      if (!isServerStoredEvidence(r)) return false;
+      const at = knownCoords(r.latitude, r.longitude);
+      if (!at) return false;
+      // A job address with no known coordinates cannot be measured against: the held position stands.
+      return !job || distanceKm(at.latitude, at.longitude, job.latitude, job.longitude) * 1000 <= eventPlatformConfig.arrivalRadiusM;
+    });
+  }
+
+  /** Was this partner's arrival on this booking covered by a recorded exception rather than a confirmed position? */
+  private async arrivalWasVouched(bookingId: string, providerId: string): Promise<boolean> {
+    const row = await prisma.activityLog.findFirst({
+      where: { bookingId, providerId, action: { in: [POSITION_CHECK_WAIVED_ACTION, CUSTOMER_CONFIRMED_ARRIVAL_ACTION] } },
+      select: { id: true },
+    });
+    return row != null;
+  }
+
   private async refundableFor(bookingId: string, userId: string): Promise<number> {
     const remaining = await bookingRefundService.refundableRemaining(bookingId, userId);
     return Math.max(0, remaining ?? 0);

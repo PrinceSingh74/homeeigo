@@ -16,6 +16,7 @@ import { bookingExecutionService } from "../services/booking-execution.service";
 import { bearer, cleanupAdversarialFixtures, dbReachable, futureSlot, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { BOOKING_CREATE_PATH, withQuoteToken } from "./helpers/quote-token";
+import { storedEvidenceKey } from "./helpers/evidence-photo";
 
 const RUN = `p10s7-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
@@ -195,11 +196,11 @@ describe.serial("§8 steps through the real routes", () => {
     expect(none.status).toBe(400);
     expect(none.json.code).toBe("EVIDENCE_REQUIRED");
     const other = await book("fabric");
-    const foreign = await prisma.jobEvidence.create({ data: { bookingId: other, providerId: ctx.providerId, stage: "START", mediaStorageKey: `evidence/${RUN}/x.jpg` } as never });
+    const foreign = await prisma.jobEvidence.create({ data: { bookingId: other, providerId: ctx.providerId, stage: "START", mediaStorageKey: storedEvidenceKey(other, ctx.providerId, "START") } as never });
     expect((await step(id, "apply", "complete", { evidenceId: foreign.id })).json.code).toBe("EVIDENCE_REQUIRED");
     const medialess = await prisma.jobEvidence.create({ data: { bookingId: id, providerId: ctx.providerId, stage: "START" } as never });
     expect((await step(id, "apply", "complete", { evidenceId: medialess.id })).json.code).toBe("EVIDENCE_REQUIRED");
-    const real = await prisma.jobEvidence.create({ data: { bookingId: id, providerId: ctx.providerId, stage: "START", mediaStorageKey: `evidence/${RUN}/seats.jpg` } as never });
+    const real = await prisma.jobEvidence.create({ data: { bookingId: id, providerId: ctx.providerId, stage: "START", mediaStorageKey: storedEvidenceKey(id, ctx.providerId, "START") } as never });
     const ok = await step(id, "apply", "complete", { evidenceId: real.id });
     expect(ok.json.data.state).toBe("COMPLETED");
     const [{ evidence_ref }] = await prisma.$queryRaw<{ evidence_ref: string }[]>`SELECT evidence_ref FROM booking_execution_steps WHERE booking_id = ${id} AND code = 'apply'`;

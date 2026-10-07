@@ -443,6 +443,157 @@ describe.serial("an edit to a live service may not remove what a first publish r
     expect(r.json.code).toBe("SERVICE_NOT_BOOKABLE");
     expect((await configOf(id)).safety).toEqual(FULL.safety);
   });
+
+  // Adversarial audit, 2026-10-07 (finding 2). Under the direct policy nobody approves a live edit,
+  // and a declaration passes the gate — so this swap used to be accepted with status 200.
+  const SAFETY_REASON = "Remote video consultation: nobody is on site";
+  const QUALITY_REASON = "Advice only: there is no finished work to inspect";
+
+  test("replacing a live service's safety content with a 'not applicable' reason is refused, with or without required sections", async () => {
+    expect(dbOk).toBe(true);
+    expect(process.env.SERVICE_LIVE_EDIT_POLICY).not.toBe("four-eyes");
+    for (const requires of ["none", "safety,quality,execution"]) {
+      process.env.SERVICE_PUBLISH_REQUIRES = requires;
+      const id = await liveWith(FULL);
+      const live = await row(id);
+      const r = await call("PUT", `/api/admin/services/${id}`, { catalogConfig: { ...FULL, safety: {}, notApplicableReasons: { safety: SAFETY_REASON } } });
+      expect({ requires, code: r.json.code }).toEqual({ requires, code: "SERVICE_NOT_BOOKABLE" });
+      expect(JSON.stringify(r.json)).toContain("SAFETY_DECLARED_NOT_APPLICABLE");
+      const after = await row(id);
+      expect({ version: after.version, lifecycle: after.lifecycleStatus }).toEqual({ version: live.version, lifecycle: "ACTIVE" });
+      expect((await configOf(id)).safety).toEqual(FULL.safety);
+      expect((await configOf(id)).notApplicableReasons).toBeUndefined();
+    }
+  });
+
+  test("switching a live service's quality checks off with a reason is refused the same way, even with the checklist kept", async () => {
+    expect(dbOk).toBe(true);
+    process.env.SERVICE_PUBLISH_REQUIRES = "none";
+    const id = await liveWith(FULL);
+    const r = await call("PUT", `/api/admin/services/${id}`, { catalogConfig: { ...FULL, quality: { ...FULL.quality, notApplicable: true }, notApplicableReasons: { quality: QUALITY_REASON } } });
+    expect(r.json.code).toBe("SERVICE_NOT_BOOKABLE");
+    expect(JSON.stringify(r.json)).toContain("QUALITY_DECLARED_NOT_APPLICABLE");
+    expect((await configOf(id)).quality).toEqual(FULL.quality);
+  });
+
+  test("the way through is a publish: paused, the change is accepted, and going live again needs a second admin's approval of it", async () => {
+    expect(dbOk).toBe(true);
+    process.env.SERVICE_PUBLISH_REQUIRES = "safety,quality,execution";
+    const id = await liveWith(FULL);
+    expect((await call("POST", `/api/admin/services/${id}/lifecycle`, { to: "PAUSED", reason: "Changing what this service covers" })).status).toBe(200);
+    const edited = await call("PUT", `/api/admin/services/${id}`, { catalogConfig: { ...FULL, safety: {}, notApplicableReasons: { safety: SAFETY_REASON } } });
+    expect(edited.status).toBe(200);
+    expect((await configOf(id)).notApplicableReasons).toEqual({ safety: SAFETY_REASON });
+    const back = await call("POST", `/api/admin/services/${id}/lifecycle`, { to: "ACTIVE" });
+    expect(["APPROVAL_REQUIRED", "APPROVAL_STALE"]).toContain(back.json.code as string);
+    expect((await row(id)).lifecycleStatus).toBe("PAUSED");
+  });
+
+  test("control: a draft that declares its reasons is published the governed way, and a live service already declared stays editable", async () => {
+    expect(dbOk).toBe(true);
+    process.env.SERVICE_PUBLISH_REQUIRES = "safety,quality";
+    const declared = { ...POLICIES, quality: { notApplicable: true }, notApplicableReasons: { safety: SAFETY_REASON, quality: QUALITY_REASON } };
+    const id = await liveWith(declared);
+    expect((await row(id)).lifecycleStatus).toBe("ACTIVE");
+    const r = await call("PUT", `/api/admin/services/${id}`, { catalogConfig: { ...declared, faqs: [{ q: "How long does it take?", a: "About forty minutes." }] } });
+    expect(r.status).toBe(200);
+  });
+
+  // Finding 4: the readiness the admin sees is the gate, in the same response.
+  test("the admin row never says READY beside a blocked gate: an unexplained 'not required' is CONFIGURATION_REQUIRED with the gate's own finding", async () => {
+    expect(dbOk).toBe(true);
+    process.env.SERVICE_PUBLISH_REQUIRES = "none";
+    seq += 1;
+    const made = await call("POST", "/api/admin/services", { name: `Gov ${RUN_ID} ${seq}`, description: "A fixture service with a real description", category: "cleaning", basePrice: 300, estimatedDuration: 60, catalogConfig: { materialPolicy: "NOT_REQUIRED", equipmentPolicy: "PROFESSIONAL_PROVIDED" }, isActive: false });
+    expect(made.status).toBe(200);
+    const s = made.json.data.service;
+    created.push(s.id as string);
+    expect(s.publishBlocked.map((i: { code: string }) => i.code)).toEqual(["MATERIALS_NOT_REQUIRED_UNEXPLAINED"]);
+    expect(s.configStatus).toBe("CONFIGURATION_REQUIRED");
+    expect(s.configGaps).toEqual(s.publishBlocked.map((i: { message: string }) => i.message));
+    expect((await row(s.id)).configStatus).toBe("CONFIGURATION_REQUIRED");
+    // …and once the reason is given, both agree again.
+    const fixed = await call("PUT", `/api/admin/services/${s.id}`, { catalogConfig: { materialPolicy: "NOT_REQUIRED", equipmentPolicy: "PROFESSIONAL_PROVIDED", notApplicableReasons: { materials: "A consultation: nothing is consumed" } } });
+    expect(fixed.status).toBe(200);
+    expect({ status: fixed.json.data.service.configStatus, gaps: fixed.json.data.service.configGaps, blocked: fixed.json.data.service.publishBlocked }).toEqual({ status: "READY", gaps: [], blocked: [] });
+  });
+});
+
+/**
+ * Owner instruction, 2026-10-07: prove that the routes around a live service — a proposed revision,
+ * its approval (now or at a scheduled time) and a restore — cannot carry it past the strict gate on
+ * the leniency a live service has for the gaps it already had.
+ */
+describe.serial("a revision, its approval and its scheduled apply answer to the strict gate too", () => {
+  const policyBefore = process.env.SERVICE_LIVE_EDIT_POLICY;
+  const requiresBefore = process.env.SERVICE_PUBLISH_REQUIRES;
+  const { safety: _s, ...WITHOUT_SAFETY } = FULL;
+  // Removing safety from a live service is refused whatever is required (a protection removed), so a
+  // revision that is acceptable when queued and not when approved is one that drops the execution plan.
+  const { execution: _e, ...WITHOUT_EXECUTION } = FULL;
+  beforeAll(() => {
+    process.env.SERVICE_LIVE_EDIT_POLICY = "four-eyes";
+  });
+  afterAll(() => {
+    if (policyBefore === undefined) delete process.env.SERVICE_LIVE_EDIT_POLICY;
+    else process.env.SERVICE_LIVE_EDIT_POLICY = policyBefore;
+    if (requiresBefore === undefined) delete process.env.SERVICE_PUBLISH_REQUIRES;
+    else process.env.SERVICE_PUBLISH_REQUIRES = requiresBefore;
+  });
+
+  test("a revision that would remove a required section is refused when it is proposed: nothing is queued", async () => {
+    expect(dbOk).toBe(true);
+    process.env.SERVICE_PUBLISH_REQUIRES = "safety,quality,execution";
+    const id = await liveWith(FULL);
+    const r = await call("PUT", `/api/admin/services/${id}`, { catalogConfig: WITHOUT_SAFETY, changeReason: "Trim the configuration" });
+    expect(r.json.code).toBe("SERVICE_NOT_BOOKABLE");
+    expect(JSON.stringify(r.json)).toContain("SAFETY_ABSENT");
+    expect(await drafts(id)).toBe(0);
+    expect((await configOf(id)).safety).toEqual(FULL.safety);
+  });
+
+  test("a revision queued while it was allowed is refused at approval once it would break the gate", async () => {
+    expect(dbOk).toBe(true);
+    process.env.SERVICE_PUBLISH_REQUIRES = "none";
+    const id = await liveWith(FULL);
+    const live = await row(id);
+    // Safety cannot be dropped from a live service even while no section is required.
+    const dropSafety = await call("PUT", `/api/admin/services/${id}`, { catalogConfig: WITHOUT_SAFETY, changeReason: "Trim the configuration" });
+    expect({ code: dropSafety.json.code, named: JSON.stringify(dropSafety.json).includes("SAFETY_PROTECTION_REMOVED"), drafts: await drafts(id) }).toEqual({ code: "SERVICE_NOT_BOOKABLE", named: true, drafts: 0 });
+    expect((await call("PUT", `/api/admin/services/${id}`, { catalogConfig: WITHOUT_EXECUTION, changeReason: "Trim the configuration" })).status).toBe(200);
+    expect(await drafts(id)).toBe(1);
+    process.env.SERVICE_PUBLISH_REQUIRES = "safety,quality,execution";
+    const approved = await catalogService.approveRevision(id, ctx.financeAdmin.id);
+    expect("error" in approved ? approved.error : null).toBe("SERVICE_NOT_BOOKABLE");
+    const after = await row(id);
+    expect({ version: after.version, lifecycle: after.lifecycleStatus }).toEqual({ version: live.version, lifecycle: "ACTIVE" });
+    expect((await configOf(id)).safety).toEqual(FULL.safety);
+  });
+
+  test("the same revision approved for a later time is not applied by the scheduler either, and is reported as failed", async () => {
+    expect(dbOk).toBe(true);
+    process.env.SERVICE_PUBLISH_REQUIRES = "none";
+    const id = await liveWith(FULL);
+    expect((await call("PUT", `/api/admin/services/${id}`, { catalogConfig: WITHOUT_EXECUTION, changeReason: "Trim the configuration" })).status).toBe(200);
+    const scheduled = await catalogService.approveRevision(id, ctx.financeAdmin.id, { scheduledLiveAt: new Date(Date.now() + 2_000).toISOString() });
+    expect("error" in scheduled ? scheduled.error : null).toBeNull();
+    process.env.SERVICE_PUBLISH_REQUIRES = "safety,quality,execution";
+    await new Promise((r) => setTimeout(r, 2_300));
+    const tick = await catalogService.activateScheduledServices(new Date());
+    expect(tick.revisionsFailed).toBeGreaterThanOrEqual(1);
+    expect((await configOf(id)).safety).toEqual(FULL.safety);
+    expect((await row(id)).lifecycleStatus).toBe("ACTIVE");
+  });
+
+  test("control: a revision that keeps every required section is approved and applied", async () => {
+    expect(dbOk).toBe(true);
+    process.env.SERVICE_PUBLISH_REQUIRES = "safety,quality,execution";
+    const id = await liveWith(FULL);
+    expect((await call("PUT", `/api/admin/services/${id}`, { basePrice: 450, minPrice: 450, maxPrice: 450, changeReason: "Price review" })).status).toBe(200);
+    const approved = await catalogService.approveRevision(id, ctx.financeAdmin.id);
+    expect("error" in approved ? approved.error : null).toBeNull();
+    expect((await row(id)).basePrice).toBe(450);
+  });
 });
 
 describe.serial("visible-but-not-bookable to bookable is a publish", () => {

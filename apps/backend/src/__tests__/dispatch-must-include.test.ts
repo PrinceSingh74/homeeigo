@@ -145,8 +145,10 @@ describe("the bypass machinery no longer exists", () => {
     const booking = read("src/services/booking.service.ts");
     expect(booking.includes("applyMustIncludeProximityBypass")).toBe(false);
     expect(booking.includes("isMustIncludePinnedProvider")).toBe(false);
-    // Arrival is what the partner's device reported.
-    expect(booking).toContain("const arriveLat = lat;");
+    // Arrival is recorded at the position the server held for the partner (2026-10-07) — never the
+    // job address, and no longer the request's own coordinates either.
+    expect(booking).toContain("const arriveLat = held.waived ? null : held.position.latitude;");
+    expect(booking.includes("const arriveLat = booking.address")).toBe(false);
     expect(booking).toContain("if (!proximity.ok) throw new Error(proximity.error);");
   });
 });

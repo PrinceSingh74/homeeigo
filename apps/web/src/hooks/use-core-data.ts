@@ -586,6 +586,22 @@ export function useReportProviderNoShowMutation() {
   });
 }
 
+/**
+ * The customer confirms the professional is at the door (the arrival exception). No toast here:
+ * the control shows the server's sentence in place, for success and for a refusal alike.
+ */
+export function useConfirmArrivalMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (bookingId: string) => coreApi.bookings.confirmArrival(bookingId),
+    onSettled: (_data, _error, bookingId) => {
+      // Either way the booking may have moved (the professional may have checked in meanwhile).
+      void qc.invalidateQueries({ queryKey: qk.bookingDetail(bookingId) });
+      void qc.invalidateQueries({ queryKey: qk.tracking(bookingId) });
+    },
+  });
+}
+
 export function useCancelBookingMutation() {
   const qc = useQueryClient();
   const updateBookingStatus = useAppStore((s) => s.updateBookingStatus);

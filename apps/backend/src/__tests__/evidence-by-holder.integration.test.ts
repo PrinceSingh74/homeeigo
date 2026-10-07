@@ -14,6 +14,7 @@ import { bookingService } from "../services/booking.service";
 import { bearer, cleanupAdversarialFixtures, dbReachable, futureSlot, heartbeatFresh, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { BOOKING_CREATE_PATH, withQuoteToken } from "./helpers/quote-token";
+import { pngDataUrl, storedEvidenceKey } from "./helpers/evidence-photo";
 
 const RUN = `evhold-${Date.now().toString(36)}`;
 const CHECKLIST = ["Wipe surfaces", "Mop floor"];
@@ -71,7 +72,7 @@ describe.serial("an earlier partner's photos do not complete the job for the nex
     await heartbeatFresh(ctx, addr);
     await bookingService.start(ctx.providerId, id, addr.latitude, addr.longitude);
     for (const stage of ["START", "COMPLETION"] as const) {
-      const row = await prisma.jobEvidence.create({ data: { bookingId: id, providerId: earlier.providerId, stage, mediaStorageKey: `s3/evidence/${id}/earlier-${stage}.jpg`, mediaMimeType: "image/jpeg", clientUploadId: `${RUN}-earlier-${stage}` } });
+      const row = await prisma.jobEvidence.create({ data: { bookingId: id, providerId: earlier.providerId, stage, mediaStorageKey: storedEvidenceKey(id, earlier.providerId, stage), mediaMimeType: "image/png", clientUploadId: `${RUN}-earlier-${stage}` } });
       if (stage === "COMPLETION") earlierEvidenceId = row.id;
     }
     expect((await prisma.booking.findUniqueOrThrow({ where: { id } })).status).toBe("IN_PROGRESS");
@@ -88,7 +89,7 @@ describe.serial("an earlier partner's photos do not complete the job for the nex
   test("the job is not completed on the earlier partner's proof; with the holder's own it is", async () => {
     expect(dbOk).toBe(true);
     const upload = (stage: "START" | "COMPLETION") =>
-      call("POST", `/api/bookings/${id}/evidence`, { stage, mediaStorageKey: `s3/evidence/${id}/own-${stage}.jpg`, mediaMimeType: "image/jpeg", clientUploadId: `${RUN}-own-${stage}` }, partner());
+      call("POST", `/api/bookings/${id}/evidence`, { stage, mediaUrl: pngDataUrl(`${RUN}-own-${stage}`), clientUploadId: `${RUN}-own-${stage}` }, partner());
     const own = await upload("START");
     expect(own.status).toBe(200);
     expect((await call("POST", `/api/bookings/${id}/execution/work/complete`, { evidenceId: own.json.data.evidence.id }, partner())).status).toBe(200);
@@ -107,7 +108,7 @@ describe.serial("an earlier partner's photos do not complete the job for the nex
 
   test("once the job is over, no more evidence can be attached to it", async () => {
     expect(dbOk).toBe(true);
-    const late = await call("POST", `/api/bookings/${id}/evidence`, { stage: "COMPLETION", mediaUrl: "https://example.test/later.jpg", clientUploadId: `${RUN}-late` }, partner());
+    const late = await call("POST", `/api/bookings/${id}/evidence`, { stage: "COMPLETION", mediaUrl: pngDataUrl(`${RUN}-late`), clientUploadId: `${RUN}-late` }, partner());
     expect(late.status).toBe(409);
     expect(late.json.code).toBe("BOOKING_NOT_ACTIVE");
     expect(await prisma.jobEvidence.count({ where: { bookingId: id, clientUploadId: `${RUN}-late` } })).toBe(0);

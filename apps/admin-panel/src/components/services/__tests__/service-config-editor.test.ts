@@ -306,3 +306,107 @@ describe("Phase 10–11 sections in the editor", () => {
     expect(messages(quality).some((m) => m.startsWith("quality:"))).toBe(true);
   });
 });
+
+describe("“does not apply” reasons (catalogConfig.notApplicableReasons)", () => {
+  const out = (e: ReturnType<typeof extrasFromRow>, base: ServiceCatalogConfig) => extrasToInput(e, base).catalogConfig as ServiceCatalogConfig;
+  const DECLARED: ServiceCatalogConfig = {
+    ...STORED,
+    materialPolicy: "NOT_REQUIRED",
+    equipmentPolicy: "NOT_REQUIRED",
+    notApplicableReasons: { safety: "Remote consultation only", quality: "Nothing is delivered on site", materials: "Nothing is consumed on a call", equipment: "Advice by phone, no tools" },
+  };
+
+  test("stored reasons load into the form and an untouched save writes them back unchanged", () => {
+    const e = extrasFromRow(row(DECLARED));
+    expect(e.notApplicableReasons).toEqual({ safety: "Remote consultation only", quality: "Nothing is delivered on site", materials: "Nothing is consumed on a call", equipment: "Advice by phone, no tools" });
+    expect(out(e, DECLARED).notApplicableReasons).toEqual(DECLARED.notApplicableReasons);
+    expect(configIssues(e)).toEqual([]);
+  });
+
+  test("a service without reasons gains no key on an untouched save", () => {
+    expect("notApplicableReasons" in out(extrasFromRow(row(STORED)), STORED)).toBe(false);
+    expect("notApplicableReasons" in (extrasToInput(extrasFromRow(), null).catalogConfig ?? {})).toBe(false);
+  });
+
+  test("an entered reason is saved under its section; a cleared one is omitted, never an empty string", () => {
+    const e = extrasFromRow(row(STORED));
+    e.notApplicableReasons = { ...e.notApplicableReasons, safety: "  Remote consultation only  " };
+    expect(out(e, STORED).notApplicableReasons).toEqual({ safety: "Remote consultation only" });
+
+    const cleared = extrasFromRow(row(DECLARED));
+    cleared.notApplicableReasons = { ...cleared.notApplicableReasons, quality: "", materials: "   " };
+    expect(out(cleared, DECLARED).notApplicableReasons).toEqual({ safety: "Remote consultation only", equipment: "Advice by phone, no tools" });
+
+    const none = extrasFromRow(row(DECLARED));
+    none.notApplicableReasons = { safety: "", quality: "", materials: "", equipment: "" };
+    expect("notApplicableReasons" in out(none, DECLARED)).toBe(false);
+  });
+
+  test("the quality switch keeps its runtime flag, and the reason is saved beside it — not inside quality", () => {
+    const e = extrasFromRow(row(DECLARED));
+    e.qualityNotApplicable = true;
+    const o = out(e, DECLARED);
+    expect(o.quality).toEqual({ notApplicable: true });
+    expect(o.notApplicableReasons?.quality).toBe("Nothing is delivered on site");
+  });
+
+  // Adversarial audit, 2026-10-07 (finding 5): ticking the switch used to save `quality: { notApplicable: true }`
+  // and nothing else, so the approved checklist was gone and un-ticking found an empty section.
+  describe("switching quality checks off keeps what is stored", () => {
+    const QUALITY = { checklist: ["Work area left clean", "Tools removed"], completionCriteria: ["Customer shown the finished work"], proofRequired: true, beforeAfterPhotos: true, professionalConfirmation: true, customerConfirmation: true, warrantyDays: 30, complaintWindowDays: 5, confirmationWindowHours: 12, revisitPolicy: "One free revisit" };
+    const WITH_QUALITY: ServiceCatalogConfig = { ...STORED, quality: QUALITY };
+
+    test("ticking the switch adds the declaration and its reason, and deletes nothing", () => {
+      const e = extrasFromRow(row(WITH_QUALITY));
+      e.qualityNotApplicable = true;
+      e.notApplicableReasons = { ...e.notApplicableReasons, quality: "Nothing is delivered on site" };
+      const o = out(e, WITH_QUALITY);
+      expect(o.quality).toEqual({ ...QUALITY, notApplicable: true });
+      expect(o.notApplicableReasons).toEqual({ quality: "Nothing is delivered on site" });
+    });
+
+    test("un-ticking later finds the checklist and criteria, and saves them back exactly", () => {
+      const e = extrasFromRow(row(WITH_QUALITY));
+      e.qualityNotApplicable = true;
+      e.notApplicableReasons = { ...e.notApplicableReasons, quality: "Nothing is delivered on site" };
+      const off = out(e, WITH_QUALITY);
+
+      const reopened = extrasFromRow(row(off));
+      expect(reopened.qualityNotApplicable).toBe(true);
+      expect(reopened.qualityChecklist).toBe("Work area left clean\nTools removed");
+      expect(reopened.completionCriteria).toBe("Customer shown the finished work");
+      // A second save while it is still off is as harmless as the first.
+      expect(out(reopened, off).quality).toEqual({ ...QUALITY, notApplicable: true });
+
+      reopened.qualityNotApplicable = false;
+      reopened.notApplicableReasons = { ...reopened.notApplicableReasons, quality: "" };
+      const on = out(reopened, off);
+      expect(on.quality).toEqual(QUALITY);
+      expect("notApplicableReasons" in on).toBe(false);
+    });
+
+    test("while the switch is on, the stored section is what is kept — not whatever is in the form", () => {
+      const e = extrasFromRow(row(WITH_QUALITY));
+      e.qualityNotApplicable = true;
+      e.qualityChecklist = "";
+      e.completionCriteria = "";
+      e.warrantyDays = "";
+      expect(out(e, WITH_QUALITY).quality).toEqual({ ...QUALITY, notApplicable: true });
+      // …and a form value the backend would refuse cannot block the save of the switch.
+      e.confirmationWindowHours = "0";
+      expect(configIssues(e).filter((i) => i.tab === "quality")).toEqual([]);
+    });
+
+    test("a service with no stored quality saves only the switch", () => {
+      const e = extrasFromRow(row(STORED));
+      e.qualityNotApplicable = true;
+      expect(out(e, STORED).quality).toEqual({ notApplicable: true });
+    });
+  });
+
+  test("a dash or a placeholder is reported on the tab that holds the field, before the save", () => {
+    const e = extrasFromRow(row(DECLARED));
+    e.notApplicableReasons = { safety: "-", quality: "n/a", materials: "none", equipment: "Advice by phone, no tools" };
+    expect(configIssues(e).map((i) => i.tab)).toEqual(["safety", "quality", "materials"]);
+  });
+});

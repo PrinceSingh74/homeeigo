@@ -15,9 +15,9 @@
  *
  * Two rules it enforces:
  *
- * **Media is what the storage layer holds.** A row counts when it carries an authoritative storage
- * reference — `mediaStorageKey`, or the legacy `mediaUrl` for rows written before the key existed.
- * Reading only `mediaUrl` (the old behaviour) silently ignored every key-backed upload.
+ * **Media is what the server stored.** A row counts when its `mediaStorageKey` is a key the server
+ * wrote for that booking, partner and stage (lib/job-evidence-media). A URL never counts, whatever it
+ * points at, and neither does a key that arrived from a client: a link is a claim, not a photo.
  *
  * **A checklist is satisfied item by item, never by count.** Every item in the FROZEN snapshot must
  * be matched by something the partner actually submitted. Missing items are returned so the caller
@@ -26,11 +26,16 @@
  * Pure: no database, no clock, no client trust.
  */
 
+import { isServerStoredEvidence } from "./job-evidence-media";
+
 /** The subset of a `job_evidence` row this module needs. Anything else is none of its business. */
 export type EvidenceRow = {
   stage: string;
   mediaUrl: string | null;
   mediaStorageKey?: string | null;
+  /** When present, the key must have been stored for this booking and this partner. */
+  bookingId?: string | null;
+  providerId?: string | null;
 };
 
 export type QualityEvidence = {
@@ -57,7 +62,7 @@ export type QualityEvidence = {
  * not proof of anything visual.
  */
 export function hasAuthoritativeMedia(row: EvidenceRow): boolean {
-  return Boolean(row.mediaStorageKey) || Boolean(row.mediaUrl);
+  return isServerStoredEvidence({ mediaStorageKey: row.mediaStorageKey, bookingId: row.bookingId, providerId: row.providerId, stage: String(row.stage).toUpperCase() });
 }
 
 /** Stages that count as "before the work": the partner at the door, or starting. */

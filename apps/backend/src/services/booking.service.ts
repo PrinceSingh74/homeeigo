@@ -1923,8 +1923,8 @@ export class BookingService {
   async markArrived(
     providerId: string,
     id: string,
-    lat: number,
-    lng: number,
+    lat: number | null,
+    lng: number | null,
   ): Promise<
     | { ok: true; newlyTransitioned: boolean; arrivedAt: Date | null; requirementGate: GateResult | null }
     | {
@@ -1966,22 +1966,25 @@ export class BookingService {
     }
 
     const { assertJobProximity } = await import("../lib/job-proximity");
-    const proximity = assertJobProximity({
-      latitude: lat,
-      longitude: lng,
-      jobLatitude: booking.address?.latitude,
-      jobLongitude: booking.address?.longitude,
-      enforceRadius: true,
-    });
+    const { confirmPartnerPosition, positionException } = await import("./arrival-position.service");
     /**
-     * W2-D2. No GPS substitution. A pinned partner outside the arrival radius used to have the JOB
-     * ADDRESS written in place of their own position, so they could be recorded as arrived without
-     * being there. Arrival is now what the partner's device reports, for everyone.
+     * A recorded exception (the customer's confirmation, an admin's waiver) is for a device that has
+     * no position to send, so it is looked up BEFORE the request's coordinates are asked for. It
+     * excuses their absence only: coordinates that are sent are still checked, and a device that
+     * says it is somewhere else is refused whoever vouched for it.
      */
-    const arriveLat = lat;
-    const arriveLng = lng;
+    const vouchedWithoutPosition = (lat == null || lng == null) && (await positionException(id, providerId)) != null;
+    const proximity = vouchedWithoutPosition
+      ? ({ ok: true } as const)
+      : assertJobProximity({
+          latitude: lat,
+          longitude: lng,
+          jobLatitude: booking.address?.latitude,
+          jobLongitude: booking.address?.longitude,
+          enforceRadius: true,
+        });
     if (!proximity.ok) {
-      if (booking.address) {
+      if (booking.address && lat != null && lng != null) {
         void import("./partner-risk.service")
           .then(({ partnerRiskService }) =>
             partnerRiskService.evaluateArrival({
@@ -1998,11 +2001,17 @@ export class BookingService {
       return { ok: false as const, error: proximity.error };
     }
     // The request's coordinates are the device's claim. What decides is the position the server holds.
-    const { confirmPartnerPosition } = await import("./arrival-position.service");
     const held = await confirmPartnerPosition({ providerId, bookingId: id, action: "arrive", jobLatitude: booking.address?.latitude, jobLongitude: booking.address?.longitude });
     if (!held.ok) return { ok: false as const, error: held.error };
+    /**
+     * What is written down is the position the server held when it confirmed the arrival — never the
+     * request's coordinates, and never the job address (W2-D2). Under an exception nothing was
+     * confirmed, so no position is recorded.
+     */
+    const arriveLat = held.waived ? null : held.position.latitude;
+    const arriveLng = held.waived ? null : held.position.longitude;
 
-    const distanceKm = booking.address
+    const distanceKm = booking.address && arriveLat != null && arriveLng != null
       ? distanceBetweenKm(arriveLat, arriveLng, booking.address.latitude, booking.address.longitude)
       : null;
 
@@ -2031,8 +2040,8 @@ export class BookingService {
           bookingId: id,
           providerId,
           stage: "ARRIVAL",
-          latitude: arriveLat,
-          longitude: arriveLng,
+          latitude: arriveLat ?? undefined,
+          longitude: arriveLng ?? undefined,
           clientUploadId: `arrive:${id}`,
         });
       } catch {
@@ -2047,7 +2056,7 @@ export class BookingService {
     return { ok: true as const, newlyTransitioned: applied, arrivedAt: fresh?.arrivedAt ?? null, requirementGate };
   }
 
-  async start(providerId: string, id: string, lat: number, lng: number) {
+  async start(providerId: string, id: string, lat: number | null, lng: number | null) {
     const { assertJobProximity } = await import("../lib/job-proximity");
     const bookingForGeo = await prisma.booking.findFirst({
       where: { id, providerId },
@@ -2058,8 +2067,10 @@ export class BookingService {
       },
     });
     if (!bookingForGeo) throw new Error("FORBIDDEN");
-    const startLat = lat;
-    const startLng = lng;
+    // The position written with the start: the one the server held when it confirmed it. A repeat of
+    // a start already made confirms nothing and leaves what was recorded alone (`undefined`).
+    let startLat: number | null | undefined;
+    let startLng: number | null | undefined;
     if (bookingForGeo.status !== "IN_PROGRESS") {
       if (
         !isBookingTransitionAllowed(
@@ -2069,18 +2080,24 @@ export class BookingService {
       ) {
         throw new Error("FORBIDDEN");
       }
-      const proximity = assertJobProximity({
-        latitude: lat,
-        longitude: lng,
-        jobLatitude: bookingForGeo.address?.latitude,
-        jobLongitude: bookingForGeo.address?.longitude,
-        enforceRadius: true,
-      });
-      // W2-D2: no GPS substitution at start either — see the note at arrival.
-      if (!proximity.ok) throw new Error(proximity.error);
-      const { confirmPartnerPosition } = await import("./arrival-position.service");
+      const { confirmPartnerPosition, positionException } = await import("./arrival-position.service");
+      // As at arrival: an exception excuses a device with no position; coordinates that are sent are checked.
+      const vouchedWithoutPosition = (lat == null || lng == null) && (await positionException(id, providerId)) != null;
+      if (!vouchedWithoutPosition) {
+        const proximity = assertJobProximity({
+          latitude: lat,
+          longitude: lng,
+          jobLatitude: bookingForGeo.address?.latitude,
+          jobLongitude: bookingForGeo.address?.longitude,
+          enforceRadius: true,
+        });
+        // W2-D2: no GPS substitution at start either — see the note at arrival.
+        if (!proximity.ok) throw new Error(proximity.error);
+      }
       const held = await confirmPartnerPosition({ providerId, bookingId: id, action: "start", jobLatitude: bookingForGeo.address?.latitude, jobLongitude: bookingForGeo.address?.longitude });
       if (!held.ok) throw new Error(held.error);
+      startLat = held.waived ? null : held.position.latitude;
+      startLng = held.waived ? null : held.position.longitude;
     }
 
     const startedAt = new Date();
@@ -2236,15 +2253,15 @@ export class BookingService {
           bookingId: id,
           providerId,
           stage: "START",
-          latitude: startLat,
-          longitude: startLng,
+          latitude: startLat ?? undefined,
+          longitude: startLng ?? undefined,
           clientUploadId: `start:${id}`,
         });
       } catch {
         /* evidence best-effort */
       }
 
-      void this.backfillArrivalFromStart(id, providerId, startLat, startLng).catch((err: unknown) => {
+      void this.backfillArrivalFromStart(id, providerId, startLat ?? null, startLng ?? null).catch((err: unknown) => {
         recordEtaJobStartFallback("error");
         logger.error("eta_job_start_fallback_failed", {
           bookingId: id,
@@ -2268,8 +2285,8 @@ export class BookingService {
   private async backfillArrivalFromStart(
     bookingId: string,
     providerId: string,
-    lat: number,
-    lng: number,
+    lat: number | null,
+    lng: number | null,
   ): Promise<void> {
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
@@ -2284,7 +2301,7 @@ export class BookingService {
     });
     if (!booking || booking.arrivedAt) return;
 
-    const distanceKm = booking.address
+    const distanceKm = booking.address && lat != null && lng != null
       ? distanceBetweenKm(lat, lng, booking.address.latitude, booking.address.longitude)
       : null;
 
@@ -2375,6 +2392,33 @@ export class BookingService {
       throw new Error("INVALID_STATUS");
     }
 
+    /**
+     * Photos sent with the completion are stored first, for every service — with or without a
+     * quality policy. (They used to be stored only inside the quality gate below, so a service with
+     * no policy accepted them, answered "completed", and kept nothing.) The position written with
+     * them is the one the server holds for the partner, not the request's.
+     */
+    const { heldPartnerPosition } = await import("./arrival-position.service");
+    const heldAtCompletion = await heldPartnerPosition(providerId);
+    if (opts?.photos?.length) {
+      // The photos are the images themselves (data URLs), stored by the server. A link is refused.
+      // Judged by the same rules, and refused in the same words, as the evidence upload route:
+      // the error carries which refusal it is (not an image, too large, too many, the same photo again).
+      const { parseEvidencePhotos, EvidenceRefusedError } = await import("../lib/job-evidence-media");
+      const photos = parseEvidencePhotos(opts.photos);
+      if (!photos.ok) throw new EvidenceRefusedError(photos.refusal);
+      const { jobEvidenceService } = await import("./job-evidence.service");
+      await jobEvidenceService.recordStage({
+        bookingId: id,
+        providerId,
+        stage: "COMPLETION",
+        latitude: heldAtCompletion?.latitude,
+        longitude: heldAtCompletion?.longitude,
+        images: photos.images,
+        clientUploadId: `complete:${id}`,
+      });
+    }
+
     const quality = qualityFromSnapshot(existing.serviceConfigSnapshot);
     if (quality) {
       /**
@@ -2387,23 +2431,11 @@ export class BookingService {
        * it is written FIRST, and a write failure is a hard failure rather than a silent one —
        * otherwise the gate is being asked to trust a promise.
        */
-      if (opts?.photos?.length) {
-        const { jobEvidenceService } = await import("./job-evidence.service");
-        await jobEvidenceService.recordStage({
-          bookingId: id,
-          providerId,
-          stage: "COMPLETION",
-          latitude: lat,
-          longitude: lng,
-          mediaUrls: opts.photos,
-          clientUploadId: `complete:${id}`,
-        });
-      }
 
       const evidenceRows = await prisma.jobEvidence.findMany({
         // The completing partner's own evidence: an earlier partner's photos prove nothing about this visit.
         where: { bookingId: id, isCurrent: true, providerId },
-        select: { stage: true, mediaUrl: true, mediaStorageKey: true },
+        select: { stage: true, mediaUrl: true, mediaStorageKey: true, bookingId: true, providerId: true },
       });
       /**
        * `opts.checklistComplete` is deliberately NOT passed. It was a client boolean that
@@ -2677,7 +2709,6 @@ export class BookingService {
         stage: "COMPLETION",
         latitude: lat,
         longitude: lng,
-        mediaUrls: opts?.photos,
         clientUploadId: `complete:${id}`,
       });
     } catch {

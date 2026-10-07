@@ -265,6 +265,8 @@ export class TrackingService {
     await this.maybeRecordArrival({
       bookingId: body.bookingId,
       providerId,
+      jobLatitude: booking.address.latitude,
+      jobLongitude: booking.address.longitude,
       booking,
       latitude: body.latitude,
       longitude: body.longitude,
@@ -403,6 +405,8 @@ export class TrackingService {
   private async maybeRecordArrival(input: {
     bookingId: string;
     providerId: string;
+    jobLatitude: number | null;
+    jobLongitude: number | null;
     booking: {
       arrivedAt: Date | null;
       enRouteAt: Date | null;
@@ -433,6 +437,13 @@ export class TrackingService {
     const nearCount = Number((await cacheGet(arrivalNearKey(input.bookingId))) ?? "0") + 1;
     await cacheSet(arrivalNearKey(input.bookingId), String(nearCount), ARRIVAL_NEAR_TTL_SEC);
     if (nearCount < MIN_ARRIVAL_NEAR_PINGS) return;
+
+    // These pings are the partner's own claim on one stream. Arrival is a fact others rely on (a
+    // customer no-show is judged from it), so it is recorded only when the presence fix the server
+    // holds for the same partner places them at the job too — the check /arrived answers to.
+    const { confirmPartnerPosition } = await import("./arrival-position.service");
+    const held = await confirmPartnerPosition({ providerId: input.providerId, bookingId: input.bookingId, action: "geofence", jobLatitude: input.jobLatitude, jobLongitude: input.jobLongitude });
+    if (!held.ok) return;
 
     await this.recordArrival({
       bookingId: input.bookingId,

@@ -3,7 +3,8 @@
 import { useState, type ReactNode } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { AdminServiceRow, RequirementAssignment, RequirementItemRow, ServiceCatalogConfig, ServiceInput } from "@/services/admin-api";
-import { Field, LinesField, Section, Toggle, clean, csv, lines, list, listIssue, listOrUndefined, num, str, wholeNumberIssue, type ConfigIssue } from "./config-form";
+import { notApplicableReasonsFromConfig, notApplicableReasonsIssues, notApplicableReasonsToConfig, type NotApplicableReasonsForm, type NotApplicableSection } from "@/lib/not-applicable-reasons";
+import { Field, LinesField, NotApplicableReasonField, Section, Toggle, clean, csv, lines, list, listIssue, listOrUndefined, num, str, wholeNumberIssue, type ConfigIssue } from "./config-form";
 import { ExecutionPlanSection, planIssues, stepsFromConfig, stepsToConfig, type PlanContext, type StepRow } from "./ExecutionPlanSection";
 import { AgePolicySection, SafetySection, agePolicyFromConfig, agePolicyIssues, agePolicyToConfig, safetyFromConfig, safetyIssues, safetyToConfig, type AgePolicyForm, type SafetyForm } from "./SafetySection";
 import { WarrantySection, reworkFromConfig, reworkToConfig, warrantyFromConfig, warrantyIssues, warrantyToConfig, type ReworkForm, type WarrantyForm } from "./WarrantySection";
@@ -56,9 +57,17 @@ const POLICIES = [
   ["PROFESSIONAL_PROVIDED", "Professional provided"],
   ["PACKAGE_INCLUDED", "Included in package"],
   ["MIXED", "Mixed"],
-  ["NOT_REQUIRED", "Not required"],
-  ["NOT_SPECIFIED", "Not specified"],
+  ["NOT_REQUIRED", "Not required (needs a reason)"],
+  // The stored "unset" value, kept selectable so a stored row displays as it is. It is never a policy: the publish gate refuses it.
+  ["NOT_SPECIFIED", "Not decided yet — blocks publishing"],
 ] as const;
+/** Where each "does not apply" reason is edited, so a problem with one is reported on its own tab. */
+const REASON_TABS: Record<NotApplicableSection, { tab: string; section: string }> = {
+  safety: { tab: "safety", section: "Safety" },
+  quality: { tab: "quality", section: "Quality" },
+  materials: { tab: "materials", section: "Fulfilment" },
+  equipment: { tab: "materials", section: "Fulfilment" },
+};
 const SPARE_PARTS = [
   ["", "Not set"],
   ["NOT_APPLICABLE", "Not applicable"],
@@ -186,6 +195,8 @@ export type ServiceExtras = {
   /* Phase 10–11. Each block is owned by its section file (from/to converters live there). */
   executionSteps: StepRow[];
   safety: SafetyForm;
+  /** `catalogConfig.notApplicableReasons` — why safety / quality / materials / equipment do not apply. "" = not given. */
+  notApplicableReasons: NotApplicableReasonsForm;
   agePolicy: AgePolicyForm;
   completionCriteria: string;
   professionalConfirmation: boolean;
@@ -328,6 +339,7 @@ export function extrasFromRow(s?: AdminServiceRow): ServiceExtras {
     operationsNotes: s?.operationsNotes ?? "",
     executionSteps: stepsFromConfig(c),
     safety: safetyFromConfig(c),
+    notApplicableReasons: notApplicableReasonsFromConfig(c.notApplicableReasons),
     agePolicy: agePolicyFromConfig(c),
     completionCriteria: lines(c.quality?.completionCriteria),
     professionalConfirmation: c.quality?.professionalConfirmation === true,
@@ -364,6 +376,8 @@ export function configIssues(e: ServiceExtras): ConfigIssue[] {
   return [
     ...planIssues(e.executionSteps, planContext(e)),
     ...safetyIssues(e.safety),
+    // A dash or a placeholder would be saved and then refused by the publish gate — say so now, on the field's own tab.
+    ...notApplicableReasonsIssues(e.notApplicableReasons).map(({ section, message }) => ({ ...REASON_TABS[section], message })),
     ...agePolicyIssues(e.agePolicy),
     ...qualityIssues(e),
     ...warrantyIssues(e.warranty, e.rework),
@@ -552,6 +566,8 @@ export function extrasToInput(e: ServiceExtras, base?: ServiceCatalogConfig | nu
   );
   put("execution", stepsToConfig(e.executionSteps, base?.execution));
   put("safety", safetyToConfig(e.safety, base?.safety));
+  // Blank reasons are omitted (the schema refuses ""); with none left the key itself is removed.
+  put("notApplicableReasons", notApplicableReasonsToConfig(e.notApplicableReasons, base?.notApplicableReasons));
   put("customerPolicy", agePolicyToConfig(e.agePolicy, base?.customerPolicy));
   put("warranty", warrantyToConfig(e.warranty, base?.warranty));
   put("rework", reworkToConfig(e.rework, base?.rework));
@@ -564,7 +580,10 @@ export function extrasToInput(e: ServiceExtras, base?: ServiceCatalogConfig | nu
     membershipAllowed: e.membershipAllowed,
   });
   if (e.qualityNotApplicable) {
-    put("quality", { notApplicable: true });
+    // The switch is a declaration, not a delete: the stored checklist, criteria and the rest stay
+    // exactly as stored (the form's copies are not validated while it is on, so they are not
+    // written), and un-ticking finds them. Only the flag — and the reason, saved above — change.
+    put("quality", { ...(base?.quality ?? {}), notApplicable: true });
   } else {
     const checklist = list(e.qualityChecklist);
     const { notApplicable, ...prevQuality } = base?.quality ?? {};
@@ -710,6 +729,20 @@ export function ServiceConfigEditor({
 }) {
   const set = <K extends keyof ServiceExtras>(k: K, v: ServiceExtras[K]) => onChange({ ...e, [k]: v });
   const toggleIn = (arr: string[], v: string) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
+  const setReason = (section: NotApplicableSection, v: string) => set("notApplicableReasons", { ...e.notApplicableReasons, [section]: v });
+  /**
+   * The reason beside a materials / equipment policy. Asked for when the policy is "Not required";
+   * also shown while a stored reason exists under another policy, so nothing is saved that the admin cannot see.
+   */
+  const policyReason = (section: "materials" | "equipment", policy: string) => {
+    const value = e.notApplicableReasons[section];
+    if (policy !== "NOT_REQUIRED" && !value.trim()) return null;
+    const note =
+      policy === "NOT_REQUIRED"
+        ? "“Not required” cannot be published without this reason."
+        : "This reason is only used while the policy is “Not required” — clear it if it no longer applies.";
+    return <NotApplicableReasonField section={section} value={value} onChange={(v) => setReason(section, v)} note={note} />;
+  };
   const [tab, setTab] = useState(lead ? "offer" : "identity");
   const active = tab === "offer" && !lead ? "identity" : tab;
   const issues = configIssues(e);
@@ -979,7 +1012,9 @@ export function ServiceConfigEditor({
       </>
       )}
 
-      {active === "safety" ? <SafetySection value={e.safety} onChange={(v) => set("safety", v)} /> : null}
+      {active === "safety" ? (
+        <SafetySection value={e.safety} onChange={(v) => set("safety", v)} notApplicableReason={e.notApplicableReasons.safety} onNotApplicableReason={(v) => setReason("safety", v)} />
+      ) : null}
 
       {active === "workplan" ? <ExecutionPlanSection rows={e.executionSteps} onChange={(rows) => set("executionSteps", rows)} context={planContext(e)} /> : null}
 
@@ -1058,24 +1093,30 @@ export function ServiceConfigEditor({
       {active === "materials" ? (
       <Section title="Fulfilment" hint="Leave “Not set” unless operations has confirmed it — customers then see “confirmed during booking”.">
         <div className="grid grid-cols-3 gap-3">
-          <Field label="Materials" consumer="Customer + partner instructions">
-            <select className="sv-input" value={e.materialPolicy} onChange={(x) => set("materialPolicy", x.target.value)}>
-              {POLICIES.map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Equipment" consumer="Customer + partner instructions">
-            <select className="sv-input" value={e.equipmentPolicy} onChange={(x) => set("equipmentPolicy", x.target.value)}>
-              {POLICIES.map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <div className="flex flex-col gap-2">
+            <Field label="Materials" consumer="Customer + partner instructions">
+              <select className="sv-input" value={e.materialPolicy} onChange={(x) => set("materialPolicy", x.target.value)}>
+                {POLICIES.map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {policyReason("materials", e.materialPolicy)}
+          </div>
+          <div className="flex flex-col gap-2">
+            <Field label="Equipment" consumer="Customer + partner instructions">
+              <select className="sv-input" value={e.equipmentPolicy} onChange={(x) => set("equipmentPolicy", x.target.value)}>
+                {POLICIES.map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {policyReason("equipment", e.equipmentPolicy)}
+          </div>
           <Field label="Spare parts">
             <select className="sv-input" value={e.sparePartsPolicy} onChange={(x) => set("sparePartsPolicy", x.target.value)}>
               {SPARE_PARTS.map(([v, l]) => (
@@ -1241,26 +1282,41 @@ export function ServiceConfigEditor({
         <Section title="Quality" hint="Enforced at partner job completion for FUTURE bookings. Historical jobs keep their snapshot." open>
           <label className="inline-flex items-center gap-2 text-sm">
             <input type="checkbox" checked={e.qualityNotApplicable} onChange={(x) => set("qualityNotApplicable", x.target.checked)} />
-            Warranty / revisit not applicable
+            Switch off quality checks at job completion
+            <span className="text-[10px] uppercase text-[var(--color-biz-muted)]">Completion gate</span>
           </label>
+          <p className="text-xs text-[var(--color-biz-muted)]">
+            The switch and the reason below are one declaration, and both are needed. Together they stop the checklist, proof, criteria and legacy warranty days being enforced on future bookings, and the publish check shows quality as “not applicable” with your reason. The switch without a reason switches nothing off; a reason without the switch declares nothing. On a live service this change is refused: pause the service, make it, and publish again so a second admin approves the reason.
+          </p>
+          <NotApplicableReasonField section="quality" value={e.notApplicableReasons.quality} onChange={(v) => setReason("quality", v)} />
+          {e.qualityNotApplicable && !e.notApplicableReasons.quality.trim() ? (
+            <p className="text-xs font-medium text-[var(--color-biz-danger)]" role="status">
+              The switch is on but no reason is given, so quality checks stay enforced and the publish check reports quality as it is stored. Write the reason above.
+            </p>
+          ) : null}
+          {!e.qualityNotApplicable && e.notApplicableReasons.quality.trim() ? (
+            <p className="text-xs font-medium text-[var(--color-biz-danger)]" role="status">
+              A reason is written but the switch is off, so nothing is declared: quality checks stay enforced. Tick the switch, or clear the reason.
+            </p>
+          ) : null}
           <Field label="Completion checklist (one item per line)" consumer="Partner job execution">
-            <textarea className="sv-input sv-textarea" rows={4} value={e.qualityChecklist} onChange={(x) => set("qualityChecklist", x.target.value)} />
+            <textarea className="sv-input sv-textarea" rows={4} value={e.qualityChecklist} disabled={e.qualityNotApplicable} onChange={(x) => set("qualityChecklist", x.target.value)} />
           </Field>
           <label className="inline-flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={e.proofRequired} onChange={(x) => set("proofRequired", x.target.checked)} />
+            <input type="checkbox" checked={e.proofRequired} disabled={e.qualityNotApplicable} onChange={(x) => set("proofRequired", x.target.checked)} />
             Proof required
             <span className="text-[10px] uppercase text-[var(--color-biz-muted)]">Completion gate</span>
           </label>
           <label className="inline-flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={e.beforeAfterPhotos} onChange={(x) => set("beforeAfterPhotos", x.target.checked)} />
+            <input type="checkbox" checked={e.beforeAfterPhotos} disabled={e.qualityNotApplicable} onChange={(x) => set("beforeAfterPhotos", x.target.checked)} />
             Before / after photos
             <span className="text-[10px] uppercase text-[var(--color-biz-muted)]">Completion gate</span>
           </label>
           <Field label="Warranty days" consumer="Booking snapshot" help="Legacy input. A policy saved on the Warranty & rework tab replaces it.">
-            <input className="sv-input" type="number" min={0} value={e.warrantyDays} onChange={(x) => set("warrantyDays", x.target.value)} />
+            <input className="sv-input" type="number" min={0} value={e.warrantyDays} disabled={e.qualityNotApplicable} onChange={(x) => set("warrantyDays", x.target.value)} />
           </Field>
           {e.qualityNotApplicable ? (
-            <p className="text-xs text-[var(--color-biz-muted)]">Quality is marked not applicable, so the completion and confirmation settings below are not saved.</p>
+            <p className="text-xs text-[var(--color-biz-muted)]">While the switch is on, the checklist, proof, warranty days and the completion and confirmation settings are kept exactly as they were last saved and cannot be edited here. Untick the switch to see and change all of them.</p>
           ) : (
             <>
               <LinesField

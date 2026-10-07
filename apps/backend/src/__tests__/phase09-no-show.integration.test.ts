@@ -25,6 +25,7 @@ import { createBookingWithQuote } from "./helpers/quote-token";
 import { bookingNoShowService } from "../services/booking-no-show.service";
 import { NO_SHOW_POLICY } from "../lib/no-show-policy";
 import { roomManager } from "../lib/websocket";
+import { storedEvidenceKey } from "./helpers/evidence-photo";
 
 const RUN = `p09ns-${Date.now().toString(36)}`;
 let ctx: AdvCtx;
@@ -38,7 +39,12 @@ function istSlot(daysAhead: number, hhmm = "10:00"): Date {
 }
 
 /** A paid booking with a partner assigned, optionally already arrived N minutes ago. */
-async function bookingAtDoor(opts: { arrivedMinutesAgo?: number | null; paid?: boolean; status?: BookingStatus } = {}) {
+/** Where the fixture job is: what a door photo's server-held position has to agree with. */
+const jobPosition = async () => {
+  const a = await prisma.address.findUniqueOrThrow({ where: { id: ctx.addressAId }, select: { latitude: true, longitude: true } });
+  return { latitude: a.latitude, longitude: a.longitude };
+};
+async function bookingAtDoor(opts: { arrivedMinutesAgo?: number | null; paid?: boolean; status?: BookingStatus; doorPhoto?: boolean } = {}) {
   // Wallet payments are slow enough that the fixture partner's presence goes stale between tests,
   // and a stale partner is refused with PROVIDER_UNAVAILABLE — a real rule, but not this subject.
   // `keepPresenceFresh` beats only when the last one is old: beating every time trips the product's
@@ -61,6 +67,15 @@ async function bookingAtDoor(opts: { arrivedMinutesAgo?: number | null; paid?: b
       arrivedAt: opts.arrivedMinutesAgo == null ? null : new Date(Date.now() - opts.arrivedMinutesAgo * 60_000),
     },
   });
+  // A photo at the door, stored by the server after the arrival: what makes the partner's own report
+  // chargeable. Pass `doorPhoto: false` for a report with nothing but the arrival time behind it.
+  if (opts.arrivedMinutesAgo != null && opts.doorPhoto !== false) {
+    await prisma.jobEvidence.create({
+      // The position on the row is the one the server held for the partner when the photo arrived: at the job.
+      data: { bookingId: id, providerId: ctx.providerId, stage: "ARRIVAL", mediaStorageKey: storedEvidenceKey(id, ctx.providerId, "ARRIVAL"), mediaMimeType: "image/png", capturedAt: new Date(Date.now() - Math.max(0, opts.arrivedMinutesAgo - 1) * 60_000), ...(await jobPosition()) },
+    });
+  }
+
   created_ids.push(id);
   return { id, amount };
 }

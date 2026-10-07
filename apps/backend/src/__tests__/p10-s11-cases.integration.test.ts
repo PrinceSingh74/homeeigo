@@ -240,6 +240,47 @@ describe.serial("§11 cases through the real routes", () => {
     }
   });
 
+  // Adversarial audit, 2026-10-07: any JOB_EVIDENCE or CUSTOMER_MEDIA row was "proof" — a position
+  // stamp with no photo, a pasted https link, a key typed by the client.
+  test("proof for a case is a photo the server stored: a link, a typed key and a photo-less job row are claims; an uploaded photo counts", async () => {
+    if (!dbOk) return;
+    const bookingId = await completedBooking();
+    const stamp = await prisma.jobEvidence.findFirstOrThrow({ where: { bookingId, mediaStorageKey: null }, select: { id: true } });
+    // Opening a case with a link and a photo-less job row still works: they are recorded and shown.
+    const opened = await open(bookingId, { evidence: [{ kind: "CUSTOMER_MEDIA", mediaUrl: "https://cdn.example.test/after.jpg" }, { kind: "JOB_EVIDENCE", jobEvidenceId: stamp.id }] });
+    expect(opened.status).toBe(201);
+    const id: string = opened.json.data.case.id;
+    expect(opened.json.data.case.evidence).toHaveLength(2);
+    expect(opened.json.data.case.evidence[0]).toMatchObject({ kind: "CUSTOMER_MEDIA", mediaUrl: "https://cdn.example.test/after.jpg", hasStoredMedia: false });
+
+    // This case's warranty asks for proof (set on the case's own frozen policy; the suite's service does not).
+    await prisma.$executeRaw`UPDATE booking_cases SET warranty_snapshot = jsonb_set(warranty_snapshot, '{proofRequired}', 'true'::jsonb) WHERE id = ${id}`;
+    const proofMissing = async () => (await call("GET", `/api/admin/cases/${id}`, undefined, admin())).json.data.eligibilityNow.proofMissing;
+    expect(await proofMissing()).toBe(true);
+
+    // A key of exactly the shape the server writes for this case, typed by the client: no such object.
+    const typed = await call("POST", `/api/bookings/${bookingId}/cases/${id}/evidence`, { evidence: [{ kind: "CUSTOMER_MEDIA", mediaStorageKey: `${id}/0b9f3c2e-7a41-4c1d-9e55-1d2f3a4b5c6d.png` }] }, customer());
+    expect(typed.status).toBe(200);
+    expect(await proofMissing()).toBe(true);
+
+    // The photo itself, uploaded to the case.
+    const PNG = Buffer.from(
+      "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a2e5b5a00000000049454e44ae426082",
+      "hex",
+    );
+    const form = new FormData();
+    form.append("file", new File([PNG], "photo", { type: "image/png" }));
+    const up = await app.handle(new Request(`http://localhost/api/bookings/${bookingId}/cases/${id}/evidence/photo`, { method: "POST", headers: { Authorization: `Bearer ${customer()}` }, body: form }));
+    expect(up.status).toBe(201);
+    try {
+      expect(await proofMissing()).toBe(false);
+    } finally {
+      const [stored] = await prisma.$queryRaw<{ media_storage_key: string }[]>`SELECT media_storage_key FROM booking_case_evidence WHERE case_id = ${id} AND media_storage_key LIKE ${id + "/%"} ORDER BY id DESC LIMIT 1`;
+      const { objectStorageService } = await import("../services/object-storage.service");
+      if (stored) await objectStorageService.deleteObject("case-evidence", stored.media_storage_key).catch(() => undefined);
+    }
+  });
+
   test("admin transitions follow the map with CAS: CASE_CREATED→ACTION 409, →TRIAGE ok, stale version 409, blank reason 400, unknown state 400", async () => {
     if (!dbOk) return;
     const forbidden = await transition(caseId, "ACTION");

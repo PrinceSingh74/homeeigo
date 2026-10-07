@@ -123,7 +123,7 @@ describe("X-29: partner payloads carry no customer-money or storage internals", 
 
   test("job evidence: a partner sees an access URL, never raw media URLs or storage keys in metadata", async () => {
     if (!dbOk) return;
-    await jobEvidenceService.recordStage({ bookingId: id, providerId: ctx.providerId, stage: "START", mediaUrls: ["https://bucket.example/raw/abc.jpg"], metadata: { note: "gate code 12" } as never });
+    await jobEvidenceService.recordStage({ bookingId: id, providerId: ctx.providerId, stage: "START", metadata: { note: "gate code 12", mediaUrls: ["https://bucket.example/raw/abc.jpg"] } as never });
     const rows = await jobEvidenceService.listForBooking(id, { userId: ctx.vendorUserId, providerId: ctx.providerId, isAdmin: false } as never);
     const text = JSON.stringify(rows);
     expect(rows.length).toBeGreaterThan(0);

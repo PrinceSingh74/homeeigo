@@ -4142,6 +4142,12 @@ export type ServiceCatalogConfig = {
     confirmationWindowHours?: number;
     notApplicable?: boolean;
   };
+  /**
+   * Why a section does not apply to this service (each ≤ 500 characters). The publish gate accepts a
+   * real reason in place of safety / quality content, and requires one for a `NOT_REQUIRED`
+   * materials / equipment policy. Shown on the publish checklist and approved with the version.
+   */
+  notApplicableReasons?: { safety?: string; quality?: string; materials?: string; equipment?: string };
   seo?: { noindex?: boolean; canonicalUrl?: string };
   /**
    * Fields this console does not edit (coverage, materials, equipment, safety, trust, …) still

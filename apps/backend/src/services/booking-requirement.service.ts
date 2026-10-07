@@ -384,13 +384,17 @@ class BookingRequirementService {
   async partnerCheck(input: { bookingId: string; providerId: string; userId: string; code: string; outcome: "SATISFIED" | "FAILED"; note?: string | null; latitude: number | null; longitude: number | null; idempotencyKey?: string | null }) {
     const b = await this.loadBooking(prisma, input.bookingId);
     if (!b || b.providerId !== input.providerId) return { ok: false as const, error: REQUIREMENT_ERRORS.NOT_FOUND };
-    const proximity = assertJobProximity({ latitude: input.latitude, longitude: input.longitude, jobLatitude: b.address?.latitude, jobLongitude: b.address?.longitude, enforceRadius: true });
-    if (!proximity.ok) {
-      incCounter("partner_check_refused_total", { reason: proximity.error });
-      return { ok: false as const, error: proximity.error };
+    const { confirmPartnerPosition, positionException } = await import("./arrival-position.service");
+    // As at arrival: a recorded exception excuses a device with no position; coordinates that are sent are checked.
+    const vouchedWithoutPosition = (input.latitude == null || input.longitude == null) && (await positionException(input.bookingId, input.providerId)) != null;
+    if (!vouchedWithoutPosition) {
+      const proximity = assertJobProximity({ latitude: input.latitude, longitude: input.longitude, jobLatitude: b.address?.latitude, jobLongitude: b.address?.longitude, enforceRadius: true });
+      if (!proximity.ok) {
+        incCounter("partner_check_refused_total", { reason: proximity.error });
+        return { ok: false as const, error: proximity.error };
+      }
     }
     // As at arrival and start: the request's coordinates are a claim; the server-held fix decides.
-    const { confirmPartnerPosition } = await import("./arrival-position.service");
     const held = await confirmPartnerPosition({ providerId: input.providerId, bookingId: input.bookingId, action: "requirement_check", jobLatitude: b.address?.latitude, jobLongitude: b.address?.longitude });
     if (!held.ok) {
       incCounter("partner_check_refused_total", { reason: held.error });

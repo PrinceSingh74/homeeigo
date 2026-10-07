@@ -13,6 +13,7 @@ import { collectForbiddenPartnerKeys, unknownPartnerBookingKeys } from "../lib/p
 import { bearer, cleanupAdversarialFixtures, dbReachable, futureSlot, seedAdversarialFixtures, type AdvCtx } from "./helpers/adversarial-fixtures";
 import { refuseIfNotIsolatedTestDb } from "./helpers/isolated-test-db";
 import { withQuoteToken } from "./helpers/quote-token";
+import { pngDataUrl } from "./helpers/evidence-photo";
 
 const RUN = `pbound-${Date.now().toString(36)}`;
 const NOTE = "Gate code 4421, dog at home";
@@ -221,7 +222,7 @@ describe.serial("what a partner is handed back, and what an earlier partner left
       new Request(`http://localhost/api/bookings/${id}/evidence`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${partner()}` },
-        body: JSON.stringify({ stage: "START", mediaUrl: "https://example.test/raw-photo.jpg", latitude: 28.6203, longitude: 77.3704, clientUploadId: `${RUN}-start` }),
+        body: JSON.stringify({ stage: "START", mediaUrl: pngDataUrl(`${RUN}-start`), latitude: 28.6203, longitude: 77.3704, clientUploadId: `${RUN}-start` }),
       }),
     );
     const text = await res.text();
@@ -230,7 +231,8 @@ describe.serial("what a partner is handed back, and what an earlier partner left
     expect(row.id).toBeTruthy();
     for (const key of ["latitude", "longitude", "mediaUrl", "mediaStorageKey", "metadata", "providerId"]) expect({ key, present: key in row }).toEqual({ key, present: false });
     expect(text).not.toContain("28.6203");
-    expect(text).not.toContain("raw-photo.jpg");
+    expect(text).not.toContain("ev1/");
+    expect(text).not.toContain("base64");
   });
 
   test("a chat message does not leave its text in the other side's notifications", async () => {
@@ -272,26 +274,28 @@ describe.serial("what a partner is handed back, and what an earlier partner left
     expect(mine.text).not.toContain("flat 9");
   });
 
-  test("an upload cannot point at storage that belongs to another booking", async () => {
+  test("a link is not evidence, and neither is a storage key from the client: only the photo itself is stored", async () => {
     expect(dbOk).toBe(true);
     await setHeld("IN_PROGRESS");
-    const foreign = await app.handle(
-      new Request(`http://localhost/api/bookings/${id}/evidence`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${partner()}` },
-        body: JSON.stringify({ stage: "COMPLETION", mediaStorageKey: "s3/evidence/some-other-booking/completion.jpg", clientUploadId: `${RUN}-foreign` }),
-      }),
-    );
-    expect(foreign.status).toBe(400);
-    expect(((await foreign.json()) as { code?: string }).code).toBe("VALIDATION_ERROR");
-    const own = await app.handle(
-      new Request(`http://localhost/api/bookings/${id}/evidence`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${partner()}` },
-        body: JSON.stringify({ stage: "COMPLETION", mediaStorageKey: `s3/evidence/${id}/completion.jpg`, clientUploadId: `${RUN}-own-key` }),
-      }),
-    );
-    expect(own.status).toBe(200);
+    const attempt = (body: Record<string, unknown>) =>
+      app.handle(new Request(`http://localhost/api/bookings/${id}/evidence`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${partner()}` }, body: JSON.stringify(body) }));
+    const before = await prisma.jobEvidence.count({ where: { bookingId: id } });
+    for (const body of [
+      { stage: "COMPLETION", mediaUrl: "https://example.test/photo.jpg", clientUploadId: `${RUN}-link` },
+      { stage: "COMPLETION", photos: ["https://example.test/a.jpg"], clientUploadId: `${RUN}-links` },
+      { stage: "COMPLETION", mediaStorageKey: `ev1/${id}/${ctx.providerId}/COMPLETION/0b9f3c2e-7a41-4c1d-9e55-1d2f3a4b5c6d.jpg`, clientUploadId: `${RUN}-key` },
+      { stage: "COMPLETION", mediaUrl: `data:image/png;base64,${Buffer.from("not an image").toString("base64")}`, clientUploadId: `${RUN}-fake` },
+    ]) {
+      const res = await attempt(body);
+      expect({ body: Object.keys(body).join(","), status: res.status, code: ((await res.json()) as { code?: string }).code }).toEqual({ body: Object.keys(body).join(","), status: 400, code: "EVIDENCE_MEDIA_INVALID" });
+    }
+    expect(await prisma.jobEvidence.count({ where: { bookingId: id } })).toBe(before);
+    // The photo itself is stored by the server, under a key that names this booking, partner and stage.
+    const ok = await attempt({ stage: "COMPLETION", mediaUrl: pngDataUrl(`${RUN}-photo`), clientUploadId: `${RUN}-photo` });
+    expect(ok.status).toBe(200);
+    const stored = await prisma.jobEvidence.findFirstOrThrow({ where: { bookingId: id, clientUploadId: `${RUN}-photo` } });
+    expect(stored.mediaUrl).toBeNull();
+    expect(stored.mediaStorageKey?.startsWith(`ev1/${id}/${ctx.providerId}/COMPLETION/`)).toBe(true);
   });
 });
 

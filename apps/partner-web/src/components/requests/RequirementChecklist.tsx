@@ -83,11 +83,9 @@ export function RequirementChecklist({
     setLocating(code);
     try {
       const coords = await getPartnerCoords("strict");
-      if (!coords) {
-        check.reset();
-        return;
-      }
-      await check.mutateAsync({ code, outcome, latitude: coords.latitude, longitude: coords.longitude, note: outcome === "FAILED" && note.trim() ? note.trim() : undefined });
+      // With no position from this device the server decides: it accepts the check only if the
+      // customer (or support) has confirmed the partner is there, and otherwise says what to do.
+      await check.mutateAsync({ code, outcome, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null, note: outcome === "FAILED" && note.trim() ? note.trim() : undefined });
       setNoteFor(null);
       setNote("");
     } catch {

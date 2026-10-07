@@ -34,7 +34,19 @@ export const LOCATION_STALE_SEC = readSec("PRESENCE_LOCATION_STALE_SEC", 600);
  */
 export const ARRIVAL_FIX_MAX_AGE_SEC = readSec("PRESENCE_ARRIVAL_FIX_MAX_AGE_SEC", LOCATION_FRESH_SEC * 2);
 
-export const TIMESTAMP_FUTURE_TOLERANCE_SEC = readSec("PRESENCE_TIMESTAMP_FUTURE_TOLERANCE_SEC", 30);
+/**
+ * How long a recorded exception to the position check vouches for a partner. The customer saying
+ * "the professional is at the door" is about now: it covers the arrival, the on-site checks and the
+ * start that follow, not a visit later in the day. An admin's waiver is given for a known device
+ * problem and may be recorded ahead of the visit, so it lasts longer. After that the exception is
+ * history: the customer can confirm again, an admin can waive again.
+ */
+export const POSITION_EXCEPTION_MAX_AGE_SEC = {
+  customer: readSec("POSITION_EXCEPTION_CUSTOMER_MAX_AGE_SEC", 2 * 60 * 60),
+  admin: readSec("POSITION_EXCEPTION_ADMIN_MAX_AGE_SEC", 24 * 60 * 60),
+};
+
+export const TIMESTAMP_FUTURE_TOLERANCE_SEC =readSec("PRESENCE_TIMESTAMP_FUTURE_TOLERANCE_SEC", 30);
 
 /** Reject client timestamps older than this (replay guard). */
 export const TIMESTAMP_MAX_AGE_SEC = readSec("PRESENCE_TIMESTAMP_MAX_AGE_SEC", 300);

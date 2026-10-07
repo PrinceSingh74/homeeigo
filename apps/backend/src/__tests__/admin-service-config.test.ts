@@ -78,8 +78,15 @@ describe.serial("admin service configuration", () => {
       },
     });
     expect(ok.status).toBe(200);
-    expect(ok.json.data.service.configGaps).toContain("Equipment policy not specified");
-    expect(ok.json.data.service.configGaps.some((g: string) => g.includes("cannot honour"))).toBe(true);
+    // Readiness is the gate (audit 2026-10-07, finding 4): `configGaps` is what blocks this service,
+    // in the gate's words, and the status is READY exactly when nothing does…
+    const svc = ok.json.data.service;
+    expect(svc.configGaps).toEqual(svc.publishBlocked.map((i: { message: string }) => i.message));
+    expect(svc.configStatus === "READY").toBe(svc.publishBlocked.length === 0);
+    // …and what is missing or advisory is still said, on the publish rail it is read from.
+    const rail = svc.publishGates as { code: string; message: string }[];
+    expect(rail.find((g) => g.code === "EQUIPMENT_POLICY")?.message).toBe("Equipment policy not specified");
+    expect(rail.some((g) => g.code === "PROFESSIONAL_PREFERENCE_UNSUPPORTED" && g.message.includes("cannot honour"))).toBe(true);
     const detail = await app.handle(new Request(`http://localhost/api/services/${ctx.serviceId}`));
     const pub = ((await detail.json()) as any).data.service.catalogConfig;
     // Public projection: inactive variants and unsupported preferences are stripped.

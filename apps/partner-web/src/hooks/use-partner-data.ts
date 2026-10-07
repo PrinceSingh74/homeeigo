@@ -479,8 +479,8 @@ export function useMarkArrivedMutation() {
       longitude,
     }: {
       bookingId: string;
-      latitude: number;
-      longitude: number;
+      latitude: number | null;
+      longitude: number | null;
     }) => partnerApi.markArrived(bookingId, latitude, longitude),
     onError: (error) => {
       const msg =
@@ -522,8 +522,8 @@ export function useStartBookingMutation() {
       otp,
     }: {
       bookingId: string;
-      latitude: number;
-      longitude: number;
+      latitude: number | null;
+      longitude: number | null;
       otp?: string;
     }) => partnerApi.startBooking(bookingId, latitude, longitude, otp),
     onMutate: async ({ bookingId }) => {
@@ -782,7 +782,7 @@ export function useRequirementCheckMutation(bookingId: string) {
   const qc = useQueryClient();
   const showToast = useToastStore((s) => s.showToast);
   return useMutation({
-    mutationFn: (vars: { code: string; outcome: "SATISFIED" | "FAILED"; latitude: number; longitude: number; note?: string }) =>
+    mutationFn: (vars: { code: string; outcome: "SATISFIED" | "FAILED"; latitude: number | null; longitude: number | null; note?: string }) =>
       partnerApi.checkRequirement(bookingId, vars.code, vars.outcome, vars.latitude, vars.longitude, vars.note),
     onError: (error) => {
       const msg =

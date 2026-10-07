@@ -441,6 +441,22 @@ export const coreApi = {
         "/api/bookings/cancellation-policy",
         { auth: false },
       ).then((r) => r.data!),
+    /**
+     * The customer says the professional is at the door — the exception for a device that cannot
+     * give a location. Returns the server's sentence with the result; a refusal (409 INVALID_STATUS,
+     * 404 NOT_FOUND) is thrown with the server's sentence as its message.
+     */
+    confirmArrival: (id: string) =>
+      apiRequest<ApiResponse<{ confirmed: boolean; changed: boolean; validUntil?: string | null }>>(`/api/bookings/${id}/confirm-arrival`, {
+        method: "POST",
+        auth: true,
+      }).then((r) => ({
+        message: r.message ?? null,
+        confirmed: r.data?.confirmed === true,
+        changed: r.data?.changed === true,
+        // Until when the server says this confirmation vouches for the professional.
+        validUntil: typeof r.data?.validUntil === "string" ? r.data.validUntil : null,
+      })),
     update: (id: string, payload: Record<string, unknown>) =>
       apiRequest<ApiResponse<{ booking: BackendBooking }>>(`/api/bookings/${id}`, {
         method: "PUT",
