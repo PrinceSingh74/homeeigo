@@ -178,6 +178,8 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
             accuracy: t.Optional(t.Number()),
             capturedAt: t.Union([t.String(), t.Date()]),
             sequence: t.Optional(t.Number()),
+            // The device's own word on the fix (Android `mocked`); null/absent = unknown.
+            mocked: t.Optional(t.Union([t.Boolean(), t.Null()])),
           }),
         ),
       }),
@@ -217,6 +219,7 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
           accuracy: t.Optional(t.Number()),
           capturedAt: t.Union([t.String(), t.Date()]),
           sequence: t.Optional(t.Number()),
+          mocked: t.Optional(t.Union([t.Boolean(), t.Null()])),
         }),
       }),
     },

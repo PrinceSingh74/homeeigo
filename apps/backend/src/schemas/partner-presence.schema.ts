@@ -18,6 +18,8 @@ export const partnerPresenceHeartbeatSchema = z.object({
       capturedAt: z.coerce.date(),
       // Stored as INT4 (partner_presence.last_location_seq): out-of-range values are a 400, not a DB 500.
       sequence: z.number().int().nonnegative().max(2_147_483_647).optional(),
+      /** The device's own word on the fix: true = the OS flagged it as mock-location (Android), false = not, absent/null = unknown (iOS, web, older clients). */
+      mocked: z.boolean().nullable().optional(),
     })
     .optional(),
 });
@@ -38,6 +40,8 @@ export const partnerLocationPingSchema = z.object({
     accuracy: z.number().min(0).max(50_000).optional(),
     capturedAt: z.coerce.date(),
     sequence: z.number().int().nonnegative().max(2_147_483_647).optional(),
+    /** As on the heartbeat: the device's own word on the fix; absent/null = unknown. */
+    mocked: z.boolean().nullable().optional(),
   }),
 });
 

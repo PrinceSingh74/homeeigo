@@ -20,6 +20,8 @@ export type QueuedFix = {
   latitude: number;
   longitude: number;
   accuracy?: number;
+  /** The OS's word that this fix came from a mock provider (Android). Absent when it said nothing. */
+  mocked?: boolean;
   /** ISO time the OS captured the fix (NOT the send time). */
   capturedAt: string;
   sequence: number;

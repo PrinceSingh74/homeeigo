@@ -17,6 +17,8 @@ type Options = {
         longitude: number;
         accuracy?: number;
         altitude?: number;
+        /** Android `mocked` on the mobile client; the browser has no such flag, so the web leaves it undefined (= unknown). */
+        mocked?: boolean | null;
       }
     | null;
   enabled?: boolean;
@@ -26,7 +28,7 @@ type Options = {
 /**
  * Publishes partner GPS location updates to /ws/tracking/:bookingId.
  *
- * Backend route already accepts `{ type: "location_update", latitude, longitude, accuracy?, altitude? }`
+ * Backend route already accepts `{ type: "location_update", latitude, longitude, accuracy?, altitude?, mocked? }`
  * (see apps/backend/src/websocket/tracking.ws.ts) — we re-use that contract so no backend changes are needed.
  *
  * Throttled to one send per `minIntervalMs` (default 5 s) and skips duplicate fixes.
@@ -72,6 +74,7 @@ export function usePartnerTrackingPublisher({
       longitude: coords.longitude,
       accuracy: coords.accuracy,
       altitude: coords.altitude,
+      mocked: coords.mocked,
     });
     if (ok) {
       lastSentAtRef.current = now;

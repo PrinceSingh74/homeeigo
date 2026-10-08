@@ -162,10 +162,22 @@ export function isOfflineError(error: unknown): boolean {
 }
 
 export const OFFLINE_SENTENCE = "You're offline. Check your connection and try again.";
+/**
+ * A server FAULT (5xx) carries whatever the exception said — on the emulator, a database driver's
+ * invocation trace with a source path — not a sentence for the partner. Said in the app's words.
+ */
+export const SERVER_FAULT_SENTENCE = "The server could not do that just now. Try again in a moment; if it keeps failing, contact support.";
 
-/** The sentence to show for a failure: offline in the app's words, otherwise the server's own. */
+/** An HTTP answer the server did not mean to give: 5xx. */
+export function isServerFault(error: unknown): boolean {
+  const e = apiError(error);
+  return !!e && typeof e.status === "number" && e.status >= 500;
+}
+
+/** The sentence to show for a failure: offline or a server fault in the app's words, otherwise the server's own. */
 export function failureSentence(error: unknown, fallback = "Something went wrong. Please try again."): string {
   if (isOfflineError(error)) return OFFLINE_SENTENCE;
+  if (isServerFault(error)) return SERVER_FAULT_SENTENCE;
   if (error instanceof Error && error.message) return error.message;
   return fallback;
 }

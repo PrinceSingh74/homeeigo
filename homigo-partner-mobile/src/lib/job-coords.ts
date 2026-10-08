@@ -1,12 +1,18 @@
 import * as Location from "expo-location";
 import { getE2eGeoOverride } from "@/lib/e2e-geo";
 import { readRememberedJobFix, rememberJobFix } from "@/lib/job-fix-cache";
+import { mockedField } from "@/lib/location-mocked";
 import { removeQuietly } from "@/lib/safe-subscription";
 
 export type JobCoords = {
   latitude: number;
   longitude: number;
+  /** The OS's word that the fix came from a mock provider (Android). Absent when it said nothing. */
+  mocked?: boolean;
 };
+
+/** The body a lifecycle call carries for a `JobCoords` (pure, in `lib/location-mocked.ts`). */
+export { positionBody } from "@/lib/location-mocked";
 
 /**
  * A device with no fix still SENDS arrive / start / the on-site check, with `null` coordinates
@@ -117,7 +123,7 @@ export async function getJobCoords(mode: "soft" | "strict" = "soft"): Promise<Jo
     // and a tap on "I've arrived" must not sit behind it.
     const last = await withTimeout(Location.getLastKnownPositionAsync({ maxAge: 60_000, requiredAccuracy: 100 }), 2_000, "Last known position").catch(() => null);
     if (last && !isNullIsland(last.coords.latitude, last.coords.longitude)) {
-      return { latitude: last.coords.latitude, longitude: last.coords.longitude };
+      return { latitude: last.coords.latitude, longitude: last.coords.longitude, ...mockedField(last) };
     }
 
     const watched = await new Promise<Location.LocationObject | null>((resolve) => {
@@ -158,7 +164,7 @@ export async function getJobCoords(mode: "soft" | "strict" = "soft"): Promise<Jo
 
     if (watched && !isNullIsland(watched.coords.latitude, watched.coords.longitude)) {
       rememberJobFix(watched.coords.latitude, watched.coords.longitude);
-      return { latitude: watched.coords.latitude, longitude: watched.coords.longitude };
+      return { latitude: watched.coords.latitude, longitude: watched.coords.longitude, ...mockedField(watched) };
     }
     return null;
   } catch {

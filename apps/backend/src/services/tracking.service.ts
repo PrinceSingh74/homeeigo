@@ -65,6 +65,8 @@ export interface LocationUpdatePayload {
   longitude: number;
   accuracy?: number;
   speed?: number;
+  /** The device's own word on the fix (Android `mocked`); null/absent = unknown. */
+  mocked?: boolean | null;
 }
 
 export interface TrackingData {
@@ -122,6 +124,7 @@ export class TrackingService {
       accuracy?: number;
       altitude?: number;
       speed?: number;
+      mocked?: boolean | null;
     },
   ) {
     const __t0 = Date.now();
@@ -197,8 +200,17 @@ export class TrackingService {
         longitude: body.longitude,
         accuracy: body.accuracy,
         altitude: body.altitude,
+        // Kept exactly as the device said it (null = it said nothing): the arrival rule reads it.
+        mocked: body.mocked ?? null,
       },
     });
+
+    // A ping the device itself flags as mocked is on record as a risk signal, once per booking.
+    if (body.mocked === true) {
+      void import("./arrival-position.service")
+        .then(({ noteMockedLocation }) => noteMockedLocation({ providerId, bookingId: body.bookingId, reportedBy: "tracking_ping" }))
+        .catch(() => undefined);
+    }
 
     if (prev) {
       void import("./partner-risk.service")
@@ -271,6 +283,7 @@ export class TrackingService {
       latitude: body.latitude,
       longitude: body.longitude,
       accuracy: body.accuracy,
+      mocked: body.mocked ?? null,
       distanceKm: dist,
       googleEtaMin: eta,
       speed,
@@ -417,12 +430,16 @@ export class TrackingService {
     latitude: number;
     longitude: number;
     accuracy?: number;
+    mocked: boolean | null;
     distanceKm: number;
     googleEtaMin: number;
     speed?: number;
     prev: { lat: number; lng: number; t: number } | null;
   }): Promise<void> {
     if (input.booking.arrivedAt) return;
+    // A ping the device itself flags as mocked is no evidence for the partner: it neither counts
+    // towards the arrival nor resets the count (lib/arrival-position.ts, "the mock-location signal").
+    if (input.mocked === true) return;
 
     const radiusM = eventPlatformConfig.arrivalRadiusM;
     const distM = input.distanceKm * 1000;

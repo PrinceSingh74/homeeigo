@@ -26,6 +26,8 @@ export const trackingRoutes = new Elysia({ prefix: "/api/tracking" })
         accuracy: t.Optional(t.Number()),
         altitude: t.Optional(t.Number()),
         speed: t.Optional(t.Number()),
+        // The device's own word on the fix (Android `mocked`); null/absent = unknown.
+        mocked: t.Optional(t.Union([t.Boolean(), t.Null()])),
       }),
     },
   )

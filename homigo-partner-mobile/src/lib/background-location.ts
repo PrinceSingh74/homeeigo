@@ -9,6 +9,7 @@ import { deleteSecureItem, getSecureItem, setSecureItem } from "@/lib/secure-sto
 import { loadTaskManager } from "@/lib/task-manager";
 import { PartnerApiError, partnerApi } from "@/services/partner-api";
 import { useAuthStore } from "@/stores/auth-store";
+import { mockedField } from "@/lib/location-mocked";
 
 /**
  * Background location for partners who are online or on an active job.
@@ -133,6 +134,7 @@ async function sendPing(fix: QueuedFix): Promise<SendVerdict> {
         latitude: fix.latitude,
         longitude: fix.longitude,
         ...(typeof fix.accuracy === "number" ? { accuracy: fix.accuracy } : {}),
+        ...mockedField(fix),
         capturedAt: fix.capturedAt,
         sequence: fix.sequence,
       },
@@ -164,6 +166,7 @@ async function sendTracking(bookingId: string, loc: Location.LocationObject) {
       latitude,
       longitude,
       ...(typeof accuracy === "number" && accuracy >= 0 ? { accuracy } : {}),
+      ...mockedField(loc),
       ...(typeof altitude === "number" ? { altitude } : {}),
       ...(typeof speed === "number" && speed >= 0 ? { speed } : {}),
     });
@@ -211,6 +214,7 @@ async function handleLocations(locations: Location.LocationObject[]) {
       latitude,
       longitude,
       ...(typeof accuracy === "number" && accuracy >= 0 ? { accuracy } : {}),
+      ...mockedField(loc),
       capturedAt: new Date(loc.timestamp).toISOString(),
       sequence: nextLocationSequence(),
     });

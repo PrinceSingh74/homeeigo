@@ -365,6 +365,8 @@ export type PresenceLocationFix = {
   latitude: number;
   longitude: number;
   accuracy?: number;
+  /** The OS's word that the fix is mocked (Android). Sent only when the OS said so; never defaulted. */
+  mocked?: boolean;
   capturedAt: string;
   sequence?: number;
 };
@@ -607,6 +609,8 @@ export const partnerApi = {
     latitude: number;
     longitude: number;
     accuracy?: number;
+    /** The OS's word that the fix is mocked (Android); absent when it said nothing. */
+    mocked?: boolean;
     altitude?: number;
     speed?: number;
   }) => request<unknown>("/api/tracking/location", { method: "POST", body }),
@@ -754,10 +758,11 @@ export const partnerApi = {
    * partner on this booking. Refusals: 400 INVALID_STATUS / OUTSIDE_SERVICE_AREA / LOCATION_INVALID /
    * LOCATION_REQUIRED; 409 LOCATION_UNCONFIRMED / LOCATION_MISMATCH; 404 NOT_FOUND (no `data`).
    */
-  markArrived: (bookingId: string, latitude: number | null, longitude: number | null): Promise<ArrivedResult> =>
+  markArrived: (bookingId: string, latitude: number | null, longitude: number | null, mocked?: boolean | null): Promise<ArrivedResult> =>
     requestEnvelope<Omit<ArrivedResult, "message">>(`/api/bookings/${bookingId}/arrived`, {
       method: "POST",
-      body: { latitude: coord(latitude), longitude: coord(longitude) },
+      // `mocked` is the OS's word on the fix sent (Android), only when it said something; the server-held fix decides.
+      body: { latitude: coord(latitude), longitude: coord(longitude), ...(typeof mocked === "boolean" ? { mocked } : {}) },
     }).then(withMessage),
 
   /**
@@ -778,10 +783,10 @@ export const partnerApi = {
    *   409 REQUIREMENT_GATE_BLOCKED      data.blocking: BlockingRequirement[]
    *   403 FORBIDDEN                     (catch-all, including a wrong status)
    */
-  startBooking: (bookingId: string, latitude: number | null, longitude: number | null, otp?: string) =>
+  startBooking: (bookingId: string, latitude: number | null, longitude: number | null, otp?: string, mocked?: boolean | null) =>
     requestEnvelope<{ booking: { status: "in_progress"; startedAt: string | null } }>(`/api/bookings/${bookingId}/start`, {
       method: "POST",
-      body: { latitude: coord(latitude), longitude: coord(longitude), ...(otp ? { otp } : {}) },
+      body: { latitude: coord(latitude), longitude: coord(longitude), ...(otp ? { otp } : {}), ...(typeof mocked === "boolean" ? { mocked } : {}) },
     }).then(withMessage),
 
   /**
@@ -870,10 +875,11 @@ export const partnerApi = {
     /** Max 500 characters. */
     note?: string,
     idempotencyKey: string = newIdempotencyKey(`req-${code}`),
+    mocked?: boolean | null,
   ) =>
     requestEnvelope<{ code: string; state: "UNRESOLVED" | "SATISFIED" | "FAILED"; changed: boolean; gate: RequirementGateResult }>(
       `/api/bookings/${bookingId}/requirements/${encodeURIComponent(code)}/check`,
-      { method: "POST", body: { outcome, latitude: coord(latitude), longitude: coord(longitude), ...(note ? { note } : {}) }, idempotencyKey },
+      { method: "POST", body: { outcome, latitude: coord(latitude), longitude: coord(longitude), ...(note ? { note } : {}), ...(typeof mocked === "boolean" ? { mocked } : {}) }, idempotencyKey },
     ).then(withMessage),
 
   /* ---- Phase 10 §9 — safety ---- */

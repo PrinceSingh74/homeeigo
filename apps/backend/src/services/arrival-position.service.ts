@@ -22,7 +22,35 @@ export const ARRIVAL_VOUCHED_ACTION = "PARTNER_ARRIVAL_VOUCHED";
 export type PartnerPositionResult =
   | (Extract<PositionConfirmation, { ok: true }> & { waived?: undefined; position: { latitude: number; longitude: number } })
   | Extract<PositionConfirmation, { ok: false }>
-  | { ok: true; waived: true; by: "admin" | "customer" };
+  | { ok: true; waived: true; by: "admin" | "customer"; locationMocked: boolean | null };
+
+/** The risk-signal source of a fix the device itself flagged as mocked. */
+export const MOCKED_LOCATION_SIGNAL_SOURCE = "device_mock_flag";
+
+/**
+ * "Mocked location reported": the device's own flag on a fix the server was asked to rely on (or a
+ * request that declared its own position mocked), kept as a risk signal once per booking and
+ * partner — the fingerprint dedupes — under the existing GPS_SPOOF type: no new signal type, no new
+ * engine. Fire-and-forget: it never delays or fails the request it was noticed on.
+ */
+export function noteMockedLocation(input: { providerId: string; bookingId: string; reportedBy: string; fixAgeSec?: number | null }): Promise<void> {
+  incCounter("partner_mocked_location_total", { reportedBy: input.reportedBy });
+  return import("./partner-risk.service")
+    .then(({ partnerRiskService }) =>
+      partnerRiskService.recordSignal({
+        providerId: input.providerId,
+        type: "GPS_SPOOF",
+        source: MOCKED_LOCATION_SIGNAL_SOURCE,
+        severity: 50,
+        confidence: 0.9,
+        bookingId: input.bookingId,
+        fingerprint: `MOCK_LOCATION:${input.providerId}:${input.bookingId}`,
+        evidence: { reportedBy: input.reportedBy, ...(input.fixAgeSec != null ? { fixAgeSec: input.fixAgeSec } : {}) },
+      }),
+    )
+    .then(() => undefined)
+    .catch((err: unknown) => logger.warn("mocked_location_signal_failed", { bookingId: input.bookingId, providerId: input.providerId, error: String(err) }));
+}
 
 /**
  * The recorded exception in force for this booking and this partner, if any: an admin's waiver or
@@ -70,11 +98,11 @@ export async function confirmPartnerPosition(input: {
   // device does place them at the job has arrived on that, whoever also vouched for them.
   const presence = await prisma.partnerPresence.findUnique({
     where: { providerId: input.providerId },
-    select: { lastLocationLat: true, lastLocationLng: true, lastLocationAt: true, lastLocationReceivedAt: true },
+    select: { lastLocationLat: true, lastLocationLng: true, lastLocationAt: true, lastLocationReceivedAt: true, lastLocationMocked: true },
   });
   const fix =
     presence?.lastLocationLat != null && presence.lastLocationLng != null && presence.lastLocationAt
-      ? { latitude: presence.lastLocationLat, longitude: presence.lastLocationLng, capturedAt: presence.lastLocationAt, receivedAt: presence.lastLocationReceivedAt }
+      ? { latitude: presence.lastLocationLat, longitude: presence.lastLocationLng, capturedAt: presence.lastLocationAt, receivedAt: presence.lastLocationReceivedAt, mocked: presence.lastLocationMocked }
       : null;
   // The second stream: this partner's last tracking ping for THIS booking (server-timed). Only the
   // tracking channel writes `location_history`. The `locations` row is not a second stream: the
@@ -82,9 +110,9 @@ export async function confirmPartnerPosition(input: {
   const lastPing = await prisma.locationHistory.findFirst({
     where: { providerId: input.providerId, tracking: { bookingId: input.bookingId } },
     orderBy: { timestamp: "desc" },
-    select: { latitude: true, longitude: true, timestamp: true },
+    select: { latitude: true, longitude: true, timestamp: true, mocked: true },
   });
-  const tracking = lastPing ? { latitude: lastPing.latitude, longitude: lastPing.longitude, receivedAt: lastPing.timestamp } : null;
+  const tracking = lastPing ? { latitude: lastPing.latitude, longitude: lastPing.longitude, receivedAt: lastPing.timestamp, mocked: lastPing.mocked } : null;
 
   const result = confirmPositionAgainstServerFix({
     fix,
@@ -96,6 +124,10 @@ export async function confirmPartnerPosition(input: {
     jobLongitude: input.jobLongitude,
     radiusM: eventPlatformConfig.arrivalRadiusM,
   });
+  // The device's own word that a point this answer rests on was mocked is kept, whatever the answer.
+  if (result.locationMocked === true) {
+    void noteMockedLocation({ providerId: input.providerId, bookingId: input.bookingId, reportedBy: input.action, fixAgeSec: result.fixAgeSec });
+  }
   if (result.ok) {
     incCounter("partner_position_check_total", { action: input.action, outcome: "confirmed" });
     return { ...result, position: { latitude: fix!.latitude, longitude: fix!.longitude } };
@@ -113,9 +145,10 @@ export async function confirmPartnerPosition(input: {
         deviceSaid: result.error,
         fixAgeSec: result.fixAgeSec,
         fixDistanceM: result.fixDistanceM,
+        locationMocked: result.locationMocked,
       });
       incCounter("partner_position_check_total", { action: input.action, outcome: by === "admin" ? "waived" : "customer_confirmed" });
-      return { ok: true, waived: true, by };
+      return { ok: true, waived: true, by, locationMocked: result.locationMocked };
     }
   }
   incCounter("partner_position_check_total", { action: input.action, outcome: result.error });
@@ -127,6 +160,7 @@ export async function confirmPartnerPosition(input: {
     reason: result.error,
     fixAgeSec: result.fixAgeSec,
     fixDistanceM: result.fixDistanceM,
+    locationMocked: result.locationMocked,
   });
   const job = knownCoords(input.jobLatitude, input.jobLongitude);
   if (result.error === "LOCATION_MISMATCH" && fix && job) {
@@ -154,11 +188,12 @@ export async function confirmPartnerPosition(input: {
 export async function heldPartnerPosition(providerId: string, now = new Date()): Promise<{ latitude: number; longitude: number } | null> {
   const p = await prisma.partnerPresence.findUnique({
     where: { providerId },
-    select: { lastLocationLat: true, lastLocationLng: true, lastLocationAt: true, lastLocationReceivedAt: true },
+    select: { lastLocationLat: true, lastLocationLng: true, lastLocationAt: true, lastLocationReceivedAt: true, lastLocationMocked: true },
   });
   if (!p || p.lastLocationLat == null || p.lastLocationLng == null || !p.lastLocationAt) return null;
   const confirmed = confirmPositionAgainstServerFix({
-    fix: { latitude: p.lastLocationLat, longitude: p.lastLocationLng, capturedAt: p.lastLocationAt, receivedAt: p.lastLocationReceivedAt },
+    // A fix the device flagged as mocked is not held: the rule answers "no position" for it.
+    fix: { latitude: p.lastLocationLat, longitude: p.lastLocationLng, capturedAt: p.lastLocationAt, receivedAt: p.lastLocationReceivedAt, mocked: p.lastLocationMocked },
     now,
     maxAgeSec: ARRIVAL_FIX_MAX_AGE_SEC,
     futureToleranceSec: TIMESTAMP_FUTURE_TOLERANCE_SEC,

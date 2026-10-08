@@ -66,6 +66,8 @@ export type PresenceSnapshot = {
     transportLagSeconds: number | null;
     source: string | null;
     sequence: number | null;
+    /** The device's own word on the fix: true = flagged mock-location by the OS, false = not, null = unknown. */
+    mocked: boolean | null;
   } | null;
   appState: string | null;
   platform: string | null;
@@ -156,6 +158,7 @@ function toSnapshot(
                 : null,
             source: row.lastLocationSource ?? null,
             sequence: row.lastLocationSeq ?? null,
+            mocked: row.lastLocationMocked ?? null,
           }
         : null,
     appState: row?.appState ?? null,
@@ -171,6 +174,7 @@ type LocationInput = {
   accuracy?: number;
   capturedAt: Date;
   sequence?: number;
+  mocked?: boolean | null;
 };
 
 type LocationUpdate = {
@@ -181,6 +185,8 @@ type LocationUpdate = {
   lastLocationAccuracy?: number;
   lastLocationSource: string;
   lastLocationSeq?: number;
+  /** Kept exactly as the device said it (null = it said nothing): lib/arrival-position reads it. */
+  lastLocationMocked: boolean | null;
 };
 
 /**
@@ -235,6 +241,7 @@ function buildLocationUpdate(
       lastLocationAccuracy: location.accuracy,
       lastLocationSource: source,
       lastLocationSeq: location.sequence,
+      lastLocationMocked: location.mocked ?? null,
     },
   };
 }
@@ -310,6 +317,7 @@ export class PartnerPresenceService {
         p_last_location_lat: number | null;
         p_last_location_lng: number | null;
         p_last_location_accuracy: number | null;
+        p_last_location_mocked: boolean | null;
         p_last_location_source: string | null;
         p_last_location_seq: number | null;
         p_app_state: string | null;
@@ -326,6 +334,7 @@ export class PartnerPresenceService {
               pr.last_seen_at AS p_last_seen_at, pr.last_location_at AS p_last_location_at,
               pr.last_location_received_at AS p_last_location_received_at, pr.last_location_lat AS p_last_location_lat,
               pr.last_location_lng AS p_last_location_lng, pr.last_location_accuracy AS p_last_location_accuracy,
+              pr.last_location_mocked AS p_last_location_mocked,
               pr.last_location_source AS p_last_location_source, pr.last_location_seq AS p_last_location_seq,
               pr.app_state AS p_app_state, pr.platform AS p_platform, pr.app_version AS p_app_version,
               pr.created_at AS p_created_at, pr.updated_at AS p_updated_at
@@ -374,6 +383,7 @@ export class PartnerPresenceService {
           lastLocationLat: joined.p_last_location_lat,
           lastLocationLng: joined.p_last_location_lng,
           lastLocationAccuracy: joined.p_last_location_accuracy,
+          lastLocationMocked: joined.p_last_location_mocked,
           lastLocationSource: joined.p_last_location_source,
           lastLocationSeq: joined.p_last_location_seq,
           appState: joined.p_app_state,
@@ -467,6 +477,7 @@ export class PartnerPresenceService {
       last_location_lat: number | null;
       last_location_lng: number | null;
       last_location_accuracy: number | null;
+      last_location_mocked: boolean | null;
       last_location_source: string | null;
       last_location_seq: number | null;
       app_state: string | null;
@@ -481,8 +492,8 @@ export class PartnerPresenceService {
            id, provider_id, active_session_id, active_device_id, last_heartbeat_at, last_seen_at,
            app_state, platform, app_version,
            last_location_at, last_location_received_at, last_location_lat, last_location_lng,
-           last_location_accuracy, last_location_source, last_location_seq, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+           last_location_accuracy, last_location_source, last_location_seq, last_location_mocked, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $19, NOW(), NOW())
          ON CONFLICT (provider_id) DO UPDATE SET
            active_session_id = COALESCE(partner_presence.active_session_id, EXCLUDED.active_session_id),
            active_device_id = EXCLUDED.active_device_id,
@@ -498,6 +509,7 @@ export class PartnerPresenceService {
            last_location_accuracy = CASE WHEN $16::boolean THEN EXCLUDED.last_location_accuracy ELSE partner_presence.last_location_accuracy END,
            last_location_source = CASE WHEN $16::boolean THEN EXCLUDED.last_location_source ELSE partner_presence.last_location_source END,
            last_location_seq = CASE WHEN $16::boolean THEN EXCLUDED.last_location_seq ELSE partner_presence.last_location_seq END,
+           last_location_mocked = CASE WHEN $16::boolean THEN EXCLUDED.last_location_mocked ELSE partner_presence.last_location_mocked END,
            updated_at = NOW()
          RETURNING *
        ), prov AS (
@@ -530,6 +542,7 @@ export class PartnerPresenceService {
       hasLocation,
       crypto.randomUUID(),
       input.sessionId,
+      loc?.lastLocationMocked ?? null,
     );
     const r = rows[0];
     /** snake_case row → the Prisma shape the snapshot and cache already expect. */
@@ -546,6 +559,7 @@ export class PartnerPresenceService {
           lastLocationLat: r.last_location_lat,
           lastLocationLng: r.last_location_lng,
           lastLocationAccuracy: r.last_location_accuracy,
+          lastLocationMocked: r.last_location_mocked,
           lastLocationSource: r.last_location_source,
           lastLocationSeq: r.last_location_seq,
           appState: r.app_state,

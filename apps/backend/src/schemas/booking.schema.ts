@@ -93,6 +93,12 @@ export const bookingCancelRouteSchema = z.object({
 export const geoPingSchema = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
+  /**
+   * The device's own word on the coordinates it sends (Android `mocked`): true / false / absent or
+   * null = unknown. Never decides anything — the server-held fix does — but a request that admits
+   * its position is mocked is kept as a risk signal (services/arrival-position.service).
+   */
+  mocked: z.boolean().nullable().optional(),
   notes: z.string().trim().max(500).optional(),
   photos: z.array(z.string().url()).max(10).optional(),
 });

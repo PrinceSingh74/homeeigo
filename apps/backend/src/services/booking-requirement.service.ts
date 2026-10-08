@@ -381,10 +381,12 @@ class BookingRequirementService {
    * The assigned partner records an on-site check. Proximity is enforced exactly as arrival is:
    * a check made from across town is not a check.
    */
-  async partnerCheck(input: { bookingId: string; providerId: string; userId: string; code: string; outcome: "SATISFIED" | "FAILED"; note?: string | null; latitude: number | null; longitude: number | null; idempotencyKey?: string | null }) {
+  async partnerCheck(input: { bookingId: string; providerId: string; userId: string; code: string; outcome: "SATISFIED" | "FAILED"; note?: string | null; latitude: number | null; longitude: number | null; mocked?: boolean | null; idempotencyKey?: string | null }) {
     const b = await this.loadBooking(prisma, input.bookingId);
     if (!b || b.providerId !== input.providerId) return { ok: false as const, error: REQUIREMENT_ERRORS.NOT_FOUND };
-    const { confirmPartnerPosition, positionException } = await import("./arrival-position.service");
+    const { confirmPartnerPosition, positionException, noteMockedLocation } = await import("./arrival-position.service");
+    // A request that admits its own coordinates are mocked is on record; the server-held fix still decides.
+    if (input.mocked === true) void noteMockedLocation({ providerId: input.providerId, bookingId: input.bookingId, reportedBy: "requirement_check_request" });
     // As at arrival: under a recorded exception the request's coordinates are not judged.
     const vouchedWithoutPosition = (await positionException(input.bookingId, input.providerId)) != null;
     if (!vouchedWithoutPosition) {

@@ -1928,6 +1928,8 @@ export class BookingService {
     id: string,
     lat: number | null,
     lng: number | null,
+    /** The device's own word on the coordinates it sent (Android `mocked`); null = unknown. */
+    mocked: boolean | null = null,
   ): Promise<
     | { ok: true; newlyTransitioned: boolean; arrivedAt: Date | null; requirementGate: GateResult | null }
     | {
@@ -1969,7 +1971,9 @@ export class BookingService {
     }
 
     const { assertJobProximity } = await import("../lib/job-proximity");
-    const { confirmPartnerPosition, positionException } = await import("./arrival-position.service");
+    const { confirmPartnerPosition, positionException, noteMockedLocation } = await import("./arrival-position.service");
+    // A request that admits its own coordinates are mocked is on record; what decides is still the server-held fix.
+    if (mocked === true) void noteMockedLocation({ providerId, bookingId: id, reportedBy: "arrive_request" });
     /**
      * A recorded exception (the customer's confirmation, an admin's waiver) is for a device that
      * cannot say where it is, so it is looked up BEFORE the request's coordinates are asked for.
@@ -2061,6 +2065,8 @@ export class BookingService {
           latitude: arriveLat ?? undefined,
           longitude: arriveLng ?? undefined,
           clientUploadId: `arrive:${id}`,
+          // The device's own word on the fix this arrival rests on, beside the position (null = unknown).
+          metadata: { locationMocked: held.locationMocked },
         });
       } catch {
         /* evidence best-effort */
@@ -2074,7 +2080,7 @@ export class BookingService {
     return { ok: true as const, newlyTransitioned: applied, arrivedAt: fresh?.arrivedAt ?? null, requirementGate };
   }
 
-  async start(providerId: string, id: string, lat: number | null, lng: number | null) {
+  async start(providerId: string, id: string, lat: number | null, lng: number | null, mocked: boolean | null = null) {
     const { assertJobProximity } = await import("../lib/job-proximity");
     const bookingForGeo = await prisma.booking.findFirst({
       where: { id, providerId },
@@ -2098,7 +2104,9 @@ export class BookingService {
       ) {
         throw new Error("FORBIDDEN");
       }
-      const { confirmPartnerPosition, positionException } = await import("./arrival-position.service");
+      const { confirmPartnerPosition, positionException, noteMockedLocation } = await import("./arrival-position.service");
+      // As at arrival: a request that admits its coordinates are mocked is on record; the held fix decides.
+      if (mocked === true) void noteMockedLocation({ providerId, bookingId: id, reportedBy: "start_request" });
       // As at arrival: under a recorded exception the request's coordinates are not judged.
       const vouchedWithoutPosition = (await positionException(id, providerId)) != null;
       if (!vouchedWithoutPosition) {

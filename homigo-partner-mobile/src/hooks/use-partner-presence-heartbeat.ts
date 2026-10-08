@@ -20,6 +20,7 @@ import {
 } from "@/services/partner-api";
 import { useAuthStore } from "@/stores/auth-store";
 import type { PartnerOperations } from "@/types/partner";
+import { mockedField } from "@/lib/location-mocked";
 
 /**
  * AVAILABILITY-axis tokens only. Presence is liveness evidence derived from
@@ -292,6 +293,7 @@ export function usePartnerPresenceHeartbeat(): PartnerPresenceHealth {
           latitude,
           longitude,
           ...(typeof accuracy === "number" && accuracy >= 0 ? { accuracy } : {}),
+          ...mockedField(pos),
           capturedAt: lastLocationAt.toISOString(),
           sequence,
         };

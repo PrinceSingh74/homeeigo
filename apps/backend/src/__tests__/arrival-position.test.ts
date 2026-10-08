@@ -71,3 +71,43 @@ describe("the tracking position must not contradict the presence fix", () => {
     expect(confirmPositionAgainstServerFix({ ...rule, fix, tracking: null }).ok).toBe(true);
   });
 });
+
+/**
+ * 2026-10-08: the mock-location signal. Android marks every fix a mock-location app produced
+ * (`mocked: true`); iOS has no such flag and older clients send nothing (absent = unknown).
+ * A fix the device itself says is mocked is not a position the server holds.
+ */
+describe("a fix the device flags as mocked is not a position the server holds", () => {
+  const honest = { latitude: 28.6201, longitude: 77.3701, capturedAt: at(10), receivedAt: at(10) };
+
+  test("a mocked fix at the job leaves the position unconfirmed, and says the fix was mocked", () => {
+    const r = confirmPositionAgainstServerFix({ ...rule, fix: { ...honest, mocked: true } });
+    expect(r).toMatchObject({ ok: false, error: "LOCATION_UNCONFIRMED", locationMocked: true });
+  });
+
+  test("a fix the OS says is not mocked, and one that says nothing, confirm exactly as before", () => {
+    expect(confirmPositionAgainstServerFix({ ...rule, fix: { ...honest, mocked: false } })).toMatchObject({ ok: true, fixAgeSec: 10, locationMocked: false });
+    expect(confirmPositionAgainstServerFix({ ...rule, fix: { ...honest, mocked: null } })).toMatchObject({ ok: true, fixAgeSec: 10, locationMocked: null });
+    expect(confirmPositionAgainstServerFix({ ...rule, fix: honest })).toMatchObject({ ok: true, fixAgeSec: 10, locationMocked: null });
+  });
+
+  test("an honest tracking point at the job does not rescue a mocked presence fix", () => {
+    const r = confirmPositionAgainstServerFix({ ...rule, fix: { ...honest, mocked: true }, tracking: { latitude: 28.62, longitude: 77.37, receivedAt: at(8), mocked: false } });
+    expect(r).toMatchObject({ ok: false, error: "LOCATION_UNCONFIRMED", locationMocked: true });
+  });
+
+  test("a mocked tracking point at the job is no evidence for the partner: the honest fix decides, and the mock is on record", () => {
+    const r = confirmPositionAgainstServerFix({ ...rule, fix: { ...honest, mocked: false }, tracking: { latitude: 28.62, longitude: 77.37, receivedAt: at(8), mocked: true } });
+    expect(r).toMatchObject({ ok: true, fixAgeSec: 10, locationMocked: true });
+  });
+
+  test("a mocked tracking point elsewhere still counts against the partner: the two streams disagree", () => {
+    const r = confirmPositionAgainstServerFix({ ...rule, fix: { ...honest, mocked: false }, tracking: { latitude: 28.7, longitude: 77.37, receivedAt: at(8), mocked: true } });
+    expect(r).toMatchObject({ ok: false, error: "LOCATION_MISMATCH", locationMocked: true });
+  });
+
+  test("an old mocked tracking point says nothing about now, as an old honest one does not", () => {
+    const r = confirmPositionAgainstServerFix({ ...rule, fix: { ...honest, mocked: false }, tracking: { latitude: 28.7, longitude: 77.37, receivedAt: at(900), mocked: true } });
+    expect(r).toMatchObject({ ok: true, locationMocked: false });
+  });
+});

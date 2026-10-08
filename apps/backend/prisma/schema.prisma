@@ -986,6 +986,8 @@ model LocationHistory {
   altitude   Float?
   speed      Float?
   heading    Float?
+  /// The device's own word on this ping (see PartnerPresence.lastLocationMocked); null = unknown.
+  mocked     Boolean?
   timestamp  DateTime @default(now())
   bearing    Float?
   distance   Float?   @map("distance_km")
@@ -1029,6 +1031,10 @@ model PartnerPresence {
   lastLocationLat        Float?    @map("last_location_lat")
   lastLocationLng        Float?    @map("last_location_lng")
   lastLocationAccuracy   Float?    @map("last_location_accuracy")
+  /// The device's own word on that fix: true = the OS flagged it as a mock-location fix (Android),
+  /// false = the OS says it was not, null = unknown (iOS, web, an older client). A true fix is not a
+  /// position the server holds (lib/arrival-position.ts).
+  lastLocationMocked     Boolean?  @map("last_location_mocked")
   lastLocationSource     String?   @map("last_location_source")
   lastLocationSeq        Int?      @map("last_location_seq")
   appState               String?   @map("app_state")

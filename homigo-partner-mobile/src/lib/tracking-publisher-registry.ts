@@ -29,7 +29,7 @@ export type TrackingDeps = {
   checkPermission(): Promise<string>;
   requestPermission(): Promise<string>;
   openSocket(url: string): TrackingSocket;
-  watchPosition(intervalMs: number, onFix: (lat: number, lng: number, accuracy?: number, altitude?: number) => void): Promise<{ remove(): void }>;
+  watchPosition(intervalMs: number, onFix: (lat: number, lng: number, accuracy?: number, altitude?: number, mocked?: boolean) => void): Promise<{ remove(): void }>;
   onFix?(lat: number, lng: number): void;
   now(): number;
   setTimer(fn: () => void, ms: number): unknown;
@@ -104,7 +104,7 @@ export function createTrackingPublisherRegistry(deps: TrackingDeps) {
     s.onerror = lost;
   };
 
-  const onFix = (e: Entry, lat: number, lng: number, accuracy?: number, altitude?: number) => {
+  const onFix = (e: Entry, lat: number, lng: number, accuracy?: number, altitude?: number, mocked?: boolean) => {
     const sock = e.socket;
     if (!sock || !sock.isOpen) return;
     const now = deps.now();
@@ -112,7 +112,8 @@ export function createTrackingPublisherRegistry(deps: TrackingDeps) {
     deps.onFix?.(lat, lng);
     const last = e.lastFix;
     if (last && Math.abs(last.lat - lat) < 1e-6 && Math.abs(last.lng - lng) < 1e-6) return;
-    sock.send(JSON.stringify({ type: "location_update", latitude: lat, longitude: lng, accuracy, altitude }));
+    // `mocked` is the OS's word about this fix (Android), sent only when it said something.
+    sock.send(JSON.stringify({ type: "location_update", latitude: lat, longitude: lng, accuracy, altitude, ...(typeof mocked === "boolean" ? { mocked } : {}) }));
     e.lastSentAt = now;
     e.lastFix = { lat, lng };
   };
@@ -130,7 +131,7 @@ export function createTrackingPublisherRegistry(deps: TrackingDeps) {
       if (!e.socket) openSocket(e);
       if (!e.watcher) {
         try {
-          const w = await deps.watchPosition(e.minIntervalMs, (lat, lng, acc, alt) => onFix(e, lat, lng, acc, alt));
+          const w = await deps.watchPosition(e.minIntervalMs, (lat, lng, acc, alt, mocked) => onFix(e, lat, lng, acc, alt, mocked));
           if (e.dead) { w.remove(); return; }
           e.watcher = w;
         } catch {

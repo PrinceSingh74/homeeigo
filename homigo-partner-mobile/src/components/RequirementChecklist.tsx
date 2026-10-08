@@ -56,7 +56,7 @@ export function RequirementChecklist({ bookingId, active, enabled = true }: { bo
       const c = await getJobCoords("strict");
       try {
         // Always sent: no fix → null coordinates, and the server decides.
-        return await partnerApi.checkRequirement(bookingId, vars.code, vars.outcome, c?.latitude ?? null, c?.longitude ?? null, vars.note, vars.key);
+        return await partnerApi.checkRequirement(bookingId, vars.code, vars.outcome, c?.latitude ?? null, c?.longitude ?? null, vars.note, vars.key, c?.mocked);
       } catch (err) {
         const position = locationRefusal(err, !c);
         if (position) setLocationIssue(position);

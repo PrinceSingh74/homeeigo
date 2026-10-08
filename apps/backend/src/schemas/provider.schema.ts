@@ -57,6 +57,8 @@ export const trackingLocationSchema = z.object({
   // Optional device-reported ground speed (m/s). When absent the server derives it
   // from consecutive fixes. Capped at 90 m/s (~324 km/h) to reject GPS glitches.
   speed: z.number().nonnegative().max(90).optional(),
+  /** The device's own word on the fix (Android `mocked`): true / false / absent or null = unknown. */
+  mocked: z.boolean().nullable().optional(),
 });
 
 export type ProviderSearchInput = z.infer<typeof providerSearchSchema>;

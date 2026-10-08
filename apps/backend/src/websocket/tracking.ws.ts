@@ -81,7 +81,7 @@ export const trackingWs = new Elysia().ws("/ws/tracking/:bookingId", {
   },
   async message(ws, message) {
     if (typeof message !== "object" || message === null) return;
-    const m = message as { type?: string; latitude?: number; longitude?: number; accuracy?: number };
+    const m = message as { type?: string; latitude?: number; longitude?: number; accuracy?: number; mocked?: boolean | null };
     if (m.type !== "location_update") return;
 
     const state = getWsState(ws);
@@ -94,6 +94,8 @@ export const trackingWs = new Elysia().ws("/ws/tracking/:bookingId", {
       latitude: m.latitude,
       longitude: m.longitude,
       accuracy: m.accuracy,
+      // The device's own word on the fix; anything but a boolean is "unknown".
+      mocked: typeof m.mocked === "boolean" ? m.mocked : null,
     });
   },
   close(ws) {

@@ -57,6 +57,8 @@ import { QualityVerdictError, QUALITY_VERDICT_BLOCKED } from "../lib/quality-ver
 
 /** TypeBox `t.Optional(t.Number())` rejects JSON `null`. Soft GPS flows omit coords or send null. */
 const tNullableNumber = t.Optional(t.Union([t.Number(), t.Null()]));
+/** The device's own word on the coordinates a lifecycle call carries (Android `mocked`); null/absent = unknown. */
+const tNullableBoolean = t.Optional(t.Union([t.Boolean(), t.Null()]));
 
 /** Customer-facing messages for rejected selections (see lib/service-catalog-config). */
 const SELECTION_ERROR_MESSAGES: Record<string, string> = {
@@ -739,6 +741,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         params.id,
         body.latitude ?? null,
         body.longitude ?? null,
+        body.mocked ?? null,
       );
       if (!result.ok) {
         set.status =
@@ -777,7 +780,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         },
       };
     },
-    { body: t.Object({ latitude: tNullableNumber, longitude: tNullableNumber }) },
+    { body: t.Object({ latitude: tNullableNumber, longitude: tNullableNumber, mocked: tNullableBoolean }) },
   )
   /**
    * §52 — the partner waited at the door and nobody answered.
@@ -958,6 +961,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
           params.id,
           body.latitude ?? null,
           body.longitude ?? null,
+          body.mocked ?? null,
         );
         return {
           success: true,
@@ -1017,6 +1021,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
       body: t.Object({
         latitude: tNullableNumber,
         longitude: tNullableNumber,
+        mocked: tNullableBoolean,
         otp: t.Optional(t.String()),
       }),
     },
@@ -1396,6 +1401,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         note: body.note ?? null,
         latitude: body.latitude ?? null,
         longitude: body.longitude ?? null,
+        mocked: body.mocked ?? null,
         idempotencyKey: request.headers.get("idempotency-key"),
       });
       if (!r.ok) return requirementError(set, r.error);
@@ -1412,6 +1418,7 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         // Absent for a device with no position: the service refuses unless someone has vouched.
         latitude: tNullableNumber,
         longitude: tNullableNumber,
+        mocked: tNullableBoolean,
       }),
     },
   )

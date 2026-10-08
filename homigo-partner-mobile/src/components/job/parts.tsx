@@ -1,9 +1,13 @@
 import { Check } from "lucide-react-native";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Keyboard, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { useRevealInScroll } from "@/components/screen-scroll";
 import { Banner, Button, Skeleton, T } from "@/components/ui";
 import { failureSentence } from "@/lib/job-screen";
 import { color, radius, space, touch, type, type Tone } from "@/theme/tokens";
+
+/** Room kept clear under a note field once the keyboard is up: the Confirm button under it and its gap. */
+const NOTE_CONTROL_ALLOWANCE = touch.min + space.md;
 
 /** Small pieces the job panels share, all on the tokens. */
 
@@ -97,8 +101,12 @@ export function NoteField({
   testID?: string;
   autoFocus?: boolean;
 }) {
+  // On focus, ask the screen to keep the field and the control under it (Confirm) above the
+  // keyboard and the docked footer: the OS alone brings only the field into view.
+  const wrap = useRef<View>(null);
+  const reveal = useRevealInScroll();
   return (
-    <View style={styles.noteField}>
+    <View ref={wrap} collapsable={false} style={styles.noteField}>
       <T kind="smallStrong" tone="slate">
         {label}
       </T>
@@ -109,6 +117,7 @@ export function NoteField({
         maxLength={maxLength}
         multiline
         autoFocus={autoFocus}
+        onFocus={() => reveal(wrap.current, NOTE_CONTROL_ALLOWANCE)}
         accessibilityLabel={label}
         accessibilityHint={error ?? help ?? undefined}
         placeholderTextColor={color.mist}

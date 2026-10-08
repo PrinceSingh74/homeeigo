@@ -156,6 +156,8 @@ export type PartnerPresenceLocation = {
   transportLagSeconds: number | null;
   source: string | null;
   sequence: number | null;
+  /** The device's own word on the fix: true = flagged mock-location by the OS, false = not, null = unknown (web always null). */
+  mocked: boolean | null;
 };
 
 export type PartnerPresenceSnapshot = {
@@ -190,6 +192,8 @@ export type PartnerPresenceHeartbeatBody = {
     accuracy?: number;
     capturedAt: string;
     sequence?: number;
+    /** Android `LocationObjectCoords.mocked`; the browser has no such flag, so the web never sends it (undefined = unknown). */
+    mocked?: boolean | null;
   };
 };
 
@@ -208,6 +212,8 @@ export type PartnerLocationPingBody = {
     accuracy?: number;
     capturedAt: string;
     sequence?: number;
+    /** As on the heartbeat: the web never sends it. */
+    mocked?: boolean | null;
   };
 };
 

@@ -151,7 +151,7 @@ export function useJobLifecycle(
       const c = await getJobCoords("strict");
       try {
         // Always sent. No fix → null coordinates, and the server decides (P0-6b).
-        return await partnerApi.markArrived(bookingId, c?.latitude ?? null, c?.longitude ?? null);
+        return await partnerApi.markArrived(bookingId, c?.latitude ?? null, c?.longitude ?? null, c?.mocked);
       } catch (error) {
         refuse(error, !c);
         throw error;
@@ -172,7 +172,7 @@ export function useJobLifecycle(
     mutationFn: async (otp: string | undefined) => {
       const c = await getJobCoords("strict");
       try {
-        return await partnerApi.startBooking(bookingId, c?.latitude ?? null, c?.longitude ?? null, otp);
+        return await partnerApi.startBooking(bookingId, c?.latitude ?? null, c?.longitude ?? null, otp, c?.mocked);
       } catch (error) {
         // The PIN sheet shows the PIN refusals itself; a position refusal also stays on the screen.
         const position = locationRefusal(error, !c);
