@@ -94,6 +94,9 @@ homigo/
 
 ## 🛠️ Quick Start
 
+> **Setting up a new machine?** Follow [`docs/SETUP.md`](docs/SETUP.md) — it covers every app, the database
+> (fresh or restored from a dump) and the env files. The notes below are the original Phase 1 quick start.
+
 ### Prerequisites
 - **Bun** (latest) - [Install](https://bun.sh)
 - **Node.js** 18+ - [Install](https://nodejs.org)
