@@ -11,6 +11,10 @@ yarn-error.log*
 .env.local
 .env.*.local
 
+# Local-only secrets reference (never commit)
+*.local.md
+SECRETS_CHECKLIST.local.md
+
 # IDEs
 .vscode/
 .idea/
