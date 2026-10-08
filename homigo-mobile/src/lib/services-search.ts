@@ -1,7 +1,6 @@
 import { SERVICE_SEARCH_INDEX } from "./services";
 import {
   CATEGORIES,
-  TRENDING_SERVICES,
   type TrendingService,
 } from "@/constants/servicesData";
 
@@ -17,11 +16,6 @@ export function resolveServiceIdFromQuery(query: string): string {
       s.keywords.some((k) => k.includes(q) || q.includes(k)),
   );
   if (direct) return direct.id;
-
-  const trending = TRENDING_SERVICES.find((t) =>
-    t.title.toLowerCase().includes(q),
-  );
-  if (trending) return trending.serviceId;
 
   const category = CATEGORIES.find((c) => c.name.toLowerCase().includes(q));
   if (category) return category.serviceId;

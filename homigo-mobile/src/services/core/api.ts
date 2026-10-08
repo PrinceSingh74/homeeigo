@@ -156,6 +156,16 @@ export const coreApi = {
       ).then((r) => r.data!),
     details: (id: string) =>
       apiRequest<ApiResponse<{ service: BackendServiceDetail }>>(`/api/services/${id}`).then((r) => r.data!),
+    /** Public reviews of one service: real ratings only, reviewer reduced to a first name and an initial. */
+    reviews: (id: string, limit = 5) =>
+      apiRequest<
+        ApiResponse<{
+          reviews: { id: string; name: string; rating: number; reviewText: string | null; createdAt: string; providerResponse: string | null }[];
+          total: number;
+          ratingCount: number;
+          averageRating: number | null;
+        }>
+      >(`/api/services/${id}/reviews?limit=${limit}`).then((r) => r.data!),
     byCategory: (category: string, query = "") =>
       apiRequest<ApiResponse<{ services: BackendService[]; total: number }>>(
         `/api/services/category/${encodeURIComponent(category)}${query}`,

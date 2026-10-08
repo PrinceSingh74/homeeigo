@@ -6,7 +6,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-nat
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
-import { useServiceDetailQuery } from "@/hooks/use-core-data";
+import { useServiceDetailQuery, useServiceReviewsQuery } from "@/hooks/use-core-data";
 import { useAppNavigation } from "@/hooks/useAppNavigation";
 import { Button } from "@/components/Button";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -35,13 +35,6 @@ function durationLabel(s: BackendServiceDetail): string | null {
   return typeof s.estimatedDuration === "number" && s.estimatedDuration > 0 ? `About ${s.estimatedDuration} min` : null;
 }
 
-function priceLabel(s: BackendServiceDetail): string | null {
-  const from = s.minPrice ?? s.basePrice;
-  if (typeof from !== "number" || from <= 0) return null;
-  const amount = `₹${from.toLocaleString("en-IN")}`;
-  return typeof s.maxPrice === "number" && s.maxPrice > from ? `From ${amount}` : amount;
-}
-
 export default function ServiceDetailScreen() {
   const { colors: c } = useTheme();
   const params = useLocalSearchParams<{ id?: string }>();
@@ -49,6 +42,7 @@ export default function ServiceDetailScreen() {
   const query = useServiceDetailQuery(id);
   const { book } = useAppNavigation();
   const service = query.data?.service;
+  const reviewList = useServiceReviewsQuery(service?.id ?? null).data;
 
   if (!service) {
     return (
@@ -81,8 +75,8 @@ export default function ServiceDetailScreen() {
   const content = service.content;
   const summary = content?.summary?.trim() || service.description?.trim() || null;
   const detailed = service.detailedDescription?.trim() || null;
-  const price = priceLabel(service);
   const duration = durationLabel(service);
+  const faqs = (service.catalogConfig?.faqs ?? []).filter((f) => f.q?.trim() && f.a?.trim());
   const reviews = service.reviewCount ?? 0;
   // Only a real review aggregate is shown — never a placeholder score.
   const rating = service.rating != null && service.rating > 0 && reviews > 0 ? service.rating.toFixed(1) : null;
@@ -102,7 +96,6 @@ export default function ServiceDetailScreen() {
         {content?.valueProposition ? <Text style={[styles.lead, { color: c.text }]}>{content.valueProposition}</Text> : null}
 
         <View style={styles.facts}>
-          {price ? <Fact label="Price" value={price} c={c} /> : null}
           {duration ? <Fact label="Duration" value={duration} c={c} /> : null}
           {rating ? <Fact label="Rating" value={`${rating} · ${reviews} ${reviews === 1 ? "review" : "reviews"}`} c={c} /> : null}
         </View>
@@ -149,14 +142,43 @@ export default function ServiceDetailScreen() {
         ) : null}
 
         {visit ? <VisitPromise visit={visit} c={c} /> : null}
+
+        {reviewList && reviewList.ratingCount > 0 && reviewList.averageRating != null ? (
+          <Section title="Customer reviews" c={c} testID="service-reviews">
+            <Text style={[styles.groupTitle, { color: c.text }]}>
+              {reviewList.averageRating.toFixed(1)} out of 5 · {reviewList.ratingCount} {reviewList.ratingCount === 1 ? "rating" : "ratings"}
+            </Text>
+            {reviewList.reviews.map((r) => (
+              <View key={r.id} style={styles.group} accessible accessibilityLabel={`${r.name}, ${r.rating} out of 5 stars. ${r.reviewText ?? ""}`}>
+                <Text style={[styles.groupTitle, { color: c.text }]}>
+                  {r.name} · {r.rating}/5
+                </Text>
+                {r.reviewText ? <Text style={[styles.body, { color: c.textSecondary }]}>{r.reviewText}</Text> : null}
+                {r.providerResponse ? (
+                  <Text style={[styles.small, { color: c.textSecondary }]}>Response from the professional: {r.providerResponse}</Text>
+                ) : null}
+              </View>
+            ))}
+          </Section>
+        ) : null}
+
+        {faqs.length > 0 ? (
+          <Section title="Questions" c={c} testID="service-faqs">
+            {faqs.map((f) => (
+              <View key={f.q} style={styles.group}>
+                <Text style={[styles.groupTitle, { color: c.text }]}>{f.q}</Text>
+                <Text style={[styles.body, { color: c.textSecondary }]}>{f.a}</Text>
+              </View>
+            ))}
+          </Section>
+        ) : null}
       </ScrollView>
 
       <SafeAreaView edges={["bottom"]} style={[styles.bar, { backgroundColor: c.cardBg, borderTopColor: c.border }]}>
         <View style={styles.barInner}>
-          {price ? (
+          {duration ? (
             <View style={styles.barPrice}>
-              <Text style={[styles.barPriceValue, { color: c.text }]}>{price}</Text>
-              {duration ? <Text style={[styles.small, { color: c.textSecondary }]}>{duration}</Text> : null}
+              <Text style={[styles.small, { color: c.textSecondary }]}>{duration}</Text>
             </View>
           ) : null}
           <View style={styles.barAction}>

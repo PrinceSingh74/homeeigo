@@ -32,11 +32,12 @@ import {
 } from "lucide-react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { shadowStyles, gradients } from "@/lib/colors";
-import { BOOKING_TIMES, popularPackageIndex } from "@/lib/services";
+import { popularPackageIndex } from "@/lib/services";
 import { useBookableServices } from "@/hooks/use-catalog";
 import { findServiceIndex } from "@/lib/requested-service";
 import {
   useAddressesQuery,
+  useAvailabilityQuery,
   useCreateBookingMutation,
   useWalletBalanceQuery,
   mapBackendBookingToSaved,
@@ -67,11 +68,19 @@ import {
   toHm24Local,
   parseYmdLocal,
   parseHm24OnDate,
-  apply12hTimeOnDate,
   applyDatePart,
   applyTimePart,
   sameCalendarDay,
 } from "@/lib/booking-datetime";
+
+function businessDate(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
 import { getErrorMessage, AuthApiError } from "@/lib/auth/errors";
 import { getServiceImage } from "@/lib/service-assets";
 import { useAppStore } from "@/lib/store";
@@ -212,6 +221,8 @@ export default function BookScreen() {
   >(null);
 
   const svc = catalogServices[serviceIdx] ?? catalogServices[0];
+  const availability = useAvailabilityQuery({ serviceId: svc?.id, date: svc ? businessDate(scheduledAt) : null });
+  const serverSlots = availability.data?.slots;
   const selected = svc?.packages[pkgIdx] ?? svc?.packages[0];
   const addonCatalog = svc?.addons ?? [];
   const variantCatalog = (svc?.variants ?? []).filter((v) =>
@@ -366,27 +377,9 @@ export default function BookScreen() {
 
   const selectQuickDay = (d: Date) => {
     Haptics.selectionAsync();
-    let next = applyDatePart(scheduledAt, d);
-    // Keeping the old time part can land in the past when switching to today —
-    // bump to the first future quick slot so the summary is always bookable.
-    if (next.getTime() <= Date.now()) {
-      const future = BOOKING_TIMES.map((t) => apply12hTimeOnDate(next, t)).find(
-        (x): x is Date => !!x && x.getTime() > Date.now(),
-      );
-      if (future) next = future;
-    }
+    const next = applyDatePart(scheduledAt, d);
     setScheduledAt(next);
     setFlowStep(2);
-  };
-
-  const selectQuickTime = (label: string) => {
-    Haptics.selectionAsync();
-    const next = apply12hTimeOnDate(scheduledAt, label);
-    if (next) {
-      setScheduledAt(next);
-      setFlowStep(3);
-      scrollToY(summaryY.current);
-    }
   };
 
   const openNativeDatePicker = () => {
@@ -527,6 +520,15 @@ export default function BookScreen() {
     // with a clear message instead of a failed request.
     if (scheduledAt.getTime() <= Date.now()) {
       showToast("That time has already passed — please pick a future slot.");
+      return;
+    }
+    const offered = serverSlots ?? [];
+    if (availability.isLoading || (offered.length === 0 && availability.isFetching)) {
+      showToast("Checking available times…");
+      return;
+    }
+    if (!offered.some((s) => s.available && new Date(s.start).getTime() === scheduledAt.getTime())) {
+      showToast("That time isn't available. Pick another slot.");
       return;
     }
     const mustConfirm = quote.requirements?.beforeBooking ?? [];
@@ -793,7 +795,7 @@ export default function BookScreen() {
         <BookingSectionHeader
           step={2}
           title="Choose your package"
-          subtitle="Includes verified pro, tools & satisfaction guarantee"
+          subtitle="Your total is confirmed before you pay"
         />
         {svc.audiences?.length ? (
           <View style={{ gap: 8, marginBottom: 12 }}>
@@ -1029,33 +1031,36 @@ export default function BookScreen() {
             })}
           </View>
           <View style={styles.chipRow}>
-            {BOOKING_TIMES.map((t) => {
-              const picked = apply12hTimeOnDate(scheduledAt, t);
-              const isPast = !!picked && picked.getTime() <= Date.now();
-              const active =
-                !!picked &&
-                !isPast &&
-                picked.getHours() === scheduledAt.getHours() &&
-                picked.getMinutes() === scheduledAt.getMinutes();
+            {(serverSlots ?? []).length > 0 ? serverSlots!.map((slot) => {
+              const picked = new Date(slot.start);
+              const active = picked.getTime() === scheduledAt.getTime();
+              const label = picked.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true });
               return (
                 <Pressable
-                  key={t}
-                  disabled={isPast}
-                  onPress={() => selectQuickTime(t)}
+                  key={slot.start}
+                  disabled={!slot.available}
+                  onPress={() => {
+                    setScheduledAt(picked);
+                    setFlowStep(3);
+                  }}
                   style={[
                     styles.timeChip,
                     active
                       ? { backgroundColor: c.primary }
                       : { backgroundColor: c.cardBg, borderColor: c.border, borderWidth: 1 },
-                    isPast && { opacity: 0.35 },
+                    !slot.available && { opacity: 0.35 },
                   ]}
                 >
                   <Text style={[styles.timeChipText, { color: active ? "#fff" : c.text }]}>
-                    {t}
+                    {label}
                   </Text>
                 </Pressable>
               );
-            })}
+            }) : (
+              <Text style={{ color: c.textSecondary, fontSize: 13 }}>
+                {availability.isLoading ? "Checking which times are free…" : "No times are available for this day."}
+              </Text>
+            )}
           </View>
           <View style={[styles.slotBanner, { backgroundColor: c.primary + "12" }]}>
             <Clock size={16} color={c.primary} />

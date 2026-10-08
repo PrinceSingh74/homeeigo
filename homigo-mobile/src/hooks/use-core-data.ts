@@ -176,6 +176,17 @@ export function useServiceDetailQuery(id: string | null, opts?: { enabled?: bool
   });
 }
 
+/** Reviews customers left for this service. Empty until a real rating exists; never a placeholder. */
+export function useServiceReviewsQuery(id: string | null) {
+  return useQuery({
+    queryKey: [...qk.serviceDetail(id ?? ""), "reviews"] as const,
+    queryFn: () => coreApi.services.reviews(id!),
+    staleTime: 5 * 60_000,
+    retry: 1,
+    enabled: Boolean(id),
+  });
+}
+
 export function useFeaturedServicesQuery(opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: qk.featured,

@@ -5,9 +5,7 @@ import { Calendar, Clock } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
 import { spacing, type, radius } from "@/lib/typography";
-import { BOOKING_TIMES } from "@/lib/services";
 import {
-  apply12hTimeOnDate,
   applyDatePart,
   applyTimePart,
   formatDateLabel,
@@ -208,26 +206,11 @@ export function RescheduleBookingPanel({ bookingId, currentScheduledAt, serviceI
                 </Pressable>
               );
             })
-          : /* Only until the server answers — never as a substitute for its verdict. */
-            BOOKING_TIMES.map((t) => {
-              const at = apply12hTimeOnDate(picked, t);
-              const past = !at || at.getTime() < Date.now() + MIN_LEAD_MS;
-              const active = !!at && at.getHours() === picked.getHours() && at.getMinutes() === picked.getMinutes();
-              return (
-                <Pressable
-                  key={t}
-                  disabled={past}
-                  onPress={() => at && choose(at)}
-                  style={[
-                    styles.chip,
-                    active ? { backgroundColor: c.primary } : { borderColor: c.border, borderWidth: 1 },
-                    past && { opacity: 0.35 },
-                  ]}
-                >
-                  <Text style={[styles.chipText, { color: active ? "#fff" : c.text }]}>{t}</Text>
-                </Pressable>
-              );
-            })}
+          : (
+              <Text style={[styles.chipText, { color: c.textSecondary }]}>
+                {availability.isLoading ? "Checking which times are free…" : "No times are available for this day."}
+              </Text>
+            )}
       </View>
       {serverSlots && serverSlots.length > 0 && serverSlots.every((s) => !s.available) && (
         <Text style={[styles.chipText, { color: c.textSecondary, marginTop: spacing.sm }]}>

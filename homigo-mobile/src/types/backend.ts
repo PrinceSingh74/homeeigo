@@ -23,6 +23,7 @@ export type BackendService = {
     quantity?: { type?: string; unitLabel?: string; min: number; max?: number; step?: number; default?: number };
     variants?: { id: string; name: string; price: number; active: boolean; audiences?: string[] }[];
     addons?: { id: string; name: string; price: number; durationMin?: number; active: boolean }[];
+    faqs?: { q: string; a: string }[];
   } | null;
 };
 

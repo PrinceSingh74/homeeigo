@@ -72,6 +72,15 @@ afterAll(async () => {
   if (ctx) await cleanupAdversarialFixtures(RUN_ID);
 });
 
+async function settleInlineDispatch(): Promise<void> {
+  const until = Date.now() + 30_000;
+  while (Date.now() < until) {
+    const { inFlight, waiting } = assignmentEngine.inlineDispatchBacklog();
+    if (inFlight === 0 && waiting === 0) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error("inline dispatch never settled");
+}
 describe("broadcast accept under concurrency", () => {
   test(`${CONCURRENT_ACCEPTS} concurrent accepts of a broadcast offer with a cold gate-context memo — exactly one wins, none throw`, async () => {
     const created = await createBookingWithQuote(ctx.customerA.id, {
@@ -81,12 +90,30 @@ describe("broadcast accept under concurrency", () => {
     });
     expect("booking" in created).toBe(true);
     const bookingId = (created as { booking: { id: string } }).booking.id;
+
+    // This test needs the customer and fixture partner in the same provenance population.
+    // Preserve the shared fixture's normal evidence-based provenance; align only this test's customer.
+    const providerProvenance = await prisma.user.findUniqueOrThrow({
+      where: { id: ctx.vendorUserId },
+      select: { dataOrigin: true },
+    });
+    await prisma.user.update({
+      where: { id: ctx.customerA.id },
+      data: { dataOrigin: providerProvenance.dataOrigin },
+    });
+
+    // create() launches a non-blocking dispatch attempt. Settle it before paying
+    // and starting the deterministic dispatch/acceptance phase below.
+    await settleInlineDispatch();
+
     // Dispatch and accept are both payment-gated; a paid booking is the state in which this happens.
     await prisma.booking.update({ where: { id: bookingId }, data: { paymentStatus: "SUCCESS" } });
     const job = await assignmentEngine.createJob(bookingId);
-    const t0 = performance.now();
-    const tick = await assignmentEngine.processQueue();
-    const processQueueMs = Math.round(performance.now() - t0);
+
+    // This regression targets concurrent ACCEPTs, not the global cron/Redis queue lock.
+    // Use the deterministic single-booking dispatch path to create the broadcast offer.
+    const dispatched = await assignmentEngine.dispatchBookingNow(bookingId);
+    expect(dispatched).toBe(true);
 
     const offered = await prisma.assignmentAttempt.findMany({
       where: { jobId: job.id, status: "SENT" },

@@ -1,13 +1,13 @@
 # Enterprise Payout Certification
 
-**Executed:** 2026-10-06T08:13:11.639Z
-**Run ID:** `ent-ops-muweie2r`
+**Executed:** 2026-10-07T05:41:02.492Z
+**Run ID:** `ent-ops-muxoill0`
 
 ## Module Status
 
 | Module | Verdict | Detail |
 |--------|---------|--------|
-| Batch creation | **CONNECTED** | batch=PB-1791274371487 |
+| Batch creation | **CONNECTED** | batch=PB-1791351643515 |
 | Approval workflow | **CONNECTED** | Maker-checker enforced on batch approve |
 | Financial integrity | **CONNECTED** | Orphan detection works |
 | Dashboard metrics | **CONNECTED** | pending=0, settled=0 |

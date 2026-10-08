@@ -8,6 +8,6 @@
 | P2 POOL_BUSY | PASS | http429=429 success=false code=POOL_BUSY retryAfter=3 |
 | P3 Membership Deeplink | PASS | promo=MEMBER10 coupon=COUPON20 campaign=CAMP30 |
 | P4 Partner Realtime | PASS | WS payload carries referenceType=support_ticket |
-| P5 Partner Settings | PASS | 50/50 settings persisted; bio on provider=Partner bio ent-complete-muwei9ac-49 |
+| P5 Partner Settings | PASS | 50/50 settings persisted; bio on provider=Partner bio ent-complete-muxoigky-49 |
 
-Executed: 2026-10-06T08:12:50.468Z
+Executed: 2026-10-07T05:40:42.529Z

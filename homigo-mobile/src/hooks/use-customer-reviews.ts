@@ -23,14 +23,18 @@ export function useCustomerReviews(limit = 6, enabled = true) {
     queryKey: ["customer-reviews", "recent", limit],
     queryFn: async (): Promise<CustomerReviewItem[]> => {
       const data = await coreApi.ratings.recent(limit);
-      return (data.reviews ?? []).map((r) => ({
-        id: r.id,
-        name: r.name || "Homeeigo Customer",
-        location: r.service ? `${r.service} · Verified` : "Verified booking",
-        rating: r.rating ?? 5,
-        review: r.reviewText ?? "Great service experience with Homeeigo.",
-        initial: (r.name?.trim()?.[0] ?? "H").toUpperCase(),
-      }));
+      return (data.reviews ?? []).flatMap((r) => {
+        const review = r.reviewText?.trim();
+        if (!review) return [];
+        return [{
+          id: r.id,
+          name: r.name || "Homeeigo Customer",
+          location: r.service ? `${r.service} · Verified` : "Verified booking",
+          rating: r.rating ?? 5,
+          review,
+          initial: (r.name?.trim()?.[0] ?? "H").toUpperCase(),
+        }];
+      });
     },
     enabled,
     staleTime: 60_000,
