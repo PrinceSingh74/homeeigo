@@ -7,6 +7,7 @@ import { IconButton, SwitchRow } from "@/components/account/controls";
 import { AccountScreen, ErrorState, ListSkeleton, ResultBanner, failure, type ActionResult } from "@/components/account/states";
 import { Banner, Button, Card, EmptyState, T } from "@/components/ui";
 import { useAuthed, usePagedQuery, usePullRefresh } from "@/hooks/account/queries";
+import { channelUnavailableSentence } from "@/lib/account-rules";
 import { errorSentence } from "@/lib/error-sentence";
 import { formatDateTime } from "@/lib/format";
 import { notificationBookingId, resolveNotificationHref } from "@/lib/notification-routing";
@@ -63,7 +64,7 @@ function PreferencesCard() {
               key={cell.channel}
               testID={`notification-pref-${cell.channel}`}
               label={CHANNEL_LABEL[cell.channel]}
-              help={!cell.available ? (cell.unavailableReason ?? "Not available for your account.") : !cell.editable ? "This cannot be changed." : null}
+              help={!cell.available ? channelUnavailableSentence(cell.unavailableReason) : !cell.editable ? "This cannot be changed." : null}
               value={cell.enabled}
               disabled={!cell.editable || !cell.available}
               busy={setPreference.isPending && setPreference.variables?.channel === cell.channel}

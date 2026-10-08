@@ -1,18 +1,16 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { OnboardingField } from "@/components/onboarding/OnboardingField";
-import { partnerColors } from "@/theme/colors";
+import { StyleSheet } from "react-native";
+import { OnboardingFrame } from "@/components/onboarding/OnboardingFrame";
+import { Button, Card, Field } from "@/components/ui";
+import { ONBOARDING_LIMITS, digitsOnly, validateKyc } from "@/lib/onboarding-form";
+import { space } from "@/theme/tokens";
 
-export function validateKyc(input: { panNumber: string; aadharNumber: string }): Record<string, string> {
-  const errors: Record<string, string> = {};
-  if (input.panNumber && !/^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(input.panNumber.trim())) {
-    errors.panNumber = "Invalid PAN (e.g. AAAAA1234B)";
-  }
-  if (input.aadharNumber && !/^\d{12}$/.test(input.aadharNumber.trim())) {
-    errors.aadharNumber = "Aadhar must be 12 digits";
-  }
-  return errors;
-}
+export { validateKyc };
 
+/**
+ * Step 6: `POST /register/kyc-details`. Every field is optional to the server; one that is filled
+ * must have its shape (PAN AAAAA1234B, Aadhaar 12 digits, account 9–18 digits, IFSC 4 letters, 0,
+ * 6 letters or digits, names 2–100).
+ */
 export function KycStep({
   panNumber,
   aadharNumber,
@@ -37,70 +35,81 @@ export function KycStep({
   onSubmit: () => void;
 }) {
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.title}>KYC & banking</Text>
-      <Text style={styles.copy}>Optional now — you can add these later from your profile.</Text>
-      <OnboardingField
-        label="PAN"
-        value={panNumber}
-        placeholder="AAAAA1234B"
-        autoCapitalize="characters"
-        error={errors.panNumber}
-        onChangeText={(v) => onChange({ panNumber: v.toUpperCase() })}
-      />
-      <OnboardingField
-        label="Aadhaar"
-        value={aadharNumber}
-        placeholder="12 digits"
-        keyboardType="numeric"
-        maxLength={12}
-        error={errors.aadharNumber}
-        onChangeText={(v) => onChange({ aadharNumber: v.replace(/\D/g, "").slice(0, 12) })}
-      />
-      <OnboardingField
-        label="Bank account number"
-        value={bankAccountNumber}
-        placeholder="Account number"
-        keyboardType="numeric"
-        onChangeText={(v) => onChange({ bankAccountNumber: v })}
-      />
-      <OnboardingField
-        label="Account holder"
-        value={bankAccountHolder}
-        placeholder="Name on passbook"
-        onChangeText={(v) => onChange({ bankAccountHolder: v })}
-      />
-      <OnboardingField
-        label="IFSC"
-        value={ifscCode}
-        placeholder="HDFC0001234"
-        autoCapitalize="characters"
-        onChangeText={(v) => onChange({ ifscCode: v.toUpperCase() })}
-      />
-      <OnboardingField
-        label="Bank name"
-        value={bankName}
-        placeholder="HDFC Bank"
-        onChangeText={(v) => onChange({ bankName: v })}
-      />
-      <Pressable accessibilityRole="button" style={styles.button} disabled={loading} onPress={onSubmit}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save & continue</Text>}
-      </Pressable>
-    </View>
+    <OnboardingFrame
+      heading="KYC & banking"
+      lead="These are optional at this step. Fill in what you have."
+      primary={<Button label="Save & continue" onPress={onSubmit} loading={loading} />}
+    >
+      <Card style={styles.card}>
+        <Field
+          label="PAN"
+          value={panNumber}
+          onChangeText={(v) => onChange({ panNumber: v.toUpperCase() })}
+          error={errors.panNumber}
+          help="10 characters, for example AAAAA1234B."
+          maxLength={ONBOARDING_LIMITS.pan}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          autoComplete="off"
+          importantForAutofill="no"
+        />
+        <Field
+          label="Aadhaar"
+          value={aadharNumber}
+          onChangeText={(v) => onChange({ aadharNumber: digitsOnly(v, ONBOARDING_LIMITS.aadhaar) })}
+          error={errors.aadharNumber}
+          help="12 digits."
+          keyboardType="number-pad"
+          maxLength={ONBOARDING_LIMITS.aadhaar}
+          autoComplete="off"
+          importantForAutofill="no"
+        />
+      </Card>
+      <Card style={styles.card}>
+        <Field
+          label="Bank account number"
+          value={bankAccountNumber}
+          onChangeText={(v) => onChange({ bankAccountNumber: digitsOnly(v, ONBOARDING_LIMITS.bankAccount) })}
+          help="9 to 18 digits."
+          keyboardType="number-pad"
+          maxLength={ONBOARDING_LIMITS.bankAccount}
+          autoComplete="off"
+          importantForAutofill="no"
+        />
+        <Field
+          label="Account holder"
+          value={bankAccountHolder}
+          onChangeText={(v) => onChange({ bankAccountHolder: v })}
+          help="The name on the account."
+          maxLength={ONBOARDING_LIMITS.bankHolder}
+          autoCapitalize="words"
+          autoCorrect={false}
+          autoComplete="off"
+        />
+        <Field
+          label="IFSC"
+          value={ifscCode}
+          onChangeText={(v) => onChange({ ifscCode: v.toUpperCase() })}
+          help="11 characters, for example HDFC0001234."
+          maxLength={ONBOARDING_LIMITS.ifsc}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          autoComplete="off"
+        />
+        <Field
+          label="Bank name"
+          value={bankName}
+          onChangeText={(v) => onChange({ bankName: v })}
+          maxLength={ONBOARDING_LIMITS.bankName}
+          autoCapitalize="words"
+          autoCorrect={false}
+          autoComplete="off"
+        />
+      </Card>
+    </OnboardingFrame>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: 12 },
-  title: { fontSize: 20, fontWeight: "800", color: partnerColors.text, letterSpacing: -0.3 },
-  copy: { color: partnerColors.textSecondary, lineHeight: 20 },
-  button: {
-    backgroundColor: partnerColors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonText: { color: "#fff", fontWeight: "700" },
+  card: { gap: space.lg },
 });

@@ -1,9 +1,9 @@
-import { router } from "expo-router";
+import { router, useSegments } from "expo-router";
 import { ChevronLeft } from "lucide-react-native";
 import type { ReactNode } from "react";
-import { KeyboardAvoidingView, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { T } from "@/components/ui";
+import { KeyboardAvoider, T } from "@/components/ui";
 import { color, radius, space, touch } from "@/theme/tokens";
 
 type PartnerScreenProps = {
@@ -26,11 +26,14 @@ type PartnerScreenProps = {
  * announces as the heading, an optional back control, scrolling content and a docked footer.
  */
 export function PartnerScreen({ title, subtitle, children, footer, showBack, onBack, headerAction, refreshing, onRefresh }: PartnerScreenProps) {
+  // On a tab the tab bar already clears the gesture area: adding the bottom inset again left a strip
+  // of paper between the docked footer and the tab bar.
+  const onTab = useSegments()[0] === "(tabs)";
   return (
     <View style={styles.root}>
-      <SafeAreaView style={styles.safe} edges={footer ? ["top", "bottom"] : ["top"]}>
+      <SafeAreaView style={styles.safe} edges={footer && !onTab ? ["top", "bottom"] : ["top"]}>
         {/* Pads by the keyboard's real overlap (nothing where the window already resized), so a field low on the page and the docked footer stay above it. */}
-        <KeyboardAvoidingView behavior="padding" style={styles.safe}>
+        <KeyboardAvoider style={styles.safe}>
         {/* "handled": a tap on a button while the keyboard is open reaches the button (X-69) instead of only dismissing the keyboard. */}
         <ScrollView
           keyboardShouldPersistTaps="handled"
@@ -55,9 +58,6 @@ export function PartnerScreen({ title, subtitle, children, footer, showBack, onB
           ) : null}
           <View style={styles.header}>
             <View style={styles.headerText}>
-              <T kind="caption" tone="leaf" accessibilityLabel="HOMEEIGO Partner" style={styles.brand}>
-                HOMEEIGO Partner
-              </T>
               <T kind="display" accessibilityRole="header">
                 {title}
               </T>
@@ -72,7 +72,7 @@ export function PartnerScreen({ title, subtitle, children, footer, showBack, onB
           {children}
         </ScrollView>
         {footer ? <View style={styles.footer}>{footer}</View> : null}
-        </KeyboardAvoidingView>
+        </KeyboardAvoider>
       </SafeAreaView>
     </View>
   );
@@ -88,7 +88,6 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "flex-start", gap: space.md, marginBottom: space.xl },
   headerText: { flex: 1 },
   headerAction: { paddingTop: space.lg },
-  brand: { fontWeight: "700", marginBottom: space.xs },
   subtitle: { marginTop: space.sm },
   footer: { paddingHorizontal: space.xl, paddingTop: space.md, paddingBottom: space.md, gap: space.sm, backgroundColor: color.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
 });

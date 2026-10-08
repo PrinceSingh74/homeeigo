@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Keyboard, StyleSheet, View } from "react-native";
+import { restoreWithdrawKeys, saveWithdrawKeys } from "@/lib/withdraw-key-store";
 import { failureSentence } from "@/components/money/DataScreen";
 import { Banner, Button, Field, KeyValue, Sheet, T } from "@/components/ui";
 import { K, usePayoutsQuery } from "@/hooks/money/queries";
@@ -70,6 +71,7 @@ export function WithdrawSheet({ visible, onClose, onSuccess }: Props) {
     mutationFn: ({ payload }: WithdrawCall) => partnerApi.withdraw(payload),
     onSuccess: (result, { signature }) => {
       settleRequest(withdrawKeyLedger, signature, withdrawOutcome(null));
+      void saveWithdrawKeys();
       setDone(result);
       for (const queryKey of [K.payouts, K.withdrawals, K.invoices, K.provider, K.dashboard]) void qc.invalidateQueries({ queryKey });
       onSuccess?.();
@@ -77,6 +79,7 @@ export function WithdrawSheet({ visible, onClose, onSuccess }: Props) {
     onError: (error, { signature }) => {
       // A refusal retires the key; a lost answer or a server error keeps it for the same request.
       settleRequest(withdrawKeyLedger, signature, withdrawOutcome(error));
+      void saveWithdrawKeys();
       setRefusal(withdrawRefusal(error));
       // The request may have landed: read the balance and the withdrawal list again so it shows.
       for (const queryKey of [K.payouts, K.withdrawals]) void qc.invalidateQueries({ queryKey });
@@ -145,9 +148,16 @@ export function WithdrawSheet({ visible, onClose, onSuccess }: Props) {
     const payload = Object.keys(found).length > 0 ? null : withdrawPayload(form);
     if (!payload) {
       inFlight.current = false;
+      // With the keyboard up only part of the form fits: a refused field may be scrolled out of
+      // sight, so the tap looked like it did nothing. Closing the keyboard shows the whole form.
+      Keyboard.dismiss();
       return;
     }
+    // Keys owed an answer from before a restart are read first, and this request's key is saved
+    // BEFORE the request leaves: if the app is killed mid-request, the retry is still the same withdrawal.
+    await restoreWithdrawKeys();
     const keyed = keyForRequest(withdrawKeyLedger, owner, payload, () => newIdempotencyKey("withdraw"));
+    await saveWithdrawKeys();
     withdraw.mutate({ payload: { ...payload, idempotencyKey: keyed.key }, signature: keyed.signature });
   }
 

@@ -196,7 +196,9 @@ export const partnerRegisterRoutes = new Elysia({ prefix: "/api/partner" })
       try {
         const body = raw as { email: string; password: string };
         const data = await partnerRegistrationService.resumeApplication(body);
-        return { success: true, message: "Application resumed", data };
+        // An account that stopped before the OTP is sent a new one and goes back to that step.
+        const awaitingOtp = "nextStep" in data && data.nextStep === "verify-otp";
+        return { success: true, message: awaitingOtp ? "OTP sent to your phone. Verify it to continue your application." : "Application resumed", data };
       } catch (err) {
         return mapError(err, set);
       }

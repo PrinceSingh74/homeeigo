@@ -33,7 +33,8 @@
  *     `data:${asset.mimeType};base64,…` mislabelled these. `checkEvidencePhoto` labels by the bytes.
  *     With `quality: 1` the original file is copied untouched (RawImageExporter): HEIC stays HEIC.
  *
- *   expo-image-manipulator (which could convert) is not installed in this app.
+ *   expo-image-manipulator re-encodes a large photo as JPEG at 2000 px (`resizeTarget`), which also
+ *     converts a HEIC original; a photo already within the limit is sent as the picker returned it.
  *
  * Recommended picker options for evidence:
  *   { mediaTypes: ["images"], quality: 0.7, base64: true, exif: false,
@@ -93,8 +94,27 @@ export type EvidenceRefusalCode = keyof typeof EVIDENCE_REFUSALS;
 /** The server's own sentences (job-evidence-media.ts `evidenceRefusal`), so a local refusal reads the same. */
 export const EVIDENCE_HEIC_MESSAGE = "This photo format (HEIC) is not supported. Send JPEG or PNG.";
 export const EVIDENCE_TOO_LARGE_MESSAGE = `That photo is too large. Send one under ${EVIDENCE_MAX_PHOTO_BYTES / (1024 * 1024)} MB.`;
-/** App-side, after the server's sentence: what the partner can actually do about it (the app cannot shrink a photo). */
+/** App-side, after the server's sentence, for the rare photo that is still too large after the app shrank it. */
 export const EVIDENCE_TOO_LARGE_REMEDY = "Lower the photo size in your camera's settings and take it again.";
+
+/**
+ * A job photo is shrunk on the phone before it is checked: 2000 px on the long edge is plenty to
+ * read a meter, a label or a finished job, and keeps a 50 or 108 MP capture far under the 8 MiB
+ * rule (and four of them under one request's budget).
+ */
+export const EVIDENCE_RESIZE_LONG_EDGE = 2000;
+
+/**
+ * What to resize a picked photo to: the long edge only (the other follows, so the shape is kept),
+ * or null when it is already within the limit — a photo is never scaled up — or its size is unknown.
+ */
+export function resizeTarget(width: number | null | undefined, height: number | null | undefined): { width: number } | { height: number } | null {
+  const w = typeof width === "number" && Number.isFinite(width) ? width : 0;
+  const h = typeof height === "number" && Number.isFinite(height) ? height : 0;
+  if (w <= 0 || h <= 0) return null;
+  if (Math.max(w, h) <= EVIDENCE_RESIZE_LONG_EDGE) return null;
+  return w >= h ? { width: EVIDENCE_RESIZE_LONG_EDGE } : { height: EVIDENCE_RESIZE_LONG_EDGE };
+}
 export const EVIDENCE_TOO_MANY_MESSAGE = `At most ${EVIDENCE_MAX_PHOTOS_PER_UPLOAD} photos can be sent at once`;
 export const EVIDENCE_UNSUPPORTED_MESSAGE = "Send the photo itself (JPEG, PNG or WebP). A link is not accepted as evidence.";
 /** App-side only: the picker returned no bytes (it was not asked for `base64`, or reading failed). */

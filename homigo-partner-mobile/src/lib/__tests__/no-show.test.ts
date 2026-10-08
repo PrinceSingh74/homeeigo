@@ -43,6 +43,21 @@ test("whole minutes come off as they pass; a part minute does not", () => {
   assert.equal(noShowView(preview(), T0, T0 + 2 * MIN + 1).waitLabel, "You can report in 3 min");
 });
 
+// Found on the Android emulator 2026-10-08: a partner who arrived long before the booked time was
+// told "You can report in 23975 min". The number is the server's; only the unit it is read in changes.
+test("a long wait is said in hours and days, a short one stays in minutes", () => {
+  const label = (minutesLeft: number) => noShowView(preview({ minutesLeft }), T0, T0).waitLabel;
+  assert.equal(label(1), "You can report in 1 min");
+  assert.equal(label(89), "You can report in 89 min");
+  assert.equal(label(90), "You can report in 1 hr 30 min");
+  assert.equal(label(120), "You can report in 2 hr");
+  assert.equal(label(1439), "You can report in 23 hr 59 min");
+  assert.equal(label(1440), "You can report in 1 day");
+  assert.equal(label(23975), "You can report in 16 days 15 hr");
+  // The count the screen keeps is still whole minutes.
+  assert.equal(noShowView(preview({ minutesLeft: 23975 }), T0, T0).minutesLeft, 23975);
+});
+
 test("at zero it asks the server again instead of enabling the button on the local clock", () => {
   const v = noShowView(preview(), T0, T0 + 5 * MIN);
   assert.equal(v.minutesLeft, 0);

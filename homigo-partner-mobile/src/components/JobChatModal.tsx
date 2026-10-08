@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageCircle, Send, X } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { PanelError } from "@/components/job/parts";
-import { Banner, Button, EmptyState, Skeleton, T } from "@/components/ui";
+import { Banner, Button, EmptyState, KeyboardAvoider, Skeleton, T } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 import { chatBubble, failureSentence } from "@/lib/job-screen";
 import { CHAT_CLOSED_MESSAGE, isChatClosedError, isChatOpen } from "@/lib/job-stage";
@@ -91,7 +91,7 @@ export function JobChatModal({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
-        <KeyboardAvoidingView style={styles.flex} behavior="padding">
+        <KeyboardAvoider style={styles.flex}>
           <View style={styles.header}>
             <View style={styles.flex}>
               <T kind="heading" accessibilityRole="header" numberOfLines={1}>
@@ -191,7 +191,7 @@ export function JobChatModal({
               </View>
             </View>
           )}
-        </KeyboardAvoidingView>
+        </KeyboardAvoider>
       </SafeAreaView>
     </Modal>
   );

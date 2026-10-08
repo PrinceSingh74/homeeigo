@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Linking, Platform } from "react-native";
 import { Banner, Button, Sheet, T } from "@/components/ui";
 import { checkEvidencePhoto, EVIDENCE_MAX_PHOTO_BYTES, EVIDENCE_TOO_LARGE_REMEDY } from "@/lib/evidence-photo";
+import { shrinkPickedPhoto } from "@/lib/shrink-photo";
 
 /** A photo that passed `checkEvidencePhoto`: ready to send, with something to show on screen. */
 export type PickedEvidence = {
@@ -20,12 +21,12 @@ type Ask = { title: string; note?: string };
 /**
  * The picker options the evidence rules need (see `lib/evidence-photo.ts` for why each is there):
  * re-encoded JPEG bytes, no EXIF, and the most compatible representation so an iPhone HEIC original
- * arrives as JPEG. Quality 0.5 keeps a job photo readable and well under the 8 MB rule on a
- * high-megapixel camera — the app has no way to shrink a photo after it is taken.
+ * arrives as JPEG. A photo larger than 2000 px on its long edge is then shrunk on the phone
+ * (`shrinkPickedPhoto`), so a high-megapixel camera cannot produce one the server refuses.
  */
 const PICK_OPTIONS: ImagePicker.ImagePickerOptions = {
   mediaTypes: ["images"],
-  quality: 0.5,
+  quality: 0.7,
   base64: true,
   exif: false,
   preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
@@ -34,7 +35,8 @@ const PICK_OPTIONS: ImagePicker.ImagePickerOptions = {
 const CAMERA_DENIED = "Camera access is off for this app. Turn it on in Settings to take a photo, or choose one from your library.";
 const LIBRARY_DENIED = "Photo access is off for this app. Turn it on in Settings to choose a photo, or take one with the camera.";
 
-function checkedAsset(asset: ImagePicker.ImagePickerAsset | undefined): { ok: true; photo: PickedEvidence } | { ok: false; message: string } {
+async function checkedAsset(picked: ImagePicker.ImagePickerAsset | undefined): Promise<{ ok: true; photo: PickedEvidence } | { ok: false; message: string }> {
+  const asset = picked ? await shrinkPickedPhoto(picked) : undefined;
   const checked = checkEvidencePhoto({ base64: asset?.base64, mimeType: asset?.mimeType, uri: asset?.uri });
   if (!checked.ok) return { ok: false, message: checked.reason === "TOO_LARGE" ? `${checked.message} ${EVIDENCE_TOO_LARGE_REMEDY}` : checked.message };
   return { ok: true, photo: { dataUrl: checked.dataUrl, previewUri: asset?.uri ?? null, pickedAtMs: Date.now() } };
@@ -52,9 +54,10 @@ function readPendingCapture(): Promise<PickedEvidence | null> {
   pendingRead ??= ImagePicker.getPendingResultAsync()
     .then((result) => {
       if (!result || !("assets" in result) || result.canceled) return null;
-      const checked = checkedAsset(result.assets?.[0]);
-      recoveredPhoto = checked.ok ? checked.photo : null;
-      return recoveredPhoto;
+      return checkedAsset(result.assets?.[0]).then((checked) => {
+        recoveredPhoto = checked.ok ? checked.photo : null;
+        return recoveredPhoto;
+      });
     })
     .catch(() => null);
   return pendingRead;
@@ -130,7 +133,7 @@ export function usePhotoPicker(): { pick: (ask: Ask) => Promise<PickedEvidence |
       }
       const result = source === "camera" ? await ImagePicker.launchCameraAsync(PICK_OPTIONS) : await ImagePicker.launchImageLibraryAsync(PICK_OPTIONS);
       if (result.canceled) return; // The partner backed out of the camera or the library: the sheet stays.
-      const checked = checkedAsset(result.assets?.[0]);
+      const checked = await checkedAsset(result.assets?.[0]);
       if (!checked.ok) {
         setProblem({ message: checked.message, settings: false });
         return;

@@ -1,10 +1,17 @@
+import { LocateFixed, Search } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Platform, StyleSheet, View } from "react-native";
 import * as Location from "expo-location";
-import { OnboardingField } from "@/components/onboarding/OnboardingField";
+import { OnboardingFrame, Problem } from "@/components/onboarding/OnboardingFrame";
+import { Button, Card, Field, T } from "@/components/ui";
+import { ONBOARDING_LIMITS, digitsOnly, registrationErrorSentence } from "@/lib/onboarding-form";
 import { partnerRegistrationApi } from "@/services/partner-registration-api";
-import { partnerColors } from "@/theme/colors";
+import { color, radius, space } from "@/theme/tokens";
 
+/**
+ * Step 4: `POST /onboarding/location` — a base city, the areas served and a radius of 1–50 km;
+ * coordinates are optional and must be inside the service area when sent.
+ */
 export function LocationStep({
   city,
   serviceRegions,
@@ -21,37 +28,30 @@ export function LocationStep({
   serviceRadiusKm: string;
   latitude?: string;
   longitude?: string;
+  /** The step's own check, or the server's refusal of the last save. */
   error?: string;
   loading: boolean;
-  onChange: (patch: {
-    city?: string;
-    serviceRegions?: string;
-    serviceRadiusKm?: string;
-    latitude?: string;
-    longitude?: string;
-  }) => void;
+  onChange: (patch: { city?: string; serviceRegions?: string; serviceRadiusKm?: string; latitude?: string; longitude?: string }) => void;
   onSubmit: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const [zones, setZones] = useState<string[]>([]);
+  const [busy, setBusy] = useState<"search" | "gps" | null>(null);
   const lat = Number(latitude);
   const lng = Number(longitude);
-  const hasPoint =
-    Boolean(latitude?.trim()) &&
-    Boolean(longitude?.trim()) &&
-    Number.isFinite(lat) &&
-    Number.isFinite(lng);
+  const hasPoint = Boolean(latitude?.trim()) && Boolean(longitude?.trim()) && Number.isFinite(lat) && Number.isFinite(lng);
 
+  // A point the server refused as outside the service area is dropped, so the next save can go
+  // through on the city and areas alone.
   useEffect(() => {
     if (error && /outside|service area/i.test(error) && (latitude || longitude)) {
       onChange({ latitude: "", longitude: "" });
     }
   }, [error, latitude, longitude, onChange]);
-  const radius = Number(serviceRadiusKm) || 5;
-  const mapUri = hasPoint
-    ? `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=13&size=640x360&markers=${lat},${lng},red-pushpin`
-    : null;
+
+  const radiusKm = Number(serviceRadiusKm) || 5;
+  const mapUri = hasPoint ? `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=13&size=640x360&markers=${lat},${lng},red-pushpin` : null;
 
   async function applyCoords(nextLat: number, nextLng: number) {
     onChange({ latitude: String(nextLat), longitude: String(nextLng) });
@@ -61,32 +61,39 @@ export function LocationStep({
       if (geo.address?.formattedAddress && !serviceRegions) onChange({ serviceRegions: geo.address.formattedAddress });
       setZones((geo.coverageZones ?? []).map((z) => z.name));
     } catch (e) {
-      setLocalError(e instanceof Error ? e.message : "Could not reverse geocode");
+      setLocalError(registrationErrorSentence(e, "The address for this spot could not be looked up. Enter your city and areas below."));
     }
   }
 
   async function useGps() {
+    if (busy) return;
     setLocalError(null);
-    const perm = await Location.requestForegroundPermissionsAsync();
-    if (perm.status !== "granted") {
-      setLocalError("Location permission denied. Search an address instead.");
-      return;
-    }
+    setBusy("gps");
     try {
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      await applyCoords(pos.coords.latitude, pos.coords.longitude);
-    } catch {
-      setLocalError("Current location unavailable. Search an address instead.");
+      const perm = await Location.requestForegroundPermissionsAsync();
+      if (perm.status !== "granted") {
+        setLocalError("Location permission denied. Search an address instead.");
+        return;
+      }
+      try {
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        await applyCoords(pos.coords.latitude, pos.coords.longitude);
+      } catch {
+        setLocalError("Current location unavailable. Search an address instead.");
+      }
+    } finally {
+      setBusy(null);
     }
   }
 
   async function runSearch() {
     const q = search.trim();
-    if (q.length < 3) return;
+    if (q.length < 3 || busy) return;
     setLocalError(null);
+    setBusy("search");
     try {
       const result = await partnerRegistrationApi.searchLocation(q);
-      if (!result.address) {
+      if (!result?.address) {
         setLocalError("No match found. Enter city and areas manually.");
         onChange({ latitude: "", longitude: "" });
         return;
@@ -94,93 +101,93 @@ export function LocationStep({
       onChange({ city: result.address.city ?? q });
       await applyCoords(result.address.latitude, result.address.longitude);
     } catch (e) {
-      setLocalError(e instanceof Error ? e.message : "Search failed");
+      setLocalError(registrationErrorSentence(e, "Search failed"));
       onChange({ latitude: "", longitude: "" });
+    } finally {
+      setBusy(null);
     }
   }
 
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.title}>Service location</Text>
-      <Text style={styles.copy}>Choose where you want to receive jobs. GPS is optional.</Text>
-      {mapUri ? (
-        <Image accessibilityLabel="Selected location map" source={{ uri: mapUri }} style={styles.map} />
-      ) : (
-        <View style={styles.mapFallback}>
-          <Text style={styles.meta}>Search or use current location to preview coverage.</Text>
+    <OnboardingFrame
+      heading="Service location"
+      lead="Choose where you want to receive jobs. Using your current location is optional."
+      error={error}
+      primary={<Button testID="onboarding-save-continue" label="Save & continue" onPress={onSubmit} loading={loading} />}
+    >
+      <Card style={styles.card}>
+        {mapUri ? (
+          <Image accessibilityLabel="Selected location map" source={{ uri: mapUri }} style={styles.map} />
+        ) : (
+          <View style={styles.mapEmpty}>
+            <T kind="small" style={styles.center}>
+              Search or use current location to preview coverage.
+            </T>
+          </View>
+        )}
+        <Field
+          label="Search area"
+          value={search}
+          onChangeText={setSearch}
+          help="At least 3 letters, for example Andheri, Mumbai."
+          autoCorrect={false}
+          autoComplete="off"
+          returnKeyType="search"
+          onSubmitEditing={() => void runSearch()}
+        />
+        <View style={styles.row}>
+          <Button label="Search" variant="secondary" icon={Search} onPress={() => void runSearch()} loading={busy === "search"} disabled={busy === "gps" || search.trim().length < 3} style={styles.half} />
+          <Button
+            label={Platform.OS === "web" ? "Use location" : "Current location"}
+            variant="secondary"
+            icon={LocateFixed}
+            onPress={() => void useGps()}
+            loading={busy === "gps"}
+            disabled={busy === "search"}
+            style={styles.half}
+          />
         </View>
-      )}
-      <OnboardingField label="Search area" value={search} placeholder="Andheri, Mumbai" onChangeText={setSearch} />
-      <View style={styles.row}>
-        <Pressable accessibilityRole="button" style={styles.secondary} onPress={() => void runSearch()}>
-          <Text style={styles.secondaryText}>Search</Text>
-        </Pressable>
-        <Pressable accessibilityRole="button" style={styles.secondary} onPress={() => void useGps()}>
-          <Text style={styles.secondaryText}>{Platform.OS === "web" ? "Use location" : "Current location"}</Text>
-        </Pressable>
-      </View>
-      <OnboardingField label="Base city" value={city} placeholder="Gurugram" onChangeText={(v) => onChange({ city: v })} />
-      <OnboardingField
-        label="Service areas"
-        value={serviceRegions}
-        placeholder="Andheri, Bandra"
-        onChangeText={(v) => onChange({ serviceRegions: v })}
-      />
-      <OnboardingField
-        label={`Preferred radius (${radius} km)`}
-        value={serviceRadiusKm}
-        placeholder="5"
-        keyboardType="numeric"
-        onChangeText={(v) => onChange({ serviceRadiusKm: v })}
-      />
-      {zones.length ? <Text style={styles.meta}>Coverage zones: {zones.join(", ")}</Text> : null}
-      {localError || error ? (
-        <Text accessibilityRole="alert" style={styles.error}>
-          {localError || error}
-        </Text>
-      ) : null}
-      <Pressable accessibilityRole="button" testID="onboarding-save-continue" style={styles.button} disabled={loading} onPress={onSubmit}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save & Continue</Text>}
-      </Pressable>
-    </View>
+        {localError ? <Problem message={localError} testID="onboarding-location-problem" /> : null}
+        {zones.length ? <T kind="small">Coverage zones: {zones.join(", ")}</T> : null}
+      </Card>
+      <Card style={styles.card}>
+        <Field
+          label="Base city"
+          value={city}
+          onChangeText={(v) => onChange({ city: v })}
+          maxLength={ONBOARDING_LIMITS.city}
+          autoCapitalize="words"
+          autoCorrect={false}
+          autoComplete="off"
+        />
+        <Field
+          label="Service areas"
+          value={serviceRegions}
+          onChangeText={(v) => onChange({ serviceRegions: v })}
+          help="Separate areas with commas, for example Andheri, Bandra."
+          autoCapitalize="words"
+          autoCorrect={false}
+          autoComplete="off"
+        />
+        <Field
+          label={`Preferred radius (${radiusKm} km)`}
+          value={serviceRadiusKm}
+          onChangeText={(v) => onChange({ serviceRadiusKm: digitsOnly(v, ONBOARDING_LIMITS.radiusKm) })}
+          help="Between 1 and 50 km."
+          keyboardType="number-pad"
+          maxLength={ONBOARDING_LIMITS.radiusKm}
+          autoComplete="off"
+        />
+      </Card>
+    </OnboardingFrame>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: 12 },
-  title: { fontSize: 20, fontWeight: "800", color: partnerColors.text, letterSpacing: -0.3 },
-  copy: { color: partnerColors.textSecondary, lineHeight: 20 },
-  map: { width: "100%", height: 180, borderRadius: 16, backgroundColor: "#e8eef5" },
-  mapFallback: {
-    height: 120,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
-    backgroundColor: "rgba(255,255,255,0.8)",
-  },
-  row: { flexDirection: "row", gap: 8 },
-  secondary: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    paddingVertical: 12,
-    minHeight: 44,
-    alignItems: "center",
-  },
-  secondaryText: { fontWeight: "700", color: partnerColors.primary },
-  meta: { fontSize: 12, color: partnerColors.textMuted },
-  error: { color: partnerColors.danger, fontSize: 13 },
-  button: {
-    backgroundColor: partnerColors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonText: { color: "#fff", fontWeight: "700" },
+  card: { gap: space.lg },
+  map: { width: "100%", height: 180, borderRadius: radius.control, backgroundColor: color.well },
+  mapEmpty: { minHeight: 96, borderRadius: radius.control, borderWidth: 1, borderColor: color.line, backgroundColor: color.well, alignItems: "center", justifyContent: "center", padding: space.lg },
+  center: { textAlign: "center" },
+  row: { flexDirection: "row", gap: space.sm },
+  half: { flex: 1 },
 });

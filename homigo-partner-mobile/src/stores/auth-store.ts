@@ -133,22 +133,30 @@ export const useAuthStore = create<AuthState>()(
 
       logout: async () => {
         const { refreshToken, accessToken } = get();
-        if (accessToken && refreshToken) {
-          setApiAccessToken(accessToken);
-          // Revoke this device's push token BEFORE the session is torn down — it needs the
-          // still-valid access token to authenticate. Otherwise a signed-out phone keeps
-          // receiving the next partner's job alerts on this device.
-          const { revokePushTokenForLogout } = await import("@/hooks/use-push-notifications");
-          await revokePushTokenForLogout();
-          try {
-            await partnerApi.logout(refreshToken);
-          } catch {
-            // Local session still cleared if server logout fails.
+        // From here on nothing may refresh this session: a request that comes back 401 while the
+        // server is signing the session out would otherwise replay the refresh token being
+        // revoked, which the server records as a token-reuse attack on the account.
+        signingOut = true;
+        try {
+          if (accessToken && refreshToken) {
+            setApiAccessToken(accessToken);
+            // Revoke this device's push token BEFORE the session is torn down — it needs the
+            // still-valid access token to authenticate. Otherwise a signed-out phone keeps
+            // receiving the next partner's job alerts on this device.
+            const { revokePushTokenForLogout } = await import("@/hooks/use-push-notifications");
+            await revokePushTokenForLogout();
+            try {
+              await partnerApi.logout(refreshToken);
+            } catch {
+              // Local session still cleared if server logout fails.
+            }
           }
+          setApiAccessToken(null);
+          set({ user: null, accessToken: null, refreshToken: null });
+          await tearDownSessionSideEffects();
+        } finally {
+          signingOut = false;
         }
-        setApiAccessToken(null);
-        set({ user: null, accessToken: null, refreshToken: null });
-        await tearDownSessionSideEffects();
       },
     }),
     {
@@ -169,20 +177,22 @@ export const useAuthStore = create<AuthState>()(
 );
 
 let sessionRejectionInFlight = false;
+/** True while `logout` runs: the session is ending on purpose, so it is neither refreshed nor "rejected". */
+let signingOut = false;
 
 /**
  * Wire the API layer's refresh path to this store. Tokens are persisted through the store's
  * persist storage, i.e. expo-secure-store on device — the same place login writes them.
  */
 configureAuthSession({
-  getRefreshToken: () => useAuthStore.getState().refreshToken,
+  getRefreshToken: () => (signingOut ? null : useAuthStore.getState().refreshToken),
   onTokensRefreshed: ({ accessToken, refreshToken, sessionId }) => {
     useAuthStore.setState({ accessToken, refreshToken });
     adoptRefreshedSession(sessionId);
   },
   onSessionRejected: async () => {
     // Idempotent: several requests can observe the same rejected refresh.
-    if (sessionRejectionInFlight) return;
+    if (sessionRejectionInFlight || signingOut) return;
     const s = useAuthStore.getState();
     if (!s.accessToken && !s.refreshToken && !s.user) {
       useAuthStore.setState({ hydrated: true });

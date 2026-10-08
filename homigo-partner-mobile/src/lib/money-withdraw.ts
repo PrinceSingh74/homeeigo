@@ -70,8 +70,8 @@ export function createWithdrawKeyLedger(): WithdrawKeyLedger {
 }
 
 /**
- * The keys of withdrawals whose outcome this app does not know yet. It lives for the life of the app
- * process, NOT of the withdraw sheet: the server dedupes by key alone, so a sheet that forgot its key
+ * The keys of withdrawals whose outcome this app does not know yet. It outlives the withdraw sheet,
+ * and — saved by `lib/withdraw-key-store.ts` — the app process too: the server dedupes by key alone, so a sheet that forgot its key
  * on close would turn "the answer was lost" into a second withdrawal on reopen.
  */
 export const withdrawKeyLedger: WithdrawKeyLedger = createWithdrawKeyLedger();
@@ -188,4 +188,48 @@ export function withdrawRefusal(error: unknown): WithdrawRefusal {
     return { kind: "refused", sentence, note: null };
   }
   return { kind: "refused", sentence: message || "The withdrawal could not be requested.", note: null };
+}
+
+/* ------------------------------------------------- keys that survive a restart */
+
+/**
+ * How long a key owed an answer is kept. Long enough for "the answer was lost, the app was closed,
+ * I tried again that evening"; short enough that the same amount to the same account next week is a
+ * new withdrawal and not an echo of the old one.
+ */
+export const WITHDRAW_KEY_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Signature → when its key was first saved. */
+export type WithdrawKeyStamps = Map<string, number>;
+
+/** The ledger as text for secure storage. A key keeps the time it was FIRST saved. */
+export function encodeWithdrawKeys(ledger: WithdrawKeyLedger, stamps: WithdrawKeyStamps, now: number): string {
+  const out: Record<string, { key: string; at: number }> = {};
+  for (const [signature, key] of ledger) out[signature] = { key, at: stamps.get(signature) ?? now };
+  return JSON.stringify(out);
+}
+
+/**
+ * Fills `ledger` from stored text, skipping anything unreadable or older than the TTL, and never
+ * replacing a key the running app already holds. Returns the timestamps of what it restored.
+ */
+export function decodeWithdrawKeys(text: string | null | undefined, ledger: WithdrawKeyLedger, now: number): WithdrawKeyStamps {
+  const stamps: WithdrawKeyStamps = new Map();
+  if (!text) return stamps;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return stamps;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return stamps;
+  for (const [signature, entry] of Object.entries(parsed as Record<string, unknown>)) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const { key, at } = entry as { key?: unknown; at?: unknown };
+    if (typeof key !== "string" || !key || typeof at !== "number" || !Number.isFinite(at)) continue;
+    if (now - at > WITHDRAW_KEY_TTL_MS) continue;
+    if (!ledger.has(signature)) ledger.set(signature, key);
+    stamps.set(signature, at);
+  }
+  return stamps;
 }

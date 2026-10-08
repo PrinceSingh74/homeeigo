@@ -1,131 +1,125 @@
+import { BookOpen, Check, ExternalLink } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
+import { OnboardingFrame, Problem } from "@/components/onboarding/OnboardingFrame";
+import { Button, Card, EmptyState, KeyValue, Pill, SkeletonCard, T } from "@/components/ui";
+import { registrationErrorSentence } from "@/lib/onboarding-form";
 import { partnerRegistrationApi, type OnboardingTrainingPayload } from "@/services/partner-registration-api";
-import { partnerColors } from "@/theme/colors";
+import { space } from "@/theme/tokens";
 
-export function TrainingStep({
-  loading,
-  onContinue,
-}: {
-  loading: boolean;
-  onContinue: () => void | Promise<void>;
-}) {
+/**
+ * Step 9: the training modules the server lists (`GET /onboarding/training`). Whether training is
+ * needed, and for what, is the server's `policy` sentence and its `requiredForActivation` flag —
+ * the step can be continued either way (`POST /onboarding/training/acknowledge`).
+ */
+export function TrainingStep({ loading, onContinue }: { loading: boolean; onContinue: () => void | Promise<void> }) {
   const [data, setData] = useState<OnboardingTrainingPayload | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadProblem, setLoadProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    void partnerRegistrationApi
+    let cancelled = false;
+    setLoadProblem(null);
+    partnerRegistrationApi
       .getTraining()
-      .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : "Could not load training"));
-  }, []);
+      .then((next) => {
+        if (!cancelled) setData(next);
+      })
+      .catch((e) => {
+        if (!cancelled) setLoadProblem(registrationErrorSentence(e, "Training could not be loaded."));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
 
-  const total = data?.requiredModules || data?.modules.length || 0;
-  const done = data?.completedCount ?? 0;
+  function complete(moduleId: string) {
+    if (busyId) return;
+    setBusyId(moduleId);
+    setProblem(null);
+    void partnerRegistrationApi
+      .completeTrainingModule(moduleId)
+      .then(setData)
+      .catch((e) => setProblem(registrationErrorSentence(e, "That module could not be marked complete. Try again.")))
+      .finally(() => setBusyId(null));
+  }
+
+  function open(url: string) {
+    setProblem(null);
+    void Linking.openURL(url).catch(() => setProblem("This content could not be opened on your phone."));
+  }
+
+  const modules = data?.modules ?? [];
 
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.title}>Partner training</Text>
-      <Text style={styles.copy}>
-        Same Academy as Partner Web. Required for activation, not for submit.
-      </Text>
-      <View style={styles.progress}>
-        <Text style={styles.progressTitle}>
-          {done} / {total || "—"} modules complete
-        </Text>
-        <Text style={styles.meta}>
-          {data?.trainingComplete ? "Training completed" : done > 0 ? "Training in progress" : "Not started"}
-        </Text>
-        <Text style={styles.meta}>Required before activation: {data?.requiredForActivation ? "Yes" : "No"}</Text>
-      </View>
-      {(data?.modules ?? []).map((mod) => (
-        <View key={mod.id} style={styles.card}>
-          <Text style={styles.modTitle}>{mod.title}</Text>
-          <Text style={styles.meta}>{mod.contentType}{mod.completedAt ? " · Completed" : " · Not started"}</Text>
-          {mod.body ? <Text style={styles.body}>{mod.body.slice(0, 180)}</Text> : null}
-          <View style={styles.row}>
-            {mod.contentUrl ? (
-              <Pressable onPress={() => void Linking.openURL(mod.contentUrl!)} style={styles.ghost}>
-                <Text style={styles.ghostText}>Open content</Text>
-              </Pressable>
-            ) : null}
-            {!mod.completedAt ? (
-              <Pressable
-                accessibilityRole="button"
-                disabled={busyId === mod.id}
-                onPress={() => {
-                  setBusyId(mod.id);
-                  void partnerRegistrationApi
-                    .completeTrainingModule(mod.id)
-                    .then(setData)
-                    .catch((e) => setError(e instanceof Error ? e.message : "Could not save"))
-                    .finally(() => setBusyId(null));
-                }}
-                style={styles.ghost}
-              >
-                <Text style={styles.ghostText}>{busyId === mod.id ? "Saving…" : "Mark complete"}</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
-      ))}
-      {data && data.modules.length === 0 ? (
-        <Text style={styles.copy}>No published modules yet. You can continue to review.</Text>
-      ) : null}
-      {error ? (
-        <Text accessibilityRole="alert" style={styles.error}>
-          {error}
-        </Text>
-      ) : null}
-      <Pressable accessibilityRole="button" testID="onboarding-continue-review" style={styles.button} disabled={loading} onPress={() => void onContinue()}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Continue to review</Text>}
-      </Pressable>
-    </View>
+    <OnboardingFrame
+      heading="Partner training"
+      lead={data?.policy ?? null}
+      error={problem}
+      primary={<Button testID="onboarding-continue-review" label="Continue to review" onPress={() => void onContinue()} loading={loading} />}
+    >
+      {loadProblem ? (
+        <Problem message={loadProblem} onRetry={() => setReloadKey((k) => k + 1)} testID="onboarding-training-load-problem" />
+      ) : !data ? (
+        <>
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={3} />
+        </>
+      ) : (
+        <>
+          <Card>
+            <KeyValue label="Modules complete" value={`${data.completedCount} of ${data.requiredModules}`} strong />
+            <KeyValue label="Required before activation" value={data.requiredForActivation ? "Yes" : "No"} />
+          </Card>
+          {modules.length === 0 ? (
+            <EmptyState icon={BookOpen} title="No published modules yet" message="You can continue to review." />
+          ) : (
+            modules.map((mod) => (
+              <Card key={mod.id} style={styles.card}>
+                <View style={styles.head}>
+                  <T kind="bodyStrong" style={styles.title}>
+                    {mod.title}
+                  </T>
+                  {mod.completedAt ? <Pill label="Completed" tone="success" icon={Check} /> : <Pill label="Not started" />}
+                </View>
+                {mod.body ? (
+                  <T kind="small" numberOfLines={4}>
+                    {mod.body}
+                  </T>
+                ) : null}
+                {mod.contentUrl || !mod.completedAt ? (
+                  <View style={styles.actions}>
+                    {mod.contentUrl ? (
+                      <Button label="Open content" accessibilityLabel={`Open content: ${mod.title}`} variant="secondary" icon={ExternalLink} onPress={() => open(mod.contentUrl!)} style={styles.half} />
+                    ) : null}
+                    {!mod.completedAt ? (
+                      <Button
+                        label="Mark complete"
+                        accessibilityLabel={`Mark complete: ${mod.title}`}
+                        variant="secondary"
+                        onPress={() => complete(mod.id)}
+                        loading={busyId === mod.id}
+                        disabled={Boolean(busyId) && busyId !== mod.id}
+                        style={styles.half}
+                      />
+                    ) : null}
+                  </View>
+                ) : null}
+              </Card>
+            ))
+          )}
+        </>
+      )}
+    </OnboardingFrame>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: 12 },
-  title: { fontSize: 20, fontWeight: "800", color: partnerColors.text, letterSpacing: -0.3 },
-  copy: { color: partnerColors.textSecondary, lineHeight: 20 },
-  progress: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    padding: 14,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    gap: 4,
-  },
-  progressTitle: { fontWeight: "800", color: partnerColors.text },
-  meta: { fontSize: 12, color: partnerColors.textMuted, fontWeight: "600" },
-  card: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    padding: 14,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    gap: 6,
-  },
-  modTitle: { fontWeight: "700", color: partnerColors.text },
-  body: { color: partnerColors.textSecondary, fontSize: 13, lineHeight: 18 },
-  row: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  ghost: {
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  ghostText: { fontWeight: "700", color: partnerColors.primary, fontSize: 13 },
-  error: { color: partnerColors.danger, fontSize: 13 },
-  button: {
-    backgroundColor: partnerColors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonText: { color: "#fff", fontWeight: "700" },
+  card: { gap: space.md },
+  head: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: space.sm },
+  title: { flex: 1 },
+  actions: { flexDirection: "row", gap: space.sm },
+  half: { flex: 1 },
 });

@@ -1,22 +1,13 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { OnboardingField } from "@/components/onboarding/OnboardingField";
+import { StyleSheet } from "react-native";
+import { Choice, ChoiceGroup, OnboardingFrame } from "@/components/onboarding/OnboardingFrame";
+import { Button, Card, Field } from "@/components/ui";
 import { ONBOARDING_GENDERS } from "@/lib/onboarding-catalog";
-import { partnerColors } from "@/theme/colors";
+import { ONBOARDING_LIMITS, digitsOnly, validateProfile } from "@/lib/onboarding-form";
+import { space } from "@/theme/tokens";
 
-export function validateProfile(input: {
-  dateOfBirth: string;
-  gender: string;
-  emergencyName: string;
-  emergencyPhone: string;
-}): Record<string, string> {
-  const errors: Record<string, string> = {};
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dateOfBirth.trim())) errors.dateOfBirth = "Use YYYY-MM-DD";
-  if (!input.gender) errors.gender = "Select gender";
-  if (input.emergencyName.trim().length < 2) errors.emergencyName = "Enter emergency contact name";
-  if (!/^[0-9]{10}$/.test(input.emergencyPhone.trim())) errors.emergencyPhone = "Enter 10 digit number";
-  return errors;
-}
+export { validateProfile };
 
+/** Step 3: `POST /onboarding/profile` — date of birth, gender, and who to call in an emergency. */
 export function ProfileStep({
   dateOfBirth,
   gender,
@@ -33,105 +24,64 @@ export function ProfileStep({
   emergencyPhone: string;
   errors: Record<string, string>;
   loading: boolean;
-  onChange: (patch: {
-    dateOfBirth?: string;
-    gender?: string;
-    emergencyName?: string;
-    emergencyPhone?: string;
-  }) => void;
+  onChange: (patch: { dateOfBirth?: string; gender?: string; emergencyName?: string; emergencyPhone?: string }) => void;
   onSubmit: () => void;
 }) {
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.title}>Complete your profile</Text>
-      <Text style={styles.copy}>Help us match you with the right jobs.</Text>
-      <OnboardingField
-        label="Date of birth"
-        value={dateOfBirth}
-        placeholder="YYYY-MM-DD"
-        error={errors.dateOfBirth}
-        onChangeText={(v) => onChange({ dateOfBirth: v })}
-      />
-      <Text style={styles.label}>Gender</Text>
-      <View style={styles.row}>
-        {ONBOARDING_GENDERS.map((g) => {
-          const on = gender === g.id;
-          return (
-            <Pressable
-              key={g.id}
-              accessibilityRole="button"
-              accessibilityState={{ selected: on }}
-              accessibilityLabel={g.label}
-              onPress={() => onChange({ gender: g.id })}
-              style={[styles.chip, on && styles.chipOn]}
-            >
-              <Text style={[styles.chipText, on && styles.chipTextOn]}>{g.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-      {errors.gender ? (
-        <Text accessibilityRole="alert" style={styles.error}>
-          {errors.gender}
-        </Text>
-      ) : null}
-      <OnboardingField
-        label="Emergency contact name"
-        value={emergencyName}
-        placeholder="Name"
-        error={errors.emergencyName}
-        autoCapitalize="words"
-        autoCorrect={false}
-        autoComplete="off"
-        spellCheck={false}
-        textContentType="none"
-        importantForAutofill="no"
-        testID="onboarding-emergency-name"
-        onChangeText={(v) => onChange({ emergencyName: v })}
-      />
-      <OnboardingField
-        label="Emergency contact phone"
-        value={emergencyPhone}
-        placeholder="10-digit mobile"
-        keyboardType="phone-pad"
-        maxLength={10}
-        error={errors.emergencyPhone}
-        onChangeText={(v) => onChange({ emergencyPhone: v.replace(/\D/g, "").slice(0, 10) })}
-      />
-      <Pressable accessibilityRole="button" testID="onboarding-save-continue" style={styles.button} disabled={loading} onPress={onSubmit}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save & Continue</Text>}
-      </Pressable>
-    </View>
+    <OnboardingFrame
+      heading="Complete your profile"
+      lead="A few details about you, and who we should call in an emergency."
+      primary={<Button testID="onboarding-save-continue" label="Save & continue" onPress={onSubmit} loading={loading} />}
+    >
+      <Card style={styles.card}>
+        <Field
+          label="Date of birth"
+          value={dateOfBirth}
+          onChangeText={(v) => onChange({ dateOfBirth: v })}
+          error={errors.dateOfBirth}
+          help="Year, month, day: YYYY-MM-DD."
+          placeholder="YYYY-MM-DD"
+          keyboardType="numbers-and-punctuation"
+          maxLength={ONBOARDING_LIMITS.dateOfBirth}
+          autoCorrect={false}
+          autoComplete="birthdate-full"
+        />
+        <ChoiceGroup label="Gender" error={errors.gender}>
+          {ONBOARDING_GENDERS.map((g) => (
+            <Choice key={g.id} label={g.label} selected={gender === g.id} onPress={() => onChange({ gender: g.id })} />
+          ))}
+        </ChoiceGroup>
+        <Field
+          testID="onboarding-emergency-name"
+          label="Emergency contact name"
+          value={emergencyName}
+          onChangeText={(v) => onChange({ emergencyName: v })}
+          error={errors.emergencyName}
+          maxLength={ONBOARDING_LIMITS.emergencyName}
+          autoCapitalize="words"
+          autoCorrect={false}
+          autoComplete="off"
+          spellCheck={false}
+          textContentType="none"
+          importantForAutofill="no"
+        />
+        <Field
+          label="Emergency contact phone"
+          value={emergencyPhone}
+          onChangeText={(v) => onChange({ emergencyPhone: digitsOnly(v, ONBOARDING_LIMITS.phone) })}
+          error={errors.emergencyPhone}
+          help="10 digits, without +91."
+          keyboardType="phone-pad"
+          maxLength={ONBOARDING_LIMITS.phone}
+          autoComplete="off"
+          textContentType="none"
+          importantForAutofill="no"
+        />
+      </Card>
+    </OnboardingFrame>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: 12 },
-  title: { fontSize: 20, fontWeight: "800", color: partnerColors.text, letterSpacing: -0.3 },
-  copy: { color: partnerColors.textSecondary, lineHeight: 20 },
-  label: { fontSize: 13, fontWeight: "600", color: partnerColors.text },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: 44,
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.9)",
-  },
-  chipOn: { borderColor: partnerColors.primary, backgroundColor: "rgba(61,107,79,0.12)" },
-  chipText: { fontSize: 13, fontWeight: "600", color: partnerColors.text },
-  chipTextOn: { color: partnerColors.primary, fontWeight: "800" },
-  error: { color: partnerColors.danger, fontSize: 13 },
-  button: {
-    backgroundColor: partnerColors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonText: { color: "#fff", fontWeight: "700" },
+  card: { gap: space.lg },
 });

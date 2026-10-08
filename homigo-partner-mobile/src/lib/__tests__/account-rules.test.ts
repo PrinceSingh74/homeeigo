@@ -11,6 +11,7 @@ import {
   base64Bytes,
   canReply,
   changePasswordError,
+  channelUnavailableSentence,
   checkDocumentFile,
   dialable,
   documentState,
@@ -27,6 +28,20 @@ import {
   supportDraftErrors,
   ticketStatusLabel,
 } from "../account-rules.ts";
+
+// Found on the Android emulator 2026-10-08: the notifications screen printed the server's reason
+// CODE under a switched-off channel ("no_registered_device", "provider_not_configured").
+test("a notification channel that is unavailable says why in words, never as the server's code", () => {
+  // The four codes of apps/backend/src/notifications/channel-availability.ts.
+  assert.equal(channelUnavailableSentence("no_registered_device"), "This phone is not registered for push alerts yet.");
+  assert.equal(channelUnavailableSentence("no_email_on_file"), "There is no email address on your account.");
+  assert.equal(channelUnavailableSentence("no_phone_on_file"), "There is no phone number on your account.");
+  assert.equal(channelUnavailableSentence("provider_not_configured"), "Not available on your account yet.");
+  // A code this build does not know, or none at all, is not printed.
+  assert.equal(channelUnavailableSentence("some_new_code"), "Not available for your account.");
+  assert.equal(channelUnavailableSentence(null), "Not available for your account.");
+  assert.equal(channelUnavailableSentence(undefined), "Not available for your account.");
+});
 
 const b64 = (bytes: number[]) => Buffer.from(bytes).toString("base64");
 const JPEG = b64([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1]);

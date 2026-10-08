@@ -8,6 +8,7 @@ import { Chips } from "@/components/account/controls";
 import { AccountScreen, ErrorState, ListSkeleton, ResultBanner, RowsSkeleton, failure, type ActionResult } from "@/components/account/states";
 import { Banner, Button, Card, EmptyState, Field, KeyValue, Pill, Sheet, T } from "@/components/ui";
 import { useAuthed, useComplianceQuery, useProviderQuery, usePullRefresh } from "@/hooks/account/queries";
+import { shrinkPickedPhoto } from "@/lib/shrink-photo";
 import { DOCUMENT_TYPES, checkDocumentFile, documentState, documentTitle, isoDateOrNull } from "@/lib/account-rules";
 import { formatDate } from "@/lib/format";
 import { partnerApi } from "@/services/partner-api";
@@ -51,7 +52,9 @@ function UploadSheet({ visible, onClose, initialType, onUploaded }: { visible: b
       }
       const picked = source === "camera" ? await ImagePicker.launchCameraAsync(PICKER) : await ImagePicker.launchImageLibraryAsync(PICKER);
       if (picked.canceled) return null;
-      const check = checkDocumentFile({ base64: picked.assets[0]?.base64 }, type);
+      // A large capture is shrunk first (2000 px keeps a document legible and under the 5 MB limit).
+      const asset = picked.assets[0] ? await shrinkPickedPhoto(picked.assets[0]) : undefined;
+      const check = checkDocumentFile({ base64: asset?.base64 }, type);
       if (!check.ok) throw new Error(check.message);
       await partnerApi.documents.upload({
         file: check.file,

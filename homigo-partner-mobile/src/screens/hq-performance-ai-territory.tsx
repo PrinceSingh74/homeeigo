@@ -232,7 +232,7 @@ export function PerformanceRankingsScreen() {
                   {categories.length === 0 ? (
                     <T kind="small">The server sent no category rankings.</T>
                   ) : (
-                    categories.map((c) => <KeyValue key={c.category} label={humanise(c.category)} value={`#${c.rank} of ${c.total}`} />)
+                    categories.map((c) => <KeyValue key={c.category} label={humanise(c.category)} value={c.rank > 0 && c.total > 0 ? `#${c.rank} of ${c.total}` : "Not ranked"} />)
                   )}
                 </Card>
               </Block>

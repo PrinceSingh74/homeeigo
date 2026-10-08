@@ -434,7 +434,23 @@ export class PartnerRegistrationService {
 
     const session = await prisma.partnerRegistrationSession.findUnique({ where: { userId: user.id } });
     if (!session || !session.otpVerified) {
-      throw new Error("NOT_FOUND:Complete phone verification to start your application");
+      // The account was created and the applicant left before entering the OTP. Step 1 refuses
+      // the email as taken, so without this the account could never be continued by anyone. The
+      // password proves the account is theirs; the phone is still unproven, so a new OTP is sent
+      // and they go back to the OTP step. Nothing is verified and no registration token is issued.
+      const phone = await userPiiService.resolvePhone(user, { actorId: user.id, authorized: true });
+      if (!phone) throw new Error("NOT_FOUND:Complete phone verification to start your application");
+      const otpResult = await otpService.sendOTP(phone, user.id);
+      if (!otpResult.success) throw new Error(`OTP:${otpResult.message}`);
+      const contact = await userPiiService.resolveEmailAndPhone(user, { actorId: user.id });
+      return {
+        userId: user.id,
+        email: contact.email ?? email,
+        phoneNumber: contact.phoneNumber,
+        step: 1,
+        nextStep: "verify-otp" as const,
+        devOtp: "devOtp" in otpResult ? otpResult.devOtp : undefined,
+      };
     }
 
     if (session.providerId) {

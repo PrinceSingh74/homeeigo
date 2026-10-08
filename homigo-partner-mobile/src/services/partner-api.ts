@@ -1332,7 +1332,7 @@ export const partnerApi = {
     /** Edit the facts of an own certification / insurance claim; the row goes back to DECLARED. */
     edit: (kind: "certifications" | "insurance", rowId: number, body: EditCapabilityBody) =>
       request<{ row: CapabilityWriteRow }>(`/api/providers/me/capabilities/${kind}/${rowId}`, { method: "PATCH", body }),
-    /** Withdraw an own claim — DECLARED rows only (a language only while its source is SELF). */
+    /** Withdraw an own claim — DECLARED or REJECTED rows (a language only while its source is SELF); 409 `CAPABILITY_LOCKED` otherwise. */
     remove: (kind: "skills" | "certifications" | "equipment" | "insurance" | "languages", rowId: number) =>
       request<{ deleted: true }>(`/api/providers/me/capabilities/${kind}/${rowId}`, { method: "DELETE" }),
   },

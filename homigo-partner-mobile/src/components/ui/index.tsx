@@ -8,7 +8,9 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Keyboard,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +21,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { keyboardOverlap } from "@/lib/keyboard-overlap";
 import { color, elevation, radius, space, tabular, tone, touch, type, type Tone } from "@/theme/tokens";
 
 /**
@@ -383,6 +386,50 @@ export function EmptyState({
   );
 }
 
+/* ------------------------------------------------------- keyboard avoider */
+
+/**
+ * Keeps its content above the keyboard by padding its own bottom edge.
+ *
+ * iOS uses React Native's `KeyboardAvoidingView`. Android does not: there the "keyboard hid" event
+ * carries the height of the visible frame where a position is expected, so the stock view kept
+ * padding after the keyboard had gone (a sheet floated 48 pt above the bottom edge, a docked footer
+ * 24 pt above its place). Here the padding is the measured overlap while the keyboard is shown and
+ * nothing once it is hidden (`keyboardOverlap`).
+ */
+export function KeyboardAvoider({ style, children }: { style?: StyleProp<ViewStyle>; children: ReactNode }) {
+  const ref = useRef<View>(null);
+  const [pad, setPad] = useState(0);
+  useEffect(() => {
+    if (Platform.OS === "ios") return;
+    const show = Keyboard.addListener("keyboardDidShow", (e) => {
+      const keyboardTop = e?.endCoordinates?.screenY;
+      const node = ref.current;
+      if (!node) return;
+      // `measure`, not `measureInWindow`: on Android the latter is counted from under the status bar,
+      // which left a docked footer one status bar's height under the keyboard.
+      node.measure((_x, _y, _w, h, _pageX, pageY) => setPad(keyboardOverlap({ visible: true, viewBottom: pageY + h, keyboardTop })));
+    });
+    const hide = Keyboard.addListener("keyboardDidHide", () => setPad(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  if (Platform.OS === "ios") {
+    return (
+      <KeyboardAvoidingView behavior="padding" style={style}>
+        {children}
+      </KeyboardAvoidingView>
+    );
+  }
+  return (
+    <View ref={ref} collapsable={false} style={[style, pad > 0 ? { paddingBottom: pad } : null]}>
+      {children}
+    </View>
+  );
+}
+
 /* ----------------------------------------------------------------- sheet */
 
 /**
@@ -410,11 +457,11 @@ export function Sheet({
 }) {
   const insets = useSafeAreaInsets();
   // A modal is not moved by the keyboard on iOS, and under Android edge-to-edge its window is not
-  // resized either. The avoiding view pads by how much the keyboard actually overlaps the sheet, so
-  // it adds nothing where the window was resized. Every sheet with an input gets this without asking.
+  // resized either. The avoider pads by how much the keyboard actually overlaps the sheet, so it
+  // adds nothing where the window was resized. Every sheet with an input gets this without asking.
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => (dismissable ? onClose() : undefined)}>
-      <KeyboardAvoidingView behavior="padding" style={styles.sheetRoot}>
+      <KeyboardAvoider style={styles.sheetRoot}>
         {/* The scrim is a button only while it can close the sheet; otherwise it is not announced. */}
         <Pressable
           style={StyleSheet.absoluteFill}
@@ -436,7 +483,7 @@ export function Sheet({
           </ScrollView>
           {footer ? <View style={styles.sheetFooter}>{footer}</View> : null}
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAvoider>
     </Modal>
   );
 }

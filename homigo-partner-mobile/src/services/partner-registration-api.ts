@@ -51,7 +51,9 @@ export const partnerRegistrationApi = {
   },
   resumeApplication(body: { email: string; password: string }) {
     return regRequest<
-      OnboardingProgressPayload & { userId: string; email: string; registrationToken: string }
+      // An account that stopped before the OTP answers with `nextStep: "verify-otp"` (a new OTP was
+      // sent) and none of the progress fields: go to the OTP step.
+      Partial<OnboardingProgressPayload> & { userId: string; email: string; registrationToken?: string; nextStep?: string; devOtp?: string }
     >("/api/partner/register/resume", { method: "POST", body }).then(async (d) => {
       if (d.registrationToken) await setRegistrationToken(d.registrationToken);
       return d;

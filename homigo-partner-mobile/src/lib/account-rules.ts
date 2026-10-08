@@ -20,6 +20,20 @@ export function fullName(first: string | null | undefined, last: string | null |
   return name || null;
 }
 
+/* ----------------------------------------------------------- notifications */
+
+/**
+ * Why an alert channel cannot be switched on, in words. The server sends a reason CODE
+ * (`apps/backend/src/notifications/channel-availability.ts`); the code itself is never shown.
+ */
+export function channelUnavailableSentence(reason: string | null | undefined): string {
+  if (reason === "no_registered_device") return "This phone is not registered for push alerts yet.";
+  if (reason === "no_email_on_file") return "There is no email address on your account.";
+  if (reason === "no_phone_on_file") return "There is no phone number on your account.";
+  if (reason === "provider_not_configured") return "Not available on your account yet.";
+  return "Not available for your account.";
+}
+
 /* ---------------------------------------------------------------- password */
 
 /** `POST /api/auth/change-password`: 8–128 characters with upper, lower, digit and special. */

@@ -256,7 +256,15 @@ export default function PartnerRegisterPage() {
       });
       setEmail(progress.email);
       setUserId(progress.userId);
-      applyProgress(progress);
+      // The account was created but its phone was never verified: the server has sent a new OTP.
+      if (progress.nextStep === "verify-otp") {
+        setOtpSent(true);
+        if (progress.devOtp) setDevOtpHint(progress.devOtp);
+        setStep("account");
+        setBootPhase("ready");
+        return;
+      }
+      applyProgress({ ...progress, completedSteps: progress.completedSteps ?? [], percentComplete: progress.percentComplete ?? 0 });
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {

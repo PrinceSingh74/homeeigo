@@ -1,43 +1,76 @@
+import { Camera, Check, Images } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import { OnboardingFrame, Problem } from "@/components/onboarding/OnboardingFrame";
+import { Banner, Button, Card, Pill, T } from "@/components/ui";
 import { checkDocumentFile } from "@/lib/account-rules";
+import { shrinkPickedPhoto } from "@/lib/shrink-photo";
+import { registrationErrorSentence } from "@/lib/onboarding-form";
 import { partnerRegistrationApi } from "@/services/partner-registration-api";
-import { partnerColors } from "@/theme/colors";
+import { color, radius, space } from "@/theme/tokens";
 
 const DOC_TYPES = [
-  { id: "pan", label: "PAN certificate", hint: "Clear photo of PAN card" },
-  { id: "aadhar", label: "Aadhaar card", hint: "Front side is enough" },
-  { id: "bank_cheque", label: "Cancelled cheque", hint: "Used to verify payout account" },
+  { id: "pan", label: "PAN certificate", hint: "A clear photo of your PAN card." },
+  { id: "aadhar", label: "Aadhaar card", hint: "A clear photo of your Aadhaar card." },
+  { id: "bank_cheque", label: "Cancelled cheque", hint: "A clear photo of a cancelled cheque." },
 ] as const;
 
-export function DocumentsStep({
-  loading,
-  onContinue,
-}: {
-  loading: boolean;
-  onContinue: (uploaded: string[]) => void;
-}) {
+type Note = { tone: "success" | "problem"; text: string };
+
+/**
+ * Step 7: one photo per document through `POST /documents/upload`, then
+ * `POST /onboarding/documents` with the types uploaded. The server takes the step with any number
+ * of them, so the applicant can continue without.
+ */
+export function DocumentsStep({ loading, onContinue }: { loading: boolean; onContinue: (uploaded: string[]) => void }) {
   const [uploaded, setUploaded] = useState<Set<string>>(new Set());
   const [previews, setPreviews] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState<{ type: string; camera: boolean } | null>(null);
+  const [notes, setNotes] = useState<Record<string, Note>>({});
+  const [listProblem, setListProblem] = useState<string | null>(null);
+  const [listing, setListing] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    void partnerRegistrationApi
+    let cancelled = false;
+    setListing(true);
+    setListProblem(null);
+    partnerRegistrationApi
       .listDocuments()
-      .then((docs) => setUploaded(new Set(docs.map((d) => d.documentType))))
-      .catch(() => undefined);
-  }, []);
+      .then((docs) => {
+        // Added to what this visit already uploaded, never replacing it.
+        if (!cancelled) setUploaded((prev) => new Set([...prev, ...docs.map((d) => d.documentType)]));
+      })
+      .catch((e) => {
+        if (!cancelled) setListProblem(registrationErrorSentence(e, "The documents you already uploaded could not be checked."));
+      })
+      .finally(() => {
+        if (!cancelled) setListing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
 
-  async function pick(type: string, camera: boolean) {
-    setMessage(null);
+  function note(type: string, value: Note | null) {
+    setNotes((prev) => {
+      const next = { ...prev };
+      if (value) next[type] = value;
+      else delete next[type];
+      return next;
+    });
+  }
+
+  async function pick(type: string, label: string, camera: boolean) {
+    if (busy) return;
+    note(type, null);
     // Only the camera needs a permission. The gallery is the system picker (Android photo picker,
     // iOS PHPicker), which hands over just the chosen photo and asks for nothing.
     if (camera) {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        setMessage("Camera permission denied. Use Gallery, or enable Camera in system settings.");
+        note(type, { tone: "problem", text: "Camera permission denied. Use Gallery, or enable Camera in system settings." });
         return;
       }
     }
@@ -49,128 +82,93 @@ export function DocumentsStep({
       // iOS library picks: ask for the compatible representation (JPEG rather than HEIC).
       preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
     };
-    const result = camera
-      ? await ImagePicker.launchCameraAsync(pickerOptions)
-      : await ImagePicker.launchImageLibraryAsync(pickerOptions);
+    const result = camera ? await ImagePicker.launchCameraAsync(pickerOptions) : await ImagePicker.launchImageLibraryAsync(pickerOptions);
     if (result.canceled) return;
-    const asset = result.assets[0];
+    // A large capture is shrunk first (2000 px keeps a document legible and under the 5 MB limit).
+    const asset = result.assets[0] ? await shrinkPickedPhoto(result.assets[0]) : undefined;
     // The data URL is labelled by what the bytes ARE, never by `asset.mimeType`: on Android the
     // bytes are re-encoded JPEG while the claimed type stays the source's (HEIC, PNG). The rule is the
     // endpoint's own (document-upload.service: JPEG / PNG / WebP by signature, 5 MB) — a photo it
     // would refuse is refused here, in words, before the upload.
     const check = checkDocumentFile({ base64: asset?.base64 }, type);
     if (!check.ok) {
-      setMessage(check.message);
+      note(type, { tone: "problem", text: check.message });
       return;
     }
-    setBusy(type);
+    setBusy({ type, camera });
     try {
-      await partnerRegistrationApi.uploadDocument({
-        file: check.file,
-        documentType: type,
-        fileName: check.fileName,
-      });
+      await partnerRegistrationApi.uploadDocument({ file: check.file, documentType: type, fileName: check.fileName });
       setUploaded((prev) => new Set(prev).add(type));
       if (asset?.uri) setPreviews((prev) => ({ ...prev, [type]: asset.uri }));
-      setMessage(`${type.replace(/_/g, " ")} uploaded`);
+      note(type, { tone: "success", text: `${label} uploaded.` });
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Document upload failed. Try JPG or PNG.");
+      note(type, { tone: "problem", text: registrationErrorSentence(e, "The photo could not be uploaded. Try again.") });
     } finally {
       setBusy(null);
     }
   }
 
+  const done = DOC_TYPES.filter((d) => uploaded.has(d.id)).length;
+
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.title}>Documents</Text>
-      <Text style={styles.copy}>
-        Photograph PAN, Aadhaar, and a cancelled cheque. You can skip and add them later — HQ still reviews the file.
-      </Text>
-      <Text style={styles.meta}>
-        {uploaded.size} of {DOC_TYPES.length} uploaded
-      </Text>
-      {DOC_TYPES.map((doc) => (
-        <View key={doc.id} style={styles.card}>
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>{doc.label}</Text>
-              <Text style={styles.hint}>{doc.hint}</Text>
+    <OnboardingFrame
+      heading="Documents"
+      lead="Take or choose a clear photo of each: JPEG, PNG or WebP, up to 5 MB. You can continue without them."
+      primary={<Button label="Save & continue to assessment" onPress={() => onContinue([...uploaded])} loading={loading} disabled={Boolean(busy)} />}
+    >
+      <T kind="smallStrong" tone="slate" numeric>
+        {listing ? "Checking your uploads…" : `${done} of ${DOC_TYPES.length} uploaded`}
+      </T>
+      {listProblem ? <Problem message={listProblem} onRetry={() => setReloadKey((k) => k + 1)} testID="onboarding-documents-list-problem" /> : null}
+      {DOC_TYPES.map((doc) => {
+        const has = uploaded.has(doc.id);
+        const working = busy?.type === doc.id;
+        const said = notes[doc.id];
+        return (
+          <Card key={doc.id} style={styles.card}>
+            <View style={styles.head}>
+              <View style={styles.headText}>
+                <T kind="bodyStrong">{doc.label}</T>
+                <T kind="small">{doc.hint}</T>
+              </View>
+              {has ? <Pill label="Uploaded" tone="success" icon={Check} /> : null}
             </View>
-            {uploaded.has(doc.id) ? <Text style={styles.ok}>Uploaded</Text> : null}
-          </View>
-          {previews[doc.id] ? (
-            <Image source={{ uri: previews[doc.id] }} style={styles.preview} />
-          ) : null}
-          <View style={styles.actions}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={busy === doc.id ? "Uploading" : uploaded.has(doc.id) ? `Retake ${doc.label}` : `Camera ${doc.label}`}
-              style={styles.ghost}
-              onPress={() => void pick(doc.id, true)}
-              disabled={busy === doc.id}
-            >
-              <Text style={styles.ghostText}>
-                {busy === doc.id ? "Uploading…" : uploaded.has(doc.id) ? "Retake" : "Camera"}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={uploaded.has(doc.id) ? `Replace ${doc.label} from gallery` : `Gallery ${doc.label}`}
-              style={styles.ghost}
-              onPress={() => void pick(doc.id, false)}
-              disabled={busy === doc.id}
-            >
-              <Text style={styles.ghostText}>{uploaded.has(doc.id) ? "Replace" : "Gallery"}</Text>
-            </Pressable>
-          </View>
-        </View>
-      ))}
-      {message ? <Text style={styles.hint}>{message}</Text> : null}
-      <Pressable
-        accessibilityRole="button"
-        style={styles.button}
-        disabled={loading || Boolean(busy)}
-        onPress={() => onContinue([...uploaded])}
-      >
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save & continue to assessment</Text>}
-      </Pressable>
-    </View>
+            {previews[doc.id] ? <Image accessibilityLabel={`${doc.label} photo`} source={{ uri: previews[doc.id] }} style={styles.preview} resizeMode="cover" /> : null}
+            {said ? said.tone === "success" ? <Banner tone="success" message={said.text} /> : <Problem message={said.text} /> : null}
+            <View style={styles.actions}>
+              <Button
+                label={has ? "Retake" : "Camera"}
+                accessibilityLabel={working && busy?.camera ? "Uploading" : has ? `Retake ${doc.label}` : `Camera ${doc.label}`}
+                variant="secondary"
+                icon={Camera}
+                onPress={() => void pick(doc.id, doc.label, true)}
+                loading={working && busy?.camera === true}
+                disabled={Boolean(busy)}
+                style={styles.half}
+              />
+              <Button
+                label={has ? "Replace" : "Gallery"}
+                accessibilityLabel={working && busy?.camera === false ? "Uploading" : has ? `Replace ${doc.label} from gallery` : `Gallery ${doc.label}`}
+                variant="secondary"
+                icon={Images}
+                onPress={() => void pick(doc.id, doc.label, false)}
+                loading={working && busy?.camera === false}
+                disabled={Boolean(busy)}
+                style={styles.half}
+              />
+            </View>
+          </Card>
+        );
+      })}
+    </OnboardingFrame>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: 12 },
-  title: { fontSize: 22, fontWeight: "800", color: partnerColors.text, letterSpacing: -0.3 },
-  copy: { color: partnerColors.textSecondary, lineHeight: 20, fontSize: 14 },
-  meta: { fontSize: 12, fontWeight: "700", color: partnerColors.primary },
-  card: {
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    borderRadius: 16,
-    padding: 14,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    gap: 10,
-  },
-  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8 },
-  label: { fontWeight: "700", color: partnerColors.text },
-  ok: { color: "#059669", fontWeight: "700", fontSize: 12 },
-  preview: { height: 120, borderRadius: 12, backgroundColor: "#e8efe9" },
-  actions: { flexDirection: "row", gap: 8 },
-  ghost: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  ghostText: { fontWeight: "700", color: partnerColors.primary },
-  hint: { color: partnerColors.textMuted, fontSize: 12, lineHeight: 16 },
-  button: {
-    backgroundColor: partnerColors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  buttonText: { color: "#fff", fontWeight: "700" },
+  card: { gap: space.md },
+  head: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: space.sm },
+  headText: { flex: 1, gap: space.xs / 2 },
+  preview: { width: "100%", height: 160, borderRadius: radius.control, backgroundColor: color.well },
+  actions: { flexDirection: "row", gap: space.sm },
+  half: { flex: 1 },
 });

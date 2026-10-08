@@ -28,6 +28,19 @@ export type NoShowView = {
 };
 
 /**
+ * Whole minutes in the unit a person reads them in: minutes up to an hour and a half, then hours,
+ * then days. A partner who arrives long before the booked time is otherwise shown "23975 min".
+ */
+function waitInWords(minutes: number): string {
+  if (minutes < 90) return `${minutes} min`;
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  if (days > 0) return [`${days} ${days === 1 ? "day" : "days"}`, hours > 0 ? `${hours} hr` : ""].filter(Boolean).join(" ");
+  return [`${hours} hr`, mins > 0 ? `${mins} min` : ""].filter(Boolean).join(" ");
+}
+
+/**
  * @param fetchedAtMs when the `/actions` answer carrying `preview` arrived (React Query `dataUpdatedAt`)
  * @param nowMs       the current time on the same clock
  */
@@ -42,7 +55,7 @@ export function noShowView(preview: NoShowPreview, fetchedAtMs: number, nowMs: n
       ? "Not available yet"
       : minutesLeft === 0
         ? "Checking the wait…"
-        : `You can report in ${minutesLeft} min`;
+        : `You can report in ${waitInWords(minutesLeft)}`;
   return {
     message: preview.message,
     canReport: preview.canReport,

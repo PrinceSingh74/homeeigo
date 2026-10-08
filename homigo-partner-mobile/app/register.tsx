@@ -1,35 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { CheckCircle2 } from "lucide-react-native";
+import { BackHandler, StyleSheet, View } from "react-native";
 import { PartnerScreen } from "@/components/PartnerScreen";
-import { OnboardingProgressHeader } from "@/components/onboarding/OnboardingProgressHeader";
-import { OnboardingStepper } from "@/components/onboarding/OnboardingStepper";
-import { OnboardingField } from "@/components/onboarding/OnboardingField";
-import { AccountStep, validateAccount } from "@/components/onboarding/AccountStep";
-import { ServicesStep } from "@/components/onboarding/ServicesStep";
-import { ProfileStep, validateProfile } from "@/components/onboarding/ProfileStep";
-import { LocationStep } from "@/components/onboarding/LocationStep";
-import { AvailabilityStep } from "@/components/onboarding/AvailabilityStep";
-import { KycStep, validateKyc } from "@/components/onboarding/KycStep";
-import { DocumentsStep } from "@/components/onboarding/DocumentsStep";
+import { AccountStep } from "@/components/onboarding/AccountStep";
 import { AssessmentStep } from "@/components/onboarding/AssessmentStep";
-import { TrainingStep } from "@/components/onboarding/TrainingStep";
+import { AvailabilityStep } from "@/components/onboarding/AvailabilityStep";
+import { DocumentsStep } from "@/components/onboarding/DocumentsStep";
+import { KycStep } from "@/components/onboarding/KycStep";
+import { LocationStep } from "@/components/onboarding/LocationStep";
+import { OnboardingFrame, OnboardingFrameProvider, SIGN_UP_TITLE, TextNamedPrimaryButton, type OnboardingFrameValue } from "@/components/onboarding/OnboardingFrame";
+import { ProfileStep } from "@/components/onboarding/ProfileStep";
 import { ReviewStep } from "@/components/onboarding/ReviewStep";
-import {
-  draftSection,
-  MOBILE_STEP_LABELS,
-  resolveMobileOnboardingStep,
-  type MobileOnboardingStep,
-} from "@/lib/onboarding-resume";
-import { mapCityChoice, mapSkillToServiceId, MOBILE_STEPPER, stepperIdForStep } from "@/lib/onboarding-catalog";
+import { ServicesStep } from "@/components/onboarding/ServicesStep";
+import { TrainingStep } from "@/components/onboarding/TrainingStep";
+import { Banner, Button, Card, Field, SkeletonCard, T } from "@/components/ui";
+import { OFFLINE_SENTENCE } from "@/lib/error-sentence";
+import { mapCityChoice, mapSkillToServiceId } from "@/lib/onboarding-catalog";
+import { ONBOARDING_LIMITS, accountAwaitsOtp, digitsOnly, type CreatedAccount, registrationErrorSentence, stepIndicatorText, stepPosition, validateAccount, validateKyc, validateProfile } from "@/lib/onboarding-form";
+import { draftSection, formatLastSaved, resolveMobileOnboardingStep, type MobileOnboardingStep } from "@/lib/onboarding-resume";
 import {
   clearApplicationInvite,
   getApplicationInvite,
@@ -39,14 +28,15 @@ import {
   setPendingReferralCode,
 } from "@/lib/registration-session";
 import { partnerRegistrationApi } from "@/services/partner-registration-api";
-import { partnerColors } from "@/theme/colors";
+import { color, radius, space } from "@/theme/tokens";
 
 type BootPhase = "loading" | "ready" | "resume-sign-in";
 
 const STEP_BACK: Partial<Record<MobileOnboardingStep, MobileOnboardingStep>> = {
   account: "welcome",
   otp: "account",
-  services: "otp",
+  // No way back from Services: the mobile is verified by then, and the OTP step can only answer
+  // "No valid OTP found" a second time, with no way forward again.
   profile: "services",
   location: "profile",
   availability: "location",
@@ -57,18 +47,19 @@ const STEP_BACK: Partial<Record<MobileOnboardingStep, MobileOnboardingStep>> = {
   review: "training",
 };
 
+const FIELDS_NEED_FIXING = "Some details need fixing. Check the fields marked above.";
+
 export default function RegisterScreen() {
   const [bootPhase, setBootPhase] = useState<BootPhase>("loading");
+  const [bootKey, setBootKey] = useState(0);
   const [step, setStep] = useState<MobileOnboardingStep>("welcome");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [restored, setRestored] = useState(false);
-  const [percentComplete, setPercentComplete] = useState(0);
-  const [resumeLabel, setResumeLabel] = useState("Welcome");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [changesNotes, setChangesNotes] = useState<string | null>(null);
-  const [inviteWarning, setInviteWarning] = useState<string | null>(null);
+  const [inviteWarning, setInviteWarning] = useState<{ message: string; retry: boolean } | null>(null);
   const [invite, setInvite] = useState<{
     name: string;
     firstName?: string;
@@ -82,9 +73,13 @@ export default function RegisterScreen() {
   const [userId, setUserId] = useState("");
   const [email, setEmail] = useState("");
   const [devOtp, setDevOtp] = useState<string | undefined>();
+  /** The account step 1 created in this sitting, still waiting for its OTP. */
+  const [createdAccount, setCreatedAccount] = useState<CreatedAccount | null>(null);
   const [otp, setOtp] = useState("");
   const [resumePassword, setResumePassword] = useState("");
   const [stepError, setStepError] = useState<string | null>(null);
+  /** What the hardware back button does on the screen now showing; null leaves it to the system. */
+  const hardwareBack = useRef<(() => void) | null>(null);
   const [returnToReview, setReturnToReview] = useState(false);
 
   const [form, setForm] = useState({
@@ -162,9 +157,9 @@ export default function RegisterScreen() {
 
   function goTo(next: MobileOnboardingStep) {
     setStep(next);
-    setResumeLabel(MOBILE_STEP_LABELS[next]);
-    const idx = MOBILE_STEPPER.findIndex((s) => s.id === stepperIdForStep(next));
-    setPercentComplete(Math.round(((idx + 1) / MOBILE_STEPPER.length) * 100));
+    // The "saved" line is the server's timestamp for the step the application was resumed at; once
+    // the applicant moves, it no longer describes what is on screen.
+    setLastSavedAt(null);
     setFieldErrors({});
     setStepError(null);
     setError(null);
@@ -196,9 +191,7 @@ export default function RegisterScreen() {
     const isChangesRequested = Boolean(progress.changesRequested);
     if (progress.submitted && !isChangesRequested) {
       setStep("done");
-      setPercentComplete(100);
-      setResumeLabel("Submitted");
-      setLastSavedAt(progress.lastSavedAt ?? null);
+      setLastSavedAt(null);
       setChangesNotes(null);
       if (progress.userId) setUserId(progress.userId);
       if (progress.email) setEmail(progress.email);
@@ -216,8 +209,6 @@ export default function RegisterScreen() {
       progress.changesRequestedStep,
     );
     setStep(next);
-    setPercentComplete(progress.percentComplete);
-    setResumeLabel(progress.resumeLabel ?? MOBILE_STEP_LABELS[next]);
     setLastSavedAt(progress.lastSavedAt ?? null);
     applyDraft(progress.draftData ?? {});
     setChangesNotes(isChangesRequested ? progress.changesRequestedNotes ?? null : null);
@@ -254,14 +245,17 @@ export default function RegisterScreen() {
           }
         } catch (err) {
           invalidInvite = true;
-          await clearApplicationInvite();
+          const sentence = registrationErrorSentence(err, "This invite is invalid or expired.");
+          const unreachable = sentence === OFFLINE_SENTENCE;
+          // Only an invite the server refused is thrown away. One that could not be checked (no
+          // connection) is kept, so it is still sent with the OTP once the connection is back.
+          if (!unreachable) await clearApplicationInvite();
           if (!cancelled) {
             setInvite(null);
-            const message = err instanceof Error ? err.message : "";
             setInviteWarning(
-              /reach backend|network|failed to fetch/i.test(message)
-                ? "Could not verify this invite. Check your connection and retry."
-                : "This invite is invalid or expired. You can still apply.",
+              unreachable
+                ? { message: "Could not verify this invite. Check your connection and retry.", retry: true }
+                : { message: `${sentence}${/[.!?]$/.test(sentence) ? "" : "."} You can still apply.`, retry: false },
             );
           }
         }
@@ -286,15 +280,17 @@ export default function RegisterScreen() {
     return () => {
       cancelled = true;
     };
-  }, [params.invite, params.ref]);
+  }, [params.invite, params.ref, bootKey]);
 
   async function run(fn: () => Promise<void>) {
+    if (loading) return;
     setLoading(true);
     setError(null);
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Network unavailable — your progress is saved.");
+      // The server's own sentence; "You're offline…" when there was no answer at all.
+      setError(registrationErrorSentence(e, "That did not go through. Try again."));
     } finally {
       setLoading(false);
     }
@@ -303,509 +299,525 @@ export default function RegisterScreen() {
   async function handleResumeSignIn() {
     await run(async () => {
       const progress = await partnerRegistrationApi.resumeApplication({ email, password: resumePassword });
-      applyProgress(progress);
+      // The account was created but its phone was never verified: the server has sent a new OTP.
+      if (progress.nextStep === "verify-otp") {
+        setUserId(progress.userId);
+        if (progress.email) setEmail(progress.email);
+        setDevOtp(progress.devOtp);
+        setBootPhase("ready");
+        goTo("otp");
+        return;
+      }
+      applyProgress({ ...progress, completedSteps: progress.completedSteps ?? [], percentComplete: progress.percentComplete ?? 0 });
     });
   }
 
-  const showStepper = bootPhase === "ready" && step !== "welcome";
-  const backStep = STEP_BACK[step];
+  const goToSignIn = () => router.replace("/login");
+
+  // Android's back button does what the on-screen Back does. Left to the system it closed the whole
+  // application form: at the OTP step that stranded an account that was created but not yet
+  // verified, which "Continue existing application" then refuses. Where there is no step to go
+  // back to (the first screen, or a step that cannot be undone) the system's back still applies.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      const back = hardwareBack.current;
+      if (!back) return false;
+      back();
+      return true;
+    });
+    return () => sub.remove();
+  }, []);
+  hardwareBack.current = null;
 
   if (bootPhase === "loading") {
     return (
-      <PartnerScreen title="Become a HOMEEIGO Partner" subtitle="Loading your application…">
-        <View style={styles.loadingBox}>
-          <ActivityIndicator color={partnerColors.primary} />
+      <PartnerScreen title={SIGN_UP_TITLE} subtitle="Loading your application…">
+        <View style={styles.stack} accessible accessibilityRole="progressbar" accessibilityLabel="Loading your application">
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={3} />
         </View>
       </PartnerScreen>
     );
   }
 
-  return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <PartnerScreen
-        title="Become a HOMEEIGO Partner"
-        subtitle="Complete your application — progress is saved automatically."
-        showBack={(Boolean(backStep) || returnToReview) && bootPhase === "ready"}
-        onBack={() => {
-          if (returnToReview) {
-            setReturnToReview(false);
-            goTo("review");
-            return;
-          }
-          if (backStep) goTo(backStep);
-        }}
-      >
-        <View style={styles.body}>
-          {showStepper ? <OnboardingStepper currentStep={step} /> : null}
+  const ready = bootPhase === "ready";
+  const backStep = STEP_BACK[step];
+  const position = ready ? stepPosition(step) : null;
+  const onInviteScreens = ready && (step === "welcome" || step === "account");
 
-          {step !== "welcome" && step !== "done" ? (
-            <OnboardingProgressHeader
-              percentComplete={percentComplete}
-              resumeLabel={resumeLabel}
-              lastSavedAt={lastSavedAt}
-              restored={restored}
-            />
-          ) : null}
-
-          {error ? (
-            <Text accessibilityRole="alert" style={styles.error}>
-              {error}
-            </Text>
-          ) : null}
-
-          {changesNotes ? (
-            <View style={styles.changesBanner}>
-              <Text style={styles.changesTitle}>HQ requested updates</Text>
-              <Text style={styles.changesCopy}>{changesNotes}</Text>
-              <Text style={styles.changesStep}>Continue from {resumeLabel}</Text>
-            </View>
-          ) : null}
-
-          {bootPhase === "resume-sign-in" ? (
-            <View style={styles.resumeCard}>
-              <Text style={styles.resumeTitle}>Continue your application</Text>
-              <Text style={styles.resumeCopy}>Sign in with the email and password from your application.</Text>
-              <OnboardingField
-                label="Email"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
+  const notices = (
+    <>
+      {ready && changesNotes && step !== "done" ? <Banner tone="warning" title="HOMEEIGO asked for changes" message={changesNotes} testID="onboarding-changes-requested" /> : null}
+      {inviteWarning && onInviteScreens ? (
+        inviteWarning.retry ? (
+          <Banner
+            tone="warning"
+            title="Invite could not be checked"
+            message={inviteWarning.message}
+            action={
+              <Button
+                label="Try again"
+                variant="secondary"
+                onPress={() => {
+                  setInviteWarning(null);
+                  setBootPhase("loading");
+                  setBootKey((k) => k + 1);
+                }}
               />
-              <OnboardingField
-                label="Password"
-                value={resumePassword}
-                onChangeText={setResumePassword}
-                secureTextEntry
-              />
-              <Pressable accessibilityRole="button" style={styles.button} onPress={() => void handleResumeSignIn()}>
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Continue application</Text>}
-              </Pressable>
-            </View>
-          ) : null}
-
-          {inviteWarning && (step === "welcome" || step === "account") && bootPhase === "ready" ? (
-            <View accessibilityRole="alert" style={styles.changesBanner}>
-              <Text style={styles.changesTitle}>Invite could not be used</Text>
-              <Text style={styles.changesCopy}>{inviteWarning}</Text>
-            </View>
-          ) : null}
-
-          {invite && (step === "welcome" || step === "account") && bootPhase === "ready" ? (
-            <View style={styles.inviteBanner}>
-              <Text style={styles.inviteTitle}>HOMEEIGO invited {invite.name}</Text>
-              <Text style={styles.inviteCopy}>
-                {invite.skillInterest ? `${invite.skillInterest} · ` : ""}
-                {invite.city ?? "Complete your partner application."}
-                {invite.phoneLast4
-                  ? ` Use the mobile ending in ${invite.phoneLast4}.`
-                  : " Use the same mobile number HQ has on file."}
-              </Text>
-            </View>
-          ) : null}
-
-          {step === "welcome" && bootPhase === "ready" ? (
-            <>
-              <Text style={styles.copy}>
-                Same onboarding as Partner Web — account, services, KYC, documents, then a short skill assessment.
-              </Text>
-              <Pressable accessibilityRole="button" style={styles.button} onPress={() => goTo("account")}>
-                <Text style={styles.buttonText}>{invite ? "Continue invite" : "Start application"}</Text>
-              </Pressable>
-              <Pressable accessibilityRole="button" onPress={() => setBootPhase("resume-sign-in")} style={styles.secondaryBtn}>
-                <Text style={styles.secondaryBtnText}>Continue existing application</Text>
-              </Pressable>
-            </>
-          ) : null}
-
-          {step === "account" && bootPhase === "ready" && restored ? (
-            <View style={styles.resumeCard}>
-              <Text style={styles.resumeTitle}>Account verified</Text>
-              <Text style={styles.resumeCopy}>Continue with the next steps of your application.</Text>
-              <Pressable accessibilityRole="button" style={styles.button} onPress={() => goTo("services")}>
-                <Text style={styles.buttonText}>Continue from {resumeLabel}</Text>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {step === "account" && bootPhase === "ready" && !restored ? (
-            <AccountStep
-              form={form}
-              email={email}
-              errors={fieldErrors}
-              loading={loading}
-              onEmailChange={setEmail}
-              onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
-              onSubmit={() => {
-                const next = validateAccount(form, email);
-                setFieldErrors(next);
-                if (Object.keys(next).length) return;
-                void run(async () => {
-                  const res = await partnerRegistrationApi.step1({
-                    email,
-                    phoneNumber: form.phoneNumber,
-                    firstName: form.firstName,
-                    lastName: form.lastName,
-                    password: form.password,
-                    confirmPassword: form.confirmPassword,
-                  });
-                  setUserId(res.userId);
-                  setDevOtp(res.devOtp);
-                  goTo("otp");
-                });
-              }}
-            />
-          ) : null}
-
-          {step === "otp" ? (
-            <>
-              <Text style={styles.stepTitle}>Verify mobile</Text>
-              <Text style={styles.copy}>Enter the 6-digit OTP sent to +91{form.phoneNumber}.</Text>
-              {devOtp ? <Text style={styles.hint}>Dev OTP: {devOtp}</Text> : null}
-              <OnboardingField label="OTP" value={otp} placeholder="6-digit OTP" keyboardType="numeric" maxLength={6} onChangeText={setOtp} />
-              <Pressable
-                accessibilityRole="button"
-                style={styles.button}
-                disabled={loading || otp.length < 6}
-                onPress={() =>
-                  void run(async () => {
-                    await partnerRegistrationApi.verifyOtp({
-                      email,
-                      otp,
-                      userId,
-                      inviteToken: (await getApplicationInvite()) ?? undefined,
-                      referralCode: (await getPendingReferralCode()) ?? undefined,
-                    });
-                    goTo("services");
-                  })
-                }
-              >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Verify OTP</Text>}
-              </Pressable>
-            </>
-          ) : null}
-
-          {step === "services" ? (
-            <ServicesStep
-              serviceCategories={form.serviceCategories}
-              city={form.city}
-              experienceYears={form.experienceYears}
-              error={stepError ?? undefined}
-              loading={loading}
-              onToggleService={(id) =>
-                setForm((prev) => ({
-                  ...prev,
-                  serviceCategories: prev.serviceCategories.includes(id)
-                    ? prev.serviceCategories.filter((s) => s !== id)
-                    : [...prev.serviceCategories, id],
-                }))
-              }
-              onSelectCity={(city) => setForm((prev) => ({ ...prev, city }))}
-              onExperience={(experienceYears) => setForm((prev) => ({ ...prev, experienceYears }))}
-              onSubmit={() => {
-                if (!form.serviceCategories.length) {
-                  setStepError("Select at least one service");
-                  return;
-                }
-                if (!form.city) {
-                  setStepError("Select a city");
-                  return;
-                }
-                setStepError(null);
-                void run(async () => {
-                  await partnerRegistrationApi.saveServices({
-                    serviceCategories: form.serviceCategories,
-                    city: form.city,
-                    experienceYears: Number(form.experienceYears) || 0,
-                  });
-                  await partnerRegistrationApi.saveSkills({
-                    primarySkill: form.serviceCategories[0],
-                    secondarySkills: form.serviceCategories.slice(1),
-                    experienceYears: Number(form.experienceYears) || 0,
-                  });
-                  goTo("profile");
-                });
-              }}
-            />
-          ) : null}
-
-          {step === "profile" ? (
-            <ProfileStep
-              dateOfBirth={form.dateOfBirth}
-              gender={form.gender}
-              emergencyName={form.emergencyName}
-              emergencyPhone={form.emergencyPhone}
-              errors={fieldErrors}
-              loading={loading}
-              onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
-              onSubmit={() => {
-                const next = validateProfile(form);
-                setFieldErrors(next);
-                if (Object.keys(next).length) return;
-                void run(async () => {
-                  await partnerRegistrationApi.saveProfile({
-                    emergencyContactName: form.emergencyName,
-                    emergencyContactPhone: form.emergencyPhone,
-                    dateOfBirth: form.dateOfBirth,
-                    gender: form.gender,
-                  });
-                  afterSave("location");
-                });
-              }}
-            />
-          ) : null}
-
-          {step === "location" ? (
-            <LocationStep
-              city={form.city}
-              serviceRegions={form.serviceRegions}
-              serviceRadiusKm={form.serviceRadiusKm}
-              latitude={form.latitude}
-              longitude={form.longitude}
-              error={stepError ?? undefined}
-              loading={loading}
-              onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
-              onSubmit={() => {
-                if (!form.city.trim()) {
-                  setStepError("Enter your base city");
-                  return;
-                }
-                const regions = form.serviceRegions
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean);
-                setStepError(null);
-                void run(async () => {
-                  const radius = Number(form.serviceRadiusKm);
-                  const lat = Number(form.latitude);
-                  const lng = Number(form.longitude);
-                  const hasCoords =
-                    Boolean(form.latitude?.trim()) &&
-                    Boolean(form.longitude?.trim()) &&
-                    Number.isFinite(lat) &&
-                    Number.isFinite(lng);
-                  await partnerRegistrationApi.saveLocation({
-                    city: form.city.trim(),
-                    serviceRegions: regions.length ? regions : [form.city.trim()],
-                    serviceRadiusKm: radius,
-                    ...(hasCoords ? { baseLatitude: lat, baseLongitude: lng } : {}),
-                  });
-                  afterSave("availability");
-                });
-              }}
-            />
-          ) : null}
-
-          {step === "availability" ? (
-            <AvailabilityStep
-              workingHoursStart={form.workingHoursStart}
-              workingHoursEnd={form.workingHoursEnd}
-              workingDays={form.workingDays}
-              error={stepError ?? undefined}
-              loading={loading}
-              onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
-              onToggleDay={(day) =>
-                setForm((prev) => ({
-                  ...prev,
-                  workingDays: prev.workingDays.includes(day)
-                    ? prev.workingDays.filter((d) => d !== day)
-                    : [...prev.workingDays, day],
-                }))
-              }
-              onSubmit={() => {
-                if (form.workingDays.length === 0) {
-                  setStepError("Select at least one working day.");
-                  return;
-                }
-                setStepError(null);
-                void run(async () => {
-                  await partnerRegistrationApi.saveAvailability({
-                    workingHoursStart: form.workingHoursStart || "09:00",
-                    workingHoursEnd: form.workingHoursEnd || "18:00",
-                    workingDays: form.workingDays,
-                  });
-                  afterSave("kyc");
-                });
-              }}
-            />
-          ) : null}
-
-          {step === "kyc" ? (
-            <KycStep
-              panNumber={form.panNumber}
-              aadharNumber={form.aadharNumber}
-              bankAccountNumber={form.bankAccountNumber}
-              bankAccountHolder={form.bankAccountHolder}
-              ifscCode={form.ifscCode}
-              bankName={form.bankName}
-              errors={fieldErrors}
-              loading={loading}
-              onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
-              onSubmit={() => {
-                const next = validateKyc(form);
-                setFieldErrors(next);
-                if (Object.keys(next).length) return;
-                void run(async () => {
-                  await partnerRegistrationApi.saveKyc({
-                    panNumber: form.panNumber.trim().toUpperCase() || undefined,
-                    aadharNumber: form.aadharNumber.trim() || undefined,
-                    bankAccountNumber: form.bankAccountNumber.trim() || undefined,
-                    bankAccountHolder: form.bankAccountHolder.trim() || undefined,
-                    ifscCode: form.ifscCode.trim().toUpperCase() || undefined,
-                    bankName: form.bankName.trim() || undefined,
-                  });
-                  afterSave("documents");
-                });
-              }}
-            />
-          ) : null}
-
-          {step === "documents" ? (
-            <DocumentsStep
-              loading={loading}
-              onContinue={(uploaded) =>
-                void run(async () => {
-                  await partnerRegistrationApi.completeDocuments(uploaded);
-                  afterSave("assessment");
-                })
-              }
-            />
-          ) : null}
-
-          {step === "assessment" ? (
-            <AssessmentStep
-              loading={loading}
-              onPassed={() => {
-                afterSave("training");
-              }}
-            />
-          ) : null}
-
-          {step === "training" ? (
-            <TrainingStep
-              loading={loading}
-              onContinue={() =>
-                run(async () => {
-                  await partnerRegistrationApi.acknowledgeTraining();
-                  goTo("review");
-                })
-              }
-            />
-          ) : null}
-
-          {step === "review" ? (
-            <ReviewStep
-              loading={loading}
-              onEdit={(target) => {
-                setReturnToReview(true);
-                goTo(target);
-              }}
-              onSubmit={() =>
-                run(async () => {
-                  await partnerRegistrationApi.acknowledgeReview();
-                  await partnerRegistrationApi.submit();
-                  await clearApplicationInvite();
-                  goTo("done");
-                  setPercentComplete(100);
-                })
-              }
-            />
-          ) : null}
-
-          {step === "done" ? (
-            <>
-              <View style={styles.doneCard}>
-                <Text testID="onboarding-submitted" style={styles.doneTitle}>Application submitted</Text>
-                <Text style={styles.copy}>
-                  HQ will review your documents, KYC, and assessment. Typical turnaround is 1–2 business days.
-                </Text>
-              </View>
-              <Pressable accessibilityRole="button" style={styles.button} onPress={() => router.replace("/login")}>
-                <Text style={styles.buttonText}>Back to Sign In</Text>
-              </Pressable>
-            </>
-          ) : null}
-
-          {step === "welcome" || step === "account" || step === "done" ? (
-            <Pressable accessibilityRole="button" onPress={() => router.replace("/login")} style={styles.linkWrap}>
-              <Text style={styles.link}>Already a partner? Sign in</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      </PartnerScreen>
-    </KeyboardAvoidingView>
+            }
+          />
+        ) : (
+          <Banner tone="warning" title="Invite could not be used" message={inviteWarning.message} />
+        )
+      ) : null}
+      {invite && onInviteScreens ? (
+        <Banner
+          tone="info"
+          title={`HOMEEIGO invited ${invite.name}`}
+          message={`${[invite.skillInterest, invite.city].filter(Boolean).join(" · ") || "Complete your partner application"}. ${
+            invite.phoneLast4 ? `Use the mobile ending in ${invite.phoneLast4}.` : "Use the same mobile number HOMEEIGO has on file."
+          }`}
+        />
+      ) : null}
+    </>
   );
+
+  const frame: OnboardingFrameValue = {
+    indicator: ready ? stepIndicatorText(step) : null,
+    fraction: position ? position.number / position.total : null,
+    savedLine: ready && restored ? formatLastSaved(lastSavedAt) : null,
+    notices,
+    error: error ?? (Object.keys(fieldErrors).length ? FIELDS_NEED_FIXING : null),
+    onBack:
+      bootPhase === "resume-sign-in"
+        ? () => {
+            setError(null);
+            setBootPhase("ready");
+          }
+        : returnToReview
+          ? () => {
+              setReturnToReview(false);
+              goTo("review");
+            }
+          : backStep
+            ? () => goTo(backStep)
+            : null,
+    busy: loading,
+  };
+  // While a step is being sent, back waits: leaving mid-request is how an application gets lost.
+  hardwareBack.current = frame.onBack ? (loading ? () => undefined : frame.onBack) : null;
+
+  const signInLink = <Button label="Already a partner? Sign in" variant="quiet" onPress={goToSignIn} />;
+
+  function content() {
+    if (bootPhase === "resume-sign-in") {
+      return (
+        <OnboardingFrame
+          key="resume"
+          heading="Continue your application"
+          lead="Sign in with the email and password from your application."
+          primary={<Button label="Continue application" onPress={() => void handleResumeSignIn()} loading={loading} />}
+        >
+          <Card style={styles.stack}>
+            <Field
+              label="Email"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              textContentType="emailAddress"
+              returnKeyType="next"
+            />
+            <Field
+              label="Password"
+              value={resumePassword}
+              onChangeText={setResumePassword}
+              secure
+              maxLength={ONBOARDING_LIMITS.password}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="password"
+              textContentType="password"
+              returnKeyType="go"
+              onSubmitEditing={() => void handleResumeSignIn()}
+            />
+          </Card>
+          {signInLink}
+        </OnboardingFrame>
+      );
+    }
+
+    switch (step) {
+      case "welcome":
+        return (
+          <OnboardingFrame
+            key="welcome"
+            subtitle="Each step is saved when you continue."
+            heading="Your application"
+            lead="It takes ten short steps. Once your account is created you can stop after any step and continue later with your email and password."
+            primary={<Button label={invite ? "Continue invite" : "Start application"} onPress={() => goTo("account")} />}
+            secondary={<Button label="Continue existing application" variant="secondary" onPress={() => setBootPhase("resume-sign-in")} />}
+          >
+            {signInLink}
+          </OnboardingFrame>
+        );
+
+      case "account":
+        if (restored) {
+          return (
+            <OnboardingFrame
+              key="account-verified"
+              heading="Account verified"
+              lead="Your account and mobile number are already verified. Continue with the rest of your application."
+              primary={<Button label="Continue" onPress={() => goTo("services")} />}
+            >
+              {signInLink}
+            </OnboardingFrame>
+          );
+        }
+        return (
+          <AccountStep
+            form={form}
+            email={email}
+            errors={fieldErrors}
+            loading={loading}
+            after={signInLink}
+            onEmailChange={setEmail}
+            onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+            onSubmit={() => {
+              const next = validateAccount(form, email);
+              setFieldErrors(next);
+              if (Object.keys(next).length) return;
+              // Back from the OTP step and forward again: the account exists and its OTP is still
+              // owed. Asking the server to create it twice is refused and leaves no way on.
+              if (accountAwaitsOtp(createdAccount, email, form.phoneNumber)) {
+                setError(null);
+                goTo("otp");
+                return;
+              }
+              void run(async () => {
+                const res = await partnerRegistrationApi.step1({
+                  email,
+                  phoneNumber: form.phoneNumber,
+                  firstName: form.firstName,
+                  lastName: form.lastName,
+                  password: form.password,
+                  confirmPassword: form.confirmPassword,
+                });
+                setUserId(res.userId);
+                setDevOtp(res.devOtp);
+                setCreatedAccount({ email, phoneNumber: form.phoneNumber });
+                goTo("otp");
+              });
+            }}
+          />
+        );
+
+      case "otp": {
+        const verify = () =>
+          void run(async () => {
+            await partnerRegistrationApi.verifyOtp({
+              email,
+              otp,
+              userId,
+              inviteToken: (await getApplicationInvite()) ?? undefined,
+              referralCode: (await getPendingReferralCode()) ?? undefined,
+            });
+            goTo("services");
+          });
+        return (
+          <OnboardingFrame
+            key="otp"
+            heading="Verify mobile"
+            lead={form.phoneNumber ? `Enter the 6-digit OTP sent to +91${form.phoneNumber}.` : "Enter the 6-digit OTP sent to your mobile."}
+            primary={<TextNamedPrimaryButton label="Verify OTP" onPress={verify} loading={loading} disabled={otp.length < ONBOARDING_LIMITS.otp} />}
+          >
+            <Card style={styles.stack}>
+              <Field
+                label="OTP"
+                value={otp}
+                onChangeText={(v) => setOtp(digitsOnly(v, ONBOARDING_LIMITS.otp))}
+                help="6 digits."
+                keyboardType="number-pad"
+                maxLength={ONBOARDING_LIMITS.otp}
+                autoComplete="one-time-code"
+                textContentType="oneTimeCode"
+                returnKeyType="done"
+              />
+              {devOtp ? (
+                <T kind="caption" numeric>
+                  Dev OTP: {devOtp}
+                </T>
+              ) : null}
+            </Card>
+          </OnboardingFrame>
+        );
+      }
+
+      case "services":
+        return (
+          <ServicesStep
+            serviceCategories={form.serviceCategories}
+            city={form.city}
+            experienceYears={form.experienceYears}
+            error={stepError ?? undefined}
+            loading={loading}
+            onToggleService={(id) =>
+              setForm((prev) => ({
+                ...prev,
+                serviceCategories: prev.serviceCategories.includes(id)
+                  ? prev.serviceCategories.filter((s) => s !== id)
+                  : [...prev.serviceCategories, id],
+              }))
+            }
+            onSelectCity={(city) => setForm((prev) => ({ ...prev, city }))}
+            onExperience={(experienceYears) => setForm((prev) => ({ ...prev, experienceYears }))}
+            onSubmit={() => {
+              if (!form.serviceCategories.length) {
+                setStepError("Select at least one service");
+                return;
+              }
+              if (!form.city) {
+                setStepError("Select a city");
+                return;
+              }
+              setStepError(null);
+              void run(async () => {
+                await partnerRegistrationApi.saveServices({
+                  serviceCategories: form.serviceCategories,
+                  city: form.city,
+                  experienceYears: Number(form.experienceYears) || 0,
+                });
+                await partnerRegistrationApi.saveSkills({
+                  primarySkill: form.serviceCategories[0],
+                  secondarySkills: form.serviceCategories.slice(1),
+                  experienceYears: Number(form.experienceYears) || 0,
+                });
+                goTo("profile");
+              });
+            }}
+          />
+        );
+
+      case "profile":
+        return (
+          <ProfileStep
+            dateOfBirth={form.dateOfBirth}
+            gender={form.gender}
+            emergencyName={form.emergencyName}
+            emergencyPhone={form.emergencyPhone}
+            errors={fieldErrors}
+            loading={loading}
+            onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+            onSubmit={() => {
+              const next = validateProfile(form);
+              setFieldErrors(next);
+              if (Object.keys(next).length) return;
+              void run(async () => {
+                await partnerRegistrationApi.saveProfile({
+                  emergencyContactName: form.emergencyName,
+                  emergencyContactPhone: form.emergencyPhone,
+                  dateOfBirth: form.dateOfBirth,
+                  gender: form.gender,
+                });
+                afterSave("location");
+              });
+            }}
+          />
+        );
+
+      case "location":
+        return (
+          <LocationStep
+            city={form.city}
+            serviceRegions={form.serviceRegions}
+            serviceRadiusKm={form.serviceRadiusKm}
+            latitude={form.latitude}
+            longitude={form.longitude}
+            // The server's refusal too, not only this screen's own check: the step drops a point the
+            // server said is outside the service area.
+            error={stepError ?? error ?? undefined}
+            loading={loading}
+            onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+            onSubmit={() => {
+              if (!form.city.trim()) {
+                setStepError("Enter your base city");
+                return;
+              }
+              const regions = form.serviceRegions
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean);
+              setStepError(null);
+              void run(async () => {
+                const radiusKm = Number(form.serviceRadiusKm);
+                const lat = Number(form.latitude);
+                const lng = Number(form.longitude);
+                const hasCoords =
+                  Boolean(form.latitude?.trim()) &&
+                  Boolean(form.longitude?.trim()) &&
+                  Number.isFinite(lat) &&
+                  Number.isFinite(lng);
+                await partnerRegistrationApi.saveLocation({
+                  city: form.city.trim(),
+                  serviceRegions: regions.length ? regions : [form.city.trim()],
+                  serviceRadiusKm: radiusKm,
+                  ...(hasCoords ? { baseLatitude: lat, baseLongitude: lng } : {}),
+                });
+                afterSave("availability");
+              });
+            }}
+          />
+        );
+
+      case "availability":
+        return (
+          <AvailabilityStep
+            workingHoursStart={form.workingHoursStart}
+            workingHoursEnd={form.workingHoursEnd}
+            workingDays={form.workingDays}
+            error={stepError ?? undefined}
+            loading={loading}
+            onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+            onToggleDay={(day) =>
+              setForm((prev) => ({
+                ...prev,
+                workingDays: prev.workingDays.includes(day)
+                  ? prev.workingDays.filter((d) => d !== day)
+                  : [...prev.workingDays, day],
+              }))
+            }
+            onSubmit={() => {
+              if (form.workingDays.length === 0) {
+                setStepError("Select at least one working day.");
+                return;
+              }
+              setStepError(null);
+              void run(async () => {
+                await partnerRegistrationApi.saveAvailability({
+                  workingHoursStart: form.workingHoursStart || "09:00",
+                  workingHoursEnd: form.workingHoursEnd || "18:00",
+                  workingDays: form.workingDays,
+                });
+                afterSave("kyc");
+              });
+            }}
+          />
+        );
+
+      case "kyc":
+        return (
+          <KycStep
+            panNumber={form.panNumber}
+            aadharNumber={form.aadharNumber}
+            bankAccountNumber={form.bankAccountNumber}
+            bankAccountHolder={form.bankAccountHolder}
+            ifscCode={form.ifscCode}
+            bankName={form.bankName}
+            errors={fieldErrors}
+            loading={loading}
+            onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+            onSubmit={() => {
+              const next = validateKyc(form);
+              setFieldErrors(next);
+              if (Object.keys(next).length) return;
+              void run(async () => {
+                await partnerRegistrationApi.saveKyc({
+                  panNumber: form.panNumber.trim().toUpperCase() || undefined,
+                  aadharNumber: form.aadharNumber.trim() || undefined,
+                  bankAccountNumber: form.bankAccountNumber.trim() || undefined,
+                  bankAccountHolder: form.bankAccountHolder.trim() || undefined,
+                  ifscCode: form.ifscCode.trim().toUpperCase() || undefined,
+                  bankName: form.bankName.trim() || undefined,
+                });
+                afterSave("documents");
+              });
+            }}
+          />
+        );
+
+      case "documents":
+        return (
+          <DocumentsStep
+            loading={loading}
+            onContinue={(uploaded) =>
+              void run(async () => {
+                await partnerRegistrationApi.completeDocuments(uploaded);
+                afterSave("assessment");
+              })
+            }
+          />
+        );
+
+      case "assessment":
+        return (
+          <AssessmentStep
+            loading={loading}
+            onPassed={() => {
+              afterSave("training");
+            }}
+          />
+        );
+
+      case "training":
+        return (
+          <TrainingStep
+            loading={loading}
+            onContinue={() =>
+              run(async () => {
+                await partnerRegistrationApi.acknowledgeTraining();
+                goTo("review");
+              })
+            }
+          />
+        );
+
+      case "review":
+        return (
+          <ReviewStep
+            loading={loading}
+            onEdit={(target) => {
+              setReturnToReview(true);
+              goTo(target);
+            }}
+            onSubmit={() =>
+              run(async () => {
+                await partnerRegistrationApi.acknowledgeReview();
+                await partnerRegistrationApi.submit();
+                await clearApplicationInvite();
+                goTo("done");
+              })
+            }
+          />
+        );
+
+      case "done":
+        return (
+          <OnboardingFrame key="done" primary={<Button label="Back to sign in" onPress={goToSignIn} />}>
+            <Card style={styles.done}>
+              <View style={styles.doneIcon}>
+                <CheckCircle2 color={color.success} size={28} />
+              </View>
+              <T testID="onboarding-submitted" kind="title" accessibilityRole="header" style={styles.center}>
+                Application submitted
+              </T>
+              <T kind="body" tone="slate" style={styles.center}>
+                It is now waiting for HOMEEIGO to review and approve it.
+              </T>
+            </Card>
+          </OnboardingFrame>
+        );
+    }
+  }
+
+  return <OnboardingFrameProvider value={frame}>{content()}</OnboardingFrameProvider>;
 }
 
 const styles = StyleSheet.create({
-  body: { paddingBottom: 24, gap: 12 },
-  loadingBox: { paddingVertical: 48, alignItems: "center" },
-  copy: { color: partnerColors.textSecondary, lineHeight: 20 },
-  stepTitle: { fontSize: 20, fontWeight: "800", color: partnerColors.text, letterSpacing: -0.3 },
-  button: {
-    marginTop: 8,
-    backgroundColor: partnerColors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonText: { color: "#fff", fontWeight: "700" },
-  secondaryBtn: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: partnerColors.line,
-    paddingVertical: 14,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.85)",
-  },
-  secondaryBtnText: { color: partnerColors.primary, fontWeight: "700" },
-  error: { color: partnerColors.danger, fontSize: 13 },
-  changesBanner: {
-    marginBottom: 4,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(245,158,11,0.45)",
-    backgroundColor: "rgba(255,251,235,0.95)",
-    padding: 14,
-    gap: 6,
-  },
-  changesTitle: { fontWeight: "700", color: "#92400e", fontSize: 14 },
-  changesCopy: { color: "#78350f", fontSize: 13, lineHeight: 18 },
-  changesStep: { color: "#b45309", fontSize: 12, fontWeight: "600" },
-  inviteBanner: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(61,107,79,0.28)",
-    backgroundColor: "rgba(236,253,245,0.92)",
-    padding: 14,
-    gap: 4,
-  },
-  inviteTitle: { fontWeight: "700", color: "#065f46", fontSize: 14 },
-  inviteCopy: { color: "#047857", fontSize: 13, lineHeight: 18 },
-  hint: { color: partnerColors.textMuted, fontSize: 12 },
-  linkWrap: { marginTop: 16, alignItems: "center" },
-  link: { color: partnerColors.primary, fontWeight: "600" },
-  resumeCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(37,99,235,0.2)",
-    backgroundColor: "rgba(255,255,255,0.92)",
-    padding: 16,
-    gap: 10,
-  },
-  resumeTitle: { fontSize: 18, fontWeight: "700", color: partnerColors.text },
-  resumeCopy: { fontSize: 13, color: partnerColors.textSecondary, lineHeight: 18 },
-  doneCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(16,185,129,0.35)",
-    backgroundColor: "rgba(236,253,245,0.95)",
-    padding: 16,
-    gap: 8,
-  },
-  doneTitle: { fontWeight: "800", color: "#065f46", fontSize: 18 },
+  stack: { gap: space.lg },
+  done: { alignItems: "center", gap: space.sm, paddingVertical: space.xxl },
+  doneIcon: { width: 56, height: 56, borderRadius: radius.pill, backgroundColor: color.successWash, alignItems: "center", justifyContent: "center", marginBottom: space.sm },
+  center: { textAlign: "center" },
 });
