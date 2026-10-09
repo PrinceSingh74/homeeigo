@@ -7,7 +7,7 @@ import type { ApiResponse } from "@/types/auth";
 
 import { API_PORT, resolveApiBase } from "@/lib/api-base";
 
-function getApiBaseCandidates(path: string): string[] {
+function getApiBaseCandidates(_path: string): string[] {
   const primary = resolveApiBase();
   const onLoopback =
     typeof window !== "undefined" &&
@@ -15,10 +15,11 @@ function getApiBaseCandidates(path: string): string[] {
 
   // Same-machine only: if the Next rewrite wedges (ECONNRESET / 175s hangs), hit the
   // API port next. Never add localhost fallback on LAN — phones cannot reach it.
+  // Auth used to try :3000 first. That sent login/refresh off the customer origin, so the
+  // browser looked like it had jumped to another server and the refresh cookie landed on
+  // the API host. Same-origin first; the 12s fetch timeout still fails over to the API.
   if (onLoopback && primary === "") {
     const direct = `http://${window.location.hostname}:${API_PORT}`;
-    // Auth must not wait behind a stuck proxy — OTP verify was dying there.
-    if (path.startsWith("/api/auth/")) return [direct, ""];
     return ["", direct];
   }
 
@@ -133,6 +134,11 @@ async function parseJson<T>(res: Response): Promise<ApiResponse<T>> {
   } catch {
     return { success: false, error: res.statusText || "Invalid response" };
   }
+}
+
+/** One in-flight refresh for the whole page. Bootstrap and a 401 retry must share it. */
+export function refreshSessionCredential(): Promise<boolean> {
+  return coordinatedRefresh(refreshAccessToken);
 }
 
 async function refreshAccessToken(): Promise<boolean> {

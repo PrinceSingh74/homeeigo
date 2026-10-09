@@ -13,10 +13,12 @@
  *   cancelled          the BOOKING_CANCELLED outbox event
  *   repeat_booking     derived at BOOKING_COMPLETED from the existing business definition
  *
- * Event identity is deterministic — the outbox event id, the quote token's digest, or the wallet
- * transaction id — so a redelivered outbox row, a retried consumer or a replayed request reaches the
- * same `analytics_events.event_id` and collapses onto one row. Nothing here is awaited by the
- * business transaction; a failure to project is logged and never surfaces to the customer.
+ * Outbox and wallet identities are deterministic — the outbox event id or the wallet transaction
+ * id — so a redelivered outbox row or a retried consumer reaches the same `analytics_events.event_id`
+ * and collapses onto one row. A quote answer does not: the signed token is stable for a whole
+ * second, and two answers the customer received in that second are still two answers. Nothing here
+ * is awaited by the business transaction; a failure to project is logged and never surfaces to the
+ * customer.
  *
  * Repeat-booking definition (NOT invented here): `customer-intelligence.service.ts`
  * (`repeatCustomerRatePct`) counts a customer as a repeater once they have MORE THAN ONE booking in
@@ -27,7 +29,7 @@
  * (`partner-os.service.ts`) variants are carried as metadata (`sameService`, `sameProvider`) so a
  * reader can apply either without a second event.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { DataOrigin } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { logger } from "../lib/logger";
@@ -131,10 +133,21 @@ async function recordForBooking(args: {
 /* ───────────────────────── quote_generated ───────────────────────── */
 
 /**
- * Called by the price-quote route once — and only once — `bookingPricingService.quote` has returned
- * `ok: true`. The quote token is the quote's identity: the same signed token can only ever be one
- * quote, and a second request computes a second token, which is a second quote.
+ * One row per successful price-quote response.
+ *
+ * The signed token is the commercial statement (selection, price, expiry second). `signQuote`
+ * stamps expiry in whole seconds, so two computations of the same selection inside one second
+ * return the same token string. That string is not the analytics identity: the customer received
+ * both answers, and collapsing them drops rows the funnel counts. The event id carries the token
+ * digest so the two answers can still be grouped, plus a per-response nonce so the unique key
+ * does not collapse them. A retried insert of the same id still collapses on `event_id`.
  */
+export function quoteAnswerEventId(quoteToken: string, nonce: string = randomBytes(8).toString("hex")): string {
+  const stamp = nonce.replace(/[^A-Za-z0-9]/g, "").slice(0, 16);
+  if (stamp.length < 8) throw new Error("quote answer nonce must yield at least 8 id characters");
+  return `q_${digest(quoteToken).slice(0, 32)}_${stamp}`;
+}
+
 export async function recordQuoteGenerated(args: {
   userId: string;
   serviceId: string;
@@ -143,32 +156,62 @@ export async function recordQuoteGenerated(args: {
   const user = await prisma.user.findUnique({ where: { id: args.userId }, select: { id: true, dataOrigin: true } });
   if (!user) return { ok: false, error: "MALFORMED_EVENT", detail: "actor" };
   const b = args.breakdown;
-  return record(
+  const actor = { userId: user.id, dataOrigin: user.dataOrigin };
+  const eventId = quoteAnswerEventId(b.quoteToken);
+  const metadata = {
+    finalAmountPaise: b.finalAmountPaise,
+    subtotalPaise: b.subtotalPaise,
+    discountPaise: b.discountPaise,
+    taxesPaise: b.taxesPaise,
+    quantity: b.selection.quantity,
+    addonCount: b.addons.length,
+    couponApplied: Boolean(b.couponCode) && !b.couponError,
+    couponError: b.couponError ?? null,
+    pricingVersion: b.pricingVersion,
+    expiresAt: b.expiresAt,
+    variantId: b.selection.variant?.id ?? null,
+  };
+  const base = {
+    eventId,
+    eventName: "QUOTE_GENERATED" as const,
+    serviceId: args.serviceId,
+    serviceVersionId: b.serviceVersion,
+    quoteFingerprint: b.selectionFingerprint,
+    source: "BACKEND" as const,
+    platform: "SERVER" as const,
+    metadata,
+  };
+  const first = await record(
     {
-      eventId: `quote_${digest(b.quoteToken).slice(0, 48)}`,
-      eventName: "QUOTE_GENERATED",
-      serviceId: args.serviceId,
-      serviceVersionId: b.serviceVersion,
+      ...base,
       variantId: b.selection.variant?.id ?? undefined,
       optionId: b.selection.audience ?? b.selection.professionalPreference ?? undefined,
-      quoteFingerprint: b.selectionFingerprint,
-      source: "BACKEND",
-      platform: "SERVER",
-      metadata: {
-        finalAmountPaise: b.finalAmountPaise,
-        subtotalPaise: b.subtotalPaise,
-        discountPaise: b.discountPaise,
-        taxesPaise: b.taxesPaise,
-        quantity: b.selection.quantity,
-        addonCount: b.addons.length,
-        couponApplied: Boolean(b.couponCode) && !b.couponError,
-        couponError: b.couponError ?? null,
-        pricingVersion: b.pricingVersion,
-        expiresAt: b.expiresAt,
-      },
     },
-    { userId: user.id, dataOrigin: user.dataOrigin },
+    actor,
   );
+  // The price-quote route already accepted this selection. A catalogue label the analytics
+  // checker does not list must not erase the answer the customer received. The version stays
+  // unless that is itself the label the checker rejected.
+  if (!first.ok && (first.error === "VARIANT_NOT_ON_SERVICE" || first.error === "OPTION_NOT_ON_SERVICE" || first.error === "ADDON_NOT_ON_SERVICE")) {
+    logger.warn("analytics_funnel_quote_dimension_unlisted", { serviceId: args.serviceId, error: first.error });
+    return record(base, actor);
+  }
+  if (!first.ok && first.error === "SERVICE_VERSION_NOT_FOUND") {
+    logger.warn("analytics_funnel_quote_dimension_unlisted", { serviceId: args.serviceId, error: first.error, serviceVersion: b.serviceVersion });
+    return record(
+      {
+        eventId: base.eventId,
+        eventName: base.eventName,
+        serviceId: base.serviceId,
+        quoteFingerprint: base.quoteFingerprint,
+        source: base.source,
+        platform: base.platform,
+        metadata: base.metadata,
+      },
+      actor,
+    );
+  }
+  return first;
 }
 
 /* ───────────────────────── checkout_started (wallet-only) ───────────────────────── */

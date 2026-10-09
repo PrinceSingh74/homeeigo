@@ -160,15 +160,13 @@ export const useAuthStore = create<AuthState>()(
 
       refreshSession: async () => {
         // The cookie is the credential; a persisted user says a session may exist.
+        // The same coordinator as a 401 retry: two callers must not both present the
+        // current refresh cookie, or the second one is a reuse and the family is revoked.
         if (!get().user && !get().accessToken) return false;
-        try {
-          const data = await authApi.refresh();
-          set({ accessToken: data.accessToken });
-          return true;
-        } catch {
-          get().clearSession();
-          return false;
-        }
+        const { refreshSessionCredential } = await import("@/services/auth/api-client");
+        const ok = await refreshSessionCredential();
+        if (!ok) get().clearSession();
+        return ok;
       },
 
       fetchCurrentUser: async () => {

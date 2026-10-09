@@ -227,15 +227,17 @@ describe.serial("backend door — quote", () => {
     expect(await prisma.analyticsEvent.count({ where: { eventName: "QUOTE_GENERATED", actorUserId: ctx.customerA.id } })).toBe(before);
   });
 
-  test("the same quote re-requested is one event per distinct token — a replayed token is not a second quote", async () => {
+  test("each successful quote answer is its own row, even when both responses carry the same token", async () => {
+    const before = await prisma.analyticsEvent.count({ where: { eventName: "QUOTE_GENERATED", actorUserId: ctx.customerA.id } });
     const a = await quoteFor({ variantId: "deep", quantity: 1 });
     const b = await quoteFor({ variantId: "deep", quantity: 1 });
     expect([a.status, b.status]).toEqual([200, 200]);
-    const tokens = new Set([a.json.data.quote.quoteToken, b.json.data.quote.quoteToken]);
+    const after = await prisma.analyticsEvent.count({ where: { eventName: "QUOTE_GENERATED", actorUserId: ctx.customerA.id } });
+    // signQuote expires on a whole second, so these two answers may share one token string.
+    // The customer received both, so the funnel keeps both rows.
+    expect(after - before).toBe(2);
     const rows = await rowsFor({ eventName: "QUOTE_GENERATED", actorUserId: ctx.customerA.id, quoteFingerprint: a.json.data.quote.selectionFingerprint });
-    // One row per distinct signed token; identical tokens (same second) collapse.
-    expect(rows.length).toBeGreaterThanOrEqual(tokens.size);
-    expect(rows.length).toBeLessThanOrEqual(tokens.size + 1); // the row from the previous test shares this fingerprint
+    expect(new Set(rows.map((r) => r.eventId)).size).toBe(rows.length);
   });
 });
 

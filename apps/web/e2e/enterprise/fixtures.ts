@@ -115,19 +115,33 @@ export async function refreshSessionCookie(page: Page) {
 
 /** Seed zustand + middleware cookie on every navigation (survives page.goto). */
 export async function seedCustomerBrowserSession(page: Page, email: string, password: string) {
-  const session = await apiLogin(email, password);
-  const me = await apiGet<{ success: boolean; data: { user: typeof session.user } }>(
-    "/api/users/me",
-    session.token,
+  // The refresh cookie has to be born from the browser's own Set-Cookie. Planting it with
+  // Playwright's cookie jar leaves a copy the later rotation does not replace, so the next
+  // document reload presents the already-used token and the family is revoked.
+  await page.goto(`${WEB_BASE}/`, { waitUntil: "domcontentloaded" });
+  const ok = await page.evaluate(
+    async ({ email, password }) => {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-Homigo-Audience": "customer" },
+        body: JSON.stringify({ email, password, setAuthCookies: true }),
+      });
+      const json = (await res.json()) as { data?: { accessToken?: string; user?: { id?: string } } };
+      if (!res.ok || !json.data?.accessToken || !json.data.user?.id) return false;
+      const me = await fetch("/api/users/me", {
+        headers: { Authorization: `Bearer ${json.data.accessToken}` },
+      });
+      const profile = (await me.json()) as { data?: { user?: unknown } };
+      if (!me.ok || !profile.data?.user) return false;
+      localStorage.setItem("homigo-auth", JSON.stringify({ state: { user: profile.data.user }, version: 2 }));
+      document.cookie = "homigo_session=1; Path=/; Max-Age=2592000; SameSite=Lax";
+      return true;
+    },
+    { email, password },
   );
-  const user = me.data.user;
-  await injectCustomerSession(page, {
-    user,
-    accessToken: session.token,
-    refreshToken: session.refreshToken,
-  });
-  await refreshSessionCookie(page);
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  expect(ok, "browser login planted the refresh cookie").toBe(true);
+  await page.goto(`${WEB_BASE}/`, { waitUntil: "domcontentloaded" });
   await dismissCookieConsent(page);
 }
 

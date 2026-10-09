@@ -250,8 +250,8 @@ test("browse → select → book → quote → checkout → booking_created, one
     CHECKOUT_STARTED: 1,
     BOOKING_CREATED: 1,
   });
-  // A quote is identified by its signed token: one row per quote the server really computed,
-  // each with its own id — at least every answer the browser received, never more than it asked.
+  // Each successful price-quote response is one row. The signed token is stable for a whole
+  // second, so two answers can share it; the event id does not.
   const quoteRows = byName(rb.rows, "QUOTE_GENERATED");
   expect(quotesReceived).toBeGreaterThanOrEqual(1);
   expect(quoteRows.length, `quote rows (${quoteRows.length}) vs received ${quotesReceived} / requested ${quotesRequested}`).toBeGreaterThanOrEqual(quotesReceived);
@@ -284,7 +284,8 @@ test("browse → select → book → quote → checkout → booking_created, one
 
   const quoteRow = byName(rb.rows, "QUOTE_GENERATED")[0]!;
   expect(quoteRow.source).toBe("BACKEND");
-  expect(quoteRow.eventId).toMatch(/^quote_[0-9a-f]{48}$/);
+  expect(quoteRow.eventId).toMatch(/^q_[0-9a-f]{32}_[0-9a-f]{16}$/);
+  for (const row of quoteRows) expect(row.eventId).toMatch(/^q_[0-9a-f]{32}_[0-9a-f]{16}$/);
   expect(quoteRow.variantId).toBe("deluxe");
   expect(quoteRow.optionId).toBe("women");
   expect(quoteRow.metadata).toMatchObject({ finalAmountPaise: quoteBody.data.quote.finalAmount * 100, addonCount: 1 });
