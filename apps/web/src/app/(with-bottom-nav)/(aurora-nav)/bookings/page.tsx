@@ -1,13 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { m as motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Sparkles, Plus, ArrowLeft } from "lucide-react";
 import { StaticSkeleton } from "@/components/ui/StaticSkeleton";
 import { BookingCard } from "@/components/booking/BookingCard";
-import { BookingDetailModal } from "@/components/booking/BookingDetailModal";
 import { useBookingsQuery } from "@/hooks/use-core-data";
 import { useAppStore } from "@/stores/app-store";
 import type { SavedBooking } from "@/lib/bookings";
@@ -21,6 +21,12 @@ import { PageShell } from "@/components/layout/PageShell";
 import { pageLead, pageTitle } from "@/lib/page-layout";
 import { cn } from "@/lib/utils";
 import { useOnlineStatus } from "@/hooks/use-online-status";
+
+// Named export, same props. The chunk loads on this page; open, close, and the modal's own
+// loading, upload, review, and error states are unchanged.
+const BookingDetailModal = dynamic(() =>
+  import("@/components/booking/BookingDetailModal").then((mod) => mod.BookingDetailModal),
+);
 
 const FILTERS: { key: BookingFilter; label: string }[] = [
   { key: "all", label: "All" },

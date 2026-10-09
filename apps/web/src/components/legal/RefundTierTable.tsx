@@ -1,8 +1,33 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { LegalStatusPill } from "@/components/legal/LegalStatusPill";
-import { useCancellationPolicyQuery } from "@/hooks/use-core-data";
-import { cancellationPolicyView } from "@/lib/cancellation-policy";
+import { apiRequest } from "@/services/auth/api-client";
+import type { ApiResponse } from "@/types/auth";
+import { cancellationPolicyView, type CancellationPolicyResponse } from "@/lib/cancellation-policy";
+
+/**
+ * The published tiers are public. This page must not import `@/hooks/use-core-data`: that module
+ * also pulls the booking client, wallet queries, and auth stores into a document that only needs
+ * one GET. Same path and `auth: false` as `coreApi.bookings.cancellationPolicy`.
+ */
+function usePublishedCancellationPolicy() {
+  const [data, setData] = useState<CancellationPolicyResponse | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    apiRequest<ApiResponse<CancellationPolicyResponse>>("/api/bookings/cancellation-policy", { auth: false })
+      .then((body) => {
+        if (live) setData(body.data ?? null);
+      })
+      .catch(() => {
+        if (live) setData(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return { data: data ?? null, isLoading: data === undefined };
+}
 
 /**
  * Cancellation fee tiers on the refund policy page — a table on tablet and up, stacked rows on
@@ -11,7 +36,7 @@ import { cancellationPolicyView } from "@/lib/cancellation-policy";
  * Without an answer no window or percentage is shown.
  */
 export function RefundTierTable() {
-  const { data, isLoading } = useCancellationPolicyQuery();
+  const { data, isLoading } = usePublishedCancellationPolicy();
   const rows = cancellationPolicyView(data).rows.map((t) => ({
     ...t,
     fee: t.refundPercent === 100 ? "Free" : `${100 - t.refundPercent}%`,

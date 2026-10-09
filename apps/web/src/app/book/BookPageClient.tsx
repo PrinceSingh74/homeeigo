@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect, Suspense } from "react";
+import dynamic from "next/dynamic";
 import { useSearchParams, useRouter } from "next/navigation";
 import { m as motion } from "framer-motion";
 import {
@@ -50,7 +51,6 @@ import {
   bookServiceRail,
   bookSplitGrid,
 } from "@/components/booking/book-page-layout";
-import { AddAddressModal } from "@/components/profile/AddAddressModal";
 import {
   SERVICES,
   packagePositionForTier,
@@ -85,6 +85,11 @@ import { useQuery } from "@tanstack/react-query";
 import { getErrorMessage } from "@/lib/auth/errors";
 import { coreApi } from "@/services/core/api";
 import { attemptFingerprint, attemptKeyFor, keepAttemptAfter, releaseAttempt, sessionAttemptStore } from "@/lib/booking-attempt";
+
+// Opens from "Add address". Same props. Search and GPS stay inside the modal.
+const AddAddressModal = dynamic(() =>
+  import("@/components/profile/AddAddressModal").then((mod) => mod.AddAddressModal),
+);
 
 /* ----------------------------- data ----------------------------- */
 

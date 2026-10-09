@@ -61,7 +61,17 @@ describe("the cancellation card carries no policy of its own", () => {
 });
 
 describe("the service page offers no control the server cannot honour", () => {
-  test("no professional-preference selector while assignment cannot filter on it", () => {
-    expect(has(src("components/services-catalog/detail/ServiceDetail.tsx"), "BeautyProfessionalSelector")).toBe(false);
+  test("professional preference is disclosed, and this page does not send one", () => {
+    const detail = src("components/services-catalog/detail/ServiceDetail.tsx");
+    const selector = src("components/services-catalog/beauty/BeautySelectors.tsx");
+    // Assignment cannot filter on a preference (PROFESSIONAL_PREFERENCE_SUPPORTED is false,
+    // and the public catalogue strips the options). Phase 15 still requires the salon page
+    // to say so. The control is options-only: no handler, and the book link built here
+    // carries no preference.
+    expect(detail).toContain("<BeautyProfessionalSelector options={service.config?.professionalPreferences} />");
+    expect(detail).not.toMatch(/BeautyProfessionalSelector[^>\n]*onChange/);
+    expect(detail).not.toMatch(/professionalPreference\s*:/);
+    expect(selector).toContain("No professional preference available for this service.");
+    expect(selector).toContain('(options ?? []).filter((o) => o !== "NO_PREFERENCE")');
   });
 });
