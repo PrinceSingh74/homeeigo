@@ -23,6 +23,7 @@ The platform does **not** remit the booking `taxes` line as GST.
 - Commission basis at launch: **`final_amount`** (code default; `COMMISSION_BASE=pre_tax` remains a
   deploy-time switch, not a schema change). Gross still equals net + commission.
 - Customer invoices and partner earning statements disclose they are **not** GST tax invoices.
+  Customer mobile trust copy uses “Taxes itemised”, never “GST included”.
 - `GET /api/providers/me/tax-summary`: `gstOnCommission` is **0**, `gstRemittedByPlatform` is
   **false**. The previous `commission × 18%` figure was option (c) and is not shown as GST. `estimatedTax`
   / `tdsEstimate` remain an illustrative net × 10% figure and are **not** a withholding.

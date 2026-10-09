@@ -27,7 +27,7 @@ const GUARANTEES: Array<{ icon: LucideIcon; title: string; sub: string }> = [
   { icon: ShieldCheck, title: "Background Verified", sub: "Police-verified partners" },
   { icon: Clock, title: "On-Time Arrival", sub: "Punctuality promise" },
   { icon: RefreshCw, title: "Rework Guarantee", sub: "Not happy? We redo it" },
-  { icon: ReceiptIndianRupee, title: "Transparent Pricing", sub: "GST in, no surprises" },
+  { icon: ReceiptIndianRupee, title: "Transparent Pricing", sub: "Taxes itemised, no surprises" },
   { icon: Lock, title: "Secure Payments", sub: "Encrypted checkout" },
 ];
 

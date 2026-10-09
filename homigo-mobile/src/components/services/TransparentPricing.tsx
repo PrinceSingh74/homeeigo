@@ -20,7 +20,7 @@ const PRICING = [
 
 /** Same trust strip as the website (PRICING_TRUST_STRIP). */
 const TRUST = [
-  { icon: Receipt, label: "GST Included" },
+  { icon: Receipt, label: "Taxes itemised" },
   { icon: ShieldCheck, label: "No Hidden Charges" },
   { icon: BadgeIndianRupee, label: "Upfront Pricing" },
   { icon: Lock, label: "Secure Payments" },

@@ -27,6 +27,17 @@ describe("D4 invoice disclosure", () => {
     expect(src).not.toMatch(/GST\/Taxes/);
   });
 
+  test("customer mobile trust copy does not claim GST is included", async () => {
+    const trust = await Bun.file(
+      new URL("../../../../homigo-mobile/src/components/services/TrustStrip.tsx", import.meta.url),
+    ).text();
+    const pricing = await Bun.file(
+      new URL("../../../../homigo-mobile/src/components/services/TransparentPricing.tsx", import.meta.url),
+    ).text();
+    expect(trust).not.toMatch(/GST in/i);
+    expect(pricing).not.toMatch(/GST Included/i);
+  });
+
   test("partner tax-summary never invents GST on commission (D4 rejected option c)", async () => {
     expect(reportedGstOnCommission(0)).toBe(0);
     expect(reportedGstOnCommission(1000)).toBe(0);
