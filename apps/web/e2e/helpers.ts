@@ -284,20 +284,19 @@ export async function confirmBookingAndWait(page: Page) {
 
 /** Avoid opening real Razorpay during UI E2E — uses real order_id + server-signed HMAC. */
 export async function mockRazorpayCheckout(page: Page) {
-  const apiBase = (process.env.E2E_API_URL ?? "http://localhost:3000").replace(/\/$/, "");
-
   // Block the external checkout script so our mock cannot be replaced mid-flow.
   await page.route("**/checkout.razorpay.com/**", (route) =>
     route.fulfill({ status: 200, contentType: "application/javascript", body: "" }),
   );
 
-  await page.addInitScript((base: string) => {
-    (window as unknown as { __HOMIGO_E2E_RAZORPAY_MOCK?: boolean }).__HOMIGO_E2E_RAZORPAY_MOCK = true;
+  // Sign through the page origin. E2E_API_URL is a different host (and 127.0.0.1 is not
+  // localhost), so a direct call never sends the mock HMAC and verify never runs.
+  await page.addInitScript(() => {
     async function signPayment(orderId: string, paymentId: string): Promise<string> {
       let lastErr = "unknown";
       for (let attempt = 0; attempt < 6; attempt++) {
         try {
-          const res = await fetch(`${base}/api/payments/e2e/mock-signature`, {
+          const res = await fetch("/api/payments/e2e/mock-signature", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ razorpayOrderId: orderId, razorpayPaymentId: paymentId }),
@@ -323,6 +322,9 @@ export async function mockRazorpayCheckout(page: Page) {
       private settling = false;
       constructor(options: Record<string, unknown>) {
         this.options = options;
+      }
+      on(_event: string, _handler: unknown) {
+        return this;
       }
       open() {
         if (this.settling) return;
@@ -352,5 +354,5 @@ export async function mockRazorpayCheckout(page: Page) {
       }
     }
     window.Razorpay = RazorpayMock as unknown as typeof window.Razorpay;
-  }, apiBase);
+  });
 }

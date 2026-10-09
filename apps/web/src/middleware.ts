@@ -14,6 +14,22 @@ import { isPublishedServiceSlug, servicesRouteVerdict } from "@/lib/catalog/serv
 const NOT_FOUND_TARGET = "/__not_found__";
 
 /**
+ * Under `next start`, `request.url` is the server's own listen address. Building a redirect from
+ * that URL sends a visitor on a real domain to http://localhost:<port>/login. The Host the browser
+ * already sent is the origin they are on. X-Forwarded-Host is ignored: a client can set that header.
+ */
+function redirectToPath(request: NextRequest, path: string): NextResponse {
+  const host = request.headers.get("host")?.split(",")[0]?.trim() || request.nextUrl.host;
+  const forwarded = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  const proto = forwarded === "https" || forwarded === "http" ? forwarded : request.nextUrl.protocol.replace(":", "") || "http";
+  const location = `${proto}://${host}${path}`;
+  new URL(location);
+  const res = NextResponse.redirect(location);
+  res.headers.set("Location", location);
+  return res;
+}
+
+/**
  * Server-side route protection. Runs before any page is rendered, so
  * protected content never flashes for signed-out visitors and auth pages
  * never flash for signed-in users.
@@ -39,16 +55,15 @@ export async function middleware(request: NextRequest) {
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
 
   if (isProtectedRoute(pathname) && !hasSession) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("returnUrl", `${pathname}${search}`);
-    return NextResponse.redirect(loginUrl);
+    const query = new URLSearchParams({ returnUrl: `${pathname}${search}` });
+    return redirectToPath(request, `/login?${query.toString()}`);
   }
 
   if (isAuthRoute(pathname) && hasSession) {
     // OAuth callbacks must complete even with an existing session.
     if (pathname.startsWith("/auth/")) return NextResponse.next();
     const target = sanitizeOAuthReturnUrl(request.nextUrl.searchParams.get("returnUrl"));
-    return NextResponse.redirect(new URL(target, request.url));
+    return redirectToPath(request, target);
   }
 
   return NextResponse.next();
