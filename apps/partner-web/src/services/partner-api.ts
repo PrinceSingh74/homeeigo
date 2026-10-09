@@ -1310,7 +1310,9 @@ export type PartnerTaxSummary = {
   settledOut: number;
   estimatedTax: number;
   gstOnCommission?: number;
+  gstRemittedByPlatform?: boolean;
   tdsEstimate?: number;
+  tdsWithheldByPlatform?: boolean;
 };
 
 export type PartnerAttendance = {

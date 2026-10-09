@@ -447,10 +447,11 @@ export function EarningsTaxScreen() {
               <KeyValue label="Net earnings, all time" value={rupees(t.netEarnings)} strong />
               <KeyValue label="Paid to your bank (completed withdrawals)" value={rupees(t.settledOut)} />
             </Card>
-            <Block title="Estimates" caption="These are the server's rough estimates at fixed rates, not a tax computation or a certificate. Check with a tax adviser before you file.">
+            <Block title="Estimates" caption="HOMEEIGO does not remit GST or withhold TDS on these earnings. The rupee figure below is illustrative only, not a tax computation or a certificate. Check with a tax adviser before you file.">
               <Card>
-                <KeyValue label="GST on commission (estimate)" value={rupees(t.gstOnCommission)} />
-                <KeyValue label="Tax / TDS on net earnings (estimate)" value={rupees(t.estimatedTax)} />
+                <KeyValue label="GST remitted by HOMEEIGO" value="None" />
+                <KeyValue label="TDS withheld by HOMEEIGO" value="None" />
+                <KeyValue label="Illustrative estimate (not withheld)" value={rupees(t.estimatedTax)} />
               </Card>
             </Block>
           </>

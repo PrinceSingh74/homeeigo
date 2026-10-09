@@ -4,6 +4,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { INVOICE_SUPPLIER_DISCLOSURE } from "../services/invoice.service";
+import { reportedGstOnCommission } from "../services/invoice-report.service";
 import { TAX_POLICY } from "../lib/pricing-policy";
 
 describe("D4 invoice disclosure", () => {
@@ -24,5 +25,15 @@ describe("D4 invoice disclosure", () => {
     expect(src).toContain("INVOICE_SUPPLIER_DISCLOSURE");
     expect(src).not.toMatch(/GST\s*\/\s*Taxes/);
     expect(src).not.toMatch(/GST\/Taxes/);
+  });
+
+  test("partner tax-summary never invents GST on commission (D4 rejected option c)", async () => {
+    expect(reportedGstOnCommission(0)).toBe(0);
+    expect(reportedGstOnCommission(1000)).toBe(0);
+    expect(reportedGstOnCommission(18_000)).toBe(0);
+    const src = await Bun.file(new URL("../services/invoice-report.service.ts", import.meta.url)).text();
+    expect(src).not.toMatch(/commission\s*\*\s*0\.18/);
+    expect(src).toContain("gstRemittedByPlatform: false");
+    expect(src).toContain("not a GST tax invoice");
   });
 });

@@ -4,11 +4,15 @@ import { analyticsWhereVia } from "../lib/analytics-scope";
 import { CREDITED_EARNING_WHERE, earningInvoiceNumber, partnerEarningLines, partnerJobEarningView, type PartnerJobEarning } from "../lib/earning-settlement";
 
 /**
- * Partner-side ESTIMATE shown on the partner tax report (applied to net earnings). It is NOT the
- * customer tax on bookings — that is lib/pricing-policy TAX_POLICY — and must not be coupled to it.
- * Value unchanged from the original constant.
+ * Illustrative partner-side figure on net earnings (NOT withheld, NOT a TDS return).
+ * Must not be coupled to customer TAX_POLICY. D4: HOMEEIGO does not remit GST here.
  */
-const TAX_RATE = 0.1;
+const ILLUSTRATIVE_NET_TAX_RATE = 0.1;
+
+/** D4 option (a): never invent GST on commission. Option (c) was rejected. */
+export function reportedGstOnCommission(_commission: number): number {
+  return 0;
+}
 
 function csvCell(v: string | number | null | undefined): string {
   const s = String(v ?? "");
@@ -154,7 +158,7 @@ export class InvoiceReportService {
     const gross = agg._sum.grossAmount ?? 0;
     const commission = agg._sum.commission ?? 0;
     const net = agg._sum.netEarning ?? 0;
-    const estimatedTax = Math.round(net * TAX_RATE);
+    const estimatedTax = Math.round(net * ILLUSTRATIVE_NET_TAX_RATE);
     return {
       financialYear: new Date().getFullYear(),
       grossEarnings: gross,
@@ -162,8 +166,10 @@ export class InvoiceReportService {
       netEarnings: net,
       settledOut: settled._sum.netAmount ?? 0,
       estimatedTax,
-      gstOnCommission: Math.round(commission * 0.18),
+      gstOnCommission: reportedGstOnCommission(commission),
+      gstRemittedByPlatform: false as const,
       tdsEstimate: estimatedTax,
+      tdsWithheldByPlatform: false as const,
     };
   }
 
@@ -217,6 +223,7 @@ export class InvoiceReportService {
 <p>Partner: <b>${name}</b></p><p>Service: <b>${serviceName}</b></p>
 ${rows}
 <div class="row total"><span>Net earning</span><span>${inr(e.netEarning)}</span></div>
+<p style="margin-top:24px;font-size:12px;color:#64748b">This is a partner settlement statement, not a GST tax invoice. The partner is the supplier of the service; HOMEEIGO is the facilitator.</p>
 <p class="noprint" style="text-align:center;margin-top:24px"><button onclick="print()" style="background:#7C3AED;color:#fff;border:0;padding:10px 20px;border-radius:8px;cursor:pointer">Download / Print PDF</button></p>
 </body></html>`;
   }

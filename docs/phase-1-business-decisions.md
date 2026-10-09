@@ -13,15 +13,19 @@ registers the filing model. Historical journals are not rewritten.
 **Choice.** The **partner is the supplier of record** for the service. HOMEEIGO is a **facilitator**.
 The platform does **not** remit the booking `taxes` line as GST.
 
-**What the product already does (unchanged).**
+**What the product already does (unchanged ledger).**
 
 - Quote and booking: exclusive 10% on the discounted base (`TAX_POLICY`: `tax.v1`, 1000 bps, label
-  `Taxes`). `finalAmount = discountedBase + taxes`.
+  `Taxes`). `finalAmount = discountedBase + taxes`. Customer checkout uses that label, not GST.
 - Ledger: there is no `TAX_PAYABLE` account. Escrow releases the whole `finalAmount` to
   `PROVIDER_PAYABLE` (net) and `PLATFORM_REVENUE` (commission). Source:
   `apps/backend/src/services/earnings.service.ts`.
 - Commission basis at launch: **`final_amount`** (code default; `COMMISSION_BASE=pre_tax` remains a
   deploy-time switch, not a schema change). Gross still equals net + commission.
+- Customer invoices and partner earning statements disclose they are **not** GST tax invoices.
+- `GET /api/providers/me/tax-summary`: `gstOnCommission` is **0**, `gstRemittedByPlatform` is
+  **false**. The previous `commission × 18%` figure was option (c) and is not shown as GST. `estimatedTax`
+  / `tdsEstimate` remain an illustrative net × 10% figure and are **not** a withholding.
 
 **Accounting responsibility.**
 
@@ -104,7 +108,9 @@ Source: `booking-payment-expiry.service.ts` (`PAYMENT_PENDING_TTL_MINUTES = 15`)
 
 ## Launch scope — **APPROVED 2026-10-10**
 
-Ship **`51f7bed`** (or a successor that contains it). Do not ship a dirty working tree.
+Ship the Phase 1 successor of **`51f7bed`** (invoice + partner-tax disclosure on this record). Do
+not ship a dirty working tree. Do not ship `51f7bed` alone — that SHA still labelled invoices
+`GST / Taxes`.
 
 **In first launch**
 

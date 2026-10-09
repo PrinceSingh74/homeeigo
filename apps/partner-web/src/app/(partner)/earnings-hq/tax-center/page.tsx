@@ -14,13 +14,13 @@ export default function TaxCenterPage() {
   return (
     <HqPageShell
       title="Tax Center"
-      description="GST, TDS, tax summary, and annual report from provider tax API."
+      description="Earnings totals only. HOMEEIGO does not remit GST or TDS on these figures. Partner is supplier of the service."
       icon={FileCheck2}
       stats={[
-        { label: "GST (on commission)", value: inr(data?.gstOnCommission ?? 0) },
-        { label: "TDS estimate", value: inr(data?.tdsEstimate ?? 0) },
-        { label: "Tax summary", value: inr(data?.estimatedTax ?? 0) },
-        { label: "Annual FY", value: data?.financialYear ?? "—" },
+        { label: "GST remitted by HOMEEIGO", value: "None" },
+        { label: "TDS withheld by HOMEEIGO", value: "None" },
+        { label: "Illustrative estimate (not withheld)", value: inr(data?.estimatedTax ?? 0) },
+        { label: "Calendar year label", value: data?.financialYear ?? "—" },
       ]}
     >
       <section className="partner-card grid gap-2 p-5 text-sm sm:grid-cols-2">

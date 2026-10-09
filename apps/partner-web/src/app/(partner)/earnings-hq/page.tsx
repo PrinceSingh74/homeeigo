@@ -39,7 +39,7 @@ export default function EarningsHqPage() {
         </Link>
         <Link href="/earnings-hq/tax-center" className="partner-card partner-card-hover p-4">
           <p className="font-semibold">Tax Center</p>
-          <p className="mt-1 text-sm text-partner-muted">GST/TDS summary sourced from provider tax APIs.</p>
+          <p className="mt-1 text-sm text-partner-muted">Earnings totals. HOMEEIGO does not remit GST or TDS from this screen.</p>
         </Link>
         <Link href="/earnings-hq/forecast" className="partner-card partner-card-hover p-4">
           <p className="font-semibold">Forecast Center</p>

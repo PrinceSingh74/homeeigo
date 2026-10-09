@@ -38,7 +38,7 @@ export default function PartnerInvoicesPage() {
           { label: "Gross earnings", value: inr(tax?.grossEarnings ?? 0), icon: IndianRupee },
           { label: "Platform commission", value: inr(tax?.platformCommission ?? 0), icon: Receipt },
           { label: "Net earnings", value: inr(tax?.netEarnings ?? 0), icon: Wallet },
-          { label: `Est. tax (FY ${tax?.financialYear ?? ""})`, value: inr(tax?.estimatedTax ?? 0), icon: FileText },
+          { label: `Illustrative estimate (not withheld, ${tax?.financialYear ?? ""})`, value: inr(tax?.estimatedTax ?? 0), icon: FileText },
         ].map((k) => (
           <div key={k.label} className="rounded-xl border border-partner-line bg-partner-surface p-4">
             <k.icon size={18} className="text-partner-accent" />

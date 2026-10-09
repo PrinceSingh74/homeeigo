@@ -1546,9 +1546,10 @@ export type PartnerInvoices = {
 };
 
 /**
- * `GET /api/providers/me/tax-summary`. Read the caveats before showing it: the totals are ALL-TIME
- * (not scoped to a year) although `financialYear` is the current calendar year; `estimatedTax` and
- * `tdsEstimate` are the same server-side estimate (net × a fixed rate), not a tax computation.
+ * `GET /api/providers/me/tax-summary`. Totals are ALL-TIME (not scoped to a year) although
+ * `financialYear` is the current calendar year. `gstOnCommission` is always 0 (D4: platform does
+ * not remit GST). `estimatedTax` / `tdsEstimate` are the same illustrative figure (net × a fixed
+ * rate), not a withholding and not a tax computation.
  */
 export type PartnerTaxSummary = {
   financialYear: number;
@@ -1558,7 +1559,9 @@ export type PartnerTaxSummary = {
   settledOut: number;
   estimatedTax: number;
   gstOnCommission: number;
+  gstRemittedByPlatform?: boolean;
   tdsEstimate: number;
+  tdsWithheldByPlatform?: boolean;
 };
 
 /* ---- Geo-intelligence (`/api/geo-intel/*`) ----
