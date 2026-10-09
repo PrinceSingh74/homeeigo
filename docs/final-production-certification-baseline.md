@@ -71,7 +71,7 @@ Customer web/mobile quote+book APIs; partner `/me/services` + onboarding options
 
 ## Unresolved business decisions
 
-See `docs/release-decisions-required.md` D1–D4 and `docs/business-decision-scheduling.md`. Engineering did not choose a slot or GST policy.
+Closed 2026-10-10: `docs/phase-1-business-decisions.md` (D1 duration-aware slot, D2 customer_policy default, D3 15-minute EXPIRED, D4 partner supplier / facilitator). GSTIN / TAX_PAYABLE remain a later CA phase.
 
 ## Unproven infrastructure / device
 

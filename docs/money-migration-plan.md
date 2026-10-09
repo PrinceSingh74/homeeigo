@@ -47,7 +47,8 @@ twin at `ROUND(float * 100)`.
   set. The application writes the Float and the trigger derives the twin; `LEDGER_UNBALANCED` and
   `wallet_balance_consistency` compare Floats with a 0.005 tolerance.
 - **tax** — `booking-pricing.service.ts` computes `Math.round(discountedBase * TAX_RATE)`; stored on
-  the twinned `Booking`. (The rate itself is business decision **D4**.)
+  the twinned `Booking`. Rate/mode frozen in `TAX_POLICY`; D4 (2026-10-10) keeps this as a
+  pass-through, not platform GST (`docs/phase-1-business-decisions.md`).
 - **reports / exports / invoices** — read Floats (`invoice.service.ts`, finance reports), so they
   must switch to the compat layer before the Floats are dropped.
 - **webhooks** — Razorpay is already integer paise on the wire; the conversion happens at the edge.

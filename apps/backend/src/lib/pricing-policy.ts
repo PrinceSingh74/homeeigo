@@ -24,6 +24,10 @@ export const MAX_AMOUNT_PAISE = 1_000_000_000;
  * Tax policy. Rate and mode are the ones the platform already charged (`TAX_RATE = 0.1`,
  * exclusive, on the discounted base) — owner-confirmed rule "finalAmount = base + 10% tax".
  * Not a new rate. `version` is written into every booking's pricing snapshot.
+ *
+ * D4 (2026-10-10): this 10% line is a pass-through, not platform GST. Partner is supplier of
+ * record; HOMEEIGO is facilitator. Label must stay "Taxes" — never "GST". See
+ * docs/phase-1-business-decisions.md.
  */
 export const TAX_POLICY = {
   version: "tax.v1",

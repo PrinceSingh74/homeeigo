@@ -1,6 +1,6 @@
 # Business decision — partner slot duration
 
-Status: **DECIDED 2026-09-21 — option B implemented** (laundry/turnaround services keep the fixed block). See `docs/service-domain/phase-04-quantity-duration.md` addendum and migration `20260921180000_duration_aware_partner_slot`. The text below is the original decision record.
+Status: **DECIDED 2026-09-21 — option B implemented** (laundry/turnaround services keep the fixed block). Ratified for launch 2026-10-10 in `docs/phase-1-business-decisions.md`. See `docs/service-domain/phase-04-quantity-duration.md` addendum and migration `20260921180000_duration_aware_partner_slot`. The text below is the original 2026-09-20 question record; the last paragraph is historical.
 
 Searched (2026-09-20): `docs/release-decisions-required.md` D1, `docs/release-business-decisions.md` D1, `OWNER_DECISIONS_REQUIRED.md`, migration `20260909090000_booking_slot_half_open_ranges`, trigger `bookings_sync_conflict_slots`, characterization `scheduling-contract.characterization.test.ts`. No product owner answer exists in the repository.
 
@@ -40,4 +40,4 @@ Changing the rule is a **protected-object** migration: rewrite the trigger to us
 
 Choose A, B, or C. If B or C: state the travel buffer and whether existing future bookings are re-slotted.
 
-Until then this gate stays **BLOCKED**, not PASS, and the trigger is not modified.
+Closed: option B + FIXED exception. The trigger was modified in `20260921180000_duration_aware_partner_slot`. This gate is not BLOCKED.

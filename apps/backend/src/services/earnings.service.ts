@@ -76,10 +76,11 @@ export function commissionRateForVolume(monthlyCompleted: number): number {
  *   "pre_tax": finalAmount − taxes. The partner still receives the tax inside their share (the
  *       gross is unchanged, so the journal is unchanged); only the commission base excludes it.
  *
- * Not modelled: the platform itself remitting GST (a TAX_PAYABLE liability). That needs an
- * accountant's decision on who the supplier of record is, and is reported as BLOCKED rather than
- * guessed. Either basis keeps gross = net + commission (± bonus/deduction), so the earning journal
- * always balances.
+ * D4 (2026-10-10): partner is supplier of record; HOMEEIGO is facilitator. There is still no
+ * TAX_PAYABLE account. Launch commission basis is `final_amount`. Platform GST on commission, if
+ * any, is filed by a CA outside this ledger. Either basis keeps gross = net + commission
+ * (± bonus/deduction), so the earning journal always balances. See
+ * docs/phase-1-business-decisions.md.
  */
 export type CommissionBasis = "final_amount" | "pre_tax";
 

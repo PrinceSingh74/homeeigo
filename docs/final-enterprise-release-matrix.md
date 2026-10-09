@@ -1,7 +1,9 @@
 # HOMEEIGO — Final Enterprise Release Matrix
 
-Date: 2026-09-20 · Branch `cursor/stage-e-step-13-certification` · **No commits made.**
-Statuses are only **PASS**, **FAIL** or **BLOCKED**. There is no UNKNOWN.
+Date: 2026-09-20 · Branch `cursor/stage-e-step-13-certification`. Snapshot of that pass.
+**Supersession 2026-10-10:** rows 8 and 32 are no longer BLOCKED. Written decisions:
+`docs/phase-1-business-decisions.md`. Tax remains non-GST-compliant by decision (DECIDED, not PASS).
+Statuses in the original pass were only **PASS**, **FAIL** or **BLOCKED**. There is no UNKNOWN.
 
 "PASS" means there is runtime evidence in this environment. It never means "production-proven" —
 where production evidence is required and absent, the row is BLOCKED and says what is needed.
@@ -15,7 +17,7 @@ where production evidence is required and absent, the row is BLOCKED and says wh
 | 5 | Wallet | PASS | Wallet-funded refunds, shortfall handling, concurrent debits: exactly-once, ledger balanced, 90/90 concurrency ×3. |
 | 6 | Ledger | PASS | Every journal balances on both databases; 0 duplicate idempotency keys; 7 invariant checks in `booking-consistency.service`. |
 | 7 | Commission | PASS | Partner earning = gross − 20% commission, credited once; over-withdrawal blocked. |
-| 8 | Tax | **BLOCKED** | Flat 10% with no GSTIN/HSN/place-of-supply/CGST-SGST-IGST split and no tax-payable account. Business decision **D4** — `docs/release-business-decisions.md`. |
+| 8 | Tax | **DECIDED** (not GST-PASS) | D4 option (a): partner supplier, 10% pass-through, no TAX_PAYABLE this launch. `docs/phase-1-business-decisions.md`. |
 | 9 | Dispatch | PASS | One SENT offer per job; accept ‖ accept yields one owner; cancel ‖ dispatch leaves no open offer. New `assignment_dispatch_latency_seconds` metric. |
 | 10 | Partner app (web) | PASS | Login → bookings → route centre in browser against an isolated backend. |
 | 11 | Customer app (web) | PASS | Login → booking → tracking → checkout paid → completion in browser. |
@@ -39,7 +41,7 @@ where production evidence is required and absent, the row is BLOCKED and says wh
 | 29 | External alerts | **BLOCKED** | Routing tree complete; Slack/SMTP/PagerDuty credentials absent. Test runtimes can no longer alert production (Sentry disabled under NODE_ENV=test). |
 | 30 | Money migration (Float → paise) | **BLOCKED** | Plan + full inventory (107 fields) and precision evidence (0 sub-paise in 63,239 values). Execution needs a production DB, verified backup and finance sign-off — `docs/money-migration-plan.md`. |
 | 31 | Third-party egress from tests | PASS | Twilio/Maps/BigQuery/OpenWeather/Razorpay/Resend/Expo/S3/AI all barred in test runtimes, two independent layers, 10 enforcement tests, netstat witness = 0 external connections. **Owner action: review Twilio logs for 2026-09-20** — earlier runs sent real SMS. |
-| 32 | Business decisions | **BLOCKED** | D1 scheduling, D2 admin refund default, D3 unpaid expiry, D4 GST. None chosen by engineering. |
+| 32 | Business decisions | **DECIDED** | D1–D4 closed 2026-10-10 — `docs/phase-1-business-decisions.md`. |
 
 ## FAIL rows — what must happen
 
@@ -138,7 +140,7 @@ as-is and recorded here rather than rewritten: they belong to a feature outside 
 ## Owner actions outstanding
 1. Review Twilio message logs for 2026-09-20 (real SMS were sent by tests before the barrier).
 2. Approve or decline the C1/C2 refunds (₹3,464 total).
-3. Decide D1–D4.
+3. ~~Decide D1–D4.~~ Closed 2026-10-10 (`docs/phase-1-business-decisions.md`). GSTIN / TAX_PAYABLE remain a later CA phase, not this list.
 4. Provide production infrastructure: backup/PITR, alert credentials, a deployed runtime.
 5. Provide devices for mobile certification.
 

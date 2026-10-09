@@ -2,7 +2,10 @@
 
 Date: 2026-09-20 (Unlock-driven wait mode — Pass 8). One status per gate. No UNKNOWN.
 
-**Certification: NOT ENTERPRISE RELEASE READY**
+**Supersession 2026-10-10:** Gate F (Slot D1) is DECIDED. See `docs/phase-1-business-decisions.md`.
+This snapshot is otherwise unchanged. First launch is still not production-cloud ready.
+
+**Certification: NOT ENTERPRISE RELEASE READY** (infra / device / PITR — not D1–D4)
 
 Last unlock probe: 2026-09-20T10:04Z — **no new unlocks** (15m loop wake #3). Mode: WAIT / VERIFY / RESUME.
 
@@ -27,7 +30,7 @@ Last unlock probe: 2026-09-20T10:04Z — **no new unlocks** (15m loop wake #3). 
 | A. Heartbeat p95 (authoritative) | **BLOCKED** | ENVIRONMENT / SLO | Pass 6: `load.k6.js` still **NONE**; prior isolated 3× p95 45–51; cliff p95 479–562 @ ~100+ rps; historical mixed 678>400 | Missing mixed harness + contention | Perf/Ops | Supply `load.k6.js` or scale-out; keep p95≤400 | Infra+Eng | mixed k6 / presence-load |
 | B. Production migration | **BLOCKED** | AUTHORIZATION | Pass 6: `.production-authorization.json` **ABSENT**. No mutation | No written authorization | Owner | Create filled auth artifact (not example); approve window | Auth | migrate deploy + smoke |
 | C. Live `homigo_db` reconcile | **BLOCKED** | AUTHORIZATION | Clone rehearsal PASS; live apply still unauthorized (auth artifact absent) | Live apply not authorized | Owner/DBA | Authorize then runbook C→D→E on live | Auth | drift + `/api/services` 200 |
-| F. Slot D1 | **BLOCKED** | OWNER DECISION | Pass 6: docs still **BLOCKED — OWNER DECISION**; no A/B/C selected | No owner decision | Product | Explicitly choose A, B, or C in docs | Owner | characterization + trigger |
+| F. Slot D1 | **DECIDED** | OWNER | Duration-aware slot (B) + FIXED exception; ratified 2026-10-10 | Closed | Product | — | — | `docs/phase-1-business-decisions.md` + `partner-slot-duration.integration.test.ts` |
 | H. Production PITR | **BLOCKED** | INFRASTRUCTURE | Pass 6: no PITR/restore-drill evidence files with RESTORE_DRILL markers | DOCUMENTED ≠ TESTED | Ops | WAL/archive + restore drill evidence | Infra | restore drill |
 | Warranty | **CONFIGURATION_ONLY_BY_DESIGN** | OWNER | Snapshot only | By design | Optional | Keep or build Warranty domain later | Product | — |
 | Bun 3221226505 | **ENVIRONMENTAL** | ENVIRONMENT | Controlled load no crash; causality unproven as app leak | Multi-watcher / host memory history | Ops | Single API under load; do not lower SLO | Infra | load under single process |

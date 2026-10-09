@@ -55,7 +55,8 @@ describe("money boundaries: toPaise refuses what it cannot represent exactly", (
 
 describe("rounding: once, half-up, to a whole rupee, in integer paise", () => {
   test("tax is 10% exclusive (the existing platform rule), rounded once", () => {
-    expect(TAX_POLICY).toMatchObject({ mode: "EXCLUSIVE", rateBps: 1000 });
+    expect(TAX_POLICY).toMatchObject({ mode: "EXCLUSIVE", rateBps: 1000, label: "Taxes" });
+    expect(TAX_POLICY.label).not.toMatch(/GST/i);
     expect(taxOn(toPaise(199))).toBe(2000); // 19.9 → 20
     expect(taxOn(toPaise(1045))).toBe(10500); // 104.5 → 105 (half-up)
     expect(taxOn(toPaise(1044))).toBe(10400);

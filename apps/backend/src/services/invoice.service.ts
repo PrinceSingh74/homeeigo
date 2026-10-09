@@ -2,7 +2,12 @@ import { PaymentStatus } from "@prisma/client";
 import PDFDocument from "pdfkit";
 import prisma from "../lib/prisma";
 import { PDF_BRAND, PDF_RHYTHM, COMPANY } from "../lib/pdf-branding";
+import { TAX_POLICY } from "../lib/pricing-policy";
 import { userPiiService } from "./user-pii.service";
+
+/** D4: this document is not a statutory GST tax invoice. Partner is supplier of record. */
+export const INVOICE_SUPPLIER_DISCLOSURE =
+  "This is not a GST tax invoice. The partner is the supplier of the service; HOMEEIGO is the facilitator. The tax line is a 10% exclusive pass-through, not a GST slab.";
 
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
@@ -109,11 +114,11 @@ export class InvoiceService {
 
     <div class="totals">
       <div class="row"><span>Subtotal</span><span>${inr(b.baseAmount)}</span></div>
-      <div class="row"><span>GST / Taxes</span><span>${inr(b.taxes)}</span></div>
+      <div class="row"><span>${esc(TAX_POLICY.label)}</span><span>${inr(b.taxes)}</span></div>
       <div class="row grand"><span>Total paid</span><span>${inr(b.finalAmount)}</span></div>
     </div>
 
-    <div class="foot">This is a computer-generated invoice from HOMEEIGO · No signature required.</div>
+    <div class="foot">${esc(INVOICE_SUPPLIER_DISCLOSURE)} · Computer-generated · No signature required.</div>
   </div>
 </body></html>`;
   }
@@ -155,12 +160,12 @@ export class InvoiceService {
       doc.fontSize(10).fillColor(PDF_BRAND.dark)
         .text(`${b.service.name}`, PDF_RHYTHM.margin)
         .text(`Subtotal: ${inr(b.baseAmount)}`)
-        .text(`GST/Taxes: ${inr(b.taxes)}`)
+        .text(`${TAX_POLICY.label}: ${inr(b.taxes)}`)
         .font("Helvetica-Bold")
         .text(`Total paid: ${inr(b.finalAmount)}`);
       doc.moveDown(2);
       doc.fontSize(8).fillColor(PDF_BRAND.muted).font("Helvetica")
-        .text("Computer-generated invoice · No signature required", PDF_RHYTHM.margin);
+        .text(INVOICE_SUPPLIER_DISCLOSURE, PDF_RHYTHM.margin);
       doc.end();
     });
 

@@ -17,17 +17,17 @@ Each section gives STATUS / EVIDENCE / TEST / RESULT / REMAINING RISK. The track
 - **REMAINING RISK:** C1/C2 customers are owed money until an owner approves remediation.
 
 ### 2. Business decisions
-- **STATUS:** BLOCKED
-- **EVIDENCE:** `docs/release-decisions-required.md` (repo search recorded)
-- **TEST:** n/a (policy)
-- **RESULT:** No authoritative rule exists for D1 (multi-hour scheduling), D2 (admin refund default), D3 (unpaid expiry) or D4 (GST supplier). None was chosen silently.
-- **REMAINING RISK:** Behaviour in those four areas is current-code behaviour, not approved policy.
+- **STATUS:** DECIDED 2026-10-10 (this 2026-09-20 section is superseded)
+- **EVIDENCE:** `docs/phase-1-business-decisions.md`
+- **TEST:** n/a (policy); D1–D3 already covered by existing integration tests
+- **RESULT:** D1 option B + FIXED; D2 `customer_policy`; D3 15-minute EXPIRED; D4 partner supplier / facilitator, no TAX_PAYABLE.
+- **REMAINING RISK:** First-launch invoices are not GST tax invoices. That is accepted, not a silent gap.
 
 ### 3. Four-hour scheduling
-- **STATUS:** BLOCKED (D1)
-- **EVIDENCE:** `scheduling-contract.characterization.test.ts`
-- **TEST:** 8 characterization cases
-- **RESULT:** Current behaviour is pinned: a 60-minute slot regardless of duration. Case #10 was corrected: it had only passed on a test DB that lacked the production unique index.
+- **STATUS:** VERIFIED (D1 implemented 2026-09-21, ratified 2026-10-10)
+- **EVIDENCE:** `docs/business-decision-scheduling.md`, `partner-slot-duration.integration.test.ts`
+- **TEST:** duration-aware slot integration + characterization of NULL legacy rows
+- **RESULT:** DURATION services reserve `[start − 30, start + duration + 30)`. FIXED keeps 60 min.
 - **REMAINING RISK:** A 4 h booking blocks 1 h of the partner calendar until D1 is decided.
 
 ### 4. Admin cancellation
@@ -221,7 +221,7 @@ Each section gives STATUS / EVIDENCE / TEST / RESULT / REMAINING RISK. The track
 The engineering gates that can be closed in code are closed, with runtime evidence. The following are
 open, and none of them can honestly be converted to PASS from this environment:
 
-- business decisions D1–D4;
+- ~~business decisions D1–D4~~ closed 2026-10-10 (`docs/phase-1-business-decisions.md`); GSTIN / TAX_PAYABLE remain a later CA phase;
 - real-device mobile testing;
 - production backup/PITR;
 - external alert delivery;
