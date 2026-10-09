@@ -200,4 +200,15 @@ describe("coverage is unspecified until cities or pincodes are configured", () =
     expect(coverageAllowsAddress({ availableCities: ["Mumbai"] }, cfg, { city: "Pune", zipCode: "400001" }).ok).toBe(false);
     expect(coverageAllowsAddress({ availableCities: [] }, cfg, { city: "Mumbai", zipCode: "400020" }).ok).toBe(false);
   });
+  test("an officially renamed city matches under either name", () => {
+    expect(coverageAllowsAddress({ availableCities: ["Bangalore"] }, null, { city: "Bengaluru" }).ok).toBe(true);
+    expect(coverageAllowsAddress({ availableCities: ["Bengaluru"] }, null, { city: " bangalore " }).ok).toBe(true);
+    expect(coverageAllowsAddress({ availableCities: ["Gurgaon"] }, null, { city: "Gurugram" }).ok).toBe(true);
+    const cfg = serviceCatalogConfigSchema.parse({ coverage: { cityIds: ["bombay"] } });
+    expect(coverageAllowsAddress({ availableCities: [] }, cfg, { city: "Mumbai" }).ok).toBe(true);
+  });
+  test("renames are not a business mapping: other cities still refuse", () => {
+    expect(coverageAllowsAddress({ availableCities: ["Delhi"] }, null, { city: "New Delhi" }).ok).toBe(false);
+    expect(coverageAllowsAddress({ availableCities: ["Bangalore"] }, null, { city: "Mysuru" }).ok).toBe(false);
+  });
 });

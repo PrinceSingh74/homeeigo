@@ -136,7 +136,7 @@ describe("broadcast accept under concurrency", () => {
     const threw = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
     const ok = results.filter((r) => r.status === "fulfilled" && (r.value as { ok?: boolean }).ok === true);
     if (threw.length > 0) {
-      await forensic("accepts threw", { threw: threw.length, processQueueMs, tick, backlogBefore, acceptMs });
+      await forensic("accepts threw", { threw: threw.length, backlogBefore, acceptMs });
     }
 
     expect(threw.map((r) => String(r.reason?.message ?? r.reason).split("\n").pop())).toEqual([]);

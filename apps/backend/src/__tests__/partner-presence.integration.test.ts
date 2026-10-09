@@ -451,7 +451,8 @@ describe("Partner presence — failure simulation (no axis contamination)", () =
     });
     expect(rotated.success).toBe(true);
     const afterRefresh = await partnerPresenceService.getSnapshot(ctx.providerId);
-    expect(afterRefresh.sessionId).toBe(rotated.sessionId);
+    expect(rotated.sessionId).toBeDefined();
+    expect(afterRefresh.sessionId).toBe(rotated.sessionId!);
     expect(afterRefresh.sessionId).not.toBe(minted.sessionId);
 
     await prisma.refreshToken.update({

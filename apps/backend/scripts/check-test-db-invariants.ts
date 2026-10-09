@@ -203,6 +203,9 @@ export function declaredUnpushableObjects(migrationsDir = MIGRATIONS): DeclaredO
 }
 
 function testUrlFromEnvFile(): string {
+  // Same selection as setup-test-db: an injected URL wins when it names a test database.
+  const injected = process.env.HOMIGO_TEST_DATABASE_URL || process.env.DATABASE_URL || "";
+  if (/test/i.test(injected.split("/").pop()?.split("?")[0] ?? "")) return injected;
   try {
     const envTest = readFileSync(join(import.meta.dir, "..", ".env.test"), "utf8");
     const line = envTest.split(/\r?\n/).find((l) => l.startsWith("DATABASE_URL="));

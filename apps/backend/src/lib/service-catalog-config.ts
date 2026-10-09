@@ -786,6 +786,24 @@ export function hydrateCatalogConfig(
   return parseCatalogConfig(merged) ?? json;
 }
 
+/**
+ * Official renames only: the old and new name are the same city. Addresses arrive with whichever the
+ * customer typed or the device geocoded, catalogue lists use either. Not a place for business choices
+ * such as whether "New Delhi" is served by a "Delhi" listing.
+ */
+const CITY_RENAMES: Record<string, string> = {
+  bangalore: "bengaluru",
+  gurgaon: "gurugram",
+  bombay: "mumbai",
+  madras: "chennai",
+  calcutta: "kolkata",
+};
+
+export function canonicalCity(city: string): string {
+  const key = city.trim().toLowerCase();
+  return CITY_RENAMES[key] ?? key;
+}
+
 /** Empty city/pincode lists mean unspecified (nationwide / not configured) — not "nowhere". */
 export function coverageAllowsAddress(
   service: { availableCities?: string[] | null },
@@ -793,9 +811,9 @@ export function coverageAllowsAddress(
   address: { city: string; zipCode?: string | null },
 ): { ok: true } | { ok: false; error: string } {
   const cities = [...(service.availableCities ?? []), ...(cfg?.coverage?.cityIds ?? [])]
-    .map((c) => c.trim().toLowerCase())
+    .map(canonicalCity)
     .filter(Boolean);
-  if (cities.length > 0 && !cities.includes(address.city.trim().toLowerCase())) {
+  if (cities.length > 0 && !cities.includes(canonicalCity(address.city))) {
     return { ok: false, error: "Service is not available in this city" };
   }
   const pins = cfg?.coverage?.pincodes ?? [];
