@@ -18,20 +18,9 @@ export default function TerritoryHqPage() {
     queryFn: () => partnerApi.geoIntel.density(),
     staleTime: 120_000,
   });
-  const scoring = useQuery({
-    queryKey: ["partner", "territory-scoring"],
-    queryFn: () => partnerApi.geoIntel.zoneScoring(),
-    staleTime: 120_000,
-  });
-
   const surgeZones = surge.data?.data ?? [];
   const densityZones = density.data?.data ?? [];
-  const ranked = scoring.data?.data.ranked ?? [];
-  const preferredZones = scoring.data?.data.bestEarning?.length ?? 0;
-  const demandIndex =
-    ranked.length > 0
-      ? Math.round(ranked.reduce((s, z) => s + z.demandScore, 0) / ranked.length)
-      : 0;
+  const bySurge = [...surgeZones].sort((a, b) => b.predictedSurge - a.predictedSurge);
   const hotSurge = surgeZones.filter((z) => z.predictedSurge >= 1.3).length;
 
   return (
@@ -42,8 +31,8 @@ export default function TerritoryHqPage() {
       stats={[
         { label: "Surge zones", value: surgeZones.length },
         { label: "Coverage zones", value: densityZones.length },
-        { label: "Preferred zones", value: preferredZones, hint: "Top earning" },
-        { label: "Demand index", value: demandIndex, hint: "Avg demand score" },
+        { label: "Preferred zones", value: "—", hint: "Platform score is admin-only" },
+        { label: "Demand index", value: "—", hint: "Not a partner metric" },
       ]}
     >
       {hotSurge > 0 ? (
@@ -72,23 +61,20 @@ export default function TerritoryHqPage() {
       </div>
       <NetworkCitiesSection />
 
-      {ranked.length > 0 ? (
+      {bySurge.length > 0 ? (
         <section className="space-y-2">
           <h2 className="font-display text-sm font-bold uppercase tracking-wide text-partner-muted">
-            Top territories by opportunity
+            Highest surge
           </h2>
-          {ranked.slice(0, 5).map((zone) => (
+          {bySurge.slice(0, 5).map((zone) => (
             <article key={zone.zoneId} className="partner-card flex items-center justify-between p-4">
               <div>
                 <p className="font-semibold">{zone.name}</p>
                 <p className="text-xs text-partner-muted">
-                  {zone.city ?? "—"} · demand {zone.demand24h} · supply {zone.supply} · gap{" "}
-                  {zone.gap ?? zone.demand24h - zone.supply}
+                  {zone.city ?? "—"} · supply {zone.supply} · active {zone.activeBookings}
                 </p>
               </div>
-              <p className="text-sm font-bold text-partner-primary">
-                {zone.opportunityScore ?? zone.compositeScore}/100
-              </p>
+              <p className="text-sm font-bold text-partner-primary">×{zone.predictedSurge}</p>
             </article>
           ))}
         </section>

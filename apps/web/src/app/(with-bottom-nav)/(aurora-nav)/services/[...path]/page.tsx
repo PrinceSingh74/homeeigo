@@ -11,14 +11,19 @@ import {
   type ResolvedPath,
 } from "@/lib/catalog";
 import { CategoryLanding, ServiceDetail } from "@/components/services-catalog/lazy-views";
-import { fetchServicesCatalog } from "@/lib/server-api";
+import { fetchServiceDetail, fetchServicesCatalog } from "@/lib/server-api";
+import { servicePageMeta } from "@/lib/catalog/service-meta";
+import { detailContent } from "@/lib/catalog/content";
+import type { ServiceView } from "@/lib/catalog/types";
 
-/** true = bookable, false = coming soon, null = the live catalogue could not be read. */
-async function isLiveService(slug: string): Promise<boolean | null> {
+/**
+ * The taxonomy view merged with the live catalogue, or null when the catalogue
+ * could not be read. An outage must not be treated as "this service is unpublished".
+ */
+async function publishedView(slug: string): Promise<ServiceView | null> {
   const data = await fetchServicesCatalog();
   if (!data) return null;
-  const view = buildCatalog(data.services).bySlug.get(slug);
-  return view ? view.status === "live" : null;
+  return buildCatalog(data.services).bySlug.get(slug) ?? null;
 }
 
 export const revalidate = 60;
@@ -97,16 +102,17 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
   if (resolved.kind === "service") {
     const s = resolved.service;
     const cat = CATEGORY_BY_ID.get(s.category)!;
-    // Coming-soon pages stay out of the index until they launch — the same rule sitemap.ts applies
-    // (only status "live" is listed). Metadata streams for browsers, so the page body is not held
-    // behind this cached read; only crawlers wait for it. Unknown (backend unreadable) emits nothing
-    // rather than noindex, so an outage can never de-index live pages.
-    const live = await isLiveService(s.slug);
+    // Stored SEO fields live on the backend row. The taxonomy view has none of them.
+    // Unknown catalogue (backend unreadable) does not noindex: an outage must not de-index live pages.
+    const published = await publishedView(s.slug);
+    const meta = servicePageMeta(published ?? s, cat.name);
+    const index = published == null ? true : meta.index;
     return {
-      title: `${s.name} — ${cat.name}`,
-      description: s.description,
-      alternates: { canonical: s.href },
-      ...(live === false ? { robots: { index: false, follow: true } } : {}),
+      title: meta.title,
+      description: meta.description,
+      alternates: { canonical: meta.canonical },
+      ...(meta.keywords ? { keywords: meta.keywords } : {}),
+      ...(!index ? { robots: { index: false, follow: true } } : {}),
       openGraph: s.image?.startsWith("/") ? { images: [{ url: s.image }] } : undefined,
     };
   }
@@ -148,28 +154,37 @@ export default async function ServicesPathRoute({ params }: { params: Promise<Pa
     case "service": {
       const s = resolved.service;
       const cat = CATEGORY_BY_ID.get(s.category)!;
+      const catalog = await fetchServicesCatalog();
+      const published = catalog ? buildCatalog(catalog.services).bySlug.get(s.slug) ?? null : null;
+      const source = published ?? s;
+      const detail = source.backendId ? await fetchServiceDetail(source.backendId) : null;
+      const content = detailContent(source, detail);
       return (
         <>
           <JsonLd
             data={{
               "@context": "https://schema.org",
               "@type": "Service",
-              name: s.name,
-              description: s.description,
+              name: source.name,
+              description: content.overview,
               serviceType: cat.name,
-              url: `${SITE_URL}${s.href}`,
+              url: `${SITE_URL}${source.href}`,
               provider: { "@type": "Organization", name: "HOMEEIGO", url: SITE_URL },
               areaServed: "IN",
+              ...(content.rating
+                ? { aggregateRating: { "@type": "AggregateRating", ratingValue: content.rating.value, reviewCount: content.rating.count, bestRating: 5, worstRating: 1 } }
+                : {}),
             }}
           />
+          {faqLd(content.faqs)}
           <JsonLd
             data={breadcrumbLd([
               ["Services", "/services"],
               [cat.name, categoryHref(cat.id)],
-              [s.name, s.href],
+              [source.name, source.href],
             ])}
           />
-          <ServiceDetail initialServices={null} slug={s.slug} detail={null} />
+          <ServiceDetail initialServices={catalog?.services ?? null} slug={s.slug} detail={detail} />
         </>
       );
     }
@@ -187,6 +202,21 @@ function breadcrumbLd(items: [string, string][]) {
       item: `${SITE_URL}${href}`,
     })),
   };
+}
+
+/** The same FAQ list the page renders. Nothing is added for the schema. */
+function faqLd(faqs: { q: string; a: string }[]) {
+  const real = faqs.filter((f) => f.q.trim() && f.a.trim());
+  if (real.length === 0) return null;
+  return (
+    <JsonLd
+      data={{
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: real.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })),
+      }}
+    />
+  );
 }
 
 function JsonLd({ data }: { data: object }) {

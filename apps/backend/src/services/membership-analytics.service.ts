@@ -1,4 +1,4 @@
-import { analyticsWhere } from "../lib/analytics-scope";
+import { analyticsWhere, analyticsWhereVia } from "../lib/analytics-scope";
 import { SubscriptionStatus } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { cacheService } from "./cache.service";
@@ -6,6 +6,15 @@ import { cacheService } from "./cache.service";
 export type AnalyticsPeriod = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 
 const INTERVAL_MONTHS: Record<string, number> = { MONTHLY: 1, QUARTERLY: 3, YEARLY: 12 };
+
+/**
+ * The business population for every membership figure. The funnel's customer total was already
+ * scoped while every subscription count beside it was not, so its ratios divided one population by
+ * another. No `where` below filters the `user` / `subscription` relation itself, so spreading is safe.
+ */
+const SUBS = () => analyticsWhereVia("userSubscription");
+const INVOICES = () => ({ subscription: analyticsWhereVia("userSubscription") });
+const BENEFITS = () => analyticsWhereVia("membershipBenefitUsage");
 
 /**
  * Enterprise membership analytics — MRR, ARR, churn, retention, cohorts, LTV, funnels.
@@ -22,7 +31,7 @@ export class MembershipAnalyticsService {
     const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
 
     const activeSubs = await prisma.userSubscription.findMany({
-      where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now } },
+      where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now }, ...SUBS() },
       include: { plan: true },
     });
 
@@ -36,12 +45,13 @@ export class MembershipAnalyticsService {
     const [newThisMonth, churnedThisMonth, activeLastMonth, invoices, planDist, benefitUsage] =
       await Promise.all([
         prisma.userSubscription.count({
-          where: { status: SubscriptionStatus.ACTIVE, startsAt: { gte: monthStart } },
+          where: { status: SubscriptionStatus.ACTIVE, startsAt: { gte: monthStart }, ...SUBS() },
         }),
         prisma.userSubscription.count({
           where: {
             status: { in: [SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED] },
             cancelledAt: { gte: monthStart },
+            ...SUBS(),
           },
         }),
         prisma.userSubscription.count({
@@ -49,20 +59,22 @@ export class MembershipAnalyticsService {
             status: SubscriptionStatus.ACTIVE,
             startsAt: { lte: lastMonthEnd },
             OR: [{ expiresAt: { gt: lastMonthEnd } }, { expiresAt: null }],
+            ...SUBS(),
           },
         }),
         prisma.subscriptionInvoice.aggregate({
-          where: { createdAt: { gte: monthStart }, status: "paid" },
+          where: { createdAt: { gte: monthStart }, status: "paid", ...INVOICES() },
           _sum: { amount: true },
           _count: true,
         }),
         prisma.userSubscription.groupBy({
           by: ["planId"],
-          where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now } },
+          where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now }, ...SUBS() },
           _count: true,
         }),
         prisma.membershipBenefitUsage.groupBy({
           by: ["benefitType"],
+          where: BENEFITS(),
           _sum: { count: true, amount: true },
         }),
       ]);
@@ -120,7 +132,7 @@ export class MembershipAnalyticsService {
       downgradeFunnel: {
         cancelledThisMonth: churnedThisMonth,
         expiredThisMonth: await prisma.userSubscription.count({
-          where: { status: SubscriptionStatus.EXPIRED, updatedAt: { gte: monthStart } },
+          where: { status: SubscriptionStatus.EXPIRED, updatedAt: { gte: monthStart }, ...SUBS() },
         }),
       },
       revenueForecast: forecast,
@@ -143,6 +155,7 @@ export class MembershipAnalyticsService {
             status: SubscriptionStatus.ACTIVE,
             startsAt: { lte: b.end },
             OR: [{ expiresAt: { gt: b.end } }, { expiresAt: null }],
+            ...SUBS(),
           },
           include: { plan: true },
         });
@@ -154,13 +167,14 @@ export class MembershipAnalyticsService {
           where: {
             status: { in: [SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED] },
             cancelledAt: { gte: b.start, lte: b.end },
+            ...SUBS(),
           },
         });
         const joined = await prisma.userSubscription.count({
-          where: { startsAt: { gte: b.start, lte: b.end } },
+          where: { startsAt: { gte: b.start, lte: b.end }, ...SUBS() },
         });
         const revenue = await prisma.subscriptionInvoice.aggregate({
-          where: { createdAt: { gte: b.start, lte: b.end }, status: "paid" },
+          where: { createdAt: { gte: b.start, lte: b.end }, status: "paid", ...INVOICES() },
           _sum: { amount: true },
         });
         const prevActive = Math.max(1, activeSubs.length + churned - joined);
@@ -260,13 +274,14 @@ export class MembershipAnalyticsService {
       const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
       const joined = await prisma.userSubscription.count({
-        where: { startsAt: { gte: start, lte: end } },
+        where: { startsAt: { gte: start, lte: end }, ...SUBS() },
       });
       const stillActive = await prisma.userSubscription.count({
         where: {
           startsAt: { gte: start, lte: end },
           status: SubscriptionStatus.ACTIVE,
           expiresAt: { gt: now },
+          ...SUBS(),
         },
       });
       cohorts.push({
@@ -282,11 +297,11 @@ export class MembershipAnalyticsService {
   private async upgradeFunnel() {
     const [totalUsers, everSubscribed, activeNow, withBenefitUsage] = await Promise.all([
       prisma.user.count({ where: { role: "CUSTOMER", isBanned: false, ...analyticsWhere() } }),
-      prisma.userSubscription.groupBy({ by: ["userId"] }).then((r) => r.length),
+      prisma.userSubscription.groupBy({ by: ["userId"], where: SUBS() }).then((r) => r.length),
       prisma.userSubscription.count({
-        where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: new Date() } },
+        where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: new Date() }, ...SUBS() },
       }),
-      prisma.membershipBenefitUsage.groupBy({ by: ["userId"] }).then((r) => r.length),
+      prisma.membershipBenefitUsage.groupBy({ by: ["userId"], where: BENEFITS() }).then((r) => r.length),
     ]);
 
     return {

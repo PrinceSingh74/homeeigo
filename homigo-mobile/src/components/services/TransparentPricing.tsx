@@ -25,7 +25,7 @@ const TRUST = [
   { icon: BadgeIndianRupee, label: "Upfront Pricing" },
   { icon: Lock, label: "Secure Payments" },
   { icon: FileText, label: "Instant Invoice" },
-  { icon: UserCheck, label: "Verified Professionals" },
+  { icon: UserCheck, label: "Approved partners" },
 ];
 
 /** Transparent Pricing — 1:1 content with the website services page. */

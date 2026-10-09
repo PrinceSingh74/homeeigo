@@ -43,6 +43,8 @@ import {
   updateBookingCustomerSchema,
 } from "../schemas/booking.schema";
 import { bookingPricingService } from "../services/booking-pricing.service";
+import { recordQuoteGenerated } from "../services/analytics-funnel.service";
+import { logger } from "../lib/logger";
 import { bookingSelectionSummaryService } from "../services/booking-selection-summary.service";
 import { customerPolicyService } from "../services/customer-policy.service";
 import { AGE_POLICY_MESSAGES, type AgeReasonCode } from "../lib/customer-policy";
@@ -223,6 +225,13 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
       }
       // Phase D: read-only age-policy outcome so the UI can explain before booking (no decision row).
       const customerPolicy = await customerPolicyService.preview({ customerId: userId, serviceId: body.serviceId, guardianAttested: body.guardianAttested });
+      // Phase 15.2 — observe the quote that was just computed. Measurement only: it reads the
+      // breakdown above and can neither change it nor fail this response.
+      try {
+        await recordQuoteGenerated({ userId, serviceId: body.serviceId, breakdown: result.breakdown });
+      } catch (err) {
+        logger.warn("analytics_quote_generated_failed", { serviceId: body.serviceId, error: err instanceof Error ? err.message : String(err) });
+      }
       return { success: true, data: { quote: result.breakdown, customerPolicy } };
     },
     { body: bookingPriceQuoteSchema },
@@ -409,6 +418,11 @@ export const bookingsRoutes = new Elysia({ prefix: "/api/bookings" })
         set.status = 429;
         set.headers["Retry-After"] = String(retryAfter);
         return { success: false, error: "System busy. Please retry in a few seconds.", code: "POOL_BUSY", retryAfter };
+      }
+      if (result.error === "PROVENANCE_UNAVAILABLE") {
+        set.status = 503;
+        set.headers["Retry-After"] = "3";
+        return { success: false, error: "We could not place this booking right now. Please retry.", code: "PROVENANCE_UNAVAILABLE", retryAfter: 3 };
       }
       if (result.error === "UPGRADE_REQUIRED") {
         set.status = 403;

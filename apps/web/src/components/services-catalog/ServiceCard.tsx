@@ -1,7 +1,10 @@
+"use client";
+
 import { memo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Clock } from "lucide-react";
+import { trackServiceClick } from "@/lib/analytics/service-click";
 import {
   CATEGORY_BY_ID,
   PRICING_MODEL_LABEL,
@@ -61,7 +64,7 @@ export const ServiceCard = memo(function ServiceCard({ service: svc, context, pr
         feature ? "text-lg lg:text-2xl" : "text-lg",
       )}
     >
-      <Link href={href ?? svc.href} prefetch={false} className={cardLink}>
+      <Link href={href ?? svc.href} prefetch={false} className={cardLink} onClick={() => trackServiceClick(svc, feature ? "feature-card" : "card")}>
         {svc.name}
       </Link>
     </h3>
@@ -144,12 +147,12 @@ export const ServiceCard = memo(function ServiceCard({ service: svc, context, pr
         <p
           className={cn(
             "absolute bottom-0 left-0 rounded-tr-xl bg-surface pl-4 pr-6 pt-2 font-display font-bold tabular-nums text-content",
+            "after:absolute after:bottom-0 after:right-2.5 after:top-2 after:border-l after:border-dashed after:border-muted/60",
             feature ? "pb-0.5 text-base lg:pb-1 lg:pl-5 lg:text-xl" : "pb-0.5 text-base",
           )}
         >
           <span aria-hidden>{price.label}</span>
           <span className="sr-only">Price: {price.spoken}</span>
-          <span aria-hidden className="absolute bottom-0 right-2.5 top-2 border-l border-dashed border-muted/60" />
         </p>
       </div>
 
@@ -176,6 +179,7 @@ export function ServiceJobCard({ service: svc, className }: { service: ServiceVi
     <Link
       href={svc.href}
       prefetch={false}
+      onClick={() => trackServiceClick(svc, "job-card")}
       className={cn(
         "block rounded-2xl outline-none drop-shadow-xl focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-2",
         className,

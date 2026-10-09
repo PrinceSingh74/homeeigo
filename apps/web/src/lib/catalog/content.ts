@@ -12,7 +12,7 @@ import type { BackendServiceDetail } from "@/types/backend";
 const BOOKING_FAQS: Faq[] = [
   {
     q: "What happens after I book?",
-    a: "Your booking appears under Bookings straight away. Once a professional is assigned you can follow their arrival live, and you share a start PIN with them when they arrive.",
+    a: "Your booking appears under Bookings straight away. Once a professional is assigned you can follow their arrival. A start PIN is shown on the visit when that service requires one.",
   },
   {
     q: "How is the final price calculated?",
@@ -110,6 +110,6 @@ export function detailContent(svc: ServiceView, detail?: BackendServiceDetail | 
 export const HOW_IT_WORKS = [
   { n: "01", title: "Select", body: "Choose the service and the option that fits your home." },
   { n: "02", title: "Schedule", body: "Pick a date and time slot, add instructions and pay securely." },
-  { n: "03", title: "Professional arrives", body: "Track their arrival live and share your start PIN at the door." },
+  { n: "03", title: "Professional arrives", body: "Follow their arrival once they are on the way. A start PIN is shown on the visit when that service requires one." },
   { n: "04", title: "Service completed", body: "Check the work, then rate your experience." },
 ] as const;

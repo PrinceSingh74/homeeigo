@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Loader2, Star } from "lucide-react";
 import { PartnerCard } from "@/components/ui/PartnerCard";
 import { ReviewCard } from "@/components/reviews/ReviewCard";
-import { usePartnerMeQuery, usePartnerReviewsQuery } from "@/hooks/use-partner-data";
+import { usePartnerReviewsQuery } from "@/hooks/use-partner-data";
 import { cn } from "@/lib/cn";
 import type { PartnerReview } from "@/types/partner";
 
@@ -12,15 +12,16 @@ type SortBy = "newest" | "highest" | "lowest";
 
 export function ReviewsOverview() {
   const [sortBy, setSortBy] = useState<SortBy>("newest");
-  const me = usePartnerMeQuery();
   const { data, isLoading, isError, refetch, isFetching } = usePartnerReviewsQuery({
     page: 1,
     limit: 50,
   });
 
+  // Average, count and breakdown all come from one aggregate. `providers.rating` is the
+  // recency-weighted matching score over a different population and must not head this summary.
   const breakdown = data?.ratingBreakdown ?? { "5": 0, "4": 0, "3": 0, "2": 0, "1": 0 };
-  const totalRatings = data?.total ?? me.data?.totalReviews ?? 0;
-  const averageRating = me.data?.rating ?? 0;
+  const totalRatings = data?.ratingCount ?? 0;
+  const averageRating = data?.averageRating ?? 0;
 
   const sorted = useMemo(() => {
     const list = [...(data?.reviews ?? [])];

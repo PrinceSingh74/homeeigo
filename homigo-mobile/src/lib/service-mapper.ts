@@ -74,7 +74,7 @@ export function mapBackendServiceToMobile(service: BackendService): Service {
     priceFrom: base,
     color: CATEGORY_COLORS[key] ?? "#7C3AED",
     title: service.name,
-    tagline: service.description ?? "Professional home service by verified experts.",
+    tagline: service.description ?? service.name,
     rating,
     reviews: reviews >= 1000 ? `${(reviews / 1000).toFixed(1)}k` : String(reviews),
     homes: service.bookingCount ? `${service.bookingCount}+ bookings` : "Trusted by Homeeigo users",

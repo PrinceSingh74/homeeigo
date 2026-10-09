@@ -1,4 +1,5 @@
-import { analyticsWhere } from "../lib/analytics-scope";
+import { analyticsWhere, analyticsWhereVia } from "../lib/analytics-scope";
+import { publicReviewWhere } from "../lib/public-reviews";
 import { BookingStatus, UserRole } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { CUSTOMER_CATALOG_WHERE } from "../lib/service-domain";
@@ -25,11 +26,12 @@ export class StatsService {
         await Promise.all([
           // Public-facing "bookings completed" counter — a business claim shown to customers.
           prisma.booking.count({ where: { status: BookingStatus.COMPLETED, ...analyticsWhere() } }),
-          prisma.provider.count({ where: { isActive: true } }),
+          prisma.provider.count({ where: { isActive: true, ...analyticsWhereVia("provider") } }),
           // Public counter: customer-visible commercial services only (never fixtures).
           prisma.service.count({ where: CUSTOMER_CATALOG_WHERE }),
           prisma.user.count({ where: { role: UserRole.CUSTOMER, ...analyticsWhere() } }),
-          prisma.rating.aggregate({ _avg: { stars: true }, _count: true }),
+          // The same review population the review lists show, so the headline cannot disagree with them.
+          prisma.rating.aggregate({ where: publicReviewWhere(), _avg: { stars: true }, _count: true }),
         ]);
 
       const avg = ratingAgg._avg.stars;

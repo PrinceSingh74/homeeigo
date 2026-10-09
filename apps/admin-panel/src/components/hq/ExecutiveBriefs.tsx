@@ -67,13 +67,12 @@ export function ExecutiveBriefs() {
     const fo = (finance.data?.overview ?? {}) as Record<string, unknown>;
     const rep = (reports.data ?? {}) as Record<string, unknown>;
     const u = (unit.data ?? {}) as Record<string, unknown>;
-    const completion =
-      stats && stats.totalBookings > 0
-        ? Math.round((stats.completedBookings / stats.totalBookings) * 100)
-        : 0;
+    const completion = stats?.completionRatePct ?? null;
+    const partnerRating = stats?.partnerRatingMean ?? stats?.averageRating ?? null;
     return {
       fo,
       completion,
+      partnerRating,
       gmv: num(fo.gmv),
       net: num(fo.netRevenue),
       margin: num(rep.platformMarginPct),
@@ -85,23 +84,25 @@ export function ExecutiveBriefs() {
 
   const lines = useMemo<string[]>(() => {
     if (isLoading || !stats) return [];
-    const { completion, gmv, net, margin, mrr, ltv, cac, fo } = derived;
+    const { completion, partnerRating, gmv, net, margin, mrr, ltv, cac, fo } = derived;
 
     switch (brief) {
       case "morning":
         return [
           `Good morning. ${formatNumber(stats.activeNow)} partners are online across the network.`,
           `Lifetime GMV ${inr(stats.totalRevenue, true)}; this month ${inr(stats.thisMonthRevenue, true)}.`,
-          `${formatNumber(stats.totalBookings)} bookings to date at ${completion}% completion.`,
-          completion < 70
-            ? "Focus today: completion is below target — check partner availability in Operations HQ."
-            : "Network is healthy — no morning escalations required.",
+          `${formatNumber(stats.totalBookings)} bookings to date at ${completion == null ? "an unmeasured" : `${completion}%`} completion.`,
+          completion == null
+            ? "No finished bookings yet, so completion is unmeasured."
+            : completion < 70
+              ? "Focus today: completion is below 70% of finished bookings — check partner availability in Operations HQ."
+              : "Network is healthy — no morning escalations required.",
         ];
       case "evening":
         return [
           `End-of-day: ${inr(stats.thisMonthRevenue, true)} month-to-date revenue.`,
-          `${formatNumber(stats.completedBookings)} of ${formatNumber(stats.totalBookings)} bookings completed (${completion}%).`,
-          `Avg rating ${stats.averageRating.toFixed(1)}★ across the platform.`,
+          `${formatNumber(stats.completedBookings)} of ${formatNumber(stats.totalBookings)} bookings completed (${completion == null ? "unmeasured" : `${completion}% of finished`}).`,
+          partnerRating != null ? `Partner rating ${partnerRating.toFixed(1)}★ (mean of partner ratings).` : "No partner rating yet.",
           "Review the Live Alert Feed in Operations HQ before close.",
         ];
       case "weekly":
@@ -122,7 +123,7 @@ export function ExecutiveBriefs() {
         return [
           `Board summary — GMV ${inr(gmv, true)} (30d), net revenue ${inr(net, true)}, platform margin ${margin.toFixed(1)}%.`,
           `Scale: ${formatNumber(stats.totalUsers)} customers, ${formatNumber(stats.totalProviders)} partners, ${formatNumber(stats.totalBookings)} lifetime bookings.`,
-          `Operational quality: ${completion}% booking completion, ${stats.averageRating.toFixed(1)}★ satisfaction proxy.`,
+          `Operational quality: ${completion == null ? "completion unmeasured" : `${completion}% completion of finished bookings`}${partnerRating != null ? `, partner rating ${partnerRating.toFixed(1)}★` : ""}.`,
           "Governance items: EBITDA, burn and runway require the treasury feed (see executive-intelligence-report.md).",
         ];
       case "investor":
@@ -145,16 +146,16 @@ export function ExecutiveBriefs() {
         { label: "Online now", value: "—" },
         { label: "MTD revenue", value: "—" },
         { label: "Completion", value: "—" },
-        { label: "Avg rating", value: "—" },
+        { label: "Partner rating", value: "—" },
       ];
     }
     return [
       { label: "Online now", value: formatNumber(stats.activeNow) },
       { label: "MTD revenue", value: inr(stats.thisMonthRevenue, true) },
-      { label: "Completion", value: `${derived.completion}%` },
-      { label: "Avg rating", value: `${stats.averageRating.toFixed(1)}★` },
+      { label: "Completion", value: derived.completion == null ? "—" : `${derived.completion}%` },
+      { label: "Partner rating", value: derived.partnerRating != null ? `${derived.partnerRating.toFixed(1)}★` : "—" },
     ];
-  }, [stats, derived.completion]);
+  }, [stats, derived.completion, derived.partnerRating]);
 
   const active = BRIEFS.find((b) => b.id === brief)!;
   const narrative = lines.slice(0, -1);

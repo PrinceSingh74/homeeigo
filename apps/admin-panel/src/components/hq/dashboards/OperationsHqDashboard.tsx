@@ -84,9 +84,9 @@ export function OperationsHqDashboard() {
           isFullscreen ? "grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-4",
         )}
       >
-        <StatTile label="GMV Today" value={k ? inr(k.gmv, true) : "—"} sub="Booked revenue today" icon={IndianRupee} loading={kpis.isLoading} tone="accent" />
-        <StatTile label="Bookings Today" value={k ? formatNumber(k.bookingsToday) : "—"} sub="Jobs created today" icon={Activity} loading={kpis.isLoading} />
-        <StatTile label="Completion" value={k ? `${(k.completionRate * (k.completionRate <= 1 ? 100 : 1)).toFixed(0)}%` : "—"} sub="Job axis — finished vs started" icon={CheckCircle2} loading={kpis.isLoading} tone="success" />
+        <StatTile label="Captured GMV" value={k ? inr(k.gmv, true) : "—"} sub="Payments plus wallet · last 24 hours" icon={IndianRupee} loading={kpis.isLoading} tone="accent" />
+        <StatTile label="Bookings Today" value={k ? formatNumber(k.bookingsToday) : "—"} sub="Jobs created in the last 24 hours" icon={Activity} loading={kpis.isLoading} />
+        <StatTile label="Completion" value={k?.completionRate == null ? "—" : `${k.completionRate.toFixed(0)}%`} sub="Completed over finished bookings" icon={CheckCircle2} loading={kpis.isLoading} tone="success" />
         <StatTile label="Online Partners" value={k ? formatNumber(k.onlineProviders) : "—"} sub={k ? `${formatNumber(k.activeCustomers)} active customers` : "Availability ONLINE — not lifecycle"} icon={Users} loading={kpis.isLoading} />
       </section>
 

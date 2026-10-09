@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { resolveApiBase } from "@/lib/api-base";
 import { buildCatalog, type Catalog } from "@/lib/catalog";
+import { catalogPageCount, mergeServicePages } from "@/lib/catalog/service-pages";
 import type { BackendService } from "@/types/backend";
 
 type ServicesPage = { services: BackendService[]; total: number; page: number; limit: number };
@@ -25,16 +26,10 @@ async function fetchServices(): Promise<ServicesPage> {
     return json.data;
   };
   const first = await load(1);
-  const limit = first.limit > 0 ? first.limit : 100;
-  const pages = Math.min(20, Math.max(1, Math.ceil((first.total || first.services.length) / limit)));
+  const pages = catalogPageCount(first);
   if (pages === 1) return first;
   const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => load(i + 2)));
-  const seen = new Set<string>();
-  const services = [first, ...rest].flatMap((p) => p.services).filter((s) => {
-    if (seen.has(s.id)) return false;
-    seen.add(s.id);
-    return true;
-  });
+  const services = mergeServicePages([first, ...rest]);
   return { ...first, services, page: 1, limit: services.length };
 }
 

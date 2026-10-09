@@ -2,6 +2,7 @@ import { cache } from "react";
 import type { BackendService, BackendServiceDetail } from "@/types/backend";
 import type { StatsOverview } from "@/services/core/api";
 import { resolveApiBase } from "@/lib/api-base";
+import { assembleCatalog, catalogPageCount, type ServiceListPage } from "@/lib/catalog/service-pages";
 
 const REVALIDATE_SEC = 60;
 
@@ -16,7 +17,7 @@ const SSR_FETCH_TIMEOUT_MS = 800;
 
 type ApiEnvelope<T> = { success: boolean; data?: T };
 
-async function serverFetch<T>(path: string): Promise<T | null> {
+async function serverFetch<T>(path: string, timeoutMs = SSR_FETCH_TIMEOUT_MS): Promise<T | null> {
   const apiBase = resolveApiBase().replace(/\/$/, "");
   const request = fetch(`${apiBase}${path}`, {
     next: { revalidate: REVALIDATE_SEC },
@@ -30,7 +31,7 @@ async function serverFetch<T>(path: string): Promise<T | null> {
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), SSR_FETCH_TIMEOUT_MS);
+    timer = setTimeout(() => resolve(null), timeoutMs);
   });
   try {
     return await Promise.race([request, timeout]);
@@ -63,13 +64,25 @@ export const fetchRecentReviews = cache(async (): Promise<{
   );
 });
 
+type CatalogListPage = ServiceListPage<BackendService> & { page?: number };
+
 export const fetchServicesCatalog = cache(async (): Promise<{
   services: BackendService[];
   total: number;
 } | null> => {
-  // Full catalog (backend caps at 100) — the default page of 20 could clip the
-  // curated popular grid if rankings ever shift.
-  return serverFetch<{ services: BackendService[]; total: number }>("/api/services?limit=100");
+  // The list endpoint caps a page at 100. Indexability and the sitemap read this
+  // result, so stopping at page 1 marks every live service past that page noindex.
+  // A timed-out page makes the whole catalogue unknown, and an unknown catalogue
+  // fail-opens to index — which would also index coming-soon pages. The walk
+  // therefore waits longer than a single navigation fetch.
+  const load = (page: number) =>
+    serverFetch<CatalogListPage>(`/api/services?limit=100&page=${page}`, 8_000);
+  const first = await load(1);
+  if (!first) return null;
+  const pages = catalogPageCount(first);
+  if (pages === 1) return { services: first.services, total: first.total };
+  const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => load(i + 2)));
+  return assembleCatalog([first, ...rest]);
 });
 
 export const fetchFeaturedServices = cache(async (): Promise<{

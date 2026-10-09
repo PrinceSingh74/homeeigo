@@ -115,6 +115,18 @@ export const apiRateLimitPlugin = new Elysia({ name: "api-rate-limit" }).onBefor
     }
   }
 
+  if (path === "/api/analytics/events" || path === "/api/analytics/events/") {
+    const eventLimit = await consumeRateLimitSmart(`analytics-events:${userKey}`, 60, 60_000);
+    setRateLimitHeaders(set, 60, eventLimit);
+    if (!eventLimit.allowed) {
+      set.status = 429;
+      incCounter("rate_limit_triggered_total", { scope: "analytics_events" });
+      const retryAfter = retryAfterSeconds(eventLimit.resetAt);
+      set.headers["Retry-After"] = String(retryAfter);
+      return errorResponse("Rate limit exceeded", "RATE_LIMIT_EXCEEDED", { retryAfter });
+    }
+  }
+
   if (path === "/api/services/search" || path === "/api/providers/search") {
     const searchLimit = await consumeRateLimitSmart(`search:${userKey}`, 100, 60_000);
     setRateLimitHeaders(set, 100, searchLimit);

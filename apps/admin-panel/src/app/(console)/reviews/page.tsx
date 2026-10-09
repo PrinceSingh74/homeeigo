@@ -73,7 +73,6 @@ export default function ReviewsPage() {
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const stats = data?.stats;
-  const flaggedCount = reviews.filter((r) => r.isFlagged).length;
 
   const flash = (m: string) => {
     setToast(m);
@@ -96,8 +95,8 @@ export default function ReviewsPage() {
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-4">
         <KpiCard
-          label="Average rating"
-          value={stats?.averageRating != null ? `${stats.averageRating.toFixed(2)} ★` : "—"}
+          label="Published average"
+          value={stats?.publishedAverageRating != null ? `${stats.publishedAverageRating.toFixed(2)} ★` : "—"}
           icon={Star}
           accent="amber"
           loading={isLoading}
@@ -109,15 +108,15 @@ export default function ReviewsPage() {
           loading={isLoading}
         />
         <KpiCard
-          label="Live on app"
-          value={String(reviews.filter((r) => r.isPublic && !r.isFlagged).length)}
+          label="Published to customers"
+          value={stats ? String(stats.publishedReviews) : "—"}
           icon={ShieldCheck}
           accent="green"
           loading={isLoading}
         />
         <KpiCard
-          label="Flagged (page)"
-          value={String(flaggedCount)}
+          label="Flagged"
+          value={stats ? String(stats.flaggedReviews) : "—"}
           icon={Flag}
           accent="red"
           loading={isLoading}

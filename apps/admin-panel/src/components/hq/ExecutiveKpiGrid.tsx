@@ -70,13 +70,13 @@ export const ExecutiveKpiGrid = memo(function ExecutiveKpiGrid({
   isLoading: boolean;
   mode: ExecutiveViewMode;
 }) {
-  const completionPct = stats?.totalBookings
-    ? Math.round(((stats.completedBookings ?? 0) / Math.max(1, stats.totalBookings)) * 100)
-    : 0;
+  const completionPct = stats?.completionRatePct ?? null;
+  const cancellationPct = stats?.cancellationRatePct ?? null;
+  const partnerRating = stats?.partnerRatingMean ?? stats?.averageRating ?? null;
 
-  const gmv = Number(financeOverview?.gmv ?? stats?.thisMonthRevenue ?? 0);
-  const netRevenue = Number(financeOverview?.netRevenue ?? stats?.thisMonthRevenue ?? 0);
-  const marginPct = gmv > 0 ? Math.round((netRevenue / gmv) * 100) : 0;
+  const gmv = typeof financeOverview?.gmv === "number" ? financeOverview.gmv : null;
+  const netRevenue = typeof financeOverview?.netRevenue === "number" ? financeOverview.netRevenue : null;
+  const marginPct = gmv != null && gmv > 0 && netRevenue != null ? Math.round((netRevenue / gmv) * 100) : null;
   const onlinePct =
     stats && stats.totalProviders > 0
       ? Math.round((stats.activeNow / stats.totalProviders) * 100)
@@ -88,49 +88,49 @@ export const ExecutiveKpiGrid = memo(function ExecutiveKpiGrid({
     return [
       {
         key: "revenue",
-        label: "Today's Revenue",
+        label: "Paid booking value",
         value: dash(inr(stats?.thisMonthRevenue ?? 0, true)),
-        sub: `Lifetime ${inr(stats?.totalRevenue ?? 0, true)}`,
+        sub: `This month · lifetime ${inr(stats?.totalRevenue ?? 0, true)}`,
         icon: IndianRupee,
         tone: "default",
       },
       {
         key: "bookings",
-        label: "Today's Bookings",
+        label: "Bookings",
         value: dash(formatNumber(stats?.totalBookings ?? 0)),
-        sub: `${formatNumber(stats?.completedBookings ?? 0)} completed`,
+        sub: `All time · ${formatNumber(stats?.completedBookings ?? 0)} completed`,
         icon: CalendarCheck,
         tone: "cyan",
-        meter: completionPct,
+        meter: completionPct ?? undefined,
       },
       {
         key: "gmv",
-        label: "GMV",
-        value: dash(inr(gmv, true)),
-        sub: "30-day gross merchandise",
+        label: "Captured GMV",
+        value: dash(gmv == null ? "—" : inr(gmv, true)),
+        sub: "Payments plus wallet · 30-day",
         icon: TrendingUp,
         tone: "success",
       },
       {
         key: "net",
-        label: "Net Revenue",
-        value: dash(inr(netRevenue, true)),
-        sub: "Platform take · 30-day",
+        label: "Net captured",
+        value: dash(netRevenue == null ? "—" : inr(netRevenue, true)),
+        sub: "Captured GMV minus refunds · 30-day",
         icon: IndianRupee,
-        tone: netRevenue < 0 ? "danger" : "success",
+        tone: netRevenue != null && netRevenue < 0 ? "danger" : "success",
       },
       {
         key: "margin",
         label: "Profit %",
-        value: dash(`${marginPct}%`),
-        sub: "Net / GMV",
+        value: dash(marginPct == null ? "—" : `${marginPct}%`),
+        sub: "Net captured / captured GMV",
         icon: Percent,
-        tone: marginPct >= 20 ? "success" : marginPct >= 0 ? "warning" : "danger",
-        meter: Math.max(0, Math.min(100, marginPct)),
+        tone: marginPct == null ? "default" : marginPct >= 20 ? "success" : marginPct >= 0 ? "warning" : "danger",
+        meter: marginPct == null ? undefined : Math.max(0, Math.min(100, marginPct)),
       },
       {
         key: "customers",
-        label: "Active Customers",
+        label: "Customers",
         value: dash(formatNumber(stats?.totalUsers ?? 0)),
         sub: "Registered user base",
         icon: Users,
@@ -138,7 +138,7 @@ export const ExecutiveKpiGrid = memo(function ExecutiveKpiGrid({
       },
       {
         key: "partners",
-        label: "Active Partners",
+        label: "Partners",
         value: dash(formatNumber(stats?.totalProviders ?? 0)),
         sub: `${formatNumber(stats?.activeNow ?? 0)} online now · ${onlinePct}%`,
         icon: Wrench,
@@ -147,33 +147,33 @@ export const ExecutiveKpiGrid = memo(function ExecutiveKpiGrid({
       },
       {
         key: "nps",
-        label: "NPS Proxy",
-        value: dash(`${(stats?.averageRating ?? 0).toFixed(1)}★`),
-        sub: "Average service rating",
+        label: "Partner rating",
+        value: dash(partnerRating != null ? `${partnerRating.toFixed(1)}★` : "—"),
+        sub: "Mean of partner ratings",
         icon: Star,
-        tone: (stats?.averageRating ?? 0) >= 4 ? "success" : (stats?.averageRating ?? 0) >= 3 ? "warning" : "danger",
-        meter: Math.round(((stats?.averageRating ?? 0) / 5) * 100),
+        tone: (partnerRating ?? 0) >= 4 ? "success" : partnerRating == null ? "default" : partnerRating >= 3 ? "warning" : "danger",
+        meter: partnerRating != null ? Math.round((partnerRating / 5) * 100) : undefined,
       },
       {
         key: "util",
-        label: "Utilization",
-        value: dash(`${completionPct}%`),
-        sub: "Booking completion rate",
+        label: "Completion",
+        value: dash(completionPct != null ? `${completionPct}%` : "—"),
+        sub: "Completed over finished bookings",
         icon: Activity,
-        tone: completionPct >= 70 ? "success" : completionPct >= 40 ? "warning" : "danger",
-        meter: completionPct,
+        tone: completionPct == null ? "default" : completionPct >= 70 ? "success" : completionPct >= 40 ? "warning" : "danger",
+        meter: completionPct ?? undefined,
       },
       {
         key: "growth",
-        label: "Growth Rate",
-        value: dash(`${completionPct > 0 ? "+" : ""}${Math.min(99, completionPct)}%`),
-        sub: "Completion trend proxy",
+        label: "Cancellation",
+        value: dash(cancellationPct != null ? `${cancellationPct}%` : "—"),
+        sub: "Cancelled over finished bookings",
         icon: TrendingUp,
-        tone: "default",
-        meter: Math.min(100, completionPct),
+        tone: cancellationPct == null ? "default" : cancellationPct >= 20 ? "danger" : cancellationPct > 0 ? "warning" : "success",
+        meter: cancellationPct ?? undefined,
       },
     ];
-  }, [stats, isLoading, gmv, netRevenue, marginPct, completionPct, onlinePct]);
+  }, [stats, isLoading, gmv, netRevenue, marginPct, completionPct, cancellationPct, partnerRating, onlinePct]);
 
   const visible = MODE_KEYS[mode]
     .map((key) => catalog.find((k) => k.key === key))
@@ -249,14 +249,14 @@ export const ExecutiveKpiGrid = memo(function ExecutiveKpiGrid({
           />
           <RibbonStat
             label="Completion"
-            value={isLoading ? "—" : `${completionPct}%`}
-            hint="bookings closed"
+            value={isLoading || completionPct == null ? "—" : `${completionPct}%`}
+            hint="of finished bookings"
             icon={Activity}
           />
           <RibbonStat
-            label="Avg rating"
-            value={isLoading ? "—" : `${(stats?.averageRating ?? 0).toFixed(1)}★`}
-            hint="NPS proxy"
+            label="Partner rating"
+            value={isLoading || partnerRating == null ? "—" : `${partnerRating.toFixed(1)}★`}
+            hint="mean partner rating"
             icon={Star}
           />
         </div>

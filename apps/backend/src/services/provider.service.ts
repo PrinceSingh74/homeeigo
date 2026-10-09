@@ -2,6 +2,7 @@ import { analyticsWhere } from "../lib/analytics-scope";
 import { AssignmentAttemptStatus, AssignmentJobStatus, BookingStatus, Prisma } from "@prisma/client";
 import { CUSTOMER_CATALOG_WHERE, PARTNER_OPERATIONAL_WHERE, partnerJobBrief } from "../lib/service-domain";
 import { partnerRequirementsFromSnapshot } from "../lib/service-requirements";
+import { PUBLIC_REVIEW_ORDER, publicReviewWhere, publicReviewerName, summariseStars } from "../lib/public-reviews";
 import { partnerFollowUpFromSnapshot } from "../lib/booking-case-policy";
 import { paymentExemptBookingIds } from "./booking-payment-gate";
 import prisma from "../lib/prisma";
@@ -256,38 +257,47 @@ export class ProviderService {
     };
   }
 
-  async reviews(providerId: string, query: Record<string, string | undefined>) {
+  /**
+   * `owner` is the partner's own dashboard: every review about them, including hidden and flagged
+   * ones, with the tip they received. `public` is what a customer sees on the partner's profile:
+   * only the governed public population (`publicReviewWhere`), the reviewer named the way they
+   * chose (anonymous stays anonymous), and no tip amount — that is between customer and partner.
+   * The list, `total`, the breakdown and the average are all over the same set.
+   */
+  async reviews(providerId: string, query: Record<string, string | undefined>, audience: "public" | "owner") {
     const { page, limit, skip } = parsePagination(query);
-    const where: { providerId: string; stars?: number } = { providerId };
-    if (query.rating) where.stars = Number(query.rating);
+    const stars = Number(query.rating);
+    const starFilter = Number.isInteger(stars) && stars >= 1 && stars <= 5 ? { stars } : {};
+    const scope: Prisma.RatingWhereInput = audience === "public" ? publicReviewWhere({ providerId }) : { providerId };
+    const where: Prisma.RatingWhereInput = { AND: [scope, starFilter] };
 
     const [rows, total, breakdown] = await Promise.all([
       prisma.rating.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: "desc" },
-        include: { user: { select: { firstName: true, profileImage: true } } },
+        orderBy: PUBLIC_REVIEW_ORDER,
+        include: { user: { select: { firstName: true, lastName: true, profileImage: true } } },
       }),
       prisma.rating.count({ where }),
-      prisma.rating.groupBy({
-        by: ["stars"],
-        where: { providerId },
-        _count: true,
-      }),
+      prisma.rating.groupBy({ by: ["stars"], where: scope, _count: { _all: true } }),
     ]);
 
-    const ratingBreakdown: Record<string, number> = { "5": 0, "4": 0, "3": 0, "2": 0, "1": 0 };
-    for (const b of breakdown) ratingBreakdown[String(b.stars)] = b._count;
+    const summary = summariseStars(breakdown);
+    const d = summary.distribution;
+    const ratingBreakdown: Record<string, number> = { "5": d["5"], "4": d["4"], "3": d["3"], "2": d["2"], "1": d["1"] };
 
     return {
       reviews: rows.map((r) => ({
         id: r.id,
         rating: r.stars,
         reviewText: r.reviewText,
-        user: { firstName: r.user.firstName, profileImage: r.user.profileImage },
+        user:
+          audience === "public"
+            ? { firstName: publicReviewerName(r), profileImage: r.isAnonymous ? null : r.user.profileImage }
+            : { firstName: r.user.firstName, profileImage: r.user.profileImage },
         photos: r.photos,
-        tipAmount: r.tipAmount,
+        ...(audience === "owner" ? { tipAmount: r.tipAmount, isPublic: r.isPublic, isFlagged: r.isFlagged } : {}),
         helpfulCount: r.helpfulCount,
         providerResponse: r.providerResponse,
         respondedAt: r.respondedAt,
@@ -296,6 +306,8 @@ export class ProviderService {
       total,
       page,
       ratingBreakdown,
+      ratingCount: summary.ratingCount,
+      averageRating: summary.averageRating,
     };
   }
 

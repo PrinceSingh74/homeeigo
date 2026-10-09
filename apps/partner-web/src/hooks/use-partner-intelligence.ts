@@ -2,16 +2,19 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { partnerApi, type SurgeZone, type ZoneScore } from "@/services/partner-api";
+import { partnerApi, type SurgeZone } from "@/services/partner-api";
 
 export type SmartZone = {
   zoneId: string; name: string; city: string | null;
   centerLat: number; centerLng: number; distanceKm: number | null;
-  providers: number; demand24h: number; revenue24h: number; riskScore: number; earningScore: number; serviceHealth: number;
+  providers: number;
+  supply: number;
+  /** Platform zone scores are admin-only. Null means the partner view does not have them — never a measured zero. */
+  demand24h: number | null; revenue24h: number | null; riskScore: number | null; earningScore: number | null; serviceHealth: number | null;
   predictedSurge: number; weatherSurge: number; demandDeltaPct: number | null;
-  opportunityScore: number;
-  gap: number;
-  expectedEarnings2h: { lo: number; hi: number };
+  opportunityScore: number | null;
+  gap: number | null;
+  expectedEarnings2h: { lo: number; hi: number } | null;
 };
 
 function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
@@ -22,58 +25,54 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
 }
 
 /**
- * Unified partner geo-intelligence: pulls the verified geo-intel endpoints (surge,
- * provider-density, zone-scoring, demand-forecast), joins them by zoneId, and derives
- * per-zone expected earnings + ranked recommendations relative to the partner's location.
- * All numbers trace back to real API data — nothing fabricated.
+ * Partner geo-intelligence from the endpoints a partner is allowed to read: surge,
+ * provider density and demand forecast. Platform zone scores (`/api/geo-intel/zone-scoring`)
+ * are admin-only; calling them is a 403 and their revenue and risk figures are not
+ * invented here as zeros.
  */
 export function usePartnerIntelligence(location: { lat: number; lng: number } | null) {
   const surgeQ = useQuery({ queryKey: ["pi-surge"], queryFn: () => partnerApi.geoIntel.surge(), refetchInterval: 60_000 });
   const densityQ = useQuery({ queryKey: ["pi-density"], queryFn: () => partnerApi.geoIntel.density(), refetchInterval: 60_000 });
-  const zonesQ = useQuery({ queryKey: ["pi-zones"], queryFn: () => partnerApi.geoIntel.zoneScoring(), refetchInterval: 60_000 });
   const demandQ = useQuery({ queryKey: ["pi-demand"], queryFn: () => partnerApi.geoIntel.demandForecast(6), refetchInterval: 300_000 });
 
   const zones: SmartZone[] = useMemo(() => {
     const density = densityQ.data?.data ?? [];
-    const score = new Map<string, ZoneScore>((zonesQ.data?.data.ranked ?? []).map((z) => [z.zoneId, z]));
     const surge = new Map<string, SurgeZone>((surgeQ.data?.data ?? []).map((z) => [z.zoneId, z]));
     return density.map((d) => {
-      const s = score.get(d.zoneId);
       const su = surge.get(d.zoneId);
-      const revenue24h = s?.revenue24h ?? 0;
-      const supply = Math.max(d.providers, 1);
-      const surgeMult = su?.predictedSurge ?? 1;
-      // revenue per provider per 2h × surge → expected earnings, ±25% band.
-      const base = (revenue24h / supply) * (2 / 24) * surgeMult;
       return {
         zoneId: d.zoneId, name: d.name, city: d.city, centerLat: d.centerLat, centerLng: d.centerLng,
         distanceKm: location ? Math.round(haversineKm(location, { lat: d.centerLat, lng: d.centerLng }) * 10) / 10 : null,
         providers: d.providers,
-        demand24h: s?.demand24h ?? 0,
-        revenue24h,
-        riskScore: s?.riskScore ?? 0,
-        earningScore: s?.earningScore ?? 0,
-        serviceHealth: s?.serviceHealth ?? 50,
-        opportunityScore: s?.opportunityScore ?? s?.compositeScore ?? 0,
-        gap: s?.gap ?? (s?.demand24h ?? 0) - d.providers,
-        predictedSurge: surgeMult, weatherSurge: su?.weatherSurge ?? 1, demandDeltaPct: su?.demandDeltaPct ?? null,
-        expectedEarnings2h: { lo: Math.round(base * 0.75), hi: Math.round(base * 1.25) },
+        supply: d.providers,
+        demand24h: null,
+        revenue24h: null,
+        riskScore: null,
+        earningScore: null,
+        serviceHealth: null,
+        opportunityScore: null,
+        gap: null,
+        predictedSurge: su?.predictedSurge ?? 1,
+        weatherSurge: su?.weatherSurge ?? 1,
+        demandDeltaPct: su?.demandDeltaPct ?? null,
+        expectedEarnings2h: null,
       };
     });
-  }, [densityQ.data, zonesQ.data, surgeQ.data, location]);
+  }, [densityQ.data, surgeQ.data, location]);
 
   const freshness = surgeQ.data?.freshness;
-  const confidence = Math.round(((surgeQ.data?.confidence ?? 0.7) + (zonesQ.data?.confidence ?? 0.8)) / 2 * 100) / 100;
+  const confidence = surgeQ.data?.confidence ?? null;
 
   return {
     zones,
-    bestEarning: zonesQ.data?.data.bestEarning ?? [],
-    bestOpportunity: zonesQ.data?.data.bestOpportunity ?? [],
-    highRisk: zonesQ.data?.data.highRisk ?? [],
-    worstService: zonesQ.data?.data.worstService ?? [],
+    bestEarning: [] as SmartZone[],
+    bestOpportunity: [] as SmartZone[],
+    highRisk: [] as SmartZone[],
+    worstService: [] as SmartZone[],
     demand: demandQ.data?.data,
     surgeConfidence: surgeQ.data?.confidence ?? null,
-    freshness, confidence,
-    isLoading: surgeQ.isLoading || densityQ.isLoading || zonesQ.isLoading,
+    freshness,
+    confidence,
+    isLoading: surgeQ.isLoading || densityQ.isLoading,
   };
 }

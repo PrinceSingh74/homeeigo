@@ -107,7 +107,7 @@
     "smoke:all": "bun run smoke:part3 && bun run smoke:partner && bun run smoke:provider && bun run smoke:admin && bun run scripts/phase2-lifecycle-checks.ts",
     "lint": "eslint src",
     "format": "prettier --write src",
-    "test": "bun test --timeout 45000 --max-concurrency 1 && bun test --timeout 45000 ./src/__tests__/data-archival-failure-injection.inject.ts && bun test --timeout 45000 ./src/events/__tests__/event-bus.inject.ts",
+    "test": "bun test --timeout 45000 --max-concurrency 1 && bun test --timeout 45000 ./src/__tests__/data-archival-failure-injection.inject.ts && bun test --timeout 45000 ./src/events/__tests__/event-bus.inject.ts && bun test --timeout 120000 ./src/__tests__/analytics-durability-fault.inject.ts",
     "type-check": "node ./node_modules/typescript/bin/tsc --noEmit",
     "db:execute:test": "bun run scripts/db-execute-test.ts",
     "check:ddl-guard": "bun run scripts/check-ddl-guard-coverage.ts"

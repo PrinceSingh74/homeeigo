@@ -111,6 +111,18 @@ class CacheService {
     await redisClient.del(k);
     memStore.delete(k);
   }
+
+  /**
+   * Drop every key under a prefix. Exact-key invalidation misses `catalog:list:v2:…`
+   * (page, limit and filters are part of the key), so a write stayed invisible until TTL.
+   */
+  async invalidatePrefix(prefix: string): Promise<void> {
+    const k = PREFIX + prefix;
+    for (const key of [...memStore.keys()]) {
+      if (key.startsWith(k)) memStore.delete(key);
+    }
+    await redisClient.delByPrefix(k);
+  }
 }
 
 export const cacheService = new CacheService();

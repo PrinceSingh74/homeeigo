@@ -1,6 +1,6 @@
 import prisma from "../lib/prisma";
-import { Prisma } from "@prisma/client";
-import { analyticsSqlPredicate, analyticsWhereVia } from "../lib/analytics-scope";
+import { analyticsWhereVia } from "../lib/analytics-scope";
+import { repeatCustomerRate } from "./marketplace-metrics.service";
 import { supportTicketService } from "./support-ticket.service";
 import { matchingService } from "./matching.service";
 
@@ -37,27 +37,14 @@ export class CustomerIntelligenceService {
         select: { createdAt: true, category: true, status: true },
       }),
       supportTicketService.adminAnalytics(),
-      prisma.$queryRaw<Array<{ total: number; repeaters: number }>>`
-        SELECT COUNT(DISTINCT user_id)::int AS total,
-               COUNT(DISTINCT user_id) FILTER (
-                 WHERE user_id IN (
-                   SELECT user_id FROM bookings
-                   WHERE status = 'COMPLETED' AND user_id IS NOT NULL
-                     AND ${Prisma.raw(analyticsSqlPredicate("bookings"))}
-                   GROUP BY user_id HAVING COUNT(*) > 1
-                 )
-               )::int AS repeaters
-        FROM bookings
-        WHERE created_at >= ${since} AND user_id IS NOT NULL
-          AND ${Prisma.raw(analyticsSqlPredicate("bookings"))}`,
+      repeatCustomerRate(since, new Date()),
     ]);
 
     const nps = this.computeNps(surveyNps.map((s) => s.score), ratings.map((r) => r.stars));
     const csat = this.computeCsat(surveyCsat.map((s) => s.score), ratings.map((r) => r.stars));
     const complaintTrend = this.complaintTrend(tickets);
     const avgStars = ratings.length > 0 ? ratings.reduce((s, r) => s + r.stars, 0) / ratings.length : null;
-    const repeatRate =
-      repeatStats[0]?.total > 0 ? round2((repeatStats[0].repeaters / repeatStats[0].total) * 100) : null;
+    const repeatRate = repeatStats.repeatCustomerRatePct;
     const slaCompliance =
       supportAnalytics.openTotal > 0
         ? round2(Math.max(0, 100 - (supportAnalytics.slaBreached / supportAnalytics.openTotal) * 100))

@@ -89,7 +89,7 @@ export default function PartnerNavigationPage() {
   const requestedUnavailable = !!requestedId && !requestedQ.isLoading && !destination;
 
   const intel = usePartnerIntelligence(position);
-  const best = useMemo(() => [...intel.zones].sort((a, b) => b.expectedEarnings2h.hi - a.expectedEarnings2h.hi)[0], [intel.zones]);
+  const best = useMemo(() => [...intel.zones].sort((a, b) => b.predictedSurge - a.predictedSurge || (b.expectedEarnings2h?.hi ?? 0) - (a.expectedEarnings2h?.hi ?? 0))[0], [intel.zones]);
   const surgeZones = useMemo(() => [...intel.zones].filter((z) => z.predictedSurge > 1).sort((a, b) => b.predictedSurge - a.predictedSurge).slice(0, 3), [intel.zones]);
 
   const [route, setRoute] = useState<NavRoute | null>(null);
@@ -145,7 +145,10 @@ export default function PartnerNavigationPage() {
   }, [destination, accuracy]);
 
   const insights: string[] = [];
-  if (best && best.predictedSurge > 1) insights.push(`After this trip, head to ${best.name} — surge ×${best.predictedSurge}, expected ${inr(best.expectedEarnings2h.lo)}–${inr(best.expectedEarnings2h.hi)}.`);
+  if (best && best.predictedSurge > 1) {
+    const money = best.expectedEarnings2h ? `, expected ${inr(best.expectedEarnings2h.lo)}–${inr(best.expectedEarnings2h.hi)}` : "";
+    insights.push(`After this trip, head to ${best.name} — surge ×${best.predictedSurge}${money}.`);
+  }
   const spike = intel.zones.find((z) => (z.demandDeltaPct ?? 0) >= 30);
   if (spike) insights.push(`Demand spike near ${spike.name} (+${spike.demandDeltaPct}%).`);
   if (route?.trafficLevel === "heavy") insights.push(`Traffic increasing on your current route (+ETA).`);
@@ -319,7 +322,7 @@ export default function PartnerNavigationPage() {
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-xl border border-white/10 bg-gradient-to-br from-sky-500/15 to-blue-600/10 p-2.5">
             <p className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-sky-300"><Brain size={11} /> Best next zone</p>
-            {best ? (<><p className="truncate text-sm font-bold text-white">{best.name}</p><p className="text-xs text-emerald-400">{inr(best.expectedEarnings2h.lo)}–{inr(best.expectedEarnings2h.hi)} · ×{best.predictedSurge}</p></>) : <p className="text-xs text-slate-500">scanning…</p>}
+            {best ? (<><p className="truncate text-sm font-bold text-white">{best.name}</p><p className="text-xs text-emerald-400">{best.expectedEarnings2h ? `${inr(best.expectedEarnings2h.lo)}–${inr(best.expectedEarnings2h.hi)} · ` : ""}×{best.predictedSurge}</p></>) : <p className="text-xs text-slate-500">scanning…</p>}
           </div>
           <div className="rounded-xl border border-white/10 bg-slate-800/40 p-2.5">
             <p className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-red-300"><Zap size={11} /> Nearby surge</p>

@@ -462,6 +462,9 @@ export type PartnerReview = {
 export type PartnerReviewsResponse = Paginated<{
   reviews: PartnerReview[];
   ratingBreakdown: Record<string, number>;
+  /** Over the same set as `ratingBreakdown`; null when there are no reviews. */
+  ratingCount: number;
+  averageRating: number | null;
 }>;
 
 export type WalletBalance = {

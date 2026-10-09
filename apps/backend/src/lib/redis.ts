@@ -340,6 +340,26 @@ class RedisClient {
   }
 
   /**
+   * Delete every key matching `prefix*`. Used when a write invalidates a family of
+   * cache keys (every catalogue page and filter), not one exact key.
+   */
+  async delByPrefix(prefix: string): Promise<void> {
+    if (!this.isAvailable || !this.client || !prefix) return;
+    try {
+      await this.withDeadline("scan", async () => {
+        const keys: string[] = [];
+        for await (const key of this.client!.scanIterator({ MATCH: `${prefix}*`, COUNT: 200 })) {
+          if (typeof key === "string") keys.push(key);
+          else if (Array.isArray(key)) keys.push(...key);
+        }
+        if (keys.length > 0) await this.client!.del(keys);
+      });
+    } catch {
+      /* ignore — the next read refetches */
+    }
+  }
+
+  /**
    * Distributed lock (SET NX + EX). Returns true when the lock is acquired.
    * Falls back to in-memory when Redis is unavailable (single-instance safe).
    */

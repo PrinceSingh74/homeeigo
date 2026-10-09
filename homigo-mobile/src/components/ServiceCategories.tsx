@@ -17,6 +17,7 @@ import { ArrowRight, Scissors, type LucideIcon } from "lucide-react-native";
 import { openBook, openProviders } from "@/lib/navigation";
 import { useCatalogServices } from "@/hooks/use-catalog";
 import { getServicePhoto } from "@/lib/service-photos";
+import { trackServiceClick } from "@/lib/analytics/funnel";
 
 const { width } = Dimensions.get("window");
 const CARD_W = width * 0.36;
@@ -131,7 +132,10 @@ function PhotoCard({ item, photo, accent }: { item: Svc; photo: any; accent: str
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <Pressable
-        onPress={() => openBook(router, { service: item.serviceId })}
+        onPress={() => {
+          trackServiceClick(item.serviceId, "category-tile");
+          openBook(router, { service: item.serviceId });
+        }}
         onPressIn={() => to(0.96)}
         onPressOut={() => to(1, 7)}
         style={[styles.photoCard, { shadowColor: accent }]}
@@ -183,7 +187,10 @@ function Card({ item }: { item: Svc }) {
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <Pressable
-        onPress={() => openBook(router, { service: item.serviceId })}
+        onPress={() => {
+          trackServiceClick(item.serviceId, "category-tile");
+          openBook(router, { service: item.serviceId });
+        }}
         onPressIn={() => to(0.94)}
         onPressOut={() => to(1, 8)}
         style={{ width: feat ? FEAT_W : CARD_W }}

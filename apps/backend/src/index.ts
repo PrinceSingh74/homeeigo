@@ -31,6 +31,7 @@ import { adminCapabilitiesRoutes } from "./routes/admin-capabilities";
 import { bookingCasesRoutes } from "./routes/booking-cases";
 import { providerCapabilitiesRoutes } from "./routes/provider-capabilities";
 import { analyticsRoutes } from "./routes/analytics";
+import { analyticsEventsRoutes } from "./routes/analytics-events";
 import { partnerNavRoutes } from "./routes/partner-nav";
 import { knowledgeRoutes } from "./routes/knowledge";
 import { vitalsRoutes } from "./routes/vitals";
@@ -279,6 +280,7 @@ app
   .use(bookingCasesRoutes)
   .use(providerCapabilitiesRoutes)
   .use(analyticsRoutes)
+  .use(analyticsEventsRoutes)
   .use(partnerNavRoutes)
   .use(knowledgeRoutes);
 

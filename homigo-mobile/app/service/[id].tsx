@@ -1,13 +1,14 @@
 // Service detail — what the customer is promised before they book: what the service is, what to
 // have ready, and the visit promise (process, safety, photos, cover, who can book). Every sentence
 // below a heading comes from GET /api/services/:id; a block the server did not send is not drawn.
-import React from "react";
+import React, { useEffect } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { useServiceDetailQuery, useServiceReviewsQuery } from "@/hooks/use-core-data";
 import { useAppNavigation } from "@/hooks/useAppNavigation";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { Button } from "@/components/Button";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { radius, screenPadding, spacing, type } from "@/lib/typography";
@@ -43,6 +44,15 @@ export default function ServiceDetailScreen() {
   const { book } = useAppNavigation();
   const service = query.data?.service;
   const reviewList = useServiceReviewsQuery(service?.id ?? null).data;
+
+  // Phase 15.2 — service_view once the server's own detail is on screen; keyed on (service,
+  // version) so a re-render or a return to this screen in the same launch stays one row.
+  const viewedId = service?.id;
+  const viewedVersion = service?.version;
+  useEffect(() => {
+    if (!viewedId) return;
+    trackFunnelEvent("SERVICE_VIEW", { serviceId: viewedId, serviceVersionId: viewedVersion, metadata: { page: "service-detail" } });
+  }, [viewedId, viewedVersion]);
 
   if (!service) {
     return (
@@ -183,7 +193,16 @@ export default function ServiceDetailScreen() {
           ) : null}
           <View style={styles.barAction}>
             {bookable ? (
-              <Button title="Book" size="lg" onPress={() => book({ service: service.id })} accessibilityLabel={`Book ${service.name}`} />
+              <Button
+                title="Book"
+                size="lg"
+                onPress={() => {
+                  // The tap is the booking start; the book screen fires the same id again and the server keeps one row.
+                  trackFunnelEvent("BOOKING_STARTED", { serviceId: service.id, metadata: { entry: "service-detail-cta" } });
+                  book({ service: service.id });
+                }}
+                accessibilityLabel={`Book ${service.name}`}
+              />
             ) : (
               <View
                 style={[styles.unavailable, { borderColor: c.border, backgroundColor: c.bg }]}

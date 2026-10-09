@@ -270,11 +270,27 @@ export class PartnerPresenceService {
   async getSnapshot(providerId: string): Promise<PresenceSnapshot> {
     const provider = await prisma.provider.findUnique({
       where: { id: providerId },
-      select: { isOnline: true },
+      select: { isOnline: true, userId: true },
     });
     if (!provider) throw new NotFoundError("Provider");
 
     const row = await prisma.partnerPresence.findUnique({ where: { providerId } });
+    // A revoked or expired id must not be handed to the client. The heartbeat would
+    // send it and the server would answer 401 INVALID_SESSION on every beat.
+    if (row?.activeSessionId) {
+      const live = await prisma.refreshToken.findFirst({
+        where: {
+          id: row.activeSessionId,
+          userId: provider.userId,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        select: { id: true },
+      });
+      if (!live) {
+        return toSnapshot(providerId, { ...row, activeSessionId: null }, provider.isOnline);
+      }
+    }
     return toSnapshot(providerId, row, provider.isOnline);
   }
 

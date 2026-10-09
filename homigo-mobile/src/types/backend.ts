@@ -74,6 +74,8 @@ export type CustomerVisit = {
 
 /** GET /api/services/:id (catalog.service byId) — only the fields the app reads are mirrored. */
 export type BackendServiceDetail = BackendService & {
+  /** Catalogue version the server rendered (catalog.service byId emits it); analytics attributes to it. */
+  version?: number;
   detailedDescription?: string | null;
   /** False when the server would refuse a booking for this service. */
   bookable?: boolean;

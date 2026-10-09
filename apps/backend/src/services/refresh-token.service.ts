@@ -5,6 +5,7 @@ import { partnerRegistrationService } from "./partner-registration.service";
 import { refreshTokenFamilyService } from "./refresh-token-family.service";
 import { tokenRevocationService } from "./token-revocation.service";
 import { incCounter } from "../lib/metrics";
+import { logger } from "../lib/logger";
 
 /**
  * How long after a rotation the parent token is still answered with its successor instead of being
@@ -18,6 +19,23 @@ export class RefreshTokenService {
     private readonly prisma: PrismaClient,
     private readonly jwtService: JWTService,
   ) {}
+
+  /**
+   * Presence must name this session before login or refresh returns. A fire-and-forget
+   * promotion lost the race: the client read the previous (already revoked) session id
+   * and the next heartbeat was 401 INVALID_SESSION.
+   */
+  private async promoteVendorSession(userId: string, sessionId: string, deviceId?: string | null): Promise<void> {
+    try {
+      const { promotePartnerSessionForUser } = await import("./partner-presence.service");
+      await promotePartnerSessionForUser(userId, sessionId, deviceId);
+    } catch (err) {
+      logger.warn("[presence] session promotion failed", {
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 
   async createRefreshToken(payload: {
     userId: string;
@@ -78,9 +96,7 @@ export class RefreshTokenService {
       familyId,
       createdBy: "LOGIN",
     });
-    void import("./partner-presence.service").then(({ promotePartnerSessionForUser }) =>
-      promotePartnerSessionForUser(payload.userId, sessionId, payload.deviceId).catch(() => {}),
-    );
+    await this.promoteVendorSession(payload.userId, sessionId, payload.deviceId);
     return { accessToken, refreshToken, sessionId };
   }
 
@@ -287,9 +303,7 @@ export class RefreshTokenService {
       createdBy: "REFRESH",
     });
 
-    void import("./partner-presence.service").then(({ promotePartnerSessionForUser }) =>
-      promotePartnerSessionForUser(user.id, sessionId, deviceId).catch(() => {}),
-    );
+    await this.promoteVendorSession(user.id, sessionId, deviceId);
 
     void AuditLogService.success("TOKEN_REFRESH", {
       userId: user.id,

@@ -26,7 +26,7 @@ import { AnalyticsPerformanceBoundary } from "@/components/perf/AnalyticsPerform
 import { Icon3D } from "@/components/hq/Icon3D";
 import { useAdminAnalyticsQuery, useAdminDashboardQuery } from "@/hooks/use-admin-data";
 import { adminApi } from "@/services/admin-api";
-import { daysAgoIso, formatNumber, formatPercent, inr, todayIso } from "@/lib/format";
+import { daysAgoIso, formatNumber, inr, todayIso } from "@/lib/format";
 import { AdminApiError, getApiLoadHint, getErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/cn";
 import { pipelineView } from "@/lib/warehouse-availability-view";
@@ -79,10 +79,9 @@ export default function AnalyticsPage() {
   const topServices = data?.topServices ?? [];
   const maxServiceRevenue = Math.max(1, ...topServices.map((s) => s.revenue));
 
-  const completionRate =
-    overview && overview.totalBookings > 0 ? overview.completedBookings / overview.totalBookings : 0;
-  const cancellationRate =
-    overview && overview.totalBookings > 0 ? overview.cancelledBookings / overview.totalBookings : 0;
+  const pct = (value: number | null | undefined) => (value == null ? "—" : `${value.toFixed(1)}%`);
+  const completionRate = data?.metrics?.completionRatePct;
+  const cancellationRate = data?.metrics?.cancellationRatePct;
 
   const rangeActions = (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -151,16 +150,16 @@ export default function AnalyticsPage() {
 
       <div className="biz-kpi-grid">
         <KpiCard
-          label="Revenue"
-          value={isLoading || isError ? "—" : inr(overview?.totalRevenue ?? 0, true)}
-          sub="Completed job value"
+          label="Captured GMV"
+          value={isLoading || isError ? "—" : inr(data?.metrics?.capturedGmv ?? 0, true)}
+          sub="Payments plus wallet, after the population filter"
           icon={TrendingUp}
           loading={isLoading || isError}
         />
         <KpiCard
           label="Completed jobs"
           value={isLoading || isError ? "—" : formatNumber(overview?.completedBookings ?? 0)}
-          sub={overview ? `${formatPercent(completionRate)} completion` : undefined}
+          sub={overview ? `${pct(completionRate)} of finished bookings` : undefined}
           icon={CheckCircle2}
           accent="green"
           loading={isLoading || isError}
@@ -168,7 +167,7 @@ export default function AnalyticsPage() {
         <KpiCard
           label="Cancellations"
           value={isLoading || isError ? "—" : formatNumber(overview?.cancelledBookings ?? 0)}
-          sub={overview ? `${formatPercent(cancellationRate)} of bookings` : undefined}
+          sub={overview ? `${pct(cancellationRate)} of finished bookings` : undefined}
           icon={XCircle}
           accent="red"
           loading={isLoading || isError}
@@ -214,7 +213,7 @@ export default function AnalyticsPage() {
         />
       </AnalyticsPerformanceBoundary>
 
-      <div className="grid gap-3.5 sm:grid-cols-3">
+      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           label="Platform commission"
           value={isLoading || isError ? "—" : inr(overview?.platformCommission ?? 0, true)}
@@ -232,11 +231,18 @@ export default function AnalyticsPage() {
           loading={isLoading || isError}
         />
         <KpiCard
-          label="Repeat booking rate"
-          value={isLoading || isError ? "—" : formatPercent(data?.userMetrics.repeatBookingRate ?? 0)}
-          sub="Customers who booked again"
+          label="Repeat customers"
+          value={isLoading || isError ? "—" : pct(data?.userMetrics.repeatCustomerRatePct)}
+          sub="More than one completed booking"
           icon={Repeat}
           accent="green"
+          loading={isLoading || isError}
+        />
+        <KpiCard
+          label="Quote to booking"
+          value={isLoading || isError ? "—" : pct(data?.metrics?.quoteToBookingPct)}
+          sub="Quoted customers who then booked"
+          icon={Percent}
           loading={isLoading || isError}
         />
       </div>

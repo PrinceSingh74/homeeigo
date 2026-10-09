@@ -121,9 +121,11 @@ export function analyticsSqlPredicate(alias: string, population: AnalyticsPopula
 /**
  * Relations through which a table without its own `data_origin` column inherits one.
  *
- * Only `users`, `bookings` and `refund_requests` carry the column. Most analytics do not stop at
- * those three: unit economics divides GMV (from `payments`) by completed bookings, satisfaction
- * averages `ratings`, membership funnels count `user_subscriptions`.
+ * Only `users`, `bookings`, `refund_requests`, `services` and `analytics_events` carry the column.
+ * Most analytics do not stop at those: unit economics divides GMV (from `payments`) by completed
+ * bookings, satisfaction averages `ratings`, membership funnels count `user_subscriptions`.
+ * `analytics_events.data_origin` is stamped at write from the actor or related booking — never
+ * from the client — so `analyticsWhere()` applies directly (no inheritance hop).
  *
  * Scoping only the tables that happen to have the column would make those reports *worse*, not
  * better — GMV would still include fixture payments while the booking count excluded the fixture
@@ -142,6 +144,8 @@ export const INHERITS_PROVENANCE_VIA = {
   walletTransaction: "user",
   provider: "user",
   membershipBenefitUsage: "user",
+  /** The buyer, not the recipient: a gift card is revenue from the account that paid for it. */
+  giftCard: "purchaser",
 } as const;
 
 /**

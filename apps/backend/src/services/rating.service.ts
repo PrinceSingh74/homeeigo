@@ -11,6 +11,8 @@ import { financialTransactionManager } from "./financial-transaction-manager.ser
 import { sanitizeUserInput } from "../utils/sanitizer";
 import { parsePagination } from "../lib/pagination";
 import { canonicalOwnRatingPhotos } from "../lib/rating-photos";
+import { CANCELLED_BOOKING_STATUSES, completionRatePct } from "../lib/fulfillment-rates";
+import { PUBLIC_REVIEW_ORDER, publicReviewWhere, publicReviewerName, summariseStars } from "../lib/public-reviews";
 import { hcoinService } from "./hcoin.service";
 import { buildPartnerRatingReceivedEvent } from "../events/catalog/partner.events";
 import { emitPartnerEvent } from "../events/core/partner-event-emit";
@@ -341,16 +343,12 @@ export class RatingService {
    */
   async listPublicRecent(query: Record<string, string | undefined>) {
     const limit = Math.min(Math.max(Number(query.limit) || 12, 1), 30);
-    const where = {
-      isPublic: true,
-      isFlagged: false,
-      reviewText: { not: null },
-    } as const;
+    const where = publicReviewWhere({ reviewText: { not: null } });
     const [rows, total, agg] = await Promise.all([
       prisma.rating.findMany({
         where,
         take: limit,
-        orderBy: { createdAt: "desc" },
+        orderBy: PUBLIC_REVIEW_ORDER,
         include: {
           user: { select: { firstName: true, lastName: true } },
           booking: { include: { service: { select: { name: true } } } },
@@ -362,9 +360,7 @@ export class RatingService {
     return {
       reviews: rows.map((r) => ({
         id: r.id,
-        name: r.isAnonymous
-          ? "HOMEEIGO Customer"
-          : `${r.user.firstName ?? "HOMEEIGO"} ${(r.user.lastName ?? "").charAt(0)}`.trim(),
+        name: publicReviewerName(r),
         rating: r.stars,
         reviewText: r.reviewText,
         service: r.booking?.service?.name ?? "Home service",
@@ -385,14 +381,14 @@ export class RatingService {
   async listPublicForService(serviceId: string, query: Record<string, string | undefined>) {
     const limit = Math.min(Math.max(Number(query.limit) || 10, 1), 30);
     const page = Math.max(Number(query.page) || 1, 1);
-    const visible = { isPublic: true, isFlagged: false, booking: { serviceId } } as const;
-    const written = { ...visible, reviewText: { not: null } } as const;
+    const visible = publicReviewWhere({ booking: { serviceId } });
+    const written = publicReviewWhere({ booking: { serviceId }, reviewText: { not: null } });
     const [rows, total, byStars] = await Promise.all([
       prisma.rating.findMany({
         where: written,
         take: limit,
         skip: (page - 1) * limit,
-        orderBy: { createdAt: "desc" },
+        orderBy: PUBLIC_REVIEW_ORDER,
         select: {
           id: true,
           stars: true,
@@ -406,18 +402,11 @@ export class RatingService {
       prisma.rating.count({ where: written }),
       prisma.rating.groupBy({ by: ["stars"], where: visible, _count: { _all: true } }),
     ]);
-    const distribution: Record<string, number> = { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 };
-    let ratings = 0;
-    let sum = 0;
-    for (const g of byStars) {
-      if (String(g.stars) in distribution) distribution[String(g.stars)] = g._count._all;
-      ratings += g._count._all;
-      sum += g.stars * g._count._all;
-    }
+    const { distribution, ratingCount, averageRating } = summariseStars(byStars);
     return {
       reviews: rows.map((r) => ({
         id: r.id,
-        name: r.isAnonymous ? "HOMEEIGO Customer" : `${r.user.firstName ?? "HOMEEIGO"} ${(r.user.lastName ?? "").charAt(0)}`.trim(),
+        name: publicReviewerName(r),
         rating: r.stars,
         reviewText: r.reviewText,
         createdAt: r.createdAt,
@@ -426,8 +415,8 @@ export class RatingService {
       total,
       page,
       limit,
-      ratingCount: ratings,
-      averageRating: ratings > 0 ? Math.round((sum / ratings) * 10) / 10 : null,
+      ratingCount,
+      averageRating,
       distribution,
     };
   }
@@ -541,8 +530,11 @@ export class RatingService {
      * (or its schema default for a partner who has never been measured). Matching no longer trusts
      * either column without counting its evidence — see `lib/matching-signals.ts`.
      */
-    const completionRate =
-      bookingStats.total > 0 ? Math.round((bookingStats.completed / bookingStats.total) * 100) : null;
+    // Same definition as marketplace completion: completed over finished
+    // (COMPLETED + the two cancellation statuses). Pending and in-progress
+    // bookings are not a denominator. Null when nothing has finished, so the
+    // column is left alone instead of being written as 0.
+    const completionRate = completionRatePct(bookingStats.completed, bookingStats.cancelled);
     const responseRate =
       bookingStats.last30Days > 0
         ? Math.round((bookingStats.last30DaysAccepted / bookingStats.last30Days) * 100)
@@ -641,9 +633,9 @@ export class RatingService {
     const last30 = new Date();
     last30.setDate(last30.getDate() - 30);
 
-    const [total, completed, last30Days, last30DaysAccepted] = await Promise.all([
-      prisma.booking.count({ where: { providerId } }),
+    const [completed, cancelled, last30Days, last30DaysAccepted] = await Promise.all([
       prisma.booking.count({ where: { providerId, status: BookingStatus.COMPLETED } }),
+      prisma.booking.count({ where: { providerId, status: { in: CANCELLED_BOOKING_STATUSES } } }),
       prisma.booking.count({ where: { providerId, createdAt: { gte: last30 } } }),
       prisma.booking.count({
         where: {
@@ -654,7 +646,7 @@ export class RatingService {
       }),
     ]);
 
-    return { total, completed, last30Days, last30DaysAccepted };
+    return { completed, cancelled, last30Days, last30DaysAccepted };
   }
 
   private async computeOnTimeRate(providerId: string): Promise<number> {

@@ -47,11 +47,11 @@ export function HowItWorks({ compact = false, title = "How it works" }: { compac
  * guarantees we cannot back with data).
  */
 const TRUST = [
-  { icon: BadgeCheck, title: "Verified professionals", body: "Every partner is reviewed and approved by our team before they can receive jobs." },
+  { icon: BadgeCheck, title: "Approved before a job", body: "A partner has to be approved and active before the platform can offer them a job. A service page states any extra checks that service requires." },
   { icon: ReceiptText, title: "Transparent pricing", body: "See the price before you book. Taxes, fees and discounts are itemised at checkout." },
   { icon: ListChecks, title: "Know what's included", body: "Bookable services spell out what's included and what isn't, before you pay." },
   { icon: Home, title: "At your doorstep", body: "Your professional comes to you, in the time slot you choose." },
-  { icon: MapPinned, title: "Live tracking", body: "Follow your professional's arrival on the map and start with a secure PIN." },
+  { icon: MapPinned, title: "Live tracking", body: "Once a professional is on the way you can follow their arrival. A start PIN is shown on the visit when that service requires one." },
   { icon: CreditCard, title: "Secure payments", body: "Pay online through a secure payment gateway, or from your HOMEEIGO wallet." },
 ] as const;
 
@@ -61,17 +61,17 @@ export function TrustSection() {
       <h2 id="trust-heading" className="font-display text-2xl font-bold tracking-tight text-content sm:text-3xl">
         Built on transparency
       </h2>
-      <dl className="grid gap-x-12 border-b border-line sm:grid-cols-2">
+      <ul className="grid gap-x-12 border-b border-line sm:grid-cols-2">
         {TRUST.map(({ icon: Icon, title, body }) => (
-          <div key={title} className="flex gap-4 border-t border-line py-5">
+          <li key={title} className="flex gap-4 border-t border-line py-5">
             <Icon className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden strokeWidth={1.75} />
             <div>
-              <dt className="font-semibold text-content">{title}</dt>
-              <dd className="mt-1 text-sm leading-relaxed text-muted">{body}</dd>
+              <p className="font-semibold text-content">{title}</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted">{body}</p>
             </div>
-          </div>
+          </li>
         ))}
-      </dl>
+      </ul>
     </section>
   );
 }

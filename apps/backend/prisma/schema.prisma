@@ -82,6 +82,7 @@ model User {
   addresses                   Address[]
   adminProfile                AdminUser?
   aiConversations             AiConversation[]
+  analyticsEvents             AnalyticsEvent[]
   bookings                    Booking[]
   bookingIdempotencyKeys      BookingIdempotencyKey[]
   consentRecords              ConsentRecord[]
@@ -428,6 +429,7 @@ model Service {
   variants            ServiceVariant[]
   addons              ServiceAddon[]
   requirementAssignments ServiceRequirement[]
+  analyticsEvents     AnalyticsEvent[]
 
   @@index([category])
   @@index([isActive])
@@ -754,6 +756,7 @@ model Booking {
   provider                    Provider?                    @relation(fields: [providerId], references: [id])
   service                     Service                      @relation(fields: [serviceId], references: [id])
   user                        User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analyticsEvents             AnalyticsEvent[]
   couponUsages                CouponUsage[]
   membershipCashbacks         MembershipCashback?
   membershipCouponRedemptions MembershipCouponRedemption[]
@@ -7010,4 +7013,79 @@ model BookingIdempotencyKey {
   @@unique([userId, key])
   @@index([expiresAt])
   @@map("booking_idempotency_keys")
+}
+
+/// Product-funnel measurement events. Never a source of booking, payment, rating, or revenue truth.
+///
+/// Distinct from `event_outbox` (authoritative domain events) and from Prometheus counters
+/// (`service_view_total` etc.). Those remain in place. This table exists so a funnel event can
+/// answer WHO / WHAT / WHEN / WHICH SERVICE / WHICH VERSION / WHICH VARIANT / WHICH BOOKING /
+/// WHICH POPULATION / WHICH ENVIRONMENT, and so duplicate delivery does not double-count.
+///
+/// `data_origin` is stamped at write from the actor or the related booking — never from the
+/// client. `INHERITS_PROVENANCE_VIA` in `src/lib/analytics-scope.ts` treats this table like
+/// `rating`: the booking's origin wins when a booking is attached; otherwise the actor's.
+enum AnalyticsEventName {
+  SERVICE_VIEW
+  SERVICE_CLICK
+  VARIANT_SELECTED
+  OPTION_SELECTED
+  ADDON_SELECTED
+  QUOTE_GENERATED
+  BOOKING_STARTED
+  CHECKOUT_STARTED
+  BOOKING_CREATED
+  BOOKING_COMPLETED
+  CANCELLED
+  REPEAT_BOOKING
+}
+
+enum AnalyticsEventSource {
+  CUSTOMER_WEB
+  CUSTOMER_MOBILE
+  PARTNER_WEB
+  PARTNER_MOBILE
+  ADMIN
+  BACKEND
+}
+
+enum AnalyticsEventPlatform {
+  WEB
+  ANDROID
+  IOS
+  SERVER
+}
+
+model AnalyticsEvent {
+  id               String                  @id @default(cuid())
+  /// Client- or producer-supplied unique key. Duplicate delivery of the same key is a no-op.
+  eventId          String                  @unique @map("event_id")
+  eventName        AnalyticsEventName      @map("event_name")
+  occurredAt       DateTime                @map("occurred_at") @db.Timestamptz(6)
+  receivedAt       DateTime                @default(now()) @map("received_at") @db.Timestamptz(6)
+  actorUserId      String?                 @map("actor_user_id")
+  sessionId        String?                 @map("session_id")
+  serviceId        String?                 @map("service_id")
+  serviceVersionId Int?                    @map("service_version_id")
+  variantId        String?                 @map("variant_id")
+  optionId         String?                 @map("option_id")
+  addonId          String?                 @map("addon_id")
+  bookingId        String?                 @map("booking_id")
+  quoteFingerprint String?                 @map("quote_fingerprint")
+  source           AnalyticsEventSource
+  platform         AnalyticsEventPlatform
+  environment      String
+  dataOrigin       DataOrigin?             @map("data_origin")
+  metadata         Json?
+  actor            User?                   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  service          Service?                @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  booking          Booking?                @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([eventName, occurredAt])
+  @@index([serviceId, eventName, occurredAt])
+  @@index([bookingId])
+  @@index([actorUserId, occurredAt])
+  @@index([dataOrigin])
+  @@index([sessionId, occurredAt])
+  @@map("analytics_events")
 }

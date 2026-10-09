@@ -48,7 +48,10 @@ beforeAll(async () => {
   const [{ db }] = await prisma.$queryRaw<{ db: string }[]>`SELECT current_database() AS db`;
   refuseIfNotIsolatedTestDb(db);
   ctx = await seedAdversarialFixtures(RUN);
-  await prisma.user.update({ where: { id: ctx.customerA.id }, data: { firstName: "Asha", lastName: "Krishnan" } });
+  // The scenario's customers are real (UNKNOWN = business), so their bookings are born business at
+  // creation. The fixture seed classifies them at signup; without this every review is a fixture's.
+  await prisma.user.update({ where: { id: ctx.customerA.id }, data: { firstName: "Asha", lastName: "Krishnan", dataOrigin: null } });
+  await prisma.user.update({ where: { id: ctx.customerB.id }, data: { dataOrigin: null } });
   const shown = await completedBooking(ctx.customerA, ctx.addressAId);
   const flagged = await completedBooking(ctx.customerA, ctx.addressAId);
   const anonymous = await completedBooking(ctx.customerB, ctx.addressBId);
@@ -57,6 +60,10 @@ beforeAll(async () => {
   await prisma.rating.create({ data: { bookingId: flagged, userId: ctx.customerA.id, providerId: ctx.providerId, stars: 1, reviewText: `Flagged text ${RUN}`, isFlagged: true } });
   await prisma.rating.create({ data: { bookingId: anonymous, userId: ctx.customerB.id, providerId: ctx.providerId, stars: 4, reviewText: `Anonymous praise ${RUN}`, isAnonymous: true } });
   await prisma.rating.create({ data: { bookingId: starsOnly, userId: ctx.customerB.id, providerId: ctx.providerId, stars: 3 } });
+  // Public and unflagged, but on a FIXTURE booking: valid data, never a customer-facing review.
+  const fixture = await completedBooking(ctx.customerB, ctx.addressBId);
+  await prisma.booking.update({ where: { id: fixture }, data: { dataOrigin: "FIXTURE" } });
+  await prisma.rating.create({ data: { bookingId: fixture, userId: ctx.customerB.id, providerId: ctx.providerId, stars: 1, reviewText: `Fixture text ${RUN}` } });
 }, 180_000);
 
 afterAll(async () => {
@@ -74,6 +81,7 @@ describe.serial("GET /api/services/:id/reviews", () => {
     expect(texts).toContain(`Spotless work ${RUN}`);
     expect(texts).toContain(`Anonymous praise ${RUN}`);
     expect(texts).not.toContain(`Flagged text ${RUN}`);
+    expect(texts).not.toContain(`Fixture text ${RUN}`);
     expect(r.json.data!.total).toBe(2);
   });
 
@@ -90,7 +98,8 @@ describe.serial("GET /api/services/:id/reviews", () => {
     for (const secret of [ctx.customerA.id, ctx.customerB.id, ctx.providerId, ...bookingIds]) expect(r.text).not.toContain(secret);
   });
 
-  test("the star distribution counts every public unflagged rating, including ones without text", async () => {
+  // The fixture's 1★ is in neither the distribution nor the average.
+  test("the star distribution counts every public unflagged business rating, including ones without text", async () => {
     expect(dbOk).toBe(true);
     const d = (await reviews(ctx.serviceId)).json.data!;
     expect(d.distribution).toEqual({ "1": 0, "2": 0, "3": 1, "4": 1, "5": 1 });

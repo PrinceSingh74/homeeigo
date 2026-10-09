@@ -120,7 +120,7 @@ function paymentsBrief(input: {
           : chargebacks > 0
             ? `${inr(chargebacks, true)} sits in open chargebacks. That is cash at risk, not a closed booking.`
             : `${inr(settlement, true)} of successful payments is still unsettled with the gateway.`,
-      impact: `${inr(revenue, true)} GMV · ${inr(commission, true)} take · ${inr(payouts, true)} to partners.`,
+      impact: `${inr(revenue, true)} paid booking value · ${inr(commission, true)} take · ${inr(payouts, true)} to partners.`,
       action:
         chargebacks > 0
           ? "Open Chargebacks and evidence the open cases before they age."
@@ -149,7 +149,7 @@ function paymentsBrief(input: {
     state: "stable" as const,
     label: "Healthy",
     meaning: "Paid bookings are splitting into platform take and partner net at a normal rate.",
-    impact: `${inr(revenue, true)} GMV · ${takePct}% take · ${inr(payouts, true)} to partners.`,
+    impact: `${inr(revenue, true)} paid booking value · ${takePct}% take · ${inr(payouts, true)} to partners.`,
     action: "No payments-desk action required. Keep reconciliation on the usual cadence.",
   };
 }
@@ -184,7 +184,7 @@ function EmptyLane({
 }
 
 const INSPECT_GUIDE = [
-  { icon: CreditCard, tone: "success" as const, title: "GMV", copy: "Paid bookings in this window" },
+  { icon: CreditCard, tone: "success" as const, title: "Paid booking value", copy: "Successful booking value in this window" },
   { icon: Landmark, tone: "cyan" as const, title: "Take", copy: "Recorded platform commission" },
   { icon: Banknote, tone: "warning" as const, title: "Partner net", copy: "What the vendor actually earned" },
   { icon: Scale, tone: "danger" as const, title: "Split", copy: "Never estimated — from Earning rows" },
@@ -295,14 +295,13 @@ export default function PaymentsPage() {
   const takePct = num(overview?.commissionPercentage);
   const completed = num(overview?.completedBookings);
   const cancelled = num(overview?.cancelledBookings);
-  const bookings = num(overview?.totalBookings);
   const monthRev = num(dashboard.data?.stats.thisMonthRevenue);
 
   const fin = rec(financeQ.data?.overview);
   const settlement = moneyBag(fin.settlementPending);
   const chargeback = moneyBag(fin.chargebackExposure);
   const refunds = num(fin.refundLiability);
-  const gmv = num(fin.gmv) || revenue;
+  const captured = typeof fin.gmv === "number" ? fin.gmv : null;
   const netRevenue = num(fin.netRevenue);
 
   const services = useMemo(() => analytics.data?.topServices ?? [], [analytics.data?.topServices]);
@@ -375,7 +374,7 @@ export default function PaymentsPage() {
     void dashboard.refetch();
   };
   const payoutShare = pct(payouts, Math.max(payouts + commission, 1));
-  const completeRate = pct(completed, bookings);
+  const completeRate = analytics.data?.metrics?.completionRatePct ?? null;
 
   return (
     <div className="exec-hq cu-page pay-page mx-auto min-w-0 max-w-[1600px] biz-page-enter">
@@ -401,13 +400,13 @@ export default function PaymentsPage() {
                 </span>
               </div>
               <p className="cu-hero__lede">
-                Razorpay GMV, recorded platform take, and partner net — one service file at a time. Commission is never estimated.
+                Paid booking value, recorded platform take, and partner net — one service file at a time. Commission is never estimated.
               </p>
             </div>
           </div>
           <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2">
             <div className="mb-chip-card pay-chip-card">
-              <span>GMV</span>
+              <span>Paid booking value</span>
               <strong>{analytics.isLoading && !revenue ? "—" : inr(revenue, true)}</strong>
             </div>
             <div className="cu-filter__row">
@@ -456,9 +455,9 @@ export default function PaymentsPage() {
 
       <section className="cu-kpi">
         <StatTile
-          label={`Revenue · ${days}d`}
+          label={`Paid booking value · ${days}d`}
           value={inr(revenue, true)}
-          sub={monthRev ? `${inr(monthRev, true)} this calendar month` : "paid booking GMV"}
+          sub={monthRev ? `${inr(monthRev, true)} this calendar month` : "Successful booking value"}
           icon={CreditCard}
           loading={analytics.isLoading}
           tone={revenue > 0 ? "accent" : "default"}
@@ -662,7 +661,9 @@ export default function PaymentsPage() {
             <div className="mb-meters">
               <MeterBar label="Take rate" value={takePct} tone={takePct >= 35 ? "danger" : "success"} />
               <MeterBar label="Partner share" value={payoutShare} tone="accent" />
-              <MeterBar label="Completed" value={completeRate} tone={completeRate >= 70 ? "success" : "accent"} />
+              {completeRate != null ? (
+                <MeterBar label="Completion" value={completeRate} tone={completeRate >= 70 ? "success" : "accent"} />
+              ) : null}
             </div>
           </div>
         </div>
@@ -671,7 +672,7 @@ export default function PaymentsPage() {
           <SectionHead
             icon={TrendingUp}
             tone="success"
-            title="Daily GMV"
+            title="Daily captured"
             subtitle={trend.length ? `Latest ${trend.length} days in this window` : "Paid amount by day"}
           />
           {trend.length > 0 ? (
@@ -742,7 +743,7 @@ export default function PaymentsPage() {
                   {financeQ.isError
                     ? "Not in this role"
                     : netRevenue
-                      ? `Net ${inr(netRevenue, true)} after refunds · GMV ${inr(gmv, true)}`
+                      ? `Net captured ${inr(netRevenue, true)} · captured ${captured == null ? "—" : inr(captured, true)}`
                       : "Wallet, cashback, and provider payable"}
                 </p>
               </div>

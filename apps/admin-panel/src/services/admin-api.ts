@@ -128,7 +128,7 @@ export type AutomationOutboxRow = {
 
 // --- Geo-Intelligence envelope + data shapes (mirrors GeoIntelligenceService) ---
 export type GeoIntel<T> = { success: boolean; data: T; confidence: number; freshness: string; source: string; cached: boolean; generatedAt: string };
-export type ExecKpis = { gmv: number; bookingsToday: number; completionRate: number; cancellationRate: number; refundRate: number; onlineProviders: number; activeCustomers: number };
+export type ExecKpis = { gmv: number; bookingsToday: number; completionRate: number | null; cancellationRate: number | null; refundRate: number | null; onlineProviders: number; activeCustomers: number };
 export type SurgeZone = { zoneId: string; name: string; city: string | null; supply: number; activeBookings: number; weatherSurge: number; predictedSurge: number; demandDeltaPct: number | null };
 export type DensityZone = { zoneId: string; name: string; city: string | null; centerLat: number; centerLng: number; providers: number; areaKm2: number; densityPerKm2: number };
 export type PendingPartnerDocument = {
@@ -499,7 +499,14 @@ export type AdminReviewsResponse = {
   total: number;
   page: number;
   limit: number;
-  stats: { averageRating: number | null; totalReviews: number };
+  /** Platform totals, not counts of the page on screen. `published*` is what customers are shown. */
+  stats: {
+    totalReviews: number;
+    hiddenReviews: number;
+    flaggedReviews: number;
+    publishedReviews: number;
+    publishedAverageRating: number | null;
+  };
 };
 
 export type PartnerServiceSkillCard = {

@@ -434,4 +434,33 @@ describe("Partner presence — failure simulation (no axis contamination)", () =
     expect(after?.lastLocationAt?.toISOString()).toBe(capturedAt.toISOString());
     expect(after?.lastLocationReceivedAt).not.toBeNull();
   });
+
+  test("login and refresh promote the live session before they return", async () => {
+    if (skipIfNoDb()) return;
+    const minted = await refreshTokenService.createSessionTokens({
+      userId: ctx.vendorUserId,
+      email: `${RUN_ID}@adv.test`,
+      deviceId: deviceB,
+    });
+    const afterLogin = await partnerPresenceService.getSnapshot(ctx.providerId);
+    expect(afterLogin.sessionId).toBe(minted.sessionId);
+
+    const rotated = await refreshTokenService.refreshAccessToken({
+      refreshToken: minted.refreshToken,
+      deviceId: deviceB,
+    });
+    expect(rotated.success).toBe(true);
+    const afterRefresh = await partnerPresenceService.getSnapshot(ctx.providerId);
+    expect(afterRefresh.sessionId).toBe(rotated.sessionId);
+    expect(afterRefresh.sessionId).not.toBe(minted.sessionId);
+
+    await prisma.refreshToken.update({
+      where: { id: rotated.sessionId! },
+      data: { revokedAt: new Date(), revokedReason: "test" },
+    });
+    const afterRevoke = await partnerPresenceService.getSnapshot(ctx.providerId);
+    expect(afterRevoke.sessionId).toBeNull();
+
+    await partnerPresenceService.promoteSession(ctx.providerId, sessionIdB, deviceB);
+  });
 });

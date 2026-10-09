@@ -67,7 +67,12 @@ function Stat({
 }
 
 const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
-const pct = (n: number) => `${n.toFixed(1)}%`;
+const pct = (n: number | null) => (n == null ? "—" : `${n.toFixed(1)}%`);
+function band(n: number | null, goodAt: number, warnAt: number, higherIsBetter: boolean): Tone {
+  if (n == null) return "accent";
+  if (higherIsBetter) return n >= goodAt ? "good" : n >= warnAt ? "warn" : "bad";
+  return n <= goodAt ? "good" : n <= warnAt ? "warn" : "bad";
+}
 const num = (n: number) => Math.round(n).toLocaleString("en-IN");
 
 function kpiFingerprint(kpis: ExecKpis): string {
@@ -112,12 +117,9 @@ function ExecutiveKpiRibbonInner({
     return <div className="cmd-card cmd-kpi-skeleton" aria-hidden />;
   }
 
-  const completionTone: Tone =
-    kpis.completionRate >= 70 ? "good" : kpis.completionRate >= 45 ? "warn" : "bad";
-  const cancelTone: Tone =
-    kpis.cancellationRate <= 20 ? "good" : kpis.cancellationRate <= 40 ? "warn" : "bad";
-  const refundTone: Tone =
-    kpis.refundRate <= 10 ? "good" : kpis.refundRate <= 30 ? "warn" : "bad";
+  const completionTone = band(kpis.completionRate, 70, 45, true);
+  const cancelTone = band(kpis.cancellationRate, 20, 40, false);
+  const refundTone = band(kpis.refundRate, 10, 30, false);
 
   return (
     <div className="cmd-kpi-ribbon" tabIndex={0} role="region" aria-label="Live operations KPIs">
@@ -136,9 +138,9 @@ function ExecutiveKpiRibbonInner({
       </div>
       <Stat label="GMV" value={inr(kpis.gmv)} tone="accent" icon={IndianRupee} />
       <Stat label="Orders" value={num(kpis.bookingsToday)} tone="cyan" icon={ShoppingBag} />
-      <Stat label="Completion" value={pct(kpis.completionRate)} tone={completionTone} icon={CircleCheck} meter={kpis.completionRate} />
-      <Stat label="Cancel" value={pct(kpis.cancellationRate)} tone={cancelTone} icon={Ban} meter={kpis.cancellationRate} />
-      <Stat label="Refund" value={pct(kpis.refundRate)} tone={refundTone} icon={RotateCcw} meter={kpis.refundRate} />
+      <Stat label="Completion" value={pct(kpis.completionRate)} tone={completionTone} icon={CircleCheck} meter={kpis.completionRate ?? undefined} />
+      <Stat label="Cancel" value={pct(kpis.cancellationRate)} tone={cancelTone} icon={Ban} meter={kpis.cancellationRate ?? undefined} />
+      <Stat label="Refund" value={pct(kpis.refundRate)} tone={refundTone} icon={RotateCcw} meter={kpis.refundRate ?? undefined} />
       <Stat label="Providers" value={num(kpis.onlineProviders)} tone="good" icon={Wifi} />
       <Stat label="Customers" value={num(kpis.activeCustomers)} tone="accent" icon={Users} />
     </div>

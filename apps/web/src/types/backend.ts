@@ -34,6 +34,11 @@ export type BackendService = {
   taxonomy?: ServiceTaxonomyRef;
   /** Server-resolved service-line price per selectable quantity (quantity-priced services only). */
   quantityPrices?: { quantity: number; servicePrice: number; servicePricePaise: number }[] | null;
+  /** False when the service is held back or catalogConfig.seo.noindex is set. */
+  indexable?: boolean;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  seoKeywords?: string | null;
 };
 
 export type ServiceTaxonomyRef = {

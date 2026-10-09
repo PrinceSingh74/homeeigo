@@ -85,7 +85,7 @@ export function useServicesDiscovery(enabled = true) {
       title: `${s.name} Recommended`,
       desc:
         s.description ??
-        `Popular ${s.name.toLowerCase()} service with verified professionals in your city.`,
+        s.name,
       emoji: emojiForService(s.id, s.name),
       bgFrom: ["#EDE9FE", "#CFFAFE", "#DBEAFE", "#FFEDD5"][i % 4]!,
       bgTo: ["#DDD6FE", "#A5F3FC", "#BFDBFE", "#FED7AA"][i % 4]!,

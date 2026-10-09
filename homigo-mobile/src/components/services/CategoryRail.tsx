@@ -8,6 +8,7 @@ import { useServicesTheme } from "./ServicesThemeContext";
 import { useCatalogServices } from "@/hooks/use-catalog";
 import { getServicePhoto } from "@/lib/service-photos";
 import { useServicesActions } from "@/hooks/useServicesActions";
+import { trackServiceClick } from "@/lib/analytics/funnel";
 import { PressableScale } from "@/components/ai/PressableScale";
 import { layout } from "@/components/services/theme/layout";
 
@@ -75,7 +76,10 @@ export function CategoryRail({
               // The card opens the service's detail page (what is promised, then Book); the arrow
               // below stays the one-tap route straight into the booking flow.
               onPress={() => {
-                if (!soon && svc) router.push({ pathname: "/service/[id]", params: { id: svc.id } });
+                if (!soon && svc) {
+                  trackServiceClick(svc.id, "rail-card");
+                  router.push({ pathname: "/service/[id]", params: { id: svc.id } });
+                }
               }}
               accessibilityRole="button"
               accessibilityLabel={soon ? `${item.name}, coming soon` : `${item.name}${price ? `, from ${price}` : ""}. View details`}
@@ -123,7 +127,10 @@ export function CategoryRail({
                   {!soon ? (
                     <Pressable
                       onPress={() => {
-                        if (svc) book({ service: svc.id });
+                        if (svc) {
+                          trackServiceClick(svc.id, "rail-card");
+                          book({ service: svc.id });
+                        }
                       }}
                       disabled={!svc}
                       hitSlop={8}

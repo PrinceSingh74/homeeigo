@@ -350,7 +350,8 @@ export const partnerApi = {
   geoIntel: {
     surge: () => apiRequest<GeoIntel<SurgeZone[]>>("/api/geo-intel/surge", { auth: true }),
     density: () => apiRequest<GeoIntel<DensityZone[]>>("/api/geo-intel/provider-density", { auth: true }),
-    zoneScoring: () => apiRequest<GeoIntel<ZoneScoring>>("/api/geo-intel/zone-scoring", { auth: true }),
+    // zone-scoring is ADMIN-only. Partners must not call it (403). Surge, density and
+    // demand-forecast are the partner-allowed reads.
     demandForecast: (horizon = 24) => apiRequest<DemandForecastResponse>("/api/geo-intel/demand-forecast", { auth: true, query: { horizon } }),
     eta: (fromLat: number, fromLng: number, toLat: number, toLng: number) =>
       apiRequest<GeoIntel<EtaResult>>("/api/geo-intel/eta", { auth: true, query: { fromLat, fromLng, toLat, toLng } }),

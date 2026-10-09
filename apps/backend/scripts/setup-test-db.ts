@@ -438,6 +438,7 @@ const LATE_ADDITIVE: Array<{ object: string; dir: string }> = [
   { object: "ml_model_versions", dir: "20260906090000_ml_model_governance" },
   { object: "ai_budget_policies", dir: "20260907090000_phase14_governance" },
   { object: "ai_workflow_drafts", dir: "20260908090000_phase15_workflow_drafts" },
+  { object: "analytics_events", dir: "20261008140000_analytics_events" },
 ];
 for (const { object, dir } of LATE_ADDITIVE) {
   const probe = prismaExecute(`SELECT to_regclass('public.${object}') AS t;`);

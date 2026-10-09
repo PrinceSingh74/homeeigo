@@ -211,13 +211,13 @@ export const EXPRESS_SERVICES: ExpressService[] = [
 ];
 
 export const WHY_FEATURES: WhyFeature[] = [
-  { icon: "🛡️", title: "Background Verified", desc: "All partners undergo thorough background checks", color: "#059669", bg: "#D1FAE5" },
-  { icon: "⏰", title: "On-Time Guarantee", desc: "Arrive on time, every time. Guaranteed.", color: "#0d9488", bg: "#CCFBF1" },
-  { icon: "✅", title: "Satisfaction Guaranteed", desc: "100% satisfaction or your money back", color: "#15803d", bg: "#DCFCE7" },
+  { icon: "🛡️", title: "Approved before a job", desc: "A partner is approved and active before they can be offered a job", color: "#059669", bg: "#D1FAE5" },
+  { icon: "⏰", title: "Chosen time slot", desc: "You pick the slot. Arrival is tracked once a partner is on the way", color: "#0d9488", bg: "#CCFBF1" },
+  { icon: "✅", title: "Service warranty", desc: "A service page states its warranty when that service has one", color: "#15803d", bg: "#DCFCE7" },
   { icon: "🔒", title: "Secure Payments", desc: "Safe, encrypted transactions always", color: "#0f766e", bg: "#CCFBF1" },
   { icon: "🤖", title: "AI Scheduling", desc: "Smart matching for best service quality", color: "#059669", bg: "#D1FAE5" },
   { icon: "📍", title: "Live Tracking", desc: "Know where your service partner is", color: "#14b8a6", bg: "#CCFBF1" },
-  { icon: "👥", title: "Verified Partners", desc: "Every partner is verified before their first job", color: "#15803d", bg: "#DCFCE7" },
+  { icon: "👥", title: "Extra checks on the service", desc: "Identity, background, certification and insurance appear only when that service requires them", color: "#15803d", bg: "#DCFCE7" },
   { icon: "💸", title: "Transparent Pricing", desc: "No hidden charges, no surprises", color: "#0d9488", bg: "#CCFBF1" },
 ];
 

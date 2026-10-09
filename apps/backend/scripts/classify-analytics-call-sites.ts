@@ -57,6 +57,26 @@ const RULES: Rule[] = [
         category: "H",
         why: "pagination total for the admin booking list",
       },
+      {
+        match: "prisma.rating.count({ where })",
+        category: "H",
+        why: "pagination total for the review moderation list",
+      },
+      {
+        match: "prisma.rating.count()",
+        category: "B",
+        why: "moderation queue total — the console moderates every row, fixtures included",
+      },
+      {
+        match: "isPublic: false",
+        category: "B",
+        why: "moderation queue: hidden reviews awaiting a decision",
+      },
+      {
+        match: "isFlagged: true",
+        category: "B",
+        why: "moderation queue: flagged reviews awaiting a decision",
+      },
     ],
   },
   { file: "src/services/geo-intelligence.service.ts", category: "A", why: "executive KPIs, revenue forecast" },
@@ -86,6 +106,16 @@ const RULES: Rule[] = [
         match: "walletBalance",
         category: "C",
         why: "liability: the platform owes every balance regardless of how the account was created",
+      },
+      {
+        match: "refundedAmount: { gt: 0 }",
+        category: "C",
+        why: "refundLiability feeds totalLiabilities and the liability snapshots — a liability is never scoped",
+      },
+      {
+        match: "settlementId: null",
+        category: "C",
+        why: "gateway receivable, reconciled payment by payment (payment-reconciliation counts the same rows)",
       },
     ],
   },
@@ -156,13 +186,63 @@ const RULES: Rule[] = [
   // ── Model inputs ──────────────────────────────────────────────────────────────────────────────
   { file: "src/services/dynamic-pricing.service.ts", category: "E", why: "conversion rate feeds the price a customer is charged" },
 
-  // ── Ambiguous ─────────────────────────────────────────────────────────────────────────────────
-  { file: "src/lib/finops-metrics.ts", category: "I", why: "a bare user count whose consumer is unclear" },
+  // ── Inheriting models (payment / rating / subscription / wallet), Phase 15.3 ────────────────────
+  {
+    file: "src/services/invoice-report.service.ts",
+    category: "A",
+    why: "admin revenue report — every stream and its refunds",
+    except: [{ match: "prisma.payment.count({ where })", category: "H", why: "pagination total for the invoice list" }],
+  },
+  {
+    file: "src/services/subscription.service.ts",
+    category: "A",
+    why: "plan-catalogue member / churn / MRR KPIs and subscription revenue — must match membership-analytics",
+    except: [{ match: "prisma.userSubscription.count({ where })", category: "H", why: "pagination total for the subscriber list" }],
+  },
+  { file: "src/services/payment-reconciliation.service.ts", category: "C", why: "reconciliation must cover every captured payment and top-up" },
+  { file: "src/services/settlement-chargeback.service.ts", category: "C", why: "settlement operations — every settled payment" },
+  {
+    file: "src/services/chargeback-workflow.service.ts",
+    category: "C",
+    why: "dispute console: a chargeback is a liability whatever created the payment; both ratio sides unscoped",
+  },
+  { file: "src/services/observability.service.ts", category: "H", why: "stuck-payment / stuck-top-up health counters" },
+  { file: "src/services/financial-risk.service.ts", category: "D", why: "refund-abuse check for one user" },
+  { file: "src/services/payment.service.ts", category: "D", why: "one booking's payments, one user's history" },
+  {
+    file: "src/services/marketplace-metrics.service.ts",
+    category: "A",
+    why: "the five marketplace metrics (completion, cancellation, repeat, quote-to-booking, captured GMV)",
+    except: [
+      {
+        match: "CREDITED_EARNING_WHERE",
+        category: "C",
+        why: "platform commission from earnings — Earning has no provenance column and no booking relation to inherit one",
+      },
+    ],
+  },
+  {
+    file: "src/services/wallet.service.ts",
+    category: "D",
+    why: "one user's wallet history and pending top-ups",
+    except: [{ match: "...(userId ? { userId } : {})", category: "B", why: "pending top-up gate — live state, every row" }],
+  },
+
+  {
+    file: "src/lib/finops-metrics.ts",
+    category: "B",
+    why: "FinOps unit cost — owner decision (Phase 15): external API spend is incurred by ALL traffic, so cost_per_customer / cost_per_order divide by all users / all successful payments, never the business population",
+  },
 ];
 
 // ── Collect the sites (same matcher as inventory-analytics-call-sites.ts) ───────────────────────
 const ROOT = join(import.meta.dir, "..");
-const MODELS = ["booking", "user", "refundRequest"];
+/**
+ * Models that carry `data_origin` themselves, plus the ones that inherit it through a mandatory
+ * parent (`INHERITS_PROVENANCE_VIA` in analytics-scope.ts). Leaving the inheriting models out let
+ * the public rating aggregate and GMV totals count fixture rows without this check ever seeing them.
+ */
+const MODELS = ["booking", "user", "refundRequest", "analyticsEvent", "rating", "payment", "userSubscription", "walletTransaction"];
 const OPS = ["count", "aggregate", "groupBy"];
 const CALL = new RegExp(`prisma\\.(${MODELS.join("|")})\\.(${OPS.join("|")})\\b`);
 
@@ -210,8 +290,9 @@ for (const dir of ["src", "analytics"]) {
      * five sites in admin.service and six in refund-workflow as unscoped when they were not, and a
      * check that cries wolf gets muted — so it has to recognise the shapes people actually write.
      */
+    // `publicReviewWhere` (lib/public-reviews.ts) is analyticsWhereVia("rating") plus moderation.
     const scopedVars = new Set(
-      [...text.matchAll(/const\s+(\w+)\s*=\s*[^;]*analyticsWhere(Via)?\(/g)].map((m) => m[1]!),
+      [...text.matchAll(/const\s+(\w+)\s*=\s*[^;]*(analyticsWhere(Via)?|publicReviewWhere)\(/g)].map((m) => m[1]!),
     );
     for (let i = 0; i < lines.length; i++) {
       if (CALL.test(lines[i]!)) {
@@ -243,7 +324,7 @@ for (const site of sites) {
   const usesScopedVar = site.scopedVars.some((v) =>
     new RegExp(`(\\.\\.\\.${v}\\b|where:\\s*${v}\\b|[{,]\\s*${v}\\s*[,}])`).test(site.snippet),
   );
-  if (MUST_BE_SCOPED.includes(category) && !/analyticsWhere(Via)?\(/.test(site.snippet) && !usesScopedVar) {
+  if (MUST_BE_SCOPED.includes(category) && !/(analyticsWhere(Via)?|analyticsSqlPredicate(Via)?|publicReviewWhere)\(/.test(site.snippet) && !usesScopedVar) {
     unscoped.push({ file: site.file, line: site.line, category });
   }
 }

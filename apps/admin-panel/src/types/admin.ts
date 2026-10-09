@@ -98,9 +98,15 @@ export type DashboardStats = {
   totalProviders: number;
   totalBookings: number;
   completedBookings: number;
+  cancelledBookings?: number;
+  /** fulfillment-rates.ts. Null when nothing has finished. */
+  completionRatePct?: number | null;
+  cancellationRatePct?: number | null;
   totalRevenue: number;
   thisMonthRevenue: number;
-  averageRating: number;
+  /** Mean of partner ratings. Null when no business partner has a rating. Not the review average. */
+  partnerRatingMean?: number | null;
+  averageRating: number | null;
   activeNow: number;
 };
 
@@ -143,7 +149,19 @@ export type AnalyticsData = {
   userMetrics: {
     newUsers: number;
     activeUsers: number;
-    repeatBookingRate: number;
+    /** Null when no business customer booked in the window. Percent, not a 0–1 ratio. */
+    repeatCustomerRatePct: number | null;
+  };
+  metrics?: {
+    completionRatePct: number | null;
+    cancellationRatePct: number | null;
+    quoteToBookingPct: number | null;
+    repeatCustomerRatePct: number | null;
+    capturedGmv: number;
+    netCaptured: number;
+    gatewayCaptured: number;
+    walletCaptured: number;
+    refunds: number;
   };
 };
 

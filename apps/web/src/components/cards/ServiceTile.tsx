@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { bookUrl } from "@/lib/booking-url";
+import { trackServiceClick } from "@/lib/analytics/service-click";
 import { TileCaption } from "@/components/cards/TileCaption";
 
 export interface ServiceTileProps {
@@ -41,7 +42,10 @@ export function ServiceTile({
   return (
     <button
       type="button"
-      onClick={() => router.push(bookUrl({ service: serviceId }))}
+      onClick={() => {
+        trackServiceClick({ backendId: serviceId }, "home-tile");
+        router.push(bookUrl({ service: serviceId }));
+      }}
       className={cn(
         "group relative block aspect-[4/3] w-full min-w-0 overflow-hidden rounded-2xl text-left outline-none",
         "shadow-[0_16px_40px_-18px_rgb(15_23_42/0.5)]",

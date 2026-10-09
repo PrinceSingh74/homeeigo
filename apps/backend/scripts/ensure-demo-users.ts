@@ -241,7 +241,21 @@ async function ensureCustomerAddress(userId: string) {
 }
 
 async function main() {
-  for (const demo of DEMOS) {
+  const only = process.argv
+    .find((arg) => arg.startsWith("--only="))
+    ?.slice("--only=".length)
+    .split(",")
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+  const selected = only?.length
+    ? DEMOS.filter((demo) => {
+        const role = demo.role === UserRole.VENDOR ? "partner" : demo.role.toLowerCase();
+        return only.includes(role) || only.includes(demo.email.toLowerCase());
+      })
+    : [...DEMOS];
+  if (selected.length === 0) throw new Error(`--only matched no demo account (${only?.join(",")})`);
+
+  for (const demo of selected) {
     const user = await upsertDemoUser(demo);
     if (demo.role === UserRole.ADMIN) await ensureAdminProfile(user.id);
     if (demo.role === UserRole.VENDOR) await ensurePartnerProvider(user.id);

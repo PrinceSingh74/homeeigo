@@ -20,8 +20,9 @@ export const AdminDashboardCharts = memo(function AdminDashboardCharts({
   thisMonthRevenue,
   totalRevenue,
   totalBookings = 0,
-  averageRating = 0,
+  averageRating = null,
   completedBookings = 0,
+  completionRatePct = null,
 }: {
   bookingsByDay: DayPoint[];
   revenueByDay: DayPoint[];
@@ -31,8 +32,10 @@ export const AdminDashboardCharts = memo(function AdminDashboardCharts({
   thisMonthRevenue: number;
   totalRevenue: number;
   totalBookings?: number;
-  averageRating?: number;
+  averageRating?: number | null;
   completedBookings?: number;
+  /** fulfillment-rates.ts. Null when nothing has finished. */
+  completionRatePct?: number | null;
 }) {
   useRenderProbe("AdminDashboardCharts");
   useMountProbe("AdminDashboardCharts");
@@ -49,9 +52,8 @@ export const AdminDashboardCharts = memo(function AdminDashboardCharts({
   const revenueKey = useMemo(() => revenueValues.map((v) => `${v.label}:${v.value}`).join("|"), [revenueValues]);
   useChartProfiler("AdminDashboardCharts", `${bookingKey}|${revenueKey}`);
 
-  const completion =
-    totalBookings > 0 ? Math.round((completedBookings / Math.max(1, totalBookings)) * 100) : 0;
-  const ringTone = completion >= 70 ? "success" : completion >= 40 ? "warning" : "danger";
+  const completion = completionRatePct;
+  const ringTone = completion == null ? "accent" : completion >= 70 ? "success" : completion >= 40 ? "warning" : "danger";
 
   return (
     <div className="grid items-stretch gap-4 lg:grid-cols-3">
@@ -88,7 +90,7 @@ export const AdminDashboardCharts = memo(function AdminDashboardCharts({
           <Icon3D icon={Building2} tone="cyan" size="sm" />
         </div>
         <GlassRing3D
-          value={completion}
+          value={completion ?? 0}
           label="Complete"
           sub={`${formatNumber(activeNow)} partners live · ${inr(thisMonthRevenue, true)} MTD`}
           tone={ringTone}
@@ -96,8 +98,8 @@ export const AdminDashboardCharts = memo(function AdminDashboardCharts({
         <ul className="mt-auto space-y-2.5 text-xs">
           <HealthRow label="All-time revenue" value={inr(totalRevenue, true)} />
           <HealthRow
-            label="Avg rating"
-            value={`${averageRating.toFixed(1)}★`}
+            label="Partner rating"
+            value={averageRating != null ? `${averageRating.toFixed(1)}★` : "—"}
             icon={<Star className="h-3 w-3 text-[var(--color-biz-warning)]" />}
           />
           <HealthRow

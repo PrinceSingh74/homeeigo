@@ -15,6 +15,8 @@ import { mlFeatureSinkConsumer, ML_FEATURE_SINK_CONSUMER_NAME } from "./ml-featu
 import { etaLabelConsumer, ETA_LABEL_CONSUMER_NAME } from "./eta-label.consumer";
 import { aiContextIndexerConsumer, AI_CONTEXT_INDEXER_CONSUMER_NAME } from "./ai-context-indexer.consumer";
 import { partnerReferralConsumer, PARTNER_REFERRAL_CONSUMER_NAME } from "./partner-referral.consumer";
+import { analyticsFunnelConsumer, ANALYTICS_FUNNEL_CONSUMER_NAME } from "./analytics-funnel.consumer";
+import { ANALYTICS_FUNNEL_EVENT_TYPES } from "../../services/analytics-funnel.service";
 import { agentTriggerConsumer } from "./agent-trigger.consumer";
 import { agentTriggeredEventTypes } from "../../agents/triggers/agent-trigger-registry";
 import { EVENT_TYPES } from "../catalog/event-types";
@@ -126,6 +128,17 @@ export function bootstrapEventConsumers(): void {
       EVENT_TYPES.PARTNER_RISK_UPDATED,
     ],
     handler: partnerReferralConsumer,
+    maxAttempts: 3,
+  });
+
+  /**
+   * Phase 15.2 — the funnel projection. Booking created / completed / cancelled and checkout
+   * started reach `analytics_events` from the committed outbox row, never from a client.
+   */
+  registerConsumer({
+    name: ANALYTICS_FUNNEL_CONSUMER_NAME,
+    eventTypes: [...ANALYTICS_FUNNEL_EVENT_TYPES],
+    handler: analyticsFunnelConsumer,
     maxAttempts: 3,
   });
 

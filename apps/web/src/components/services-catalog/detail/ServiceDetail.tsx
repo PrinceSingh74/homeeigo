@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   CATEGORY_BY_ID,
@@ -18,9 +18,11 @@ import {
   type ServiceView,
 } from "@/lib/catalog";
 import { bookUrl } from "@/lib/booking-url";
+import { trackFunnelEvent, type FunnelEventContext, type FunnelEventName } from "@/lib/analytics/funnel";
 import { coreApi } from "@/services/core/api";
 import { useCatalog } from "@/hooks/use-catalog";
 import { useEntitlements } from "@/hooks/use-entitlements";
+import { useAuthStore } from "@/stores/auth-store";
 import type { BackendService, BackendServiceDetail, ServiceSelectionRequest } from "@/types/backend";
 import { pageMainBottom, pageSection } from "@/lib/page-layout";
 import { StaticSkeleton } from "@/components/ui/StaticSkeleton";
@@ -30,7 +32,7 @@ import { Breadcrumbs } from "@/components/services-catalog/primitives";
 import { ServiceVisit } from "@/components/services-catalog/detail/ServiceVisit";
 import { ServiceReviews } from "@/components/services-catalog/detail/ServiceReviews";
 import { HourlyHelpModule, hourlyBooking, type HourlySelection } from "@/components/services-catalog/HourlyHelpModule";
-import { BeautyAudienceSelector } from "@/components/services-catalog/beauty/BeautySelectors";
+import { BeautyAudienceSelector, BeautyProfessionalSelector } from "@/components/services-catalog/beauty/BeautySelectors";
 import { ServiceHero } from "@/components/services-catalog/detail/ServiceHero";
 import { HomeHelpHero } from "@/components/services-catalog/home-help/HomeHelpHero";
 import { HomeHelpShapes } from "@/components/services-catalog/home-help/HomeHelpShapes";
@@ -134,6 +136,21 @@ function Loaded({
   const detail = serverDetail ?? detailQuery.data ?? null;
   const content = useMemo(() => detailContent(service, detail), [service, detail]);
 
+  // Phase 15.2 — service_view, once the server's own detail (and so its version) is on screen.
+  // Keyed on the service and version: a re-render, a StrictMode double effect, a refresh or a
+  // back/forward return within the session resolves to the same event id and stays one row.
+  const viewServiceId = live ? service.backendId : undefined;
+  const viewVersion = detail?.version;
+  useEffect(() => {
+    if (!viewServiceId || !detail) return;
+    trackFunnelEvent("SERVICE_VIEW", {
+      serviceId: viewServiceId,
+      serviceVersionId: viewVersion,
+      metadata: { slug: service.slug, category: service.category, page: "service-detail" },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- identity is (service, version); the rest is labels
+  }, [viewServiceId, viewVersion, Boolean(detail)]);
+
   const crumbs = [
     { label: "Services", href: "/services" },
     { label: cat.name, href: categoryHref(cat.id) },
@@ -191,7 +208,8 @@ function LiveBody({
   detail: BackendServiceDetail | null;
 }) {
   const tiers = useMemo(() => tierOptions(service.price!), [service.price]);
-  const { data: entitlements } = useEntitlements();
+  const isAuthenticated = useAuthStore((s) => s.status === "authenticated");
+  const { data: entitlements } = useEntitlements(isAuthenticated);
   // The server's add-on list (own catalogue or the shared one) when the detail is loaded; the
   // catalogue-derived list only until then.
   // Names and prices come from the server; WHICH shared add-ons a service offers stays the
@@ -295,6 +313,7 @@ function LiveBody({
           : service.config?.variantRequired && !variant && service.variants.length > 0
             ? "Choose an option"
             : serverIssues[0]?.message;
+    const funnel = { serviceId: service.backendId, variantId: variant?.id, addonCount: addonIds.length };
     if (hourMode) {
       const { href } = hourlyBooking(service, hourly);
       return {
@@ -305,6 +324,7 @@ function LiveBody({
         priceNote,
         href: blockedReason ? null : href && addonIds.length ? `${href}&addons=${encodeURIComponent(addonIds.join(","))}` : href,
         blockedReason,
+        funnel,
       };
     }
     const parts = [
@@ -335,6 +355,7 @@ function LiveBody({
             addons: addonIds,
           }),
       blockedReason,
+      funnel,
     };
   }, [
     service,
@@ -357,13 +378,53 @@ function LiveBody({
     resolution.isError,
   ]);
 
-  const toggleAddon = (id: string) =>
+  // Phase 15.2 — selection events. Each fires from the handler that changes the selection, never
+  // from render; the ids are what the server already validated (its variant / add-on codes, its
+  // audience list, its tier prices), and the server refuses anything else.
+  // The version is part of the event id, so a selection made before the detail arrives waits for
+  // it; otherwise the same selection after a refresh would get a second id and a second row.
+  type Selection = Omit<FunnelEventContext, "serviceId" | "serviceVersionId">;
+  const pendingSelections = useRef<Array<[FunnelEventName, Selection]>>([]);
+  const trackSelection = (name: FunnelEventName, ctx: Selection) => {
+    if (!detail) {
+      pendingSelections.current.push([name, ctx]);
+      return;
+    }
+    trackFunnelEvent(name, { ...ctx, serviceId: service.backendId, serviceVersionId: detail.version });
+  };
+  useEffect(() => {
+    if (!detail) return;
+    for (const [name, ctx] of pendingSelections.current.splice(0)) {
+      trackFunnelEvent(name, { ...ctx, serviceId: service.backendId, serviceVersionId: detail.version });
+    }
+  }, [detail, service.backendId]);
+  const chooseVariant = (id: string) => {
+    setVariantId(id);
+    if (id) trackSelection("VARIANT_SELECTED", { variantId: id, metadata: { page: "service-detail" } });
+  };
+  const chooseAudience = (a: Audience) => {
+    setAudience(a);
+    trackSelection("OPTION_SELECTED", { optionId: a, metadata: { kind: "audience", page: "service-detail" } });
+  };
+  const chooseTier = (id: string) => {
+    const index = Number(id);
+    setTier(index);
+    const price = tiers.find((t) => t.index === index)?.price;
+    if (price != null) {
+      trackSelection("OPTION_SELECTED", { optionId: String(price), metadata: { kind: "tier", page: "service-detail" } });
+    }
+  };
+  const toggleAddon = (id: string) => {
+    // Selecting is the event; removing an add-on is not an "add-on selected".
+    const adding = !picked.has(id);
     setPicked((cur) => {
       const next = new Set(cur);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+    if (adding) trackSelection("ADDON_SELECTED", { addonId: id, metadata: { page: "service-detail" } });
+  };
 
   const variantChoices: OptionChoice[] = variants.map((v) => ({
     id: v.id,
@@ -419,10 +480,10 @@ function LiveBody({
               <DetailSection id="options" title="Choose your option">
                 <div className="space-y-7">
                   {isBeauty && audiences.length > 1 && (
-                    <BeautyAudienceSelector mode="select" active={audience} onSelect={setAudience} allowed={audiences} />
+                    <BeautyAudienceSelector mode="select" active={audience} onSelect={chooseAudience} allowed={audiences} />
                   )}
                   {variantChoices.length > 1 && (
-                    <ServiceVariantSelector options={variantChoices} value={variantMismatch ? "" : (variant?.id ?? "")} onChange={setVariantId} />
+                    <ServiceVariantSelector options={variantChoices} value={variantMismatch ? "" : (variant?.id ?? "")} onChange={chooseVariant} />
                   )}
                   {variantMismatch && variant && (
                     <p role="alert" className="text-sm font-medium text-amber-700 dark:text-amber-400">
@@ -430,7 +491,7 @@ function LiveBody({
                     </p>
                   )}
                   {useTiers && (
-                    <ServiceVariantSelector options={tierChoices} value={String(tier)} onChange={(id) => setTier(Number(id))} />
+                    <ServiceVariantSelector options={tierChoices} value={String(tier)} onChange={chooseTier} />
                   )}
                   {rule && bounds && (
                     <fieldset>
@@ -440,9 +501,9 @@ function LiveBody({
                       <QuantitySelector rule={rule} {...bounds} value={q} onChange={setQuantity} />
                     </fieldset>
                   )}
-                  {/* No professional-preference control: the backend offers none while assignment
-                      cannot honour one (PROFESSIONAL_PREFERENCE_SUPPORTED is false; the public
-                      config carries no preferences and the resolver refuses any but "no preference"). */}
+                  {isBeauty && (
+                    <BeautyProfessionalSelector options={service.config?.professionalPreferences} />
+                  )}
                   {content.eligibility && <p className="text-sm text-muted">{content.eligibility}</p>}
                 </div>
               </DetailSection>

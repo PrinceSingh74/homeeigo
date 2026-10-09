@@ -101,7 +101,7 @@ function partnerBrief(input: {
   online: number;
   applications: number;
   pendingDocs: number;
-  rating: number;
+  rating: number | null;
   acceptance: number;
 }) {
   const { total, online, applications, pendingDocs, rating, acceptance } = input;
@@ -130,7 +130,7 @@ function partnerBrief(input: {
           : "Clear Document Review before pushing demand onto a thin roster.",
     };
   }
-  if (applications > 0 || pendingDocs > 0 || (rating > 0 && rating < 4) || (acceptance > 0 && acceptance < 40)) {
+  if (applications > 0 || pendingDocs > 0 || (rating != null && rating > 0 && rating < 4) || (acceptance > 0 && acceptance < 40)) {
     return {
       state: "watch" as const,
       label: "Watch",
@@ -141,7 +141,7 @@ function partnerBrief(input: {
             ? `${pendingDocs} KYC pack${pendingDocs === 1 ? "" : "s"} waiting on review.`
             : acceptance > 0 && acceptance < 40
               ? `Average acceptance is ${acceptance.toFixed(0)}%. Dispatch is leaking jobs.`
-              : `Average rating is ${rating.toFixed(1)}★. Catalog trust is below the 4.0 bar.`,
+              : `Partner rating is ${rating != null ? rating.toFixed(1) : "—"}★. Catalog trust is below the 4.0 bar.`,
       impact: `${formatNumber(total)} partners · ${formatNumber(online)} live · ${pendingDocs} KYC open.`,
       action:
         applications > 0
@@ -155,7 +155,7 @@ function partnerBrief(input: {
     state: "stable" as const,
     label: "Healthy",
     meaning: "Applications, KYC, and live supply are in range. The partner network is not the constraint.",
-    impact: `${formatNumber(online)}/${formatNumber(total)} online · rating ${rating > 0 ? rating.toFixed(1) : "—"}★.`,
+    impact: `${formatNumber(online)}/${formatNumber(total)} online · partner rating ${rating != null && rating > 0 ? rating.toFixed(1) : "—"}★.`,
     action: "Keep Document Review clear and watch attendance. No partner-ledger action required.",
   };
 }
@@ -437,7 +437,7 @@ export default function VendorsPage() {
   const applications = applicationsQ.data?.total ?? 0;
   const pendingDocs = docsQ.data?.documents ?? [];
   const workforce = workforceQ.data;
-  const rating = workforce?.avgRating ?? dashboard.data?.stats.averageRating ?? 0;
+  const rating = workforce?.avgRating ?? dashboard.data?.stats.partnerRatingMean ?? dashboard.data?.stats.averageRating ?? null;
   const acceptance = workforce?.avgAcceptanceRate ?? 0;
   const coverage = totalPartners > 0 ? Math.round((onlineNow / totalPartners) * 100) : 0;
 
@@ -515,10 +515,7 @@ export default function VendorsPage() {
   };
 
   const detail = detailQ.data;
-  const completionShare =
-    selected && selected.totalBookings > 0
-      ? Math.round(((selected.completedBookings || 0) / selected.totalBookings) * 100)
-      : Math.round(selected?.completionRate ?? 0);
+  const completionShare = selected?.completionRate ?? null;
 
   return (
     <div className="exec-hq cu-page pn-page mx-auto min-w-0 max-w-[1600px] biz-page-enter">
@@ -927,13 +924,15 @@ export default function VendorsPage() {
                           <dd>{formatDate(selected.registeredAt ?? selected.createdAt)}</dd>
                         </div>
                       </dl>
-                      {selected.totalBookings > 0 || (selected.completionRate ?? 0) > 0 ? (
+                      {completionShare != null || (selected.acceptanceRate ?? 0) > 0 ? (
                         <div className="mt-4 space-y-3">
+                          {completionShare != null ? (
                           <MeterBar
-                            label="Completed share"
+                            label="Completion"
                             value={completionShare}
                             tone={completionShare >= 70 ? "success" : completionShare >= 40 ? "accent" : "danger"}
                           />
+                          ) : null}
                           <MeterBar
                             label="Acceptance"
                             value={Math.round(selected.acceptanceRate ?? detail?.metrics.acceptanceRate ?? 0)}

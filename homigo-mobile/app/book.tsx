@@ -82,6 +82,7 @@ function businessDate(d: Date): string {
   }).format(d);
 }
 import { getErrorMessage, AuthApiError } from "@/lib/auth/errors";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { getServiceImage } from "@/lib/service-assets";
 import { useAppStore } from "@/lib/store";
 import { createBookStyles } from "@/lib/book-styles";
@@ -355,9 +356,26 @@ export default function BookScreen() {
     scrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
   };
 
+  /**
+   * Phase 15.2 — booking_started: the customer is on the booking screen with the service they
+   * asked for (deep link, tile, detail CTA) or one they picked here — not the one the screen merely
+   * defaulted to while the catalogue loaded. Identity is (session, service); the detail CTA firing
+   * the same id earlier collapses onto one row.
+   */
+  const pickedHere = useRef(false);
+  const funnelServiceId =
+    svc && !catalogLoading && (pickedHere.current || (requestedService && findServiceIndex(catalogServices, requestedService) === serviceIdx))
+      ? svc.id
+      : undefined;
+  useEffect(() => {
+    if (!funnelServiceId) return;
+    trackFunnelEvent("BOOKING_STARTED", { serviceId: funnelServiceId, metadata: { entry: "book-screen", fromLink: Boolean(requestedService) } });
+  }, [funnelServiceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const selectService = (i: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     selectionSettled.current = true;
+    pickedHere.current = true;
     setServiceIdx(i);
     setPkgIdx(popularPackageIndex(catalogServices[i]!));
     setAddons(new Set<string>());
@@ -373,6 +391,19 @@ export default function BookScreen() {
     setPkgIdx(i);
     setFlowStep(2);
     scrollToY(scheduleY.current);
+    const price = svc?.packages[i]?.price;
+    if (funnelServiceId && price != null) {
+      trackFunnelEvent("OPTION_SELECTED", { serviceId: funnelServiceId, optionId: String(price), metadata: { kind: "tier", page: "book" } });
+    }
+  };
+  const selectAudience = (item: string) => {
+    setAudience(item);
+    setVariantId(null);
+    if (funnelServiceId) trackFunnelEvent("OPTION_SELECTED", { serviceId: funnelServiceId, optionId: item, metadata: { kind: "audience", page: "book" } });
+  };
+  const selectVariant = (id: string) => {
+    setVariantId(id);
+    if (funnelServiceId) trackFunnelEvent("VARIANT_SELECTED", { serviceId: funnelServiceId, variantId: id, metadata: { page: "book" } });
   };
 
   const selectQuickDay = (d: Date) => {
@@ -429,12 +460,15 @@ export default function BookScreen() {
   };
   const toggleAddon = (id: string) => {
     Haptics.selectionAsync();
+    // Selecting is the event; removing an add-on is not an "add-on selected".
+    const adding = !addons.has(id);
     setAddons((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+    if (adding && funnelServiceId) trackFunnelEvent("ADDON_SELECTED", { serviceId: funnelServiceId, addonId: id, metadata: { page: "book" } });
   };
 
   const applyCoupon = () => {
@@ -806,10 +840,7 @@ export default function BookScreen() {
                 return (
                   <Pressable
                     key={item}
-                    onPress={() => {
-                      setAudience(item);
-                      setVariantId(null);
-                    }}
+                    onPress={() => selectAudience(item)}
                     style={[
                       styles.selectPill,
                       active ? { backgroundColor: c.primary } : { borderWidth: 1, borderColor: c.primary },
@@ -829,7 +860,7 @@ export default function BookScreen() {
               return (
                 <Pressable
                   key={v.id}
-                  onPress={() => setVariantId(v.id)}
+                  onPress={() => selectVariant(v.id)}
                   style={[
                     styles.pkgCard,
                     {

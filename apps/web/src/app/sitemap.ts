@@ -23,7 +23,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const catalogRoutes = [
     ...CATEGORIES.map((c) => route(categoryHref(c.id), 0.8, "daily")),
     ...AUDIENCES.map((a) => route(`/services/beauty/${a.id}`, 0.6, "weekly")),
-    ...catalog.services.filter((s) => s.status === "live").map((s) => route(s.href, 0.7, "daily")),
+    ...catalog.services.filter((s) => s.status === "live" && s.indexable !== false).map((s) => route(s.href, 0.7, "daily")),
   ];
 
   return [

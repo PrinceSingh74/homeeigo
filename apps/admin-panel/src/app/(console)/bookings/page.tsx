@@ -148,10 +148,11 @@ function bookingBrief(input: {
   completed: number;
   cancelled: number;
   today: number;
-  completion: number;
-  cancellation: number;
+  completion: number | null;
+  cancellation: number | null;
 }) {
   const { total, live, completed, cancelled, today, completion, cancellation } = input;
+  const done = completion == null ? "unmeasured" : `${completion.toFixed(0)}%`;
 
   if (total === 0) {
     return {
@@ -162,26 +163,26 @@ function bookingBrief(input: {
       action: "Keep Marketplace HQ publishing. The first booking will land here with schedule and payment.",
     };
   }
-  if (live >= 8 || cancellation >= 25) {
+  if (live >= 8 || (cancellation != null && cancellation >= 25)) {
     return {
       state: "critical" as const,
       label: "Constrained",
       meaning:
-        cancellation >= 25
+        cancellation != null && cancellation >= 25
           ? `Cancellation is ${cancellation.toFixed(0)}%. Demand is leaking before completion.`
           : `${live} jobs are live right now. Dispatch and ETA are carrying the floor.`,
-      impact: `${formatNumber(live)} live · ${formatNumber(today)} today · done ${completion.toFixed(0)}%.`,
+      impact: `${formatNumber(live)} live · ${formatNumber(today)} today · done ${done}.`,
       action: live >= 8 ? "Inspect the oldest live job. Dispatch or complete before the slot slips." : "Open cancelled jobs and the partner file — do not scale demand on a leaky funnel.",
     };
   }
-  if (live > 0 || cancelled > 0 || (completion > 0 && completion < 70)) {
+  if (live > 0 || cancelled > 0 || (completion != null && completion > 0 && completion < 70)) {
     return {
       state: "watch" as const,
       label: "Watch",
       meaning:
         live > 0
           ? `${live} live job${live === 1 ? "" : "s"} still need a partner on the ground.`
-          : completion > 0 && completion < 70
+          : completion != null && completion > 0 && completion < 70
             ? `Completion is ${completion.toFixed(0)}%. Too many jobs are stopping short of done.`
             : `${formatNumber(cancelled)} cancelled jobs sit on the ledger.`,
       impact: `${formatNumber(total)} booked · ${formatNumber(completed)} done · ${formatNumber(today)} today.`,
@@ -483,9 +484,8 @@ export default function BookingsPage() {
   const cancelledCount = cancelledQ.data?.total ?? analytics.data?.overview.cancelledBookings ?? 0;
   const todayCount = kpisQ.data?.data.bookingsToday ?? dashboard.data?.charts.bookingsByDay.at(-1)?.count ?? 0;
   const completionPct =
-    kpisQ.data?.data.completionRate ??
-    (totalBookings > 0 ? Math.round((completedBookings / totalBookings) * 1000) / 10 : 0);
-  const cancellationPct = kpisQ.data?.data.cancellationRate ?? 0;
+    kpisQ.data?.data.completionRate ?? dashboard.data?.stats.completionRatePct ?? null;
+  const cancellationPct = kpisQ.data?.data.cancellationRate ?? dashboard.data?.stats.cancellationRatePct ?? null;
 
   const brief = bookingBrief({
     total: totalBookings,
@@ -663,7 +663,7 @@ export default function BookingsPage() {
         <StatTile
           label="Completed"
           value={formatNumber(completedBookings)}
-          sub={completionPct ? `${completionPct.toFixed(0)}% close rate` : "jobs closed"}
+          sub={completionPct != null ? `${completionPct.toFixed(0)}% of finished` : "no finished bookings"}
           icon={BadgeCheck}
           loading={dashboard.isLoading}
           tone="success"
@@ -1120,28 +1120,30 @@ export default function BookingsPage() {
         <div className="cu-panel">
           <SectionHead
             icon={CalendarCheck}
-            tone={completionPct >= 70 ? "success" : "warning"}
+            tone={(completionPct ?? -1) >= 70 ? "success" : "warning"}
             title="Pulse"
-            subtitle="Close rate and seven-day volume"
+            subtitle="Completed over finished bookings"
           />
           <div className="bk-pulse">
             <GlassRing3D
-              value={Math.round(completionPct)}
+              value={Math.round(completionPct ?? 0)}
               label="Done"
-              sub={`${formatNumber(completedBookings)} of ${formatNumber(totalBookings)}`}
-              tone={completionPct >= 70 ? "success" : completionPct >= 40 ? "warning" : "danger"}
+              sub={completionPct == null ? "No finished bookings" : `${completionPct}% of finished`}
+              tone={(completionPct ?? -1) >= 70 ? "success" : (completionPct ?? -1) >= 40 ? "warning" : "danger"}
             />
             <div className="bk-meters">
               <MeterBar
                 label="Completion"
-                value={completionPct}
-                tone={completionPct >= 70 ? "success" : completionPct >= 40 ? "accent" : "danger"}
+                value={completionPct ?? 0}
+                tone={(completionPct ?? -1) >= 70 ? "success" : (completionPct ?? -1) >= 40 ? "accent" : "danger"}
               />
+              {cancellationPct != null ? (
               <MeterBar
                 label="Cancellation"
                 value={cancellationPct}
                 tone={cancellationPct >= 25 ? "danger" : cancellationPct >= 10 ? "accent" : "success"}
               />
+              ) : null}
               <MeterBar
                 label="Unpaid on page"
                 value={bookings.length ? (unpaidOnPage / bookings.length) * 100 : 0}

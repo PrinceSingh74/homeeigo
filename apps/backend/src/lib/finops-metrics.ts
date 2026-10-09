@@ -8,6 +8,8 @@
  *   weather_cost_usd_total             ← weather_api_calls_total × rate
  *   external_api_cost_usd_total        ← maps + weather
  *   cost_per_booking_usd               ← external cost ÷ bookings
+ *   cost_per_customer / cost_per_order ← external cost ÷ ALL users / ALL successful payments
+ *                                        (operational, all-traffic — see finOpsDenominators)
  *   cache_hit_ratio{domain}            ← hits ÷ (hits+misses)
  *   cache_saved_calls_total{domain}    ← cache hits (each = one avoided upstream call)
  *   cache_savings_usd_total{domain}    ← saved weather/maps calls × rate
@@ -39,6 +41,31 @@ const PRICE = {
   weather: Number(process.env.COST_WEATHER_USD ?? 0.0015),
 };
 const SLOW_MS = Number(process.env.PG_SLOW_QUERY_MS ?? 50);
+
+/** USD per unit, 4 dp. Zero when there is nothing to divide by, so a gauge is never NaN or Infinity. */
+export function unitCost(totalUsd: number, units: number): number {
+  if (!Number.isFinite(totalUsd) || !Number.isFinite(units) || units <= 0) return 0;
+  return Math.round((totalUsd / units) * 10000) / 10000;
+}
+
+/**
+ * Denominators for the cost-per-X gauges. Owner decision (Phase 15): these are operational,
+ * ALL-TRAFFIC counts and are never filtered by `analyticsWhere()`. External API spend is incurred
+ * by every request (real, test, fixture, synthetic), so dividing it by business units only would
+ * charge all traffic's cost to the business population.
+ *
+ *   users              every `users` row, any role — `cost_per_customer` is cost per USER
+ *   successfulPayments every gateway payment in SUCCESS — `cost_per_order` excludes wallet-only orders
+ */
+export async function finOpsDenominators(): Promise<{ users: number; providers: number; successfulPayments: number; activeCities: number }> {
+  const [users, providers, successfulPayments, activeCities] = await Promise.all([
+    prisma.user.count().catch(() => 0),
+    prisma.provider.count().catch(() => 0),
+    prisma.payment.count({ where: { status: "SUCCESS" } }).catch(() => 0),
+    prisma.geofence.findMany({ where: { isActive: true, city: { not: null } }, select: { city: true }, distinct: ["city"] }).then((z) => z.length).catch(() => 0),
+  ]);
+  return { users, providers, successfulPayments, activeCities };
+}
 
 export function registerFinOpsSamplers(): void {
   // --- Maps + Weather API cost (real call counts × price) ---
@@ -104,16 +131,11 @@ export function registerFinOpsSamplers(): void {
     const r = (n: number) => Math.round(n * 10000) / 10000;
     setGauge("external_api_cost_usd_total", r(ext.total));
 
-    const [customers, providers, orders, cities] = await Promise.all([
-      prisma.user.count().catch(() => 0),
-      prisma.provider.count().catch(() => 0),
-      prisma.payment.count({ where: { status: "SUCCESS" } }).catch(() => 0),
-      prisma.geofence.findMany({ where: { isActive: true, city: { not: null } }, select: { city: true }, distinct: ["city"] }).then((z) => z.length).catch(() => 0),
-    ]);
-    setGauge("cost_per_order", orders > 0 ? r(ext.total / orders) : 0);
-    setGauge("cost_per_customer", customers > 0 ? r(ext.total / customers) : 0);
-    setGauge("cost_per_provider", providers > 0 ? r(ext.total / providers) : 0);
-    setGauge("cost_per_city", cities > 0 ? r(ext.total / cities) : 0);
+    const d = await finOpsDenominators();
+    setGauge("cost_per_order", unitCost(ext.total, d.successfulPayments));
+    setGauge("cost_per_customer", unitCost(ext.total, d.users));
+    setGauge("cost_per_provider", unitCost(ext.total, d.providers));
+    setGauge("cost_per_city", unitCost(ext.total, d.activeCities));
 
     // Maps economics rollups (spec metric names).
     setGauge("maps_requests_total", sumCounter("google_api_calls_total"));

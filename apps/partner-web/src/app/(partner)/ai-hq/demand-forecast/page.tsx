@@ -12,11 +12,6 @@ export default function DemandForecastPage() {
     queryKey: ["partner", "ai-demand-forecast"],
     queryFn: () => partnerApi.geoIntel.demandForecast(24),
   });
-  const zones = useQuery({
-    queryKey: ["partner", "zone-scoring-demand"],
-    queryFn: () => partnerApi.geoIntel.zoneScoring(),
-  });
-
   /**
    * An expired window is not a forecast, so its points are not charted.
    *
@@ -31,9 +26,6 @@ export default function DemandForecastPage() {
   const points = view.points;
   const staleData = stale ? forecast.data?.data : undefined;
   const window = staleData?.forecastWindow;
-  const ranked = zones.data?.data.ranked ?? [];
-  const maxAbsGap = Math.max(1, ...ranked.map((z) => Math.abs(z.gap ?? z.demand24h - z.supply)));
-
   const hourly = useMemo(() => {
     const byHour = new Map<string, number>();
     for (const p of points) {
@@ -47,7 +39,7 @@ export default function DemandForecastPage() {
   return (
     <HqPageShell
       title="Demand Forecast"
-      description="24-hour warehouse forecast plus live supply–demand gaps. Heuristic zone gaps are labelled as such."
+      description="24-hour warehouse forecast. Platform zone scores are not part of the partner view."
       icon={Sparkles}
       stats={[
         { label: "Horizon", value: `${view.horizonHours}h` },
@@ -59,35 +51,10 @@ export default function DemandForecastPage() {
     >
       <section className="partner-card p-4">
         <h2 className="font-semibold">Supply–demand gap</h2>
-        {ranked.length === 0 ? (
-          <p className="mt-2 text-sm text-partner-muted">Not enough verified zone data yet.</p>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {ranked.slice(0, 8).map((z) => {
-              const gap = z.gap ?? z.demand24h - z.supply;
-              const width = Math.round((Math.abs(gap) / maxAbsGap) * 100);
-              return (
-                <li key={z.zoneId} className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span>{z.name}</span>
-                    <span className="text-partner-muted">
-                      {z.demand24h} demand · {z.supply} supply · gap {gap}
-                    </span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded bg-partner-line" aria-hidden>
-                    <div
-                      className={`h-full ${gap >= 0 ? "bg-partner-primary" : "bg-partner-muted"}`}
-                      style={{ width: `${Math.max(width, 4)}%` }}
-                    />
-                  </div>
-                  {z.recommendation ? (
-                    <p className="text-xs text-partner-muted">{z.recommendation}</p>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        <p className="mt-2 text-sm text-partner-muted">
+          Platform zone scores are admin-only, so this page does not show a demand or gap figure from them.
+          The hourly forecast below is the warehouse series a partner is allowed to read.
+        </p>
       </section>
       <section className="partner-card max-h-80 overflow-y-auto p-4">
         <h2 className="font-semibold">Hourly predicted volume</h2>
@@ -95,8 +62,7 @@ export default function DemandForecastPage() {
           <div className="mt-2 space-y-1 text-sm" role="status">
             <p className="font-medium text-partner-warning">The demand forecast is unavailable right now.</p>
             <p className="text-partner-muted">
-              The forecast source did not respond, so nothing has been charted. Live supply-demand gaps
-              above are unaffected.
+              The forecast source did not respond, so nothing has been charted.
             </p>
           </div>
         ) : stale ? (
@@ -111,7 +77,7 @@ export default function DemandForecastPage() {
                 ? `, which was ${Math.round(staleData.expiredByHours / 24)} day(s) ago`
                 : ""}
               . It projects forward from the end of its training data, so it cannot describe the next
-              24 hours until it is retrained. Live supply-demand gaps above are unaffected.
+              24 hours until it is retrained.
             </p>
           </div>
         ) : hourly.length === 0 ? (

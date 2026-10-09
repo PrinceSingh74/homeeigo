@@ -303,8 +303,15 @@ export class BookingService {
         .findFirst({ where: { id: body.addressId, userId }, select: { latitude: true, longitude: true, city: true, zipCode: true } })
         .catch(() => null),
       entitlementService.resolve(userId),
-      prisma.user.findUnique({ where: { id: userId }, select: { dataOrigin: true } }).catch(() => null),
+      prisma.user.findUnique({ where: { id: userId }, select: { dataOrigin: true } }),
     ]);
+    // Fail closed: an unreadable origin must not become a NULL — i.e. business — booking. The read
+    // happens before any write, so refusing here leaves no booking, payment or event behind.
+    if (originResult.status === "rejected") {
+      incCounter("booking_provenance_unavailable_total");
+      logger.error("booking_create_provenance_unavailable", { userId, error: String(originResult.reason) });
+      return { error: "PROVENANCE_UNAVAILABLE" as const };
+    }
     /**
      * A booking inherits its customer's provenance when the customer is NOT business.
      *
@@ -315,7 +322,7 @@ export class BookingService {
      * alone (NULL stays NULL), so real bookings are unaffected. Part of the 4th parallel read above,
      * so it costs no extra round trip.
      */
-    const customerOrigin = originResult.status === "fulfilled" ? originResult.value?.dataOrigin ?? null : null;
+    const customerOrigin = originResult.value?.dataOrigin ?? null;
     const inheritedOrigin = customerOrigin && !isBusinessRow(customerOrigin) ? customerOrigin : undefined;
     // Validate the request BEFORE surfacing an entitlements failure, so an invalid serviceId is
     // still a VALIDATION_ERROR rather than a 500 from a parallel call it never needed.

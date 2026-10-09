@@ -58,6 +58,7 @@ import {
   type Service,
 } from "@/lib/services";
 import { bookUrl, parseBookParams } from "@/lib/booking-url";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { bookingSummaryLine } from "@/lib/booking-summary";
 import { NEUTRAL_PRESENTATION, toUiService, type ServicePresentation } from "@/lib/book-services";
 import { SERVICE_IMAGES, type SavedBooking } from "@/lib/bookings";
@@ -101,7 +102,7 @@ const HERO_FEATURES: { icon: LucideIcon; label: string }[] = [
 
 const TRUST = [
   { icon: ShieldCheck, label: "Approved\nProfessionals" },
-  { icon: UserCheck, label: "Start PIN\nat the Door" },
+  { icon: UserCheck, label: "Your slot\nyou choose" },
   { icon: Clock, label: "Live\nTracking" },
   { icon: BadgeCheck, label: "Cancellation Terms\nShown Upfront" },
   { icon: CreditCard, label: "Secure\nPayments" },
@@ -387,14 +388,6 @@ function BookPageContent() {
       else next.add(code);
       return next;
     });
-  const toggleAddon = (id: string) =>
-    setAddons((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
   const scrollTo = (el: HTMLElement | null) => {
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
@@ -444,6 +437,52 @@ function BookPageContent() {
   // picking a date and time. The confirm step and the server still check again. Asked only for the
   // resolved service: for one render the page can hold the first service in the list instead, and
   // its answer shown here would be an answer about a different service.
+  /**
+   * Phase 15.2 — booking_started: the customer is on the booking page with a real, resolved
+   * service (arrived from the detail CTA, a home tile, search, or a shared link). Identity is
+   * (session, service): a refresh, a re-render or the detail CTA having already fired it resolve to
+   * the same id and stay one row. Fires again only for a different service.
+   */
+  // A service the page merely defaulted to (no link, nothing picked) is not one the customer chose.
+  const funnelServiceId = serviceResolved && (parsed.serviceId || pickedHere) ? rawService?.id : undefined;
+  useEffect(() => {
+    if (!funnelServiceId) return;
+    trackFunnelEvent("BOOKING_STARTED", {
+      serviceId: funnelServiceId,
+      metadata: { entry: "book-page", fromLink: Boolean(parsed.serviceId), pickedHere },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- identity is the service; the rest is labels
+  }, [funnelServiceId]);
+
+  const toggleAddon = (id: string) => {
+    // Phase 15.2 — selecting is the event; removing an add-on is not an "add-on selected".
+    const adding = !addons.has(id);
+    setAddons((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    if (adding && funnelServiceId) trackFunnelEvent("ADDON_SELECTED", { serviceId: funnelServiceId, addonId: id, metadata: { page: "book" } });
+  };
+  // Variant / audience / preference picked on this page (the detail page carries its own selection).
+  const selectOnBook = (next: Partial<NonNullable<typeof selection>>) => {
+    setSelection((prev) => ({ ...(prev ?? {}), ...next }));
+    if (!funnelServiceId) return;
+    if (next.variantId) trackFunnelEvent("VARIANT_SELECTED", { serviceId: funnelServiceId, variantId: next.variantId, metadata: { page: "book" } });
+    if (next.audience) trackFunnelEvent("OPTION_SELECTED", { serviceId: funnelServiceId, optionId: next.audience, metadata: { kind: "audience", page: "book" } });
+    if (next.professionalPreference) {
+      trackFunnelEvent("OPTION_SELECTED", { serviceId: funnelServiceId, optionId: next.professionalPreference, metadata: { kind: "preference", page: "book" } });
+    }
+  };
+  const selectPackage = (i: number) => {
+    setPkg(i);
+    const price = svc.packages[i]?.price;
+    if (funnelServiceId && price != null) {
+      trackFunnelEvent("OPTION_SELECTED", { serviceId: funnelServiceId, optionId: String(price), metadata: { kind: "tier", page: "book" } });
+    }
+  };
+
   const serviceabilityQuery = useServiceabilityQuery({
     serviceId: serviceResolved ? rawService?.id : null,
     addressId: selectedAddress?.id,
@@ -958,7 +997,7 @@ function BookPageContent() {
                     <SelectionControls
                       config={rawService?.catalogConfig}
                       current={effectiveSelection}
-                      onSelect={(next) => setSelection((prev) => ({ ...(prev ?? {}), ...next }))}
+                      onSelect={selectOnBook}
                     />
                   }
                 />
@@ -970,7 +1009,7 @@ function BookPageContent() {
                     <motion.button
                       key={p.tierIndex ?? i}
                       type="button"
-                      onClick={() => setPkg(i)}
+                      onClick={() => selectPackage(i)}
                       whileHover={{ y: -8 }}
                       className={cn(
                         "group relative flex min-w-0 flex-col overflow-hidden rounded-[20px] p-5 text-left transition-shadow duration-300 sm:rounded-[28px] sm:p-7",

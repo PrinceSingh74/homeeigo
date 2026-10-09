@@ -130,6 +130,9 @@ export function formatServiceList(s: {
   displayName?: string | null;
   isActive?: boolean;
   isBookable?: boolean;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  seoKeywords?: string | null;
 }, rating?: { rating: number | null; reviewCount: number }) {
   const cfg = parseCatalogConfig(s.catalogConfig);
   return {
@@ -162,5 +165,14 @@ export function formatServiceList(s: {
     // Same fail-closed rule as quote/booking: an unpriced service is never advertised as bookable.
     bookable: s.isBookable !== false && cfg?.comingSoon !== true && pricingReadiness({ ...s, pricingModel: s.pricingModel ?? "fixed" }, cfg).ok,
     comingSoon: cfg?.comingSoon === true,
+    /** Bookable and not marked noindex. Drafts never reach this list (CUSTOMER_VISIBLE). */
+    indexable:
+      s.isBookable !== false &&
+      cfg?.comingSoon !== true &&
+      cfg?.seo?.noindex !== true &&
+      pricingReadiness({ ...s, pricingModel: s.pricingModel ?? "fixed" }, cfg).ok,
+    seoTitle: s.seoTitle?.trim() || null,
+    seoDescription: s.seoDescription?.trim() || null,
+    seoKeywords: s.seoKeywords?.trim() || null,
   };
 }

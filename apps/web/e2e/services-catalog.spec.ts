@@ -9,9 +9,13 @@
  *   E2E_SKIP_SERVERS=1 E2E_WEB_URL=http://127.0.0.1:3005 E2E_API_URL=http://127.0.0.1:3000 \
  *     npx playwright test e2e/services-catalog.spec.ts
  */
+import { execFileSync } from "node:child_process";
+import path from "node:path";
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { chooseFirstBookableSlot } from "./helpers";
+
+const BACKEND = path.join(__dirname, "..", "..", "backend");
 
 const API = (process.env.E2E_API_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const CUSTOMER = { email: "customer@homigo.demo", password: "Homigo@123" };
@@ -29,6 +33,26 @@ let BATHROOM: Svc;
  * an hour, up to 8 hours). Applied through the admin API — the same validated, versioned write an admin
  * makes — and only on the isolated backend (the config's globalSetup refuses anything else).
  */
+/**
+ * The suite used to require `scripts/seed.ts`, which wipes bookings, payments and services
+ * before it creates admin@homigo.demo. These two scripts only upsert: demo accounts
+ * (`--only` skips the partner, so it does not rewrite partner ratings) and the catalogue
+ * rows. They refuse any database whose name does not contain "test".
+ */
+function ensureIsolatedAccounts() {
+  const envFile = process.env.E2E_BACKEND_ENV_FILE ?? ".env.test";
+  execFileSync("bun", ["--env-file=" + envFile, "run", "scripts/ensure-demo-users.ts", "--only=admin,customer"], {
+    cwd: BACKEND,
+    stdio: "inherit",
+    timeout: 120_000,
+  });
+  execFileSync("bun", ["--env-file=" + envFile, "run", "scripts/seed-services.ts"], {
+    cwd: BACKEND,
+    stdio: "inherit",
+    timeout: 120_000,
+  });
+}
+
 async function ensureCatalogFixture() {
   const login = await fetch(`${API}/api/auth/login`, {
     method: "POST",
@@ -53,30 +77,68 @@ async function ensureCatalogFixture() {
 
   const hourly = await admin(HOURLY.id);
   const rule = { type: "HOUR", unitLabel: "hour", unitLabelPlural: "hours", min: 1, max: 8 };
-  if (JSON.stringify((hourly.catalogConfig ?? {}).quantity) !== JSON.stringify({ ...rule, step: 1 })) {
-    await put(HOURLY.id, { catalogConfig: { ...(hourly.catalogConfig ?? {}), quantity: rule } });
+  const fridge = { id: "fridge", name: "Fridge Cleaning", price: 99, active: true };
+  const hourlyCfg = hourly.catalogConfig ?? {};
+  type FixtureAddon = { id?: string; name?: string; price?: number; active?: boolean };
+  const hourlyAddons = (Array.isArray(hourlyCfg.addons) ? hourlyCfg.addons : []) as FixtureAddon[];
+  const fridgeOk = hourlyAddons.some((a) => a.id === "fridge" && a.name === "Fridge Cleaning" && a.price === 99 && a.active !== false);
+  if (JSON.stringify(hourlyCfg.quantity) !== JSON.stringify({ ...rule, step: 1 }) || !fridgeOk) {
+    const addons = hourlyAddons.filter((a) => a.id !== "fridge");
+    addons.push(fridge);
+    await put(HOURLY.id, { catalogConfig: { ...hourlyCfg, quantity: rule, addons } });
   }
   const bath = await admin(BATHROOM.id);
+  const sofa = { id: "sofa", name: "Sofa Cleaning", price: 149, active: true };
+  const bathCfg = bath.catalogConfig ?? {};
+  const bathAddons = (Array.isArray(bathCfg.addons) ? bathCfg.addons : []) as FixtureAddon[];
+  const sofaOk = bathAddons.some((a) => a.id === "sofa" && a.name === "Sofa Cleaning" && a.price === 149 && a.active !== false);
+  const bathBody: Record<string, unknown> = {};
   if (bath.basePrice !== 399 || bath.minPrice !== 399 || bath.maxPrice !== 598) {
-    await put(BATHROOM.id, { basePrice: 399, minPrice: 399, maxPrice: 598 });
+    bathBody.basePrice = 399;
+    bathBody.minPrice = 399;
+    bathBody.maxPrice = 598;
   }
+  if (!sofaOk) {
+    const addons = bathAddons.filter((a) => a.id !== "sofa");
+    addons.push(sofa);
+    bathBody.catalogConfig = { ...bathCfg, addons };
+  }
+  if (Object.keys(bathBody).length) await put(BATHROOM.id, bathBody);
 
-  // The public catalogue is cached (≤ 60 s); wait until it serves the fixture before any page loads.
+  // A service past page 1 is still the fixture. Walk every page; do not require it to be popular.
   await expect
     .poll(
       async () => {
-        const list = ((await (await fetch(`${API}/api/services?limit=100&page=1`)).json()) as {
-          data: {
-            services: Array<{ slug: string; basePrice: number; maxPrice?: number; catalogConfig?: { quantity?: { type?: string } } | null }>;
+        const matches: Array<{
+          slug: string;
+          basePrice: number;
+          maxPrice?: number;
+          catalogConfig?: { quantity?: { type?: string }; addons?: { id: string }[] } | null;
+        }> = [];
+        for (let page = 1; page <= 20; page++) {
+          const body = (await (await fetch(`${API}/api/services?limit=100&page=${page}`)).json()) as {
+            data?: {
+              services?: Array<{
+                slug: string;
+                basePrice: number;
+                maxPrice?: number;
+                catalogConfig?: { quantity?: { type?: string }; addons?: { id: string }[] } | null;
+              }>;
+            };
           };
-        }).data.services;
-        const b = list.find((s) => s.slug === "bathroom-cleaning");
-        const h = list.find((s) => s.slug === "hourly-bookings");
-        return `${b?.basePrice}/${b?.maxPrice}/${h?.catalogConfig?.quantity?.type ?? "none"}`;
+          const services = body.data?.services ?? [];
+          matches.push(...services.filter((s) => s.slug === "bathroom-cleaning" || s.slug === "hourly-bookings"));
+          if (services.length < 100) break;
+        }
+        const b = matches.find((s) => s.slug === "bathroom-cleaning");
+        const h = matches.find((s) => s.slug === "hourly-bookings");
+        const addons = (cfg: { addons?: { id: string }[] } | null | undefined) =>
+          (cfg?.addons ?? []).map((a) => a.id).sort().join(",");
+        return `${b?.basePrice}/${b?.maxPrice}/${h?.catalogConfig?.quantity?.type ?? "none"}/${addons(h?.catalogConfig)}/${addons(b?.catalogConfig)}`;
       },
-      { timeout: 90_000, intervals: [1_000, 2_000, 5_000] },
+      { timeout: 90_000, intervals: [500, 1_000, 2_000] },
     )
-    .toBe("399/598/HOUR");
+    .toBe("399/598/HOUR/fridge/sofa");
 }
 
 async function findPublicService(slug: string): Promise<Svc | undefined> {
@@ -93,7 +155,8 @@ async function findPublicService(slug: string): Promise<Svc | undefined> {
 }
 
 test.beforeAll(async () => {
-  test.setTimeout(150_000);
+  test.setTimeout(180_000);
+  ensureIsolatedAccounts();
   HOURLY = (await findPublicService("hourly-bookings"))!;
   BATHROOM = (await findPublicService("bathroom-cleaning"))!;
   expect(HOURLY && BATHROOM).toBeTruthy();
@@ -263,7 +326,7 @@ test.describe("service → detail → hand-off URL", () => {
     expect(url.searchParams.get("notes")).toContain("Laundry");
 
     await page.goto("/services/home-cleaning/bathroom-cleaning");
-    await page.getByRole("radio", { name: /Premium/ }).click();
+    await page.getByRole("radio", { name: /Highest price/ }).click();
     await page.getByRole("button", { name: /Sofa Cleaning/ }).click();
     const cta2 = page.getByRole("complementary", { name: "Book this service" }).getByRole("link");
     await expect(cta2).toHaveText(/₹747/);

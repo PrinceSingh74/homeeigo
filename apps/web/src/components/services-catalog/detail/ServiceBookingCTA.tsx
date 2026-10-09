@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { ArrowRight } from "lucide-react";
 import { formatInr, spokenInr } from "@/lib/catalog";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { buttonBase, buttonSizes, buttonVariants } from "@/components/buttons/Button";
 import { AnimatedPrice } from "@/components/services-catalog/primitives";
 import { PRICE_FOOTNOTE } from "@/components/services-catalog/detail/sections";
@@ -21,6 +22,8 @@ export type BookingSummary = {
   href: string | null;
   /** Why booking is blocked (e.g. "Choose who this is for"). */
   blockedReason?: string;
+  /** Phase 15.2 — what the booking_started event attributes: the backend service and the version on screen. */
+  funnel?: { serviceId?: string; variantId?: string; addonCount: number };
 };
 
 function BookLink({ summary, className }: { summary: BookingSummary; className?: string }) {
@@ -37,6 +40,17 @@ function BookLink({ summary, className }: { summary: BookingSummary; className?:
       href={summary.href}
       className={cls}
       aria-label={`Book ${summary.serviceName}, ${summary.optionLabel}, for ${spokenInr(summary.amount)} before taxes`}
+      onClick={() => {
+        // The customer is entering the booking flow: the click, not the page load, is the event.
+        // Identity is (session, service) — no version — so the /book page, which has no version
+        // yet, reaches the same id and the server keeps one row. The server stamps the version.
+        if (summary.funnel?.serviceId) {
+          trackFunnelEvent("BOOKING_STARTED", {
+            serviceId: summary.funnel.serviceId,
+            metadata: { entry: "service-detail-cta", hasVariant: Boolean(summary.funnel.variantId), addonCount: summary.funnel.addonCount },
+          });
+        }
+      }}
     >
       Book Now — {formatInr(summary.amount)}*
       <ArrowRight className="size-4 motion-safe:transition-transform motion-safe:group-hover:translate-x-0.5" aria-hidden />

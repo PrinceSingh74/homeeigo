@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { searchPriceLabel } from "@/lib/search-price";
 import { useServicesQuery } from "@/hooks/use-core-data";
 import { bookUrl } from "@/lib/booking-url";
+import { trackServiceClick } from "@/lib/analytics/service-click";
 import { useAppStore } from "@/stores/app-store";
 import { Input } from "@/components/ui/Input";
 import { IconButton } from "@/components/buttons/IconButton";
@@ -76,6 +77,7 @@ export function ServiceSearchInput({
     const q = query.trim();
     setOpen(false);
     onNavigate?.();
+    trackServiceClick({ backendId: serviceId }, "search", { query: q });
     if (onSelectService) {
       onSelectService(serviceId, q);
       return;

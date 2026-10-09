@@ -328,6 +328,9 @@ describe.serial("§11 cases through the real routes", () => {
     const fu = followUps[0];
     expect(fu).toMatchObject({ booking_kind: "REWORK", parent_booking_id: parentId, case_id: caseId, total_amount: 0, final_amount: 0 });
     expect(await prisma.payment.findUnique({ where: { bookingId: fu.id } })).toBeNull();
+    // Phase 15.3: a follow-up belongs to the parent's population — its provenance is the parent's.
+    const origins = await prisma.booking.findMany({ where: { id: { in: [parentId, fu.id] } }, select: { id: true, dataOrigin: true } });
+    expect(origins.find((o) => o.id === fu.id)?.dataOrigin).toBe(origins.find((o) => o.id === parentId)?.dataOrigin as never);
     // Snapshot copied from the parent: execution, safety and warranty keys are the parent's, and the follow-up carries no priced lines.
     const parentSnap = before.serviceConfigSnapshot as Record<string, unknown>;
     const fuSnap = (await prisma.booking.findUniqueOrThrow({ where: { id: fu.id }, select: { serviceConfigSnapshot: true } })).serviceConfigSnapshot as Record<string, unknown>;

@@ -357,7 +357,7 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
   })
   .get("/me/reviews", async ({ requireProvider, query }) => {
     const { providerId } = requireProvider();
-    const data = await providerService.reviews(providerId, query as Record<string, string>);
+    const data = await providerService.reviews(providerId, query as Record<string, string>, "owner");
     return { success: true, data };
   })
   .get("/me/attendance", async ({ requireProvider }) => {
@@ -910,7 +910,7 @@ export const providersRoutes = new Elysia({ prefix: "/api/providers" })
     return { success: true, data };
   })
   .get("/:id/reviews", async ({ params, query }) => {
-    const data = await providerService.reviews(params.id, query as Record<string, string>);
+    const data = await providerService.reviews(params.id, query as Record<string, string>, "public");
     return { success: true, data };
   })
   // Public by design (customers browse before signing in) — the payload is therefore limited to

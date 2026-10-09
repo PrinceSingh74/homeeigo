@@ -249,8 +249,9 @@ export default function ExecutiveHqPage() {
             thisMonthRevenue={stats?.thisMonthRevenue ?? 0}
             totalRevenue={stats?.totalRevenue ?? 0}
             totalBookings={stats?.totalBookings ?? 0}
-            averageRating={stats?.averageRating ?? 0}
+            averageRating={stats?.partnerRatingMean ?? stats?.averageRating ?? null}
             completedBookings={stats?.completedBookings ?? 0}
+            completionRatePct={stats?.completionRatePct ?? null}
           />
 
           <section className="biz-glass-panel overflow-hidden p-0">

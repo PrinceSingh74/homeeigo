@@ -94,7 +94,8 @@ export function ExecutiveIntelligencePanel() {
   const sup = (support.data ?? {}) as Record<string, unknown>;
 
   const grossMargin = fi?.grossMargin.grossMarginPct;
-  const completion = k ? num(k.completionRate) * (num(k.completionRate) <= 1 ? 100 : 1) : 0;
+  const completion = k?.completionRate ?? null;
+  const cancellation = k?.cancellationRate ?? null;
 
   const slaBreached = num(sup.slaBreached);
   const totalTickets = num(sup.total ?? sup.totalTickets ?? sup.open);
@@ -205,9 +206,9 @@ export function ExecutiveIntelligencePanel() {
       <IntelGroup title="Operational Intelligence" hint="live">
         <StatTile
           embedded
-          label="Booking Success Rate"
-          value={k ? `${completion.toFixed(0)}%` : "—"}
-          sub="completed / attempted"
+          label="Completion"
+          value={completion == null ? "—" : `${completion.toFixed(0)}%`}
+          sub="Completed over finished bookings"
           icon={CheckCircle2}
           loading={kpis.isLoading}
           tone="success"
@@ -215,7 +216,8 @@ export function ExecutiveIntelligencePanel() {
         <StatTile
           embedded
           label="Cancellation Rate"
-          value={k ? `${(num(k.cancellationRate) * (num(k.cancellationRate) <= 1 ? 100 : 1)).toFixed(1)}%` : "—"}
+          value={cancellation == null ? "—" : `${cancellation.toFixed(1)}%`}
+          sub="Cancelled over finished bookings"
           icon={Activity}
           loading={kpis.isLoading}
         />

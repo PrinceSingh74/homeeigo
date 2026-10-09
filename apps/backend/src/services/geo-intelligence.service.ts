@@ -28,6 +28,7 @@ import {
 import { warehouseUnavailable, type WarehouseFailureCause } from "../lib/warehouse-read";
 import { isDemandForecastStale, DEMAND_STALE_AFTER_HOURS } from "../lib/demand-forecast-freshness";
 import { cancellationRatePct, completionRatePct } from "../lib/fulfillment-rates";
+import { marketplaceMetrics } from "./marketplace-metrics.service";
 import { scoreZone, skillGapRecommendation, type SkillGap } from "../lib/zone-scoring";
 import { DISPATCH_LIFECYCLE_WHERE } from "../lib/partner-four-axis";
 import {
@@ -524,11 +525,14 @@ export class GeoIntelligenceService {
   async executiveKpis(): Promise<IntelResult<unknown>> {
     return intel("exec-kpis", 30, async () => {
       const now = Date.now();
-      const [gmv, completed, cancelled, online, customers, refunded, dayBookings] = await Promise.all([
+      const dayStart = new Date(now - 86400_000);
+      const dayEnd = new Date(now);
+      const [dayMoney, completed, cancelled, online, customers, refunded, dayBookings] = await Promise.all([
         // Executive KPIs are the definition of a business statement, so every one is scoped.
-        // Measured difference today is small (completed revenue 1.7%); the scope is what keeps declared
-        // fixture traffic out as it accumulates. An earlier '20%' claim was withdrawn — see data-provenance.
-        prisma.booking.aggregate({ _sum: { totalAmount: true }, where: { status: "COMPLETED", ...analyticsWhere() } }),
+        // GMV is captured customer money for the same trailing 24 hours as bookingsToday
+        // (gateway amount paid plus wallet booking debits). It is not the lifetime sum of
+        // completed booking prices.
+        marketplaceMetrics(dayStart, dayEnd),
         prisma.booking.count({ where: { status: "COMPLETED", ...analyticsWhere() } }),
         prisma.booking.count({ where: { status: { in: ["CANCELLED_BY_USER", "CANCELLED_BY_PROVIDER"] }, ...analyticsWhere() } }),
         // `online` is deliberately NOT scoped: it is live operational state, not a business total.
@@ -538,10 +542,9 @@ export class GeoIntelligenceService {
         prisma.booking.count({ where: { createdAt: { gte: new Date(now - 86400_000) }, ...analyticsWhere() } }),
       ]);
       const finished = completed + cancelled;
-      const gmvVal = gmv._sum.totalAmount ?? 0;
       return {
         data: {
-          gmv: Math.round(gmvVal),
+          gmv: Math.round(dayMoney.capturedGmv),
           bookingsToday: dayBookings,
           /**
            * Null, not zero, when nothing has finished.

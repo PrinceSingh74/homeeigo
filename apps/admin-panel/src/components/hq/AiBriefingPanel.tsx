@@ -18,10 +18,8 @@ export const AiBriefingPanel = memo(function AiBriefingPanel({
   const model = useMemo(() => {
     if (isLoading || !stats) return null;
 
-    const completion =
-      stats.totalBookings > 0
-        ? Math.round((stats.completedBookings / stats.totalBookings) * 100)
-        : 0;
+    const completion = stats.completionRatePct ?? null;
+    const partnerRating = stats.partnerRatingMean ?? stats.averageRating;
     const onlinePct =
       stats.totalProviders > 0
         ? Math.round((stats.activeNow / stats.totalProviders) * 100)
@@ -29,8 +27,8 @@ export const AiBriefingPanel = memo(function AiBriefingPanel({
 
     const items: { tone: "ok" | "warn"; text: string }[] = [
       {
-        tone: completion >= 70 ? "ok" : "warn",
-        text: `Processed ${formatNumber(stats.totalBookings)} bookings at ${completion}% completion.`,
+        tone: completion == null || completion >= 70 ? "ok" : "warn",
+        text: `Processed ${formatNumber(stats.totalBookings)} bookings at ${completion == null ? "unmeasured" : `${completion}%`} completion.`,
       },
       {
         tone: "ok",
@@ -41,19 +39,21 @@ export const AiBriefingPanel = memo(function AiBriefingPanel({
         text: `${formatNumber(stats.activeNow)} partners online (${onlinePct}% of ${formatNumber(stats.totalProviders)}).`,
       },
       {
-        tone: stats.averageRating >= 4 ? "ok" : "warn",
-        text: `${formatNumber(stats.totalUsers)} customers · ${stats.averageRating.toFixed(1)}★ avg rating.`,
+        tone: partnerRating == null || partnerRating >= 4 ? "ok" : "warn",
+        text: partnerRating != null
+          ? `${formatNumber(stats.totalUsers)} customers · partner rating ${partnerRating.toFixed(1)}★.`
+          : `${formatNumber(stats.totalUsers)} customers · no partner rating yet.`,
       },
     ];
 
     const focus =
-      completion < 70
+      completion != null && completion < 70
         ? "Completion below target — review ops alerts and partner availability."
         : stats.activeNow === 0
           ? "No partners online — check marketplace supply in Operations HQ."
           : "Platform operating within normal parameters.";
 
-    return { completion, onlinePct, items, focus, warn: completion < 70 || stats.activeNow === 0 };
+    return { completion, onlinePct, items, focus, warn: (completion != null && completion < 70) || stats.activeNow === 0 };
   }, [stats, isLoading]);
 
   return (
@@ -76,7 +76,7 @@ export const AiBriefingPanel = memo(function AiBriefingPanel({
       ) : model ? (
         <>
           <div className="grid grid-cols-2 gap-3">
-            <MeterChip label="Completion" value={`${model.completion}%`} pct={model.completion} />
+            <MeterChip label="Completion" value={model.completion == null ? "—" : `${model.completion}%`} pct={model.completion ?? 0} />
             <MeterChip label="Fleet online" value={`${model.onlinePct}%`} pct={model.onlinePct} />
           </div>
 

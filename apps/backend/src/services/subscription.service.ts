@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import { analyticsWhereVia } from "../lib/analytics-scope";
 import { razorpayService } from "./razorpay.service";
 import { Prisma, SubscriptionStatus, type SubscriptionInterval } from "@prisma/client";
 import { financialLedgerService } from "./financial-ledger.service";
@@ -315,27 +316,30 @@ export class SubscriptionService {
           include: { benefits: { orderBy: { sortOrder: "asc" } }, _count: { select: { subscriptions: true } } },
           orderBy,
         }),
+        // Plan-catalogue KPIs: the same business population as the membership dashboard
+        // (membership-analytics.service), so the two admin pages report the same members and MRR.
         prisma.userSubscription.groupBy({
           by: ["planId"],
-          where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now } },
+          where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now }, ...analyticsWhereVia("userSubscription") },
           _count: true,
         }),
         prisma.membershipPlan.count(),
         prisma.membershipPlan.count({ where: { isActive: true } }),
         prisma.userSubscription.count({
-          where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now } },
+          where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now }, ...analyticsWhereVia("userSubscription") },
         }),
         prisma.userSubscription.count({
-          where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now, lte: week } },
+          where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now, lte: week }, ...analyticsWhereVia("userSubscription") },
         }),
         prisma.userSubscription.count({
           where: {
             status: { in: [SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED] },
             cancelledAt: { gte: monthStart },
+            ...analyticsWhereVia("userSubscription"),
           },
         }),
         prisma.userSubscription.findMany({
-          where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now } },
+          where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now }, ...analyticsWhereVia("userSubscription") },
           select: { plan: { select: { price: true, interval: true } } },
         }),
       ]);
@@ -470,7 +474,7 @@ export class SubscriptionService {
 
   async adminRevenue() {
     const invoices = await prisma.subscriptionInvoice.findMany({
-      where: { status: "paid" },
+      where: { status: "paid", subscription: analyticsWhereVia("userSubscription") },
       select: { amount: true, createdAt: true },
     });
     const total = invoices.reduce((s, i) => s + i.amount, 0);
@@ -480,7 +484,7 @@ export class SubscriptionService {
       .filter((i) => i.createdAt >= monthStart)
       .reduce((s, i) => s + i.amount, 0);
     const activeCount = await prisma.userSubscription.count({
-      where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now } },
+      where: { status: SubscriptionStatus.ACTIVE, expiresAt: { gt: now }, ...analyticsWhereVia("userSubscription") },
     });
     return { totalRevenue: total, monthRevenue: thisMonth, activeSubscribers: activeCount, invoiceCount: invoices.length };
   }

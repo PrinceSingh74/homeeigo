@@ -1,10 +1,13 @@
 import { analyticsWhere, analyticsWhereVia } from "../lib/analytics-scope";
+import { CANCELLED_BOOKING_STATUSES, cancellationRatePct, completionRatePct } from "../lib/fulfillment-rates";
+import { marketplaceMetrics, metricInstant } from "./marketplace-metrics.service";
 import prisma from "../lib/prisma";
 import { logger } from "../lib/logger";
 import { maskProviderSensitive } from "./sensitive-data.service";
 import { sanitizeUserInput } from "../utils/sanitizer";
 import { formatKycStatus } from "../lib/format";
 import { parsePagination } from "../lib/pagination";
+import { PUBLIC_REVIEW_ORDER, publicReviewWhere } from "../lib/public-reviews";
 import { userPiiService } from "./user-pii.service";
 import { emailDeliveryService } from "./email-delivery.service";
 import { RefreshTokenService } from "./refresh-token.service";
@@ -31,6 +34,7 @@ export class AdminService {
       totalProviders,
       totalBookings,
       completedBookings,
+      cancelledBookings,
       revenueAgg,
       monthRevenue,
       ratingAgg,
@@ -42,6 +46,7 @@ export class AdminService {
       prisma.provider.count({ where: analyticsWhereVia("provider") }),
       prisma.booking.count({ where: analyticsWhere() }),
       prisma.booking.count({ where: { status: "COMPLETED", ...analyticsWhere() } }),
+      prisma.booking.count({ where: { status: { in: CANCELLED_BOOKING_STATUSES }, ...analyticsWhere() } }),
       prisma.booking.aggregate({
         where: { paymentStatus: "SUCCESS", ...analyticsWhere() },
         _sum: { finalAmount: true },
@@ -56,7 +61,9 @@ export class AdminService {
       }),
       // Phase A: the rating average, online count and daily charts use the same business population
       // as every tile above; unscoped, fixture partners and script bookings moved the executive figures.
-      prisma.provider.aggregate({ where: analyticsWhereVia("provider"), _avg: { rating: true } }),
+      // `providers.rating` is 0 for a partner with no reviews (calculateProviderRating), so only
+      // reviewed partners are averaged; with none the tile is unmeasured (null), not 0★.
+      prisma.provider.aggregate({ where: { AND: [analyticsWhereVia("provider"), { totalReviews: { gt: 0 } }] }, _avg: { rating: true } }),
       prisma.provider.count({ where: { isOnline: true, ...analyticsWhereVia("provider") } }),
       prisma.booking.findMany({
         where: { createdAt: { gte: rangeStart, lte: rangeEnd }, ...analyticsWhere() },
@@ -103,9 +110,15 @@ export class AdminService {
         totalProviders,
         totalBookings,
         completedBookings,
+        cancelledBookings,
+        // fulfillment-rates.ts. Null when nothing has finished — not 0.
+        completionRatePct: completionRatePct(completedBookings, cancelledBookings),
+        cancellationRatePct: cancellationRatePct(completedBookings, cancelledBookings),
         totalRevenue: revenueAgg._sum.finalAmount ?? 0,
         thisMonthRevenue: monthRevenue._sum.finalAmount ?? 0,
-        averageRating: Math.round((ratingAgg._avg.rating ?? 0) * 10) / 10,
+        // Mean of providers.rating over reviewed business providers. Not the public review average.
+        partnerRatingMean: ratingAgg._avg.rating != null ? Math.round(ratingAgg._avg.rating * 10) / 10 : null,
+        averageRating: ratingAgg._avg.rating != null ? Math.round(ratingAgg._avg.rating * 10) / 10 : null,
         activeNow: onlineProviders,
       },
       charts: { bookingsByDay, revenueByDay },
@@ -726,8 +739,8 @@ export class AdminService {
   }
 
   async analytics(query: { startDate?: string; endDate?: string }) {
-    const start = query.startDate ? new Date(query.startDate) : new Date(Date.now() - 30 * 86400000);
-    const end = query.endDate ? new Date(query.endDate) : new Date();
+    const start = metricInstant(query.startDate, "start", new Date(Date.now() - 30 * 86400000));
+    const end = metricInstant(query.endDate, "end", new Date());
     /**
      * Scoped to the business population at the one place every figure below derives from.
      *
@@ -801,6 +814,7 @@ export class AdminService {
     }
 
     const newUsers = await prisma.user.count({ where: { ...where, role: "CUSTOMER" } });
+    const metrics = await marketplaceMetrics(start, end);
 
     return {
       period: { startDate: start.toISOString().slice(0, 10), endDate: end.toISOString().slice(0, 10) },
@@ -827,8 +841,9 @@ export class AdminService {
       userMetrics: {
         newUsers,
         activeUsers: await prisma.user.count({ where: { lastActivityAt: { gte: start }, ...analyticsWhere() } }),
-        repeatBookingRate: 0.65,
+        repeatCustomerRatePct: metrics.repeatCustomerRatePct,
       },
+      metrics,
     };
   }
 }
@@ -853,12 +868,12 @@ class AdminReviewService {
       where.reviewText = { contains: query.search.trim(), mode: "insensitive" };
     }
 
-    const [rows, total, agg] = await Promise.all([
+    const [rows, total, allReviews, hiddenReviews, flaggedReviews, published] = await Promise.all([
       prisma.rating.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: "desc" },
+        orderBy: PUBLIC_REVIEW_ORDER,
         include: {
           user: { select: { firstName: true, lastName: true, email: true } },
           provider: { select: { businessName: true, user: { select: { firstName: true, lastName: true } } } },
@@ -866,7 +881,13 @@ class AdminReviewService {
         },
       }),
       prisma.rating.count({ where }),
-      prisma.rating.aggregate({ _avg: { stars: true }, _count: true }),
+      // Moderation totals cover every row — the console moderates fixtures too — and are totals,
+      // not counts of the page on screen.
+      prisma.rating.count(),
+      prisma.rating.count({ where: { isPublic: false } }),
+      prisma.rating.count({ where: { isFlagged: true } }),
+      // What customers are shown: the governed public population, never the moderation queue.
+      prisma.rating.aggregate({ where: publicReviewWhere(), _avg: { stars: true }, _count: true }),
     ]);
 
     return {
@@ -889,7 +910,13 @@ class AdminReviewService {
       total,
       page,
       limit,
-      stats: { averageRating: agg._avg.stars != null ? round2(agg._avg.stars) : null, totalReviews: agg._count },
+      stats: {
+        totalReviews: allReviews,
+        hiddenReviews,
+        flaggedReviews,
+        publishedReviews: published._count,
+        publishedAverageRating: published._avg.stars != null ? round2(published._avg.stars) : null,
+      },
     };
   }
 

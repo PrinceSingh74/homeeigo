@@ -11,14 +11,7 @@ export default function EarningsCoachPage() {
     queryKey: ["partner", "forecast"],
     queryFn: () => partnerApi.partnerOs.forecast(),
   });
-  const zones = useQuery({
-    queryKey: ["partner", "zone-opportunity"],
-    queryFn: () => partnerApi.geoIntel.zoneScoring(),
-  });
-
   const data = forecast.data;
-  const opportunity = zones.data?.data.bestOpportunity ?? zones.data?.data.ranked ?? [];
-  const top = opportunity[0];
   const todayBasis = data?.basis?.todayProjection;
   const weekBasis = data?.basis?.weeklyProjection;
 
@@ -27,12 +20,12 @@ export default function EarningsCoachPage() {
       title="Earnings Intelligence"
       description="Expected earnings use verified history and zone demand. Nothing here is a guarantee."
       icon={IndianRupee}
-      loading={forecast.isLoading || zones.isLoading}
+      loading={forecast.isLoading}
       stats={[
         { label: "Today (heuristic)", value: data ? formatInr(data.todayProjection) : "—" },
         { label: "Trailing 7 days", value: data ? formatInr(data.weeklyProjection) : "—" },
-        { label: "Best opportunity", value: top?.name ?? "—" },
-        { label: "Demand / supply", value: top ? `${top.demand24h} / ${top.supply}` : "—" },
+        { label: "Best opportunity", value: "—" },
+        { label: "Demand / supply", value: "—" },
       ]}
     >
       <section className="partner-card space-y-2 p-5">
@@ -50,23 +43,9 @@ export default function EarningsCoachPage() {
       </section>
       <section className="partner-card p-5">
         <h2 className="font-semibold">Opportunity zones</h2>
-        {opportunity.length === 0 ? (
-          <p className="mt-2 text-sm text-partner-muted">Not enough verified zone data yet.</p>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {opportunity.slice(0, 6).map((z) => (
-              <li key={z.zoneId} className="flex items-center justify-between border-b border-partner-line py-2 text-sm">
-                <span>
-                  {z.name}
-                  <span className="ml-2 text-xs text-partner-muted">
-                    demand {z.demand24h} · supply {z.supply} · gap {z.gap ?? z.demand24h - z.supply}
-                  </span>
-                </span>
-                <span className="font-semibold">{z.opportunityScore ?? z.compositeScore}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <p className="mt-2 text-sm text-partner-muted">
+          Platform zone scores are not part of the partner view. Surge and coverage are on Territory HQ.
+        </p>
       </section>
     </HqPageShell>
   );

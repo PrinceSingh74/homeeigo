@@ -624,9 +624,11 @@ export class CatalogService {
   private async invalidateCatalogCache(): Promise<void> {
     await cacheService.invalidate("catalog:featured");
     await cacheService.invalidate("catalog:categories");
-    // The customer catalogue reads ?limit=100 page 1; other list keys expire within LIST_TTL.
-    await cacheService.invalidate("catalog:list:1:100:::::::");
-    await cacheService.invalidate("catalog:list:1:20:::::::");
+    // List and category keys embed page, limit and filters (`catalog:list:v2:…`,
+    // `catalog:category:v2:…`). Deleting one guessed key left every real entry
+    // until LIST_TTL / CATEGORY_TTL. The prefix covers every page of both.
+    await cacheService.invalidatePrefix("catalog:list:");
+    await cacheService.invalidatePrefix("catalog:category:");
   }
 
   /**

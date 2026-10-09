@@ -12,6 +12,7 @@
  * The rules mirror resolveServicesPath (adapter.ts) + publishedExtra (the [...path] page). Legacy and
  * cross-listed URLs never reach here: next.config redirects() answers them with a 308 first.
  */
+import { catalogPageCount } from "./service-pages";
 import { AUDIENCES, CATEGORY_BY_ID, SERVICE_DEFS } from "./taxonomy";
 
 export type ServicesRouteVerdict =
@@ -77,8 +78,11 @@ async function loadPublishedSlugs(apiBase: string): Promise<Set<string> | null> 
   };
   try {
     const first = await load(1);
-    const limit = first.limit && first.limit > 0 ? first.limit : 100;
-    const pages = Math.min(20, Math.max(1, Math.ceil((first.total ?? first.services!.length) / limit)));
+    const pages = catalogPageCount({
+      total: first.total,
+      services: first.services ?? [],
+      limit: first.limit,
+    });
     const rest = pages > 1 ? await Promise.all(Array.from({ length: pages - 1 }, (_, i) => load(i + 2))) : [];
     const slugs = new Set<string>();
     for (const p of [first, ...rest]) for (const s of p.services ?? []) if (s.slug) slugs.add(s.slug.toLowerCase());

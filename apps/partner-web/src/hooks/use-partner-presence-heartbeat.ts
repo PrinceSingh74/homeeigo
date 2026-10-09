@@ -193,7 +193,9 @@ function emit(rt: SharedRuntime, patch: Partial<SocketLikeState> = {}) {
 }
 
 function applySnapshot(rt: SharedRuntime, snap: PartnerPresenceSnapshot) {
-  if (snap.sessionId) rt.sessionId = snap.sessionId;
+  // Null means there is no live session. Keeping the previous id would beat with a
+  // revoked token and the server would answer 401 INVALID_SESSION.
+  rt.sessionId = snap.sessionId;
   rt.deviceId = snap.deviceId?.trim() || getDeviceId();
   if (snap.heartbeatIntervalSeconds > 0) rt.intervalSec = snap.heartbeatIntervalSeconds;
   if (snap.location?.sequence != null && snap.location.sequence > rt.locationSeq) {

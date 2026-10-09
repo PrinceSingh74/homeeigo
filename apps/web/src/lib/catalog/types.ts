@@ -169,6 +169,12 @@ export type ServiceView = {
   variants: Variant[];
   /** Real aggregate, only when backed by reviews (list endpoint). */
   rating: { value: number; count: number } | null;
+  /** Backend SEO. Absent on taxonomy-only (coming soon) rows. */
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  seoKeywords?: string | null;
+  /** False when the backend says noindex. Undefined on rows with no backend record. */
+  indexable?: boolean;
   /** Missing configuration on a live service — for admin/dev audits, never shown to customers. */
   gaps: string[];
   /** Stable position in the editorial order — the "Recommended" sort. */

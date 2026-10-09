@@ -15,12 +15,12 @@ import { SectionHeader } from "@/components/layout/SectionHeader";
 
 type Trust = { icon: LucideIcon; l1: string; l2: string };
 
-// Each line is something the platform does for every booking. Replaced: identity verification and
-// background checks (required only where a service asks for them), an "AI fraud detection" claim,
-// and round-the-clock support (tickets carry a response deadline; no always-on line exists).
+// Each line is something the platform does for every booking. A start PIN is not one of them:
+// it is shown on the visit only when that service requires one. Identity and background checks
+// are matching gates on the services that configure them, not a blanket claim.
 const TRUSTS: Trust[] = [
   { icon: ShieldCheck, l1: "Approved", l2: "Professionals" },
-  { icon: UserCheck, l1: "Start PIN", l2: "at the Door" },
+  { icon: UserCheck, l1: "Your slot", l2: "you choose" },
   { icon: Lock, l1: "Secure", l2: "Payments" },
   { icon: Receipt, l1: "Itemised", l2: "Pricing" },
   { icon: MapPin, l1: "Live", l2: "Tracking" },

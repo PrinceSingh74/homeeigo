@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useAppStore } from "@/lib/store";
 import { openBook, openProviders } from "@/lib/navigation";
 import { resolveServiceIdFromQuery } from "@/lib/services-search";
+import { trackServiceClick } from "@/lib/analytics/funnel";
 import { getLocation } from "@/lib/services";
 import { useUnreadNotificationCount } from "@/hooks/use-core-data";
 import { useAuth } from "@/hooks/use-auth";
@@ -97,8 +98,12 @@ export function useAppNavigation() {
     unreadNotifications,
     isPremium,
     book,
-    bookFromSearch: (query: string) =>
-      book({ service: resolveServiceIdFromQuery(query) }),
+    bookFromSearch: (query: string) => {
+      const service = resolveServiceIdFromQuery(query);
+      // Phase 15.2 — a search that resolved to a service is a service click (the term itself is not sent).
+      trackServiceClick(service, "search", { query });
+      book({ service });
+    },
     bookFirstOffer: () => book({ service: "cleaning", promo: "HOME150" }),
     goHome,
     goServices,

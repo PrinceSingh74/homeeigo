@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { PaymentStatus, GiftCardStatus } from "@prisma/client";
+import { analyticsWhereVia } from "../lib/analytics-scope";
 import { CREDITED_EARNING_WHERE, earningInvoiceNumber, partnerEarningLines, partnerJobEarningView, type PartnerJobEarning } from "../lib/earning-settlement";
 
 /**
@@ -80,11 +81,13 @@ export class InvoiceReportService {
 
   /** Revenue report across every stream + refund tracking. */
   async adminRevenueReport() {
+    // A business revenue report: every stream and the refunds netted against it use the one
+    // population policy, so certification payments and their refunds are not revenue.
     const [paid, refunds, subs, gifts] = await Promise.all([
-      prisma.payment.aggregate({ where: { status: { in: [PaymentStatus.SUCCESS, PaymentStatus.REFUNDED, PaymentStatus.PARTIALLY_REFUNDED] } }, _sum: { amountPaid: true }, _count: { _all: true } }),
-      prisma.payment.aggregate({ _sum: { refundedAmount: true } }),
-      prisma.subscriptionInvoice.aggregate({ where: { status: "paid" }, _sum: { amount: true }, _count: { _all: true } }),
-      prisma.giftCard.aggregate({ where: { status: { not: GiftCardStatus.PENDING_PAYMENT } }, _sum: { amount: true }, _count: { _all: true } }),
+      prisma.payment.aggregate({ where: { status: { in: [PaymentStatus.SUCCESS, PaymentStatus.REFUNDED, PaymentStatus.PARTIALLY_REFUNDED] }, ...analyticsWhereVia("payment") }, _sum: { amountPaid: true }, _count: { _all: true } }),
+      prisma.payment.aggregate({ where: analyticsWhereVia("payment"), _sum: { refundedAmount: true } }),
+      prisma.subscriptionInvoice.aggregate({ where: { status: "paid", subscription: analyticsWhereVia("userSubscription") }, _sum: { amount: true }, _count: { _all: true } }),
+      prisma.giftCard.aggregate({ where: { status: { not: GiftCardStatus.PENDING_PAYMENT }, ...analyticsWhereVia("giftCard") }, _sum: { amount: true }, _count: { _all: true } }),
     ]);
     const bookings = paid._sum.amountPaid ?? 0;
     const subscriptions = subs._sum.amount ?? 0;

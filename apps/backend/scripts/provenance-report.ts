@@ -25,6 +25,7 @@ import {
   classifyBookingNumber,
 } from "../src/lib/data-provenance";
 import { resolveUserEmails } from "./lib/resolve-user-emails";
+import { propagateNonBusinessOrigins } from "../src/lib/provenance-propagation";
 
 const argOf = (n: string) => {
   const i = process.argv.indexOf(`--${n}`);
@@ -214,6 +215,13 @@ bookings with a classified refund: ${bookings.length}; left UNKNOWN because the 
       written += (await prisma.booking.updateMany({ where: { id: p.id, dataOrigin: null }, data })).count;
     }
   }
+  // A customer labelled just now made bookings (and analytics rows) before the label existed.
+  const carried = await propagateNonBusinessOrigins(prisma);
+  written += carried.bookings + carried.analyticsEventsFromBooking + carried.analyticsEventsFromActor;
+  console.log(
+    `[provenance] carried to children: ${carried.bookings} booking(s), ` +
+      `${carried.analyticsEventsFromBooking + carried.analyticsEventsFromActor} analytics event(s)`,
+  );
   console.log(`\n${"=".repeat(78)}\n[provenance] APPLIED — ${written} row(s) labelled. No row was deleted or overwritten.`);
 }
 

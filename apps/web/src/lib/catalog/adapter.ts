@@ -240,6 +240,10 @@ function toView(def: ServiceDef, order: number, backend?: BackendService): Servi
       backend?.rating != null && backend.rating > 0 && (backend.reviewCount ?? 0) > 0
         ? { value: backend.rating, count: backend.reviewCount! }
         : null,
+    seoTitle: backend?.seoTitle ?? null,
+    seoDescription: backend?.seoDescription ?? null,
+    seoKeywords: backend?.seoKeywords ?? null,
+    indexable: backend ? backend.indexable !== false && status === "live" : undefined,
     gaps: status === "live" ? gapsFor(def, config) : [],
     order,
     searchText: normalize(

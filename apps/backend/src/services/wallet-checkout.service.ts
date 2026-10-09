@@ -16,6 +16,8 @@ import { incCounter } from "../lib/metrics";
 import { logger } from "../lib/logger";
 import { parseCatalogConfig } from "../lib/service-catalog-config";
 import { assertSplitAllowed, assertWalletAllowed } from "../lib/service-runtime-policy";
+import { emitCheckoutStartedInTransaction } from "../events/core/payment-outbox";
+import { recordWalletCheckoutStarted } from "./analytics-funnel.service";
 
 const toPaise = (inr: number): bigint => BigInt(Math.round(inr * 100));
 const round2 = (n: number): number => Math.round(n * 100) / 100;
@@ -184,6 +186,12 @@ export const walletCheckoutService = {
     );
     if ("ok" in result && result.ok && !result.alreadyPaid) {
       onBookingPaymentSettledBackground(bookingId, "wallet");
+      // Phase 15.2 — a wallet checkout started (and settled) here; there is no Payment row and so
+      // no CHECKOUT_STARTED outbox event to project. Observational, after commit, never awaited by
+      // the customer's response path beyond this call.
+      recordWalletCheckoutStarted({ bookingId, walletTransactionId: result.walletTransactionId, amountPaid: result.amountPaid }).catch(
+        (err) => logger.warn("analytics_wallet_checkout_failed", { bookingId, error: err instanceof Error ? err.message : String(err) }),
+      );
     }
     return result;
   },
@@ -246,6 +254,7 @@ export const walletCheckoutService = {
     }
 
     const order = await razorpayService.createOrder(remainder, booking.bookingNumber, { bookingId });
+    let splitPaymentId = "";
     try {
       const created = await prisma.payment.create({
         data: {
@@ -260,6 +269,7 @@ export const walletCheckoutService = {
           metadata: JSON.stringify({ walletAmount: wallet, finalAmount: final }),
         },
       });
+      splitPaymentId = created.id;
       // §27 — record the gateway world the split's gateway leg belongs to (probe-guarded, never throws).
       await stampPaymentEnvironment(prisma, created.id, order.orderId);
     } catch (e: unknown) {
@@ -271,7 +281,16 @@ export const walletCheckoutService = {
       }
       throw e;
     }
-    await prisma.booking.update({ where: { id: bookingId }, data: { paymentStatus: PaymentStatus.INITIATED } });
+    // Phase 15.2 — INITIATED and the checkout event commit together, exactly as `paymentService.createOrder`
+    // does for a gateway-only order. The emitter carries the outbox / payment-event guards itself.
+    await prisma.$transaction(async (tx) => {
+      await tx.booking.update({ where: { id: bookingId }, data: { paymentStatus: PaymentStatus.INITIATED } });
+      await emitCheckoutStartedInTransaction(
+        tx,
+        { bookingId, userId, paymentId: splitPaymentId, amountPaise: toPaise(remainder), razorpayOrderId: order.orderId },
+        new Date(),
+      );
+    });
     return { mode: "split", razorpayOrderId: order.orderId, razorpayAmount: remainder, walletAmount: wallet, finalAmount: final, key: razorpayService.keyId };
   },
 

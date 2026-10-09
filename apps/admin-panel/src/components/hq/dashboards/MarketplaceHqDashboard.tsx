@@ -95,11 +95,12 @@ function marketBrief(input: {
   pendingDocs: number;
   churnN: number;
   rating: number;
-  completion: number;
+  completion: number | null;
   flagged: number;
 }) {
   const { customers, partners, online, bookings, today, gaps, pendingDocs, churnN, rating, completion, flagged } =
     input;
+  const completionText = completion == null ? "—" : `${completion}%`;
 
   if (customers === 0 && partners === 0 && bookings === 0) {
     return {
@@ -123,7 +124,7 @@ function marketBrief(input: {
           : flagged >= 3
             ? `${flagged} reviews are flagged. Trust on the catalog is under pressure.`
             : `${gaps} service-gap zones are uncovered. Demand in those areas will not convert.`,
-      impact: `${online} of ${partners} partners online · ${today} bookings today · ${completion}% completion.`,
+      impact: `${online} of ${partners} partners online · ${today} bookings today · ${completionText} completion.`,
       action:
         pendingDocs >= 5
           ? "Open Document Review and clear the KYC queue before pushing demand."
@@ -145,7 +146,7 @@ function marketBrief(input: {
             : rating > 0 && rating < 4
               ? `Average rating is ${rating.toFixed(1)}★. Catalog trust is below the 4.0 bar.`
               : `${gaps} zone${gaps === 1 ? "" : "s"} show a service gap.`,
-      impact: `${formatNumber(customers)} customers · ${online} online partners · ${completion}% completion.`,
+      impact: `${formatNumber(customers)} customers · ${online} online partners · ${completionText} completion.`,
       action:
         churnN > 0
           ? "Reach expiring members from Membership before the window closes."
@@ -340,18 +341,24 @@ export function MarketplaceHqDashboard() {
   const reviewStats = reviewsQ.data?.stats;
   const services = catalogQ.data?.services ?? [];
   const catalogTotal = catalogQ.data?.total ?? services.length;
-  const flagged = reviews.filter((r) => r.isFlagged).length;
+  // Platform totals from the review summary — the six rows above are a preview, not the population.
+  const flagged = reviewStats?.flaggedReviews ?? 0;
+  const publishedReviews = reviewStats?.publishedReviews ?? 0;
 
   const customers = stats?.totalUsers ?? 0;
   const partners = stats?.totalProviders ?? metrics?.totalProviders ?? 0;
   const online = stats?.activeNow ?? metrics?.onlineProviders ?? 0;
   const bookings = stats?.totalBookings ?? 0;
   const completed = stats?.completedBookings ?? 0;
-  const rating = stats?.averageRating ?? reviewStats?.averageRating ?? 0;
+  // The average customers are shown (published, business population). Null until one exists — not 0.
+  const publishedRating = reviewStats?.publishedAverageRating ?? null;
+  const rating = publishedRating ?? 0;
+  const ratingLabel = publishedRating != null ? `${publishedRating.toFixed(1)}★` : "—";
   const today = kpis?.bookingsToday ?? 0;
   const gmv = kpis?.gmv ?? stats?.thisMonthRevenue ?? stats?.totalRevenue ?? 0;
   const gaps = metrics?.serviceGaps ?? 0;
-  const completion = bookings > 0 ? Math.round((completed / bookings) * 100) : kpis?.completionRate ?? 0;
+  const completion = stats?.completionRatePct ?? kpis?.completionRate ?? null;
+  const completionText = completion == null ? "—" : `${completion}%`;
   const coverage = partners > 0 ? Math.round((online / partners) * 100) : 0;
   const ratingPct = Math.round((Math.max(0, Math.min(5, rating)) / 5) * 100);
   const mrr = num(analytics.mrr);
@@ -479,16 +486,16 @@ export function MarketplaceHqDashboard() {
         <StatTile
           label="Bookings"
           value={formatNumber(bookings)}
-          sub={today > 0 ? `${formatNumber(today)} today · ${completion}% done` : `${completion}% completion`}
+          sub={today > 0 ? `${formatNumber(today)} today · ${completionText} done` : `${completionText} completion`}
           icon={CalendarCheck}
           loading={dashboard.isLoading}
         />
         <StatTile
-          label="Avg rating"
-          value={`${Number(rating || 0).toFixed(1)}★`}
-          sub={reviewStats ? `${formatNumber(reviewStats.totalReviews)} reviews` : "catalog trust"}
+          label="Review rating"
+          value={ratingLabel}
+          sub={reviewStats ? `${formatNumber(publishedReviews)} published reviews` : "catalog trust"}
           icon={Star}
-          loading={dashboard.isLoading}
+          loading={reviewsQ.isLoading}
           tone={rating >= 4 ? "success" : rating > 0 ? "accent" : "default"}
         />
         <StatTile
@@ -544,8 +551,8 @@ export function MarketplaceHqDashboard() {
           icon={Star}
           tone={flagged > 0 ? "danger" : "success"}
           title="Trust"
-          value={`${Number(rating || 0).toFixed(1)}★`}
-          sub={flagged > 0 ? `${flagged} flagged` : `${formatNumber(reviewStats?.totalReviews ?? 0)} public reviews`}
+          value={ratingLabel}
+          sub={flagged > 0 ? `${flagged} flagged` : `${formatNumber(publishedReviews)} published reviews`}
           meter={ratingPct || 8}
           meterTone={flagged > 0 ? "danger" : rating >= 4 ? "success" : "warning"}
         />
@@ -593,7 +600,7 @@ export function MarketplaceHqDashboard() {
             </div>
             <div className="wx-stat">
               <dt>Completion</dt>
-              <dd>{completion}%</dd>
+              <dd>{completionText}</dd>
             </div>
             <div className="wx-stat">
               <dt>Retention</dt>
@@ -637,12 +644,12 @@ export function MarketplaceHqDashboard() {
 
       <section className="grid gap-4 lg:grid-cols-3">
         <div className="biz-glass-panel p-6">
-          <SectionHead icon={CalendarCheck} tone="success" title="Fulfilment" subtitle="Completed vs booked" />
+          <SectionHead icon={CalendarCheck} tone="success" title="Fulfilment" subtitle="Completed over finished" />
           <GlassRing3D
-            value={completion}
+            value={completion ?? 0}
             label="Done"
-            sub={`${formatNumber(completed)} of ${formatNumber(bookings)} bookings`}
-            tone={completion >= 80 ? "success" : completion >= 50 ? "warning" : "danger"}
+            sub={completion == null ? "No finished bookings yet" : `${completionText} of finished bookings`}
+            tone={completion == null ? "accent" : completion >= 80 ? "success" : completion >= 50 ? "warning" : "danger"}
           />
         </div>
         <div className="biz-glass-panel p-6">
@@ -659,7 +666,7 @@ export function MarketplaceHqDashboard() {
           <GlassRing3D
             value={ratingPct}
             label="Score"
-            sub={`${Number(rating || 0).toFixed(1)}★ catalog average`}
+            sub={`${ratingLabel} published average`}
             tone={rating >= 4 ? "success" : rating > 0 ? "warning" : "accent"}
           />
         </div>

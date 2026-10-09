@@ -26,7 +26,7 @@
  *   biz_orders_today           ← bookings created in last 24h (calendar)
  *   ops_avg_eta_minutes        ← avg(booking.eta) last 7d; fallback when maps histogram empty
  */
-import { analyticsWhere } from "./analytics-scope";
+import { analyticsSqlPredicateVia, analyticsWhere, analyticsWhereVia } from "./analytics-scope";
 import type { BookingStatus } from "@prisma/client";
 import prisma from "./prisma";
 import { setGauge, registerScrapeSampler } from "./metrics";
@@ -94,11 +94,23 @@ export function registerPartnerExecSamplers(): void {
       prisma.booking.count({ where: { refundAmount: { gt: 0 }, ...analyticsWhere() } }).catch(() => 0),
       prisma.booking.count({ where: { createdAt: { gte: dayAgo }, ...analyticsWhere() } }).catch(() => 0),
       prisma.paymentSettlement.aggregate({ _sum: { settledAmount: true } }).catch(() => ({ _sum: { settledAmount: 0 } })),
+      // fin_payment_success_pct / fin_chargeback_pct are CEO-dashboard KPIs (homigo-ceo.json), not a
+      // gateway health alert, so they use the same business population as the GMV and completion
+      // gauges beside them. Both ratio sides are scoped, or the ratio describes no population.
       Promise.all([
-        prisma.payment.count({ where: { status: "SUCCESS" } }).catch(() => 0),
-        prisma.payment.count({ where: { status: "FAILED" } }).catch(() => 0),
+        prisma.payment.count({ where: { status: "SUCCESS", ...analyticsWhereVia("payment") } }).catch(() => 0),
+        prisma.payment.count({ where: { status: "FAILED", ...analyticsWhereVia("payment") } }).catch(() => 0),
       ]),
-      prisma.chargeback.count().catch(() => 0),
+      // A chargeback without a payment link has nothing to inherit from: UNKNOWN, counted as business.
+      prisma
+        .$queryRawUnsafe<Array<{ n: bigint }>>(
+          `SELECT COUNT(*)::bigint AS n FROM chargebacks c
+             LEFT JOIN payments p ON p.id = c.payment_id
+             LEFT JOIN bookings b ON b.id = p.booking_id
+            WHERE p.id IS NULL OR ${analyticsSqlPredicateVia("b")}`,
+        )
+        .then((r) => Number(r[0]?.n ?? 0))
+        .catch(() => 0),
       prisma.$queryRaw<Array<{ avg_eta: number | null }>>`
         SELECT ROUND(AVG(eta)::numeric, 1)::float AS avg_eta
         FROM bookings
