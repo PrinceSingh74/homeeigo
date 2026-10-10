@@ -11,8 +11,10 @@ import {
   AI_ERROR_STATUS,
   aiConfig,
   isAnyProviderConfigured,
+  promptBlockedError,
 } from "../ai";
 import { mapUserRoleToAiRole } from "../ai/security/authorization";
+import { validatePromptSecurity } from "../ai/security/prompt-security";
 import { clientIp, traceId } from "../lib/request-identity";
 import { logger } from "../lib/logger";
 import { recordAiDegraded, recordAiIntent } from "../lib/ai-metrics";
@@ -59,6 +61,13 @@ async function customerChatViaGateway(input: {
   const aiRole = mapUserRoleToAiRole(input.userRole, "chat");
   if (!aiRole) {
     throw new AiGatewayError("Role not authorized for AI chat", "FORBIDDEN", "BLOCKED");
+  }
+
+  // Screen the prompt before the unconfigured short-circuit. A blocked injection must
+  // not become a canned catalogue reply just because no model provider is live.
+  const promptSecurity = validatePromptSecurity(input.message, aiRole);
+  if (!promptSecurity.safe) {
+    throw promptBlockedError(promptSecurity.reason);
   }
 
   // Intent first: it decides which data this turn may load, so it runs before any query.

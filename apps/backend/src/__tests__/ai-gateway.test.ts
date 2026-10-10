@@ -33,6 +33,14 @@ describe("Prompt Security", () => {
     expect(detectPromptInjection("SELECT * FROM users")).not.toBeNull();
   });
 
+  test("customer chat screens injection before the unconfigured fallback", async () => {
+    const src = await Bun.file(new URL("../routes/ai.ts", import.meta.url)).text();
+    const screenAt = src.indexOf("validatePromptSecurity(input.message");
+    const fallbackAt = src.indexOf("PROVIDERS_UNCONFIGURED");
+    expect(screenAt).toBeGreaterThan(0);
+    expect(fallbackAt).toBeGreaterThan(screenAt);
+  });
+
   test("allows safe messages", () => {
     const r = validatePromptSecurity("I need AC repair in Gurgaon", "CUSTOMER");
     expect(r.safe).toBe(true);

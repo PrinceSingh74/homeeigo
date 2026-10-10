@@ -1,0 +1,29 @@
+{
+  "phase": 7,
+  "database": "homigo_test",
+  "hostPort": "localhost:5433",
+  "outboxByStatus": {
+    "PENDING": "45",
+    "PUBLISHED": "10320"
+  },
+  "consumerReceipts": 32284,
+  "deliveriesByChannel": {},
+  "deliveriesByStatus": {},
+  "goldBookingNotifications": 5,
+  "pendingEventTypes": {
+    "homigo.partner.dispatch_eligibility.changed": "8",
+    "homigo.support.ticket.created": "3",
+    "homigo.partner.lifecycle.changed": "3",
+    "homigo.checkout.started": "2",
+    "homigo.payment.success": "2",
+    "homigo.payment.failed": "2",
+    "homigo.booking.created": "2",
+    "homigo.ops.alert.raised": "16",
+    "homigo.partner.earnings.posted": "1",
+    "homigo.partner.en_route": "1",
+    "homigo.partner.capacity.changed": "1",
+    "homigo.booking.chat.message_sent": "1"
+  },
+  "isolatedConsumersNote": "Isolated stack redis=disabled; outbox processor may still drain in-process. Counts are observational, not a live SMS/email send.",
+  "finishedAt": "2026-10-10T09:11:10.316Z"
+}

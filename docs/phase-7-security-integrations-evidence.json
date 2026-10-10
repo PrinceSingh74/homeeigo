@@ -1,0 +1,253 @@
+{
+  "phase": 7,
+  "isolatedApi": "http://127.0.0.1:3100",
+  "isolatedDatabase": true,
+  "security": {
+    "webhookForged": {
+      "status": 401,
+      "code": "INVALID_SIGNATURE"
+    },
+    "webhookMissingSig": {
+      "status": 401
+    },
+    "customerCannotAdminGold": 403,
+    "partnerCannotAdminGold": 403,
+    "adminCanReadGold": 200,
+    "partnerReadGoldAsAssignee": 200,
+    "loginRateLimitHit429": true,
+    "lastDummyLoginStatus": 429,
+    "fileTraversal": {
+      "raw": 404,
+      "encoded": 404,
+      "forgedName": 404,
+      "unauthUpload": 401
+    },
+    "webhookPass": true,
+    "rbacPass": true,
+    "filePass": true,
+    "envNotTracked": true,
+    "trackedEnvFiles": [
+      ".env.example",
+      "apps/admin-panel/.env.example",
+      "apps/backend/.env.example",
+      "apps/backend/.env.staging.example",
+      "apps/partner-web/.env.example",
+      "apps/web/.env.example",
+      "deploy/local-staging/backend.env.example",
+      "homigo-mobile/.env.example",
+      "homigo-partner-mobile/.env.example"
+    ]
+  },
+  "productionMocks": {
+    "note": "Unsafe bypass flags must be unset on deployed hosts. Isolated stack may carry local test values; recorded by name only.",
+    "isolatedFlagNamesSet": [
+      "LOAD_TEST_MODE",
+      "HOMIGO_ALLOW_PAYMENT_MOCKS"
+    ]
+  },
+  "audits": {
+    "backendAudit": {
+      "cwd": "D:/homigo/apps/backend",
+      "status": 1,
+      "summaryLines": [
+        "  moderate: qs array-limit bypass via bracket-key comma parsing - https://github.com/advisories/GHSA-x5fp-wj9c-mxmx",
+        "  moderate: qs: Denial of Service via Attacker Controlled isBuffer - https://github.com/advisories/GHSA-4mjr-xmp4-gh2g",
+        "  high: DeepmergeTS has stack exhaustion when merging recursive object graphs - https://github.com/advisories/GHSA-ggr8-5vv4-36mx",
+        "  high: brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash - https://github.com/advisories/GHSA-mh99-v99m-4gvg",
+        "  high: brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash - https://github.com/advisories/GHSA-mh99-v99m-4gvg",
+        "  high: brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash - https://github.com/advisories/GHSA-mh99-v99m-4gvg",
+        "  high: brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation - https://github.com/advisories/GHSA-rgw5-rvv9-x895",
+        "  high: brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation - https://github.com/advisories/GHSA-rgw5-rvv9-x895",
+        "  high: brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation - https://github.com/advisories/GHSA-rgw5-rvv9-x895",
+        "  high: brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups - https://github.com/advisories/GHSA-3jxr-9vmj-r5cp",
+        "  high: brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups - https://github.com/advisories/GHSA-3jxr-9vmj-r5cp",
+        "  high: brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups - https://github.com/advisories/GHSA-3jxr-9vmj-r5cp",
+        "  high: brace-expansion: DoS via uncontrolled recursion on nested brace groups causing stack exhaustion - https://github.com/advisories/GHSA-qhr7-859c-m2p7",
+        "  high: brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion - https://github.com/advisories/GHSA-6j4f-fj2g-mc7p",
+        "  high: brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion - https://github.com/advisories/GHSA-6j4f-fj2g-mc7p",
+        "  high: brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion - https://github.com/advisories/GHSA-6j4f-fj2g-mc7p"
+      ],
+      "vulnerabilities": null,
+      "hasCritical": false,
+      "hasHigh": false
+    },
+    "webAudit": {
+      "cwd": "D:/homigo/apps/web",
+      "status": 1,
+      "summaryLines": [
+        "  \"vulnerabilities\": {",
+        "      \"severity\": \"moderate\",",
+        "          \"severity\": \"moderate\",",
+        "      \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"moderate\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "      \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "      \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\","
+      ],
+      "vulnerabilities": {
+        "critical": 0,
+        "high": 7,
+        "moderate": 2,
+        "low": 0,
+        "info": 0,
+        "total": 18
+      },
+      "hasCritical": false,
+      "hasHigh": true
+    },
+    "partnerAudit": {
+      "cwd": "D:/homigo/apps/partner-web",
+      "status": 1,
+      "summaryLines": [
+        "  \"vulnerabilities\": {",
+        "      \"severity\": \"moderate\",",
+        "          \"severity\": \"moderate\",",
+        "      \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"moderate\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "      \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "      \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\","
+      ],
+      "vulnerabilities": {
+        "critical": 0,
+        "high": 7,
+        "moderate": 2,
+        "low": 0,
+        "info": 0,
+        "total": 18
+      },
+      "hasCritical": false,
+      "hasHigh": true
+    },
+    "adminAudit": {
+      "cwd": "D:/homigo/apps/admin-panel",
+      "status": 1,
+      "summaryLines": [
+        "  \"vulnerabilities\": {",
+        "      \"severity\": \"moderate\",",
+        "          \"severity\": \"moderate\",",
+        "      \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"moderate\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "      \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "      \"severity\": \"high\",",
+        "          \"severity\": \"high\",",
+        "          \"severity\": \"high\","
+      ],
+      "vulnerabilities": {
+        "critical": 0,
+        "high": 7,
+        "moderate": 2,
+        "low": 0,
+        "info": 0,
+        "total": 18
+      },
+      "hasCritical": false,
+      "hasHigh": true
+    },
+    "anyCritical": false
+  },
+  "integrations": {
+    "readyHttp": 200,
+    "readyEvents": {
+      "outboxEnabled": false,
+      "consumersEnabled": false,
+      "status": "consistent"
+    },
+    "readyIntegrations": {
+      "razorpay": {
+        "configured": false
+      },
+      "razorpayWebhook": {
+        "configured": true
+      },
+      "email": {
+        "configured": false
+      },
+      "sms": {
+        "configured": true
+      },
+      "jwt": {
+        "configured": true,
+        "accessExpiry": "1h",
+        "refreshExpiry": "30d"
+      }
+    },
+    "aiUnauthenticated": 401,
+    "aiAuthenticatedHttp": 200,
+    "aiLatencyMs": 162,
+    "aiCode": null,
+    "aiSuccess": true,
+    "aiMode": "deterministic_fallback",
+    "aiReason": null,
+    "aiInjectionHttp": 400,
+    "aiInjectionCode": "PROMPT_BLOCKED",
+    "mapsUnauth": 401,
+    "mapsConfigured": false,
+    "mapsReverseAvailable": false,
+    "notificationPrefsHttp": 200,
+    "notificationChannels": [
+      {
+        "channel": "IN_APP",
+        "available": true
+      },
+      {
+        "channel": "PUSH",
+        "available": false,
+        "reason": "no_registered_device"
+      },
+      {
+        "channel": "EMAIL",
+        "available": false,
+        "reason": "provider_not_configured"
+      },
+      {
+        "channel": "SMS",
+        "available": false,
+        "reason": "provider_not_configured"
+      }
+    ],
+    "liveProviderFlags": {
+      "SMS": false,
+      "EMAIL": false,
+      "PUSH": false,
+      "MAPS": false,
+      "AI": false
+    },
+    "deliveryClaim": "EXTERNAL_UNLESS_REQUIRE_FLAG"
+  },
+  "gates": {
+    "isolatedOk": true,
+    "webhookPass": true,
+    "rbacPass": true,
+    "filePass": true,
+    "aiAuthRequired": true,
+    "aiHandledWithout500Crash": true,
+    "mapsFailClosed": true,
+    "envNotTracked": true,
+    "noCriticalAudit": true
+  },
+  "finishedAt": "2026-10-10T09:11:27.184Z"
+}

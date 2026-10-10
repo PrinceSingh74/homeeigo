@@ -1,0 +1,63 @@
+{
+  "phase": 7,
+  "drill": "backup-restore",
+  "sourceDb": "homigo_test",
+  "scratchDb": "homigo_phase7_scratch",
+  "dump": "homigo_test_phase7_2026-10-10T08-42-28-145Z.dump",
+  "sizeBytes": 8061175,
+  "sha256": "baa4cbc7af6e6737edc34e1b1b12b91d88e24f9e385108ee3f559ec26168d485",
+  "rtoSeconds": 35.74,
+  "sourceCounts": {
+    "users": 382,
+    "bookings": 691,
+    "payments": 140,
+    "journal_entries": 629,
+    "ledger_entries": 1424,
+    "earnings": 163,
+    "notifications": 5309,
+    "support_tickets": 5
+  },
+  "restoredCounts": {
+    "users": 382,
+    "bookings": 691,
+    "payments": 140,
+    "journal_entries": 629,
+    "ledger_entries": 1424,
+    "earnings": 163,
+    "notifications": 5309,
+    "support_tickets": 5
+  },
+  "countDrift": [],
+  "sourceLedger": {
+    "debitPaise": "41396550",
+    "creditPaise": "41396550"
+  },
+  "restoredLedger": {
+    "debitPaise": "41396550",
+    "creditPaise": "41396550"
+  },
+  "ledgerBalanced": true,
+  "ledgerMatch": true,
+  "gold": {
+    "source": {
+      "id": "cmv20qxxz00b4tzp8muuuj8d6",
+      "bookingNumber": "HOMIGO-20261010-00011",
+      "status": "COMPLETED",
+      "finalAmount": "439",
+      "paymentStatus": "SUCCESS",
+      "providerId": "cmv209qyj001ytzpcu9pj5q4y"
+    },
+    "restored": {
+      "id": "cmv20qxxz00b4tzp8muuuj8d6",
+      "bookingNumber": "HOMIGO-20261010-00011",
+      "status": "COMPLETED",
+      "finalAmount": "439",
+      "paymentStatus": "SUCCESS",
+      "providerId": "cmv209qyj001ytzpcu9pj5q4y"
+    },
+    "match": true
+  },
+  "pgRestoreExit": 0,
+  "status": "PASS",
+  "finishedAt": "2026-10-10T08:43:03.886Z"
+}

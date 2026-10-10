@@ -94,6 +94,9 @@ export const uploadsRoutes = new Elysia({ name: "uploads" })
       return { success: true, data: { url: ratingPhotoUrl(name, request) } };
     },
     {
+      beforeHandle: ({ requireAuth }) => {
+        requireAuth();
+      },
       // Accept a single multipart file field named "file".
       body: t.Object({ file: t.File({ maxSize: "8m" }) }),
     },

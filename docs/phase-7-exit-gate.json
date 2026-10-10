@@ -1,0 +1,54 @@
+{
+  "phase": 7,
+  "exitGate": true,
+  "closedAt": "2026-10-10T09:14:00.000Z",
+  "isolatedApi": "http://127.0.0.1:3100",
+  "isolatedDatabase": true,
+  "restore": {
+    "status": "PASS",
+    "sourceDb": "homigo_test",
+    "scratchDb": "homigo_phase7_scratch",
+    "dump": "homigo_test_phase7_2026-10-10T08-42-28-145Z.dump",
+    "sizeBytes": 8061175,
+    "rtoSeconds": 35.74,
+    "countDrift": [],
+    "ledgerBalanced": true,
+    "ledgerMatch": true,
+    "goldMatch": true,
+    "goldId": "cmv20qxxz00b4tzp8muuuj8d6",
+    "goldNumber": "HOMIGO-20261010-00011",
+    "ledgerPaise": "41396550"
+  },
+  "security": {
+    "webhookHmac": "PASS",
+    "rbacIdor": "PASS",
+    "fileAccess": "PASS",
+    "loginRateLimit429": "PASS",
+    "gitTrackedSecrets": "PASS_EXAMPLES_ONLY",
+    "criticalVulns": "PASS_ZERO",
+    "nextPinned": "15.5.27",
+    "axiosPinned": "1.20.0"
+  },
+  "integrations": {
+    "aiFailClosed": "PASS",
+    "aiInjectionBlocked": "PASS",
+    "mapsFailClosed": "PASS",
+    "inAppNotifications": "PASS",
+    "outboxProcessorTests": "PASS",
+    "emailLiveSend": "EXTERNAL",
+    "smsLiveSend": "EXTERNAL",
+    "pushLiveSend": "EXTERNAL",
+    "mapsLiveGoogle": "EXTERNAL",
+    "aiLiveModel": "EXTERNAL",
+    "outboxLiveDrainOnIsolatedProcess": "EXTERNAL"
+  },
+  "ownerDecisions": [
+    "Do not set HOMIGO_REQUIRE_SMS|EMAIL|PUSH|MAPS|AI against demo recipients",
+    "Do not enable EVENTS_OUTBOX on redis-disabled isolated :3100 this phase",
+    "Pin Next 15.5.27; do not jump to 16; do not npm audit fix --force",
+    "Residual nested high CVEs accepted with owner=project owner"
+  ],
+  "wroteHomigoDb": false,
+  "wroteStagingDb": false,
+  "productionDeploy": false
+}

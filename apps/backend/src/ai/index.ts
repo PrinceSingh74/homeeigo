@@ -1,4 +1,10 @@
-export { invokeAiGateway, getAiHealth, AiGatewayError, AI_ERROR_STATUS } from "./gateway/ai-gateway";
+export {
+  invokeAiGateway,
+  getAiHealth,
+  AiGatewayError,
+  AI_ERROR_STATUS,
+  promptBlockedError,
+} from "./gateway/ai-gateway";
 export type { GatewayInvokeOptions } from "./gateway/ai-gateway";
 export {
   routeModelRequest,
